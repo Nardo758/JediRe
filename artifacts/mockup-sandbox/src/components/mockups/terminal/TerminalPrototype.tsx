@@ -104,8 +104,7 @@ const PORTFOLIO_NAV = [
   {key:"F4",label:"MARKETS"},
   {key:"F5",label:"COMPETE"},
   {key:"F6",label:"STRATEGIES"},
-  {key:"F7",label:"MAPS"},
-  {key:"F8",label:"TOOLS"},
+  {key:"F7",label:"TOOLS"},
 ];
 
 const DEAL_NAV = [
@@ -128,11 +127,11 @@ const DASHBOARD_WIDGETS = [
   {id:"strategy",label:"Strategy Snapshot"},
 ];
 
-const MAP_SUBTABS = [
-  {id:"warmaps",label:"War Maps"},
-  {id:"midtown",label:"Midtown Research"},
-  {id:"comps",label:"Competitor Analysis"},
-  {id:"broker",label:"Broker Recommendations"},
+const MAP_TYPES = [
+  {id:"warmaps",label:"War Maps",color:"#00D26A"},
+  {id:"companalysis",label:"Comp Analysis",color:"#A78BFA"},
+  {id:"brokerintel",label:"Broker Intel",color:"#FF8C42"},
+  {id:"marketheat",label:"Market Heat",color:"#00BCD4"},
 ];
 
 const tickers = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE +2400","^ JAX EMPL +3.2%","* FL HOME $412K","^ RENT TPA +3.7%","* FDOT I-275 148.2K","v INS +18% YoY","^ NOCATEE +42%","* TPA JOBS #3"];
@@ -211,7 +210,10 @@ export function TerminalPrototype() {
   const [fStrat,setFStrat] = useState("ALL");
   const [flashes,setFlashes] = useState<Record<number,boolean>>({});
   const [dashWidget,setDashWidget] = useState<string>(() => localStorage.getItem("jedi-dash-widget")||"pipeline");
-  const [mapSubTab,setMapSubTab] = useState("warmaps");
+  const [mapLayers,setMapLayers] = useState<{id:string;name:string;type:string;visible:boolean}[]>([]);
+  const [mapCreating,setMapCreating] = useState(false);
+  const [newMapName,setNewMapName] = useState("");
+  const [newMapType,setNewMapType] = useState("warmaps");
 
   useEffect(()=>{const t=setInterval(()=>setTime(new Date()),1000);return()=>clearInterval(t);},[]);
   useEffect(()=>{const t=setInterval(()=>{const id=DEALS[Math.floor(Math.random()*DEALS.length)].id;setFlashes(p=>({...p,[id]:true}));setTimeout(()=>setFlashes(p=>({...p,[id]:false})),700);},5000);return()=>clearInterval(t);},[]);
@@ -278,21 +280,88 @@ export function TerminalPrototype() {
   );
 
   // ─── MAP SIDEBAR ────────────────────────────────────────────
+  const addMapLayer = () => {
+    if(!newMapName.trim()) return;
+    setMapLayers(prev=>[...prev,{id:`layer-${Date.now()}`,name:newMapName.trim(),type:newMapType,visible:true}]);
+    setNewMapName("");
+    setMapCreating(false);
+  };
+  const toggleLayerVis = (id:string) => setMapLayers(prev=>prev.map(l=>l.id===id?{...l,visible:!l.visible}:l));
+  const deleteLayer = (id:string) => setMapLayers(prev=>prev.filter(l=>l.id!==id));
+  const visibleTypes = new Set(mapLayers.filter(l=>l.visible).map(l=>l.type));
+
   const MapSidebar = () => (
     <div style={{width:300,borderLeft:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel}}>
-      <PanelHeader T={T} title="MAP" subtitle="LIVE" right={<button onClick={()=>setMapOpen(false)} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0px 5px",cursor:"pointer"}}>✕</button>}/>
-      <div style={{flex:1,background:"#080C14",position:"relative"}}>
+      <PanelHeader T={T} title="MAP LAYERS" subtitle={`${mapLayers.length} layers`} right={<button onClick={()=>setMapOpen(false)} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0px 5px",cursor:"pointer"}}>✕</button>}/>
+
+      {/* ── Creation form ── */}
+      {mapCreating && (
+        <div style={{padding:"8px 10px",background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.medium}`,animation:"fadeIn 0.12s",flexShrink:0}}>
+          <div style={{fontSize:8,fontWeight:700,color:T.text.cyan,letterSpacing:0.5,marginBottom:6}}>NEW MAP LAYER</div>
+          <input
+            autoFocus
+            value={newMapName}
+            onChange={e=>setNewMapName(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter")addMapLayer();if(e.key==="Escape")setMapCreating(false);}}
+            placeholder="Layer name…"
+            style={{width:"100%",boxSizing:"border-box" as const,fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.medium}`,padding:"4px 7px",marginBottom:6,outline:"none"}}
+          />
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:6}}>
+            {MAP_TYPES.map(mt=>(
+              <button key={mt.id} onClick={()=>setNewMapType(mt.id)} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,padding:"3px 0",cursor:"pointer",background:newMapType===mt.id?mt.color+"22":"transparent",color:newMapType===mt.id?mt.color:T.text.muted,border:`1px solid ${newMapType===mt.id?mt.color:T.border.subtle}`,borderRadius:0}}>
+                {mt.label}
+              </button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={addMapLayer} style={{flex:1,fontFamily:T.font.mono,fontSize:8,fontWeight:700,padding:"4px 0",cursor:"pointer",background:T.text.cyan,color:T.bg.terminal,border:"none"}}>CREATE</button>
+            <button onClick={()=>setMapCreating(false)} style={{fontFamily:T.font.mono,fontSize:8,padding:"4px 8px",cursor:"pointer",background:"transparent",color:T.text.muted,border:`1px solid ${T.border.subtle}`}}>CANCEL</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Layer list ── */}
+      <div style={{flexShrink:0,maxHeight:180,overflow:"auto",borderBottom:`1px solid ${T.border.medium}`}}>
+        {mapLayers.length===0 && !mapCreating && (
+          <div style={{padding:"20px 10px",textAlign:"center" as const}}>
+            <div style={{fontSize:8,color:T.text.muted,lineHeight:"1.6"}}>No layers yet.<br/>Click <span style={{color:T.text.cyan}}>+ New Map</span> to create one.</div>
+          </div>
+        )}
+        {mapLayers.map(layer=>{
+          const mt = MAP_TYPES.find(m=>m.id===layer.type)||MAP_TYPES[0];
+          return (
+            <div key={layer.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.panel,opacity:layer.visible?1:0.45}}>
+              <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:7,height:7,borderRadius:"50%",background:mt.color,flexShrink:0}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:8,fontWeight:600,color:T.text.primary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{layer.name}</div>
+                <div style={{fontSize:7,color:mt.color,letterSpacing:0.3}}>{mt.label}</div>
+              </div>
+              <button onClick={()=>toggleLayerVis(layer.id)} title={layer.visible?"Hide":"Show"} style={{background:"transparent",border:`1px solid ${T.border.subtle}`,color:layer.visible?T.text.green:T.text.muted,padding:"1px 5px",fontSize:9,cursor:"pointer",flexShrink:0,fontFamily:"monospace"}}>
+                {layer.visible?"●":"○"}
+              </button>
+              <button onClick={()=>deleteLayer(layer.id)} style={{background:"transparent",border:`1px solid ${T.border.subtle}`,color:T.text.muted,padding:"1px 4px",fontSize:9,cursor:"pointer",flexShrink:0,lineHeight:1}}>✕</button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Map viewport ── */}
+      <div style={{flex:1,background:"#080C14",position:"relative",minHeight:0}}>
         <svg width="100%" height="100%" style={{position:"absolute",inset:0,opacity:0.06}}>
           {Array.from({length:20}).map((_,i)=><line key={i} x1="0" y1={i*25} x2="100%" y2={i*25} stroke="#8B95A5" strokeWidth="0.5"/>)}
           {Array.from({length:15}).map((_,i)=><line key={`v${i}`} x1={i*25} y1="0" x2={i*25} y2="100%" stroke="#8B95A5" strokeWidth="0.5"/>)}
         </svg>
         {[{x:"28%",y:"30%",i:0},{x:"70%",y:"20%",i:1},{x:"58%",y:"62%",i:2},{x:"46%",y:"48%",i:3},{x:"24%",y:"42%",i:4},{x:"32%",y:"38%",i:5}].map((m,idx)=>{
-          const d=DEALS[m.i];const c=d.score>=80?DARK.text.green:d.score>=65?DARK.text.amber:DARK.text.red;
+          const d=DEALS[m.i];
+          const layerMatch = mapLayers.length===0 || mapLayers.some(l=>l.visible);
+          if(mapLayers.length>0 && !layerMatch) return null;
+          const c=d.score>=80?DARK.text.green:d.score>=65?DARK.text.amber:DARK.text.red;
           const sz=d.units>200?16:d.units>100?12:d.units>0?9:7;
           const sel=selDeal===d.id;
+          const dotColor = mapLayers.length===0 ? c : (() => {const l=mapLayers.find(ly=>ly.visible); return l ? MAP_TYPES.find(mt=>mt.id===l.type)?.color||c : c; })();
           return (
             <div key={idx} onClick={()=>setSelDeal(d.id)} style={{position:"absolute",left:m.x,top:m.y,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:sel?10:1}}>
-              <div style={{width:sz,height:sz,borderRadius:"50%",background:c,border:sel?`2px solid white`:`1px solid ${c}`,opacity:sel?1:0.8,boxShadow:sel?`0 0 12px ${c}66`:"none"}}/>
+              <div style={{width:sz,height:sz,borderRadius:"50%",background:dotColor,border:sel?`2px solid white`:`1px solid ${dotColor}`,opacity:sel?1:0.75,boxShadow:sel?`0 0 12px ${dotColor}88`:"none"}}/>
               {sel&&<div style={{position:"absolute",top:"calc(100% + 4px)",left:"50%",transform:"translateX(-50%)",background:DARK.bg.header,border:`1px solid ${DARK.border.bright}`,padding:"4px 6px",whiteSpace:"nowrap",zIndex:20,animation:"fadeIn 0.15s"}}>
                 <div style={{fontSize:9,fontWeight:700,color:DARK.text.white}}>{d.name}</div>
                 <div style={{display:"flex",gap:4,marginTop:2}}><span style={{fontSize:8,color:c,fontWeight:700}}>{d.score}</span><span style={{fontSize:8,color:DARK.text.amber}}>{d.irr}</span></div>
@@ -838,8 +907,7 @@ export function TerminalPrototype() {
         case "F4": return <ViewMarkets/>;
         case "F5": return <ViewCompete/>;
         case "F6": return <ViewStrategies/>;
-        case "F7": return <ViewMaps/>;
-        case "F8": return <ViewTools/>;
+        case "F7": return <ViewTools/>;
         default: return null;
       }
     } else {
@@ -980,6 +1048,12 @@ export function TerminalPrototype() {
           {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
           {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
           <span style={{fontSize:8,color:T.text.muted}}>{sorted.length} deals</span>
+          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"2px 10px",height:22,cursor:"pointer",letterSpacing:0.3}}>
+            + New Map
+          </button>
+          <button style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"2px 10px",height:22,cursor:"pointer",letterSpacing:0.3}}>
+            + Create Deal
+          </button>
         </div>
       )}
 
@@ -997,7 +1071,7 @@ export function TerminalPrototype() {
       {/* ═══ MAIN CONTENT ═══ */}
       <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
         {renderContent()}
-        {ctx==="portfolio" && mapOpen && fkey!=="F7" && <MapSidebar/>}
+        {ctx==="portfolio" && mapOpen && <MapSidebar/>}
       </div>
 
       {/* ═══ PERSISTENT BOTTOM PANEL (portfolio only) ═══ */}
