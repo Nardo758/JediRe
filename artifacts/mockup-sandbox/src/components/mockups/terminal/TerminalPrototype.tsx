@@ -915,7 +915,7 @@ export function TerminalPrototype() {
         <div style={{flex:1,overflow:"auto",padding:10,position:"relative"}}>
           {/* Drag ghost cursor */}
           {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:200,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,alignItems:"start"}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gridAutoFlow:"dense",gap:10,alignItems:"start"}}>
             {dashWidgets.filter(id=>!floatWidgets.includes(id)).map(id=>{
               const meta=WIDGET_CATALOG.find(w=>w.id===id);
               if(!meta) return null;
