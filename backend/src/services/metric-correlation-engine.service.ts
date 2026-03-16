@@ -100,7 +100,16 @@ export class MetricCorrelationEngine {
     const seriesA = await this.fetchSeries(metricA, geoType, geoId);
     const seriesB = await this.fetchSeries(metricB, geoType, geoId);
 
-    if (seriesA.length < 10 || seriesB.length < 10) {
+    return this.sweepLagsDirect(seriesA, seriesB, maxLag, stepMonths);
+  }
+
+  sweepLagsDirect(
+    seriesA: Array<{ date: string; value: number }>,
+    seriesB: Array<{ date: string; value: number }>,
+    maxLag: number = 24,
+    stepMonths: number = 3,
+  ): CorrelationSweepResult {
+    if (seriesA.length < 3 || seriesB.length < 3) {
       return { bestLag: 0, bestR: 0, sweepResults: [] };
     }
 

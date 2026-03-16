@@ -65,20 +65,6 @@ export class MetricProjectionService {
     const cached = await this.getCachedProjection(metricId, geoType, geoId, horizonMonths);
     if (cached) return cached;
 
-    const series = await this.fetchSeries(metricId, geoType, geoId);
-
-    if (series.length >= 60) {
-      const result = this.projectOLS(metricId, geoType, geoId, series, horizonMonths, true);
-      await this.cacheProjection(result);
-      return result;
-    }
-
-    if (series.length >= 24) {
-      const result = this.projectOLS(metricId, geoType, geoId, series, horizonMonths, false);
-      await this.cacheProjection(result);
-      return result;
-    }
-
     const anchorChain = ANCHOR_CONFIGS[metricId];
     if (anchorChain) {
       for (const anchorConfig of anchorChain) {
@@ -91,6 +77,20 @@ export class MetricProjectionService {
           return result;
         }
       }
+    }
+
+    const series = await this.fetchSeries(metricId, geoType, geoId);
+
+    if (series.length >= 60) {
+      const result = this.projectOLS(metricId, geoType, geoId, series, horizonMonths, true);
+      await this.cacheProjection(result);
+      return result;
+    }
+
+    if (series.length >= 24) {
+      const result = this.projectOLS(metricId, geoType, geoId, series, horizonMonths, false);
+      await this.cacheProjection(result);
+      return result;
     }
 
     if (series.length >= 6) {
@@ -195,23 +195,21 @@ export class MetricProjectionService {
     anchorMetricId: string,
     anchorGeoType: string,
   ): Promise<ProjectionResult | null> {
-    const sweep = await this.correlationEngine.sweepLags(
-      anchorMetricId, metricId, anchorGeoType, geoId,
-    );
+    const anchorSeries = await this.fetchSeries(anchorMetricId, anchorGeoType, geoId);
+    if (anchorSeries.length < 60) return null;
+
+    const targetSeries = await this.fetchSeries(metricId, geoType, geoId);
+    if (targetSeries.length < 3) return null;
+
+    const sweep = await this.correlationEngine.sweepLagsDirect(anchorSeries, targetSeries);
 
     if (sweep.sweepResults.length === 0 || Math.abs(sweep.bestR) < 0.2) {
       return null;
     }
 
-    const anchorSeries = await this.fetchSeries(anchorMetricId, anchorGeoType, geoId);
-    if (anchorSeries.length < 60) return null;
-
     const anchorProjection = this.projectOLS(
       anchorMetricId, anchorGeoType, geoId, anchorSeries, horizonMonths + Math.abs(sweep.bestLag), true,
     );
-
-    const targetSeries = await this.fetchSeries(metricId, geoType, geoId);
-    if (targetSeries.length < 3) return null;
 
     const targetMean = targetSeries.reduce((a, b) => a + b.value, 0) / targetSeries.length;
     const targetStd = Math.sqrt(
