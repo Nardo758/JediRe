@@ -736,13 +736,10 @@ export class JEDIScoreService {
       const hhi = parseFloat(herfindahl_index || '0');
       const topShare = parseFloat(top_5_share || '0') * 100;
 
-      let demandAdj = 0;
+      let demandAdj = Math.max(-8, Math.min(8, (divVal / 15) * 8));
+
       if (schiVal >= 70) demandAdj += 2;
       else if (schiVal < 40) demandAdj -= 3;
-
-      if (Math.abs(divVal) > 15) {
-        demandAdj += divVal > 0 ? 1.5 : -2;
-      }
 
       let riskAdj = 0;
       if (hhi > 0.25) riskAdj += 5;

@@ -10,7 +10,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import { apiClient } from '../../../services/api.client';
+import { apiClient, corporateHealthAPI } from '../../../services/api.client';
 
 interface RiskCategory {
   id: string;
@@ -218,6 +218,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
   const params = useParams<{ id?: string; dealId?: string }>();
 
   const resolvedDealId = propDealId || deal?.id || params.dealId || params.id;
+  const [corpHealthRisk, setCorpHealthRisk] = useState<{hhi:number|null,topShare:number|null,schi:number|null,loaded:boolean}>({hhi:null,topShare:null,schi:null,loaded:false});
 
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -246,26 +247,83 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     return () => { cancelled = true; };
   }, [resolvedDealId]);
 
-  // M11+ → M14: Augment risk categories with financial risk from Capital Structure
+  useEffect(() => {
+    if (!resolvedDealId || corpHealthRisk.loaded) return;
+    corporateHealthAPI.getDealOverlay(resolvedDealId)
+      .then(res => {
+        const d = res.data?.data;
+        if (d) {
+          setCorpHealthRisk({
+            hhi: d.herfindahl ?? null,
+            topShare: d.topEmployerShare ?? null,
+            schi: d.weightedSCHI ?? null,
+            loaded: true,
+          });
+        } else {
+          setCorpHealthRisk(prev => ({...prev, loaded: true}));
+        }
+      })
+      .catch(() => {
+        setCorpHealthRisk(prev => ({...prev, loaded: true}));
+      });
+  }, [resolvedDealId, corpHealthRisk.loaded]);
+
   const augmentedCategories = useMemo(() => {
-    if (!capitalStructure) return riskCategories;
-    return riskCategories.map(cat => {
-      if (cat.id !== 'market') return cat;
-      // Inject DSCR/LTV covenant exposure into market risk
-      const dscrRisk = capitalStructure.dscr < 1.25 ? 15 : capitalStructure.dscr < 1.35 ? 8 : 0;
-      const ltvRisk = capitalStructure.ltv > 80 ? 12 : capitalStructure.ltv > 75 ? 6 : 0;
-      const financialAdjustment = dscrRisk + ltvRisk;
-      const adjustedScore = Math.min(100, cat.score + financialAdjustment);
-      return {
-        ...cat,
-        score: adjustedScore,
-        driver: financialAdjustment > 0
-          ? `${cat.driver} + Financial: DSCR ${capitalStructure.dscr.toFixed(2)}x / LTV ${capitalStructure.ltv.toFixed(0)}%`
-          : cat.driver,
-        severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
-      };
-    });
-  }, [capitalStructure, riskCategories]);
+    let cats = riskCategories;
+
+    if (capitalStructure) {
+      cats = cats.map(cat => {
+        if (cat.id !== 'market') return cat;
+        const dscrRisk = capitalStructure.dscr < 1.25 ? 15 : capitalStructure.dscr < 1.35 ? 8 : 0;
+        const ltvRisk = capitalStructure.ltv > 80 ? 12 : capitalStructure.ltv > 75 ? 6 : 0;
+        const financialAdjustment = dscrRisk + ltvRisk;
+        const adjustedScore = Math.min(100, cat.score + financialAdjustment);
+        return {
+          ...cat,
+          score: adjustedScore,
+          driver: financialAdjustment > 0
+            ? `${cat.driver} + Financial: DSCR ${capitalStructure.dscr.toFixed(2)}x / LTV ${capitalStructure.ltv.toFixed(0)}%`
+            : cat.driver,
+          severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
+        };
+      });
+    }
+
+    if (corpHealthRisk.loaded && (corpHealthRisk.hhi !== null || corpHealthRisk.schi !== null)) {
+      let concRiskScore = 30;
+      const hhi = corpHealthRisk.hhi ?? 0;
+      const topShare = corpHealthRisk.topShare ?? 0;
+      const schi = corpHealthRisk.schi ?? 50;
+
+      if (hhi > 0.25) concRiskScore += 25;
+      else if (hhi > 0.15) concRiskScore += 15;
+      else if (hhi > 0.1) concRiskScore += 5;
+
+      if (topShare > 30) concRiskScore += 15;
+      else if (topShare > 20) concRiskScore += 8;
+
+      if (schi < 40) concRiskScore += 15;
+      else if (schi < 55) concRiskScore += 5;
+
+      concRiskScore = Math.min(100, concRiskScore);
+
+      cats = cats.map(cat => {
+        if (cat.id !== 'demand') return cat;
+        const corpAdj = Math.round((concRiskScore - 30) * 0.3);
+        const adjustedScore = Math.min(100, cat.score + corpAdj);
+        return {
+          ...cat,
+          score: adjustedScore,
+          driver: corpAdj > 0
+            ? `${cat.driver} | Corp Concentration: HHI ${hhi.toFixed(3)}, SCHI ${schi.toFixed(0)}`
+            : cat.driver,
+          severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
+        };
+      });
+    }
+
+    return cats;
+  }, [capitalStructure, riskCategories, corpHealthRisk]);
 
   // Recalculate composite with augmented categories
   const adjustedCompositeScore = useMemo(
