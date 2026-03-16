@@ -748,13 +748,6 @@ export default function TerminalPage() {
   // ─── DEAL GRID (F2) ────────────────────────────────────────
   const DealGrid = () => (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:10,fontWeight:700,color:T.text.white}}>DEAL PIPELINE</span>
-          <span style={{fontSize:8,color:T.text.secondary}}>{sorted.length} deals</span>
-          {dealsLoading&&<span style={{fontSize:8,color:T.text.muted,animation:"pulse 1.5s infinite"}}>loading…</span>}
-        </div>
-      </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
           <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:7,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
