@@ -1209,12 +1209,12 @@ export function TerminalPrototype() {
   const renderContent = () => {
     if(ctx==="portfolio") {
       switch(fkey) {
-        case "F1": return <ViewDashboard/>;
-        case "F2": return <DealGrid/>;
-        case "F3": return <ViewPortfolio/>;
-        case "F4": return <ViewMarkets/>;
-        case "F5": return <ViewEmail/>;
-        case "F6": return <ViewCompete/>;
+        case "F1": return ViewDashboard();
+        case "F2": return DealGrid();
+        case "F3": return ViewPortfolio();
+        case "F4": return ViewMarkets();
+        case "F5": return ViewEmail();
+        case "F6": return ViewCompete();
         case "F7": return <ViewStrategies/>;
         case "F8": return <ViewTools/>;
         default: return null;
