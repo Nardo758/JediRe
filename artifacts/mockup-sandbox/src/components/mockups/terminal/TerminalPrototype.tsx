@@ -592,7 +592,7 @@ export function TerminalPrototype() {
   };
 
   const WidgetTV = () => {
-    const [chan,setChan] = React.useState("CNBC");
+    const [chan,setChan] = useState("CNBC");
     const channels = ["CNBC","Bloomberg","Fox Business","Yahoo Finance"];
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column"}}>
