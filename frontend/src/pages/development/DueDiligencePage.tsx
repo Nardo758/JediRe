@@ -27,7 +27,6 @@ import {
   RiskMatrixHeatmap,
   AIInsightsPanel,
 } from '../../components/development';
-import { useDealStore } from '../../stores/dealStore';
 import { apiClient } from '../../services/api.client';
 import type {
   DueDiligenceState,
@@ -40,10 +39,16 @@ import type {
   DDInsights,
 } from '../../types/development/dueDiligence.types';
 
-export const DueDiligencePage: React.FC = () => {
-  const { dealId } = useParams<{ dealId: string }>();
+interface DueDiligencePageProps {
+  deal?: any;
+  dealId?: string;
+  embedded?: boolean;
+}
+
+export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDeal, dealId: propDealId }) => {
+  const { dealId: routeDealId } = useParams<{ dealId: string }>();
+  const dealId = propDealId || routeDealId;
   const navigate = useNavigate();
-  const { currentDeal, loadDeal } = useDealStore();
 
   // State management
   const [dueDiligence, setDueDiligence] = useState<DueDiligenceState | null>(null);
@@ -69,11 +74,6 @@ export const DueDiligencePage: React.FC = () => {
       try {
         setIsLoading(true);
         setError(null);
-
-        // Load deal if not in store
-        if (!currentDeal || currentDeal.id !== dealId) {
-          await loadDeal(dealId);
-        }
 
         // Load all DD data in parallel
         const [ddResponse, zoningResponse, envResponse, geoResponse, utilResponse, riskResponse] = await Promise.all([
@@ -123,7 +123,7 @@ export const DueDiligencePage: React.FC = () => {
     };
 
     loadDueDiligenceData();
-  }, [dealId, currentDeal, loadDeal]);
+  }, [dealId]);
 
   const generateAIInsights = async () => {
     if (!dealId) return;
@@ -235,7 +235,7 @@ export const DueDiligencePage: React.FC = () => {
               </button>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Due Diligence</h1>
-                <p className="text-sm text-gray-600">{currentDeal?.name || 'Loading...'}</p>
+                <p className="text-sm text-gray-600">{propDeal?.name || 'Loading...'}</p>
               </div>
             </div>
 
