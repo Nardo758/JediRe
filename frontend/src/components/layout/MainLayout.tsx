@@ -306,9 +306,21 @@ const BottomPanel: React.FC = () => {
         api.get('/news/feed'),
         api.get('/agent-status'),
       ]);
-      if (alertRes.status === 'fulfilled') setAlerts(alertRes.value.data?.data || alertRes.value.data?.alerts || []);
-      if (newsRes.status === 'fulfilled') setNews(newsRes.value.data?.data || newsRes.value.data?.articles || []);
-      if (agentRes.status === 'fulfilled') setAgents(agentRes.value.data?.data || agentRes.value.data?.agents || []);
+      if (alertRes.status === 'fulfilled') {
+        const ad = alertRes.value.data;
+        const raw = ad?.data?.alerts || ad?.alerts || ad?.data;
+        setAlerts(Array.isArray(raw) ? raw : []);
+      }
+      if (newsRes.status === 'fulfilled') {
+        const nd = newsRes.value.data;
+        const raw = nd?.data?.articles || nd?.articles || nd?.data;
+        setNews(Array.isArray(raw) ? raw : []);
+      }
+      if (agentRes.status === 'fulfilled') {
+        const gd = agentRes.value.data;
+        const raw = gd?.data?.agents || gd?.agents || gd?.data;
+        setAgents(Array.isArray(raw) ? raw : []);
+      }
     } catch (err) {
       console.warn('[BottomPanel] Failed to fetch panel data', err);
     }
