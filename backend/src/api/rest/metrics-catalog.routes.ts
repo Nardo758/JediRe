@@ -6,6 +6,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
+import { pool } from '../../database';
 import {
   METRICS_CATALOG,
   getMetricById,
@@ -13,6 +14,7 @@ import {
   getCategoriesWithCounts,
   MetricGranularity,
 } from '../../services/metricsCatalog.service';
+import { DotAggregatorService } from '../../services/dot-aggregator.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -56,6 +58,35 @@ router.get('/categories', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to fetch categories',
+    });
+  }
+});
+
+const dotAggregator = new DotAggregatorService(pool);
+
+router.get('/aadt-history', async (req: Request, res: Response) => {
+  try {
+    const geoId = req.query.geoId as string;
+    const geoType = (req.query.geoType as string) || 'msa';
+
+    if (!geoId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required query param: geoId',
+      });
+    }
+
+    const result = await dotAggregator.getAADTHistory(geoId, geoType);
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    logger.error('Error fetching AADT history:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch AADT history',
     });
   }
 });
