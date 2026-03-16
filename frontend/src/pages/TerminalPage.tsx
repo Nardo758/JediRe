@@ -1196,7 +1196,6 @@ export default function TerminalPage() {
 
   // ─── VIEW: F1 DASHBOARD (Floating Window System) ──────────
   const ViewDashboard = () => {
-    const minimized = dashWindows.filter(id => winStates[id]?.minimized);
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
         {dashMenuOpen&&(
@@ -1260,65 +1259,7 @@ export default function TerminalPage() {
             <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"10px 24px",cursor:"pointer",letterSpacing:0.5}}>+ ADD WINDOW</button>
           </div>
         )}
-        <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-          {dashWindows.filter(id=>!winStates[id]?.minimized).map(id=>{
-            const meta=WIDGET_CATALOG.find(w=>w.id===id);
-            const ws=winStates[id]||defaultWinPos(id,0);
-            if(!meta) return null;
-            const isMax=ws.maximized;
-            const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
-            return (
-              <div key={id}
-                onMouseDown={()=>bringToFront(id)}
-                style={{
-                  position:isMax?"absolute":"absolute",
-                  left:isMax?0:ws.x, top:isMax?0:ws.y,
-                  width:isMax?"100%":ws.w, height:isMax?"100%":ws.h,
-                  background:T.bg.panel,
-                  border:`1px solid ${meta.color}55`,
-                  boxShadow:isMax?"none":"0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
-                  display:"flex",flexDirection:"column",
-                  zIndex:ws.zIndex||10,
-                  minWidth:320,minHeight:200,
-                  transition:isMoving||dragInfo?.mode==="resize"?"none":"box-shadow 0.15s",
-                }}>
-                <div
-                  onMouseDown={(e)=>{if(!isMax){e.preventDefault();bringToFront(id);setDragInfo({id,ox:e.clientX-ws.x,oy:e.clientY-ws.y,mode:"move"});}}}
-                  onDoubleClick={()=>maximizeWindow(id)}
-                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMax?"default":isMoving?"grabbing":"grab",userSelect:"none"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{width:7,height:7,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
-                    <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{meta.label}</span>
-                    <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
-                  </div>
-                  <div style={{display:"flex",gap:2,alignItems:"center"}}>
-                    <button onClick={(e)=>{e.stopPropagation();minimizeWindow(id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
-                    <button onClick={(e)=>{e.stopPropagation();maximizeWindow(id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
-                    <button onClick={(e)=>{e.stopPropagation();closeWindow(id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
-                  </div>
-                </div>
-                <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
-                  {renderWidget(id)}
-                </div>
-                {!isMax&&<div onMouseDown={(e)=>{e.preventDefault();e.stopPropagation();bringToFront(id);setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:14,height:14,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>}
-              </div>
-            );
-          })}
-        </div>
-        {minimized.length>0&&(
-          <div style={{display:"flex",gap:4,padding:"4px 8px",background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,flexShrink:0,flexWrap:"wrap"}}>
-            {minimized.map(id=>{
-              const meta=WIDGET_CATALOG.find(w=>w.id===id);
-              if(!meta) return null;
-              return (
-                <button key={id} onClick={()=>minimizeWindow(id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${meta.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
-                  <span style={{width:5,height:5,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
-                  {meta.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
+        <div style={{flex:1}} />
       </div>
     );
   };
@@ -2077,6 +2018,65 @@ export default function TerminalPage() {
           {renderBottomTab()}
         </div>
       </div>
+
+      {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay) ═══ */}
+      {dashWindows.filter(id=>!winStates[id]?.minimized).map(id=>{
+        const meta=WIDGET_CATALOG.find(w=>w.id===id);
+        const ws=winStates[id]||defaultWinPos(id,0);
+        if(!meta) return null;
+        const isMax=ws.maximized;
+        const isMoving=dragInfo?.id===id&&dragInfo.mode==="move";
+        return (
+          <div key={id}
+            onMouseDown={()=>bringToFront(id)}
+            style={{
+              position:"fixed",
+              left:isMax?"5%":ws.x, top:isMax?"5%":ws.y,
+              width:isMax?"90%":ws.w, height:isMax?"90%":ws.h,
+              background:T.bg.panel,
+              border:`1px solid ${meta.color}55`,
+              boxShadow:isMax?"0 16px 64px rgba(0,0,0,0.7)":"0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)",
+              display:"flex",flexDirection:"column",
+              zIndex:ws.zIndex||50,
+              minWidth:320,minHeight:200,
+              transition:isMoving||dragInfo?.mode==="resize"?"none":"box-shadow 0.15s",
+            }}>
+            <div
+              onMouseDown={(e)=>{if(!isMax){e.preventDefault();bringToFront(id);setDragInfo({id,ox:e.clientX-ws.x,oy:e.clientY-ws.y,mode:"move"});}}}
+              onDoubleClick={()=>maximizeWindow(id)}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${meta.color}44`,flexShrink:0,cursor:isMax?"default":isMoving?"grabbing":"grab",userSelect:"none"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{meta.label}</span>
+                <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
+              </div>
+              <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                <button onClick={(e)=>{e.stopPropagation();minimizeWindow(id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
+                <button onClick={(e)=>{e.stopPropagation();maximizeWindow(id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
+                <button onClick={(e)=>{e.stopPropagation();closeWindow(id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+              {renderWidget(id)}
+            </div>
+            {!isMax&&<div onMouseDown={(e)=>{e.preventDefault();e.stopPropagation();bringToFront(id);setDragInfo({id,ox:e.clientX,oy:e.clientY,mode:"resize"});}} style={{position:"absolute",bottom:0,right:0,width:14,height:14,cursor:"nwse-resize",background:`linear-gradient(135deg,transparent 40%,${T.border.medium} 40%)`,zIndex:1}}/>}
+          </div>
+        );
+      })}
+      {dashWindows.filter(id=>winStates[id]?.minimized).length>0&&(
+        <div style={{position:"fixed",bottom:44,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9996,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+          {dashWindows.filter(id=>winStates[id]?.minimized).map(id=>{
+            const meta=WIDGET_CATALOG.find(w=>w.id===id);
+            if(!meta) return null;
+            return (
+              <button key={id} onClick={()=>minimizeWindow(id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${meta.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
+                {meta.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ═══ MEDIA FLOATING WINDOWS (global overlay) ═══ */}
       {mediaWindows.filter(w=>!mediaWinStates[w.id]?.minimized).map(win=>{
