@@ -110,15 +110,15 @@ export interface RedevelopmentOverviewProps {
 
 // ─── Default DD items ─────────────────────────────────────────────────────────
 const DEFAULT_DD = [
-  { module: 'M02', label: 'Property & Zoning',    status: 'not-started', link: 'property' },
-  { module: 'M05', label: 'Market Intelligence',  status: 'not-started', link: 'market' },
-  { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic' },
+  { module: 'M02', label: 'Property & Zoning',    status: 'not-started', link: 'zoning' },
+  { module: 'M05', label: 'Market Intelligence',  status: 'not-started', link: 'market-intelligence' },
+  { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic-module' },
   { module: 'M09', label: 'Pro Forma',            status: 'not-started', link: 'proforma' },
-  { module: 'M11', label: 'Capital Structure',    status: 'not-started', link: 'capital' },
-  { module: 'M14', label: 'Risk Management',      status: 'not-started', link: 'risk' },
-  { module: 'M15', label: 'Competition',          status: 'not-started', link: 'comps' },
-  { module: 'M16', label: 'Environmental & ESG',  status: 'not-started', link: 'risk' },
-  { module: 'M20', label: 'Due Diligence',        status: 'not-started', link: 'docs' },
+  { module: 'M11', label: 'Capital Structure',    status: 'not-started', link: 'debt' },
+  { module: 'M14', label: 'Risk Management',      status: 'not-started', link: 'risk-intelligence' },
+  { module: 'M15', label: 'Competition',          status: 'not-started', link: 'competition' },
+  { module: 'M16', label: 'Environmental & ESG',  status: 'not-started', link: 'due-diligence' },
+  { module: 'M13', label: 'DD Checklist',         status: 'not-started', link: 'due-diligence' },
 ];
 
 const BUDGET_PALETTE = [T.amberL, T.blueL, T.violL, T.redL, T.greenL, T.td, T.cyan];
