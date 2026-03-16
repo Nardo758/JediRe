@@ -32,7 +32,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       deals: result.rows.map(row => ({
         id: row.id,
         name: row.name,
-        projectType: row.project_type,
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         projectIntent: row.project_intent,
         tier: row.tier || 'basic',
         status: row.status,
@@ -97,7 +98,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       deal: {
         id: row.id,
         name: row.name,
-        projectType: row.project_type || 'multifamily',
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         projectIntent: row.project_intent,
         tier: row.tier || 'basic',
         status: row.status,
@@ -139,13 +141,13 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     // Use pool directly instead of req.dbClient
     const client = pool;
     const {
-      name, boundary, projectType, projectIntent, targetUnits,
+      name, boundary, projectType, project_type, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
       deal_category, development_type, address, description,
       property_type_key
     } = req.body;
 
-    let resolvedProjectType = projectType;
+    let resolvedProjectType = projectType || project_type;
     if (!resolvedProjectType && property_type_key) {
       const ptResult = await client.query(
         'SELECT category FROM property_types WHERE type_key = $1 LIMIT 1',
@@ -158,7 +160,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
           'Hospitality': 'hospitality', 'Mixed-Use': 'mixed_use',
           'Land': 'land', 'Special Purpose': 'special_purpose',
         };
-        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'multifamily';
+        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'existing';
       }
     }
 
@@ -178,7 +180,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       req.user!.userId,
       name,
       JSON.stringify(boundary),
-      resolvedProjectType || 'multifamily',
+      resolvedProjectType || 'existing',
       projectIntent || null,
       targetUnits || null,
       budget || null,
@@ -215,7 +217,8 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       deal: {
         id: row.id,
         name: row.name,
-        projectType: row.project_type,
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         tier: row.tier || 'basic',
         status: row.status,
         budget: parseFloat(row.budget) || 0,
