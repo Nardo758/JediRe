@@ -288,7 +288,6 @@ export function TerminalPrototype() {
   };
   const toggleLayerVis = (id:string) => setMapLayers(prev=>prev.map(l=>l.id===id?{...l,visible:!l.visible}:l));
   const deleteLayer = (id:string) => setMapLayers(prev=>prev.filter(l=>l.id!==id));
-  const visibleTypes = new Set(mapLayers.filter(l=>l.visible).map(l=>l.type));
 
   const MapSidebar = () => (
     <div style={{width:300,borderLeft:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel}}>
@@ -671,106 +670,6 @@ export function TerminalPrototype() {
     </div>
   );
 
-  const ViewMaps = () => (
-    <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,animation:"fadeIn 0.15s"}}>
-      <div style={{display:"flex",alignItems:"center",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        {MAP_SUBTABS.map(tab=>(
-          <button key={tab.id} onClick={()=>setMapSubTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,padding:"0 14px",height:32,cursor:"pointer",background:mapSubTab===tab.id?T.text.cyan:"transparent",color:mapSubTab===tab.id?T.bg.terminal:T.text.secondary,border:"none",whiteSpace:"nowrap",flexShrink:0}}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div style={{flex:1,display:"flex",minHeight:0}}>
-        {mapSubTab==="warmaps" && (
-          <div style={{flex:1,background:"#080C14",position:"relative"}}>
-            <svg width="100%" height="100%" style={{position:"absolute",inset:0,opacity:0.06}}>
-              {Array.from({length:30}).map((_,i)=><line key={i} x1="0" y1={i*30} x2="100%" y2={i*30} stroke="#8B95A5" strokeWidth="0.5"/>)}
-              {Array.from({length:40}).map((_,i)=><line key={`v${i}`} x1={i*30} y1="0" x2={i*30} y2="100%" stroke="#8B95A5" strokeWidth="0.5"/>)}
-            </svg>
-            {[{x:"22%",y:"28%",i:0},{x:"68%",y:"18%",i:1},{x:"56%",y:"60%",i:2},{x:"44%",y:"46%",i:3},{x:"20%",y:"40%",i:4},{x:"30%",y:"36%",i:5},{x:"60%",y:"66%",i:6},{x:"46%",y:"38%",i:7}].map((m,idx)=>{
-              const d=DEALS[m.i];const c=d.score>=80?DARK.text.green:d.score>=65?DARK.text.amber:DARK.text.red;
-              const sz=d.units>200?18:d.units>100?13:d.units>0?10:7;
-              const sel=selDeal===d.id;
-              return (
-                <div key={idx} onClick={()=>setSelDeal(d.id)} style={{position:"absolute",left:m.x,top:m.y,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:sel?10:1}}>
-                  <div style={{width:sz,height:sz,borderRadius:"50%",background:c,border:sel?`2px solid white`:`1px solid ${c}`,opacity:sel?1:0.8,boxShadow:sel?`0 0 16px ${c}88`:"none"}}/>
-                  {sel&&<div style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:DARK.bg.header,border:`1px solid ${DARK.border.bright}`,padding:"6px 8px",whiteSpace:"nowrap",zIndex:20,animation:"fadeIn 0.15s"}}>
-                    <div style={{fontSize:10,fontWeight:700,color:DARK.text.white}}>{d.name}</div>
-                    <div style={{display:"flex",gap:6,marginTop:2}}><span style={{fontSize:9,color:c,fontWeight:700}}>{d.score}</span><span style={{fontSize:9,color:DARK.text.amber}}>{d.irr}</span><StratBd s={d.strat} T={DARK}/></div>
-                    <div onClick={()=>enterDeal(d)} style={{marginTop:4,fontSize:8,color:DARK.text.amber,cursor:"pointer",fontWeight:600}}>OPEN CAPSULE →</div>
-                  </div>}
-                </div>
-              );
-            })}
-            <div style={{position:"absolute",bottom:12,left:12,display:"flex",gap:12}}>
-              {[{c:DARK.text.green,l:"JEDI 80+"},{c:DARK.text.amber,l:"JEDI 65–79"},{c:DARK.text.red,l:"JEDI <65"}].map((leg,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:"50%",background:leg.c,display:"inline-block"}}/><span style={{fontSize:8,color:DARK.text.secondary}}>{leg.l}</span></div>
-              ))}
-            </div>
-            <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:12,color:"#8B95A5",opacity:0.1,textAlign:"center",pointerEvents:"none"}}>MAPBOX GL JS<br/>FLORIDA</div>
-          </div>
-        )}
-        {mapSubTab==="midtown" && (
-          <div style={{flex:1,overflow:"auto"}}>
-            <PanelHeader T={T} title="MIDTOWN RESEARCH" subtitle="Submarket deep-dive | 52 properties | 14,856 units" borderColor={T.text.cyan}/>
-            <div style={{padding:12}}>
-              {[{t:"Avg Effective Rent",v:"$2,056/mo",note:"+3.0% YoY | Top submarket by rent"},
-                {t:"Vacancy Rate",v:"10.1%",note:"Trending down 80bps over 12 weeks"},
-                {t:"Properties Tracked",v:"52",note:"Includes 8 under construction"},
-                {t:"Population Growth",v:"+2.4% YoY",note:"In-migration from Buckhead and Decatur"},
-              ].map((row,i)=>(
-                <div key={i} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
-                  <div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{row.t}</div>
-                  <div style={{fontSize:14,fontWeight:800,color:T.text.amber,margin:"2px 0"}}>{row.v}</div>
-                  <div style={{fontSize:8,color:T.text.muted}}>{row.note}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {mapSubTab==="comps" && (
-          <div style={{flex:1,overflow:"auto"}}>
-            <PanelHeader T={T} title="COMPETITOR ANALYSIS" subtitle="Market comps | Pipeline threats | Absorption rates" borderColor={T.text.purple}/>
-            <div style={{padding:12}}>
-              {[{n:"Greystar 380u Tower",loc:"Downtown Tampa",status:"Under Construction",threat:"HIGH",del:"Q3 2026"},
-                {n:"Equity Residential 224u",loc:"Westshore",status:"Permitted",threat:"MED",del:"Q1 2027"},
-                {n:"MAA 156u Midrise",loc:"Riverview",status:"Planning",threat:"LOW",del:"2028 est"},
-              ].map((c,i)=>(
-                <div key={i} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,borderLeft:`3px solid ${c.threat==="HIGH"?T.text.red:c.threat==="MED"?T.text.orange:T.text.green}`}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <div style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{c.n}</div>
-                    <Bd c={c.threat==="HIGH"?T.text.red:c.threat==="MED"?T.text.orange:T.text.green}>{c.threat}</Bd>
-                  </div>
-                  <div style={{fontSize:8,color:T.text.secondary}}>{c.loc} · {c.status} · Delivery: {c.del}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {mapSubTab==="broker" && (
-          <div style={{flex:1,overflow:"auto"}}>
-            <PanelHeader T={T} title="BROKER RECOMMENDATIONS" subtitle="Off-market intel | Broker network | Active listings" borderColor={T.text.orange}/>
-            <div style={{padding:12}}>
-              {[{b:"Marcus Chen — CBRE",note:"Flagler Village 42u — distress, owner 18mo behind taxes",deal:"Off-market",score:88},
-                {b:"Sarah Kim — JLL",note:"Channelside 186u — below market rents 22%, value-add",deal:"Off-market",score:82},
-                {b:"David Park — Cushman",note:"Winter Park 94u — mismanaged, NOI 34% below potential",deal:"Off-market",score:79},
-              ].map((row,i)=>(
-                <div key={i} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                    <div style={{fontSize:9,fontWeight:700,color:T.text.orange}}>{row.b}</div>
-                    <span style={{fontSize:16,fontWeight:800,color:T.text.green}}>{row.score}</span>
-                  </div>
-                  <div style={{fontSize:9,color:T.text.primary,marginBottom:2}}>{row.note}</div>
-                  <Bd c={T.text.amber}>{row.deal}</Bd>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
   const ViewTools = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <PanelHeader T={T} title="TOOLS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
@@ -986,7 +885,8 @@ export function TerminalPrototype() {
             <div style={{fontSize:16,fontWeight:800,color:hAlerts>0?T.text.red:T.text.green,animation:hAlerts>0?"pulse 2s infinite":"none"}}>{hAlerts}</div>
           </div>
           <div style={{flex:1}}/>
-          <div style={{display:"flex",alignItems:"center",paddingRight:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:12}}>
+            <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"5px 12px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
             <button style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
           </div>
         </div>
@@ -1048,12 +948,6 @@ export function TerminalPrototype() {
           {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
           {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
           <span style={{fontSize:8,color:T.text.muted}}>{sorted.length} deals</span>
-          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"2px 10px",height:22,cursor:"pointer",letterSpacing:0.3}}>
-            + New Map
-          </button>
-          <button style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"2px 10px",height:22,cursor:"pointer",letterSpacing:0.3}}>
-            + Create Deal
-          </button>
         </div>
       )}
 
