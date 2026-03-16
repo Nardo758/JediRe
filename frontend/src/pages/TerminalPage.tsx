@@ -2064,7 +2064,7 @@ export default function TerminalPage() {
         );
       })}
       {dashWindows.filter(id=>winStates[id]?.minimized).length>0&&(
-        <div style={{position:"fixed",bottom:44,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9996,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+        <div style={{position:"fixed",bottom:210,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9996,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
           {dashWindows.filter(id=>winStates[id]?.minimized).map(id=>{
             const meta=WIDGET_CATALOG.find(w=>w.id===id);
             if(!meta) return null;
@@ -2123,7 +2123,7 @@ export default function TerminalPage() {
         );
       })}
       {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).length>0&&(
-        <div style={{position:"fixed",bottom:20,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9997,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
+        <div style={{position:"fixed",bottom:236,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9997,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
           {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).map(win=>(
             <button key={win.id} onClick={()=>minimizeMediaWindow(win.id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${win.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
               <span style={{width:5,height:5,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
