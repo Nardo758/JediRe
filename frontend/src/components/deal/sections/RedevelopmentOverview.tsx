@@ -126,7 +126,7 @@ const BUDGET_PALETTE = [T.amberL, T.blueL, T.violL, T.redL, T.greenL, T.td, T.cy
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, onTabChange }) => {
-  const { capitalStructure } = useDealModule();
+  const { capitalStructure, debtTerms } = useDealModule();
   const [_ep, setEp] = useState<number | null>(null);
 
   // ── Field extraction ──────────────────────────────────────────────────────
@@ -219,8 +219,8 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
   // §7 — Capital (prefer context)
   const seniorDebt        = capitalStructure?.loanBalance?.[0] ?? deal?.seniorDebt ?? null;
   const ltv               = capitalStructure?.ltv ?? deal?.ltv ?? null;
-  const rate              = capitalStructure?.interestRate ?? deal?.rate ?? deal?.interestRate ?? null;
-  const loanTerm          = deal?.term ?? capitalStructure?.term ?? '—';
+  const rate              = debtTerms?.interestRate ?? deal?.rate ?? deal?.interestRate ?? null;
+  const loanTerm          = debtTerms?.term != null ? `${debtTerms.term}mo` : (deal?.term ?? '—');
   const equityReq         = capitalStructure?.totalEquity ?? deal?.equityRequired ?? null;
   const equitySplit       = deal?.equitySplit ?? '—';
   const prefReturn        = deal?.prefReturn ?? null;
