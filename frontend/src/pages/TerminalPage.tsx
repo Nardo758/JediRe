@@ -412,7 +412,12 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [marketTab, setMarketTab] = useState<"overview"|"corphealth">("overview");
-  const [corpHealthLive, setCorpHealthLive] = useState<{employers:any[],schi:number|null,reHealth:number|null,divergence:number|null,herfindahl:number|null,alerts:any[],sectors:any,portfolioSubmarkets:any[],topEmployers:any[],sectorRotation:any,loaded:boolean,loading:boolean}>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},portfolioSubmarkets:[],topEmployers:[],sectorRotation:null,loaded:false,loading:false});
+  interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
+  interface CorpAlert { severity:string; message:string; time:string }
+  interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
+  interface SectorRotEntry { naics:string; markets:Record<string,{avgCHS:number|null;count:number}> }
+  interface CorpHealthLive { employers:CorpEmployer[]; schi:number|null; reHealth:number|null; divergence:number|null; herfindahl:number|null; alerts:CorpAlert[]; sectors:Record<string,number>; portfolioSubmarkets:DivSubmarket[]; topEmployers:CorpEmployer[]; sectorRotation:{sectors:SectorRotEntry[];markets:string[]}|null; loaded:boolean; loading:boolean }
+  const [corpHealthLive, setCorpHealthLive] = useState<CorpHealthLive>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},portfolioSubmarkets:[],topEmployers:[],sectorRotation:null,loaded:false,loading:false});
 
   // Media floating windows (global overlay, separate from dashboard windows)
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
@@ -1497,7 +1502,7 @@ export default function TerminalPage() {
             const sectorColors:Record<string,string> = {"51":T.text.cyan,"33":T.text.orange,"48":T.text.purple,"44":T.text.amber,"62":T.text.red,"72":T.text.green,"52":T.text.purple,"54":T.text.orange};
             const naicsLabels:Record<string,string> = {"51":"Technology","33":"Aerospace/Mfg","48":"Telecom","44":"Retail","62":"Healthcare","72":"Hospitality","52":"Finance","54":"Professional Svc","XX":"Other"};
             const rotation = corpHealthLive.sectorRotation;
-            const rotSectors:any[] = rotation?.sectors || [];
+            const rotSectors:SectorRotEntry[] = rotation?.sectors || [];
             const rotMarkets:string[] = rotation?.markets || [];
             return <>
             <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
@@ -1521,7 +1526,7 @@ export default function TerminalPage() {
                   <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
                 ))}
               </div>
-              {divSubmarkets.sort((a:any,b:any)=>Math.abs(b.divergence)-Math.abs(a.divergence)).map((s:any,i:number)=>{
+              {divSubmarkets.sort((a,b)=>Math.abs(b.divergence)-Math.abs(a.divergence)).map((s,i)=>{
                 const sigColor = s.signal==="bullish_divergence"?T.text.green:s.signal==="bearish_divergence"?T.text.red:T.text.amber;
                 return <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.6fr 0.5fr 0.5fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
                   <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
@@ -1543,7 +1548,7 @@ export default function TerminalPage() {
                   <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
                 ))}
               </div>
-              {topEmps.slice(0,10).map((e:any,i:number)=>(
+              {topEmps.slice(0,10).map((e,i)=>(
                 <div key={i} style={{display:"grid",gridTemplateColumns:"1.3fr 0.5fr 0.6fr 0.6fr 0.5fr 0.5fr 0.5fr 0.8fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
                   <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{e.company}</div>
                   <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:e.ticker?T.text.cyan:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.ticker||"PVT"}</div>
@@ -1567,7 +1572,7 @@ export default function TerminalPage() {
                       <div key={m} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,textAlign:"center"}}>{m.length>12?m.slice(0,12)+"..":m}</div>
                     ))}
                   </div>
-                  {rotSectors.map((sec:any,si:number)=>(
+                  {rotSectors.map((sec,si)=>(
                     <div key={si} style={{display:"grid",gridTemplateColumns:`120px repeat(${rotMarkets.length}, 1fr)`,background:si%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
                       <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{naicsLabels[sec.naics]||sec.naics}</div>
                       {rotMarkets.map((m:string)=>{
@@ -1619,7 +1624,7 @@ export default function TerminalPage() {
               </div>
               <div style={{flex:1}}>
                 <PanelHeader T={T} title="STRESS ALERTS"/>
-                {(corpHealthLive.alerts.length > 0 ? corpHealthLive.alerts.slice(0,5).map((a:any)=>({sev:a.severity||"med",msg:a.message||a.msg||"",time:a.time||"now"})) : [
+                {(corpHealthLive.alerts.length > 0 ? corpHealthLive.alerts.slice(0,5).map((a)=>({sev:a.severity||"med",msg:a.message||"",time:a.time||"now"})) : [
                   {sev:"high",msg:"Boeing (BA) CHS dropped to 38 \u2014 stress tier. 6,800 employees at risk.",time:"2h"},
                   {sev:"med",msg:"Expedia (EXPE) CHS declining: 59 (-4 QoQ). Watch for layoff announcements.",time:"5h"},
                   {sev:"low",msg:"T-Mobile (TMUS) slight CHS decline to 65. Monitor next earnings.",time:"1d"},
@@ -1886,7 +1891,7 @@ export default function TerminalPage() {
     if (fkey !== "F4" || marketTab !== "corphealth" || corpHealthLive.loaded || corpHealthLive.loading) return;
     setCorpHealthLive(prev => ({...prev, loading: true}));
 
-    const submarketIds = SUBMARKETS.map((_:any, i:number) => i + 1);
+    const submarketIds = SUBMARKETS.map((_, i) => i + 1);
     const firstSubmarketId = submarketIds[0] || 1;
 
     fetchSubmarketHealth(firstSubmarketId).catch(() => {});

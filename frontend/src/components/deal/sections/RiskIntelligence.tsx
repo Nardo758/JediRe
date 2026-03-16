@@ -219,7 +219,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
   const params = useParams<{ id?: string; dealId?: string }>();
 
   const resolvedDealId = propDealId || deal?.id || params.dealId || params.id;
-  const [corpHealthRisk, setCorpHealthRisk] = useState<{hhi:number|null,topShare:number|null,schi:number|null,loaded:boolean}>({hhi:null,topShare:null,schi:null,loaded:false});
+  const [corpHealthRisk, setCorpHealthRisk] = useState<{hhi:number|null,topShare:number|null,minChs:number|null,loaded:boolean}>({hhi:null,topShare:null,minChs:null,loaded:false});
 
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -260,7 +260,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
           setCorpHealthRisk({
             hhi: d.herfindahl ?? null,
             topShare: d.topEmployerShare ?? null,
-            schi: d.weightedSCHI ?? null,
+            minChs: d.minChs ?? null,
             loaded: true,
           });
         } else {
@@ -293,9 +293,9 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
       });
     }
 
-    if (corpHealthRisk.loaded && (corpHealthRisk.hhi !== null || corpHealthRisk.schi !== null)) {
+    if (corpHealthRisk.loaded && (corpHealthRisk.hhi !== null || corpHealthRisk.minChs !== null)) {
       const hhi = corpHealthRisk.hhi ?? 0;
-      const minChs = corpHealthRisk.schi ?? 50;
+      const minChs = corpHealthRisk.minChs ?? 50;
       const hhiNormalized = Math.min(1, hhi / 0.25);
       const f72 = hhiNormalized * (1 - minChs / 100) * 100;
 

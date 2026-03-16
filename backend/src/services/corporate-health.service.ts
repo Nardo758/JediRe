@@ -360,6 +360,17 @@ export class CorporateHealthService {
 
     const employers = await employerConcentrationService.getEmployers(submarketId);
     const topEmployers = employers.slice(0, 5);
+    const concentration = await employerConcentrationService.computeConcentration(submarketId);
+
+    const minChsResult = await pool.query(
+      `SELECT MIN(chs.composite_chs) as min_chs
+       FROM corporate_health_scores chs
+       JOIN submarket_employers se ON se.ticker = chs.ticker
+       WHERE se.submarket_id = $1
+         AND chs.quarter = (SELECT MAX(quarter) FROM corporate_health_scores)`,
+      [submarketId],
+    );
+    const minChs = minChsResult.rows[0]?.min_chs ? parseFloat(minChsResult.rows[0].min_chs) : null;
 
     const latest = health.rows[0];
 
@@ -375,6 +386,10 @@ export class CorporateHealthService {
       }],
       weightedSCHI: latest ? parseFloat(latest.schi_score) : null,
       divergence: latest ? parseFloat(latest.divergence_score) : null,
+      herfindahl: concentration.herfindahlIndex,
+      topEmployerShare: concentration.singleEmployerMaxShare,
+      top5Share: concentration.top5Share,
+      minChs,
       topEmployers: topEmployers.map((e: any) => ({
         company: e.company_name,
         ticker: e.ticker,
