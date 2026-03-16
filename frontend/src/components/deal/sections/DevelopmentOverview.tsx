@@ -126,13 +126,15 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
   const unitMix: any[] = f(deal, 'unit_mix', 'unitMix', null) || [];
   const totalUnitsFromMix = unitMix.reduce((s: number, u: any) => s + (u.count || u.units || 0), 0);
 
-  const landCost = f(deal, 'land_cost', 'landCost', null) || financial?.landCost;
-  const hardCosts = f(deal, 'hard_costs', 'hardCosts', null) || financial?.hardCosts;
-  const softCosts = f(deal, 'soft_costs', 'softCosts', null) || financial?.softCosts;
-  const contingency = f(deal, 'contingency', 'contingency', null);
-  const totalDevCost = f(deal, 'total_development_cost', 'totalDevelopmentCost', null) || financial?.totalDevelopmentCost;
+  const landCost = f(deal, 'land_cost', 'landCost', null) || financial?.landCost || capitalStructure?.landCost;
+  const hardCosts = f(deal, 'hard_costs', 'hardCosts', null) || financial?.hardCosts || capitalStructure?.hardCosts;
+  const softCosts = f(deal, 'soft_costs', 'softCosts', null) || financial?.softCosts || capitalStructure?.softCosts;
+  const contingency = f(deal, 'contingency', 'contingency', null) || capitalStructure?.contingency;
+  const totalDevCost = f(deal, 'total_development_cost', 'totalDevelopmentCost', null) || financial?.totalDevelopmentCost || capitalStructure?.totalDevelopmentCost;
   const costPerUnit = totalDevCost && proposedUnits ? totalDevCost / proposedUnits : null;
   const costPerSF = totalDevCost && totalSF ? totalDevCost / totalSF : null;
+  const totalEquity = capitalStructure?.totalEquity || financial?.totalEquity;
+  const totalDebt = capitalStructure?.loanBalance?.[0] ?? capitalStructure?.totalDebt ?? financial?.totalDebt;
 
   const constructionMonths = f(deal, 'construction_months', 'constructionMonths', null);
   const leaseUpMonths = f(deal, 'lease_up_months', 'leaseUpMonths', null);
@@ -151,6 +153,8 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
     { label: 'Total Dev Cost', value: totalDevCost, bold: true },
     { label: 'Cost / Unit', value: costPerUnit },
     { label: 'Cost / SF', value: costPerSF },
+    ...(totalDebt != null ? [{ label: 'Total Debt', value: totalDebt }] : []),
+    ...(totalEquity != null ? [{ label: 'Total Equity', value: totalEquity }] : []),
   ];
 
   const moduleLinks = [
@@ -163,184 +167,198 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
   ];
 
   return (
-    <div className="space-y-0">
+    <div className="space-y-5">
       {/* §1 — Site + Zoning Constraints */}
-      <SectionHead title="Site + Zoning Constraints" right="M04 Zoning" accentColor="border-cyan-500" />
-      <div className="grid grid-cols-4 gap-px bg-stone-200">
-        <KVCard label="Lot Size" value={lotSize ? `${Math.round(lotSize).toLocaleString()} SF` : '—'} note={lotSize ? `${(lotSize / 43560).toFixed(2)} ac` : undefined} />
-        <KVCard label="Zoning" value={zoning || '—'} valueColor="text-stone-900" />
-        <KVCard label="Max Density" value={maxDensity ? `${maxDensity} units` : '—'} valueColor="text-emerald-600" />
-        <KVCard label="Max Height" value={maxHeight ? `${maxHeight} stories` : '—'} valueColor="text-violet-600" />
-      </div>
-      <div className="px-4 py-2 bg-white border-b border-stone-200">
-        {entitled === true && <Badge label="ENTITLED" color="bg-emerald-100 text-emerald-700 border border-emerald-300" />}
-        {entitled === false && <Badge label="NOT ENTITLED" color="bg-amber-100 text-amber-700 border border-amber-300" />}
-        {entitled == null && <Badge label="ENTITLEMENT STATUS UNKNOWN" color="bg-stone-100 text-stone-500 border border-stone-300" />}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Site + Zoning Constraints" right="M04 Zoning" accentColor="border-cyan-500" />
+        <div className="grid grid-cols-4 gap-px bg-stone-200 rounded-lg overflow-hidden mt-3">
+          <KVCard label="Lot Size" value={lotSize ? `${Math.round(lotSize).toLocaleString()} SF` : '—'} note={lotSize ? `${(lotSize / 43560).toFixed(2)} ac` : undefined} />
+          <KVCard label="Zoning" value={zoning || '—'} valueColor="text-stone-900" />
+          <KVCard label="Max Density" value={maxDensity ? `${maxDensity} units` : '—'} valueColor="text-emerald-600" />
+          <KVCard label="Max Height" value={maxHeight ? `${maxHeight} stories` : '—'} valueColor="text-violet-600" />
+        </div>
+        <div className="mt-3">
+          {entitled === true && <Badge label="ENTITLED" color="bg-emerald-100 text-emerald-700 border border-emerald-300" />}
+          {entitled === false && <Badge label="NOT ENTITLED" color="bg-amber-100 text-amber-700 border border-amber-300" />}
+          {entitled == null && <Badge label="ENTITLEMENT STATUS UNKNOWN" color="bg-stone-100 text-stone-500 border border-stone-300" />}
+        </div>
       </div>
 
       {/* §2 — Building Configuration */}
-      <SectionHead title="Building Configuration" right="Proposed Program" accentColor="border-emerald-500" />
-      <div className="grid grid-cols-4 gap-px bg-stone-200">
-        <KVCard label="Proposed Units" value={proposedUnits ? `${proposedUnits}` : '—'} valueColor="text-emerald-600" />
-        <KVCard label="Total SF" value={totalSF ? `${Math.round(totalSF).toLocaleString()}` : '—'} valueColor="text-stone-900" />
-        <KVCard label="Building Type" value={buildingType || '—'} valueColor="text-stone-900" />
-        <KVCard label="Parking" value={parking ? `${parking} spaces` : '—'} valueColor="text-stone-900" />
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Building Configuration" right="Proposed Program" accentColor="border-emerald-500" />
+        <div className="grid grid-cols-4 gap-px bg-stone-200 rounded-lg overflow-hidden mt-3">
+          <KVCard label="Proposed Units" value={proposedUnits ? `${proposedUnits}` : '—'} valueColor="text-emerald-600" />
+          <KVCard label="Total SF" value={totalSF ? `${Math.round(totalSF).toLocaleString()}` : '—'} valueColor="text-stone-900" />
+          <KVCard label="Building Type" value={buildingType || '—'} valueColor="text-stone-900" />
+          <KVCard label="Parking" value={parking ? `${parking} spaces` : '—'} valueColor="text-stone-900" />
+        </div>
       </div>
 
       {/* §3 — Entitlement Pipeline */}
-      <SectionHead title="Entitlement Pipeline" right="Permits & Approvals" accentColor="border-violet-500" />
-      <div className="bg-white p-4 border-b border-stone-200">
-        {entitlementLoading && <p className="text-xs text-stone-400 animate-pulse">Loading entitlements...</p>}
-        {!entitlementLoading && entitlements.length === 0 && (
-          <EmptyState
-            message="No entitlements or permits on file for this deal."
-            linkLabel="Open Zoning Module"
-            onClick={() => onTabChange?.('zoning')}
-          />
-        )}
-        {!entitlementLoading && entitlements.length > 0 && (
-          <div className="space-y-2">
-            {entitlements.map((e: any, i: number) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
-                <div>
-                  <span className="text-xs font-semibold text-stone-800">{e.name || e.permit_type || e.type || 'Permit'}</span>
-                  {e.number && <span className="text-[10px] text-stone-400 ml-2">#{e.number}</span>}
-                </div>
-                <Badge
-                  label={(e.status || 'PENDING').toUpperCase()}
-                  color={
-                    (e.status || '').toLowerCase() === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                    (e.status || '').toLowerCase() === 'denied' ? 'bg-red-100 text-red-700' :
-                    'bg-amber-100 text-amber-700'
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        {benchmarks && (
-          <div className="mt-3 pt-3 border-t border-stone-100">
-            <div className="text-[9px] font-mono text-stone-400 tracking-widest font-bold mb-2">BENCHMARK TIMELINE</div>
-            <div className="grid grid-cols-4 gap-2">
-              {['p25', 'p50', 'p75', 'p90'].map(k => (
-                <div key={k} className="text-center bg-stone-50 rounded p-2">
-                  <div className="text-[9px] text-stone-400 uppercase">{k}</div>
-                  <div className="text-sm font-bold text-stone-700 font-mono">
-                    {benchmarks[k] != null ? `${benchmarks[k]}mo` : '—'}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Entitlement Pipeline" right="Permits & Approvals" accentColor="border-violet-500" />
+        <div className="mt-3">
+          {entitlementLoading && <p className="text-xs text-stone-400 animate-pulse">Loading entitlements...</p>}
+          {!entitlementLoading && entitlements.length === 0 && (
+            <EmptyState
+              message="No entitlements or permits on file for this deal."
+              linkLabel="Open Zoning Module"
+              onClick={() => onTabChange?.('zoning')}
+            />
+          )}
+          {!entitlementLoading && entitlements.length > 0 && (
+            <div className="space-y-2">
+              {entitlements.map((e: any, i: number) => (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
+                  <div>
+                    <span className="text-xs font-semibold text-stone-800">{e.name || e.permit_type || e.type || 'Permit'}</span>
+                    {e.number && <span className="text-[10px] text-stone-400 ml-2">#{e.number}</span>}
                   </div>
+                  <Badge
+                    label={(e.status || 'PENDING').toUpperCase()}
+                    color={
+                      (e.status || '').toLowerCase() === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                      (e.status || '').toLowerCase() === 'denied' ? 'bg-red-100 text-red-700' :
+                      'bg-amber-100 text-amber-700'
+                    }
+                  />
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+          {benchmarks && (
+            <div className="mt-3 pt-3 border-t border-stone-100">
+              <div className="text-[9px] font-mono text-stone-400 tracking-widest font-bold mb-2">BENCHMARK TIMELINE</div>
+              <div className="grid grid-cols-4 gap-2">
+                {['p25', 'p50', 'p75', 'p90'].map(k => (
+                  <div key={k} className="text-center bg-stone-50 rounded p-2">
+                    <div className="text-[9px] text-stone-400 uppercase">{k}</div>
+                    <div className="text-sm font-bold text-stone-700 font-mono">
+                      {benchmarks[k] != null ? `${benchmarks[k]}mo` : '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* §4 — Unit Mix Program */}
-      <SectionHead title="Unit Mix Program" right={totalUnitsFromMix > 0 ? `${totalUnitsFromMix} total units` : ''} accentColor="border-blue-500" />
-      <div className="bg-white border-b border-stone-200">
-        {unitMix.length === 0 ? (
-          <div className="p-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Unit Mix Program" right={totalUnitsFromMix > 0 ? `${totalUnitsFromMix} total units` : ''} accentColor="border-blue-500" />
+        <div className="mt-3">
+          {unitMix.length === 0 ? (
             <EmptyState
               message="No unit mix configured for this deal."
               linkLabel="Configure Unit Mix"
               onClick={() => onTabChange?.('unit-mix')}
             />
-          </div>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200">
-                {['Type', 'Count', 'Avg SF', 'Target Rent', '% of Total'].map(h => (
-                  <th key={h} className="px-4 py-2 text-left text-[9px] font-mono text-stone-400 tracking-widest uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {unitMix.map((u: any, i: number) => {
-                const count = u.count || u.units || 0;
-                const pctTotal = totalUnitsFromMix > 0 ? ((count / totalUnitsFromMix) * 100).toFixed(1) : '—';
-                return (
-                  <tr key={i} className="border-b border-stone-100 last:border-0">
-                    <td className="px-4 py-2 font-semibold text-stone-800">{u.type || u.name || u.unit_type || `Type ${i + 1}`}</td>
-                    <td className="px-4 py-2 text-stone-700">{count}</td>
-                    <td className="px-4 py-2 text-stone-700">{u.avg_sf || u.avgSf || u.sqft ? `${Math.round(u.avg_sf || u.avgSf || u.sqft)} SF` : '—'}</td>
-                    <td className="px-4 py-2 font-mono text-amber-600">{u.target_rent || u.targetRent || u.rent ? fmtDollar(u.target_rent || u.targetRent || u.rent) : '—'}</td>
-                    <td className="px-4 py-2 text-stone-600">{pctTotal}%</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-stone-50 border-b border-stone-200">
+                  {['Type', 'Count', 'Avg SF', 'Target Rent', '% of Total'].map(h => (
+                    <th key={h} className="px-4 py-2 text-left text-[9px] font-mono text-stone-400 tracking-widest uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {unitMix.map((u: any, i: number) => {
+                  const count = u.count || u.units || 0;
+                  const pctTotal = totalUnitsFromMix > 0 ? ((count / totalUnitsFromMix) * 100).toFixed(1) : '—';
+                  return (
+                    <tr key={i} className="border-b border-stone-100 last:border-0">
+                      <td className="px-4 py-2 font-semibold text-stone-800">{u.type || u.name || u.unit_type || `Type ${i + 1}`}</td>
+                      <td className="px-4 py-2 text-stone-700">{count}</td>
+                      <td className="px-4 py-2 text-stone-700">{u.avg_sf || u.avgSf || u.sqft ? `${Math.round(u.avg_sf || u.avgSf || u.sqft)} SF` : '—'}</td>
+                      <td className="px-4 py-2 font-mono text-amber-600">{u.target_rent || u.targetRent || u.rent ? fmtDollar(u.target_rent || u.targetRent || u.rent) : '—'}</td>
+                      <td className="px-4 py-2 text-stone-600">{pctTotal === '—' ? '—' : `${pctTotal}%`}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* §5 — Competitive Set */}
-      <SectionHead title="Competitive Set" right="M06 Competition" accentColor="border-orange-500" />
-      <div className="bg-white p-4 border-b border-stone-200">
-        <EmptyState
-          message="View comparable properties and competitive analysis."
-          linkLabel="Open Competition Module"
-          onClick={() => onTabChange?.('competition')}
-        />
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Competitive Set" right="M06 Competition" accentColor="border-orange-500" />
+        <div className="mt-3">
+          <EmptyState
+            message="View comparable properties and competitive analysis."
+            linkLabel="Open Competition Module"
+            onClick={() => onTabChange?.('competition')}
+          />
+        </div>
       </div>
 
       {/* §6 — Development Budget + Timeline */}
-      <SectionHead title="Development Budget + Timeline" right="M09 ProForma · M11 Capital" accentColor="border-amber-500" />
-      <div className="grid grid-cols-2 gap-px bg-stone-200 border-b border-stone-200">
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">COST STACK</div>
-          {costStack.map((row, i) => (
-            <div key={i} className={`flex justify-between items-center py-1.5 ${row.bold ? 'border-t border-stone-200 pt-2 mt-1' : 'border-b border-stone-100 last:border-0'}`}>
-              <span className={`text-xs ${row.bold ? 'font-bold text-stone-900' : 'text-stone-600'}`}>{row.label}</span>
-              <span className={`text-sm font-bold font-mono ${row.bold ? 'text-amber-600' : 'text-stone-800'}`}>
-                {row.value != null ? fmtDollar(row.value) : '—'}
-              </span>
-            </div>
-          ))}
-        </div>
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">TIMELINE</div>
-          <div className="space-y-3">
-            {[
-              { label: 'Construction', value: constructionMonths, color: 'border-blue-400', tc: 'text-blue-600' },
-              { label: 'Lease-Up', value: leaseUpMonths, color: 'border-emerald-400', tc: 'text-emerald-600' },
-              { label: 'Total Duration', value: totalMonths, color: 'border-amber-400', tc: 'text-amber-600' },
-            ].map((t, i) => (
-              <div key={i} className={`p-3 bg-stone-50 rounded-lg border-l-[3px] ${t.color}`}>
-                <div className={`text-[10px] font-bold tracking-wider mb-1 ${t.tc}`}>{t.label}</div>
-                <div className="text-xl font-bold text-stone-900 font-mono">
-                  {t.value != null ? `${t.value} mo` : '—'}
-                </div>
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Development Budget + Timeline" right="M09 ProForma · M11 Capital" accentColor="border-amber-500" />
+        <div className="grid grid-cols-2 gap-6 mt-3">
+          <div>
+            <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">COST STACK</div>
+            {costStack.map((row, i) => (
+              <div key={i} className={`flex justify-between items-center py-1.5 ${row.bold ? 'border-t border-stone-200 pt-2 mt-1' : 'border-b border-stone-100 last:border-0'}`}>
+                <span className={`text-xs ${row.bold ? 'font-bold text-stone-900' : 'text-stone-600'}`}>{row.label}</span>
+                <span className={`text-sm font-bold font-mono ${row.bold ? 'text-amber-600' : 'text-stone-800'}`}>
+                  {row.value != null ? fmtDollar(row.value) : '—'}
+                </span>
               </div>
             ))}
+          </div>
+          <div>
+            <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">TIMELINE</div>
+            <div className="space-y-3">
+              {[
+                { label: 'Construction', value: constructionMonths, color: 'border-blue-400', tc: 'text-blue-600' },
+                { label: 'Lease-Up', value: leaseUpMonths, color: 'border-emerald-400', tc: 'text-emerald-600' },
+                { label: 'Total Duration', value: totalMonths, color: 'border-amber-400', tc: 'text-amber-600' },
+              ].map((t, i) => (
+                <div key={i} className={`p-3 bg-stone-50 rounded-lg border-l-[3px] ${t.color}`}>
+                  <div className={`text-[10px] font-bold tracking-wider mb-1 ${t.tc}`}>{t.label}</div>
+                  <div className="text-xl font-bold text-stone-900 font-mono">
+                    {t.value != null ? `${t.value} mo` : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* §7 — Returns Comparison + Site Diligence */}
-      <SectionHead title="Returns Comparison" right="Development Returns" accentColor="border-emerald-500" />
-      <div className="grid grid-cols-4 gap-px bg-stone-200">
-        <KVCard label="Yield on Cost" value={yoc != null ? pct(yoc) : '—'} valueColor="text-amber-600" />
-        <KVCard label="Levered IRR" value={irr != null ? pct(irr) : '—'} valueColor="text-emerald-600" />
-        <KVCard label="Equity Multiple" value={em != null ? `${em.toFixed(2)}x` : '—'} valueColor="text-violet-600" />
-        <KVCard label="Profit Margin" value={profitMargin != null ? pct(profitMargin) : '—'} valueColor="text-cyan-600" />
+      {/* §7 — Returns Comparison + Module Access */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Returns Comparison" right="Development Returns" accentColor="border-emerald-500" />
+        <div className="grid grid-cols-4 gap-px bg-stone-200 rounded-lg overflow-hidden mt-3">
+          <KVCard label="Yield on Cost" value={yoc != null ? pct(yoc) : '—'} valueColor="text-amber-600" />
+          <KVCard label="Levered IRR" value={irr != null ? pct(irr) : '—'} valueColor="text-emerald-600" />
+          <KVCard label="Equity Multiple" value={em != null ? `${em.toFixed(2)}x` : '—'} valueColor="text-violet-600" />
+          <KVCard label="Profit Margin" value={profitMargin != null ? pct(profitMargin) : '—'} valueColor="text-cyan-600" />
+        </div>
       </div>
 
-      <SectionHead title="Module Access" accentColor="border-stone-400" />
-      <div className="grid grid-cols-3 gap-px bg-stone-200 border-b border-stone-200">
-        {moduleLinks.map((m, i) => (
-          <button
-            key={i}
-            onClick={() => onTabChange?.(m.tab)}
-            className="bg-white p-4 text-left hover:bg-stone-50 transition-colors"
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-base">{m.icon}</span>
-              <span className="text-xs font-semibold text-stone-800">{m.label}</span>
-            </div>
-            <span className="text-[10px] text-blue-600 hover:text-blue-800">Open module &rarr;</span>
-          </button>
-        ))}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <SectionHead title="Module Access" accentColor="border-stone-400" />
+        <div className="grid grid-cols-3 gap-3 mt-3">
+          {moduleLinks.map((m, i) => (
+            <button
+              key={i}
+              onClick={() => onTabChange?.(m.tab)}
+              className="bg-stone-50 rounded-lg p-4 text-left hover:bg-stone-100 transition-colors border border-stone-200"
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-base">{m.icon}</span>
+                <span className="text-xs font-semibold text-stone-800">{m.label}</span>
+              </div>
+              <span className="text-[10px] text-blue-600 hover:text-blue-800">Open module &rarr;</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
