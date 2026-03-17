@@ -459,7 +459,7 @@ export const CreateDealPage: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Deal Info & Property Location
+                    Deal Info & Address
                   </h2>
                   <div className="space-y-4">
                     <div>

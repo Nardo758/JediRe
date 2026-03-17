@@ -529,8 +529,24 @@ const STATUS_OPTIONS: { value: DDItemStatus; label: string; color: string }[] = 
   { value: 'na', label: 'N/A', color: 'bg-gray-50 text-gray-400' },
 ];
 
-const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionProps> = ({ deal, dealId }) => {
-  const dealType = getDealType(deal || {});
+const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionProps> = ({ deal: propDeal, dealId }) => {
+  const [loadedDeal, setLoadedDeal] = useState<any>(propDeal);
+
+  useEffect(() => {
+    if (propDeal) {
+      setLoadedDeal(propDeal);
+      return;
+    }
+    if (!dealId) return;
+    apiClient.get(`/api/v1/capsules/${dealId}`)
+      .then(res => {
+        if (res.data?.data) setLoadedDeal(res.data.data);
+        else if (res.data) setLoadedDeal(res.data);
+      })
+      .catch(() => {});
+  }, [propDeal, dealId]);
+
+  const dealType = getDealType(loadedDeal || {});
   const preset = getDDChecklistPreset(dealType);
   const presetLabel = PRESET_LABELS[preset];
 
