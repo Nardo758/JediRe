@@ -33,7 +33,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   BarChart3, DollarSign, Bot, TrendingUp,
   Building2, Target, Package, MapPin, Calculator,
-  Search, ArrowLeft, Activity, LayoutDashboard,
+  ArrowLeft, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, ArrowRight
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
@@ -208,7 +208,6 @@ const DealDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
   const [geographicStats, setGeographicStats] = useState<any>(null);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
@@ -348,31 +347,9 @@ const DealDetailPage: React.FC = () => {
     { id: 'ai-agent',    fkey: 'F12', code: 'M20', label: 'AI Agent',             icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
-  // ─── Search: flat list of all sub-components for search ────────────────
-  const allSearchableTabs: Tab[] = [
-    { id: 'overview', label: 'Deal Overview', icon: <BarChart3 size={16} />, component: OverviewRouter },
-    { id: 'zoning', label: 'Property & Zoning', icon: <Landmark size={16} />, component: ZoningModuleSection },
-    { id: 'market', label: 'Market Intelligence', icon: <TrendingUp size={16} />, component: MarketIntelligencePage },
-    { id: 'supply', label: 'Supply Pipeline', icon: <Package size={16} />, component: SupplyPipelinePage },
-    { id: 'competition', label: 'Competition Analysis', icon: <Target size={16} />, component: CompetitionPage },
-    { id: 'strategy', label: 'Strategy', icon: <Target size={16} />, component: StrategySection },
-    { id: 'traffic', label: 'Traffic Module', icon: <Activity size={16} />, component: TrafficModule },
-    { id: 'proforma', label: 'Pro Forma', icon: <Calculator size={16} />, component: ProFormaTab },
-    { id: 'capital', label: 'Debt & Capital', icon: <DollarSign size={16} />, component: ExitCapitalModule },
-    { id: 'risk', label: 'Risk & DD', icon: <Shield size={16} />, component: RiskIntelligence },
-    { id: 'execution', label: 'Execution', icon: <HardHat size={16} />, component: ProjectTimelinePage },
-    { id: 'ai-agent', label: 'AI Agent', icon: <Bot size={16} />, component: OpusAISection },
-  ];
-
-  // Keep allTabs alias for search compatibility
-  const allTabs = allSearchableTabs;
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];
   const ActiveComponent = activeScreenData.component;
-
-  const filteredTabs = searchQuery
-    ? allTabs.filter(tab => tab.label.toLowerCase().includes(searchQuery.toLowerCase()))
-    : null;
 
   const showUnitMixCTA =
     activeTab === 'zoning' &&
@@ -503,80 +480,6 @@ const DealDetailPage: React.FC = () => {
         })()}
 
         <div className="flex flex-1 overflow-hidden min-w-0">
-          <aside className="w-[260px] bg-white border-r border-slate-200 overflow-y-auto flex flex-col flex-shrink-0">
-            <div className="p-3">
-              <div className="relative mb-3">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search capsule modules..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-
-              {searchQuery && filteredTabs ? (
-                <div className="space-y-0.5">
-                  <div className="text-xs text-slate-400 px-3 py-1 font-medium">Search Results ({filteredTabs.length})</div>
-                  {filteredTabs.map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => { setActiveTab(tab.id); setSearchQuery(''); }}
-                      className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                        activeTab === tab.id
-                          ? 'bg-blue-500 text-white font-medium'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {tab.icon && <span className="flex items-center">{tab.icon}</span>}
-                      <span>{tab.label}</span>
-                    </button>
-                  ))}
-                  {filteredTabs.length === 0 && (
-                    <div className="text-sm text-slate-400 text-center py-4">No matching modules</div>
-                  )}
-                </div>
-              ) : (
-                <nav className="flex-1 space-y-0.5">
-                  {dealScreens.map(screen => (
-                    <button
-                      key={screen.id}
-                      onClick={() => setActiveTab(screen.id)}
-                      className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors group ${
-                        activeTab === screen.id
-                          ? 'bg-blue-500 text-white'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className={`text-[9px] font-bold font-mono w-5 text-center flex-shrink-0 ${
-                        activeTab === screen.id ? 'text-blue-100' : 'text-slate-400 group-hover:text-slate-500'
-                      }`}>{screen.fkey}</span>
-                      <span className="flex items-center flex-shrink-0 opacity-70">{screen.icon}</span>
-                      <span className="flex-1 text-xs font-medium truncate">{screen.label}</span>
-                      <span className={`text-[8px] font-mono flex-shrink-0 ${
-                        activeTab === screen.id ? 'text-blue-200' : 'text-slate-300'
-                      }`}>{screen.code}</span>
-                    </button>
-                  ))}
-                </nav>
-              )}
-            </div>
-
-            {dealId && (
-              <div className="p-3 border-t border-slate-200">
-                <ActivityFeed dealId={dealId} limit={10} compact />
-              </div>
-            )}
-
-            <div className="mt-auto p-3 border-t border-slate-200">
-              <div className="text-[10px] text-slate-400 text-center space-y-0.5">
-                <p>Press F1–F12 for quick access</p>
-                <p className="text-slate-300">Deal Capsule · {dealScreens.length} screens</p>
-              </div>
-            </div>
-          </aside>
-
           <main className="flex-1 min-w-0 min-h-0 flex flex-col">
             <div className="flex-1 min-h-0 overflow-y-auto">
               <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />

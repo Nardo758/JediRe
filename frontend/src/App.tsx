@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
@@ -64,6 +64,11 @@ import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 import TerminalPage from './pages/TerminalPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
 
+
+function DealIdRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={`/deals/${id}/detail`} replace />;
+}
 
 function AppContent() {
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
@@ -162,8 +167,8 @@ function AppContent() {
           <Route path="/deals/:dealId/view" element={<DealPage />} />
           <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
           <Route path="/deals/:dealId/flywheel" element={<DealFlywheelDashboard />} />
-          <Route path="/deals/:id" element={<DealView />} />
-          <Route path="/deals/:id/:module" element={<DealView />} />
+          <Route path="/deals/:id" element={<DealIdRedirect />} />
+          <Route path="/deals/:id/:module" element={<DealIdRedirect />} />
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
           <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />

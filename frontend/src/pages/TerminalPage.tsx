@@ -777,7 +777,7 @@ export default function TerminalPage() {
         {sorted.map((d,i)=>(
           <div key={d.id}
             onClick={()=>setSelDealId(selDealId===d.id?null:d.id)}
-            onDoubleClick={()=>navigate(`/deals/${d.id}`)}
+            onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)}
             style={{display:"grid",gridTemplateColumns:gc,background:selDealId===d.id?T.bg.active:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:selDealId===d.id?`2px solid ${T.text.amber}`:"2px solid transparent",animation:flashes[d.id]?"flash 0.7s ease-out":"none"}}
           >
             <div style={{padding:4,fontSize:8,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
@@ -805,7 +805,7 @@ export default function TerminalPage() {
         {selDealId&&(()=>{const d=sorted.find(x=>x.id===selDealId);return d?(
           <div style={{position:"sticky",bottom:0,background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:10,fontWeight:700,color:T.text.amber}}>{d.name}</span>
-            <button onClick={()=>navigate(`/deals/${d.id}`)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
+            <button onClick={()=>navigate(`/deals/${d.id}/detail`)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
             <button onClick={()=>setSelDealId(null)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",cursor:"pointer"}}>ESC</button>
           </div>
         ):null;})()}
@@ -879,7 +879,7 @@ export default function TerminalPage() {
   const WidgetMyDeals = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveDeals.slice(0,5).map((d,i)=>(
-        <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+        <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div>
               <div style={{display:"flex",gap:6,marginBottom:4}}><StageBd stage={d.stage} T={T}/></div>
@@ -947,7 +947,7 @@ export default function TerminalPage() {
   const WidgetLeaderboard = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {[...liveDeals].filter(d=>d.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map((d,i)=>(
-        <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+        <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
           <span style={{fontSize:12,fontWeight:800,color:T.text.muted,minWidth:24}}>#{i+1}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{d.name}</div>
