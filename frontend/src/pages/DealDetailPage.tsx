@@ -193,10 +193,11 @@ const DocumentsScreen = (props: any) => (
     { id: 'due-diligence', label: 'DD Checklist',    component: DueDiligencePage },
   ]} />
 );
-const ExitStrategyScreen = (props: any) => (
-  <DealScreenWrapper passProps={props} tabs={[
-    { id: 'exit-capital', label: 'Exit & Capital', component: ExitCapitalModule },
-  ]} />
+const CapitalStructureScreen = (props: { deal?: any; dealId: string; dealType?: any; [k: string]: unknown }) => (
+  <ExitCapitalModule dealId={props.dealId} deal={props.deal} dealType={props.dealType} initialTab="stack" />
+);
+const ExitStrategyScreen = (props: { deal?: any; dealId: string; dealType?: any; [k: string]: unknown }) => (
+  <ExitCapitalModule dealId={props.dealId} deal={props.deal} dealType={props.dealType} initialTab="exit" />
 );
 const AIAgentScreen = (props: any) => (
   <DealScreenWrapper passProps={props} tabs={[
@@ -239,23 +240,30 @@ const DealDetailPage: React.FC = () => {
       if (context?.active_scope) {
         setScope(context.active_scope);
       }
-      const stats: any = {};
+      const stats: Record<string, { occupancy?: unknown; avg_rent?: unknown }> = {};
       if (context?.trade_area) {
-        stats.trade_area = context.trade_area.stats
-          ? { occupancy: context.trade_area.stats.occupancy, avg_rent: context.trade_area.stats.avg_rent }
+        const ts = context.trade_area as { stats?: { occupancy?: unknown; avg_rent?: unknown } };
+        stats.trade_area = ts.stats
+          ? { occupancy: ts.stats.occupancy, avg_rent: ts.stats.avg_rent }
           : {};
       }
-      if (context?.submarket?.stats) {
-        stats.submarket = {
-          occupancy: context.submarket.stats.avg_occupancy,
-          avg_rent: context.submarket.stats.avg_rent,
-        };
+      if (context?.submarket) {
+        const sm = context.submarket as { stats?: { avg_occupancy?: unknown; avg_rent?: unknown } };
+        if (sm.stats) {
+          stats.submarket = {
+            occupancy: sm.stats.avg_occupancy,
+            avg_rent: sm.stats.avg_rent,
+          };
+        }
       }
-      if (context?.msa?.stats) {
-        stats.msa = {
-          occupancy: context.msa.stats.avg_occupancy,
-          avg_rent: context.msa.stats.avg_rent,
-        };
+      if (context?.msa) {
+        const msa = context.msa as { stats?: { avg_occupancy?: unknown; avg_rent?: unknown } };
+        if (msa.stats) {
+          stats.msa = {
+            occupancy: msa.stats.avg_occupancy,
+            avg_rent: msa.stats.avg_rent,
+          };
+        }
       }
       setGeographicStats(stats);
     } catch {
@@ -349,7 +357,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',      icon: <Package size={14} />,         component: SupplyPipelinePage },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', label: 'Strategy Arbitrage',   icon: <Target size={14} />,          component: StrategyScreen },
     { id: 'proforma',    moduleId: 'M09', fkey: 'F6',  code: 'M09', label: 'Pro Forma Engine',     icon: <Calculator size={14} />,      component: ProformaScreen },
-    { id: 'capital',     moduleId: 'M11', fkey: 'F7',  code: 'M11', label: 'Capital Structure',    icon: <DollarSign size={14} />,      component: ExitStrategyScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F7',  code: 'M11', label: 'Capital Structure',    icon: <DollarSign size={14} />,      component: CapitalStructureScreen },
     { id: 'risk',        moduleId: 'M14', fkey: 'F8',  code: 'M14', label: 'Risk Assessment',      icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'competition', moduleId: 'M15', fkey: 'F9',  code: 'M15', label: 'Comps',                icon: <Target size={14} />,          component: CompetitionScreen },
     { id: 'traffic',     moduleId: 'M07', fkey: 'F10', code: 'M07', label: 'Traffic Intelligence', icon: <Activity size={14} />,        component: TrafficModule },

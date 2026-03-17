@@ -20,12 +20,14 @@ import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type DealType = 'existing' | 'development' | 'redevelopment';
+export type TabId = 'exit' | 'stack' | 'market' | 'timing' | 'sensitivity';
 
 export interface ExitCapitalModuleProps {
   deal?: any;
   dealId: string;
   dealType?: DealType;
   embedded?: boolean;
+  initialTab?: TabId;
   onUpdate?: () => void;
   onBack?: () => void;
   geographicContext?: any;
@@ -720,8 +722,6 @@ function PushToProFormaBanner({ holdYears, exitCap, debtRate, debtIO, annualDS }
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-type TabId = 'exit' | 'stack' | 'market' | 'timing' | 'sensitivity';
-
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'exit', label: 'Exit Strategy', icon: '◉' },
   { id: 'stack', label: 'Capital Stack', icon: '◇' },
@@ -730,11 +730,11 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'sensitivity', label: 'Sensitivity', icon: '∿' },
 ];
 
-export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedded, onUpdate, onBack, geographicContext }: ExitCapitalModuleProps) {
+export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedded, initialTab, onUpdate, onBack, geographicContext }: ExitCapitalModuleProps) {
   // Determine deal type from prop or infer from deal object
   const dealType: DealType = propDealType || (deal?.dealType as DealType) || 'existing';
 
-  const [activeTab, setActiveTab] = useState<TabId>('exit');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'exit');
   const [selectedFwd, setSelectedFwd] = useState<number>(0);  // Will be set to optimal on mount
   const [selectedExitStrategy, setSelectedExitStrategy] = useState<string>(DEFAULT_EXIT_STRATEGY[dealType]);
 

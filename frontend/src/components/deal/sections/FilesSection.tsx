@@ -225,7 +225,7 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const dealId = (deal as any).id;
+  const dealId = deal.id;
 
   const fetchFiles = useCallback(async () => {
     if (!dealId) return;
@@ -608,7 +608,7 @@ const FolderTreeCard: React.FC<FolderTreeCardProps> = ({ folders, currentPath, o
   };
 
   return (
-    <div className="style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
       <div className="p-4 border-b border-[#1e2a3d]">
         <h3 className="text-sm font-semibold text-[#E8E6E1]">Folders</h3>
       </div>
@@ -696,7 +696,7 @@ const FileBrowserCard: React.FC<FileBrowserCardProps> = ({
   onDownload,
 }) => {
   return (
-    <div className="style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
       
       <div className="p-4 border-b border-[#1e2a3d]">
         <div className="flex items-center justify-between mb-3">
@@ -981,7 +981,7 @@ interface RecentFilesCardProps {
 
 const RecentFilesCard: React.FC<RecentFilesCardProps> = ({ files, hasLiveData, onDownload }) => {
   return (
-    <div className="style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
       <div className="p-4 border-b border-[#1e2a3d] flex items-center justify-between">
         <h3 className="text-sm font-semibold text-[#E8E6E1]">Recent Activity</h3>
         {hasLiveData && (

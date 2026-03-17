@@ -225,7 +225,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="sticky top-0 z-10" style={{ background: "#0F1319", borderBottom: "1px solid #1e2a3d" }}">
+      <div className="sticky top-0 z-10" style={{ background: "#0F1319", borderBottom: "1px solid #1e2a3d" }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -285,16 +285,16 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
           {/* Tab Navigation */}
           <div className="flex space-x-1 mt-4">
             {[
-              { id: 'overview', label: 'Overview', icon: FileText },
-              { id: 'entitlements', label: 'Entitlements', icon: CheckCircle },
-              { id: 'environmental', label: 'Environmental', icon: Zap },
-              { id: 'physical_dd', label: 'Physical DD', icon: Shield },
-              { id: 'utilities', label: 'Utilities', icon: Zap },
-              { id: 'risk', label: 'Risk Matrix', icon: Shield },
+              { id: 'overview' as const, label: 'Overview', icon: FileText },
+              { id: 'entitlements' as const, label: 'Entitlements', icon: CheckCircle },
+              { id: 'environmental' as const, label: 'Environmental', icon: Zap },
+              { id: 'physical_dd' as const, label: 'Physical DD', icon: Shield },
+              { id: 'utilities' as const, label: 'Utilities', icon: Zap },
+              { id: 'risk' as const, label: 'Risk Matrix', icon: Shield },
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
                   activeTab === tab.id
                     ? 'bg-blue-600 text-white'
@@ -335,7 +335,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
 
                 {/* Quick Stats Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-medium text-[#6B7585]">Entitlement Status</h3>
                       <CheckCircle className="w-5 h-5 text-blue-600" />
@@ -350,7 +350,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
                     )}
                   </div>
 
-                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-medium text-[#6B7585]">Environmental</h3>
                       <Zap className="w-5 h-5 text-green-600" />
@@ -361,7 +361,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
                     <p className="text-sm text-[#6B7585] mt-1">Parcels clean</p>
                   </div>
 
-                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-medium text-[#6B7585]">Geotechnical</h3>
                       <MapPin className="w-5 h-5 text-orange-600" />
@@ -372,7 +372,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
                     <p className="text-sm text-[#6B7585] mt-1">Reports complete</p>
                   </div>
 
-                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-medium text-[#6B7585]">Utility Capacity</h3>
                       <Zap className="w-5 h-5 text-purple-600" />
@@ -614,7 +614,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
 
   return (
     <div className="space-y-6">
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-[#E8E6E1]">Environmental & Physical Due Diligence</h3>

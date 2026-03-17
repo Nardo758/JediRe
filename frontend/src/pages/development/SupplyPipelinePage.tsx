@@ -345,7 +345,7 @@ const SupplyPipelinePage: React.FC = () => {
                 <div className="flex items-center space-x-3">
                   <h1 className="text-2xl font-bold text-[#E8E6E1]">Supply Pipeline Analysis</h1>
                   {isLiveData && (
-                    <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-300 animate-pulse">
+                    <span className="px-2.5 py-1 bg-green-900/30 text-green-400 text-xs font-bold rounded-full border border-green-700 animate-pulse">
                       ● LIVE DATA
                     </span>
                   )}
@@ -366,7 +366,7 @@ const SupplyPipelinePage: React.FC = () => {
                     onClick={() => setTimeHorizon(horizon)}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       timeHorizon === horizon
-                        ? ' text-blue-600 shadow-sm'
+                        ? ' text-blue-400 shadow-sm'
                         : 'text-[#6B7585] hover:text-[#E8E6E1]'
                     }`}
                   >
@@ -388,10 +388,10 @@ const SupplyPipelinePage: React.FC = () => {
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk')}
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
+                    ? 'border-blue-600 text-blue-400'
                     : 'border-transparent text-[#6B7585] hover:text-[#E8E6E1] hover:border-[#253347]'
                 }`}
               >
@@ -464,7 +464,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
     <div className="space-y-6">
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Total Pipeline</div>
           <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(data.reduce((sum, d) => sum + d.total, 0))}
@@ -472,7 +472,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
           <div className="text-xs text-[#6B7585] mt-1">units over {timeHorizon}</div>
         </div>
         
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Peak Supply Quarter</div>
           <div className="text-3xl font-bold text-orange-600">
             {peakQuarter?.quarter || 'N/A'}
@@ -482,15 +482,15 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
           </div>
         </div>
         
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Under Construction</div>
-          <div className="text-3xl font-bold text-yellow-600">
+          <div className="text-3xl font-bold text-yellow-400">
             {formatNumber(data.reduce((sum, d) => sum + d.underConstruction, 0))}
           </div>
           <div className="text-xs text-[#6B7585] mt-1">confirmed starts</div>
         </div>
         
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Risk Level</div>
           <div className="text-3xl font-bold" style={{ color: getRiskColor(riskScore?.level || 'low') }}>
             {riskScore?.level.toUpperCase() || 'N/A'}
@@ -502,7 +502,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
       </div>
 
       {/* Supply Wave Chart */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-lg font-semibold text-[#E8E6E1]">10-Year Supply Wave</h3>
@@ -556,12 +556,12 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
         </ResponsiveContainer>
 
         {/* AI Insight */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="mt-6 border border-blue-800 rounded-lg p-4">
           <div className="flex items-start space-x-3">
             <span className="text-2xl">💡</span>
             <div className="flex-1">
-              <h4 className="font-semibold text-blue-900 mb-1">Optimal Delivery Window</h4>
-              <p className="text-sm text-blue-800">
+              <h4 className="font-semibold text-blue-200 mb-1">Optimal Delivery Window</h4>
+              <p className="text-sm text-blue-300">
                 Based on supply analysis, Q2-Q3 2026 shows a supply gap window. 
                 Consider timing your delivery to avoid the peak in {peakQuarter?.quarter || 'Q1 2027'}. 
                 Delays in competing projects may create additional opportunities.
@@ -572,7 +572,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
       </div>
 
       {/* Supply Gap Analysis */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Gap Opportunities</h3>
         <div className="space-y-3">
           {data.filter(d => d.total < maxSupply * 0.3).slice(0, 3).map((gap, idx) => (
@@ -630,13 +630,13 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           onClick={() => setSelectedPhase('planned')}
-          className={`rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border-2 p-6 text-left transition-all ${
+          className={`rounded-lg border-2 p-6 text-left transition-all ${
             selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-[#1e2a3d] hover:border-blue-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">📋</span>
-            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-1 rounded">PLANNED</span>
+            <span className="text-xs font-semibold text-blue-400 bg-blue-900/30 px-2 py-1 rounded">PLANNED</span>
           </div>
           <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.planned.reduce((sum, p) => sum + p.units, 0))}
@@ -648,7 +648,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
 
         <button
           onClick={() => setSelectedPhase('under_construction')}
-          className={`rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border-2 p-6 text-left transition-all ${
+          className={`rounded-lg border-2 p-6 text-left transition-all ${
             selectedPhase === 'under_construction' ? 'border-orange-500 shadow-lg' : 'border-[#1e2a3d] hover:border-orange-300'
           }`}
         >
@@ -666,13 +666,13 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
 
         <button
           onClick={() => setSelectedPhase('delivered')}
-          className={`rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border-2 p-6 text-left transition-all ${
+          className={`rounded-lg border-2 p-6 text-left transition-all ${
             selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-[#1e2a3d] hover:border-green-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">✅</span>
-            <span className="text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded">DELIVERED</span>
+            <span className="text-xs font-semibold text-green-400 bg-green-900/30 px-2 py-1 rounded">DELIVERED</span>
           </div>
           <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.delivered.reduce((sum, p) => sum + p.units, 0))}
@@ -684,7 +684,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
       </div>
 
       {/* Project Table */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] overflow-hidden">
+      <div className="rounded-lg overflow-hidden" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
           <div>
             <h3 className="text-lg font-semibold text-[#E8E6E1]">Pipeline Projects</h3>
@@ -725,7 +725,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                   <td className="px-6 py-4">
                     <div className="font-medium text-[#E8E6E1]">{project.name}</div>
                     {project.delayMonths && project.delayMonths > 0 && (
-                      <div className="text-xs text-red-600 mt-1">
+                      <div className="text-xs text-red-400 mt-1">
                         ⚠️ Delayed {project.delayMonths} months
                       </div>
                     )}
@@ -774,7 +774,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       {/* Top Developers Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {topDevelopers.slice(0, 3).map((dev, idx) => (
-          <div key={idx} className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div key={idx} className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
             <div className="flex items-center justify-between mb-4">
               <span className="text-3xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
               <span className="text-xs font-semibold text-[#6B7585]">
@@ -797,7 +797,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#6B7585]">Delay Rate:</span>
-                <span className={`font-semibold ${dev.delayRate > 30 ? 'text-red-600' : 'text-green-600'}`}>
+                <span className={`font-semibold ${dev.delayRate > 30 ? 'text-red-400' : 'text-green-400'}`}>
                   {dev.delayRate.toFixed(0)}%
                 </span>
               </div>
@@ -807,7 +807,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       </div>
 
       {/* Developer Activity Table */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] overflow-hidden">
+      <div className="rounded-lg overflow-hidden" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="px-6 py-4 border-b border-[#1e2a3d]">
           <h3 className="text-lg font-semibold text-[#E8E6E1]">Developer Activity Tracker</h3>
           <p className="text-sm text-[#6B7585] mt-1">
@@ -832,7 +832,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
             <tbody className="divide-y divide-gray-200">
               {developers.map((dev, idx) => {
                 const reliability = 100 - dev.delayRate;
-                const reliabilityColor = reliability >= 80 ? 'text-green-600' : reliability >= 60 ? 'text-yellow-600' : 'text-red-600';
+                const reliabilityColor = reliability >= 80 ? 'text-green-400' : reliability >= 60 ? 'text-yellow-400' : 'text-red-400';
                 
                 return (
                   <tr key={idx} className="hover:bg-[#131920] transition-colors">
@@ -849,7 +849,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
                       <div className="flex items-center space-x-2">
                         <div className="flex-1 bg-[#253347] rounded-full h-2 max-w-[100px]">
                           <div 
-                            className="bg-blue-600 h-2 rounded-full"
+                            className="bg-blue-500 h-2 rounded-full"
                             style={{ width: `${dev.pipelineShare}%` }}
                           ></div>
                         </div>
@@ -865,7 +865,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
                       {dev.avgDeliveryTime} mo
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`text-sm font-semibold ${dev.delayRate > 30 ? 'text-red-600' : dev.delayRate > 15 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      <span className={`text-sm font-semibold ${dev.delayRate > 30 ? 'text-red-400' : dev.delayRate > 15 ? 'text-yellow-400' : 'text-green-400'}`}>
                         {dev.delayRate.toFixed(0)}%
                       </span>
                     </td>
@@ -883,7 +883,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       </div>
 
       {/* AI Insights */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🤖 Developer Intelligence</h3>
         <div className="space-y-3">
           <div className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
@@ -897,11 +897,11 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
             </div>
           </div>
           
-          <div className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
+          <div className="flex items-start space-x-3 p-3 rounded-lg">
             <span className="text-xl">💡</span>
             <div className="flex-1">
-              <div className="font-semibold text-blue-900">Market Concentration</div>
-              <div className="text-sm text-blue-800 mt-1">
+              <div className="font-semibold text-blue-200">Market Concentration</div>
+              <div className="text-sm text-blue-300 mt-1">
                 Top 3 developers control {topDevelopers.slice(0, 3).reduce((sum, d) => sum + d.pipelineShare, 0).toFixed(0)}% 
                 of pipeline. Monitor their delivery schedules closely for timing advantages.
               </div>
@@ -938,7 +938,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Current Absorption</div>
           <div className="text-3xl font-bold text-[#E8E6E1]">
             {absorption.currentRate.toFixed(0)}
@@ -946,7 +946,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
           <div className="text-xs text-[#6B7585] mt-1">units/month</div>
         </div>
         
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Historical Average</div>
           <div className="text-3xl font-bold text-[#E8E6E1]">
             {absorption.historicalAvg.toFixed(0)}
@@ -954,7 +954,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
           <div className="text-xs text-[#6B7585] mt-1">units/month (3yr)</div>
         </div>
         
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Months to Absorb</div>
           <div className="text-3xl font-bold text-orange-600">
             {absorption.monthsToAbsorb.toFixed(1)}
@@ -962,9 +962,9 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
           <div className="text-xs text-[#6B7585] mt-1">at current rate</div>
         </div>
         
-        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
           <div className="text-sm text-[#6B7585] mb-1">Demand-Supply Gap</div>
-          <div className={`text-3xl font-bold ${absorption.demandSupplyGap > 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <div className={`text-3xl font-bold ${absorption.demandSupplyGap > 0 ? 'text-green-400' : 'text-red-400'}`}>
             {absorption.demandSupplyGap > 0 ? '+' : ''}{absorption.demandSupplyGap.toFixed(0)}
           </div>
           <div className="text-xs text-[#6B7585] mt-1">units/quarter</div>
@@ -972,7 +972,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Absorption Scenarios */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Scenarios</h3>
         <div className="space-y-4">
           {scenarios.map((scenario, idx) => (
@@ -1002,7 +1002,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Risk Assessment */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Risk Assessment</h3>
         <div 
           className="p-6 rounded-lg border-l-4"
@@ -1041,7 +1041,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Impact Timeline */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Impact Timeline</h3>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={supplyWave}>
@@ -1083,7 +1083,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
   return (
     <div className="space-y-6">
       {/* Overall Risk Score */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-8">
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-40 h-40 rounded-full border-8 mb-6"
             style={{ borderColor: getRiskColor(riskScore.level) }}>
@@ -1117,7 +1117,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Risk Factor Breakdown */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-6">Risk Factor Analysis</h3>
         <div className="space-y-6">
           {riskFactors.map((factor, idx) => {
@@ -1151,34 +1151,34 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Recommendations */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🎯 Strategic Recommendations</h3>
         <div className="space-y-3">
           {riskScore.recommendations.map((rec, idx) => (
-            <div key={idx} className="flex items-start space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div key={idx} className="flex items-start space-x-3 p-4 rounded-lg border-blue-800">
               <span className="text-xl flex-shrink-0">💡</span>
-              <p className="text-sm text-blue-900">{rec}</p>
+              <p className="text-sm text-blue-200">{rec}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Risk Matrix */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Risk Matrix</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-sm font-semibold text-green-900 mb-2">✅ Low Risk Factors</div>
-            <ul className="text-sm text-green-800 space-y-1">
+            <div className="text-sm font-semibold text-green-200 mb-2">✅ Low Risk Factors</div>
+            <ul className="text-sm text-green-300 space-y-1">
               {riskFactors.filter(f => f.score < 40).map((f, i) => (
                 <li key={i}>• {f.name} ({f.score.toFixed(0)})</li>
               ))}
             </ul>
           </div>
           
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="text-sm font-semibold text-red-900 mb-2">⚠️ High Risk Factors</div>
-            <ul className="text-sm text-red-800 space-y-1">
+          <div className="p-4 border border-red-800 rounded-lg" style={{ background: 'rgba(220,38,38,0.08)' }}>
+            <div className="text-sm font-semibold text-red-200 mb-2">⚠️ High Risk Factors</div>
+            <ul className="text-sm text-red-300 space-y-1">
               {riskFactors.filter(f => f.score >= 40).map((f, i) => (
                 <li key={i}>• {f.name} ({f.score.toFixed(0)})</li>
               ))}
