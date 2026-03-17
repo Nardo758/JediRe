@@ -72,6 +72,7 @@ import developmentScenariosRoutes from './development-scenarios.routes';
 import trafficDataRoutes from './traffic-data.routes';
 import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
+import dealContextRoutes from './deal-context.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
@@ -174,6 +175,9 @@ export function setupRESTRoutes(app: Application): void {
   // Geographic Context routes (Deal → Trade Area/Submarket/MSA linking)
   app.use(`${API_PREFIX}/deals`, geographicContextRoutes);
   app.use(`${API_PREFIX}`, geographicContextRoutes); // For /submarkets/lookup, /msas/lookup
+
+  // Deal Context routes (Full deal data hydration)
+  app.use(`${API_PREFIX}/deals`, dealContextRoutes);
 
   // Geography routes (Complete Geographic Assignment Engine)
   app.use(`${API_PREFIX}/geography`, geographyRoutes);
