@@ -9,14 +9,19 @@ import { ThreeColumnComparison } from '../components/deal/ThreeColumnComparison'
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
 
+type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent';
+
 interface CapsuleData {
   id: string;
   property_address: string;
   asset_class: string;
   status: string;
-  deal_data: any;
-  platform_intel: any;
-  user_adjustments: any;
+  jedi_score: number | null;
+  collision_score: number | null;
+  deal_data: Record<string, unknown>;
+  platform_intel: Record<string, unknown>;
+  user_adjustments: Record<string, unknown>;
+  module_outputs: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
@@ -29,12 +34,11 @@ interface CollisionResult {
 
 const DEFAULT_LAYER1 = {
   asking_price: 0,
-  noi: 0,
-  cap_rate: 0,
-  occupancy: 0,
-  avg_rent_1br: 0,
-  avg_rent_2br: 0,
-  parking_ratio: 0,
+  broker_noi: 0,
+  broker_cap_rate: 0,
+  broker_occupancy: 0,
+  broker_rent_1br: 0,
+  broker_rent_2br: 0,
   units: 0,
   year_built: 0,
   broker_name: '',
@@ -45,6 +49,8 @@ const DEFAULT_LAYER2 = {
   market_rent_1br: 0,
   market_rent_2br: 0,
   submarket_vacancy: 0,
+  market_cap_rate_avg: 0,
+  market_occupancy: 0,
   supply_risk_score: 0,
   nearby_developments: 0,
   units_under_construction: 0,
@@ -79,7 +85,7 @@ const CapsuleDetailPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const [activeTab, setActiveTab] = useState<'overview' | 'layers' | 'collision' | 'training' | 'ai-agent'>('overview');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [capsule, setCapsule] = useState<CapsuleData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,13 +132,26 @@ const CapsuleDetailPage: React.FC = () => {
   const layer2 = { ...DEFAULT_LAYER2, ...(capsule.platform_intel || {}) };
   const layer3 = { ...DEFAULT_LAYER3, ...(capsule.user_adjustments || {}) };
 
-  const collisionResults = (capsule.deal_data?.collision_results || capsule.platform_intel?.collision_results) as Record<string, CollisionResult> | undefined;
-  const collision = { ...DEFAULT_COLLISION, ...(collisionResults || {}) };
-  const overallScore = collisionResults
-    ? Math.round(Object.values(collisionResults).reduce((sum, c) => sum + (c.score || 0), 0) / Math.max(Object.keys(collisionResults).length, 1))
-    : 0;
+  const rawCollision = (
+    (capsule.module_outputs as Record<string, unknown>)?.collision_analysis ??
+    (capsule.module_outputs as Record<string, unknown>)?.collision ??
+    (capsule.deal_data as Record<string, unknown>)?.collision_results ??
+    (capsule.platform_intel as Record<string, unknown>)?.collision_results
+  ) as { overall_score?: number; analyses?: Record<string, CollisionResult> } | Record<string, CollisionResult> | undefined;
 
-  const jediScore = layer1.jedi_score || capsule.deal_data?.jedi_score || 0;
+  const collisionAnalyses: Record<string, CollisionResult> =
+    rawCollision && 'analyses' in rawCollision && rawCollision.analyses
+      ? rawCollision.analyses
+      : (rawCollision as Record<string, CollisionResult>) ?? {};
+
+  const collision = { ...DEFAULT_COLLISION, ...collisionAnalyses };
+  const overallScore = capsule.collision_score
+    ?? (rawCollision && 'overall_score' in rawCollision ? (rawCollision.overall_score ?? 0) : 0)
+    || (Object.keys(collisionAnalyses).length > 0
+      ? Math.round(Object.values(collisionAnalyses).reduce((sum, c) => sum + (c?.score || 0), 0) / Object.keys(collisionAnalyses).length)
+      : 0);
+
+  const jediScore = capsule.jedi_score || (capsule.deal_data as Record<string, unknown>)?.jedi_score as number || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -199,18 +218,18 @@ const CapsuleDetailPage: React.FC = () => {
           </div>
 
           <div className="flex gap-6 mt-6 border-b border-gray-200">
-            {[
-              { id: 'overview', label: 'Overview', icon: BarChart3 },
-              { id: 'layers', label: 'Three Layers', icon: Target },
-              { id: 'collision', label: 'Collision Analysis', icon: AlertTriangle },
-              { id: 'training', label: 'Training', icon: Target },
-              { id: 'ai-agent', label: 'AI Agent', icon: MessageSquare }
-            ].map((tab) => {
+            {([
+              { id: 'overview' as const, label: 'Overview', icon: BarChart3 },
+              { id: 'layers' as const, label: 'Three Layers', icon: Target },
+              { id: 'collision' as const, label: 'Collision Analysis', icon: AlertTriangle },
+              { id: 'training' as const, label: 'Training', icon: Target },
+              { id: 'ai-agent' as const, label: 'AI Agent', icon: MessageSquare }
+            ] satisfies { id: TabId; label: string; icon: typeof BarChart3 }[]).map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center gap-2 pb-3 border-b-2 transition-colors ${
                     activeTab === tab.id
                       ? 'border-blue-600 text-blue-600'
@@ -241,7 +260,7 @@ const CapsuleDetailPage: React.FC = () => {
                 rows={[
                   {
                     label: 'Rent (1BR)',
-                    broker: layer1.avg_rent_1br,
+                    broker: layer1.broker_rent_1br,
                     market: layer2.market_rent_1br,
                     user: layer3.adjusted_rent_1br || undefined,
                     format: 'currency',
@@ -249,7 +268,7 @@ const CapsuleDetailPage: React.FC = () => {
                   },
                   {
                     label: 'Rent (2BR)',
-                    broker: layer1.avg_rent_2br,
+                    broker: layer1.broker_rent_2br,
                     market: layer2.market_rent_2br,
                     user: layer3.adjusted_rent_2br || undefined,
                     format: 'currency',
@@ -257,7 +276,7 @@ const CapsuleDetailPage: React.FC = () => {
                   },
                   {
                     label: 'Occupancy',
-                    broker: layer1.occupancy,
+                    broker: layer1.broker_occupancy,
                     market: layer2.submarket_vacancy ? 100 - layer2.submarket_vacancy : 0,
                     user: layer3.adjusted_occupancy || undefined,
                     format: 'percent',
@@ -265,17 +284,17 @@ const CapsuleDetailPage: React.FC = () => {
                   },
                   {
                     label: 'NOI',
-                    broker: layer1.noi,
-                    market: layer1.noi ? layer1.noi * 0.97 : 0,
+                    broker: layer1.broker_noi,
+                    market: layer1.broker_noi ? layer1.broker_noi * 0.97 : 0,
                     user: layer3.adjusted_noi || undefined,
                     format: 'currency',
                     editable: false
                   },
                   {
                     label: 'Cap Rate',
-                    broker: layer1.cap_rate,
-                    market: layer2.market_cap_rate || layer1.cap_rate || 0,
-                    user: layer3.adjusted_cap_rate || layer1.cap_rate || undefined,
+                    broker: layer1.broker_cap_rate,
+                    market: layer2.market_cap_rate_avg || layer1.broker_cap_rate || 0,
+                    user: layer3.adjusted_cap_rate || layer1.broker_cap_rate || undefined,
                     format: 'percent',
                     editable: true
                   }
@@ -393,15 +412,15 @@ const CapsuleDetailPage: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-sm text-gray-600 mb-1">NOI</div>
-                  <div className="font-semibold">{layer1.noi ? `$${(layer1.noi / 1000000).toFixed(1)}M` : 'N/A'}</div>
+                  <div className="font-semibold">{layer1.broker_noi ? `$${(layer1.broker_noi / 1000000).toFixed(1)}M` : 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Cap Rate</div>
-                  <div className="font-semibold">{layer1.cap_rate ? `${layer1.cap_rate}%` : 'N/A'}</div>
+                  <div className="font-semibold">{layer1.broker_cap_rate ? `${layer1.broker_cap_rate}%` : 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-sm text-gray-600 mb-1">Occupancy</div>
-                  <div className="font-semibold">{layer1.occupancy ? `${layer1.occupancy}%` : 'N/A'}</div>
+                  <div className="font-semibold">{layer1.broker_occupancy ? `${layer1.broker_occupancy}%` : 'N/A'}</div>
                 </div>
               </div>
               {layer1.broker_claims && Object.keys(layer1.broker_claims).length > 0 && (
@@ -479,17 +498,17 @@ const CapsuleDetailPage: React.FC = () => {
                   <div>
                     <span className="text-gray-600">1BR Rent: </span>
                     <span className="font-semibold text-green-700">{layer3.adjusted_rent_1br ? `$${layer3.adjusted_rent_1br}` : 'Not set'}</span>
-                    {layer1.avg_rent_1br > 0 && <span className="text-gray-500 ml-1">(vs broker ${layer1.avg_rent_1br})</span>}
+                    {layer1.broker_rent_1br > 0 && <span className="text-gray-500 ml-1">(vs broker ${layer1.broker_rent_1br})</span>}
                   </div>
                   <div>
                     <span className="text-gray-600">2BR Rent: </span>
                     <span className="font-semibold text-green-700">{layer3.adjusted_rent_2br ? `$${layer3.adjusted_rent_2br}` : 'Not set'}</span>
-                    {layer1.avg_rent_2br > 0 && <span className="text-gray-500 ml-1">(vs broker ${layer1.avg_rent_2br})</span>}
+                    {layer1.broker_rent_2br > 0 && <span className="text-gray-500 ml-1">(vs broker ${layer1.broker_rent_2br})</span>}
                   </div>
                   <div>
                     <span className="text-gray-600">Occupancy: </span>
                     <span className="font-semibold text-green-700">{layer3.adjusted_occupancy ? `${layer3.adjusted_occupancy}%` : 'Not set'}</span>
-                    {layer1.occupancy > 0 && <span className="text-gray-500 ml-1">(vs broker {layer1.occupancy}%)</span>}
+                    {layer1.broker_occupancy > 0 && <span className="text-gray-500 ml-1">(vs broker {layer1.broker_occupancy}%)</span>}
                   </div>
                 </div>
               </div>
