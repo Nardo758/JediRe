@@ -288,7 +288,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
       .catch(() => {
         setCorpHealthRisk(prev => ({...prev, loaded: true}));
       });
-  }, [resolvedDealId, corpHealthRisk.loaded, fetchCorporateHealth]);
+  }, [resolvedDealId, corpHealthRisk.loaded, fetchCorporateHealthFromDealStore]);
 
   const augmentedCategories = useMemo(() => {
     let cats = riskCategories;
