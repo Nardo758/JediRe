@@ -818,42 +818,9 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const loanAmt = totalBasis * (stack.sr.pct / 100);
   const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PUSH TO PROFORMA EFFECT
-  // ═══════════════════════════════════════════════════════════════════════════
-  // When exit quarter or strategy changes, push downstream values to ProForma
+  // Push downstream values to ProForma/parent when exit quarter or strategy changes
   useEffect(() => {
-    // In a real app, this would write to dealStore:
-    // dealStore.setState({
-    //   financial: {
-    //     ...dealStore.getState().financial,
-    //     assumptions: {
-    //       ...dealStore.getState().financial.assumptions,
-    //       holdPeriod: { value: parseFloat(ret.holdYears), source: 'exit-module', confidence: 0.7 },
-    //       exitCapRate: { value: ret.exitCap / 100, source: 'exit-module', confidence: 0.6 },
-    //     },
-    //   },
-    //   capital: {
-    //     ...dealStore.getState().capital,
-    //     seniorDebt: {
-    //       rate: stack.sr.rate / 100,
-    //       ltv: stack.sr.pct / 100,
-    //       term: stack.sr.term,
-    //       ioPeriod: stack.sr.io,
-    //       annualDebtService: annualDS,
-    //     },
-    //   },
-    // });
-
-    // For now, log the values that would be pushed
     if (onUpdate) {
-      console.log('Push to ProForma:', {
-        holdPeriod: parseFloat(ret.holdYears),
-        exitCapRate: ret.exitCap / 100,
-        seniorRate: stack.sr.rate / 100,
-        ioPeriod: stack.sr.io,
-        annualDS,
-      });
       onUpdate();
     }
   }, [selectedFwd, selectedExitStrategy, dealType, ret, stack, annualDS, onUpdate]);
@@ -862,7 +829,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     <div style={{ minHeight: '100vh', background: BT.bgBase, color: BT.tm, ...bSans }}>
       {/* F9 Banner */}
       <div style={{ background: BT.amberBg, borderBottom: `1px solid ${BT.amber}40`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: `${BT.amber}25`, border: `1px solid ${BT.amber}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F9</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: `${BT.amber}25`, border: `1px solid ${BT.amber}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F7·F12</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: BT.amberL, ...bSans }}>EXIT &amp; CAPITAL STRUCTURE</span>
         <span style={{ fontSize: 10, color: BT.td, ...bSans, marginLeft: 4 }}>21-yr convergence · RSS · Capital stack · Sensitivity</span>
       </div>
@@ -879,7 +846,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: BT.td, ...bMono }}>M11+M12</span>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: BT.td, ...bMono }}>F7·F12 · M11+M12</span>
           <h2 style={{ fontSize: 14, fontWeight: 800, margin: 0, color: BT.tm, ...bSans }}>Exit & Capital Structure</h2>
           <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 3, background: `${rssColor}20`, color: rssColor, border: `1px solid ${rssColor}40`, ...bMono }}>
             RSS {rssData.rss} — {rssVerdict}
