@@ -1782,7 +1782,7 @@ export default function TerminalPage() {
       .finally(() => setOrgLoading(false));
   }, []);
 
-  useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
+  // Legacy org fetch disabled — F9 now renders SettingsPage which manages its own data
 
   const corpHealthStore = useCorporateHealth();
   const dealStoreCorporateHealth = useDealStore(s => s.corporateHealth);
