@@ -138,20 +138,20 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-sm text-gray-500">Loading zoning analysis...</div>
+        <div className="text-sm text-[#7f8ea3]">Loading zoning analysis...</div>
       </div>
     );
   }
 
   return (
     <div className="relative flex flex-col h-full -m-6 -mr-10">
-      <div className="bg-white border-b border-gray-200 px-6 pt-4">
+      <div className="bg-[#0a1628] border-b border-[#1e2a3d] px-6 pt-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Property & Zoning Intelligence</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-lg font-bold text-[#e8e9ea]">Property & Zoning Intelligence</h2>
+            <p className="text-xs text-[#7f8ea3] mt-0.5">
               Boundary, zoning verification, development capacity & entitlement timeline
-              {deal?.strategy && <><span className="ml-2 text-gray-400">•</span> <span className="ml-2 text-blue-600 font-medium">{deal.strategy} Strategy</span></>}
+              {deal?.strategy && <><span className="ml-2 text-[#6b7f94]">•</span> <span className="ml-2 text-blue-400 font-medium">{deal.strategy} Strategy</span></>}
             </p>
           </div>
 
@@ -159,7 +159,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           {!boundaryAndZoningComplete && (
             <button
               onClick={() => checkCompletionStatus()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7f8ea3] hover:text-[#e8e9ea] hover:bg-[#1a2a3a] rounded-lg transition-colors"
               title="Refresh tab status"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -170,7 +170,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
 
         {/* Status Banner */}
         {statusMessage && !boundaryAndZoningComplete && (
-          <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center gap-2">
+          <div className="mb-3 px-3 py-2 bg-blue-900/20 border border-blue-700/50 rounded text-xs text-blue-300 flex items-center gap-2">
             <Lock className="w-3 h-3" />
             {statusMessage}
           </div>
@@ -189,25 +189,25 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
                 disabled={!unlocked}
                 className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
+                    ? 'border-blue-600 text-blue-400'
                     : unlocked
-                    ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    : 'border-transparent text-gray-300 cursor-not-allowed'
+                    ? 'border-transparent text-[#7f8ea3] hover:text-[#c0d0e0] hover:border-[#2a3a4d]'
+                    : 'border-transparent text-[#a0b0c0] cursor-not-allowed'
                 }`}
                 title={!unlocked ? 'Complete boundary & zoning verification to unlock' : ''}
               >
                 {!unlocked && <Lock className="w-3 h-3" />}
-                {completed && <CheckCircle2 className="w-3 h-3 text-green-600" />}
+                {completed && <CheckCircle2 className="w-3 h-3 text-green-400" />}
                 {!completed && unlocked && tab.icon}
                 <span>{tab.label}</span>
-                <span className="ml-1 text-[10px] text-gray-400">{tab.step}</span>
+                <span className="ml-1 text-[10px] text-[#6b7f94]">{tab.step}</span>
               </button>
             );
           })}
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pr-10 pb-6">
+      <div className="flex-1 overflow-y-auto bg-[#0d1f35] p-6 pr-10 pb-6">
         {renderActiveTab()}
       </div>
     </div>

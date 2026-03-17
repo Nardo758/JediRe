@@ -9,7 +9,7 @@ import { apiClient } from '@/services/api.client';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { useDealType } from '../../../stores/dealStore';
 import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
-import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
+import { T as BT, mono as bMono, sans as bSans, UnderwritingComparison } from '../bloomberg-tokens';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -569,8 +569,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     return (
       <div className="space-y-5">
         <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
-          <Loader2 className="w-6 h-6 animate-spin text-stone-400 mx-auto mb-3" />
-          <div className="text-xs text-stone-400">Loading Pro Forma data...</div>
+          <Loader2 className="w-6 h-6 animate-spin text-[#6b7f94] mx-auto mb-3" />
+          <div className="text-xs text-[#6b7f94]">Loading Pro Forma data...</div>
         </div>
       </div>
     );
@@ -655,6 +655,45 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         </div>
       </div>
 
+      {/* F6 Underwriting Comparison: Broker vs Platform vs User */}
+      <div style={{ margin: '12px 16px 0 16px' }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 6, ...bMono }}>UNDERWRITING COMPARISON</div>
+        <UnderwritingComparison
+          rows={[
+            {
+              label: 'Purchase Price',
+              broker: deal?.deal_data?.asking_price ? `$${(deal.deal_data.asking_price / 1_000_000).toFixed(1)}M` : null,
+              platform: platformData?.purchasePrice ? `$${(platformData.purchasePrice / 1_000_000).toFixed(1)}M` : null,
+              user: purchasePrice ? `$${(purchasePrice / 1_000_000).toFixed(1)}M` : null,
+            },
+            {
+              label: 'Cap Rate',
+              broker: deal?.deal_data?.broker_cap_rate ? `${deal.deal_data.broker_cap_rate.toFixed(2)}%` : null,
+              platform: platformData?.capRate ? `${(platformData.capRate * 100).toFixed(2)}%` : null,
+              user: capRate ? `${(capRate * 100).toFixed(2)}%` : null,
+            },
+            {
+              label: 'Gross Revenue',
+              broker: null,
+              platform: platformData?.grossRevenue ? `$${platformData.grossRevenue.toLocaleString()}` : null,
+              user: null,
+            },
+            {
+              label: 'NOI',
+              broker: null,
+              platform: platformData?.noi ? `$${platformData.noi.toLocaleString()}` : null,
+              user: null,
+            },
+            {
+              label: 'Hold Period',
+              broker: null,
+              platform: `${holdPeriod}yr`,
+              user: `${holdPeriod}yr`,
+            },
+          ]}
+        />
+      </div>
+
       {modelResults && <ModelResultsSummary results={modelResults} />}
 
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -684,7 +723,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
                             Source: {designSource}
                           </span>
-                          <span className="text-[10px] text-stone-400">Units & SF pre-filled from 3D Design module — edit to override</span>
+                          <span className="text-[10px] text-[#6b7f94]">Units & SF pre-filled from 3D Design module — edit to override</span>
                         </div>
                       )}
                       <DealInfoSection
@@ -706,7 +745,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
                             Source: {designSource}
                           </span>
-                          <span className="text-[10px] text-stone-400">Unit mix pre-filled from 3D Design module — edit to override</span>
+                          <span className="text-[10px] text-[#6b7f94]">Unit mix pre-filled from 3D Design module — edit to override</span>
                         </div>
                       )}
                       <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
@@ -782,10 +821,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <>
                       {debtSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-700/50">
                             Source: {debtSource}
                           </span>
-                          <span className="text-[10px] text-stone-400">Values pre-filled from Debt & Equity module — edit to override</span>
+                          <span className="text-[10px] text-[#6b7f94]">Values pre-filled from Debt & Equity module — edit to override</span>
                         </div>
                       )}
                       <FinancingSection
@@ -840,24 +879,24 @@ const InputField: React.FC<{
 }> = ({ label, value, onChange, type = 'number', platformValue, platformSource, step, suffix, className = '' }) => (
   <div className={`${className}`}>
     <div className="flex items-center justify-between mb-1">
-      <label className="text-[11px] font-medium text-stone-600">{label}</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3]">{label}</label>
       {platformValue !== undefined && (
-        <span className="text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono" title={platformSource}>
+        <span className="text-[9px] text-cyan-300 bg-cyan-900/20 px-1.5 py-0.5 rounded font-mono" title={platformSource}>
           Platform: {typeof platformValue === 'number' ? (type === 'percent' ? fmtPct(platformValue) : type === 'currency' ? fmt$(platformValue) : platformValue) : platformValue}
         </span>
       )}
     </div>
     <div className="flex items-center">
-      {type === 'currency' && <span className="text-xs text-stone-400 mr-1">$</span>}
+      {type === 'currency' && <span className="text-xs text-[#6b7f94] mr-1">$</span>}
       <input
         type={type === 'text' ? 'text' : 'number'}
         value={value}
         onChange={(e) => onChange(type === 'text' ? e.target.value : parseFloat(e.target.value) || 0)}
         step={step || (type === 'percent' ? 0.001 : type === 'currency' ? 1000 : 1)}
-        className="w-full text-xs font-mono border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+        className="w-full text-xs font-mono border border-[#1e2a3d] rounded-lg px-2.5 py-1.5 focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]/20 outline-none"
       />
-      {suffix && <span className="text-xs text-stone-400 ml-1">{suffix}</span>}
-      {type === 'percent' && <span className="text-xs text-stone-400 ml-1">×100=%</span>}
+      {suffix && <span className="text-xs text-[#6b7f94] ml-1">{suffix}</span>}
+      {type === 'percent' && <span className="text-xs text-[#6b7f94] ml-1">×100=%</span>}
     </div>
   </div>
 );
@@ -906,7 +945,7 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-stone-500 border-b border-stone-200">
+            <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
               <th className="text-left py-2 px-2 font-medium">Floor Plan</th>
               <th className="text-right py-2 px-2 font-medium">SF</th>
               <th className="text-right py-2 px-2 font-medium">Beds</th>
@@ -924,38 +963,38 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
               <tr key={i} className="border-b border-[#1e2a3d] hover:bg-[#131920]">
                 <td className="py-1.5 px-2">
                   <input type="text" value={row.floorPlan} onChange={(e) => updateRow(i, 'floorPlan', e.target.value)}
-                    className="w-24 text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-24 text-xs font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.unitSize} onChange={(e) => updateRow(i, 'unitSize', parseInt(e.target.value) || 0)}
-                    className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.beds} onChange={(e) => updateRow(i, 'beds', parseInt(e.target.value) || 0)}
-                    className="w-12 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-12 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.units} onChange={(e) => updateRow(i, 'units', parseInt(e.target.value) || 0)}
-                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-14 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.occupied} onChange={(e) => updateRow(i, 'occupied', parseInt(e.target.value) || 0)}
-                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-14 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
-                <td className="py-1.5 px-2 text-right font-mono text-stone-500">{row.vacant}</td>
+                <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">{row.vacant}</td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.marketRent} onChange={(e) => updateRow(i, 'marketRent', parseInt(e.target.value) || 0)}
-                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                    className="w-18 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" step={25} />
                 </td>
-                <td className="py-1.5 px-2 text-right font-mono text-stone-500">
+                <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">
                   ${row.unitSize > 0 ? (row.marketRent / row.unitSize).toFixed(2) : '0.00'}
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.inPlaceRent} onChange={(e) => updateRow(i, 'inPlaceRent', parseInt(e.target.value) || 0)}
-                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                    className="w-18 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" step={25} />
                 </td>
                 <td className="py-1.5 px-1">
-                  <button onClick={() => removeRow(i)} className="text-stone-300 hover:text-red-500 p-0.5">
+                  <button onClick={() => removeRow(i)} className="text-[#a0b0c0] hover:text-red-500 p-0.5">
                     <Trash2 size={12} />
                   </button>
                 </td>
@@ -978,10 +1017,10 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
           </tbody>
         </table>
       </div>
-      <button onClick={addRow} className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+      <button onClick={addRow} className="flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-800 font-medium">
         <Plus size={12} /> Add Floor Plan
       </button>
-      <div className="mt-2 text-[10px] text-stone-400 font-mono">
+      <div className="mt-2 text-[10px] text-[#6b7f94] font-mono">
         GPR: ${(totals.weightedRent * 12).toLocaleString()}/yr | Avg Rent: ${totals.units > 0 ? Math.round(totals.weightedRent / totals.units) : 0}/unit/mo | Occupancy: {totals.units > 0 ? ((totals.occupied / totals.units) * 100).toFixed(1) : 0}%
       </div>
     </div>
@@ -995,22 +1034,22 @@ const AcquisitionSection: React.FC<any> = ({ purchasePrice, setPurchasePrice, ca
       <InputField label="Going-In Cap Rate" value={capRate} onChange={setCapRate} type="percent" step={0.0025}
         platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
       <div>
-        <label className="text-[11px] font-medium text-stone-600">Price/Unit</label>
-        <div className="text-sm font-mono text-stone-700 mt-1">{totalUnits > 0 ? fmt$(Math.round(purchasePrice / totalUnits)) : '—'}</div>
+        <label className="text-[11px] font-medium text-[#7f8ea3]">Price/Unit</label>
+        <div className="text-sm font-mono text-[#a0b0c0] mt-1">{totalUnits > 0 ? fmt$(Math.round(purchasePrice / totalUnits)) : '—'}</div>
       </div>
     </div>
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-2 block">Closing Costs</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-2 block">Closing Costs</label>
       <div className="grid grid-cols-3 gap-3">
         {Object.entries(closingCosts).map(([key, val]) => (
           <div key={key} className="flex items-center gap-2">
-            <span className="text-[10px] text-stone-500 w-24 truncate">{key}</span>
+            <span className="text-[10px] text-[#7f8ea3] w-24 truncate">{key}</span>
             <input type="number" value={val} onChange={(e) => setClosingCosts({ ...closingCosts, [key]: parseInt(e.target.value) || 0 })}
-              className="flex-1 text-xs text-right font-mono border border-stone-200 rounded px-2 py-1 focus:border-blue-400 outline-none" step={5000} />
+              className="flex-1 text-xs text-right font-mono border border-[#1e2a3d] rounded px-2 py-1 focus:border-[#3B82F6] outline-none" step={5000} />
           </div>
         ))}
       </div>
-      <div className="text-[10px] text-stone-400 font-mono mt-2">
+      <div className="text-[10px] text-[#6b7f94] font-mono mt-2">
         Total Closing Costs: {fmt$(Object.values(closingCosts).reduce((s, v) => s + v, 0))}
       </div>
     </div>
@@ -1055,9 +1094,9 @@ const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellin
       platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
     <InputField label="Selling Costs" value={sellingCosts} onChange={setSellingCosts} type="percent" suffix="(decimal)" />
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-1 block">Sale NOI Method</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-1 block">Sale NOI Method</label>
       <select value={saleNOIMethod} onChange={(e) => setSaleNOIMethod(e.target.value)}
-        className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+        className="w-full text-xs border border-[#1e2a3d] rounded-lg px-2.5 py-1.5 focus:border-[#3B82F6] outline-none">
         <option>Forward 12mo</option>
         <option>T-12</option>
       </select>
@@ -1074,10 +1113,10 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
       <InputField label="Collection Loss" value={collectionLoss} onChange={setCollectionLoss} type="percent" suffix="(decimal)" />
     </div>
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-2 block">
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-2 block">
         Annual Rent Growth
         {platformData?.rentGrowth && (
-          <span className="ml-2 text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono">
+          <span className="ml-2 text-[9px] text-cyan-300 bg-cyan-900/20 px-1.5 py-0.5 rounded font-mono">
             Platform data available
           </span>
         )}
@@ -1085,13 +1124,13 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
       <div className="flex gap-2 flex-wrap">
         {rentGrowth.slice(0, Math.max(holdPeriod, 5)).map((val, i) => (
           <div key={i} className="text-center">
-            <div className="text-[9px] text-stone-400 mb-1">Y{i + 1}</div>
+            <div className="text-[9px] text-[#6b7f94] mb-1">Y{i + 1}</div>
             <input type="number" value={val} onChange={(e) => {
               const updated = [...rentGrowth];
               updated[i] = parseFloat(e.target.value) || 0;
               setRentGrowth(updated);
             }}
-              className="w-16 text-xs text-center font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none"
+              className="w-16 text-xs text-center font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none"
               step={0.001} />
           </div>
         ))}
@@ -1142,7 +1181,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
     <div className="mt-3 space-y-4">
       <div className="flex items-center gap-2 mb-2">
         <Info size={14} className="text-blue-500" />
-        <span className="text-[11px] text-stone-500">
+        <span className="text-[11px] text-[#7f8ea3]">
           {modelType === 'development'
             ? `Concessions reduce EGI during the ${durationMonths > 0 ? durationMonths + '-month ' : ''}lease-up period. Duration and eligible units are auto-linked from the Absorption Schedule (Traffic module).`
             : ongoing
@@ -1159,28 +1198,28 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
 
       <div className="grid grid-cols-4 gap-4">
         <div>
-          <label className="text-[11px] font-medium text-stone-600 block mb-1">Free Rent (weeks)</label>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Free Rent (weeks)</label>
           <input type="number" value={freeWeeks} min={0} max={12} step={0.5}
             onChange={e => setFreeWeeks(parseFloat(e.target.value) || 0)}
-            className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
-          <div className="text-[9px] text-stone-400 mt-0.5">per lease</div>
+            className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-[#3B82F6] outline-none" />
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">per lease</div>
         </div>
         <div>
-          <label className="text-[11px] font-medium text-stone-600 block mb-1">Units Receiving (%)</label>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Units Receiving (%)</label>
           <input type="number" value={unitsPct} min={0} max={1} step={0.05}
             onChange={e => setUnitsPct(parseFloat(e.target.value) || 0)}
-            className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
-          <div className="text-[9px] text-stone-400 mt-0.5">{concessionUnits} units</div>
+            className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-[#3B82F6] outline-none" />
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">{concessionUnits} units</div>
         </div>
         <div>
-          <label className="text-[11px] font-medium text-stone-600 block mb-1">Duration (months)</label>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Duration (months)</label>
           <input type="number" value={durationMonths} min={0} max={36}
             onChange={e => setDurationMonths(parseInt(e.target.value) || 0)}
-            className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
-          <div className="text-[9px] text-stone-400 mt-0.5">concession period</div>
+            className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-[#3B82F6] outline-none" />
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">concession period</div>
         </div>
         <div className="flex flex-col">
-          <label className="text-[11px] font-medium text-stone-600 block mb-1">Ongoing?</label>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Ongoing?</label>
           <button
             onClick={() => setOngoing(!ongoing)}
             className={`px-3 py-1.5 text-xs rounded border transition-colors ${
@@ -1189,50 +1228,50 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
           >
             {ongoing ? 'Yes — recurring' : 'No — lease-up only'}
           </button>
-          <div className="text-[9px] text-stone-400 mt-0.5">renewal concessions</div>
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">renewal concessions</div>
         </div>
       </div>
 
       {(freeWeeks > 0 && unitsPct > 0) && (
         <div className="rounded-xl p-4" style={{ background: "#131920", border: "1px solid #1e2a3d" }}>
-          <h5 className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-3">Concession Impact</h5>
+          <h5 className="text-[10px] font-semibold text-[#7f8ea3] uppercase tracking-wider mb-3">Concession Impact</h5>
           <div className="grid grid-cols-5 gap-4">
             <div>
-              <div className="text-[10px] text-stone-400 uppercase tracking-wider">Cost / Unit</div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">Cost / Unit</div>
               <div className="text-sm font-bold font-mono text-[#E8E6E1]">{fmt$(Math.round(concessionCostPerUnit))}</div>
             </div>
             <div>
-              <div className="text-[10px] text-stone-400 uppercase tracking-wider">
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">
                 {ongoing ? 'Annual Cost' : 'Total Cost'}
               </div>
               <div className="text-sm font-bold font-mono text-red-700">{fmt$(Math.round(totalConcessionCost))}</div>
               {durationMonths > 0 && !ongoing && (
-                <div className="text-[9px] text-stone-400 mt-0.5">over {durationMonths} months</div>
+                <div className="text-[9px] text-[#6b7f94] mt-0.5">over {durationMonths} months</div>
               )}
             </div>
             <div>
-              <div className="text-[10px] text-stone-400 uppercase tracking-wider">Annualized</div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">Annualized</div>
               <div className="text-sm font-bold font-mono text-red-600">{fmt$(Math.round(annualizedConcessionCost))}/yr</div>
             </div>
             <div>
-              <div className="text-[10px] text-stone-400 uppercase tracking-wider">% of GPR</div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">% of GPR</div>
               <div className="text-sm font-bold font-mono text-amber-300">{(concessionPctOfGPR * 100).toFixed(2)}%</div>
             </div>
             <div>
-              <div className="text-[10px] text-stone-400 uppercase tracking-wider">EGI Reduction</div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">EGI Reduction</div>
               <div className="text-sm font-bold font-mono text-red-600">({fmt$(Math.round(annualizedConcessionCost))})</div>
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-stone-200">
+          <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
             <div className="flex justify-between text-xs">
-              <span className="text-stone-600">Gross Potential Rent</span>
+              <span className="text-[#7f8ea3]">Gross Potential Rent</span>
               <span className="font-mono text-stone-800">{fmt$(Math.round(gpr))}</span>
             </div>
             <div className="flex justify-between text-xs text-red-600 mt-1">
               <span>Less: Concessions {ongoing ? '(annual)' : durationMonths > 0 ? `(annualized from ${durationMonths}mo)` : ''}</span>
               <span className="font-mono">({fmt$(Math.round(annualizedConcessionCost))})</span>
             </div>
-            <div className="flex justify-between text-xs font-semibold mt-1 pt-1 border-t border-stone-200">
+            <div className="flex justify-between text-xs font-semibold mt-1 pt-1 border-t border-[#1e2a3d]">
               <span className="text-stone-800">Effective Gross Income (post-concessions)</span>
               <span className="font-mono text-[#E8E6E1]">{fmt$(Math.round(gpr - annualizedConcessionCost))}</span>
             </div>
@@ -1250,7 +1289,7 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
     <div className="mt-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Income Item</th>
             <th className="text-right py-2 px-2 font-medium">$/Unit/Mo</th>
             <th className="text-right py-2 px-2 font-medium">Penetration</th>
@@ -1259,19 +1298,19 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
         </thead>
         <tbody>
           {Object.entries(otherIncome).map(([name, oi]) => (
-            <tr key={name} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+            <tr key={name} className="border-b border-[#1a2a3a]">
+              <td className="py-1.5 px-2 text-[#a0b0c0]">{name}</td>
               <td className="py-1.5 px-2">
                 <input type="number" value={oi.perUnitMonth} step={5}
                   onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, perUnitMonth: parseFloat(e.target.value) || 0 } })}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={oi.penetration} step={0.05}
                   onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, penetration: parseFloat(e.target.value) || 0 } })}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
-              <td className="py-1.5 px-2 text-right font-mono text-stone-600">
+              <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">
                 {fmt$(Math.round(oi.perUnitMonth * totalUnits * 12 * oi.penetration))}
               </td>
             </tr>
@@ -1297,7 +1336,7 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
     <div className="mt-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Expense Category</th>
             <th className="text-right py-2 px-2 font-medium">Amount</th>
             <th className="text-right py-2 px-2 font-medium">Type</th>
@@ -1307,18 +1346,18 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
         </thead>
         <tbody>
           {Object.entries(expenses).map(([name, exp]) => (
-            <tr key={name} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+            <tr key={name} className="border-b border-[#1a2a3a]">
+              <td className="py-1.5 px-2 text-[#a0b0c0]">{name}</td>
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.amount}
                   step={exp.type === 'pctEGR' ? 0.005 : 1000}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, amount: parseFloat(e.target.value) || 0 } })}
-                  className="w-20 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-20 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <select value={exp.type}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, type: e.target.value } })}
-                  className="text-[10px] border border-stone-200 rounded px-1 py-0.5 outline-none">
+                  className="text-[10px] border border-[#1e2a3d] rounded px-1 py-0.5 outline-none">
                   <option value="total">Total</option>
                   <option value="perUnit">Per Unit</option>
                   <option value="pctEGR">% of EGR</option>
@@ -1327,9 +1366,9 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.growthRate} step={0.005}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, growthRate: parseFloat(e.target.value) || 0 } })}
-                  className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-14 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
-              <td className="py-1.5 px-2 text-right font-mono text-stone-600">
+              <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">
                 {exp.type === 'pctEGR' ? fmtPct(exp.amount) : fmt$(exp.type === 'perUnit' ? exp.amount * totalUnits : exp.amount)}
               </td>
             </tr>
@@ -1355,9 +1394,9 @@ const FinancingSection: React.FC<any> = ({
     <div className="grid grid-cols-3 gap-4">
       <InputField label="Loan Amount" value={loanAmount} onChange={setLoanAmount} type="currency" step={100000} />
       <div>
-        <label className="text-[11px] font-medium text-stone-600 mb-1 block">Loan Type</label>
+        <label className="text-[11px] font-medium text-[#7f8ea3] mb-1 block">Loan Type</label>
         <select value={loanType} onChange={(e) => setLoanType(e.target.value)}
-          className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+          className="w-full text-xs border border-[#1e2a3d] rounded-lg px-2.5 py-1.5 focus:border-[#3B82F6] outline-none">
           <option>Fixed</option>
           <option>Floating</option>
         </select>
@@ -1389,7 +1428,7 @@ const CapexSection: React.FC<{
     <div className="mt-3 space-y-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Description</th>
             <th className="text-right py-2 px-2 font-medium">Amount</th>
             <th className="py-2 px-1"></th>
@@ -1397,14 +1436,14 @@ const CapexSection: React.FC<{
         </thead>
         <tbody>
           {capexItems.map((item, i) => (
-            <tr key={i} className="border-b border-stone-100">
+            <tr key={i} className="border-b border-[#1a2a3a]">
               <td className="py-1.5 px-2">
                 <input type="text" value={item.description} onChange={(e) => {
                   const updated = [...capexItems];
                   updated[i] = { ...item, description: e.target.value };
                   setCapexItems(updated);
                 }}
-                  className="w-full text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={item.amount} step={10000} onChange={(e) => {
@@ -1412,10 +1451,10 @@ const CapexSection: React.FC<{
                   updated[i] = { ...item, amount: parseInt(e.target.value) || 0 };
                   setCapexItems(updated);
                 }}
-                  className="w-28 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-28 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-1">
-                <button onClick={() => setCapexItems(capexItems.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
+                <button onClick={() => setCapexItems(capexItems.filter((_, idx) => idx !== i))} className="text-[#a0b0c0] hover:text-red-500">
                   <Trash2 size={12} />
                 </button>
               </td>
@@ -1424,18 +1463,18 @@ const CapexSection: React.FC<{
         </tbody>
       </table>
       <button onClick={() => setCapexItems([...capexItems, { description: 'New Item', amount: 0 }])}
-        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-800 font-medium">
         <Plus size={12} /> Add Line Item
       </button>
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="text-[11px] font-medium text-stone-600">Subtotal</label>
-          <div className="text-sm font-mono text-stone-700">{fmt$(subtotal)}</div>
+          <label className="text-[11px] font-medium text-[#7f8ea3]">Subtotal</label>
+          <div className="text-sm font-mono text-[#a0b0c0]">{fmt$(subtotal)}</div>
         </div>
         <InputField label="GC Contingency" value={contingencyPct} onChange={setContingencyPct} type="percent" suffix="(decimal)" />
         <InputField label="Reserves/Unit/Year" value={reservesPerUnit} onChange={setReservesPerUnit} step={25} suffix="$/unit" />
       </div>
-      <div className="text-[10px] font-mono text-stone-400">
+      <div className="text-[10px] font-mono text-[#6b7f94]">
         Total CapEx (with contingency): {fmt$(Math.round(subtotal * (1 + contingencyPct)))}
       </div>
     </div>
@@ -1455,10 +1494,10 @@ const WaterfallSection: React.FC<{
       <InputField label="GP Share" value={gpShare} onChange={(v: number) => { setGpShare(v); setLpShare(+(1 - v).toFixed(4)); }} type="percent" suffix="(decimal)" />
     </div>
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-2 block">Promote Hurdles</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-2 block">Promote Hurdles</label>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Tier</th>
             <th className="text-right py-2 px-2 font-medium">Hurdle IRR</th>
             <th className="text-right py-2 px-2 font-medium">GP Promote</th>
@@ -1468,25 +1507,25 @@ const WaterfallSection: React.FC<{
         </thead>
         <tbody>
           {hurdles.map((h, i) => (
-            <tr key={i} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-600">Tier {i + 1}</td>
+            <tr key={i} className="border-b border-[#1a2a3a]">
+              <td className="py-1.5 px-2 text-[#7f8ea3]">Tier {i + 1}</td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.hurdleRate} step={0.01}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, hurdleRate: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.promoteToGP} step={0.05}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, promoteToGP: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.lpSplit} step={0.05}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, lpSplit: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-1">
-                <button onClick={() => setHurdles(hurdles.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
+                <button onClick={() => setHurdles(hurdles.filter((_, idx) => idx !== i))} className="text-[#a0b0c0] hover:text-red-500">
                   <Trash2 size={12} />
                 </button>
               </td>
@@ -1495,7 +1534,7 @@ const WaterfallSection: React.FC<{
         </tbody>
       </table>
       <button onClick={() => setHurdles([...hurdles, { hurdleRate: 0.20, promoteToGP: 0.50, lpSplit: 0.50 }])}
-        className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        className="flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-800 font-medium">
         <Plus size={12} /> Add Hurdle Tier
       </button>
     </div>
