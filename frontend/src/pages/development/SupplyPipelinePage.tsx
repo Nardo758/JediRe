@@ -95,6 +95,10 @@ const SupplyPipelinePage: React.FC = () => {
   const navigate = useNavigate();
   const { dealId } = useParams();
   
+  // Deal context for city/market
+  const [dealCity, setDealCity] = useState<string>('');
+  const [dealState, setDealState] = useState<string>('');
+
   // State
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk'>('wave');
@@ -113,18 +117,41 @@ const SupplyPipelinePage: React.FC = () => {
   // DATA FETCHING
   // ============================================================================
 
+  // Fetch deal city/state for market context
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/deals/${dealId}`)
+      .then(res => {
+        const d = res.data?.data ?? res.data;
+        const city = d?.city ?? d?.market_city ?? '';
+        const state = d?.state ?? d?.market_state ?? '';
+        setDealCity(city);
+        setDealState(state);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
   useEffect(() => {
     fetchSupplyData();
   }, [dealId, timeHorizon]);
 
-  const fetchSupplyData = async () => {
+  // Re-fetch when deal city is resolved
+  useEffect(() => {
+    if (dealCity) {
+      fetchSupplyData(dealCity);
+    }
+  }, [dealCity]);
+
+  const fetchSupplyData = async (cityOverride?: string) => {
     setLoading(true);
     setIsLiveData(false);
+    const marketCity = cityOverride || dealCity || undefined;
+    const cityParam = marketCity ? { city: marketCity } : {};
     try {
       const [submarketRes, trendsRes, snapshotRes] = await Promise.allSettled([
-        apiClient.get('/api/v1/apartment-sync/submarkets', { params: { city: 'Atlanta' } }),
-        apiClient.get('/api/v1/apartment-sync/trends', { params: { city: 'Atlanta' } }),
-        apiClient.get('/api/v1/apartment-sync/market-snapshots', { params: { city: 'Atlanta' } }),
+        apiClient.get('/api/v1/apartment-sync/submarkets', { params: cityParam }),
+        apiClient.get('/api/v1/apartment-sync/trends', { params: cityParam }),
+        apiClient.get('/api/v1/apartment-sync/market-snapshots', { params: cityParam }),
       ]);
 
       const submarkets = submarketRes.status === 'fulfilled' ? (submarketRes.value.data?.data || []) : [];
