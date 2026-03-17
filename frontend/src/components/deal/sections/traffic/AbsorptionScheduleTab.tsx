@@ -226,7 +226,10 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
   }, [market?.captureRate, dealUnits]);
   const [supplyPressureFactor, setSupplyPressureFactor] = useState<number>(1.0);
 
-  const effectiveVelocity = Math.max(1, Math.round(monthlyVelocity * supplyPressureFactor));
+  const marketAdjustedVelocity = marketAbsorptionRate > 0
+    ? Math.round((monthlyVelocity + marketAbsorptionRate) / 2)
+    : monthlyVelocity;
+  const effectiveVelocity = Math.max(1, Math.round(marketAdjustedVelocity * supplyPressureFactor));
 
   const periods = useMemo(() => {
     if (isRedev) {
