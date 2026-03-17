@@ -1886,6 +1886,7 @@ export default function TerminalPage() {
   useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
 
   const corpHealthStore = useCorporateHealth();
+  const dealStoreCorporateHealth = useDealStore(s => s.corporateHealth);
   const fetchSubmarketHealth = useCorporateHealthStore(s => s.fetchSubmarketHealth);
   const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
 
@@ -2034,12 +2035,12 @@ export default function TerminalPage() {
               <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
                 <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
                   <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>PENDING INVITATIONS</span>
-                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv:any)=>inv.status==="pending").length} pending</span>
+                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv)=>inv.status==="pending").length} pending</span>
                 </div>
                 <div style={{maxHeight:200,overflow:"auto"}}>
                   {orgInvitations.length === 0 ? (
                     <div style={{padding:10,fontSize:9,color:T.text.muted,textAlign:"center"}}>No invitations sent</div>
-                  ) : orgInvitations.map((inv:any,i:number)=>(
+                  ) : orgInvitations.map((inv,i)=>(
                     <div key={inv.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
                       <div>
                         <div style={{fontSize:9,color:T.text.primary}}>{inv.email}</div>
