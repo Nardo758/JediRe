@@ -4,6 +4,8 @@ import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
+import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
+import { NewsIntelligencePage } from "./NewsIntelligencePage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -100,11 +102,11 @@ const PORTFOLIO_NAV = [
   {key:"F2",label:"PIPELINE"},
   {key:"F3",label:"PORTFOLIO"},
   {key:"F4",label:"MARKETS"},
-  {key:"F5",label:"EMAIL"},
-  {key:"F6",label:"COMPETE"},
+  {key:"F5",label:"COMPETE"},
+  {key:"F6",label:"NEWS"},
   {key:"F7",label:"STRATEGIES"},
-  {key:"F8",label:"ORG TOOLS"},
-  {key:"F9",label:"ORG SETTINGS"},
+  {key:"F8",label:"REPORTS"},
+  {key:"F9",label:"SETTINGS"},
 ];
 
 const WIDGET_CATALOG = [
@@ -1647,127 +1649,17 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── VIEW: F5 EMAIL ────────────────────────────────────────
-  const ViewEmail = () => {
-    const TAG_COLORS:Record<string,string>={LOI:T.text.cyan,URGENT:T.text.red,DD:T.text.amber,DEBT:T.text.purple,ZONING:T.text.orange,LP:T.text.secondary,SCORE:T.text.green};
-    const folders=[{id:"inbox",label:"INBOX",count:STATIC_EMAILS.filter(e=>e.unread).length},{id:"sent",label:"SENT",count:0},{id:"starred",label:"STARRED",count:1},{id:"all",label:"ALL MAIL",count:STATIC_EMAILS.length}];
-    const filtered=STATIC_EMAILS.filter(e=>{
-      const matchFolder=emailFolder==="all"||e.folder===emailFolder||emailFolder==="starred";
-      const matchSearch=!emailSearch||e.from.toLowerCase().includes(emailSearch.toLowerCase())||e.subject.toLowerCase().includes(emailSearch.toLowerCase());
-      return matchFolder&&matchSearch;
-    });
-    const activeEmail=STATIC_EMAILS.find(e=>e.id===selEmail)||null;
-    return (
-      <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
-        <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
-          <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-            <button onClick={()=>setFkey("F5")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
-          </div>
-          <div style={{flex:1,overflow:"auto"}}>
-            {folders.map(f=>(
-              <div key={f.id} onClick={()=>setEmailFolder(f.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",background:emailFolder===f.id?T.bg.active:"transparent",borderLeft:emailFolder===f.id?`2px solid ${T.text.amber}`:"2px solid transparent"}}>
-                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:emailFolder===f.id?T.text.amber:T.text.secondary}}>{f.label}</span>
-                {f.count>0&&<span style={{fontSize:7,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,padding:"1px 5px"}}>{f.count}</span>}
-              </div>
-            ))}
-            <div style={{height:1,background:T.border.subtle,margin:"6px 0"}}/>
-            <div style={{padding:"6px 12px 3px"}}><span style={{fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:1}}>LABELS</span></div>
-            {["LOI","DD","DEBT","ZONING","URGENT","SCORE","LP"].map(tag=>(
-              <div key={tag} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",cursor:"pointer"}}>
-                <span style={{width:6,height:6,borderRadius:"50%",background:TAG_COLORS[tag]||T.text.muted,display:"inline-block",flexShrink:0}}/>
-                <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.secondary}}>{tag}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{width:300,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0}}>
-          <div style={{padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:4,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"2px 7px",height:22}}>
-              <span style={{fontSize:9,color:T.text.muted}}>⌕</span>
-              <input value={emailSearch} onChange={e=>setEmailSearch(e.target.value)} placeholder="Search mail…" style={{flex:1,background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary}}/>
-            </div>
-          </div>
-          <div style={{flex:1,overflow:"auto"}}>
-            {filtered.length===0&&<div style={{padding:20,textAlign:"center",fontSize:9,color:T.text.muted}}>No messages</div>}
-            {filtered.map(e=>(
-              <div key={e.id} onClick={()=>setSelEmail(e.id)} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:selEmail===e.id?T.bg.active:e.unread?T.text.amber+"06":T.bg.panel,borderLeft:selEmail===e.id?`2px solid ${T.text.amber}`:e.unread?`2px solid ${T.text.orange}`:`2px solid transparent`}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:9,fontWeight:e.unread?700:500,color:e.unread?T.text.primary:T.text.secondary}}>{e.from}</span>
-                    {e.unread&&<span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>}
-                  </div>
-                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
-                </div>
-                <div style={{fontSize:8,fontWeight:e.unread?600:400,color:e.unread?T.text.primary:T.text.secondary,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</div>
-                <div style={{fontSize:7,color:T.text.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.preview}</div>
-                <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
-                  {e.tag&&<Bd c={TAG_COLORS[e.tag]||T.text.muted}>{e.tag}</Bd>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-          {!activeEmail&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:10,color:T.text.muted}}>Select an email to read</div></div>}
-          {activeEmail&&(
-            <>
-              <div style={{padding:"10px 16px",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:T.text.primary,marginBottom:4}}>{activeEmail.subject}</div>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  <span style={{fontSize:9,fontWeight:600,color:T.text.amber}}>{activeEmail.from}</span>
-                  <span style={{fontSize:8,color:T.text.muted}}>· {activeEmail.time}</span>
-                  {activeEmail.tag&&<Bd c={TAG_COLORS[activeEmail.tag]||T.text.muted}>{activeEmail.tag}</Bd>}
-                </div>
-                <div style={{display:"flex",gap:6,marginTop:8}}>
-                  {["REPLY","FORWARD"].map(a=>(
-                    <button key={a} onClick={()=>setFkey("F5")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={{flex:1,overflow:"auto",padding:"16px 18px"}}>
-                <pre style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:10,color:T.text.primary,lineHeight:"1.7",whiteSpace:"pre-wrap",margin:0}}>{activeEmail.body}</pre>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ─── VIEW: F6 COMPETE ─────────────────────────────────────
+  // ─── VIEW: F5 COMPETE (CompetitiveIntelligencePage) ──────
   const ViewCompete = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="COMPETITIVE INTELLIGENCE" subtitle="Performance Rankings | Acquisition Intel | Comp Analysis" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F6")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>FULL REPORT →</button>}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>PERFORMANCE RANKINGS</div>
-          {["Westshore Commons","Celebration South","Riverview Preserve","Dadeland Station"].map((n,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
-              <span style={{fontSize:9,color:T.text.primary}}>#{i+1} {n}</span>
-              <span style={{fontSize:9,fontWeight:700,color:T.text.amber}}>{[82,85,79,76][i]}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>ACQUISITION TARGETS</div>
-          {["Flagler Village 42u (distress)","Channelside 186u (value-add)","Winter Park 94u (mismanaged)"].map((n,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
-              <span style={{fontSize:9,color:T.text.primary}}>{n}</span>
-              <Bd c={T.text.orange}>TARGET</Bd>
-            </div>
-          ))}
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>OPPORTUNITY ALERTS</div>
-          {["Buckhead: opp score 9.0, buyer market","West End: opp 7.9, rent growth accelerating","East Atlanta: vac 15.4%, distress signal"].map((n,i)=>(
-            <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:9,color:T.text.secondary}}>{n}</div>
-          ))}
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>PATTERN DETECTION</div>
-          <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.5}}>3 submarkets showing rent convergence pattern. West End approaching Midtown pricing within 18 months. <span style={{color:T.text.amber,fontWeight:600}}>Gentrification signal: STRONG.</span></div>
-        </div>
-      </div>
+      <CompetitiveIntelligencePage />
+    </div>
+  );
+
+  // ─── VIEW: F6 NEWS (NewsIntelligencePage) ─────────────────
+  const ViewNews = () => (
+    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+      <NewsIntelligencePage />
     </div>
   );
 
@@ -1795,10 +1687,10 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── VIEW: F8 ORG TOOLS ────────────────────────────────────
-  const ViewTools = () => (
+  // ─── VIEW: F8 REPORTS ──────────────────────────────────────
+  const ViewReports = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="ORG TOOLS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
+      <PanelHeader T={T} title="REPORTS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TASKS</div>
@@ -1856,7 +1748,7 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── F9: ORG SETTINGS ─────────────────────────────────────
+  // ─── F9: SETTINGS ────────────────────────────────────────
   const fetchOrgData = useCallback(() => {
     setOrgLoading(true); setOrgError(""); setOrgSuccess("");
     apiClient.get("/api/v1/orgs/mine")
@@ -1954,14 +1846,14 @@ export default function TerminalPage() {
       .catch(err => setOrgError(err.response?.data?.error || "Failed to remove member"));
   };
 
-  const ViewOrgSettings = () => {
+  const ViewSettings = () => {
     const myRole = orgData?.my_role || "viewer";
     const canManage = myRole === "owner" || myRole === "principal";
     const isOwner = myRole === "owner";
     const roleBadgeColor: Record<string,string> = { owner: T.text.amber, principal: T.text.cyan, analyst: T.text.green, viewer: T.text.muted };
     return (
       <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-        <PanelHeader T={T} title="ORG SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
+        <PanelHeader T={T} title="SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
           right={<span style={{fontSize:8,color:T.text.muted}}>YOUR ROLE: <span style={{color:roleBadgeColor[myRole]||T.text.muted,fontWeight:700}}>{myRole.toUpperCase()}</span></span>}/>
         {orgLoading ? (
           <div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading organization data...</span></div>
@@ -2071,11 +1963,11 @@ export default function TerminalPage() {
       case "F2": return DealGrid();
       case "F3": return ViewPortfolio();
       case "F4": return ViewMarkets();
-      case "F5": return ViewEmail();
-      case "F6": return ViewCompete();
+      case "F5": return ViewCompete();
+      case "F6": return ViewNews();
       case "F7": return ViewStrategies();
-      case "F8": return ViewTools();
-      case "F9": return ViewOrgSettings();
+      case "F8": return ViewReports();
+      case "F9": return ViewSettings();
       default: return null;
     }
   };

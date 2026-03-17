@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 const SYSTEMS = [
   {
@@ -248,7 +248,6 @@ function Divider({ label, color = '#475569' }: { label: string; color?: string }
 
 export default function CompetitiveIntelligencePage() {
   const { systemId } = useParams<{ systemId?: string }>();
-  const navigate = useNavigate();
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
   const validSystemIds = SYSTEMS.map(s => s.id);
@@ -258,17 +257,14 @@ export default function CompetitiveIntelligencePage() {
   useEffect(() => {
     if (systemId && validSystemIds.includes(systemId)) {
       setActiveSystem(systemId);
-    } else if (systemId && !validSystemIds.includes(systemId)) {
-      navigate('/competitive-intelligence/performance', { replace: true });
-    } else if (!systemId) {
+    } else {
       setActiveSystem('performance');
     }
-  }, [systemId, navigate]);
+  }, [systemId]);
 
   const handleSystemChange = (id: string) => {
     setActiveSystem(id);
     setExpandedSection(null);
-    navigate(`/competitive-intelligence/${id}`, { replace: true });
   };
 
   const toggle = (id: string) => setExpandedSection(expandedSection === id ? null : id);
