@@ -384,8 +384,8 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-2">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-blue-100 text-blue-300' 
+              : 'bg-green-100 text-green-300'
           }`}>
             {isPipeline ? '📋 Acquisition Files' : '📂 Property Files'}
           </div>
@@ -406,13 +406,13 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-700' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
+            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
           >
             ⊞
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-700' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
+            className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
           >
             ≡
           </button>
@@ -526,10 +526,10 @@ interface QuickActionsBarProps {
 
 const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ actions }) => {
   const colorClasses: Record<string, string> = {
-    blue: 'text-blue-300 hover:text-blue-200' style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }},
-    purple: 'bg-purple-50 text-purple-700 hover:bg-purple-100',
+    blue: 'bg-blue-900/20 text-blue-300 hover:bg-blue-900/30',
+    purple: 'bg-purple-900/20 text-purple-300 hover:bg-purple-900/30',
     green: 'bg-green-900/20 text-green-300 hover:bg-green-900/30',
-    orange: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
+    orange: 'bg-orange-900/20 text-orange-300 hover:bg-orange-900/30',
     indigo: 'bg-indigo-900/20 text-indigo-300 hover:bg-indigo-900/30'
   };
 

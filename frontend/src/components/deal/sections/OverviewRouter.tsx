@@ -33,11 +33,11 @@ export const OverviewRouter: React.FC<any> = (props) => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-slate-100 text-slate-600 border border-slate-200">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide text-[#9EA8B4] border border-[#1e2a3d]" style={{ background: "#131920" }}>
           <span>{meta.icon}</span>
           {meta.label}
         </span>
-        <span className="text-[10px] text-slate-400 font-mono">{meta.sectionCount} sections</span>
+        <span className="text-[10px] font-mono text-[#6B7585]">{meta.sectionCount} sections</span>
       </div>
       <Component {...props} />
     </div>

@@ -228,7 +228,7 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
   if (dataSource === 'predicted') {
     const isCompPattern = baselineSource === 'comp_pattern' && baselineComps && baselineComps.length > 0;
     return (
-      <div className={`border rounded-xl p-4 flex items-start gap-3 ${isCompPattern ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className={`border rounded-xl p-4 flex items-start gap-3 ${isCompPattern ? 'bg-emerald-900/10 border-emerald-800' : 'bg-amber-900/10 border-amber-800'}`}>
         {isCompPattern
           ? <CheckCircle2 size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" />
           : <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
@@ -262,7 +262,7 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
 
   if (dataSource === 'blended') {
     return (
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+      <div className="rounded-xl p-4 flex items-start gap-3 border border-blue-800/50" style={{ background: "rgba(59,130,246,0.06)" }}>
         <CheckCircle2 size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
         <div className="flex-1">
           <div className="text-sm font-semibold text-blue-900">
@@ -535,7 +535,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
       <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Leasing Funnel</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1]">Leasing Funnel</h3>
           {!hasHistory && (
             <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED TYPICAL WEEK</span>
           )}
@@ -551,7 +551,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <div key={step.label} className="flex items-center gap-2 flex-1">
               <div className="flex-1">
                 <div className="text-stone-400 font-mono text-[10px] uppercase mb-1">{step.label}</div>
-                <div className="text-lg font-bold text-stone-900">{step.value}</div>
+                <div className="text-lg font-bold text-[#E8E6E1]">{step.value}</div>
                 <div className={`h-2 rounded-full ${step.color} mt-1`}
                   style={{ width: `${funnelTraffic > 0 ? Math.max(10, (step.value / funnelTraffic) * 100) : 10}%` }} />
               </div>
@@ -562,7 +562,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         <div className="flex gap-4 mt-4 pt-4 border-t border-stone-100">
           <div className="flex-1">
             <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Traffic Source Split</div>
-            <div className="flex h-4 rounded-full overflow-hidden bg-stone-100">
+            <div className="flex h-4 rounded-full overflow-hidden bg-[#131920]">
               <div className="bg-stone-700 flex items-center justify-center"
                 style={{ width: `${funnelTraffic > 0 ? (Math.max(0, funnelWalkIn) / funnelTraffic) * 100 : 50}%` }}>
                 <span className="text-[9px] text-white font-mono">{Math.max(0, Math.round(funnelWalkIn))}</span>
@@ -573,8 +573,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </div>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-stone-500 flex items-center gap-1"><Footprints size={10} /> Walk-In</span>
-              <span className="text-[10px] text-stone-500 flex items-center gap-1"><Globe size={10} /> Website</span>
+              <span className="text-[10px] text-[#6B7585] flex items-center gap-1"><Footprints size={10} /> Walk-In</span>
+              <span className="text-[10px] text-[#6B7585] flex items-center gap-1"><Globe size={10} /> Website</span>
             </div>
           </div>
           <div className="flex-1">
@@ -583,11 +583,11 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-stone-500">{hasHistory ? 'This Week' : 'Weekly'}</div>
-                <div className="text-lg font-bold text-stone-900">{Math.round(kpiTraffic)}</div>
+                <div className="text-xs text-[#6B7585]">{hasHistory ? 'This Week' : 'Weekly'}</div>
+                <div className="text-lg font-bold text-[#E8E6E1]">{Math.round(kpiTraffic)}</div>
               </div>
               <div>
-                <div className="text-xs text-stone-500">{hasHistory ? '4-Wk Avg' : 'Monthly Est.'}</div>
+                <div className="text-xs text-[#6B7585]">{hasHistory ? '4-Wk Avg' : 'Monthly Est.'}</div>
                 <div className="text-lg font-bold text-stone-400">
                   {hasHistory ? Math.round(avg4('traffic')) : Math.round(kpiTraffic * 4.33)}
                 </div>
@@ -599,9 +599,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
       <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Traffic Projection</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1]">Traffic Projection</h3>
           <div className="flex items-center gap-3">
-            <div className="flex bg-stone-100 rounded-lg p-0.5">
+            <div className="flex bg-[#131920] rounded-lg p-0.5">
               {(['weekly', 'monthly', 'yearly'] as const).map(v => (
                 <button
                   key={v}
@@ -618,19 +618,19 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <button onClick={handleSaveEdits} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700">
                   <Save size={12} /> Save
                 </button>
-                <button onClick={() => { setEditing(false); setEditValues({}); }} className="flex items-center gap-1 px-3 py-1.5 bg-stone-200 text-stone-700 rounded-lg text-xs hover:bg-stone-300">
+                <button onClick={() => { setEditing(false); setEditValues({}); }} className="flex items-center gap-1 px-3 py-1.5 bg-[#1e2a3d] text-[#9EA8B4] rounded-lg text-xs hover:bg-[#1e2a3d]">
                   <X size={12} /> Cancel
                 </button>
               </div>
             ) : (
-              <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-stone-700 rounded-lg text-xs hover:bg-stone-200">
+              <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-[#131920] text-[#9EA8B4] rounded-lg text-xs hover:bg-[#1e2a3d]">
                 <Edit3 size={12} /> Edit
               </button>
             )}
           </div>
         </div>
 
-        <div ref={tableContainerRef} className="overflow-x-auto rounded-lg border border-stone-200">
+        <div ref={tableContainerRef} className="overflow-x-auto rounded-lg border border-[#1e2a3d]">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr style={{ backgroundColor: '#3C4A3B' }}>
@@ -652,7 +652,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </thead>
             <tbody>
               <tr>
-                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 bg-stone-50">
+                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-[#6B7585] uppercase tracking-wider border-b border-[#1e2a3d] bg-[#0F1319]">
                   Raw Traffic Metrics
                 </td>
               </tr>
@@ -673,7 +673,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               <tr className="h-3"><td colSpan={periods.length + 1}></td></tr>
 
               <tr className="cursor-pointer" onClick={() => setShowAdjustments(!showAdjustments)}>
-                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200 bg-stone-50">
+                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-[#6B7585] uppercase tracking-wider border-b border-[#1e2a3d] border-t border-[#1e2a3d] bg-[#0F1319]">
                   <span className="flex items-center gap-1">
                     {showAdjustments ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                     Market Adjustments
@@ -686,7 +686,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   {periods.map(p => {
                     const val = (p as Record<string, unknown>)[row.field] as number;
                     return (
-                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-700">
+                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-[#9EA8B4]">
                         {p.isActual ? '–' : `${val.toFixed(2)}x`}
                       </td>
                     );
@@ -697,7 +697,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               <tr className="h-3"><td colSpan={periods.length + 1}></td></tr>
 
               <tr>
-                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200 bg-stone-50">
+                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-[#6B7585] uppercase tracking-wider border-b border-[#1e2a3d] border-t border-[#1e2a3d] bg-[#0F1319]">
                   Adjusted Output
                 </td>
               </tr>
@@ -713,7 +713,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                         <td key={p.index} className="px-1 py-1">
                           <input
                             type="number"
-                            className="w-full text-right text-[11px] font-mono border border-stone-300 rounded px-2 py-1 bg-amber-50/50 focus:outline-none focus:border-stone-400"
+                            className="w-full text-right text-[11px] font-mono rounded px-2 py-1 focus:outline-none" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid #1e2a3d", color: "#C8C4BE" }}
                             defaultValue={row.format === 'pct' ? (val * 100).toFixed(1) : Math.round(val)}
                             onChange={(e) => {
                               const newVal = row.format === 'pct' ? parseFloat(e.target.value) / 100 : parseFloat(e.target.value);
@@ -728,7 +728,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     }
 
                     return (
-                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-900 font-medium">
+                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-[#E8E6E1] font-medium">
                         {formatVal(val, row.format)}
                       </td>
                     );
@@ -752,7 +752,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       {mi && (
         <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-stone-900">Market Intelligence Adjustments</h3>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Market Intelligence Adjustments</h3>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
               dataSource === 'uploaded' ? 'bg-emerald-100 text-emerald-700' :
               dataSource === 'blended' ? 'bg-blue-100 text-blue-700' :
@@ -767,7 +767,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <FactorCard label="Digital" factor={mi.digitalFactor} summary={mi.digitalSummary} direction={mi.digitalDirection} />
             <FactorCard label="Seasonal" factor={mi.seasonalFactor} summary={mi.seasonalSummary} direction={mi.seasonalDirection} />
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3">
+          <div className="rounded-lg p-3 flex items-start gap-3 border border-amber-800" style={{ background: "rgba(245,158,11,0.08)" }}>
             <TrendingUp size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
             <div>
               <div className="text-sm font-semibold text-amber-900">{mi.overallSummary}</div>
@@ -779,7 +779,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
       {latest && (
         <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
-          <h3 className="text-lg font-bold text-stone-900 mb-4">Vacancy & Availability</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Vacancy & Availability</h3>
           <div className="grid grid-cols-2 gap-6">
             <div>
               <div className="text-stone-400 font-mono text-[10px] uppercase mb-3">Vacancy Breakdown</div>
@@ -791,17 +791,17 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">
                     <span className="text-xs text-stone-600 w-28">{item.label}</span>
-                    <div className="flex-1 bg-stone-100 rounded-full h-3 overflow-hidden">
+                    <div className="flex-1 bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full`}
                         style={{ width: `${(latest.total_units || 290) > 0 ? (item.value / (latest.total_units || 290)) * 100 : 0}%` }} />
                     </div>
-                    <span className="text-xs font-mono text-stone-700 w-8 text-right">{item.value}</span>
+                    <span className="text-xs font-mono text-[#9EA8B4] w-8 text-right">{item.value}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
-                  <span className="text-xs text-stone-900 font-semibold w-28">Total Vacant</span>
+                  <span className="text-xs text-[#E8E6E1] font-semibold w-28">Total Vacant</span>
                   <div className="flex-1" />
-                  <span className="text-xs font-mono font-bold text-stone-900 w-8 text-right">{latest.vacant_total || 0}</span>
+                  <span className="text-xs font-mono font-bold text-[#E8E6E1] w-8 text-right">{latest.vacant_total || 0}</span>
                 </div>
               </div>
 
@@ -813,17 +813,17 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">
                     <span className="text-xs text-stone-600 w-28">{item.label}</span>
-                    <div className="flex-1 bg-stone-100 rounded-full h-3 overflow-hidden">
+                    <div className="flex-1 bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full`}
                         style={{ width: `${(latest.total_units || 290) > 0 ? (item.value / (latest.total_units || 290)) * 100 : 0}%` }} />
                     </div>
-                    <span className="text-xs font-mono text-stone-700 w-8 text-right">{item.value}</span>
+                    <span className="text-xs font-mono text-[#9EA8B4] w-8 text-right">{item.value}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
-                  <span className="text-xs text-stone-900 font-semibold w-28">Total Notice</span>
+                  <span className="text-xs text-[#E8E6E1] font-semibold w-28">Total Notice</span>
                   <div className="flex-1" />
-                  <span className="text-xs font-mono font-bold text-stone-900 w-8 text-right">{latest.notice_total || 0}</span>
+                  <span className="text-xs font-mono font-bold text-[#E8E6E1] w-8 text-right">{latest.notice_total || 0}</span>
                 </div>
               </div>
             </div>
@@ -839,9 +839,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   <div key={item.label}>
                     <div className="flex justify-between mb-1">
                       <span className="text-xs text-stone-600">{item.label}</span>
-                      <span className="text-xs font-mono font-bold text-stone-900">{item.value} units</span>
+                      <span className="text-xs font-mono font-bold text-[#E8E6E1]">{item.value} units</span>
                     </div>
-                    <div className="bg-stone-100 rounded-full h-3 overflow-hidden">
+                    <div className="bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className="h-full bg-stone-600 rounded-full"
                         style={{ width: `${Math.min(100, item.value * 5)}%` }} />
                     </div>
@@ -855,9 +855,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   { label: 'Leased %', value: `${((latest.leased_pct || 0) * 100).toFixed(1)}%` },
                   { label: 'Avail %', value: `${((latest.avail_pct || 0) * 100).toFixed(1)}%` },
                 ].map(item => (
-                  <div key={item.label} className="bg-stone-50 rounded-lg p-3 text-center">
+                  <div key={item.label} className="bg-[#0F1319] rounded-lg p-3 text-center">
                     <div className="text-stone-400 font-mono text-[10px] uppercase">{item.label}</div>
-                    <div className="text-lg font-bold text-stone-900 mt-1">{item.value}</div>
+                    <div className="text-lg font-bold text-[#E8E6E1] mt-1">{item.value}</div>
                   </div>
                 ))}
               </div>
@@ -869,7 +869,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       {!mi && !latest && (
         <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
           <SlidersHorizontal size={32} className="mx-auto text-stone-300 mb-3" />
-          <p className="text-sm text-stone-500">Market adjustments will appear once projection data is available.</p>
+          <p className="text-sm text-[#6B7585]">Market adjustments will appear once projection data is available.</p>
         </div>
       )}
     </div>
@@ -881,8 +881,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         <div className="flex items-center gap-3 mb-4">
           <Database size={18} className="text-stone-400" />
           <div>
-            <h3 className="text-lg font-bold text-stone-900">Data Library Calibration</h3>
-            <p className="text-xs text-stone-500 mt-0.5">
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Data Library Calibration</h3>
+            <p className="text-xs text-[#6B7585] mt-0.5">
               {calibration?.calibrated
                 ? `${calibration.sampleCount} deal${calibration.sampleCount !== 1 ? 's' : ''} in this submarket contributing to calibration${calibration.dataLibraryFileCount > 0 ? ` | ${calibration.dataLibraryFileCount} Data Library file${calibration.dataLibraryFileCount !== 1 ? 's' : ''}` : ''}`
                 : 'No submarket calibration data yet — upload weekly reports to teach the engine'}
@@ -905,11 +905,11 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 const isUp = diff > 0;
 
                 return (
-                  <div key={metric} className="bg-stone-50 rounded-lg p-3">
-                    <div className="text-stone-500 font-mono text-[10px] uppercase mb-2">{metric}</div>
+                  <div key={metric} className="bg-[#0F1319] rounded-lg p-3">
+                    <div className="text-[#6B7585] font-mono text-[10px] uppercase mb-2">{metric}</div>
                     <div className="flex items-end justify-between">
                       <div>
-                        <div className="text-lg font-bold text-stone-900">{formatFn(vals.calibrated)}</div>
+                        <div className="text-lg font-bold text-[#E8E6E1]">{formatFn(vals.calibrated)}</div>
                         <div className="text-[11px] text-stone-400">Default: {formatFn(vals.default)}</div>
                       </div>
                       <div className={`text-xs font-mono ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -928,7 +928,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               )}
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 text-stone-600 rounded-lg text-xs hover:bg-stone-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 text-stone-600 rounded-lg text-xs hover:bg-[#0F1319] transition-colors"
               >
                 <Database size={12} /> Data Library <ExternalLink size={10} />
               </a>
@@ -937,7 +937,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         ) : (
           <div className="text-center py-6">
             <Database size={32} className="mx-auto text-stone-300 mb-3" />
-            <p className="text-sm text-stone-500 mb-3">
+            <p className="text-sm text-[#6B7585] mb-3">
               Upload weekly operating reports to build submarket-specific calibration data.
               The more deals that contribute data, the better the predictions become.
             </p>
@@ -950,7 +950,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </button>
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-stone-300 text-stone-700 rounded-lg text-sm hover:bg-stone-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-stone-300 text-[#9EA8B4] rounded-lg text-sm hover:bg-[#0F1319] transition-colors"
               >
                 <Database size={14} /> Open Data Library <ExternalLink size={11} />
               </a>

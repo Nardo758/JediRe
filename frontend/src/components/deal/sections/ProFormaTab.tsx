@@ -594,7 +594,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     <div style={{ background: BT.bgBase, minHeight: '100%' }}>
       {/* F8 Banner */}
       <div style={{ background: BT.blueBg, borderBottom: `1px solid ${BT.blue}40`, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: `${BT.blue}30`, border: `1px solid ${BT.blue}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F8</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: `${BT.blue}30`, border: `1px solid ${BT.blue}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F6</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: BT.blueL, ...bSans }}>PRO FORMA CONTROL GRID</span>
         <span style={{ fontSize: 10, color: BT.td, ...bSans, marginLeft: 4 }}>Financial model · DCF · Waterfall · Sensitivity</span>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -921,7 +921,7 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
           </thead>
           <tbody>
             {unitMix.map((row, i) => (
-              <tr key={i} className="border-b border-stone-100 hover:bg-stone-50">
+              <tr key={i} className="border-b border-[#1e2a3d] hover:bg-[#131920]">
                 <td className="py-1.5 px-2">
                   <input type="text" value={row.floorPlan} onChange={(e) => updateRow(i, 'floorPlan', e.target.value)}
                     className="w-24 text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
@@ -961,7 +961,7 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
                 </td>
               </tr>
             ))}
-            <tr className="bg-stone-50 font-semibold text-stone-700">
+            <tr className="font-semibold text-[#9EA8B4]" style={{ background: "#131920" }}>
               <td className="py-2 px-2">TOTAL</td>
               <td className="py-2 px-2 text-right font-mono">{totals.units > 0 ? Math.round(totals.totalSF / totals.units) : 0}</td>
               <td className="py-2 px-2"></td>
@@ -1042,7 +1042,7 @@ const DevelopmentCostsSection: React.FC<any> = ({
         <InputField label="Construction Loan LTC" value={constructionLoanLTC} onChange={setConstructionLoanLTC} type="percent" suffix="(decimal)" />
         <InputField label="Construction Loan Rate" value={constructionLoanRate} onChange={setConstructionLoanRate} type="percent" suffix="(decimal)" />
       </div>
-      <div className="bg-stone-50 rounded-lg p-3 text-[10px] font-mono text-stone-500">
+      <div className="rounded-lg p-3 text-[10px] font-mono text-[#6B7585]" style={{ background: "#131920" }}>
         Hard Cost: {fmt$(hardCost)} | Total Dev Cost (est): {fmt$(totalDev)} | Loan: {fmt$(totalDev * constructionLoanLTC)} | Equity: {fmt$(totalDev * (1 - constructionLoanLTC))}
       </div>
     </div>
@@ -1184,7 +1184,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
           <button
             onClick={() => setOngoing(!ongoing)}
             className={`px-3 py-1.5 text-xs rounded border transition-colors ${
-              ongoing ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-stone-50 border-stone-200 text-stone-500'
+              ongoing ? 'bg-blue-900/20 border-blue-700 text-blue-300' : 'text-[#6B7585] border-[#1e2a3d]'
             }`}
           >
             {ongoing ? 'Yes — recurring' : 'No — lease-up only'}
@@ -1194,12 +1194,12 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
       </div>
 
       {(freeWeeks > 0 && unitsPct > 0) && (
-        <div className="bg-stone-50 rounded-xl border border-stone-200 p-4">
+        <div className="rounded-xl p-4" style={{ background: "#131920", border: "1px solid #1e2a3d" }}>
           <h5 className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-3">Concession Impact</h5>
           <div className="grid grid-cols-5 gap-4">
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">Cost / Unit</div>
-              <div className="text-sm font-bold font-mono text-stone-900">{fmt$(Math.round(concessionCostPerUnit))}</div>
+              <div className="text-sm font-bold font-mono text-[#E8E6E1]">{fmt$(Math.round(concessionCostPerUnit))}</div>
             </div>
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">
@@ -1234,7 +1234,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
             </div>
             <div className="flex justify-between text-xs font-semibold mt-1 pt-1 border-t border-stone-200">
               <span className="text-stone-800">Effective Gross Income (post-concessions)</span>
-              <span className="font-mono text-stone-900">{fmt$(Math.round(gpr - annualizedConcessionCost))}</span>
+              <span className="font-mono text-[#E8E6E1]">{fmt$(Math.round(gpr - annualizedConcessionCost))}</span>
             </div>
           </div>
         </div>
@@ -1276,7 +1276,7 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
               </td>
             </tr>
           ))}
-          <tr className="bg-stone-50 font-semibold">
+          <tr className="font-semibold" style={{ background: "#131920" }}>
             <td className="py-2 px-2">TOTAL OTHER INCOME</td>
             <td></td><td></td>
             <td className="py-2 px-2 text-right font-mono">{fmt$(Math.round(totalAnnual))}</td>
@@ -1334,7 +1334,7 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
               </td>
             </tr>
           ))}
-          <tr className="bg-stone-50 font-semibold">
+          <tr className="font-semibold" style={{ background: "#131920" }}>
             <td className="py-2 px-2">TOTAL EXPENSES (excl. Mgmt %)</td>
             <td></td><td></td><td></td>
             <td className="py-2 px-2 text-right font-mono">{fmt$(Math.round(totalExpenses))}</td>

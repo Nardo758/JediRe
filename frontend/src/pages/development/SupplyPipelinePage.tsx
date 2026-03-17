@@ -175,7 +175,7 @@ const SupplyPipelinePage: React.FC = () => {
             phase,
             expectedDelivery: sm.snapshot_date ? new Date(sm.snapshot_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 'TBD',
             submarket: sm.submarket_name || sm.name || 'Unknown',
-            distanceMiles: Math.random() * 5 + 0.5,
+            distanceMiles: null,
             unitMix: {
               studio: 10,
               oneBed: 40,
@@ -201,8 +201,8 @@ const SupplyPipelinePage: React.FC = () => {
           activeProjects: d.count,
           totalUnits: d.units,
           pipelineShare: (d.units / totalPipelineUnits) * 100,
-          avgDeliveryTime: 18 + Math.floor(Math.random() * 6),
-          delayRate: Math.random() * 30,
+          avgDeliveryTime: 18,
+          delayRate: 0,
           marketShare: (d.units / totalPipelineUnits) * 100,
         })).sort((a, b) => b.totalUnits - a.totalUnits);
         setDeveloperActivity(devActivity.length > 0 ? devActivity : generateMockDevelopers());
@@ -1205,9 +1205,9 @@ function generateMockSupplyWave(): SupplyWaveData[] {
     
     // Simulate wave pattern with peak in middle
     const waveFactor = Math.sin((i / 20) * Math.PI);
-    const confirmed = Math.floor(waveFactor * 800 + Math.random() * 200);
-    const underConstruction = Math.floor(waveFactor * 600 + Math.random() * 150);
-    const planned = Math.floor(waveFactor * 400 + Math.random() * 100);
+    const confirmed = Math.floor(waveFactor * 800 + (i * 7) % 200);
+    const underConstruction = Math.floor(waveFactor * 600 + (i * 11) % 150);
+    const planned = Math.floor(waveFactor * 400 + (i * 13) % 100);
     
     quarters.push({
       year,
