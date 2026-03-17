@@ -502,10 +502,23 @@ const PRESET_LABELS: Record<DDChecklistPreset, string> = {
   redevelopment: 'Redevelopment',
 };
 
+const ENVIRONMENTAL_PHYSICAL_CATEGORIES = new Set([
+  'Physical Inspection',
+  'Environmental',
+  'Insurance',
+  'Environmental & Hazmat',
+  'Geotechnical',
+  'Site & Engineering',
+  'Existing Structure',
+]);
+
 function buildChecklistFromPreset(preset: DDChecklistPreset): DDChecklistItem[] {
   const categories = DD_CHECKLISTS[preset] || DD_CHECKLISTS.existing_acquisition;
   const items: DDChecklistItem[] = [];
-  categories.forEach((cat: DDChecklistCategory) => {
+  const filtered = categories.filter((cat: DDChecklistCategory) =>
+    ENVIRONMENTAL_PHYSICAL_CATEGORIES.has(cat.category)
+  );
+  filtered.forEach((cat: DDChecklistCategory) => {
     cat.items.forEach((label: string, idx: number) => {
       items.push({
         id: `dd-${cat.category.replace(/\s+/g, '-').toLowerCase()}-${idx}`,

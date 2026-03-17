@@ -124,7 +124,7 @@ function fmtPctRaw(n: number): string {
 
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
-  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy, design3D } = useDealModule();
+  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy, design3D, absorptionData } = useDealModule();
   const dealType = useDealType();
   const proformaTemplate = useMemo(() => getProFormaTemplate(dealType), [dealType]);
 
@@ -184,17 +184,27 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [concessionOngoing, setConcessionOngoing] = useState(modelType === 'existing');
   const [absorptionLinked, setAbsorptionLinked] = useState(false);
 
+  const applyAbsorptionData = useCallback((data: { concessionPeriodMonths: number; eligibleUnitsPct: number; dealType: string }) => {
+    const { concessionPeriodMonths, eligibleUnitsPct, dealType: absDealType } = data;
+    if (absDealType === 'development' || absDealType === 'redevelopment') {
+      setConcessionDurationMonths(concessionPeriodMonths || 0);
+      setConcessionUnitsPct(eligibleUnitsPct > 1 ? eligibleUnitsPct / 100 : eligibleUnitsPct || 0);
+      if (concessionFreeWeeks === 0) {
+        setConcessionFreeWeeks(absDealType === 'development' ? 4 : 2);
+      }
+      setAbsorptionLinked(true);
+    }
+  }, [concessionFreeWeeks]);
+
+  useEffect(() => {
+    if (absorptionData && !absorptionLinked) {
+      applyAbsorptionData(absorptionData);
+    }
+  }, [absorptionData]);
+
   useEffect(() => {
     if (lastEvent?.type === 'absorption-updated' && lastEvent.payload) {
-      const { concessionPeriodMonths, eligibleUnitsPct, dealType: absDealType } = lastEvent.payload;
-      if (absDealType === 'development' || absDealType === 'redevelopment') {
-        setConcessionDurationMonths(concessionPeriodMonths || 0);
-        setConcessionUnitsPct(eligibleUnitsPct > 1 ? eligibleUnitsPct / 100 : eligibleUnitsPct || 0);
-        if (concessionFreeWeeks === 0) {
-          setConcessionFreeWeeks(absDealType === 'development' ? 4 : 2);
-        }
-        setAbsorptionLinked(true);
-      }
+      applyAbsorptionData(lastEvent.payload);
     }
   }, [lastEvent]);
 

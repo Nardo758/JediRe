@@ -203,7 +203,7 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
   const isRedev = dealType === 'redevelopment';
   const isExisting = dealType === 'existing';
 
-  const { emitEvent } = useDealModule();
+  const { emitEvent, updateAbsorptionData, market } = useDealModule();
 
   const [monthlyVelocity, setMonthlyVelocity] = useState(isDev ? Math.max(5, Math.round(dealUnits * 0.06)) : Math.max(3, Math.round(dealUnits * 0.04)));
   const [startOccupancy, setStartOccupancy] = useState(isDev ? 0 : dealOcc || 0.82);
@@ -211,9 +211,19 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
   const [rampUpMonths, setRampUpMonths] = useState(isDev ? 3 : 2);
   const [offlineUnits, setOfflineUnits] = useState(isRedev ? Math.round(dealUnits * 0.4) : 0);
   const [renovationMonths, setRenovationMonths] = useState(isRedev ? 12 : 0);
-  const [marketAbsorptionRate, setMarketAbsorptionRate] = useState<number>(
-    isDev ? Math.max(8, Math.round(dealUnits * 0.05)) : Math.max(5, Math.round(dealUnits * 0.03))
-  );
+  const marketAbsorptionDefault = useMemo(() => {
+    if (market?.captureRate && market.captureRate > 0) {
+      return Math.max(1, Math.round(market.captureRate * dealUnits / 12));
+    }
+    return isDev ? Math.max(8, Math.round(dealUnits * 0.05)) : Math.max(5, Math.round(dealUnits * 0.03));
+  }, [market, dealUnits, isDev]);
+  const [marketAbsorptionRate, setMarketAbsorptionRate] = useState<number>(marketAbsorptionDefault);
+
+  useEffect(() => {
+    if (market?.captureRate && market.captureRate > 0) {
+      setMarketAbsorptionRate(Math.max(1, Math.round(market.captureRate * dealUnits / 12)));
+    }
+  }, [market?.captureRate, dealUnits]);
   const [supplyPressureFactor, setSupplyPressureFactor] = useState<number>(1.0);
 
   const effectiveVelocity = Math.max(1, Math.round(monthlyVelocity * supplyPressureFactor));
@@ -242,20 +252,22 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
 
   useEffect(() => {
     if (periods.length === 0) return;
+    const data = {
+      monthsToStabilization,
+      totalAbsorbed,
+      avgMonthlyVelocity,
+      concessionPeriodMonths: monthsToStabilization,
+      eligibleUnitsPct: totalUnits > 0 ? totalAbsorbed / totalUnits : 0,
+      marketAbsorptionRate,
+      supplyPressureFactor,
+      breakEvenOccupancy,
+      dealType,
+    };
+    updateAbsorptionData(data);
     emitEvent({
       source: 'absorption-schedule',
       type: 'absorption-updated',
-      payload: {
-        monthsToStabilization,
-        totalAbsorbed,
-        avgMonthlyVelocity,
-        concessionPeriodMonths: monthsToStabilization,
-        eligibleUnitsPct: totalUnits > 0 ? totalAbsorbed / totalUnits : 0,
-        marketAbsorptionRate,
-        supplyPressureFactor,
-        breakEvenOccupancy,
-        dealType,
-      },
+      payload: data,
     });
   }, [monthsToStabilization, totalAbsorbed, avgMonthlyVelocity, marketAbsorptionRate, supplyPressureFactor, breakEvenOccupancy, dealType]);
 
