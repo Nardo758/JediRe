@@ -88,6 +88,7 @@ import metricsCatalogRoutes from './metrics-catalog.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
+import { createCapsuleRoutes } from './capsule.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 
 const API_PREFIX = '/api/v1';
@@ -347,6 +348,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data Ingestion routes (Admin-only — Zillow, FRED, other data sources)
   app.use(`${API_PREFIX}/admin/ingest`, ingestionRoutes);
+
+  // Deal Capsule routes (3-layer capsule CRUD, documents, shares, collision)
+  const { getPool: getCapsulePool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/capsules`, createCapsuleRoutes(getCapsulePool()));
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
