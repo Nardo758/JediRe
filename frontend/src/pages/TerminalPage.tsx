@@ -31,7 +31,6 @@ const TERMINAL_CSS = `
 @keyframes glowR{0%,100%{box-shadow:0 0 4px #FF475744}50%{box-shadow:0 0 10px #FF475766}}
 @keyframes flash{0%{background:transparent}15%{background:#F5A62322}100%{background:transparent}}
 @keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-@keyframes newsTicker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
 *{scrollbar-width:thin;scrollbar-color:#2A3348 #0A0E17}
@@ -2317,15 +2316,15 @@ export default function TerminalPage() {
           <span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:800,color:T.text.cyan,letterSpacing:1.5}}>NEWS</span>
         </div>
         <div style={{flex:1,overflow:"hidden",display:"flex",alignItems:"center"}}>
-          <div style={{display:"flex",gap:20,whiteSpace:"nowrap",animation:"newsTicker 60s linear infinite",fontSize:9,lineHeight:"24px"}}>
+          <div style={{display:"flex",gap:20,whiteSpace:"nowrap",animation:"ticker 60s linear infinite",fontSize:9,lineHeight:"24px"}}>
             {[...liveNews,...liveNews].map((n,i)=>{
               const impactColor = n.impact?.includes("DEMAND")?T.text.green:n.impact?.includes("SUPPLY")||n.impact?.includes("RISK")?T.text.red:T.text.amber;
               return (
                 <span key={i} onClick={()=>{setBottomTab("news");setTimeout(()=>{const el=document.getElementById(`news-row-${n.id}`);el?.scrollIntoView({block:"nearest",behavior:"smooth"});},50);}} style={{cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                  <span style={{color:T.text.muted,fontSize:8}}>{n.time}</span>
+                  <span style={{color:T.text.muted,fontSize:8}}>[{n.time}]</span>
                   <span style={{color:T.text.primary}}>{n.hl}</span>
-                  <span style={{fontWeight:700,color:impactColor,fontSize:8}}>{n.impact}</span>
-                  <span style={{fontWeight:700,color:impactColor,fontSize:8}}>{n.pts} pts</span>
+                  <span style={{color:T.text.muted}}>—</span>
+                  <span style={{fontWeight:700,color:impactColor,fontSize:8}}>{n.impact} {n.pts} pts</span>
                   <span style={{color:T.text.muted,margin:"0 4px"}}>·</span>
                 </span>
               );
