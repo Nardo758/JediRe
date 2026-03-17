@@ -1,36 +1,6 @@
 import React, { useState } from 'react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-
-// ─── Design tokens (Bloomberg terminal palette) ───────────────────────────────
-const T = {
-  bg:      '#0c0a09',
-  bgCard:  '#1c1917',
-  bgHover: '#292524',
-  border:  '#292524',
-  borderL: '#44403c',
-  text:    '#fafaf9',
-  tm:      '#a8a29e',
-  td:      '#78716c',
-  amber:   '#d97706',
-  amberBg: '#451a03',
-  amberL:  '#fbbf24',
-  green:   '#10b981',
-  greenBg: '#064e3b',
-  greenL:  '#34d399',
-  red:     '#ef4444',
-  redBg:   '#7f1d1d',
-  redL:    '#f87171',
-  blue:    '#3b82f6',
-  blueBg:  '#1e3a5f',
-  blueL:   '#60a5fa',
-  violet:  '#8b5cf6',
-  violBg:  '#4c1d95',
-  violL:   '#a78bfa',
-  cyan:    '#06b6d4',
-  cyanBg:  '#164e63',
-};
-const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
-const sans: React.CSSProperties = { fontFamily: "'IBM Plex Sans',-apple-system,sans-serif" };
+import { T, mono, sans } from '../bloomberg-tokens';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number | null | undefined, pre = '$'): string => {

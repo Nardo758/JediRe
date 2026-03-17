@@ -568,7 +568,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   if (loading) {
     return (
       <div className="space-y-5">
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
           <Loader2 className="w-6 h-6 animate-spin text-stone-400 mx-auto mb-3" />
           <div className="text-xs text-stone-400">Loading Pro Forma data...</div>
         </div>
@@ -666,7 +666,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
             <div key={section.id} style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, borderRadius: 4, overflow: 'hidden' }}>
               <button
                 onClick={() => toggleSection(section.id)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: isExpanded ? BT.bgPanel : 'none', border: 'none', cursor: 'pointer', transition: 'background 0.15s' } as any}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: isExpanded ? BT.bgPanel : 'none', border: 'none', cursor: 'pointer', transition: 'background 0.15s' } satisfies React.CSSProperties}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Icon size={12} color={isExpanded ? BT.amber : BT.td} />

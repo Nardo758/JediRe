@@ -151,22 +151,22 @@ export const MarketIntelligencePage: React.FC = () => {
                 </span>
               )}
               {activeScenario?.maxUnits && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.maxUnits.toLocaleString()} units
                 </span>
               )}
               {activeScenario?.maxGba && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.maxGba.toLocaleString()} SF GBA
                 </span>
               )}
               {activeScenario?.appliedFar && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.appliedFar.toFixed(2)} FAR
                 </span>
               )}
               {activeScenario?.maxStories && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.maxStories} stories
                 </span>
               )}
@@ -189,7 +189,7 @@ export const MarketIntelligencePage: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-white border border-stone-200 border-t-0 rounded-b-lg">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderTop: 0, borderRadius: "0 0 4px 4px" }}>
         <div className="flex border-b border-stone-200">
           {TABS.map(tab => {
             const Icon = tab.icon;
@@ -511,7 +511,7 @@ function DocumentIntelligenceTab({ data }: { data: any }) {
                     </div>
                   </div>
                   {isExpanded && (
-                    <div className="mt-2 p-3 bg-white rounded border border-stone-200">
+                    <div style={{ marginTop: 8, padding: 10, background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
                       <p className="text-xs text-stone-600 leading-relaxed mb-2">
                         <span className="font-semibold text-violet-700">Platform Finding: </span>
                         {claim.finding}
@@ -775,7 +775,7 @@ function LoadingSkeleton() {
         <div className="h-5 w-48 bg-stone-700 rounded animate-pulse" />
         <div className="h-3 w-72 bg-stone-800 rounded animate-pulse mt-1.5" />
       </div>
-      <div className="bg-white border border-stone-200 border-t-0 rounded-b-lg p-5">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderTop: 0, borderRadius: "0 0 4px 4px", padding: 20 }}>
         <div className="flex gap-4 border-b border-stone-200 pb-3 mb-5">
           {[1, 2, 3, 4].map(i => <div key={i} className="h-8 w-32 bg-stone-100 rounded animate-pulse" />)}
         </div>

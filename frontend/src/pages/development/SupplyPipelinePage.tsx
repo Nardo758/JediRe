@@ -317,40 +317,40 @@ const SupplyPipelinePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#131920] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading supply pipeline data...</p>
+          <p className="mt-4 text-[#6B7585]">Loading supply pipeline data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#131920]">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
+      <div className=" border-b border-[#1e2a3d] shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => navigate(-1)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-[#1e2a3d] rounded-lg transition-colors"
               >
-                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-6 h-6 text-[#6B7585]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div>
                 <div className="flex items-center space-x-3">
-                  <h1 className="text-2xl font-bold text-gray-900">Supply Pipeline Analysis</h1>
+                  <h1 className="text-2xl font-bold text-[#E8E6E1]">Supply Pipeline Analysis</h1>
                   {isLiveData && (
                     <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-300 animate-pulse">
                       ● LIVE DATA
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-[#6B7585] mt-1">
                   Track future supply to time market entry and identify delivery windows
                 </p>
               </div>
@@ -358,16 +358,16 @@ const SupplyPipelinePage: React.FC = () => {
             
             {/* Time Horizon Selector */}
             <div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-600">Time Horizon:</span>
-              <div className="flex bg-gray-100 rounded-lg p-1">
+              <span className="text-sm text-[#6B7585]">Time Horizon:</span>
+              <div className="flex bg-[#1e2a3d] rounded-lg p-1">
                 {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
                   <button
                     key={horizon}
                     onClick={() => setTimeHorizon(horizon)}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       timeHorizon === horizon
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
+                        ? ' text-blue-600 shadow-sm'
+                        : 'text-[#6B7585] hover:text-[#E8E6E1]'
                     }`}
                   >
                     {horizon === '3yr' ? '3 Years' : horizon === '5yr' ? '5 Years' : '10 Years'}
@@ -378,7 +378,7 @@ const SupplyPipelinePage: React.FC = () => {
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex space-x-1 mt-6 border-b border-gray-200">
+          <div className="flex space-x-1 mt-6 border-b border-[#1e2a3d]">
             {[
               { id: 'wave', label: 'Supply Wave', icon: '📊' },
               { id: 'pipeline', label: 'Pipeline by Phase', icon: '🏗️' },
@@ -392,7 +392,7 @@ const SupplyPipelinePage: React.FC = () => {
                 className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
                     ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                    : 'border-transparent text-[#6B7585] hover:text-[#E8E6E1] hover:border-[#253347]'
                 }`}
               >
                 <span className="mr-2">{tab.icon}</span>
@@ -464,64 +464,64 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
     <div className="space-y-6">
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Total Pipeline</div>
-          <div className="text-3xl font-bold text-gray-900">
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Total Pipeline</div>
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(data.reduce((sum, d) => sum + d.total, 0))}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units over {timeHorizon}</div>
+          <div className="text-xs text-[#6B7585] mt-1">units over {timeHorizon}</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Peak Supply Quarter</div>
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Peak Supply Quarter</div>
           <div className="text-3xl font-bold text-orange-600">
             {peakQuarter?.quarter || 'N/A'}
           </div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-[#6B7585] mt-1">
             {formatNumber(peakQuarter?.total || 0)} units delivering
           </div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Under Construction</div>
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Under Construction</div>
           <div className="text-3xl font-bold text-yellow-600">
             {formatNumber(data.reduce((sum, d) => sum + d.underConstruction, 0))}
           </div>
-          <div className="text-xs text-gray-500 mt-1">confirmed starts</div>
+          <div className="text-xs text-[#6B7585] mt-1">confirmed starts</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Risk Level</div>
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Risk Level</div>
           <div className="text-3xl font-bold" style={{ color: getRiskColor(riskScore?.level || 'low') }}>
             {riskScore?.level.toUpperCase() || 'N/A'}
           </div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-[#6B7585] mt-1">
             Score: {riskScore?.overall.toFixed(0) || 0}/100
           </div>
         </div>
       </div>
 
       {/* Supply Wave Chart */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">10-Year Supply Wave</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">10-Year Supply Wave</h3>
+            <p className="text-sm text-[#6B7585] mt-1">
               Quarterly delivery timeline by project phase
             </p>
           </div>
           <div className="flex items-center space-x-4 text-sm">
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-green-500 rounded"></div>
-              <span className="text-gray-600">Delivered</span>
+              <span className="text-[#6B7585]">Delivered</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-orange-500 rounded"></div>
-              <span className="text-gray-600">Under Construction</span>
+              <span className="text-[#6B7585]">Under Construction</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-blue-500 rounded"></div>
-              <span className="text-gray-600">Planned</span>
+              <span className="text-[#6B7585]">Planned</span>
             </div>
           </div>
         </div>
@@ -572,16 +572,16 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
       </div>
 
       {/* Supply Gap Analysis */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Supply Gap Opportunities</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Gap Opportunities</h3>
         <div className="space-y-3">
           {data.filter(d => d.total < maxSupply * 0.3).slice(0, 3).map((gap, idx) => (
             <div key={idx} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
               <div className="flex items-center space-x-3">
                 <span className="text-2xl">🎯</span>
                 <div>
-                  <div className="font-semibold text-gray-900">{gap.quarter}</div>
-                  <div className="text-sm text-gray-600">
+                  <div className="font-semibold text-[#E8E6E1]">{gap.quarter}</div>
+                  <div className="text-sm text-[#6B7585]">
                     Only {formatNumber(gap.total)} units delivering
                   </div>
                 </div>
@@ -630,65 +630,65 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           onClick={() => setSelectedPhase('planned')}
-          className={`bg-white rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-blue-300'
+          className={`rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border-2 p-6 text-left transition-all ${
+            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-[#1e2a3d] hover:border-blue-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">📋</span>
             <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-1 rounded">PLANNED</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.planned.reduce((sum, p) => sum + p.units, 0))}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-sm text-[#6B7585] mt-1">
             {phaseStats.planned.length} projects
           </div>
         </button>
 
         <button
           onClick={() => setSelectedPhase('under_construction')}
-          className={`bg-white rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'under_construction' ? 'border-orange-500 shadow-lg' : 'border-gray-200 hover:border-orange-300'
+          className={`rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border-2 p-6 text-left transition-all ${
+            selectedPhase === 'under_construction' ? 'border-orange-500 shadow-lg' : 'border-[#1e2a3d] hover:border-orange-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">🏗️</span>
             <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded">UNDER CONSTRUCTION</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.underConstruction.reduce((sum, p) => sum + p.units, 0))}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-sm text-[#6B7585] mt-1">
             {phaseStats.underConstruction.length} projects
           </div>
         </button>
 
         <button
           onClick={() => setSelectedPhase('delivered')}
-          className={`bg-white rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-gray-200 hover:border-green-300'
+          className={`rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border-2 p-6 text-left transition-all ${
+            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-[#1e2a3d] hover:border-green-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">✅</span>
             <span className="text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded">DELIVERED</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.delivered.reduce((sum, p) => sum + p.units, 0))}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-sm text-[#6B7585] mt-1">
             {phaseStats.delivered.length} projects (last 12mo)
           </div>
         </button>
       </div>
 
       {/* Project Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Pipeline Projects</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">Pipeline Projects</h3>
+            <p className="text-sm text-[#6B7585] mt-1">
               {filteredProjects.length} projects • {formatNumber(filteredProjects.reduce((sum, p) => sum + p.units, 0))} units
             </p>
           </div>
@@ -697,8 +697,8 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
               onClick={() => setSelectedPhase('all')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 selectedPhase === 'all'
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-[#E8E6E1] text-[#0A0E17]'
+                  : 'bg-[#1e2a3d] text-[#9EA8B4] hover:bg-[#253347]'
               }`}
             >
               Show All
@@ -708,30 +708,30 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-[#131920]">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Project</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Developer</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Units</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phase</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Delivery</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Submarket</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Distance</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Project</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Developer</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Units</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Phase</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delivery</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Submarket</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Distance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredProjects.map((project) => (
-                <tr key={project.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={project.id} className="hover:bg-[#131920] transition-colors">
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{project.name}</div>
+                    <div className="font-medium text-[#E8E6E1]">{project.name}</div>
                     {project.delayMonths && project.delayMonths > 0 && (
                       <div className="text-xs text-red-600 mt-1">
                         ⚠️ Delayed {project.delayMonths} months
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.developer}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.developer}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
                     {formatNumber(project.units)}
                   </td>
                   <td className="px-6 py-4">
@@ -745,9 +745,9 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                       {project.phase.replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.expectedDelivery}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.submarket}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.distanceMiles.toFixed(1)} mi</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.expectedDelivery}</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.submarket}</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.distanceMiles.toFixed(1)} mi</td>
                 </tr>
               ))}
             </tbody>
@@ -774,29 +774,29 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       {/* Top Developers Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {topDevelopers.slice(0, 3).map((dev, idx) => (
-          <div key={idx} className="bg-white rounded-lg border border-gray-200 p-6">
+          <div key={idx} className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
             <div className="flex items-center justify-between mb-4">
               <span className="text-3xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
-              <span className="text-xs font-semibold text-gray-500">
+              <span className="text-xs font-semibold text-[#6B7585]">
                 {dev.pipelineShare.toFixed(1)}% of pipeline
               </span>
             </div>
-            <h4 className="font-bold text-gray-900 text-lg mb-2">{dev.developer}</h4>
+            <h4 className="font-bold text-[#E8E6E1] text-lg mb-2">{dev.developer}</h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Total Units:</span>
-                <span className="font-semibold text-gray-900">{formatNumber(dev.totalUnits)}</span>
+                <span className="text-[#6B7585]">Total Units:</span>
+                <span className="font-semibold text-[#E8E6E1]">{formatNumber(dev.totalUnits)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Active Projects:</span>
-                <span className="font-semibold text-gray-900">{dev.activeProjects}</span>
+                <span className="text-[#6B7585]">Active Projects:</span>
+                <span className="font-semibold text-[#E8E6E1]">{dev.activeProjects}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Avg Delivery:</span>
-                <span className="font-semibold text-gray-900">{dev.avgDeliveryTime} months</span>
+                <span className="text-[#6B7585]">Avg Delivery:</span>
+                <span className="font-semibold text-[#E8E6E1]">{dev.avgDeliveryTime} months</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Delay Rate:</span>
+                <span className="text-[#6B7585]">Delay Rate:</span>
                 <span className={`font-semibold ${dev.delayRate > 30 ? 'text-red-600' : 'text-green-600'}`}>
                   {dev.delayRate.toFixed(0)}%
                 </span>
@@ -807,26 +807,26 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       </div>
 
       {/* Developer Activity Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Developer Activity Tracker</h3>
-          <p className="text-sm text-gray-500 mt-1">
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] overflow-hidden">
+        <div className="px-6 py-4 border-b border-[#1e2a3d]">
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Developer Activity Tracker</h3>
+          <p className="text-sm text-[#6B7585] mt-1">
             Track major developers' pipeline and execution history
           </p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-[#131920]">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Developer</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Projects</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total Units</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Pipeline %</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Market Share</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg Delivery</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Delay Rate</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Reliability</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Developer</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Projects</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Total Units</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Pipeline %</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Market Share</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Avg Delivery</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delay Rate</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Reliability</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -835,33 +835,33 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
                 const reliabilityColor = reliability >= 80 ? 'text-green-600' : reliability >= 60 ? 'text-yellow-600' : 'text-red-600';
                 
                 return (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                  <tr key={idx} className="hover:bg-[#131920] transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">{dev.developer}</div>
+                      <div className="font-medium text-[#E8E6E1]">{dev.developer}</div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
                       {dev.activeProjects}
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
                       {formatNumber(dev.totalUnits)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
+                        <div className="flex-1 bg-[#253347] rounded-full h-2 max-w-[100px]">
                           <div 
                             className="bg-blue-600 h-2 rounded-full"
                             style={{ width: `${dev.pipelineShare}%` }}
                           ></div>
                         </div>
-                        <span className="text-sm font-medium text-gray-700">
+                        <span className="text-sm font-medium text-[#9EA8B4]">
                           {dev.pipelineShare.toFixed(1)}%
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-4 text-sm text-[#6B7585]">
                       {dev.marketShare.toFixed(1)}%
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-4 text-sm text-[#6B7585]">
                       {dev.avgDeliveryTime} mo
                     </td>
                     <td className="px-6 py-4">
@@ -883,8 +883,8 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       </div>
 
       {/* AI Insights */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">🤖 Developer Intelligence</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🤖 Developer Intelligence</h3>
         <div className="space-y-3">
           <div className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
             <span className="text-xl">⚠️</span>
@@ -924,7 +924,7 @@ interface AbsorptionImpactSectionProps {
 
 const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absorption, supplyWave }) => {
   if (!absorption) {
-    return <div className="text-center py-12 text-gray-500">Loading absorption data...</div>;
+    return <div className="text-center py-12 text-[#6B7585]">Loading absorption data...</div>;
   }
 
   // Calculate absorption scenarios
@@ -938,53 +938,53 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Current Absorption</div>
-          <div className="text-3xl font-bold text-gray-900">
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Current Absorption</div>
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {absorption.currentRate.toFixed(0)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units/month</div>
+          <div className="text-xs text-[#6B7585] mt-1">units/month</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Historical Average</div>
-          <div className="text-3xl font-bold text-gray-900">
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Historical Average</div>
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {absorption.historicalAvg.toFixed(0)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units/month (3yr)</div>
+          <div className="text-xs text-[#6B7585] mt-1">units/month (3yr)</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Months to Absorb</div>
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Months to Absorb</div>
           <div className="text-3xl font-bold text-orange-600">
             {absorption.monthsToAbsorb.toFixed(1)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">at current rate</div>
+          <div className="text-xs text-[#6B7585] mt-1">at current rate</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Demand-Supply Gap</div>
+        <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+          <div className="text-sm text-[#6B7585] mb-1">Demand-Supply Gap</div>
           <div className={`text-3xl font-bold ${absorption.demandSupplyGap > 0 ? 'text-green-600' : 'text-red-600'}`}>
             {absorption.demandSupplyGap > 0 ? '+' : ''}{absorption.demandSupplyGap.toFixed(0)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units/quarter</div>
+          <div className="text-xs text-[#6B7585] mt-1">units/quarter</div>
         </div>
       </div>
 
       {/* Absorption Scenarios */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Absorption Scenarios</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Scenarios</h3>
         <div className="space-y-4">
           {scenarios.map((scenario, idx) => (
-            <div key={idx} className="p-4 bg-gray-50 rounded-lg">
+            <div key={idx} className="p-4 bg-[#131920] rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <div className="font-semibold text-gray-900">{scenario.name}</div>
-                <div className="text-sm text-gray-600">
+                <div className="font-semibold text-[#E8E6E1]">{scenario.name}</div>
+                <div className="text-sm text-[#6B7585]">
                   {scenario.rate.toFixed(0)} units/month
                 </div>
               </div>
               <div className="flex items-center space-x-3">
-                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div className="flex-1 bg-[#253347] rounded-full h-3 overflow-hidden">
                   <div 
                     className={`h-full rounded-full ${
                       idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-yellow-500' : 'bg-green-500'
@@ -992,7 +992,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
                     style={{ width: `${Math.min((scenario.rate / (absorption.currentRate * 1.5)) * 100, 100)}%` }}
                   ></div>
                 </div>
-                <div className="text-sm font-semibold text-gray-900 min-w-[80px]">
+                <div className="text-sm font-semibold text-[#E8E6E1] min-w-[80px]">
                   {scenario.months.toFixed(1)} months
                 </div>
               </div>
@@ -1002,8 +1002,8 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Risk Assessment */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Absorption Risk Assessment</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Risk Assessment</h3>
         <div 
           className="p-6 rounded-lg border-l-4"
           style={{ 
@@ -1019,11 +1019,11 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
               <div className="text-xl font-bold" style={{ color: getRiskColor(absorption.riskLevel) }}>
                 {absorption.riskLevel.toUpperCase()} RISK
               </div>
-              <div className="text-sm text-gray-600">Peak supply in {absorption.peakSupplyQuarter}</div>
+              <div className="text-sm text-[#6B7585]">Peak supply in {absorption.peakSupplyQuarter}</div>
             </div>
           </div>
           
-          <div className="text-sm text-gray-700 space-y-2">
+          <div className="text-sm text-[#9EA8B4] space-y-2">
             {absorption.riskLevel === 'low' && (
               <p>Healthy absorption environment. Current demand exceeds incoming supply. Market can absorb new deliveries within 18 months.</p>
             )}
@@ -1041,8 +1041,8 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Impact Timeline */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Supply Impact Timeline</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Impact Timeline</h3>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={supplyWave}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -1070,7 +1070,7 @@ interface RiskScoringSectionProps {
 
 const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) => {
   if (!riskScore) {
-    return <div className="text-center py-12 text-gray-500">Loading risk assessment...</div>;
+    return <div className="text-center py-12 text-[#6B7585]">Loading risk assessment...</div>;
   }
 
   const riskFactors = [
@@ -1083,7 +1083,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
   return (
     <div className="space-y-6">
       {/* Overall Risk Score */}
-      <div className="bg-white rounded-lg border border-gray-200 p-8">
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-8">
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-40 h-40 rounded-full border-8 mb-6"
             style={{ borderColor: getRiskColor(riskScore.level) }}>
@@ -1091,7 +1091,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
               <div className="text-5xl font-bold" style={{ color: getRiskColor(riskScore.level) }}>
                 {riskScore.overall.toFixed(0)}
               </div>
-              <div className="text-sm font-semibold uppercase mt-2 text-gray-600">
+              <div className="text-sm font-semibold uppercase mt-2 text-[#6B7585]">
                 Risk Score
               </div>
             </div>
@@ -1109,7 +1109,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
             </span>
           </div>
           
-          <p className="text-gray-600 max-w-2xl mx-auto">
+          <p className="text-[#6B7585] max-w-2xl mx-auto">
             Supply pipeline risk assessment based on delivery timing, absorption capacity, 
             competitive positioning, and market concentration factors.
           </p>
@@ -1117,8 +1117,8 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Risk Factor Breakdown */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">Risk Factor Analysis</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-6">Risk Factor Analysis</h3>
         <div className="space-y-6">
           {riskFactors.map((factor, idx) => {
             const percentage = (factor.score / 100) * 100;
@@ -1128,14 +1128,14 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
               <div key={idx}>
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <div className="font-semibold text-gray-900">{factor.name}</div>
-                    <div className="text-sm text-gray-500">{factor.description}</div>
+                    <div className="font-semibold text-[#E8E6E1]">{factor.name}</div>
+                    <div className="text-sm text-[#6B7585]">{factor.description}</div>
                   </div>
                   <div className="text-2xl font-bold" style={{ color }}>
                     {factor.score.toFixed(0)}
                   </div>
                 </div>
-                <div className="bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div className="bg-[#253347] rounded-full h-3 overflow-hidden">
                   <div 
                     className="h-full rounded-full transition-all duration-500"
                     style={{ 
@@ -1151,8 +1151,8 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Recommendations */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">🎯 Strategic Recommendations</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🎯 Strategic Recommendations</h3>
         <div className="space-y-3">
           {riskScore.recommendations.map((rec, idx) => (
             <div key={idx} className="flex items-start space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -1164,8 +1164,8 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Risk Matrix */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Matrix</h3>
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }} border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Risk Matrix</h3>
         <div className="grid grid-cols-2 gap-4">
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="text-sm font-semibold text-green-900 mb-2">✅ Low Risk Factors</div>

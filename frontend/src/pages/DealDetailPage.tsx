@@ -304,10 +304,9 @@ const DealDetailPage: React.FC = () => {
         return;
       }
       const fKeyMap: { [key: string]: string } = {
-        F1: 'overview', F2: 'zoning', F3: 'market', F4: 'supply',
-        F5: 'competition', F6: 'strategy', F7: 'traffic',
-        F8: 'proforma', F9: 'capital', F10: 'risk',
-        F11: 'execution', F12: 'ai-agent',
+        F1: 'overview', F2: 'zoning',   F3: 'market',  F4: 'supply',
+        F5: 'strategy', F6: 'proforma', F7: 'capital', F8: 'risk',
+        F9: 'competition', F10: 'traffic', F11: 'execution', F12: 'ai-agent',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -331,20 +330,20 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
-  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ───────────────────────────
+  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ─── spec-aligned order ───────────
   const dealScreens = [
-    { id: 'overview',    fkey: 'F1',  code: 'M01', label: 'Overview',             icon: <LayoutDashboard size={14} />, component: OverviewScreen },
-    { id: 'zoning',      fkey: 'F2',  code: 'M02', label: 'Property & Zoning',    icon: <Landmark size={14} />,        component: ZoningModuleSection },
-    { id: 'market',      fkey: 'F3',  code: 'M05', label: 'Market Intelligence',  icon: <TrendingUp size={14} />,      component: MarketScreen },
-    { id: 'supply',      fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',      icon: <Package size={14} />,         component: SupplyPipelinePage },
-    { id: 'competition', fkey: 'F5',  code: 'M15', label: 'Competition & Comps',  icon: <Target size={14} />,          component: CompetitionScreen },
-    { id: 'strategy',    fkey: 'F6',  code: 'M08', label: 'Strategy & Design',    icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'traffic',     fkey: 'F7',  code: 'M10', label: 'Traffic Module',       icon: <Activity size={14} />,        component: TrafficModule },
-    { id: 'proforma',    fkey: 'F8',  code: 'M11', label: 'Pro Forma',            icon: <Calculator size={14} />,      component: ProformaScreen },
-    { id: 'capital',     fkey: 'F9',  code: 'M12', label: 'Debt & Capital',       icon: <DollarSign size={14} />,      component: ExitCapitalModule },
-    { id: 'risk',        fkey: 'F10', code: 'M13', label: 'Risk & Due Diligence', icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'execution',   fkey: 'F11', code: 'M17', label: 'Execution',            icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'ai-agent',    fkey: 'F12', code: 'M20', label: 'AI Agent',             icon: <Bot size={14} />,             component: AIAgentScreen },
+    { id: 'overview',    fkey: 'F1',  code: 'M01', label: 'Overview',              icon: <LayoutDashboard size={14} />, component: OverviewScreen },
+    { id: 'zoning',      fkey: 'F2',  code: 'M02', label: 'Property & Zoning',     icon: <Landmark size={14} />,        component: ZoningModuleSection },
+    { id: 'market',      fkey: 'F3',  code: 'M05', label: 'Market Intelligence',   icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',       icon: <Package size={14} />,         component: SupplyPipelinePage },
+    { id: 'strategy',    fkey: 'F5',  code: 'M08', label: 'Strategy Arbitrage',    icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'proforma',    fkey: 'F6',  code: 'M11', label: 'Pro Forma Engine',      icon: <Calculator size={14} />,      component: ProformaScreen },
+    { id: 'capital',     fkey: 'F7',  code: 'M12', label: 'Capital Structure',     icon: <DollarSign size={14} />,      component: ExitCapitalModule },
+    { id: 'risk',        fkey: 'F8',  code: 'M13', label: 'Risk Assessment',       icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'competition', fkey: 'F9',  code: 'M15', label: 'Comps',                 icon: <Target size={14} />,          component: CompetitionScreen },
+    { id: 'traffic',     fkey: 'F10', code: 'M10', label: 'Traffic Intelligence',  icon: <Activity size={14} />,        component: TrafficModule },
+    { id: 'execution',   fkey: 'F11', code: 'M17', label: 'Documents',             icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'ai-agent',    fkey: 'F12', code: 'M20', label: 'Exit Strategy',         icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
 

@@ -174,7 +174,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
       case 'critical':
         return 'text-red-600 bg-red-50';
       default:
-        return 'text-gray-600 bg-gray-50';
+        return 'text-[#6B7585] bg-[#131920]';
     }
   };
 
@@ -189,7 +189,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
       case 'blocked':
         return <XCircle className="w-5 h-5 text-red-600" />;
       default:
-        return <Clock className="w-5 h-5 text-gray-400" />;
+        return <Clock className="w-5 h-5 text-[#4a5568]" />;
     }
   };
 
@@ -198,7 +198,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading due diligence data...</p>
+          <p className="text-[#6B7585]">Loading due diligence data...</p>
         </div>
       </div>
     );
@@ -209,8 +209,8 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
       <div className="flex items-center justify-center h-screen">
         <div className="text-center max-w-md">
           <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Error Loading Data</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <h2 className="text-xl font-semibold text-[#E8E6E1] mb-2">Error Loading Data</h2>
+          <p className="text-[#6B7585] mb-4">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -223,32 +223,32 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <div className="sticky top-0 z-10" style={{ background: "#0F1319", borderBottom: "1px solid #1e2a3d" }}">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => navigate(`/deals/${dealId}`)}
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                className="p-2 text-[#6B7585] hover:bg-[#1e2a3d] rounded-lg"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Due Diligence</h1>
-                <p className="text-sm text-gray-600">{propDeal?.name || 'Loading...'}</p>
+                <h1 className="text-2xl font-bold text-[#E8E6E1]">Due Diligence</h1>
+                <p className="text-sm text-[#6B7585]">{propDeal?.name || 'Loading...'}</p>
               </div>
             </div>
 
             <div className="flex items-center space-x-3">
               {/* Overall Progress */}
               {dueDiligence && (
-                <div className="flex items-center space-x-2 px-4 py-2 bg-gray-50 rounded-lg">
+                <div className="flex items-center space-x-2 px-4 py-2 bg-[#131920] rounded-lg">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
                   <div>
-                    <div className="text-xs text-gray-600">Overall Progress</div>
-                    <div className="text-lg font-semibold text-gray-900">{dueDiligence.overallProgress}%</div>
+                    <div className="text-xs text-[#6B7585]">Overall Progress</div>
+                    <div className="text-lg font-semibold text-[#E8E6E1]">{dueDiligence.overallProgress}%</div>
                   </div>
                 </div>
               )}
@@ -266,7 +266,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
 
               <button
                 onClick={handleRefresh}
-                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg flex items-center space-x-2"
+                className="px-4 py-2 text-[#9EA8B4] hover:bg-[#1e2a3d] rounded-lg flex items-center space-x-2"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Refresh</span>
@@ -298,7 +298,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
                 className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
                   activeTab === tab.id
                     ? 'bg-blue-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    : 'text-[#6B7585] hover:bg-[#1e2a3d]'
                 }`}
               >
                 <tab.icon className="w-4 h-4" />
@@ -335,52 +335,52 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
 
                 {/* Quick Stats Grid */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-gray-600">Entitlement Status</h3>
+                      <h3 className="text-sm font-medium text-[#6B7585]">Entitlement Status</h3>
                       <CheckCircle className="w-5 h-5 text-blue-600" />
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">
+                    <p className="text-2xl font-bold text-[#E8E6E1]">
                       {zoningAnalysis?.upzoningPotential ? 'Upzoning Pending' : 'By-Right'}
                     </p>
                     {zoningAnalysis && (
-                      <p className="text-sm text-gray-600 mt-1">
+                      <p className="text-sm text-[#6B7585] mt-1">
                         {zoningAnalysis.byRightUnits} units current
                       </p>
                     )}
                   </div>
 
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-gray-600">Environmental</h3>
+                      <h3 className="text-sm font-medium text-[#6B7585]">Environmental</h3>
                       <Zap className="w-5 h-5 text-green-600" />
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">
+                    <p className="text-2xl font-bold text-[#E8E6E1]">
                       {environmental.filter(e => e.phaseI.findings === 'clean').length}/{environmental.length}
                     </p>
-                    <p className="text-sm text-gray-600 mt-1">Parcels clean</p>
+                    <p className="text-sm text-[#6B7585] mt-1">Parcels clean</p>
                   </div>
 
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-gray-600">Geotechnical</h3>
+                      <h3 className="text-sm font-medium text-[#6B7585]">Geotechnical</h3>
                       <MapPin className="w-5 h-5 text-orange-600" />
                     </div>
-                    <p className="text-2xl font-bold text-gray-900">
+                    <p className="text-2xl font-bold text-[#E8E6E1]">
                       {geotechnical.filter(g => g.status === 'complete').length}/{geotechnical.length}
                     </p>
-                    <p className="text-sm text-gray-600 mt-1">Reports complete</p>
+                    <p className="text-sm text-[#6B7585] mt-1">Reports complete</p>
                   </div>
 
-                  <div className="bg-white rounded-lg shadow-sm p-6">
+                  <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-medium text-gray-600">Utility Capacity</h3>
+                      <h3 className="text-sm font-medium text-[#6B7585]">Utility Capacity</h3>
                       <Zap className="w-5 h-5 text-purple-600" />
                     </div>
-                    <p className="text-2xl font-bold text-gray-900 capitalize">
+                    <p className="text-2xl font-bold text-[#E8E6E1] capitalize">
                       {utilities?.overallStatus.replace('_', ' ') || 'Unknown'}
                     </p>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-[#6B7585] mt-1">
                       {utilities?.water.upgradeRequired || utilities?.sewer.upgradeRequired
                         ? 'Upgrades needed'
                         : 'No upgrades'}
@@ -536,10 +536,10 @@ function buildChecklistFromPreset(preset: DDChecklistPreset): DDChecklistItem[] 
 }
 
 const STATUS_OPTIONS: { value: DDItemStatus; label: string; color: string }[] = [
-  { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-700' },
+  { value: 'pending', label: 'Pending', color: 'bg-[#1e2a3d] text-[#9EA8B4]' },
   { value: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700' },
   { value: 'complete', label: 'Complete', color: 'bg-green-100 text-green-700' },
-  { value: 'na', label: 'N/A', color: 'bg-gray-50 text-gray-400' },
+  { value: 'na', label: 'N/A', color: 'bg-[#131920] text-[#4a5568]' },
 ];
 
 const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionProps> = ({ deal: propDeal, dealId }) => {
@@ -607,29 +607,29 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
     switch (status) {
       case 'complete': return <CheckCircle className="w-4 h-4 text-green-600" />;
       case 'in_progress': return <Clock className="w-4 h-4 text-blue-600" />;
-      case 'na': return <XCircle className="w-4 h-4 text-gray-300" />;
-      default: return <AlertCircle className="w-4 h-4 text-gray-400" />;
+      case 'na': return <XCircle className="w-4 h-4 text-[#4a5568]" />;
+      default: return <AlertCircle className="w-4 h-4 text-[#4a5568]" />;
     }
   };
 
   return (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Environmental & Physical Due Diligence</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">Environmental & Physical Due Diligence</h3>
+            <p className="text-sm text-[#6B7585] mt-1">
               {presetLabel} checklist — {completedCount}/{activeItems} items complete
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="w-32 bg-gray-200 rounded-full h-2">
+            <div className="w-32 bg-[#253347] rounded-full h-2">
               <div
                 className="bg-green-500 h-2 rounded-full transition-all"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
-            <span className="text-sm font-semibold text-gray-700">{progressPct}%</span>
+            <span className="text-sm font-semibold text-[#9EA8B4]">{progressPct}%</span>
           </div>
         </div>
 
@@ -640,15 +640,15 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
               className={`border rounded-lg p-4 transition-colors ${
                 item.status === 'complete' ? 'bg-green-50 border-green-200' :
                 item.status === 'in_progress' ? 'bg-blue-50 border-blue-200' :
-                item.status === 'na' ? 'bg-gray-50 border-gray-100 opacity-60' :
-                'bg-white border-gray-200'
+                item.status === 'na' ? 'bg-[#131920] border-[#1e2a3d] opacity-60' :
+                ' border-[#1e2a3d]'
               }`}
             >
               <div className="flex items-start gap-3">
                 <div className="mt-0.5">{getStatusIcon(item.status)}</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-2">
-                    <span className={`text-sm font-medium ${item.status === 'na' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                    <span className={`text-sm font-medium ${item.status === 'na' ? 'text-[#4a5568] line-through' : 'text-[#E8E6E1]'}`}>
                       {item.label}
                     </span>
                     <select
@@ -665,36 +665,36 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                   </div>
                   <div className="grid grid-cols-4 gap-3">
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Assigned Party</label>
+                      <label className="text-[10px] text-[#6B7585] uppercase tracking-wider block mb-0.5">Assigned Party</label>
                       <input
                         type="text"
                         value={item.assignedParty}
                         onChange={e => updateItem(item.id, 'assignedParty', e.target.value)}
                         placeholder="e.g., ECS Environmental"
-                        className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
+                        className="w-full text-xs border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-blue-400 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Due Date</label>
+                      <label className="text-[10px] text-[#6B7585] uppercase tracking-wider block mb-0.5">Due Date</label>
                       <input
                         type="date"
                         value={item.dueDate}
                         onChange={e => updateItem(item.id, 'dueDate', e.target.value)}
-                        className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
+                        className="w-full text-xs border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-blue-400 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Notes</label>
+                      <label className="text-[10px] text-[#6B7585] uppercase tracking-wider block mb-0.5">Notes</label>
                       <input
                         type="text"
                         value={item.notes}
                         onChange={e => updateItem(item.id, 'notes', e.target.value)}
                         placeholder="Internal notes..."
-                        className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
+                        className="w-full text-xs border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-blue-400 outline-none"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Documents</label>
+                      <label className="text-[10px] text-[#6B7585] uppercase tracking-wider block mb-0.5">Documents</label>
                       <div className="space-y-1">
                         {item.attachments.map((att, attIdx) => (
                           <div key={attIdx} className="flex items-center gap-1 text-xs">
@@ -710,7 +710,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                             </a>
                             <button
                               onClick={() => removeAttachment(item.id, attIdx)}
-                              className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                              className="text-[#4a5568] hover:text-red-500 flex-shrink-0"
                               title="Remove"
                             >
                               <XCircle className="w-3 h-3" />
@@ -732,7 +732,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
           ))}
         </div>
 
-        <div className="mt-4 pt-4 border-t border-gray-200">
+        <div className="mt-4 pt-4 border-t border-[#1e2a3d]">
           <button
             onClick={() => {
               setItems(prev => [...prev, {

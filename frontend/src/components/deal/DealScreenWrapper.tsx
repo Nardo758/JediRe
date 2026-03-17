@@ -48,7 +48,7 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, pass
                 letterSpacing: 0.5,
                 transition: 'all 0.15s',
                 ...bSans,
-              } as any}
+              } satisfies React.CSSProperties}
             >
               {tab.label.toUpperCase()}
             </button>

@@ -533,7 +533,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     <div className="space-y-6">
       <DataSourceBanner dataSource={dataSource} actualsCount={projection?.actualsCount || 0} calibrationSource={projection?.calibrationSource} baselineSource={projection?.baseline_source} baselineComps={projection?.baseline_comps} onUploadClick={triggerUpload} />
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-stone-900">Leasing Funnel</h3>
           {!hasHistory && (
@@ -597,7 +597,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-stone-900">Traffic Projection</h3>
           <div className="flex items-center gap-3">
@@ -606,7 +606,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <button
                   key={v}
                   onClick={() => setView(v)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${view === v ? 'bg-white text-stone-900 shadow-sm font-medium' : 'text-stone-500 hover:text-stone-700'}`}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${view === v ? 'font-medium' : ''}`}
+                  style={view === v ? { background: '#131920', color: '#E8E6E1' } : { color: '#6B7585' }}
                 >
                   {v.charAt(0).toUpperCase() + v.slice(1)}
                 </button>
@@ -657,7 +658,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </tr>
               {rawMetricRows.map(row => (
                 <tr key={row.key} className="border-b border-stone-100">
-                  <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-700 text-[11px] border-r border-stone-100">{row.label}</td>
+                  <td className="sticky left-0 z-10 px-4 py-2 text-[11px] border-r" style={{ background: "#0F1319", color: "#9EA8B4", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
                     const val = (p as any)[row.field] as number;
                     return (
@@ -681,7 +682,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </tr>
               {showAdjustments && adjustmentRows.map(row => (
                 <tr key={row.key} className="border-b border-stone-100">
-                  <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-600 text-[11px] border-r border-stone-100">{row.label}</td>
+                  <td className="sticky left-0 z-10 px-4 py-2 text-[11px] border-r" style={{ background: "#0F1319", color: "#6B7585", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
                     const val = (p as any)[row.field] as number;
                     return (
@@ -702,7 +703,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </tr>
               {adjOutputRows.map(row => (
                 <tr key={row.key} className="border-b border-stone-100">
-                  <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-700 font-medium text-[11px] border-r border-stone-100">{row.label}</td>
+                  <td className="sticky left-0 z-10 px-4 py-2 font-medium text-[11px] border-r" style={{ background: "#0F1319", color: "#9EA8B4", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
                     const val = (p as any)[row.field] as number;
                     const isEditable = editing && !p.isActual;
@@ -749,7 +750,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const renderAdjustmentsTab = () => (
     <div className="space-y-6">
       {mi && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-stone-900">Market Intelligence Adjustments</h3>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
@@ -777,7 +778,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       )}
 
       {latest && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
           <h3 className="text-lg font-bold text-stone-900 mb-4">Vacancy & Availability</h3>
           <div className="grid grid-cols-2 gap-6">
             <div>
@@ -866,7 +867,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       )}
 
       {!mi && !latest && (
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
           <SlidersHorizontal size={32} className="mx-auto text-stone-300 mb-3" />
           <p className="text-sm text-stone-500">Market adjustments will appear once projection data is available.</p>
         </div>
@@ -876,7 +877,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
   const renderCalibrationTab = () => (
     <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center gap-3 mb-4">
           <Database size={18} className="text-stone-400" />
           <div>

@@ -800,7 +800,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
             { key: 'F9', label: 'SALE COMPS', hint: 'Transaction intelligence', tab: 'comps' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } as any}>
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } satisfies React.CSSProperties}>
               <span style={{ fontSize: 8, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3, padding: '2px 5px', flexShrink: 0, ...bMono }}>{m.key}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>{m.label}</div>
@@ -1432,7 +1432,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               ].map((r, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                   <span style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.l}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: (r as any).c || BT.amber, ...bMono }}>{r.v}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: ('c' in r ? r.c : undefined) || BT.amber, ...bMono }}>{r.v}</span>
                 </div>
               ))}
             </div>

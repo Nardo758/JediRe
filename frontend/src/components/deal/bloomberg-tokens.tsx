@@ -8,6 +8,7 @@ import React from 'react';
 // ─── Core palette ─────────────────────────────────────────────────────────────
 export const T = {
   bg:      '#0A0E17',
+  bgBase:  '#0A0E17',
   bgCard:  '#0F1319',
   bgPanel: '#131920',
   bgHover: '#1a2233',
@@ -17,6 +18,7 @@ export const T = {
   borderX: '#2d3d52',
   text:    '#E8E6E1',
   tm:      '#9EA8B4',
+  ts:      '#B8C0CC',
   td:      '#6B7585',
   // Amber / gold (primary action / key metrics)
   amber:   '#F59E0B',
