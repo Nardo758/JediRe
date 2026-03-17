@@ -512,7 +512,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
           </div>
           <div className="flex items-center space-x-4 text-sm">
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded"></div>
+              <div className="w-3 h-3 bg-green-900/100 rounded"></div>
               <span className="text-[#6B7585]">Delivered</span>
             </div>
             <div className="flex items-center space-x-2">
@@ -520,7 +520,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
               <span className="text-[#6B7585]">Under Construction</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-blue-500 rounded"></div>
+              <div className="w-3 h-3 bg-blue-900/100 rounded"></div>
               <span className="text-[#6B7585]">Planned</span>
             </div>
           </div>
@@ -576,7 +576,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Gap Opportunities</h3>
         <div className="space-y-3">
           {data.filter(d => d.total < maxSupply * 0.3).slice(0, 3).map((gap, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+            <div key={idx} className="flex items-center justify-between p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
               <div className="flex items-center space-x-3">
                 <span className="text-2xl">🎯</span>
                 <div>
@@ -849,7 +849,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
                       <div className="flex items-center space-x-2">
                         <div className="flex-1 bg-[#253347] rounded-full h-2 max-w-[100px]">
                           <div 
-                            className="bg-blue-500 h-2 rounded-full"
+                            className="bg-blue-900/100 h-2 rounded-full"
                             style={{ width: `${dev.pipelineShare}%` }}
                           ></div>
                         </div>
@@ -987,7 +987,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
                 <div className="flex-1 bg-[#253347] rounded-full h-3 overflow-hidden">
                   <div 
                     className={`h-full rounded-full ${
-                      idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-yellow-500' : 'bg-green-500'
+                      idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-yellow-500' : 'bg-green-900/100'
                     }`}
                     style={{ width: `${Math.min((scenario.rate / (absorption.currentRate * 1.5)) * 100, 100)}%` }}
                   ></div>
@@ -1167,7 +1167,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Risk Matrix</h3>
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="p-4 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
             <div className="text-sm font-semibold text-green-200 mb-2">✅ Low Risk Factors</div>
             <ul className="text-sm text-green-300 space-y-1">
               {riskFactors.filter(f => f.score < 40).map((f, i) => (

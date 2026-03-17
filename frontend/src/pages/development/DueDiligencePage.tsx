@@ -166,13 +166,13 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
   const getRiskColor = (risk: string) => {
     switch (risk) {
       case 'low':
-        return 'text-green-600 bg-green-50';
+        return 'text-green-400 bg-green-900/20';
       case 'medium':
-        return 'text-yellow-600 bg-yellow-50';
+        return 'text-yellow-400 bg-yellow-900/20';
       case 'high':
-        return 'text-orange-600 bg-orange-50';
+        return 'text-orange-400 bg-orange-900/20';
       case 'critical':
-        return 'text-red-600 bg-red-50';
+        return 'text-red-400 bg-red-900/20';
       default:
         return 'text-[#6B7585] bg-[#131920]';
     }
@@ -638,8 +638,8 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
             <div
               key={item.id}
               className={`border rounded-lg p-4 transition-colors ${
-                item.status === 'complete' ? 'bg-green-50 border-green-200' :
-                item.status === 'in_progress' ? 'bg-blue-50 border-blue-200' :
+                item.status === 'complete' ? 'bg-green-900/10 border-green-800' :
+                item.status === 'in_progress' ? 'bg-blue-900/10 border-blue-800' :
                 item.status === 'na' ? 'bg-[#131920] border-[#1e2a3d] opacity-60' :
                 ' border-[#1e2a3d]'
               }`}

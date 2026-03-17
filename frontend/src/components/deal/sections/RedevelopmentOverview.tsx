@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import { T, mono, sans } from '../bloomberg-tokens';
+import { T, mono, sans, UnderwritingComparison } from '../bloomberg-tokens';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n: number | null | undefined, pre = '$'): string => {
@@ -702,6 +702,27 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
             <Card><Metric label="RENOVATION ROI" value={renovROI != null ? pct(renovROI) : '—'} sub={noiDelta != null && renovBudget != null ? `${fmt(noiDelta)} NOI uplift` : undefined} color={renovROI != null ? T.greenL : undefined} /></Card>
             <Card><Metric label="CASH-ON-CASH (Y1)" value={coc != null ? `${typeof coc === 'number' ? coc.toFixed(1) : coc}%` : '—'} sub="Year 1 levered yield" /></Card>
           </div>
+        </div>
+
+        {/* ──────────────── UNDERWRITING COMPARISON ─────────────────────── */}
+        <div>
+          <SectionHeader n="8b" title="Underwriting Comparison" subtitle="Broker · Platform · User" color={T.violL} />
+          {(() => {
+            const brokerCapRate = deal?.brokerCapRate ?? deal?.capRate ?? null;
+            const brokerCapRateStr = brokerCapRate != null ? `${parseFloat(String(brokerCapRate)).toFixed(2)}%` : null;
+            const brokerNOI = deal?.brokerNoi ?? deal?.noi ?? null;
+            const stabNOIStr = stabNoi != null ? `$${Math.round(stabNoi).toLocaleString()}` : null;
+            const uwRows = [
+              { label: 'Going-In Cap Rate', broker: brokerCapRateStr, platform: existingNoi != null && askPrice != null ? `${((existingNoi / askPrice) * 100).toFixed(2)}%` : null, user: null },
+              { label: 'Stabilized NOI', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: stabNOIStr, user: null },
+              { label: 'Levered IRR', broker: null, platform: irr != null ? `${typeof irr === 'number' ? irr.toFixed(1) : irr}%` : null, user: null },
+              { label: 'Equity Multiple', broker: null, platform: em != null ? `${typeof em === 'number' ? em.toFixed(2) : em}x` : null, user: null },
+            ].filter(r => r.broker || r.platform || r.user);
+            if (uwRows.length === 0) return (
+              <Card><div style={{ fontSize: 12, color: T.td, textAlign: 'center', padding: '16px 0', ...sans }}>Build the Pro Forma to compare Broker vs Platform underwriting.</div></Card>
+            );
+            return <UnderwritingComparison rows={uwRows} />;
+          })()}
         </div>
 
         {/* ──────────────── §9 DUE DILIGENCE + MODULE ACCESS ───────────── */}

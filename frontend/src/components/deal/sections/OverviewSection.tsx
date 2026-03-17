@@ -17,7 +17,7 @@ import {
   type StrategyVerdictData,
   type RiskAlertData,
 } from '@/data/enhancedOverviewMockData';
-import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
+import { T as BT, mono as bMono, sans as bSans, UnderwritingComparison } from '../bloomberg-tokens';
 
 function scoreToVerdict(score: number): { verdict: string; verdictColor: string } {
   if (score >= 85) return { verdict: 'STRONG BUY', verdictColor: 'text-emerald-400' };
@@ -28,11 +28,11 @@ function scoreToVerdict(score: number): { verdict: string; verdictColor: string 
 
 function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
   const signalDefs = [
-    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-50', moduleLink: 'demand' },
-    { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-50', moduleLink: 'supply' },
-    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-50', moduleLink: 'market-intelligence' },
-    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-50', moduleLink: 'market-intelligence' },
-    { id: 'risk', name: 'Risk', color: 'bg-stone-500', bgColor: 'bg-stone-50', moduleLink: 'risk-management' },
+    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-900/10', moduleLink: 'demand' },
+    { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-900/10', moduleLink: 'supply' },
+    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-900/10', moduleLink: 'market-intelligence' },
+    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-900/10', moduleLink: 'market-intelligence' },
+    { id: 'risk', name: 'Risk', color: 'bg-[#4B5563]', bgColor: 'bg-[#131920]', moduleLink: 'risk-management' },
   ];
 
   return signalDefs.map(def => {
@@ -770,6 +770,29 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           </div>
         ))}
       </div>
+
+      {/* Underwriting Comparison — Broker · Platform · User */}
+      {(() => {
+        const brokerCapRateNum = deal.capRate ? parseFloat(String(deal.capRate)) : null;
+        const brokerNOI = financial?.noi || null;
+        const brokerCapRateStr = brokerCapRateNum ? `${brokerCapRateNum.toFixed(2)}%` : null;
+        const platCapRate = (marketCapRate && !isNaN(marketCapRate)) ? `${marketCapRate.toFixed(2)}%` : null;
+        const platNOI = financial?.noi ? `$${Math.round(financial.noi).toLocaleString()}` : null;
+        const userCapRate = deal.strategyDefaults?.assumptions?.capRate ? `${parseFloat(String(deal.strategyDefaults.assumptions.capRate)).toFixed(2)}%` : null;
+        const uwRows = [
+          { label: 'Going-In Cap Rate', broker: brokerCapRateStr, platform: platCapRate, user: userCapRate },
+          { label: 'NOI (T-12)', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: platNOI, user: null },
+          { label: 'Price / Unit', broker: ppu !== '—' ? ppu : null, platform: null, user: null },
+          { label: 'DSCR', broker: null, platform: capitalStructure?.dscr ? `${capitalStructure.dscr.toFixed(2)}x` : null, user: null },
+        ].filter(r => r.broker || r.platform || r.user);
+        if (uwRows.length === 0) return null;
+        return (
+          <>
+            <SectionHead title="Underwriting Comparison" right="Broker · Platform · User" accent={BT.violet} />
+            <UnderwritingComparison rows={uwRows} />
+          </>
+        );
+      })()}
 
       <SectionHead title="Due Diligence + Module Access" accent={BT.amber} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>

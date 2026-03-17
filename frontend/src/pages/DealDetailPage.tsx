@@ -542,13 +542,13 @@ const DealDetailPage: React.FC = () => {
           const lng = centroid ? centroid[0] : -84.388;
           return (
             <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6">
-              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+              <div className="rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-bold text-gray-900">Define Trade Area</h2>
+                    <h2 className="text-lg font-bold text-[#E8E6E1]">Define Trade Area</h2>
                     <button
                       onClick={() => setShowTradeAreaPanel(false)}
-                      className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                      className="text-[#6B7585] hover:text-[#9EA8B4] text-2xl leading-none"
                     >
                       &times;
                     </button>

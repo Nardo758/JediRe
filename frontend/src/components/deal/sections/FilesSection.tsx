@@ -526,11 +526,11 @@ interface QuickActionsBarProps {
 
 const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ actions }) => {
   const colorClasses: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+    blue: 'text-blue-300 hover:text-blue-200' style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }},
     purple: 'bg-purple-50 text-purple-700 hover:bg-purple-100',
-    green: 'bg-green-50 text-green-700 hover:bg-green-100',
+    green: 'bg-green-900/20 text-green-300 hover:bg-green-900/30',
     orange: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
-    indigo: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+    indigo: 'bg-indigo-900/20 text-indigo-300 hover:bg-indigo-900/30'
   };
 
   return (
@@ -581,7 +581,7 @@ const FolderTreeCard: React.FC<FolderTreeCardProps> = ({ folders, currentPath, o
       <div key={folder.id}>
         <div
           className={`flex items-center gap-2 py-2 px-3 rounded cursor-pointer hover:bg-[#131920] ${
-            isActive ? 'bg-blue-50 text-blue-700 font-medium' : ''
+            isActive ? 'bg-blue-900/20 text-blue-300 font-medium' : ''
           }`}
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
           onClick={() => {
@@ -805,7 +805,7 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
         {file.tags && file.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1 justify-center">
             {file.tags.slice(0, 2).map((tag, idx) => (
-              <span key={idx} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded">
+              <span key={idx} className="text-xs px-2 py-0.5 bg-blue-900/20 text-blue-300 rounded">
                 {tag}
               </span>
             ))}
@@ -821,7 +821,7 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
           {onDownload && (
             <button
               onClick={(e) => { e.stopPropagation(); onDownload(file.id, file.name); }}
-              className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+              className="px-2 py-1 text-xs bg-blue-900/20 text-blue-300 rounded hover:bg-blue-900/30"
             >
               ⬇️
             </button>
@@ -878,7 +878,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
       {file.tags && file.tags.length > 0 && (
         <div className="flex gap-1">
           {file.tags.slice(0, 3).map((tag, idx) => (
-            <span key={idx} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded">
+            <span key={idx} className="text-xs px-2 py-1 bg-blue-900/20 text-blue-300 rounded">
               {tag}
             </span>
           ))}
@@ -889,7 +889,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
         {hasLiveData && file.type === 'file' && onDownload && (
           <button
             onClick={(e) => { e.stopPropagation(); onDownload(file.id, file.name); }}
-            className="p-2 hover:bg-blue-100 rounded text-blue-600"
+            className="p-2 hover:bg-blue-900/30 rounded text-blue-600"
           >
             <span className="text-sm">⬇️</span>
           </button>
