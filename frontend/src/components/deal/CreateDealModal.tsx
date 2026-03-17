@@ -509,7 +509,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
           {currentStep === STEPS.DETAILS && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Deal Details
+                Deal Info
               </h3>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">

@@ -12,6 +12,7 @@ import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
 import TrafficPredictionsTab from './traffic/TrafficPredictionsTab';
+import AbsorptionScheduleTab from './traffic/AbsorptionScheduleTab';
 
 const TradeAreaDefinitionPanel = lazy(() =>
   import('../../trade-area/TradeAreaDefinitionPanel').then(m => ({ default: m.TradeAreaDefinitionPanel }))
@@ -126,7 +127,7 @@ interface CalibrationStats {
   dataLibraryFileCount: number;
 }
 
-type TabId = 'predictions' | 'data_sources' | 'comps' | 'visibility' | 'adjustments' | 'calibration';
+type TabId = 'predictions' | 'data_sources' | 'comps' | 'visibility' | 'adjustments' | 'calibration' | 'absorption';
 
 const TABS: Array<{ id: TabId; label: string; icon: any }> = [
   { id: 'predictions', label: 'Predictions', icon: TrendingUp },
@@ -135,6 +136,7 @@ const TABS: Array<{ id: TabId; label: string; icon: any }> = [
   { id: 'visibility', label: 'Visibility', icon: Eye },
   { id: 'adjustments', label: 'Market Adjustments', icon: SlidersHorizontal },
   { id: 'calibration', label: 'Calibration', icon: Gauge },
+  { id: 'absorption', label: 'Absorption Schedule', icon: BarChart3 },
 ];
 
 const API_BASE = '/api/v1/leasing-traffic';
@@ -1042,6 +1044,14 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
           {activeTab === 'adjustments' && renderAdjustmentsTab()}
           {activeTab === 'calibration' && renderCalibrationTab()}
+          {activeTab === 'absorption' && (
+            <AbsorptionScheduleTab
+              dealId={resolvedDealId}
+              deal={deal}
+              totalUnits={projection?.periods?.[0]?.totalUnits}
+              currentOccupancy={projection?.periods?.[0]?.baseOccPct}
+            />
+          )}
         </>
       )}
 

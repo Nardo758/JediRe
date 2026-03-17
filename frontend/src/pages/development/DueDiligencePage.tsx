@@ -63,7 +63,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'entitlements' | 'environmental' | 'utilities' | 'risk'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'entitlements' | 'environmental' | 'utilities' | 'risk' | 'physical_dd'>('overview');
   const [showAIInsights, setShowAIInsights] = useState(true);
 
   // Load all due diligence data
@@ -286,6 +286,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
               { id: 'overview', label: 'Overview', icon: FileText },
               { id: 'entitlements', label: 'Entitlements', icon: CheckCircle },
               { id: 'environmental', label: 'Environmental', icon: Zap },
+              { id: 'physical_dd', label: 'Physical DD', icon: Shield },
               { id: 'utilities', label: 'Utilities', icon: Zap },
               { id: 'risk', label: 'Risk Matrix', icon: Shield },
             ].map((tab) => (
@@ -415,6 +416,14 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
               </div>
             )}
 
+            {/* Physical DD Tab */}
+            {activeTab === 'physical_dd' && (
+              <EnvironmentalPhysicalDDSection
+                deal={propDeal}
+                dealId={dealId}
+              />
+            )}
+
             {/* Utilities Tab */}
             {activeTab === 'utilities' && utilities && (
               <UtilityCapacityGrid
@@ -456,6 +465,214 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
               </div>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type DDItemStatus = 'pending' | 'in_progress' | 'complete' | 'na';
+
+interface DDChecklistItem {
+  id: string;
+  label: string;
+  status: DDItemStatus;
+  assignedParty: string;
+  dueDate: string;
+  notes: string;
+}
+
+interface EnvironmentalPhysicalDDSectionProps {
+  deal?: any;
+  dealId?: string;
+}
+
+function getDealTypeFromDeal(deal: any): 'existing' | 'development' | 'redevelopment' {
+  const raw = (deal?.projectType || deal?.dealType || deal?.deal_data?.project_type || '').toLowerCase().trim();
+  if (['development', 'ground_up', 'ground-up', 'new_construction', 'land'].includes(raw)) return 'development';
+  if (['redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'conversion'].includes(raw)) return 'redevelopment';
+  return 'existing';
+}
+
+const CHECKLIST_BY_TYPE: Record<string, { label: string; items: string[] }> = {
+  existing: {
+    label: 'Existing Acquisition',
+    items: [
+      'Phase I Environmental Site Assessment (ESA)',
+      'Physical condition report / property inspection',
+      'Roof, HVAC, plumbing assessment',
+      'ADA compliance audit',
+      'Insurance review (property + liability)',
+    ],
+  },
+  development: {
+    label: 'Development (Ground-Up)',
+    items: [
+      'Phase I Environmental Site Assessment',
+      'Phase II ESA (if Phase I identifies RECs)',
+      'Geotechnical / soil report',
+      'Wetlands / floodplain delineation',
+      'Utility capacity study',
+      'Traffic impact study',
+    ],
+  },
+  redevelopment: {
+    label: 'Redevelopment',
+    items: [
+      'Phase I Environmental Site Assessment',
+      'Phase II ESA (if applicable)',
+      'Hazardous materials / asbestos survey (pre-demolition)',
+      'Structural / engineering assessment',
+      'Seismic evaluation (if applicable)',
+      'ADA upgrade assessment',
+    ],
+  },
+};
+
+const STATUS_OPTIONS: { value: DDItemStatus; label: string; color: string }[] = [
+  { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-700' },
+  { value: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700' },
+  { value: 'complete', label: 'Complete', color: 'bg-green-100 text-green-700' },
+  { value: 'na', label: 'N/A', color: 'bg-gray-50 text-gray-400' },
+];
+
+const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionProps> = ({ deal, dealId }) => {
+  const dt = getDealTypeFromDeal(deal);
+  const config = CHECKLIST_BY_TYPE[dt] || CHECKLIST_BY_TYPE.existing;
+
+  const [items, setItems] = useState<DDChecklistItem[]>(() =>
+    config.items.map((label, i) => ({
+      id: `dd-env-${i}`,
+      label,
+      status: 'pending' as DDItemStatus,
+      assignedParty: '',
+      dueDate: '',
+      notes: '',
+    }))
+  );
+
+  const updateItem = (id: string, field: keyof DDChecklistItem, value: string) => {
+    setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  const completedCount = items.filter(i => i.status === 'complete').length;
+  const naCount = items.filter(i => i.status === 'na').length;
+  const activeItems = items.length - naCount;
+  const progressPct = activeItems > 0 ? Math.round((completedCount / activeItems) * 100) : 0;
+
+  const getStatusIcon = (status: DDItemStatus) => {
+    switch (status) {
+      case 'complete': return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case 'in_progress': return <Clock className="w-4 h-4 text-blue-600" />;
+      case 'na': return <XCircle className="w-4 h-4 text-gray-300" />;
+      default: return <AlertCircle className="w-4 h-4 text-gray-400" />;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Environmental & Physical Due Diligence</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              {config.label} checklist — {completedCount}/{activeItems} items complete
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="w-32 bg-gray-200 rounded-full h-2">
+              <div
+                className="bg-green-500 h-2 rounded-full transition-all"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+            <span className="text-sm font-semibold text-gray-700">{progressPct}%</span>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {items.map(item => (
+            <div
+              key={item.id}
+              className={`border rounded-lg p-4 transition-colors ${
+                item.status === 'complete' ? 'bg-green-50 border-green-200' :
+                item.status === 'in_progress' ? 'bg-blue-50 border-blue-200' :
+                item.status === 'na' ? 'bg-gray-50 border-gray-100 opacity-60' :
+                'bg-white border-gray-200'
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5">{getStatusIcon(item.status)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-sm font-medium ${item.status === 'na' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                      {item.label}
+                    </span>
+                    <select
+                      value={item.status}
+                      onChange={e => updateItem(item.id, 'status', e.target.value)}
+                      className={`text-xs rounded-full px-3 py-1 border-0 font-medium cursor-pointer ${
+                        STATUS_OPTIONS.find(s => s.value === item.status)?.color || ''
+                      }`}
+                    >
+                      {STATUS_OPTIONS.map(s => (
+                        <option key={s.value} value={s.value}>{s.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Assigned Party</label>
+                      <input
+                        type="text"
+                        value={item.assignedParty}
+                        onChange={e => updateItem(item.id, 'assignedParty', e.target.value)}
+                        placeholder="e.g., ECS Environmental"
+                        className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Due Date</label>
+                      <input
+                        type="date"
+                        value={item.dueDate}
+                        onChange={e => updateItem(item.id, 'dueDate', e.target.value)}
+                        className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Notes / Attachment</label>
+                      <input
+                        type="text"
+                        value={item.notes}
+                        onChange={e => updateItem(item.id, 'notes', e.target.value)}
+                        placeholder="Notes or file ref..."
+                        className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <button
+            onClick={() => {
+              setItems(prev => [...prev, {
+                id: `dd-env-custom-${Date.now()}`,
+                label: 'New DD Item',
+                status: 'pending',
+                assignedParty: '',
+                dueDate: '',
+                notes: '',
+              }]);
+            }}
+            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            <Plus className="w-4 h-4" /> Add Custom DD Item
+          </button>
         </div>
       </div>
     </div>

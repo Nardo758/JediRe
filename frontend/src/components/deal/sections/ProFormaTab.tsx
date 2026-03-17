@@ -178,6 +178,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [lossToLease, setLossToLease] = useState(0.03);
   const [stabilizedOccupancy, setStabilizedOccupancy] = useState(0.94);
   const [collectionLoss, setCollectionLoss] = useState(0.015);
+  const [concessionFreeWeeks, setConcessionFreeWeeks] = useState(0);
+  const [concessionUnitsPct, setConcessionUnitsPct] = useState(0);
+  const [concessionDurationMonths, setConcessionDurationMonths] = useState(0);
+  const [concessionOngoing, setConcessionOngoing] = useState(false);
   const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
 
   const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });
@@ -404,6 +408,12 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         lossToLease,
         stabilizedOccupancy,
         collectionLoss,
+        concessions: {
+          freeWeeks: concessionFreeWeeks,
+          unitsPct: concessionUnitsPct,
+          durationMonths: concessionDurationMonths,
+          ongoing: concessionOngoing,
+        },
         otherIncome,
       },
       expenses,
@@ -544,6 +554,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     { id: 'acquisition', label: modelType === 'development' ? 'Development Costs' : 'Acquisition', icon: DollarSign },
     { id: 'disposition', label: 'Disposition', icon: TrendingUp },
     { id: 'revenue', label: 'Revenue Assumptions', icon: TrendingUp },
+    { id: 'concessions', label: 'Concessions', icon: ArrowRight },
     { id: 'otherIncome', label: 'Other Income', icon: DollarSign },
     { id: 'expenses', label: 'Operating Expenses', icon: BarChart3 },
     { id: 'financing', label: 'Financing', icon: DollarSign },
@@ -731,6 +742,17 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       collectionLoss={collectionLoss} setCollectionLoss={setCollectionLoss}
                       holdPeriod={holdPeriod}
                       platformData={platformData}
+                    />
+                  )}
+                  {section.id === 'concessions' && (
+                    <ConcessionsSection
+                      freeWeeks={concessionFreeWeeks} setFreeWeeks={setConcessionFreeWeeks}
+                      unitsPct={concessionUnitsPct} setUnitsPct={setConcessionUnitsPct}
+                      durationMonths={concessionDurationMonths} setDurationMonths={setConcessionDurationMonths}
+                      ongoing={concessionOngoing} setOngoing={setConcessionOngoing}
+                      totalUnits={totalUnits}
+                      unitMix={unitMix}
+                      modelType={modelType}
                     />
                   )}
                   {section.id === 'otherIncome' && (
@@ -1066,6 +1088,124 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
     </div>
   </div>
 );
+
+interface ConcessionsSectionProps {
+  freeWeeks: number;
+  setFreeWeeks: (v: number) => void;
+  unitsPct: number;
+  setUnitsPct: (v: number) => void;
+  durationMonths: number;
+  setDurationMonths: (v: number) => void;
+  ongoing: boolean;
+  setOngoing: (v: boolean) => void;
+  totalUnits: number;
+  unitMix: UnitMixRow[];
+  modelType: 'existing' | 'development';
+}
+
+const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
+  freeWeeks, setFreeWeeks, unitsPct, setUnitsPct,
+  durationMonths, setDurationMonths, ongoing, setOngoing,
+  totalUnits, unitMix, modelType,
+}) => {
+  const avgMonthlyRent = unitMix.length > 0
+    ? unitMix.reduce((s, u) => s + u.marketRent * u.units, 0) / Math.max(1, unitMix.reduce((s, u) => s + u.units, 0))
+    : 1500;
+  const weeklyRent = avgMonthlyRent / 4.33;
+  const concessionUnits = Math.round(totalUnits * unitsPct);
+  const concessionCostPerUnit = weeklyRent * freeWeeks;
+  const totalConcessionCost = concessionCostPerUnit * concessionUnits;
+  const gpr = unitMix.reduce((s, u) => s + u.marketRent * u.units * 12, 0);
+  const concessionPctOfGPR = gpr > 0 ? totalConcessionCost / gpr : 0;
+
+  return (
+    <div className="mt-3 space-y-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Info size={14} className="text-blue-500" />
+        <span className="text-[11px] text-stone-500">
+          {modelType === 'development'
+            ? 'Concessions reduce Effective Gross Income during lease-up. Link to Absorption Schedule in Traffic module for lease-up period.'
+            : 'Model ongoing renewal concessions that reduce effective rent collection.'
+          }
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <div>
+          <label className="text-[11px] font-medium text-stone-600 block mb-1">Free Rent (weeks)</label>
+          <input type="number" value={freeWeeks} min={0} max={12} step={0.5}
+            onChange={e => setFreeWeeks(parseFloat(e.target.value) || 0)}
+            className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
+          <div className="text-[9px] text-stone-400 mt-0.5">per lease</div>
+        </div>
+        <div>
+          <label className="text-[11px] font-medium text-stone-600 block mb-1">Units Receiving (%)</label>
+          <input type="number" value={unitsPct} min={0} max={1} step={0.05}
+            onChange={e => setUnitsPct(parseFloat(e.target.value) || 0)}
+            className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
+          <div className="text-[9px] text-stone-400 mt-0.5">{concessionUnits} units</div>
+        </div>
+        <div>
+          <label className="text-[11px] font-medium text-stone-600 block mb-1">Duration (months)</label>
+          <input type="number" value={durationMonths} min={0} max={36}
+            onChange={e => setDurationMonths(parseInt(e.target.value) || 0)}
+            className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
+          <div className="text-[9px] text-stone-400 mt-0.5">concession period</div>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-[11px] font-medium text-stone-600 block mb-1">Ongoing?</label>
+          <button
+            onClick={() => setOngoing(!ongoing)}
+            className={`px-3 py-1.5 text-xs rounded border transition-colors ${
+              ongoing ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-stone-50 border-stone-200 text-stone-500'
+            }`}
+          >
+            {ongoing ? 'Yes — recurring' : 'No — lease-up only'}
+          </button>
+          <div className="text-[9px] text-stone-400 mt-0.5">renewal concessions</div>
+        </div>
+      </div>
+
+      {(freeWeeks > 0 && unitsPct > 0) && (
+        <div className="bg-stone-50 rounded-xl border border-stone-200 p-4">
+          <h5 className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-3">Concession Impact</h5>
+          <div className="grid grid-cols-4 gap-4">
+            <div>
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider">Cost / Unit</div>
+              <div className="text-sm font-bold font-mono text-stone-900">{fmt$(Math.round(concessionCostPerUnit))}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider">Total Concession Cost</div>
+              <div className="text-sm font-bold font-mono text-red-700">{fmt$(Math.round(totalConcessionCost))}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider">% of GPR</div>
+              <div className="text-sm font-bold font-mono text-amber-700">{(concessionPctOfGPR * 100).toFixed(2)}%</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider">EGI Reduction</div>
+              <div className="text-sm font-bold font-mono text-red-600">({fmt$(Math.round(totalConcessionCost))})</div>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-stone-200">
+            <div className="flex justify-between text-xs">
+              <span className="text-stone-600">Gross Potential Rent</span>
+              <span className="font-mono text-stone-800">{fmt$(Math.round(gpr))}</span>
+            </div>
+            <div className="flex justify-between text-xs text-red-600 mt-1">
+              <span>Less: Concessions</span>
+              <span className="font-mono">({fmt$(Math.round(totalConcessionCost))})</span>
+            </div>
+            <div className="flex justify-between text-xs font-semibold mt-1 pt-1 border-t border-stone-200">
+              <span className="text-stone-800">Effective Gross Income (post-concessions)</span>
+              <span className="font-mono text-stone-900">{fmt$(Math.round(gpr - totalConcessionCost))}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem>; setOtherIncome: (v: Record<string, OtherIncomeItem>) => void; totalUnits: number }> = ({ otherIncome, setOtherIncome, totalUnits }) => {
   const totalAnnual = Object.values(otherIncome).reduce((sum, oi) => sum + oi.perUnitMonth * totalUnits * 12 * oi.penetration, 0);

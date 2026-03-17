@@ -431,7 +431,7 @@ export const CreateDealPage: React.FC = () => {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Deal</h1>
               <p className="text-gray-600">
                 Step {currentStep} of 6 &bull; {
-                  currentStep === STEPS.DETAILS_ADDRESS ? 'Deal Details & Address' :
+                  currentStep === STEPS.DETAILS_ADDRESS ? 'Deal Info & Address' :
                   currentStep === STEPS.PROJECT_TYPE ? 'Deal Type' :
                   currentStep === STEPS.CATEGORY ? 'Deal Category' :
                   currentStep === STEPS.PROPERTY_TYPE ? 'Property Type' :
@@ -459,7 +459,7 @@ export const CreateDealPage: React.FC = () => {
               <div className="space-y-6">
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Deal Details & Property Location
+                    Deal Info & Property Location
                   </h2>
                   <div className="space-y-4">
                     <div>
