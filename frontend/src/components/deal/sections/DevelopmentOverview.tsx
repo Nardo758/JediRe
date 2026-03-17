@@ -61,6 +61,34 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
   const [entitlements, setEntitlements] = useState<any[]>([]);
   const [benchmarks, setBenchmarks] = useState<any>(null);
   const [entitlementLoading, setEntitlementLoading] = useState(false);
+  const [jediScore, setJediScore] = useState<number | null>(null);
+  const [jediVerdict, setJediVerdict] = useState<string | null>(null);
+  const [jediBreakdown, setJediBreakdown] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!id) return;
+    apiClient.get(`/api/v1/deals/${id}/jedi-score`)
+      .then(res => {
+        const data = res.data;
+        const score = data?.overall_score ?? data?.score ?? null;
+        setJediScore(score);
+        if (score !== null) {
+          if (score >= 85) setJediVerdict('STRONG BUY');
+          else if (score >= 70) setJediVerdict('OPPORTUNITY');
+          else if (score >= 55) setJediVerdict('HOLD/MONITOR');
+          else setJediVerdict('CAUTION');
+        }
+        const bd = data?.breakdown || {};
+        setJediBreakdown({
+          demand: bd.demand?.score ?? 50,
+          supply: bd.supply?.score ?? 50,
+          momentum: bd.momentum?.score ?? 50,
+          position: bd.position?.score ?? 50,
+          risk: bd.risk?.score ?? 50,
+        });
+      })
+      .catch(() => {});
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -171,9 +199,49 @@ export const DevelopmentOverview: React.FC<DevelopmentOverviewProps> = ({
 
   const divStyle: React.CSSProperties = { marginBottom: 16 };
 
+  const SIGNAL_DEFS = [
+    { key: 'demand', label: 'DEMAND', color: T.green },
+    { key: 'supply', label: 'SUPPLY', color: T.amber },
+    { key: 'momentum', label: 'MOMENTUM', color: T.blue },
+    { key: 'position', label: 'POSITION', color: T.violet },
+    { key: 'risk', label: 'RISK', color: T.red },
+  ];
+
   return (
     <BloombergPage>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+
+        {/* JEDI Score + Signal Bars */}
+        {jediScore !== null && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 6, padding: '12px 16px', marginBottom: 12 }}>
+            <div style={{ textAlign: 'center', minWidth: 56 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: jediScore >= 70 ? T.greenL : jediScore >= 55 ? T.amberL : T.redL, ...mono }}>{Math.round(jediScore)}</div>
+              <div style={{ fontSize: 7, color: T.td, letterSpacing: 1.5, textTransform: 'uppercase', ...mono }}>JEDI</div>
+            </div>
+            <div style={{ width: 1, height: 36, background: T.border }} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: jediScore >= 85 ? T.greenL : jediScore >= 70 ? T.amberL : jediScore >= 55 ? T.ts : T.redL, letterSpacing: 1, ...mono }}>
+              {jediVerdict}
+            </div>
+            <div style={{ width: 1, height: 36, background: T.border }} />
+            <div style={{ display: 'flex', gap: 12, flex: 1 }}>
+              {SIGNAL_DEFS.map(s => {
+                const score = jediBreakdown[s.key] ?? 50;
+                const pct = Math.round(score);
+                return (
+                  <div key={s.key} style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 8, color: T.td, letterSpacing: 1, ...mono }}>{s.label}</span>
+                      <span style={{ fontSize: 8, fontWeight: 700, color: s.color, ...mono }}>{pct}</span>
+                    </div>
+                    <div style={{ height: 3, background: T.bgPanel, borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: s.color, borderRadius: 2 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* §1 — Site + Zoning Constraints */}
         <div style={divStyle}>
