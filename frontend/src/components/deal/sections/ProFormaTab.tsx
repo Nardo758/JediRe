@@ -181,7 +181,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [concessionFreeWeeks, setConcessionFreeWeeks] = useState(0);
   const [concessionUnitsPct, setConcessionUnitsPct] = useState(0);
   const [concessionDurationMonths, setConcessionDurationMonths] = useState(0);
-  const [concessionOngoing, setConcessionOngoing] = useState(false);
+  const [concessionOngoing, setConcessionOngoing] = useState(modelType === 'existing');
   const [absorptionLinked, setAbsorptionLinked] = useState(false);
 
   useEffect(() => {

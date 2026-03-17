@@ -203,12 +203,18 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
   const isRedev = dealType === 'redevelopment';
   const isExisting = dealType === 'existing';
 
+  const { emitEvent } = useDealModule();
+
   const [monthlyVelocity, setMonthlyVelocity] = useState(isDev ? Math.max(5, Math.round(dealUnits * 0.06)) : Math.max(3, Math.round(dealUnits * 0.04)));
   const [startOccupancy, setStartOccupancy] = useState(isDev ? 0 : dealOcc || 0.82);
   const [targetOccupancy, setTargetOccupancy] = useState(0.94);
   const [rampUpMonths, setRampUpMonths] = useState(isDev ? 3 : 2);
   const [offlineUnits, setOfflineUnits] = useState(isRedev ? Math.round(dealUnits * 0.4) : 0);
   const [renovationMonths, setRenovationMonths] = useState(isRedev ? 12 : 0);
+  const [marketAbsorptionRate, setMarketAbsorptionRate] = useState<number>(
+    isDev ? Math.max(8, Math.round(dealUnits * 0.05)) : Math.max(5, Math.round(dealUnits * 0.03))
+  );
+  const [supplyPressureFactor, setSupplyPressureFactor] = useState<number>(1.0);
 
   const effectiveVelocity = Math.max(1, Math.round(monthlyVelocity * supplyPressureFactor));
 
@@ -222,13 +228,6 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
       totalUnits, unitMix, effectiveVelocity, startOccupancy, targetOccupancy, rampUpMonths,
     );
   }, [totalUnits, unitMix, effectiveVelocity, startOccupancy, targetOccupancy, rampUpMonths, offlineUnits, renovationMonths, isRedev]);
-
-  const { emitEvent } = useDealModule();
-
-  const [marketAbsorptionRate, setMarketAbsorptionRate] = useState<number>(
-    isDev ? Math.max(8, Math.round(dealUnits * 0.05)) : Math.max(5, Math.round(dealUnits * 0.03))
-  );
-  const [supplyPressureFactor, setSupplyPressureFactor] = useState<number>(1.0);
 
   const monthsToStabilization = periods.length > 0 ? periods[periods.length - 1].month : 0;
   const totalAbsorbed = periods.reduce((s, p) => s + Math.max(0, p.unitsAbsorbed), 0);
