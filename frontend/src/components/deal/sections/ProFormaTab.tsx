@@ -438,6 +438,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     originationFee, rateCapCost, prepayPenalty, capexItems, contingencyPct, reservesPerUnit,
     lpShare, gpShare, hurdles, equityContribution, landCost, hardCostPerSF, hardCostContingency,
     softCostPct, developerFee, constructionPeriod, leaseUpVelocity, constructionLoanLTC, constructionLoanRate,
+    concessionFreeWeeks, concessionUnitsPct, concessionDurationMonths, concessionOngoing,
   ]);
 
   const handleBuildModel = async () => {

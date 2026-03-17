@@ -28,6 +28,8 @@ import {
   AIInsightsPanel,
 } from '../../components/development';
 import { apiClient } from '../../services/api.client';
+import { getDDChecklistPreset, DD_CHECKLISTS, getDealType } from '../../shared/config/deal-type-visibility';
+import type { DDChecklistPreset, DDChecklistCategory } from '../../shared/config/deal-type-visibility';
 import type {
   DueDiligenceState,
   ZoningAnalysis,
@@ -473,13 +475,20 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
 
 type DDItemStatus = 'pending' | 'in_progress' | 'complete' | 'na';
 
+interface DDAttachment {
+  fileName: string;
+  fileUrl: string;
+}
+
 interface DDChecklistItem {
   id: string;
+  category: string;
   label: string;
   status: DDItemStatus;
   assignedParty: string;
   dueDate: string;
   notes: string;
+  attachments: DDAttachment[];
 }
 
 interface EnvironmentalPhysicalDDSectionProps {
@@ -487,47 +496,31 @@ interface EnvironmentalPhysicalDDSectionProps {
   dealId?: string;
 }
 
-function getDealTypeFromDeal(deal: any): 'existing' | 'development' | 'redevelopment' {
-  const raw = (deal?.projectType || deal?.dealType || deal?.deal_data?.project_type || '').toLowerCase().trim();
-  if (['development', 'ground_up', 'ground-up', 'new_construction', 'land'].includes(raw)) return 'development';
-  if (['redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'conversion'].includes(raw)) return 'redevelopment';
-  return 'existing';
-}
-
-const CHECKLIST_BY_TYPE: Record<string, { label: string; items: string[] }> = {
-  existing: {
-    label: 'Existing Acquisition',
-    items: [
-      'Phase I Environmental Site Assessment (ESA)',
-      'Physical condition report / property inspection',
-      'Roof, HVAC, plumbing assessment',
-      'ADA compliance audit',
-      'Insurance review (property + liability)',
-    ],
-  },
-  development: {
-    label: 'Development (Ground-Up)',
-    items: [
-      'Phase I Environmental Site Assessment',
-      'Phase II ESA (if Phase I identifies RECs)',
-      'Geotechnical / soil report',
-      'Wetlands / floodplain delineation',
-      'Utility capacity study',
-      'Traffic impact study',
-    ],
-  },
-  redevelopment: {
-    label: 'Redevelopment',
-    items: [
-      'Phase I Environmental Site Assessment',
-      'Phase II ESA (if applicable)',
-      'Hazardous materials / asbestos survey (pre-demolition)',
-      'Structural / engineering assessment',
-      'Seismic evaluation (if applicable)',
-      'ADA upgrade assessment',
-    ],
-  },
+const PRESET_LABELS: Record<DDChecklistPreset, string> = {
+  existing_acquisition: 'Existing Acquisition',
+  ground_up: 'Development (Ground-Up)',
+  redevelopment: 'Redevelopment',
 };
+
+function buildChecklistFromPreset(preset: DDChecklistPreset): DDChecklistItem[] {
+  const categories = DD_CHECKLISTS[preset] || DD_CHECKLISTS.existing_acquisition;
+  const items: DDChecklistItem[] = [];
+  categories.forEach((cat: DDChecklistCategory) => {
+    cat.items.forEach((label: string, idx: number) => {
+      items.push({
+        id: `dd-${cat.category.replace(/\s+/g, '-').toLowerCase()}-${idx}`,
+        category: cat.category,
+        label,
+        status: 'pending',
+        assignedParty: '',
+        dueDate: '',
+        notes: '',
+        attachments: [],
+      });
+    });
+  });
+  return items;
+}
 
 const STATUS_OPTIONS: { value: DDItemStatus; label: string; color: string }[] = [
   { value: 'pending', label: 'Pending', color: 'bg-gray-100 text-gray-700' },
@@ -537,22 +530,39 @@ const STATUS_OPTIONS: { value: DDItemStatus; label: string; color: string }[] = 
 ];
 
 const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionProps> = ({ deal, dealId }) => {
-  const dt = getDealTypeFromDeal(deal);
-  const config = CHECKLIST_BY_TYPE[dt] || CHECKLIST_BY_TYPE.existing;
+  const dealType = getDealType(deal || {});
+  const preset = getDDChecklistPreset(dealType);
+  const presetLabel = PRESET_LABELS[preset];
 
-  const [items, setItems] = useState<DDChecklistItem[]>(() =>
-    config.items.map((label, i) => ({
-      id: `dd-env-${i}`,
-      label,
-      status: 'pending' as DDItemStatus,
-      assignedParty: '',
-      dueDate: '',
-      notes: '',
-    }))
-  );
+  const [items, setItems] = useState<DDChecklistItem[]>(() => buildChecklistFromPreset(preset));
 
   const updateItem = (id: string, field: keyof DDChecklistItem, value: string) => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+  };
+
+  const addAttachment = (itemId: string) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const fileUrl = URL.createObjectURL(file);
+      setItems(prev => prev.map(item =>
+        item.id === itemId
+          ? { ...item, attachments: [...item.attachments, { fileName: file.name, fileUrl }] }
+          : item
+      ));
+    };
+    input.click();
+  };
+
+  const removeAttachment = (itemId: string, attachmentIdx: number) => {
+    setItems(prev => prev.map(item =>
+      item.id === itemId
+        ? { ...item, attachments: item.attachments.filter((_, i) => i !== attachmentIdx) }
+        : item
+    ));
   };
 
   const completedCount = items.filter(i => i.status === 'complete').length;
@@ -576,7 +586,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Environmental & Physical Due Diligence</h3>
             <p className="text-sm text-gray-500 mt-1">
-              {config.label} checklist — {completedCount}/{activeItems} items complete
+              {presetLabel} checklist — {completedCount}/{activeItems} items complete
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -620,7 +630,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                       ))}
                     </select>
                   </div>
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-4 gap-3">
                     <div>
                       <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Assigned Party</label>
                       <input
@@ -641,14 +651,46 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Notes / Attachment</label>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Notes</label>
                       <input
                         type="text"
                         value={item.notes}
                         onChange={e => updateItem(item.id, 'notes', e.target.value)}
-                        placeholder="Notes or file ref..."
+                        placeholder="Internal notes..."
                         className="w-full text-xs border border-gray-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none"
                       />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-gray-500 uppercase tracking-wider block mb-0.5">Documents</label>
+                      <div className="space-y-1">
+                        {item.attachments.map((att, attIdx) => (
+                          <div key={attIdx} className="flex items-center gap-1 text-xs">
+                            <FileText className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                            <a
+                              href={att.fileUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline truncate max-w-[120px]"
+                              title={att.fileName}
+                            >
+                              {att.fileName}
+                            </a>
+                            <button
+                              onClick={() => removeAttachment(item.id, attIdx)}
+                              className="text-gray-400 hover:text-red-500 flex-shrink-0"
+                              title="Remove"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => addAttachment(item.id)}
+                          className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700"
+                        >
+                          <Upload className="w-3 h-3" /> Attach file
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -662,11 +704,13 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
             onClick={() => {
               setItems(prev => [...prev, {
                 id: `dd-env-custom-${Date.now()}`,
+                category: 'Custom',
                 label: 'New DD Item',
                 status: 'pending',
                 assignedParty: '',
                 dueDate: '',
                 notes: '',
+                attachments: [],
               }]);
             }}
             className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
