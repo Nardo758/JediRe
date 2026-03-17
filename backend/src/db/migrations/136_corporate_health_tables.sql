@@ -71,7 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_corporate_stock_prices_ticker ON corporate_stock_
 CREATE TABLE IF NOT EXISTS corporate_health_scores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ticker TEXT NOT NULL,
-  quarter TEXT NOT NULL,
+  fiscal_quarter TEXT NOT NULL,
   revenue_momentum DECIMAL(5,2),
   earnings_trajectory DECIMAL(5,2),
   headcount_signal DECIMAL(5,2),
@@ -83,11 +83,11 @@ CREATE TABLE IF NOT EXISTS corporate_health_scores (
   health_tier TEXT CHECK (health_tier IN ('healthy', 'watch', 'stress')),
   computed_at TIMESTAMPTZ DEFAULT NOW(),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(ticker, quarter)
+  UNIQUE(ticker, fiscal_quarter)
 );
 
 CREATE INDEX IF NOT EXISTS idx_corporate_health_scores_ticker ON corporate_health_scores(ticker);
-CREATE INDEX IF NOT EXISTS idx_corporate_health_scores_quarter ON corporate_health_scores(quarter);
+CREATE INDEX IF NOT EXISTS idx_corporate_health_scores_fiscal_quarter ON corporate_health_scores(fiscal_quarter);
 
 CREATE TABLE IF NOT EXISTS submarket_corporate_health (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
