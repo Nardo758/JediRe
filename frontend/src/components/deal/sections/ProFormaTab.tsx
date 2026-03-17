@@ -182,6 +182,22 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [concessionUnitsPct, setConcessionUnitsPct] = useState(0);
   const [concessionDurationMonths, setConcessionDurationMonths] = useState(0);
   const [concessionOngoing, setConcessionOngoing] = useState(false);
+  const [absorptionLinked, setAbsorptionLinked] = useState(false);
+
+  useEffect(() => {
+    if (lastEvent?.type === 'absorption-updated' && lastEvent.payload) {
+      const { concessionPeriodMonths, eligibleUnitsPct, dealType: absDealType } = lastEvent.payload;
+      if (absDealType === 'development' || absDealType === 'redevelopment') {
+        setConcessionDurationMonths(concessionPeriodMonths || 0);
+        setConcessionUnitsPct(eligibleUnitsPct || 0);
+        if (concessionFreeWeeks === 0) {
+          setConcessionFreeWeeks(absDealType === 'development' ? 4 : 2);
+        }
+        setAbsorptionLinked(true);
+      }
+    }
+  }, [lastEvent]);
+
   const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
 
   const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });

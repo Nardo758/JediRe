@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp, BarChart3, Calendar, Users, Building2,
-  ArrowUpRight, ArrowDownRight, Minus, Info, Edit3, Save, X,
+  ArrowUpRight, ArrowDownRight, Minus, Info, Edit3, Save, X, AlertTriangle,
 } from 'lucide-react';
 import { useDealType } from '../../../../stores/dealStore';
+import { useDealModule } from '../../../../contexts/DealModuleContext';
 import type { DealType } from '../../../../shared/config/deal-type-visibility';
 
 interface AbsorptionScheduleTabProps {
@@ -220,10 +221,43 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
     );
   }, [totalUnits, unitMix, monthlyVelocity, startOccupancy, targetOccupancy, rampUpMonths, offlineUnits, renovationMonths, isRedev]);
 
+  const { emitEvent } = useDealModule();
+
+  const [marketAbsorptionRate, setMarketAbsorptionRate] = useState<number>(
+    isDev ? Math.max(8, Math.round(dealUnits * 0.05)) : Math.max(5, Math.round(dealUnits * 0.03))
+  );
+  const [supplyPressureFactor, setSupplyPressureFactor] = useState<number>(1.0);
+
   const monthsToStabilization = periods.length > 0 ? periods[periods.length - 1].month : 0;
   const totalAbsorbed = periods.reduce((s, p) => s + Math.max(0, p.unitsAbsorbed), 0);
   const avgMonthlyVelocity = periods.length > 0 ? totalAbsorbed / periods.length : 0;
   const peakMonth = periods.reduce((max, p) => p.unitsAbsorbed > max.unitsAbsorbed ? p : max, periods[0] || { month: 0, unitsAbsorbed: 0 });
+
+  const adjustedVelocity = avgMonthlyVelocity * supplyPressureFactor;
+  const breakEvenOccupancy = useMemo(() => {
+    const avgRent = unitMix.reduce((s, u) => s + u.units * u.monthlyRent, 0) / (totalUnits || 1);
+    const estimatedExpensePerUnit = avgRent * 0.45;
+    return totalUnits > 0 ? Math.min(0.99, estimatedExpensePerUnit / avgRent) : 0;
+  }, [unitMix, totalUnits]);
+
+  useEffect(() => {
+    if (periods.length === 0) return;
+    emitEvent({
+      source: 'absorption-schedule',
+      type: 'absorption-updated',
+      payload: {
+        monthsToStabilization,
+        totalAbsorbed,
+        avgMonthlyVelocity: adjustedVelocity,
+        concessionPeriodMonths: monthsToStabilization,
+        eligibleUnitsPct: totalUnits > 0 ? Math.round((totalAbsorbed / totalUnits) * 100) : 0,
+        marketAbsorptionRate,
+        supplyPressureFactor,
+        breakEvenOccupancy,
+        dealType,
+      },
+    });
+  }, [monthsToStabilization, totalAbsorbed, adjustedVelocity, marketAbsorptionRate, supplyPressureFactor, breakEvenOccupancy, dealType]);
 
   const showForExisting = isExisting && (dealOcc < 0.92 || startOccupancy < 0.92);
 
@@ -347,6 +381,45 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
                 </div>
               </>
             )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-stone-200">
+            <h5 className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider mb-3">Market & Competitive Factors</h5>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-[11px] font-medium text-stone-600 block mb-1">
+                  Market Absorption Rate (units/mo)
+                  <span className="text-[9px] text-stone-400 block">Submarket benchmark from M05 comps</span>
+                </label>
+                <input type="number" value={marketAbsorptionRate} onChange={e => setMarketAbsorptionRate(parseInt(e.target.value) || 1)}
+                  className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-stone-600 block mb-1">
+                  Supply Pressure Factor
+                  <span className="text-[9px] text-stone-400 block">1.0 = neutral; &lt;1 = oversupply drag; &gt;1 = limited supply tailwind</span>
+                </label>
+                <input type="number" value={supplyPressureFactor} step={0.05} min={0.5} max={1.5}
+                  onChange={e => setSupplyPressureFactor(parseFloat(e.target.value) || 1.0)}
+                  className="w-full text-xs font-mono border border-stone-200 rounded px-2 py-1.5 focus:border-blue-400 outline-none" />
+              </div>
+              {isExisting && (
+                <div>
+                  <label className="text-[11px] font-medium text-stone-600 block mb-1">
+                    Break-Even Occupancy
+                    <span className="text-[9px] text-stone-400 block">Occupancy to cover operating expenses</span>
+                  </label>
+                  <div className="text-sm font-mono font-semibold text-stone-800 mt-1">
+                    {(breakEvenOccupancy * 100).toFixed(1)}%
+                    {startOccupancy < breakEvenOccupancy && (
+                      <span className="ml-2 text-[10px] text-red-600 font-normal flex items-center gap-0.5 inline-flex">
+                        <AlertTriangle size={10} /> Below break-even
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-4">

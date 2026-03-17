@@ -536,6 +536,10 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
 
   const [items, setItems] = useState<DDChecklistItem[]>(() => buildChecklistFromPreset(preset));
 
+  useEffect(() => {
+    setItems(buildChecklistFromPreset(preset));
+  }, [preset]);
+
   const updateItem = (id: string, field: keyof DDChecklistItem, value: string) => {
     setItems(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
   };

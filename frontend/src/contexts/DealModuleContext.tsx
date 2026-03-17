@@ -170,7 +170,8 @@ export type DealModuleEventType =
   | 'strategy-selected'
   | 'risk-updated'
   | 'debt-terms-selected'
-  | 'market-intelligence-updated';
+  | 'market-intelligence-updated'
+  | 'absorption-updated';
 
 export interface DealModuleEvent {
   source: string;
