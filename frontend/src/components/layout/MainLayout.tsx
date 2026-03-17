@@ -529,10 +529,15 @@ export const MainLayout: React.FC = () => {
         const dealRes = await api.get(`/deals/${dealId}`);
         const d = dealRes.data?.deal || dealRes.data?.data || dealRes.data;
         let ctx: DealContextInfo = d || {};
+        if (ctx.jedi_score != null && typeof ctx.jedi_score === 'object') {
+          const scoreObj = ctx.jedi_score as unknown as Record<string, unknown>;
+          ctx = { ...ctx, jedi_score: (scoreObj.totalScore ?? scoreObj.total_score) as number | undefined };
+        }
         try {
           const scoreRes = await api.get(`/jedi/score/${dealId}`);
           const s = scoreRes.data?.data || scoreRes.data;
-          if (s?.score != null) ctx = { ...ctx, jedi_score: s.score, delta_30d: s.delta_30d ?? s.delta ?? ctx.delta_30d };
+          const resolvedScore = s?.totalScore ?? s?.total_score ?? s?.score;
+          if (resolvedScore != null) ctx = { ...ctx, jedi_score: resolvedScore, delta_30d: s.delta_30d ?? s.delta ?? ctx.delta_30d };
         } catch {
           /* JEDI score endpoint may not have data */
         }
@@ -547,11 +552,19 @@ export const MainLayout: React.FC = () => {
   useEffect(() => {
     api.get('/deals').then(res => {
       const deals: Array<Record<string, unknown>> = res.data?.deals || res.data?.data || [];
-      setTickerItems(deals.slice(0, 30).map(d => ({
-        name: (d.name as string) || 'Untitled',
-        score: d.jedi_score as number | undefined,
-        delta: d.delta_30d != null ? ((d.delta_30d as number) >= 0 ? `+${d.delta_30d}` : `${d.delta_30d}`) : undefined,
-      })));
+      setTickerItems(deals.slice(0, 30).map(d => {
+        let score: number | undefined;
+        if (d.jedi_score != null) {
+          score = typeof d.jedi_score === 'object'
+            ? ((d.jedi_score as Record<string, unknown>).totalScore ?? (d.jedi_score as Record<string, unknown>).total_score) as number | undefined
+            : d.jedi_score as number;
+        }
+        return {
+          name: (d.name as string) || 'Untitled',
+          score,
+          delta: d.delta_30d != null ? ((d.delta_30d as number) >= 0 ? `+${d.delta_30d}` : `${d.delta_30d}`) : undefined,
+        };
+      }));
     }).catch(() => setTickerItems([]));
   }, []);
 
