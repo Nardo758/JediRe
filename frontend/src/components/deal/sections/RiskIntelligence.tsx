@@ -178,12 +178,10 @@ function severityLabel(s: 'low' | 'moderate' | 'elevated' | 'high'): string {
 }
 
 function generateSparkline(score: number): number[] {
-  const points: number[] = [];
-  for (let i = 0; i < 12; i++) {
-    points.push(Math.max(0, Math.min(100, score + Math.round((Math.random() - 0.5) * 6))));
-  }
-  points[11] = score;
-  return points;
+  const offsets = [3, -2, 4, -3, 2, -4, 3, -2, 1, -3, 2, 0];
+  return offsets.map((offset, i) =>
+    i === 11 ? score : Math.max(0, Math.min(100, score + offset))
+  );
 }
 
 function mapApiToCategories(apiData: any): RiskCategory[] {
