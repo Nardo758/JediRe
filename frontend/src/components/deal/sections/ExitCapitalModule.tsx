@@ -964,7 +964,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               {[
                 { l: `Senior — ${stack.sr.type}`, pct: stack.sr.pct, rate: stack.sr.rate, c: '#63B3ED' },
                 ...(stack.mz ? [{ l: `Mezz — ${stack.mz.type}`, pct: stack.mz.pct, rate: stack.mz.rate, c: '#F6E05E' }] : []),
-                { l: 'Sponsor Equity', pct: stack.eq, rate: null as any, c: '#B794F4' },
+                { l: 'Sponsor Equity', pct: stack.eq, rate: null as (number | null), c: '#B794F4' },
               ].map((ly, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: `${ly.c}10`, borderRadius: 6, border: `1px solid ${ly.c}25`, minHeight: Math.max(36, ly.pct * 0.8), marginBottom: 2 }}>
                   <div>
@@ -1133,13 +1133,13 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     { l: 'IRR', v: fmt.pct((r as ExitReturns).irr), c: (r as ExitReturns).irr >= 15 ? '#68D391' : '#F6E05E', big: 1 },
                     { l: 'EM', v: `${(r as ExitReturns).em.toFixed(2)}x`, c: '#63B3ED', big: 1 },
                     { l: 'RSS', v: RSS_21Y[NOW_IDX + fi as number]?.rss, c: RSS_21Y[NOW_IDX + fi as number]?.rss ?? 0 >= 70 ? '#68D391' : '#F6E05E', big: 1 },
-                  ].map((row, i) => {
-                    if ((row as any).sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
+                  ].map((row: { l?: string; v?: string | number; c?: string; big?: number | boolean; sep?: boolean }, i) => {
+                    if (row.sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
                     return (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-                        <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{(row as any).l}</span>
-                        <span style={{ fontSize: (row as any).big ? 14 : 11, fontWeight: (row as any).big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: (row as any).c || '#E8E6E1' }}>
-                          {(row as any).v}
+                        <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{row.l}</span>
+                        <span style={{ fontSize: row.big ? 14 : 11, fontWeight: row.big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: row.c || '#E8E6E1' }}>
+                          {row.v}
                         </span>
                       </div>
                     );

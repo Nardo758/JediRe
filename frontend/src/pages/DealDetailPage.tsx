@@ -187,6 +187,17 @@ const ExecutionScreen = (props: any) => (
     { id: 'notarize-closing',   label: 'Closing (RON)',      component: NotarizeClosingSection },
   ]} />
 );
+const DocumentsScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'files',         label: 'Files & Assets',  component: FilesSection },
+    { id: 'due-diligence', label: 'DD Checklist',    component: DueDiligencePage },
+  ]} />
+);
+const ExitStrategyScreen = (props: any) => (
+  <DealScreenWrapper passProps={props} tabs={[
+    { id: 'exit-capital', label: 'Exit & Capital', component: ExitCapitalModule },
+  ]} />
+);
 const AIAgentScreen = (props: any) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'opus-ai',            label: 'Opus AI Agent',      component: OpusAISection },
@@ -221,8 +232,8 @@ const DealDetailPage: React.FC = () => {
 
   const fetchGeographicContext = async (id: string) => {
     try {
-      const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
-      const context = response?.data?.data;
+      const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`);
+      const context = (response as { data?: { data?: Record<string, unknown> } })?.data?.data;
       setGeographicContext(context || null);
       setActiveTradeArea(context?.trade_area || null);
       if (context?.active_scope) {
@@ -287,8 +298,8 @@ const DealDetailPage: React.FC = () => {
   const loadDeal = async (id: string) => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/api/v1/deals/${id}`) as any;
-      const body = response?.data;
+      const response = await apiClient.get(`/api/v1/deals/${id}`);
+      const body = (response as { data?: Record<string, unknown> })?.data;
       setDeal(body?.deal || body?.data || body);
       fetchDealContext(id);
     } catch (error) {
@@ -304,9 +315,9 @@ const DealDetailPage: React.FC = () => {
         return;
       }
       const fKeyMap: { [key: string]: string } = {
-        F1: 'overview', F2: 'zoning',   F3: 'market',  F4: 'supply',
-        F5: 'strategy', F6: 'proforma', F7: 'capital', F8: 'risk',
-        F9: 'competition', F10: 'traffic', F11: 'execution', F12: 'ai-agent',
+        F1: 'overview', F2: 'zoning',   F3: 'market',     F4: 'supply',
+        F5: 'strategy', F6: 'proforma', F7: 'capital',    F8: 'risk',
+        F9: 'competition', F10: 'traffic', F11: 'documents', F12: 'exit',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -330,21 +341,24 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
-  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ─── spec-aligned order ───────────
-  const dealScreens = [
-    { id: 'overview',    fkey: 'F1',  code: 'M01', label: 'Overview',              icon: <LayoutDashboard size={14} />, component: OverviewScreen },
-    { id: 'zoning',      fkey: 'F2',  code: 'M02', label: 'Property & Zoning',     icon: <Landmark size={14} />,        component: ZoningModuleSection },
-    { id: 'market',      fkey: 'F3',  code: 'M05', label: 'Market Intelligence',   icon: <TrendingUp size={14} />,      component: MarketScreen },
-    { id: 'supply',      fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',       icon: <Package size={14} />,         component: SupplyPipelinePage },
-    { id: 'strategy',    fkey: 'F5',  code: 'M08', label: 'Strategy Arbitrage',    icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'proforma',    fkey: 'F6',  code: 'M11', label: 'Pro Forma Engine',      icon: <Calculator size={14} />,      component: ProformaScreen },
-    { id: 'capital',     fkey: 'F7',  code: 'M12', label: 'Capital Structure',     icon: <DollarSign size={14} />,      component: ExitCapitalModule },
-    { id: 'risk',        fkey: 'F8',  code: 'M13', label: 'Risk Assessment',       icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'competition', fkey: 'F9',  code: 'M15', label: 'Comps',                 icon: <Target size={14} />,          component: CompetitionScreen },
-    { id: 'traffic',     fkey: 'F10', code: 'M10', label: 'Traffic Intelligence',  icon: <Activity size={14} />,        component: TrafficModule },
-    { id: 'execution',   fkey: 'F11', code: 'M17', label: 'Documents',             icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'ai-agent',    fkey: 'F12', code: 'M20', label: 'Exit Strategy',         icon: <Bot size={14} />,             component: AIAgentScreen },
+  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ─── aligned to deal-type-visibility.ts ───
+  const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<any> }[] = [
+    { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',             icon: <LayoutDashboard size={14} />, component: OverviewScreen },
+    { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Property & Zoning',    icon: <Landmark size={14} />,        component: ZoningModuleSection },
+    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', label: 'Market Intelligence',  icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',      icon: <Package size={14} />,         component: SupplyPipelinePage },
+    { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', label: 'Strategy Arbitrage',   icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'proforma',    moduleId: 'M09', fkey: 'F6',  code: 'M09', label: 'Pro Forma Engine',     icon: <Calculator size={14} />,      component: ProformaScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F7',  code: 'M11', label: 'Capital Structure',    icon: <DollarSign size={14} />,      component: ExitStrategyScreen },
+    { id: 'risk',        moduleId: 'M14', fkey: 'F8',  code: 'M14', label: 'Risk Assessment',      icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'competition', moduleId: 'M15', fkey: 'F9',  code: 'M15', label: 'Comps',                icon: <Target size={14} />,          component: CompetitionScreen },
+    { id: 'traffic',     moduleId: 'M07', fkey: 'F10', code: 'M07', label: 'Traffic Intelligence', icon: <Activity size={14} />,        component: TrafficModule },
+    { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', label: 'Documents',            icon: <HardHat size={14} />,         component: DocumentsScreen },
+    { id: 'exit',        moduleId: 'M12', fkey: 'F12', code: 'M12', label: 'Exit Strategy',        icon: <Bot size={14} />,             component: ExitStrategyScreen },
   ];
+
+  // Filter by deal-type visibility rules
+  const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
 
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];

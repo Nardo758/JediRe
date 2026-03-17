@@ -660,7 +660,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <tr key={row.key} className="border-b border-stone-100">
                   <td className="sticky left-0 z-10 px-4 py-2 text-[11px] border-r" style={{ background: "#0F1319", color: "#9EA8B4", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
-                    const val = (p as any)[row.field] as number;
+                    const val = (p as Record<string, unknown>)[row.field] as number;
                     return (
                       <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-800">
                         {formatVal(val, row.format)}
@@ -684,7 +684,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <tr key={row.key} className="border-b border-stone-100">
                   <td className="sticky left-0 z-10 px-4 py-2 text-[11px] border-r" style={{ background: "#0F1319", color: "#6B7585", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
-                    const val = (p as any)[row.field] as number;
+                    const val = (p as Record<string, unknown>)[row.field] as number;
                     return (
                       <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-700">
                         {p.isActual ? '–' : `${val.toFixed(2)}x`}
@@ -705,7 +705,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <tr key={row.key} className="border-b border-stone-100">
                   <td className="sticky left-0 z-10 px-4 py-2 font-medium text-[11px] border-r" style={{ background: "#0F1319", color: "#9EA8B4", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
-                    const val = (p as any)[row.field] as number;
+                    const val = (p as Record<string, unknown>)[row.field] as number;
                     const isEditable = editing && !p.isActual;
 
                     if (isEditable) {
@@ -1025,7 +1025,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     background: 'none', border: 'none',
                     borderBottom: isActive ? `2px solid ${BT.amber}` : '2px solid transparent',
                     cursor: 'pointer', transition: 'all 0.15s',
-                  } as any}
+                  } satisfies React.CSSProperties}
                 >
                   <Icon size={13} />
                   {tab.label}

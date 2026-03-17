@@ -403,8 +403,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           }
         }
 
-        if (latestModelRes.status === 'fulfilled' && (latestModelRes.value as any)?.data?.data) {
-          const model = (latestModelRes.value as any).data.data;
+        if (latestModelRes.status === 'fulfilled' && (latestModelRes.value as { data?: { data?: unknown } })?.data?.data) {
+          const model = (latestModelRes.value as { data: { data: { results?: ModelResults } } }).data.data;
           if (model?.results) {
             setModelResults(model.results);
           }
@@ -475,7 +475,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     try {
       const assumptions = buildAssumptionsPayload();
       const res = await apiClient.post('/api/v1/financial-model/build', { dealId: id, assumptions });
-      const data = (res as any)?.data;
+      const data = (res as { data?: { data?: ModelResults } })?.data;
       let results: ModelResults | null = null;
       if (data?.data) {
         results = data.data;
@@ -542,7 +542,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       const response = await apiClient.get(`/api/v1/financial-model/${id}/export/excel`, {
         responseType: 'blob',
       });
-      const blob = new Blob([(response as any).data], {
+      const blob = new Blob([(response as { data: BlobPart }).data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const url = window.URL.createObjectURL(blob);
@@ -878,7 +878,7 @@ const DealInfoSection: React.FC<any> = ({ dealName, setDealName, totalUnits, set
 const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any }> = ({ unitMix, setUnitMix, platformData }) => {
   const updateRow = (index: number, field: keyof UnitMixRow, value: any) => {
     const updated = [...unitMix];
-    (updated[index] as any)[field] = value;
+    (updated[index] as Record<string, unknown>)[field as string] = value;
     if (field === 'units' || field === 'occupied') {
       updated[index].vacant = updated[index].units - updated[index].occupied;
     }

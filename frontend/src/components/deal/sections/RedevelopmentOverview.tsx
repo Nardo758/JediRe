@@ -181,7 +181,7 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
     expCost     != null ? { category: 'Expansion',      amount: expCost,     color: T.violL  } : null,
     deferred    != null ? { category: 'Deferred Maint', amount: deferred,    color: T.redL   } : null,
     softCosts   != null ? { category: 'Soft & Closing', amount: softCosts,   color: T.td     } : null,
-  ].filter(Boolean) as any[];
+  ].filter((x): x is { category: string; amount: number; color: string } => x !== null);
   const renovMonths       = deal?.renovationMonths ?? null;
   const totalMonths       = deal?.totalTimelineMonths ?? null;
   const phases: any[]     = deal?.phases ?? [];
@@ -668,7 +668,7 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
                 totalInvestment != null ? { label: 'Total Basis',  value: totalInvestment, color: T.amberL, bold: true } : null,
                 exitValue   != null ? { op: '→' } : null,
                 exitValue   != null ? { label: 'Exit Value',   value: exitValue,   color: T.greenL, bold: true } : null,
-              ] as any[]).filter(Boolean).map((step: any, i: number) =>
+              ] as ({ op: string } | { label: string; value: number | null; color: string; bold?: boolean } | null)[]).filter(Boolean).map((step, i: number) =>
                 step.op ? (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '0 4px', fontSize: 18, color: T.td }}>{step.op}</div>
                 ) : (
