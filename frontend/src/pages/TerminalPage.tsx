@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
@@ -6,6 +6,13 @@ import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
+import MarketIntelligencePage from "./MarketIntelligence/MarketIntelligencePage";
+import { ReportsPage } from "./ReportsPage";
+import { SettingsPage } from "./SettingsPage";
+
+const LazyDashboard = lazy(() => import("./Dashboard").then(m => ({ default: m.Dashboard })));
+const LazyDealsPage = lazy(() => import("./DealsPage"));
+const LazyAssetsOwnedPage = lazy(() => import("./AssetsOwnedPage"));
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -1959,15 +1966,15 @@ export default function TerminalPage() {
   // ─── MAIN CONTENT ROUTER ───────────────────────────────────
   const renderContent = () => {
     switch(fkey) {
-      case "F1": return ViewDashboard();
-      case "F2": return DealGrid();
-      case "F3": return ViewPortfolio();
-      case "F4": return ViewMarkets();
+      case "F1": return <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}><Suspense fallback={<div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading...</span></div>}><LazyDashboard /></Suspense></div>;
+      case "F2": return <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}><Suspense fallback={<div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading...</span></div>}><LazyDealsPage /></Suspense></div>;
+      case "F3": return <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}><Suspense fallback={<div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading...</span></div>}><LazyAssetsOwnedPage /></Suspense></div>;
+      case "F4": return <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}><MarketIntelligencePage /></div>;
       case "F5": return ViewCompete();
       case "F6": return ViewNews();
       case "F7": return ViewStrategies();
-      case "F8": return ViewReports();
-      case "F9": return ViewSettings();
+      case "F8": return <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}><ReportsPage /></div>;
+      case "F9": return <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}><SettingsPage /></div>;
       default: return null;
     }
   };
