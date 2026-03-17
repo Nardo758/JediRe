@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   DollarSign, TrendingUp, BarChart3, Edit3, RotateCcw,
   ChevronDown, ChevronRight, Loader2, CheckCircle2,
@@ -9,6 +9,7 @@ import { apiClient } from '@/services/api.client';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { useDealType } from '../../../stores/dealStore';
 import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -590,53 +591,42 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-stone-900">Pro Forma Control Grid</h2>
-          <p className="text-sm text-stone-500">
-            Input assumptions below, then click Build Model to generate a full financial forecast
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-stone-100 rounded-lg p-0.5">
-            <button
-              onClick={() => setModelType('existing')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                modelType === 'existing' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-              }`}
-            >
-              <Building2 size={12} className="inline mr-1" />
-              Existing Asset
-            </button>
-            <button
-              onClick={() => setModelType('development')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                modelType === 'development' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-              }`}
-            >
-              <Hammer size={12} className="inline mr-1" />
-              Development
-            </button>
-          </div>
+    <div style={{ background: BT.bgBase, minHeight: '100%' }}>
+      {/* F8 Banner */}
+      <div style={{ background: BT.blueBg, borderBottom: `1px solid ${BT.blue}40`, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: `${BT.blue}30`, border: `1px solid ${BT.blue}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F8</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: BT.blueL, ...bSans }}>PRO FORMA CONTROL GRID</span>
+        <span style={{ fontSize: 10, color: BT.td, ...bSans, marginLeft: 4 }}>Financial model · DCF · Waterfall · Sensitivity</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => setModelType('existing')}
+            style={{ fontSize: 10, fontWeight: modelType === 'existing' ? 700 : 500, color: modelType === 'existing' ? BT.blueL : BT.td, background: modelType === 'existing' ? `${BT.blue}20` : 'none', border: `1px solid ${modelType === 'existing' ? BT.blue : BT.border}`, borderRadius: 3, padding: '3px 9px', cursor: 'pointer', ...bSans }}
+          >
+            <Building2 size={10} style={{ display: 'inline', marginRight: 4 }} />
+            EXISTING
+          </button>
+          <button
+            onClick={() => setModelType('development')}
+            style={{ fontSize: 10, fontWeight: modelType === 'development' ? 700 : 500, color: modelType === 'development' ? BT.blueL : BT.td, background: modelType === 'development' ? `${BT.blue}20` : 'none', border: `1px solid ${modelType === 'development' ? BT.blue : BT.border}`, borderRadius: 3, padding: '3px 9px', cursor: 'pointer', ...bSans }}
+          >
+            <Hammer size={10} style={{ display: 'inline', marginRight: 4 }} />
+            DEVELOPMENT
+          </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={16} className="text-blue-600" />
-            <span className="text-sm font-semibold text-blue-900">Financial Model Engine</span>
-          </div>
-          <p className="text-xs text-blue-700">
-            Claude AI will build a complete {holdPeriod}-year financial model from your assumptions below
-          </p>
+      {/* Model Engine Bar */}
+      <div style={{ background: BT.bgCard, borderBottom: `1px solid ${BT.border}`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Zap size={13} color={BT.blueL} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>FINANCIAL MODEL ENGINE</div>
+          <div style={{ fontSize: 10, color: BT.td, ...bSans }}>Claude AI builds a complete {holdPeriod}-year financial model from assumptions below</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <select
             value={holdPeriod}
             onChange={(e) => setHoldPeriod(Number(e.target.value))}
-            className="text-xs border border-blue-300 rounded-lg px-2 py-1.5 bg-white text-blue-900"
+            style={{ fontSize: 10, border: `1px solid ${BT.border}`, borderRadius: 3, padding: '3px 6px', background: BT.bgPanel, color: BT.tm, ...bMono }}
           >
             <option value={3}>3-Year</option>
             <option value={5}>5-Year</option>
@@ -646,27 +636,20 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           <button
             onClick={handleBuildModel}
             disabled={building}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all"
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: building ? BT.bgPanel : BT.blue, border: `1px solid ${BT.blue}`, borderRadius: 3, color: building ? BT.td : '#fff', fontSize: 10, fontWeight: 700, cursor: building ? 'not-allowed' : 'pointer', opacity: building ? 0.6 : 1, ...bSans }}
           >
             {building ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Building Model...
-              </>
+              <><Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> BUILDING...</>
             ) : (
-              <>
-                <Zap size={14} />
-                {modelResults ? 'Rebuild Model' : 'Build Model'}
-              </>
+              <><Zap size={11} /> {modelResults ? 'REBUILD MODEL' : 'BUILD MODEL'}</>
             )}
           </button>
           {modelResults && (
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-all"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: BT.green, border: `1px solid ${BT.greenL}`, borderRadius: 3, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', ...bSans }}
             >
-              <Download size={14} />
-              Export Excel
+              <Download size={11} /> EXPORT EXCEL
             </button>
           )}
         </div>
@@ -674,26 +657,26 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
 
       {modelResults && <ModelResultsSummary results={modelResults} />}
 
-      <div className="space-y-3">
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {sections.map(section => {
           const isExpanded = expandedSections.has(section.id);
           const Icon = section.icon;
 
           return (
-            <div key={section.id} className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+            <div key={section.id} style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, borderRadius: 4, overflow: 'hidden' }}>
               <button
                 onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: isExpanded ? BT.bgPanel : 'none', border: 'none', cursor: 'pointer', transition: 'background 0.15s' } as any}
               >
-                <div className="flex items-center gap-2">
-                  <Icon size={14} className="text-stone-500" />
-                  <span className="text-sm font-semibold text-stone-800">{section.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon size={12} color={isExpanded ? BT.amber : BT.td} />
+                  <span style={{ fontSize: 11, fontWeight: isExpanded ? 700 : 600, color: isExpanded ? BT.tm : BT.ts, letterSpacing: 0.5, ...bSans }}>{section.label.toUpperCase()}</span>
                 </div>
-                {isExpanded ? <ChevronDown size={14} className="text-stone-400" /> : <ChevronRight size={14} className="text-stone-400" />}
+                {isExpanded ? <ChevronDown size={12} color={BT.amber} /> : <ChevronRight size={12} color={BT.td} />}
               </button>
 
               {isExpanded && (
-                <div className="px-4 pb-4 border-t border-stone-100">
+                <div style={{ padding: '12px 16px 16px', borderTop: `1px solid ${BT.border}` }}>
                   {section.id === 'dealInfo' && (
                     <>
                       {designSource && (
@@ -1524,32 +1507,30 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
   if (!s) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-emerald-200 overflow-hidden">
-      <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 size={16} className="text-emerald-600" />
-          <span className="text-sm font-semibold text-emerald-900">Model Results</span>
-        </div>
+    <div style={{ background: BT.bgCard, border: `1px solid ${BT.green}60`, borderRadius: 4, overflow: 'hidden', margin: '0 16px' }}>
+      <div style={{ padding: '8px 14px', background: BT.greenBg, borderBottom: `1px solid ${BT.green}40`, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <CheckCircle2 size={13} color={BT.greenL} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: BT.greenL, letterSpacing: 0.5, ...bSans }}>MODEL RESULTS</span>
       </div>
-      <div className="p-4">
-        <div className="grid grid-cols-5 gap-4 mb-4">
-          <MetricCard label="Levered IRR" value={s.irr != null ? `${(s.irr * 100).toFixed(1)}%` : '—'} color="blue" />
-          <MetricCard label="Equity Multiple" value={s.equityMultiple != null ? `${s.equityMultiple.toFixed(2)}x` : '—'} color="emerald" />
-          <MetricCard label="Year 1 NOI" value={s.noiYear1 ? fmt$(s.noiYear1) : '—'} color="violet" />
-          <MetricCard label="Exit Value" value={s.exitValue ? fmt$(s.exitValue) : '—'} color="amber" />
-          <MetricCard label="DSCR (Y1)" value={Array.isArray(s.dscr) && s.dscr[0] ? `${s.dscr[0].toFixed(2)}x` : (s.dscr ? `${Number(s.dscr).toFixed(2)}x` : '—')} color="stone" />
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 14 }}>
+          <MetricCard label="Levered IRR" value={s.irr != null ? `${(s.irr * 100).toFixed(1)}%` : '—'} color={BT.blueL} />
+          <MetricCard label="Equity Multiple" value={s.equityMultiple != null ? `${s.equityMultiple.toFixed(2)}x` : '—'} color={BT.greenL} />
+          <MetricCard label="Year 1 NOI" value={s.noiYear1 ? fmt$(s.noiYear1) : '—'} color={BT.violL} />
+          <MetricCard label="Exit Value" value={s.exitValue ? fmt$(s.exitValue) : '—'} color={BT.amber} />
+          <MetricCard label="DSCR (Y1)" value={Array.isArray(s.dscr) && s.dscr[0] ? `${s.dscr[0].toFixed(2)}x` : (s.dscr ? `${Number(s.dscr).toFixed(2)}x` : '—')} color={BT.ts} />
         </div>
 
         {results.annualCashFlow && results.annualCashFlow.length > 0 && (
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-stone-600 mb-2">Annual Cash Flow Summary</h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] font-mono">
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 8, ...bMono }}>ANNUAL CASH FLOW SUMMARY</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...bMono }}>
                 <thead>
-                  <tr className="text-stone-500 border-b border-stone-200">
-                    <th className="text-left py-1.5 px-2">Year</th>
+                  <tr style={{ borderBottom: `1px solid ${BT.border}` }}>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>Year</th>
                     {results.annualCashFlow.map((cf, i) => (
-                      <th key={i} className="text-right py-1.5 px-2">Y{cf.year || i + 1}</th>
+                      <th key={i} style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>Y{cf.year || i + 1}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1565,34 +1546,34 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
         )}
 
         {results.sensitivityAnalysis?.exitCapVsHoldPeriod?.length > 0 && (
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-stone-600 mb-2">Sensitivity: Exit Cap vs Hold Period (IRR)</h4>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 8, ...bMono }}>SENSITIVITY: EXIT CAP vs HOLD PERIOD (IRR)</div>
             <SensitivityGrid data={results.sensitivityAnalysis.exitCapVsHoldPeriod} rowKey="holdPeriod" colKey="capRate" rowLabel="Hold" colLabel="Cap Rate" formatCol={(v: number) => `${(v * 100).toFixed(1)}%`} formatRow={(v: number) => `${v}yr`} />
           </div>
         )}
 
         {results.waterfallDistributions?.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-stone-600 mb-2">Waterfall Distributions</h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] font-mono">
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 8, ...bMono }}>WATERFALL DISTRIBUTIONS</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...bMono }}>
                 <thead>
-                  <tr className="text-stone-500 border-b border-stone-200">
-                    <th className="text-left py-1.5 px-2">Year</th>
-                    <th className="text-right py-1.5 px-2">LP</th>
-                    <th className="text-right py-1.5 px-2">GP</th>
-                    <th className="text-right py-1.5 px-2">Promote</th>
-                    <th className="text-right py-1.5 px-2">Total</th>
+                  <tr style={{ borderBottom: `1px solid ${BT.border}` }}>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>Year</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>LP</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>GP</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.greenL, fontWeight: 600 }}>PROMOTE</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
                   {results.waterfallDistributions.map((w, i) => (
-                    <tr key={i} className="border-b border-stone-100">
-                      <td className="py-1 px-2 text-stone-600">Y{w.year}</td>
-                      <td className="py-1 px-2 text-right">{fmt$(Math.round(w.lpDistribution))}</td>
-                      <td className="py-1 px-2 text-right">{fmt$(Math.round(w.gpDistribution))}</td>
-                      <td className="py-1 px-2 text-right text-emerald-600">{fmt$(Math.round(w.gpPromote))}</td>
-                      <td className="py-1 px-2 text-right font-semibold">{fmt$(Math.round(w.totalDistribution))}</td>
+                    <tr key={i} style={{ borderBottom: `1px solid ${BT.border}` }}>
+                      <td style={{ padding: '4px 8px', color: BT.ts }}>Y{w.year}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.tm }}>{fmt$(Math.round(w.lpDistribution))}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.tm }}>{fmt$(Math.round(w.gpDistribution))}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.greenL }}>{fmt$(Math.round(w.gpPromote))}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.amber, fontWeight: 700 }}>{fmt$(Math.round(w.totalDistribution))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1606,17 +1587,17 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
 };
 
 const MetricCard: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
-  <div className="text-center">
-    <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">{label}</div>
-    <div className={`text-lg font-bold font-mono text-${color}-700`}>{value}</div>
+  <div style={{ textAlign: 'center', padding: '8px', background: BT.bgPanel, borderRadius: 3, border: `1px solid ${BT.border}` }}>
+    <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1.2, marginBottom: 4, ...bSans }}>{label.toUpperCase()}</div>
+    <div style={{ fontSize: 18, fontWeight: 700, color, ...bMono }}>{value}</div>
   </div>
 );
 
 const CashFlowRow: React.FC<{ label: string; values: number[]; bold?: boolean; negative?: boolean; highlight?: boolean }> = ({ label, values, bold, negative, highlight }) => (
-  <tr className={`border-b border-stone-100 ${highlight ? 'bg-blue-50' : ''}`}>
-    <td className={`py-1 px-2 ${bold ? 'font-semibold text-stone-800' : negative ? 'text-red-600' : 'text-stone-600'}`}>{label}</td>
+  <tr style={{ borderBottom: `1px solid ${BT.border}`, background: highlight ? BT.blueBg : 'transparent' }}>
+    <td style={{ padding: '4px 8px', fontWeight: bold ? 700 : 500, color: negative ? BT.redL : bold ? BT.tm : BT.ts }}>{label}</td>
     {(values || []).map((v, i) => (
-      <td key={i} className={`text-right py-1 px-2 ${bold ? 'font-semibold' : negative ? 'text-red-500' : ''}`}>
+      <td key={i} style={{ textAlign: 'right', padding: '4px 8px', fontWeight: bold ? 700 : 400, color: negative ? BT.redL : bold ? BT.amber : BT.tm }}>
         {v != null ? fmt$(Math.round(v)) : '—'}
       </td>
     ))}
@@ -1628,25 +1609,26 @@ const SensitivityGrid: React.FC<{ data: any[]; rowKey: string; colKey: string; r
   const cols = [...new Set(data.map((d: any) => d[colKey]))].sort((a: number, b: number) => a - b);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[10px] font-mono">
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...bMono }}>
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
-            <th className="text-left py-1.5 px-2">{rowLabel}\{colLabel}</th>
+          <tr style={{ borderBottom: `1px solid ${BT.border}` }}>
+            <th style={{ textAlign: 'left', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>{rowLabel}\{colLabel}</th>
             {cols.map((c, i) => (
-              <th key={i} className="text-right py-1.5 px-2">{formatCol(c)}</th>
+              <th key={i} style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>{formatCol(c)}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, ri) => (
-            <tr key={ri} className="border-b border-stone-100">
-              <td className="py-1 px-2 text-stone-600 font-semibold">{formatRow(r)}</td>
+            <tr key={ri} style={{ borderBottom: `1px solid ${BT.border}` }}>
+              <td style={{ padding: '4px 8px', color: BT.ts, fontWeight: 600 }}>{formatRow(r)}</td>
               {cols.map((c, ci) => {
                 const cell = data.find((d: any) => d[rowKey] === r && d[colKey] === c);
+                const irrVal = cell ? cell.irr * 100 : null;
                 return (
-                  <td key={ci} className="text-right py-1 px-2">
-                    {cell ? `${(cell.irr * 100).toFixed(1)}%` : '—'}
+                  <td key={ci} style={{ textAlign: 'right', padding: '4px 8px', color: irrVal != null ? (irrVal >= 20 ? BT.greenL : irrVal >= 15 ? BT.amber : BT.redL) : BT.td }}>
+                    {irrVal != null ? `${irrVal.toFixed(1)}%` : '—'}
                   </td>
                 );
               })}

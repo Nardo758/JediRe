@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   TrendingUp, Upload, ArrowUpRight, ArrowDownRight,
   ChevronDown, ChevronRight, Edit3, Save, X, Building2,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '@/contexts/DealModuleContext';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
@@ -173,23 +174,24 @@ function Sparkline({ data, color = '#d97706', height = 32 }: { data: number[]; c
 function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
   label: string; value: string; trend: string; trendUp: boolean | null; sparkData: number[]; icon: any;
 }) {
+  const trendColor = trendUp === true ? BT.greenL : trendUp === false ? BT.redL : BT.td;
   return (
-    <div className="bg-white rounded-xl border border-stone-200 p-4 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-stone-400 font-mono text-[10px] uppercase tracking-wider">{label}</span>
-        <Icon size={14} className="text-stone-300" />
+    <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 9, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', ...bMono }}>{label}</span>
+        <Icon size={13} style={{ color: BT.td }} />
       </div>
-      <div className="flex items-end justify-between">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
-          <div className="text-2xl font-bold text-stone-900">{value}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: BT.amberL, ...bMono }}>{value}</div>
           {trend && (
-            <div className={`flex items-center gap-1 text-xs mt-1 ${trendUp === true ? 'text-emerald-600' : trendUp === false ? 'text-red-500' : 'text-stone-400'}`}>
-              {trendUp === true ? <ArrowUpRight size={12} /> : trendUp === false ? <ArrowDownRight size={12} /> : <Minus size={12} />}
-              {trend}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: trendColor, marginTop: 3 }}>
+              {trendUp === true ? <ArrowUpRight size={11} /> : trendUp === false ? <ArrowDownRight size={11} /> : <Minus size={11} />}
+              <span style={{ ...bMono }}>{trend}</span>
             </div>
           )}
         </div>
-        <Sparkline data={sparkData} />
+        <Sparkline data={sparkData} color={BT.amber} />
       </div>
     </div>
   );
@@ -198,19 +200,19 @@ function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
 function FactorCard({ label, factor, summary, direction }: {
   label: string; factor: number; summary: string; direction: 'up' | 'down' | 'neutral';
 }) {
+  const dc = direction === 'up' ? BT.greenL : direction === 'down' ? BT.redL : BT.amberL;
+  const db = direction === 'up' ? BT.greenBg : direction === 'down' ? BT.redBg : BT.amberBg;
   return (
-    <div className={`rounded-xl border p-4 flex flex-col gap-2 ${direction === 'up' ? 'bg-emerald-50 border-emerald-200' : direction === 'down' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full ${direction === 'up' ? 'bg-emerald-500' : direction === 'down' ? 'bg-red-500' : 'bg-amber-500'}`} />
-        <span className="text-stone-500 font-mono text-[10px] uppercase tracking-wider">{label}</span>
+    <div style={{ background: db, borderRadius: 8, border: `1px solid ${dc}30`, padding: '14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: dc }} />
+        <span style={{ fontSize: 9, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', ...bMono }}>{label}</span>
       </div>
-      <div className={`text-xl font-bold ${direction === 'up' ? 'text-emerald-700' : direction === 'down' ? 'text-red-700' : 'text-amber-700'}`}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: dc, display: 'flex', alignItems: 'center', gap: 4, ...bMono }}>
         {factor.toFixed(2)}x
-        <span className="ml-1 text-xs">
-          {direction === 'up' ? <ArrowUpRight size={12} className="inline" /> : direction === 'down' ? <ArrowDownRight size={12} className="inline" /> : <Minus size={12} className="inline" />}
-        </span>
+        {direction === 'up' ? <ArrowUpRight size={12} /> : direction === 'down' ? <ArrowDownRight size={12} /> : <Minus size={12} />}
       </div>
-      <p className="text-[11px] text-stone-500 leading-tight">{summary}</p>
+      <p style={{ fontSize: 10, color: BT.tm, lineHeight: 1.4, margin: 0, ...bSans }}>{summary}</p>
     </div>
   );
 }
@@ -959,53 +961,55 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   );
 
   return (
-    <div className="space-y-6 p-6">
+    <div style={{ background: BT.bgBase, minHeight: '100%', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       <input
         ref={fileInputRef}
         type="file"
         accept=".xlsx,.xls,.csv"
         onChange={handleUpload}
-        className="hidden"
+        style={{ display: 'none' }}
       />
 
-      <div className="bg-stone-900 rounded-xl p-6 text-white flex items-center justify-between">
+      {/* Header Banner */}
+      <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, borderLeft: `3px solid ${BT.amber}`, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h2 className="text-lg font-bold">Traffic Intelligence</h2>
-          <p className="text-stone-300 text-sm mt-1">What is this property's true leasing velocity — and can we improve it?</p>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.amber, letterSpacing: 2, marginBottom: 4, ...bMono }}>F7 — TRAFFIC INTELLIGENCE</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>Leasing Velocity &amp; Traffic Analysis</div>
+          <p style={{ fontSize: 11, color: BT.td, margin: '2px 0 0', ...bSans }}>What is this property's true leasing velocity — and can we improve it?</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {dataSource === 'uploaded' && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT.greenL, background: BT.greenBg, border: `1px solid ${BT.green}40`, borderRadius: 4, padding: '3px 8px', ...bMono }}>LIVE DATA</span>
           )}
           {dataSource === 'blended' && (
-            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono">BLENDED</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: BT.blueBg, border: `1px solid ${BT.blue}40`, borderRadius: 4, padding: '3px 8px', ...bMono }}>BLENDED</span>
           )}
           {dataSource === 'predicted' && (
-            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 4, padding: '3px 8px', ...bMono }}>PREDICTED</span>
           )}
-          <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 text-white rounded-lg cursor-pointer hover:bg-white/20 transition-colors text-sm">
-            <Upload size={14} />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: BT.bgPanel, color: BT.tm, borderRadius: 6, border: `1px solid ${BT.border}`, cursor: 'pointer', fontSize: 11, ...bSans }}>
+            <Upload size={12} />
             {uploading ? 'Uploading...' : 'Upload Report'}
             <input
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={handleUpload}
-              className="hidden"
+              style={{ display: 'none' }}
             />
           </label>
         </div>
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-          <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-stone-500 text-sm">Loading traffic predictions...</p>
+        <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, padding: 48, textAlign: 'center' }}>
+          <div style={{ width: 28, height: 28, border: `2px solid ${BT.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: 12, color: BT.td, ...bSans }}>Loading traffic predictions...</p>
         </div>
       ) : (
         <>
           {renderKPIDashboard()}
 
-          <div className="flex border-b border-stone-200 gap-1">
+          <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border}`, gap: 2 }}>
             {TABS.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -1013,13 +1017,16 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-                    isActive
-                      ? 'border-stone-900 text-stone-900'
-                      : 'border-transparent text-stone-400 hover:text-stone-600 hover:border-stone-300'
-                  }`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px',
+                    fontSize: 11, fontWeight: isActive ? 700 : 500, ...bSans,
+                    color: isActive ? BT.amber : BT.td,
+                    background: 'none', border: 'none',
+                    borderBottom: isActive ? `2px solid ${BT.amber}` : '2px solid transparent',
+                    cursor: 'pointer', transition: 'all 0.15s',
+                  } as any}
                 >
-                  <Icon size={14} />
+                  <Icon size={13} />
                   {tab.label}
                 </button>
               );
@@ -1056,19 +1063,19 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       )}
 
       {showTradeAreaPanel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
-            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-stone-200">
-              <h2 className="text-lg font-bold text-stone-900">Define Trade Area</h2>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: 16 }}>
+          <div style={{ background: BT.bgCard, borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', position: 'relative', border: `1px solid ${BT.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: `1px solid ${BT.border}` }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>Define Trade Area</h2>
               <button
                 onClick={() => setShowTradeAreaPanel(false)}
-                className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors"
+                style={{ background: BT.bgPanel, border: `1px solid ${BT.border}`, borderRadius: 6, padding: '4px 8px', color: BT.td, cursor: 'pointer' }}
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
-            <div className="p-6">
-              <Suspense fallback={<div className="py-12 text-center text-stone-400 text-sm">Loading map...</div>}>
+            <div style={{ padding: 24 }}>
+              <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: BT.td, fontSize: 12, ...bSans }}>Loading map...</div>}>
                 <TradeAreaDefinitionPanel
                   propertyLat={dealLatLng.lat}
                   propertyLng={dealLatLng.lng}

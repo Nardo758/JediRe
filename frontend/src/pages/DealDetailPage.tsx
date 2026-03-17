@@ -392,61 +392,126 @@ const DealDetailPage: React.FC = () => {
     );
   }
 
+  const BG = '#0A0E17';
+  const BG_CARD = '#0F1319';
+  const BG_NAV = '#080C12';
+  const BORDER = '#1e2a3d';
+  const AMBER = '#F59E0B';
+  const AMBER_L = '#FCD34D';
+  const GREEN = '#10B981';
+  const TEXT = '#E8E6E1';
+  const TEXT_MID = '#9EA8B4';
+  const TEXT_DIM = '#6B7585';
+  const MONO = "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace";
+  const SANS = "'IBM Plex Sans',-apple-system,sans-serif";
+
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
-      <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6">
-        <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                className="text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
-                onClick={() => navigate(-1)}
-              >
-                <ArrowLeft size={16} />
-              </button>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded flex-shrink-0">Deal Capsule</span>
-                  <h1 className="text-lg font-bold text-slate-900 truncate">{deal.name || 'Untitled Deal'}</h1>
-                  <span className="text-xs font-medium px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize flex-shrink-0">
-                    {deal.project_type || deal.property_type || 'multifamily'}
-                  </span>
-                  {deal.status && (
-                    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full flex-shrink-0 ${
-                      deal.status === 'active' ? 'bg-green-100 text-green-700' :
-                      deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {deal.status}
-                    </span>
-                  )}
-                  <DevPathBadge />
-                </div>
-                {(deal.address || deal.location) && (
-                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-                    <MapPin size={11} className="flex-shrink-0" />
-                    <span className="truncate">{deal.address || deal.location}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <GeographicScopeTabs
-                activeScope={activeScope}
-                onChange={setScope}
-                tradeAreaEnabled={!!geographicStats?.trade_area}
-                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-                stats={geographicStats || {}}
-                compact
-              />
-              {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
-              {deal.jedi_score && (
-                <span className="flex items-center gap-1 text-xs text-slate-500">
-                  <Activity size={12} />
-                  JEDI {deal.jedi_score}
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, marginBottom: -24, marginLeft: -24, marginRight: -24 }}>
+        {/* ── Bloomberg Terminal Top Bar ── */}
+        <div style={{
+          background: BG_NAV, borderBottom: `1px solid ${BORDER}`,
+          padding: '10px 20px', flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            <button
+              style={{ color: TEXT_DIM, background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}
+              onClick={() => navigate(-1)}
+            >
+              <ArrowLeft size={15} />
+            </button>
+            {/* Terminal identifier */}
+            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: AMBER_L, fontFamily: MONO,
+              background: '#1a1200', border: `1px solid ${AMBER}50`, borderRadius: 4, padding: '2px 8px' }}>
+              DEAL CAPSULE
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: SANS, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {deal.name || 'Untitled Deal'}
                 </span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1,
+                  background: `${BORDER}80`, borderRadius: 4, padding: '2px 7px', textTransform: 'uppercase' }}>
+                  {deal.project_type || deal.property_type || 'MULTIFAMILY'}
+                </span>
+                {deal.status && (
+                  <span style={{
+                    fontSize: 9, fontWeight: 700, letterSpacing: 1, fontFamily: MONO,
+                    borderRadius: 4, padding: '2px 7px',
+                    background: deal.status === 'active' ? '#022c22' : deal.status === 'closed' ? '#0d1e3d' : '#1a1200',
+                    color: deal.status === 'active' ? GREEN : deal.status === 'closed' ? '#60A5FA' : AMBER,
+                    border: `1px solid ${deal.status === 'active' ? GREEN : deal.status === 'closed' ? '#3B82F6' : AMBER}50`,
+                  }}>
+                    {deal.status.toUpperCase()}
+                  </span>
+                )}
+                <DevPathBadge />
+              </div>
+              {(deal.address || deal.location) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                  <MapPin size={10} style={{ color: TEXT_DIM, flexShrink: 0 }} />
+                  <span style={{ fontSize: 10, color: TEXT_DIM, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {deal.address || deal.location}
+                  </span>
+                </div>
               )}
             </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+            <GeographicScopeTabs
+              activeScope={activeScope}
+              onChange={setScope}
+              tradeAreaEnabled={!!geographicStats?.trade_area}
+              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
+              stats={geographicStats || {}}
+              compact
+            />
+            {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
+            {deal.jedi_score && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: AMBER, fontFamily: MONO, fontWeight: 700 }}>
+                <Activity size={11} />
+                {deal.jedi_score}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* ── F-Key Navigation Bar ── */}
+        <div style={{
+          background: BG_CARD, borderBottom: `1px solid ${BORDER}`,
+          padding: '0 16px', flexShrink: 0, display: 'flex', alignItems: 'stretch', overflowX: 'auto',
+        }}>
+          {dealScreens.map(s => {
+            const isActive = s.id === activeTab;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setActiveTab(s.id)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  gap: 3, padding: '8px 14px', border: 'none', cursor: 'pointer',
+                  background: isActive ? `${AMBER}12` : 'transparent',
+                  borderBottom: isActive ? `2px solid ${AMBER}` : '2px solid transparent',
+                  borderTop: '2px solid transparent',
+                  minWidth: 72, flexShrink: 0,
+                  transition: 'all 0.12s',
+                }}
+              >
+                <span style={{ fontSize: 8, fontWeight: 700, color: isActive ? AMBER_L : TEXT_DIM, letterSpacing: 1, fontFamily: MONO }}>
+                  {s.fkey}
+                </span>
+                <span style={{ fontSize: 9, fontWeight: isActive ? 600 : 400, color: isActive ? TEXT : TEXT_DIM, fontFamily: MONO, letterSpacing: 0.5, textAlign: 'center', lineHeight: 1.2 }}>
+                  {s.label.split(' ').slice(0, 2).join(' ')}
+                </span>
+              </button>
+            );
+          })}
+          {/* Right side: module code */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', paddingRight: 8 }}>
+            <span style={{ fontSize: 9, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1 }}>
+              {activeScreenData.code}
+            </span>
           </div>
         </div>
 
@@ -455,7 +520,7 @@ const DealDetailPage: React.FC = () => {
           const lat = centroid ? centroid[1] : 33.749;
           const lng = centroid ? centroid[0] : -84.388;
           return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
+            <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6">
               <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
@@ -479,29 +544,38 @@ const DealDetailPage: React.FC = () => {
           );
         })()}
 
-        <div className="flex flex-1 overflow-hidden min-w-0">
-          <main className="flex-1 min-w-0 min-h-0 flex flex-col">
-            <div className="flex-1 min-h-0 overflow-y-auto">
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0 }}>
+          <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG }}>
               <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 
             {showUnitMixCTA && (
-              <div className="shrink-0 border-t border-indigo-200 bg-gradient-to-r from-indigo-50 to-violet-50 px-6 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+              <div style={{
+                flexShrink: 0, borderTop: `1px solid ${AMBER}40`,
+                background: `linear-gradient(to right, ${AMBER}08, #8B5CF608)`,
+                padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER, animation: 'pulse 2s infinite' }} />
                   <div>
-                    <p className="text-sm font-semibold text-indigo-900">Development path selected</p>
-                    <p className="text-xs text-indigo-600">
+                    <p style={{ fontSize: 12, fontWeight: 700, color: AMBER_L, fontFamily: MONO, margin: 0 }}>Development path selected</p>
+                    <p style={{ fontSize: 10, color: TEXT_DIM, fontFamily: MONO, margin: 0 }}>
                       {developmentEnvelope.max_units} max units · {developmentEnvelope.max_gfa.toLocaleString()} sf GFA · binding: {developmentEnvelope.binding_constraint}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setActiveTab('market')}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 18px', background: AMBER, color: '#0A0E17',
+                    fontSize: 11, fontWeight: 700, fontFamily: MONO, letterSpacing: 1,
+                    border: 'none', borderRadius: 6, cursor: 'pointer',
+                  }}
                 >
                   {ctaLabel}
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight size={14} />
                 </button>
               </div>
             )}

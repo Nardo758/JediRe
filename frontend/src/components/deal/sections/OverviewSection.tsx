@@ -17,6 +17,7 @@ import {
   type StrategyVerdictData,
   type RiskAlertData,
 } from '@/data/enhancedOverviewMockData';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 function scoreToVerdict(score: number): { verdict: string; verdictColor: string } {
   if (score >= 85) return { verdict: 'STRONG BUY', verdictColor: 'text-emerald-400' };
@@ -339,30 +340,29 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   }, [onTabChange]);
 
   return (
-    <div className="space-y-5">
+    <div style={{ background: BT.bg, minHeight: '100%', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {dataSource !== 'loading' && (
-        <div className="flex items-center justify-between">
-          {/* Deal type badge - read-only, set at deal creation */}
-          <div className="inline-flex items-center gap-2">
-            <span className={`px-3 py-1.5 text-[10px] font-mono font-bold tracking-wider rounded-lg border ${
-              isDev
-                ? isRedevelopment
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : 'bg-violet-50 text-violet-700 border-violet-200'
-                : 'bg-blue-50 text-blue-700 border-blue-200'
-            }`}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              padding: '4px 12px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', borderRadius: 6,
+              color: isDev ? (isRedevelopment ? BT.amberL : BT.violL) : BT.blueL,
+              background: isDev ? (isRedevelopment ? BT.amberBg : BT.violBg) : BT.blueBg,
+              border: `1px solid ${isDev ? (isRedevelopment ? BT.amber : BT.violet) : BT.blue}40`,
+              ...bMono,
+            }}>
               {isRedevelopment ? 'REDEVELOPMENT' : isDev ? 'GROUND-UP DEVELOPMENT' : 'ACQUISITION'}
             </span>
-            <span className="text-[9px] text-stone-400 font-medium">Set at deal creation</span>
+            <span style={{ fontSize: 9, color: BT.td, ...bSans }}>Set at deal creation</span>
           </div>
           {dataSource === 'live' ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-100 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 20, fontSize: 9, fontWeight: 700, color: BT.greenL, background: BT.greenBg, border: `1px solid ${BT.green}40`, ...bMono }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: BT.green }} />
               LIVE DATA
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-amber-100 text-amber-700 border border-amber-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 20, fontSize: 9, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, ...bMono }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: BT.amber }} />
               SAMPLE DATA
             </span>
           )}
@@ -432,10 +432,11 @@ const SectionHead: React.FC<{
   title: string;
   right?: string;
   accentColor?: string;
-}> = ({ title, right, accentColor = 'border-amber-500' }) => (
-  <div className={`flex items-center justify-between px-4 py-2.5 bg-stone-50 border-y border-stone-200 border-l-[3px] ${accentColor}`}>
-    <span className="text-[10px] font-mono text-stone-500 tracking-widest font-bold uppercase">{title}</span>
-    {right && <span className="text-[10px] text-stone-400">{right}</span>}
+  accent?: string;
+}> = ({ title, right, accent = BT.amber }) => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: BT.bgPanel, borderTop: `1px solid ${BT.border}`, borderBottom: `1px solid ${BT.border}`, borderLeft: `3px solid ${accent}` }}>
+    <span style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 2, textTransform: 'uppercase', ...bMono }}>{title}</span>
+    {right && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>{right}</span>}
   </div>
 );
 
@@ -446,18 +447,18 @@ const KVCard: React.FC<{
   valueColor?: string;
   noteColor?: string;
   compact?: boolean;
-}> = ({ label, value, note, valueColor = 'text-amber-600', noteColor = 'text-stone-400', compact = false }) => (
-  <div className={`bg-white ${compact ? 'p-2' : 'p-3'}`}>
-    <div className="text-[9px] font-mono text-stone-400 tracking-widest uppercase mb-1">{label}</div>
-    <div className={`${compact ? 'text-base' : 'text-lg'} font-bold font-mono ${valueColor}`}>{value}</div>
-    {note && <div className={`text-[10px] ${compact ? 'mt-0.5' : 'mt-1'} ${noteColor}`}>{note}</div>}
+}> = ({ label, value, note, compact = false }) => (
+  <div style={{ background: BT.bgCard, padding: compact ? '8px 12px' : '12px 14px' }}>
+    <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{label}</div>
+    <div style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: BT.amberL, ...bMono }}>{value}</div>
+    {note && <div style={{ fontSize: 9, color: BT.td, marginTop: 3, ...bMono }}>{note}</div>}
   </div>
 );
 
 const DDItem: React.FC<{ label: string; done: boolean }> = ({ label, done }) => (
-  <div className="flex items-center gap-2.5 py-2 border-b border-stone-100 last:border-0">
-    <span className={`text-sm flex-shrink-0 ${done ? 'text-emerald-500' : 'text-stone-300'}`}>{done ? '✓' : '○'}</span>
-    <span className={`text-xs ${done ? 'text-stone-700' : 'text-stone-400'}`}>{label}</span>
+  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
+    <span style={{ fontSize: 13, flexShrink: 0, color: done ? BT.greenL : BT.borderX }}>{done ? '✓' : '○'}</span>
+    <span style={{ fontSize: 11, color: done ? BT.tm : BT.td, ...bSans }}>{label}</span>
   </div>
 );
 
@@ -479,52 +480,47 @@ const DealHeader: React.FC<DealHeaderProps> = ({
   const ddTotal = ddItems.length;
 
   return (
-    <div className="space-y-0">
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-stone-900 rounded-xl p-5 text-white">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+        {/* JEDI Score Panel */}
+        <div style={{ background: BT.bgCard, borderRadius: 10, border: `1px solid ${BT.border}`, padding: '18px 20px' }}>
           {jediScore ? (
-          <div className="flex items-start gap-5">
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
             <JEDIScoreGauge score={jediScore.score} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 mb-1">
-                <span className={`text-sm font-bold tracking-wide ${jediScore.verdictColor}`}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: jediScore.score >= 85 ? BT.greenL : jediScore.score >= 70 ? BT.amberL : jediScore.score >= 55 ? BT.tm : BT.redL, ...bSans }}>
                   {jediScore.verdict}
                 </span>
                 {jediScore.delta30d !== 0 && (
-                  <span className={`text-xs font-mono px-2 py-0.5 rounded ${
-                    jediScore.delta30d > 0 ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'
-                  }`}>
+                  <span style={{ fontSize: 10, color: jediScore.delta30d > 0 ? BT.greenL : BT.redL, background: jediScore.delta30d > 0 ? BT.greenBg : BT.redBg, border: `1px solid ${jediScore.delta30d > 0 ? BT.green : BT.red}30`, borderRadius: 4, padding: '2px 7px', ...bMono }}>
                     {jediScore.delta30d > 0 ? '+' : ''}{jediScore.delta30d} pts (30d)
                   </span>
                 )}
               </div>
-              <p className="text-stone-400 text-xs mb-3">
+              <p style={{ fontSize: 10, color: BT.td, marginBottom: 12, ...bSans }}>
                 Confidence: {jediScore.confidenceLabel} ({jediScore.confidence}%)
               </p>
 
               {signals.length > 0 ? (
-              <div className="mb-3">
-                <div className="text-[9px] font-mono text-stone-500 tracking-wider mb-1.5">5 MASTER SIGNALS</div>
-                <div className="space-y-1.5">
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>5 MASTER SIGNALS</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {signals.map((s) => {
-                    const barColor = s.score >= 80 ? 'bg-emerald-500' : s.score >= 60 ? 'bg-amber-500' : 'bg-red-500';
+                    const sc = s.score >= 80 ? BT.greenL : s.score >= 60 ? BT.amberL : BT.redL;
+                    const tc = s.trendDelta > 0 ? BT.greenL : s.trendDelta < 0 ? BT.redL : BT.td;
                     return (
-                      <button key={s.id} onClick={() => navigateToTab(s.moduleLink)} className="w-full group">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[9px] font-mono text-stone-500 w-20 text-left group-hover:text-stone-300 transition-colors">
-                            {s.name.toUpperCase()} <span className="text-stone-600">({s.weight}%)</span>
+                      <button key={s.id} onClick={() => navigateToTab(s.moduleLink)} style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 8, color: BT.td, width: 72, textAlign: 'left', ...bMono }}>
+                            {s.name.toUpperCase()} <span style={{ color: BT.borderX }}>({s.weight}%)</span>
                           </span>
-                          <div className="flex-1 h-1.5 bg-stone-800 rounded-full overflow-hidden">
-                            <div className={`h-full ${barColor} rounded-full transition-all duration-500`}
-                              style={{ width: `${s.score}%` }} />
+                          <div style={{ flex: 1, height: 5, background: BT.border, borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${s.score}%`, background: sc, borderRadius: 3 }} />
                           </div>
-                          <span className={`text-xs font-bold font-mono w-6 text-right ${
-                            s.score >= 80 ? 'text-emerald-400' : s.score >= 60 ? 'text-amber-400' : 'text-red-400'
-                          }`}>{s.score}</span>
-                          <span className={`text-[9px] font-mono w-6 text-right ${
-                            s.trendDelta > 0 ? 'text-emerald-400' : s.trendDelta < 0 ? 'text-red-400' : 'text-stone-600'
-                          }`}>
-                            {s.trendDelta > 0 ? `+${s.trendDelta}` : s.trendDelta < 0 ? `${s.trendDelta}` : '--'}
+                          <span style={{ fontSize: 11, fontWeight: 700, color: sc, width: 22, textAlign: 'right', ...bMono }}>{s.score}</span>
+                          <span style={{ fontSize: 9, color: tc, width: 22, textAlign: 'right', ...bMono }}>
+                            {s.trendDelta > 0 ? `+${s.trendDelta}` : s.trendDelta < 0 ? `${s.trendDelta}` : '—'}
                           </span>
                         </div>
                       </button>
@@ -533,113 +529,107 @@ const DealHeader: React.FC<DealHeaderProps> = ({
                 </div>
               </div>
               ) : (
-              <div className="mb-3">
-                <div className="text-[9px] font-mono text-stone-500 tracking-wider mb-1.5">5 MASTER SIGNALS</div>
-                <p className="text-xs text-stone-500">Signal breakdown not yet available. Run analysis to populate.</p>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>5 MASTER SIGNALS</div>
+                <p style={{ fontSize: 10, color: BT.td, ...bSans }}>Signal breakdown not yet available. Run analysis to populate.</p>
               </div>
               )}
             </div>
           </div>
           ) : (
-          <div className="flex items-center justify-center py-8">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-stone-500 mb-2">—</div>
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">JEDI SCORE</div>
-              <p className="text-xs text-stone-400 mt-2">Score will populate after analysis completes</p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 0' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: BT.td, marginBottom: 6, ...bMono }}>—</div>
+              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>JEDI SCORE</div>
+              <p style={{ fontSize: 10, color: BT.td, ...bSans }}>Score will populate after analysis completes</p>
             </div>
           </div>
           )}
         </div>
 
-        <div className="bg-white rounded-xl border border-stone-200 p-4 flex flex-col">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest mb-2">STRATEGY VERDICT</div>
+        {/* Strategy Verdict Panel */}
+        <div style={{ background: BT.bgCard, borderRadius: 10, border: `1px solid ${BT.border}`, padding: '16px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>STRATEGY VERDICT</div>
           {strategyVerdict ? (
           <>
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-lg font-bold text-stone-900">{strategyVerdict.recommendedLabel}</span>
-            {strategyVerdict.score > 0 && <span className="text-sm font-mono text-amber-600">{strategyVerdict.score}</span>}
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>{strategyVerdict.recommendedLabel}</span>
+            {strategyVerdict.score > 0 && <span style={{ fontSize: 12, color: BT.amberL, ...bMono }}>{strategyVerdict.score}</span>}
           </div>
           {strategyVerdict.secondBestLabel ? (
-          <div className="text-xs text-stone-500 mb-2">
+          <div style={{ fontSize: 10, color: BT.td, marginBottom: 8, ...bSans }}>
             vs {strategyVerdict.secondBestLabel}: {strategyVerdict.secondBestScore}
           </div>
           ) : (
-          <div className="text-xs text-stone-400 mb-2">{strategyVerdict.insight}</div>
+          <div style={{ fontSize: 10, color: BT.td, marginBottom: 8, ...bSans }}>{strategyVerdict.insight}</div>
           )}
 
           {strategyVerdict.isArbitrage && (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-amber-600 font-bold text-[10px] tracking-wider">ARBITRAGE</span>
-                <span className="text-amber-700 text-xs font-mono">+{strategyVerdict.arbitrageGap}pt gap</span>
+            <div style={{ background: BT.amberBg, border: `1px solid ${BT.amber}30`, borderRadius: 6, padding: '8px 12px', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                <span style={{ fontSize: 8, fontWeight: 700, color: BT.amber, letterSpacing: 1, ...bMono }}>ARBITRAGE</span>
+                <span style={{ fontSize: 10, color: BT.amberL, ...bMono }}>+{strategyVerdict.arbitrageGap}pt gap</span>
               </div>
-              <p className="text-[10px] text-amber-800 leading-relaxed">{strategyVerdict.insight}</p>
+              <p style={{ fontSize: 9, color: BT.amberL, lineHeight: 1.5, margin: 0, ...bSans }}>{strategyVerdict.insight}</p>
             </div>
           )}
 
-          <div className="mt-auto flex items-center justify-between text-xs border-t border-stone-100 pt-2">
-            <div>
-              <span className="text-stone-400">{strategyVerdict.roiLabel}: </span>
-              <span className="font-bold text-stone-700">{strategyVerdict.roiEstimate}</span>
+          <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: `1px solid ${BT.border}`, paddingTop: 10 }}>
+            <div style={{ fontSize: 10, color: BT.td, ...bSans }}>
+              {strategyVerdict.roiLabel}: <span style={{ fontWeight: 700, color: BT.amberL }}>{strategyVerdict.roiEstimate}</span>
             </div>
-            <button className="text-amber-600 hover:text-amber-700 font-medium text-[10px]"
+            <button style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}
               onClick={() => navigateToTab('strategy')}>
-              Compare All &rarr;
+              Compare All →
             </button>
           </div>
           </>
           ) : (
-          <div className="flex-1 flex flex-col items-center justify-center py-4">
-            <p className="text-xs text-stone-400 mb-2">Analysis in progress...</p>
-            <button className="text-amber-600 hover:text-amber-700 font-medium text-[10px]"
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 0' }}>
+            <p style={{ fontSize: 10, color: BT.td, marginBottom: 8, ...bSans }}>Analysis in progress...</p>
+            <button style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}
               onClick={() => navigateToTab('strategy')}>
-              View Strategy Tab &rarr;
+              View Strategy Tab →
             </button>
           </div>
           )}
 
           {ddTotal > 0 && (
-            <div className="mt-3 pt-2 border-t border-stone-100">
-              <div className="flex justify-between text-[9px] font-mono text-stone-400 tracking-wider mb-1">
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BT.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5, ...bMono }}>
                 <span>DUE DILIGENCE</span>
-                <span className={ddDone === ddTotal ? 'text-emerald-500' : 'text-amber-500'}>{ddDone}/{ddTotal}</span>
+                <span style={{ color: ddDone === ddTotal ? BT.greenL : BT.amberL }}>{ddDone}/{ddTotal}</span>
               </div>
-              <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all ${ddDone === ddTotal ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                  style={{ width: `${(ddDone / ddTotal) * 100}%` }} />
+              <div style={{ height: 4, background: BT.border, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${(ddDone / ddTotal) * 100}%`, background: ddDone === ddTotal ? BT.green : BT.amber, borderRadius: 2, transition: 'all 0.3s' }} />
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {riskAlert?.show && (
-        <div className={`mt-4 rounded-lg border px-4 py-3 flex items-center justify-between ${
-          riskAlert.severity === 'high' ? 'bg-red-50 border-red-200' :
-          riskAlert.severity === 'medium' ? 'bg-amber-50 border-amber-200' :
-          'bg-stone-50 border-stone-200'
-        }`}>
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-0.5">
-              <span className={`text-[10px] font-bold font-mono tracking-wider ${
-                riskAlert.severity === 'high' ? 'text-red-600' : riskAlert.severity === 'medium' ? 'text-amber-600' : 'text-stone-600'
-              }`}>
+      {riskAlert?.show && (() => {
+        const alertColor = riskAlert.severity === 'high' ? BT.redL : riskAlert.severity === 'medium' ? BT.amberL : BT.tm;
+        const alertBg = riskAlert.severity === 'high' ? BT.redBg : riskAlert.severity === 'medium' ? BT.amberBg : BT.bgPanel;
+        const alertBorder = riskAlert.severity === 'high' ? BT.red : riskAlert.severity === 'medium' ? BT.amber : BT.border;
+        return (
+          <div style={{ background: alertBg, border: `1px solid ${alertBorder}30`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: alertColor, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>
                 {riskAlert.severity === 'high' ? 'HIGH RISK' : 'RISK ALERT'} · {riskAlert.category} {riskAlert.score}/{riskAlert.maxScore}
-              </span>
+              </div>
+              <p style={{ fontSize: 11, color: alertColor, margin: 0, ...bSans }}>{riskAlert.detail}</p>
+              {riskAlert.mitigationAvailable && (
+                <p style={{ fontSize: 9, color: BT.td, marginTop: 3, ...bSans }}>Offset: {riskAlert.mitigationText}</p>
+              )}
             </div>
-            <p className={`text-xs ${
-              riskAlert.severity === 'high' ? 'text-red-800' : riskAlert.severity === 'medium' ? 'text-amber-800' : 'text-stone-700'
-            }`}>{riskAlert.detail}</p>
-            {riskAlert.mitigationAvailable && (
-              <p className="text-[10px] text-stone-500 mt-0.5">Offset: {riskAlert.mitigationText}</p>
-            )}
+            <button style={{ fontSize: 9, fontWeight: 700, color: alertColor, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, marginLeft: 16, ...bMono }}
+              onClick={() => navigateToTab('risk-management')}>
+              Risk Dashboard →
+            </button>
           </div>
-          <button className="text-[10px] font-medium text-stone-500 hover:text-stone-700 flex-shrink-0 ml-4"
-            onClick={() => navigateToTab('risk-management')}>
-            Risk Dashboard &rarr;
-          </button>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
@@ -672,56 +662,56 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
     : '—';
 
   return (
-    <div className="space-y-0">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       <SectionHead
         title="Acquisition Metrics"
         right={`${deal.propertyTypeKey || 'Multifamily'} · ${units > 0 ? `${units}u` : '—'} · ${deal.address ? deal.address.split(',')[1]?.trim() || '' : ''}`}
-        accentColor="border-cyan-500"
+        accent={BT.cyan}
       />
-      <div className="grid grid-cols-6 gap-px bg-stone-200">
-        <KVCard label="Ask Price" value={price} valueColor="text-stone-900" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
+        <KVCard label="Ask Price" value={price} />
         <KVCard label="Price / Unit" value={ppu} note={units > 0 ? `${units} units` : undefined} />
         <KVCard label="Cap Rate (Going-In)" value={capRate} note="Market: —" />
-        <KVCard label="DSCR" value={dscrValue} valueColor={dscrColor} note="Min: 1.25x" noteColor="text-emerald-500" />
-        <KVCard label="Yield on Cost" value={yocValue} valueColor="text-amber-600" note="BTS scenario" />
-        <KVCard label="Days in Pipeline" value={deal.daysInStage ? `${deal.daysInStage}d` : deal.daysInStation ? `${deal.daysInStation}d` : '—'} valueColor="text-cyan-600" note={deal.state || deal.stage || ''} />
+        <KVCard label="DSCR" value={dscrValue} note="Min: 1.25x" />
+        <KVCard label="Yield on Cost" value={yocValue} note="BTS scenario" />
+        <KVCard label="Days in Pipeline" value={deal.daysInStage ? `${deal.daysInStage}d` : deal.daysInStation ? `${deal.daysInStation}d` : '—'} note={deal.state || deal.stage || ''} />
       </div>
 
-      <SectionHead title="Operating Intelligence" right="M05 Market · M09 ProForma" accentColor="border-emerald-500" />
-      <div className="grid grid-cols-2 gap-px bg-stone-200">
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">OCCUPANCY & RENT</div>
+      <SectionHead title="Operating Intelligence" right="M05 Market · M09 ProForma" accent={BT.green} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>OCCUPANCY & RENT</div>
           {[
-            { l: 'Physical Occupancy', v: occ, c: 'text-emerald-600' },
-            { l: 'Economic Occupancy', v: occ !== '—' ? occ : '—', c: 'text-emerald-600' },
-            { l: 'Effective Rent / Unit', v: effectiveRent, c: 'text-amber-600' },
-            { l: 'Submarket Market Rent', v: market?.avgRent ? `$${Math.round(market.avgRent * 1.03).toLocaleString()}` : '—', c: 'text-stone-600' },
-            { l: 'Rent vs Market', v: market?.avgRent ? `${((market.avgRent / (market.avgRent * 1.03) - 1) * 100).toFixed(1)}%` : '—', c: 'text-orange-500', note: market?.avgRent ? 'Upside capture opportunity' : undefined },
-            { l: 'Expense Ratio', v: expenseRatio, c: 'text-stone-600' },
+            { l: 'Physical Occupancy', v: occ, c: BT.greenL },
+            { l: 'Economic Occupancy', v: occ !== '—' ? occ : '—', c: BT.greenL },
+            { l: 'Effective Rent / Unit', v: effectiveRent, c: BT.amberL },
+            { l: 'Submarket Market Rent', v: market?.avgRent ? `$${Math.round(market.avgRent * 1.03).toLocaleString()}` : '—', c: BT.tm },
+            { l: 'Rent vs Market', v: market?.avgRent ? `${((market.avgRent / (market.avgRent * 1.03) - 1) * 100).toFixed(1)}%` : '—', c: BT.orangeL, note: market?.avgRent ? 'Upside capture opportunity' : undefined },
+            { l: 'Expense Ratio', v: expenseRatio, c: BT.tm },
           ].map((r, i) => (
-            <div key={i} className="flex justify-between items-start py-1.5 border-b border-stone-100 last:border-0">
-              <span className="text-xs text-stone-600">{r.l}</span>
-              <div className="text-right">
-                <span className={`text-sm font-bold ${r.c}`}>{r.v}</span>
-                {r.note && <div className="text-[9px] text-stone-400">{r.note}</div>}
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: `1px solid ${BT.border}` }}>
+              <span style={{ fontSize: 11, color: BT.tm, ...bSans }}>{r.l}</span>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: r.c, ...bMono }}>{r.v}</span>
+                {r.note && <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.note}</div>}
               </div>
             </div>
           ))}
         </div>
 
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">NOI INTELLIGENCE</div>
-          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
-            <div className="text-[9px] font-bold text-orange-600 tracking-wider mb-2">PLATFORM ADJUSTMENT ACTIVE</div>
-            <div className="flex justify-between mb-1">
-              <span className="text-xs text-stone-500">Broker NOI</span>
-              <span className="text-xs text-stone-400 line-through">{noiValue !== '—' ? noiValue : '—'}</span>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>NOI INTELLIGENCE</div>
+          <div style={{ background: BT.orangeBg, border: `1px solid ${BT.orange}30`, borderRadius: 6, padding: '10px 12px', marginBottom: 10 }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color: BT.orangeL, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>PLATFORM ADJUSTMENT ACTIVE</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: BT.td, ...bSans }}>Broker NOI</span>
+              <span style={{ fontSize: 11, color: BT.td, textDecoration: 'line-through', ...bMono }}>{noiValue !== '—' ? noiValue : '—'}</span>
             </div>
-            <div className="flex justify-between mb-2">
-              <span className="text-xs font-semibold text-stone-800">Platform NOI</span>
-              <span className="text-sm font-bold text-amber-600">{noiValue}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>Platform NOI</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: BT.amberL, ...bMono }}>{noiValue}</span>
             </div>
-            <div className="text-[9px] text-stone-400 pt-2 border-t border-orange-200 leading-relaxed">
+            <div style={{ fontSize: 9, color: BT.td, paddingTop: 8, borderTop: `1px solid ${BT.orange}20`, ...bSans }}>
               {noiValue !== '—' ? 'Platform adjustments applied to broker underwriting' : 'Upload an OM to see NOI adjustments'}
             </div>
           </div>
@@ -734,79 +724,72 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
               ? `${(((financial.noi / (marketCapRate / 100)) / deal.purchasePrice - 1) * 100).toFixed(1)}% vs ask`
               : undefined;
             return [
-              { l: 'Going-In Cap Rate', v: capRate, c: 'text-amber-600' },
-              { l: 'Market Cap Rate', v: mktCap, c: 'text-stone-600' },
-              { l: 'Implied Value at Mkt Cap', v: impliedVal, c: 'text-emerald-600', note: impliedVsAsk },
+              { l: 'Going-In Cap Rate', v: capRate, c: BT.amberL },
+              { l: 'Market Cap Rate', v: mktCap, c: BT.tm },
+              { l: 'Implied Value at Mkt Cap', v: impliedVal, c: BT.greenL, note: impliedVsAsk },
             ];
           })().map((r, i) => (
-            <div key={i} className="flex justify-between items-start py-1.5 border-b border-stone-100 last:border-0">
-              <span className="text-xs text-stone-600">{r.l}</span>
-              <div className="text-right">
-                <span className={`text-sm font-bold ${r.c}`}>{r.v}</span>
-                {r.note && <div className="text-[9px] text-emerald-500">{r.note}</div>}
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: `1px solid ${BT.border}` }}>
+              <span style={{ fontSize: 11, color: BT.tm, ...bSans }}>{r.l}</span>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: r.c, ...bMono }}>{r.v}</span>
+                {r.note && <div style={{ fontSize: 9, color: BT.greenL, ...bSans }}>{r.note}</div>}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <SectionHead title="Capital Structure" right="M11 · Exit target" accentColor="border-violet-500" />
-      <div className="grid grid-cols-3 gap-px bg-stone-200">
+      <SectionHead title="Capital Structure" right="M11 · Exit target" accent={BT.violet} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: BT.border }}>
         {(() => {
           const stack = capitalStackData?.stack || capitalStackData?.layers || [];
           const senior = stack.find?.((l: any) => l.type === 'senior_debt' || l.name?.toLowerCase().includes('senior'));
           const mezz = stack.find?.((l: any) => l.type === 'mezzanine' || l.name?.toLowerCase().includes('mezz'));
           const equity = stack.find?.((l: any) => l.type === 'equity' || l.name?.toLowerCase().includes('equity'));
           return [
-            { 
-              tier: 'Senior Debt', c: 'border-blue-400', tc: 'text-blue-600', 
-              amt: senior?.amount ? `$${(senior.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.loanBalance?.[0] ? `$${(capitalStructure.loanBalance[0] / 1_000_000).toFixed(1)}M` : '—', 
-              ltc: senior?.ltc ? `${senior.ltc}%` : capitalStructure?.ltc ? `${capitalStructure.ltc}%` : '—', 
-              rate: senior?.rate ? `${senior.rate}%` : capitalStructure?.interestRate ? `${capitalStructure.interestRate}%` : '—' 
-            },
-            { 
-              tier: 'Mezzanine', c: 'border-cyan-400', tc: 'text-cyan-600', 
-              amt: mezz?.amount ? `$${(mezz.amount / 1_000_000).toFixed(1)}M` : '—', 
-              ltc: mezz?.ltc ? `${mezz.ltc}%` : '—', 
-              rate: mezz?.rate ? `${mezz.rate}%` : '—' 
-            },
-            { 
-              tier: 'Equity', c: 'border-emerald-400', tc: 'text-emerald-600', 
-              amt: equity?.amount ? `$${(equity.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.totalEquity ? `$${(capitalStructure.totalEquity / 1_000_000).toFixed(1)}M` : '—', 
-              ltc: equity?.ltc ? `${equity.ltc}%` : capitalStructure?.ltc ? `${100 - capitalStructure.ltc}%` : '—', 
-              rate: equity?.targetReturn ? `${equity.targetReturn}%` : '—' 
-            },
+            { tier: 'Senior Debt', tc: BT.blueL, border: BT.blue,
+              amt: senior?.amount ? `$${(senior.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.loanBalance?.[0] ? `$${(capitalStructure.loanBalance[0] / 1_000_000).toFixed(1)}M` : '—',
+              ltc: senior?.ltc ? `${senior.ltc}%` : capitalStructure?.ltc ? `${capitalStructure.ltc}%` : '—',
+              rate: senior?.rate ? `${senior.rate}%` : capitalStructure?.interestRate ? `${capitalStructure.interestRate}%` : '—' },
+            { tier: 'Mezzanine', tc: BT.cyanL, border: BT.cyan,
+              amt: mezz?.amount ? `$${(mezz.amount / 1_000_000).toFixed(1)}M` : '—',
+              ltc: mezz?.ltc ? `${mezz.ltc}%` : '—', rate: mezz?.rate ? `${mezz.rate}%` : '—' },
+            { tier: 'Equity', tc: BT.greenL, border: BT.green,
+              amt: equity?.amount ? `$${(equity.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.totalEquity ? `$${(capitalStructure.totalEquity / 1_000_000).toFixed(1)}M` : '—',
+              ltc: equity?.ltc ? `${equity.ltc}%` : capitalStructure?.ltc ? `${100 - capitalStructure.ltc}%` : '—',
+              rate: equity?.targetReturn ? `${equity.targetReturn}%` : '—' },
           ];
         })().map((t, i) => (
-          <div key={i} className={`bg-white p-4 border-t-2 ${t.c}`}>
-            <div className={`text-[10px] font-bold tracking-wider mb-2 ${t.tc}`}>
-              {t.tier} <span className="text-stone-400 font-normal">({t.ltc} LTC)</span>
+          <div key={i} style={{ background: BT.bgCard, padding: '12px 14px', borderTop: `3px solid ${t.border}` }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: t.tc, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>
+              {t.tier} <span style={{ color: BT.td, fontWeight: 400 }}>({t.ltc} LTC)</span>
             </div>
-            <div className="text-xl font-bold text-stone-900 font-mono mb-1">{t.amt}</div>
-            <div className="text-[10px] text-stone-400">{t.rate}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: BT.text, marginBottom: 4, ...bMono }}>{t.amt}</div>
+            <div style={{ fontSize: 9, color: BT.td, ...bMono }}>{t.rate}</div>
           </div>
         ))}
       </div>
 
-      <SectionHead title="Due Diligence + Module Access" accentColor="border-amber-500" />
-      <div className="grid grid-cols-2 gap-px bg-stone-200">
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">DD CHECKLIST</div>
+      <SectionHead title="Due Diligence + Module Access" accent={BT.amber} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>DD CHECKLIST</div>
           {deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0 ? (
             deal.stateData.ddItems.map((item: any, i: number) => (
               <DDItem key={i} label={item.l} done={item.done} />
             ))
           ) : (
-            <div className="text-center py-4">
-              <p className="text-xs text-stone-400 mb-1">No checklist items added yet</p>
-              <button onClick={() => navigateToTab('due-diligence')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium">
-                Add DD Items &rarr;
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <p style={{ fontSize: 11, color: BT.td, marginBottom: 6, ...bSans }}>No checklist items added yet</p>
+              <button onClick={() => navigateToTab('due-diligence')} style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}>
+                Add DD Items →
               </button>
             </div>
           )}
         </div>
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">MODULE ACCESS</div>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>MODULE ACCESS</div>
           {[
             { key: 'F2', label: 'PROPERTY & ZONING', hint: 'Parcels · Entitlement · Setbacks', tab: 'zoning' },
             { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market-intelligence' },
@@ -817,11 +800,11 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
             { key: 'F9', label: 'SALE COMPS', hint: 'Transaction intelligence', tab: 'comps' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
-              className="w-full flex items-center gap-3 py-2 px-2 border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors text-left group">
-              <span className="text-[9px] font-mono font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{m.key}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-stone-800 group-hover:text-amber-700 transition-colors">{m.label}</div>
-                <div className="text-[9px] text-stone-400">{m.hint}</div>
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } as any}>
+              <span style={{ fontSize: 8, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3, padding: '2px 5px', flexShrink: 0, ...bMono }}>{m.key}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>{m.label}</div>
+                <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{m.hint}</div>
               </div>
             </button>
           ))}
@@ -1042,13 +1025,13 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   })();
 
   return (
-    <div className="space-y-0">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       <SectionHead
         title="Site + Zoning Constraints"
         right={`${lotSize} · ${deal.address ? deal.address.split(',').slice(1, 3).join(',').trim() : ''}`}
-        accentColor="border-cyan-500"
+        accent={BT.cyanL}
       />
-      <div className="grid grid-cols-6 gap-px bg-stone-200">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
         <KVCard label="Max Units (Zoned)" value={maxUnits > 0 ? `${maxUnits}u` : '—'} valueColor="text-cyan-600" note={`${lotSize}`} compact />
         <KVCard label="FAR" value={farValue} note={maxUnits > 0 && activeScenario?.parkingRequired ? `Parking: ${(activeScenario.parkingRequired / maxUnits).toFixed(1)} / unit` : undefined} compact />
         <KVCard label="Entitlement ETA" value={entitlementBenchmarks?.p50 ? `${entitlementBenchmarks.p50}-${entitlementBenchmarks.p75 || entitlementBenchmarks.p50 + 2} mo` : '—'} valueColor="text-amber-600" note={entitlementBenchmarks?.p50 ? `Based on ${entitlementBenchmarks.municipality || 'local'} benchmarks` : 'No benchmark data'} compact />
@@ -1057,39 +1040,39 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <KVCard label="Zoning" value={zoningProfile?.baseDistrictCode || '—'} valueColor="text-stone-700" compact />
       </div>
 
-      <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accentColor="border-amber-500" />
-      <div className="bg-white p-5">
+      <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accent={BT.amber} />
+      <div style={{ background: BT.bgCard, padding: '16px 20px' }}>
         {hasEntitlements ? (
-        <div className="flex items-center relative">
-          <div className="absolute top-3 left-[10%] right-[10%] h-0.5 bg-stone-200 z-0" />
+        <div style={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
+          <div style={{ position: 'absolute', top: 14, left: '10%', right: '10%', height: 1, background: BT.border, zIndex: 0 }} />
           {entitlementSteps.map((step, i) => {
-            const c = step.done ? 'border-emerald-500 bg-emerald-50' : step.active ? 'border-amber-500 bg-amber-50' : 'border-stone-300 bg-stone-50';
-            const tc = step.done ? 'text-emerald-600' : step.active ? 'text-amber-600' : 'text-stone-400';
+            const dotColor = step.done ? BT.greenL : step.active ? BT.amber : BT.border;
+            const textColor = step.done ? BT.greenL : step.active ? BT.amber : BT.td;
             return (
-              <div key={i} className="flex-1 flex flex-col items-center z-10">
-                <div className={`w-7 h-7 rounded-full border-2 ${c} flex items-center justify-center ${step.active ? 'ring-2 ring-amber-200 ring-offset-1' : ''}`}>
-                  <span className={`text-xs font-bold ${tc}`}>{step.done ? '✓' : i + 1}</span>
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${dotColor}`, background: step.done ? `${BT.green}20` : step.active ? `${BT.amber}20` : BT.bgPanel, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: step.active ? `0 0 8px ${BT.amber}60` : 'none' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: textColor, ...bMono }}>{step.done ? '✓' : i + 1}</span>
                 </div>
-                <div className={`text-[9px] mt-2 text-center leading-tight max-w-[70px] ${tc} font-medium`}>{step.n}</div>
+                <div style={{ fontSize: 8, marginTop: 6, textAlign: 'center', lineHeight: 1.3, maxWidth: 70, color: textColor, fontWeight: 600, ...bSans }}>{step.n}</div>
               </div>
             );
           })}
         </div>
         ) : (
-        <div className="text-center py-3">
-          <div className="flex items-center justify-center gap-2 mb-2">
+        <div style={{ textAlign: 'center', padding: '10px 0' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
             {entitlementSteps.map((step, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center">
-                <div className="w-7 h-7 rounded-full border-2 border-stone-200 bg-stone-50 flex items-center justify-center">
-                  <span className="text-xs font-bold text-stone-300">{i + 1}</span>
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${BT.border}`, background: BT.bgPanel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: BT.td, ...bMono }}>{i + 1}</span>
                 </div>
-                <div className="text-[9px] mt-1 text-stone-300 font-medium">{step.n}</div>
+                <div style={{ fontSize: 8, marginTop: 4, color: BT.td, fontWeight: 500, ...bSans }}>{step.n}</div>
               </div>
             ))}
           </div>
-          <p className="text-xs text-stone-400 mt-2">No entitlements filed yet</p>
-          <button onClick={() => navigateToTab('zoning')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium mt-1">
-            Start Entitlement Process &rarr;
+          <p style={{ fontSize: 10, color: BT.td, marginBottom: 6, ...bSans }}>No entitlements filed yet</p>
+          <button onClick={() => navigateToTab('zoning')} style={{ fontSize: 10, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+            Start Entitlement Process →
           </button>
         </div>
         )}
@@ -1105,129 +1088,129 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             Edit in 3D Design →
           </button>
         } 
-        accentColor="border-violet-500" 
+        accent={BT.violL} 
       />
       
       {/* Selected configuration from Dev Capacity + 3D Module */}
-      <div className="bg-white border border-stone-200">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-stone-50">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-bold text-stone-900">{buildingConfig.label}</span>
-            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-violet-100 text-violet-700 border border-violet-200">
+      <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${BT.border}`, background: BT.bgPanel }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: BT.tm, ...bSans }}>{buildingConfig.label}</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: BT.violL, background: `${BT.violet}25`, border: `1px solid ${BT.violet}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>
               {buildingConfig.units} UNITS
             </span>
           </div>
           {buildingConfig.design3DStatus === 'configured' ? (
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9, fontWeight: 600, color: BT.greenL, ...bSans }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: BT.greenL }} />
               3D Design Configured
             </span>
           ) : (
-            <button 
-              onClick={() => navigateToTab('3d-design')}
-              className="text-[10px] font-medium text-amber-600 hover:text-amber-700"
-            >
+            <button onClick={() => navigateToTab('3d-design')} style={{ fontSize: 9, fontWeight: 600, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', ...bSans }}>
               Configure 3D Design →
             </button>
           )}
         </div>
         
-        <div className="grid grid-cols-4 gap-px bg-stone-200">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
           {[
-            { l: 'Floors', v: `${buildingConfig.floors} stories`, c: 'text-stone-700' },
-            { l: 'Height', v: buildingConfig.height, c: 'text-stone-700' },
-            { l: 'Construction', v: buildingConfig.constructionType, c: 'text-stone-600', small: true },
-            { l: 'Parking', v: `${buildingConfig.parkingSpaces} spaces`, c: 'text-stone-600' },
+            { l: 'Floors', v: `${buildingConfig.floors} stories`, c: BT.tm },
+            { l: 'Height', v: buildingConfig.height, c: BT.tm },
+            { l: 'Construction', v: buildingConfig.constructionType, c: BT.ts, small: true },
+            { l: 'Parking', v: `${buildingConfig.parkingSpaces} spaces`, c: BT.ts },
           ].map((m, i) => (
-            <div key={i} className="bg-white p-3">
-              <div className="text-[9px] font-mono text-stone-400 tracking-wider uppercase">{m.l}</div>
-              <div className={`${m.small ? 'text-xs' : 'text-sm'} font-bold ${m.c}`}>{m.v}</div>
+            <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
+              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
+              <div style={{ fontSize: m.small ? 11 : 13, fontWeight: 700, color: m.c, ...bSans }}>{m.v}</div>
             </div>
           ))}
         </div>
         
-        <div className="grid grid-cols-4 gap-px bg-stone-200">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
           {[
-            { l: 'Total Dev Cost', v: buildingConfig.tdc, c: 'text-amber-600' },
-            { l: 'TDC / Unit', v: buildingConfig.tdcUnit, c: 'text-amber-600' },
-            { l: 'BTS IRR', v: buildingConfig.btsIrr, c: 'text-emerald-600' },
-            { l: 'BTS EM', v: buildingConfig.btsEm, c: 'text-emerald-600' },
+            { l: 'Total Dev Cost', v: buildingConfig.tdc, c: BT.amber },
+            { l: 'TDC / Unit', v: buildingConfig.tdcUnit, c: BT.amber },
+            { l: 'BTS IRR', v: buildingConfig.btsIrr, c: BT.greenL },
+            { l: 'BTS EM', v: buildingConfig.btsEm, c: BT.greenL },
           ].map((m, i) => (
-            <div key={i} className="bg-white p-3">
-              <div className="text-[9px] font-mono text-stone-400 tracking-wider uppercase">{m.l}</div>
-              <div className={`text-sm font-bold font-mono ${m.c}`}>{m.v}</div>
+            <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
+              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
             </div>
           ))}
         </div>
         
         {(buildingConfig.grossSqft || buildingConfig.efficiency) && (
-          <div className="px-4 py-2 bg-stone-50 border-t border-stone-100 flex items-center gap-4 text-[10px] text-stone-500">
-            {buildingConfig.grossSqft && <span>Gross SF: <strong className="text-stone-700">{buildingConfig.grossSqft.toLocaleString()}</strong></span>}
-            {buildingConfig.efficiency && <span>Efficiency: <strong className="text-stone-700">{(buildingConfig.efficiency * 100).toFixed(0)}%</strong></span>}
+          <div style={{ padding: '6px 14px', background: BT.bgPanel, borderTop: `1px solid ${BT.border}`, display: 'flex', alignItems: 'center', gap: 16, fontSize: 9, color: BT.td, ...bMono }}>
+            {buildingConfig.grossSqft && <span>Gross SF: <strong style={{ color: BT.tm }}>{buildingConfig.grossSqft.toLocaleString()}</strong></span>}
+            {buildingConfig.efficiency && <span>Efficiency: <strong style={{ color: BT.tm }}>{(buildingConfig.efficiency * 100).toFixed(0)}%</strong></span>}
           </div>
         )}
       </div>
 
-      <SectionHead title="Unit Mix Program" right={unitMix.length > 0 ? `${buildingConfig.units} units · Based on ${buildingConfig.label}` : 'No data yet'} accentColor="border-cyan-500" />
-      <div className="bg-white border border-stone-200">
+      <SectionHead title="Unit Mix Program" right={unitMix.length > 0 ? `${buildingConfig.units} units · Based on ${buildingConfig.label}` : 'No data yet'} accent={BT.cyanL} />
+      <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
         {unitMix.length > 0 ? (
         <>
-        <div className="flex border-b border-stone-200">
+        <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border}` }}>
           {unitMix.map((u, i) => (
-            <div key={i} className="flex-1 py-2 px-3 text-center border-r border-stone-200 last:border-r-0" style={{ flex: parseInt(u.pct) }}>
-              <div className={`text-[10px] font-bold ${u.color}`}>{u.type}</div>
-              <div className="text-xs text-stone-500">{u.pct} · {u.units}u</div>
+            <div key={i} style={{ flex: parseInt(u.pct), padding: '8px 10px', textAlign: 'center', borderRight: i < unitMix.length - 1 ? `1px solid ${BT.border}` : 'none' }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: BT.cyanL, ...bSans }}>{u.type}</div>
+              <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{u.pct} · {u.units}u</div>
             </div>
           ))}
         </div>
-        <div className="flex h-2">
-          {unitMix.map((u, i) => (
-            <div key={i} className={`${u.bg} opacity-40`} style={{ flex: parseInt(u.pct) }} />
-          ))}
+        <div style={{ display: 'flex', height: 3 }}>
+          {(() => {
+            const colors = [BT.violL, BT.cyanL, BT.greenL, BT.orangeL];
+            return unitMix.map((u, i) => (
+              <div key={i} style={{ flex: parseInt(u.pct), background: colors[i % colors.length], opacity: 0.6 }} />
+            ));
+          })()}
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', ...bMono }}>
             <thead>
-              <tr className="bg-stone-50 border-b border-stone-200">
+              <tr style={{ background: BT.bgPanel, borderBottom: `1px solid ${BT.border}` }}>
                 {['UNIT TYPE', 'COUNT', 'MIX %', 'AVG SQFT', 'TARGET RENT', 'RENT PSF', 'MONTHLY REV', 'ANN. REVENUE'].map((h, i) => (
-                  <th key={i} className="px-3 py-2 text-left text-[9px] font-mono text-stone-400 tracking-wider font-bold">{h}</th>
+                  <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 8, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {unitMix.map((u, i) => (
-                <tr key={i} className={`border-b border-stone-100 ${i % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`}>
-                  <td className={`px-3 py-2 font-bold ${u.color}`}>{u.type}</td>
-                  <td className="px-3 py-2 text-stone-600">{u.units}</td>
-                  <td className="px-3 py-2 text-stone-600">{u.pct}</td>
-                  <td className="px-3 py-2 text-stone-600">{u.sqft.toLocaleString()}</td>
-                  <td className="px-3 py-2 font-bold text-amber-600">${u.targetRent.toLocaleString()}</td>
-                  <td className="px-3 py-2 text-stone-500">${u.rentPsf.toFixed(2)}</td>
-                  <td className="px-3 py-2 font-bold text-stone-700">${(u.targetRent * u.units).toLocaleString()}</td>
-                  <td className="px-3 py-2 font-bold text-stone-700">${(u.targetRent * u.units * 12).toLocaleString()}</td>
+                <tr key={i} style={{ borderBottom: `1px solid ${BT.border}`, background: i % 2 === 0 ? BT.bgCard : BT.bgPanel }}>
+                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.cyanL }}>{u.type}</td>
+                  <td style={{ padding: '6px 10px', color: BT.tm }}>{u.units}</td>
+                  <td style={{ padding: '6px 10px', color: BT.ts }}>{u.pct}</td>
+                  <td style={{ padding: '6px 10px', color: BT.ts }}>{u.sqft.toLocaleString()}</td>
+                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.amber }}>${u.targetRent.toLocaleString()}</td>
+                  <td style={{ padding: '6px 10px', color: BT.ts }}>${u.rentPsf.toFixed(2)}</td>
+                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.tm }}>${(u.targetRent * u.units).toLocaleString()}</td>
+                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.greenL }}>${(u.targetRent * u.units * 12).toLocaleString()}</td>
                 </tr>
               ))}
-              <tr className="bg-stone-100 border-t-2 border-stone-300 font-bold">
-                <td className="px-3 py-2 text-stone-800">TOTAL / AVG</td>
-                <td className="px-3 py-2 text-stone-800">{totalUnitCount}</td>
-                <td className="px-3 py-2 text-stone-800">100%</td>
-                <td className="px-3 py-2 text-stone-800">{avgSqft.toLocaleString()}</td>
-                <td className="px-3 py-2 text-amber-600">${avgRent.toLocaleString()}</td>
-                <td className="px-3 py-2 text-stone-500">${avgPsf}</td>
-                <td className="px-3 py-2 text-amber-600">${totalRevMo.toLocaleString()}</td>
-                <td className="px-3 py-2 text-amber-600">${(totalRevMo * 12).toLocaleString()}</td>
+              <tr style={{ background: BT.bgPanel, borderTop: `2px solid ${BT.border}`, fontWeight: 700 }}>
+                <td style={{ padding: '6px 10px', color: BT.ts, fontSize: 9, letterSpacing: 1 }}>TOTAL / AVG</td>
+                <td style={{ padding: '6px 10px', color: BT.tm }}>{totalUnitCount}</td>
+                <td style={{ padding: '6px 10px', color: BT.tm }}>100%</td>
+                <td style={{ padding: '6px 10px', color: BT.tm }}>{avgSqft.toLocaleString()}</td>
+                <td style={{ padding: '6px 10px', color: BT.amber }}>${avgRent.toLocaleString()}</td>
+                <td style={{ padding: '6px 10px', color: BT.ts }}>${avgPsf}</td>
+                <td style={{ padding: '6px 10px', color: BT.amber }}>${totalRevMo.toLocaleString()}</td>
+                <td style={{ padding: '6px 10px', color: BT.amber }}>${(totalRevMo * 12).toLocaleString()}</td>
               </tr>
             </tbody>
           </table>
         </div>
         </>
         ) : (
-        <div className="text-center py-6">
-          <p className="text-xs text-stone-400 mb-1">No unit mix data available</p>
-          <p className="text-[10px] text-stone-300 mb-2">Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
-          <button onClick={() => navigateToTab('unit-mix-intelligence')} className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium">
-            Configure Unit Mix &rarr;
+        <div style={{ textAlign: 'center', padding: '24px 0' }}>
+          <p style={{ fontSize: 11, color: BT.ts, marginBottom: 4, ...bSans }}>No unit mix data available</p>
+          <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
+          <button onClick={() => navigateToTab('unit-mix-intelligence')} style={{ fontSize: 10, color: BT.cyanL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+            Configure Unit Mix →
           </button>
         </div>
         )}
@@ -1274,12 +1257,12 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         if (rentComps.length === 0 && unitMix.length === 0) {
           return (
             <>
-              <SectionHead title="Competitive Set" right="No comps" accentColor="border-emerald-500" />
-              <div className="bg-white border border-stone-200 text-center py-6">
-                <p className="text-xs text-stone-400 mb-1">No rent comps data available</p>
-                <p className="text-[10px] text-stone-300 mb-2">Build your competitive set from Trade Area, Submarket, and MSA comps</p>
-                <button onClick={() => navigateToTab('competition')} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium">
-                  Analyze Rent Comps &rarr;
+              <SectionHead title="Competitive Set" right="No comps" accent={BT.greenL} />
+              <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, textAlign: 'center', padding: '20px 0' }}>
+                <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>No rent comps data available</p>
+                <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Build your competitive set from Trade Area, Submarket, and MSA comps</p>
+                <button onClick={() => navigateToTab('competition')} style={{ fontSize: 10, color: BT.greenL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+                  Analyze Rent Comps →
                 </button>
               </div>
             </>
@@ -1288,66 +1271,62 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
 
         return (
           <>
-            <SectionHead title="Competitive Set · Ranked by $/SF" right={`#${subjectRank} of ${allRows.length} · ${rentComps.length} comps`} accentColor="border-emerald-500" />
-            <div className="bg-white border border-stone-200 overflow-x-auto">
-              <table className="w-full text-xs">
+            <SectionHead title="Competitive Set · Ranked by $/SF" right={`#${subjectRank} of ${allRows.length} · ${rentComps.length} comps`} accent={BT.greenL} />
+            <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', ...bMono }}>
                 <thead>
-                  <tr className="bg-stone-50 border-b border-stone-200">
+                  <tr style={{ background: BT.bgPanel, borderBottom: `1px solid ${BT.border}` }}>
                     {['#', 'PROPERTY', 'DIST', 'UNITS', 'AVG RENT', 'AVG SF', '$/SF', 'OCC', 'ANN. TRAFFIC'].map((h, i) => (
-                      <th key={i} className={`px-3 py-2 text-[9px] font-mono text-stone-400 tracking-wider font-bold ${i <= 1 ? 'text-left' : 'text-right'} ${i === 1 ? 'min-w-[160px]' : ''}`}>{h}</th>
+                      <th key={i} style={{ padding: '7px 10px', fontSize: 9, color: BT.td, fontWeight: 700, letterSpacing: 1.2, textAlign: i <= 1 ? 'left' : 'right', minWidth: i === 1 ? 160 : undefined }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {allRows.map((row, ri) => (
-                    <tr key={ri} className={row.isSubject
-                      ? 'bg-blue-50/70 border-b border-blue-200 border-l-2 border-l-blue-500'
-                      : `border-b border-stone-100 ${ri % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`
-                    }>
-                      <td className={`px-3 py-2 font-bold font-mono ${row.isSubject ? 'text-blue-700' : 'text-stone-400'}`}>{ri + 1}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2">
-                          <div>
-                            <div className={`text-xs font-semibold ${row.isSubject ? 'text-blue-800' : 'text-stone-800'}`}>{row.name}</div>
-                            {row.isSubject ? (
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className="text-[7px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded tracking-wider">SUBJECT</span>
-                                <span className="text-[8px] text-blue-500">{row.note}</span>
-                              </div>
-                            ) : (
-                              <div className="text-[9px] text-stone-400">{row.units}u · {row.vintage}{row.note ? ` · ${row.note}` : ''}</div>
-                            )}
+                    <tr key={ri} style={{
+                      borderBottom: `1px solid ${BT.border}`,
+                      borderLeft: row.isSubject ? `3px solid ${BT.blueL}` : undefined,
+                      background: row.isSubject ? BT.blueBg : ri % 2 === 0 ? BT.bgCard : BT.bgPanel,
+                    }}>
+                      <td style={{ padding: '6px 10px', fontWeight: 700, color: row.isSubject ? BT.blueL : BT.td }}>{ri + 1}</td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: row.isSubject ? BT.blueL : BT.tm }}>{row.name}</div>
+                        {row.isSubject ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <span style={{ fontSize: 7, fontWeight: 700, color: BT.blueL, background: `${BT.blue}25`, border: `1px solid ${BT.blue}50`, borderRadius: 2, padding: '1px 4px', letterSpacing: 1 }}>SUBJECT</span>
+                            <span style={{ fontSize: 8, color: BT.ts }}>{row.note}</span>
                           </div>
-                        </div>
-                      </td>
-                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-500'}`}>{row.dist}</td>
-                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-700 font-bold' : 'text-stone-600'}`}>{row.units}</td>
-                      <td className={`px-3 py-2 text-right font-bold ${row.isSubject ? 'text-blue-700' : 'text-amber-600'}`}>${row.avgRent.toLocaleString()}</td>
-                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-600'}`}>{row.avgSf.toLocaleString()}</td>
-                      <td className={`px-3 py-2 text-right font-bold ${row.isSubject ? 'text-blue-800' : 'text-stone-800'}`}>${row.psf.toFixed(2)}</td>
-                      <td className="px-3 py-2 text-right">
-                        {row.occ === '—' ? (
-                          <span className={row.isSubject ? 'text-blue-400' : 'text-stone-300'}>—</span>
                         ) : (
-                          <span className={`font-bold ${parseFloat(row.occ) >= 95 ? 'text-emerald-600' : parseFloat(row.occ) >= 90 ? 'text-amber-600' : 'text-orange-500'}`}>{row.occ}</span>
+                          <div style={{ fontSize: 9, color: BT.td }}>{row.units}u · {row.vintage}{row.note ? ` · ${row.note}` : ''}</div>
                         )}
                       </td>
-                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-500'}`}>{row.traffic.toLocaleString()}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.ts }}>{row.dist}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.tm, fontWeight: row.isSubject ? 700 : 400 }}>{row.units}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: row.isSubject ? BT.blueL : BT.amber }}>${row.avgRent.toLocaleString()}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.ts }}>{row.avgSf.toLocaleString()}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: row.isSubject ? BT.tm : BT.tm }}>${row.psf.toFixed(2)}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                        {row.occ === '—' ? (
+                          <span style={{ color: BT.td }}>—</span>
+                        ) : (
+                          <span style={{ fontWeight: 700, color: parseFloat(row.occ) >= 95 ? BT.greenL : parseFloat(row.occ) >= 90 ? BT.amber : BT.orangeL }}>{row.occ}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.ts }}>{row.traffic.toLocaleString()}</td>
                     </tr>
                   ))}
-
-                  <tr className="bg-stone-100 border-t-2 border-stone-300 font-bold">
-                    <td className="px-3 py-2" />
-                    <td className="px-3 py-2 text-stone-700">COMP AVERAGE</td>
-                    <td className="px-3 py-2" />
-                    <td className="px-3 py-2 text-right text-stone-600">{compAvgUnits}</td>
-                    <td className="px-3 py-2 text-right text-amber-600">${compAvgRent.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right text-stone-600">{compAvgSf.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right text-stone-800">${compAvgPsf.toFixed(2)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {compAvgOcc === '—' ? <span className="text-stone-300">—</span> : <span className="text-stone-600">{compAvgOcc}</span>}
+                  <tr style={{ background: BT.bgPanel, borderTop: `2px solid ${BT.border}`, fontWeight: 700 }}>
+                    <td style={{ padding: '6px 10px' }} />
+                    <td style={{ padding: '6px 10px', color: BT.ts, fontSize: 9, letterSpacing: 1 }}>COMP AVERAGE</td>
+                    <td style={{ padding: '6px 10px' }} />
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{compAvgUnits}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.amber }}>${compAvgRent.toLocaleString()}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{compAvgSf.toLocaleString()}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>${compAvgPsf.toFixed(2)}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                      {compAvgOcc === '—' ? <span style={{ color: BT.td }}>—</span> : <span style={{ color: BT.ts }}>{compAvgOcc}</span>}
                     </td>
-                    <td className="px-3 py-2 text-right text-stone-500">{compAvgTraffic.toLocaleString()}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.ts }}>{compAvgTraffic.toLocaleString()}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1356,10 +1335,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         );
       })()}
 
-      <SectionHead title="Development Budget + Timeline" right={hasTimelineData ? `TDC ${buildingConfig.tdc} · ${constructionDur}mo build · ${absorptionDur}mo absorption` : `TDC ${buildingConfig.tdc}`} accentColor="border-amber-500" />
-      <div className="grid grid-cols-2 gap-px bg-stone-200">
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">BUDGET STACK</div>
+      <SectionHead title="Development Budget + Timeline" right={hasTimelineData ? `TDC ${buildingConfig.tdc} · ${constructionDur}mo build · ${absorptionDur}mo absorption` : `TDC ${buildingConfig.tdc}`} accent={BT.amber} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
+        <div style={{ background: BT.bgCard, padding: 16 }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 14, ...bMono }}>BUDGET STACK</div>
           {(() => {
             const landAmt = financial?.landCost || deal.purchasePrice || 0;
             const hardAmt = financial?.hardCosts || 0;
@@ -1368,117 +1347,115 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             const contingency = tdc > 0 && hardAmt > 0 ? Math.round(tdc * 0.08) : 0;
             const hasReal = tdc > 0 && hardAmt > 0;
             const items = hasReal ? [
-              { l: 'Land / Acquisition', v: `$${(landAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((landAmt / tdc) * 100), c: 'bg-violet-500' },
-              { l: 'Hard Costs', v: `$${(hardAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((hardAmt / tdc) * 100), c: 'bg-amber-500' },
-              { l: 'Soft Costs', v: `$${(softAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((softAmt / tdc) * 100), c: 'bg-cyan-500' },
-              { l: 'Contingency (8%)', v: `$${(contingency / 1_000_000).toFixed(1)}M`, pct: 8, c: 'bg-orange-500' },
+              { l: 'Land / Acquisition', v: `$${(landAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((landAmt / tdc) * 100), c: BT.violL },
+              { l: 'Hard Costs', v: `$${(hardAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((hardAmt / tdc) * 100), c: BT.amber },
+              { l: 'Soft Costs', v: `$${(softAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((softAmt / tdc) * 100), c: BT.cyanL },
+              { l: 'Contingency (8%)', v: `$${(contingency / 1_000_000).toFixed(1)}M`, pct: 8, c: BT.orangeL },
             ] : [
-              { l: 'Land / Acquisition', v: landCost !== '—' ? landCost : '—', pct: 25, c: 'bg-violet-500' },
-              { l: 'Hard Costs', v: '—', pct: 25, c: 'bg-amber-500' },
-              { l: 'Soft Costs', v: '—', pct: 25, c: 'bg-cyan-500' },
-              { l: 'Contingency', v: '—', pct: 25, c: 'bg-orange-500' },
+              { l: 'Land / Acquisition', v: landCost !== '—' ? landCost : '—', pct: 25, c: BT.violL },
+              { l: 'Hard Costs', v: '—', pct: 25, c: BT.amber },
+              { l: 'Soft Costs', v: '—', pct: 25, c: BT.cyanL },
+              { l: 'Contingency', v: '—', pct: 25, c: BT.orangeL },
             ];
             return items;
           })().map((r, i) => (
-            <div key={i} className="mb-3">
-              <div className="flex justify-between mb-1">
-                <span className="text-xs text-stone-600">{r.l}</span>
-                <span className="text-xs font-bold text-stone-800">{r.v}</span>
+            <div key={i} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 10, color: BT.ts, ...bSans }}>{r.l}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: BT.tm, ...bMono }}>{r.v}</span>
               </div>
-              <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
-                <div className={`h-full ${r.c} rounded-full`} style={{ width: `${r.pct}%` }} />
+              <div style={{ height: 3, background: BT.bgPanel, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: r.c, width: `${r.pct}%`, opacity: 0.8 }} />
               </div>
             </div>
           ))}
-          <div className="flex justify-between pt-3 border-t border-stone-200 mt-2">
-            <span className="text-xs font-bold text-stone-800">TOTAL DEV COST</span>
-            <span className="text-lg font-bold text-amber-600 font-mono">
+          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: `1px solid ${BT.border}`, marginTop: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL DEV COST</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: BT.amber, ...bMono }}>
               {financial?.totalDevelopmentCost ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` : buildingConfig.tdc}
             </span>
           </div>
-          <div className="text-[10px] text-stone-400 mt-1">{buildingConfig.tdcUnit}/unit{constructionDur > 0 ? ` · ${constructionDur}mo construction` : ''}</div>
+          <div style={{ fontSize: 9, color: BT.td, marginTop: 4, ...bMono }}>{buildingConfig.tdcUnit}/unit{constructionDur > 0 ? ` · ${constructionDur}mo construction` : ''}</div>
         </div>
 
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">DEVELOPMENT TIMELINE</div>
+        <div style={{ background: BT.bgCard, padding: 16 }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 14, ...bMono }}>DEVELOPMENT TIMELINE</div>
           {hasTimelineData ? timeline.map((ph, i) => {
             const left = (ph.start / TOTAL_MO) * 100;
             const width = (ph.dur / TOTAL_MO) * 100;
-            const barColor = ph.status === 'done' ? 'bg-emerald-500' : ph.status === 'active' ? 'bg-amber-500' : 'bg-stone-300';
-            const textColor = ph.status === 'done' ? 'text-emerald-600' : ph.status === 'active' ? 'text-amber-600' : 'text-stone-400';
+            const barColor = ph.status === 'done' ? BT.greenL : ph.status === 'active' ? BT.amber : BT.border;
+            const textColor = ph.status === 'done' ? BT.greenL : ph.status === 'active' ? BT.amber : BT.td;
             return (
-              <div key={i} className="flex items-center gap-3 mb-2">
-                <span className="text-[10px] text-stone-600 w-28 text-right flex-shrink-0">{ph.phase}</span>
-                <div className="flex-1 h-5 bg-stone-100 relative rounded overflow-hidden">
-                  <div className={`absolute h-full ${barColor} opacity-30 rounded`}
-                    style={{ left: `${left}%`, width: `${width}%` }} />
-                  <div className={`absolute h-full border-l-2 ${ph.status === 'done' ? 'border-emerald-500' : ph.status === 'active' ? 'border-amber-500' : 'border-stone-300'} flex items-center pl-1.5`}
-                    style={{ left: `${left}%`, width: `${width}%` }}>
-                    <span className={`text-[8px] font-bold ${textColor}`}>{ph.dur}mo</span>
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 9, color: BT.ts, width: 100, textAlign: 'right', flexShrink: 0, ...bSans }}>{ph.phase}</span>
+                <div style={{ flex: 1, height: 16, background: BT.bgPanel, position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', height: '100%', background: barColor, opacity: 0.25, left: `${left}%`, width: `${width}%` }} />
+                  <div style={{ position: 'absolute', height: '100%', borderLeft: `2px solid ${barColor}`, display: 'flex', alignItems: 'center', paddingLeft: 4, left: `${left}%`, width: `${width}%` }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: textColor, ...bMono }}>{ph.dur}mo</span>
                   </div>
                 </div>
-                <span className={`text-[8px] font-bold w-12 text-right ${textColor}`}>
+                <span style={{ fontSize: 8, fontWeight: 700, width: 40, textAlign: 'right', color: textColor, ...bMono }}>
                   {ph.status === 'done' ? '✓' : ph.status === 'active' ? 'ACTIVE' : ''}
                 </span>
               </div>
             );
           }) : (
-            <div className="text-center py-4">
-              <p className="text-xs text-stone-400 mb-1">Timeline data not available</p>
-              <p className="text-[10px] text-stone-300">Add entitlement benchmarks and deal assumptions to generate timeline</p>
+            <div style={{ textAlign: 'center', padding: '14px 0' }}>
+              <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>Timeline data not available</p>
+              <p style={{ fontSize: 9, color: BT.td, ...bSans }}>Add entitlement benchmarks and deal assumptions to generate timeline</p>
             </div>
           )}
           {hasTimelineData && (
-          <div className="flex gap-0 mt-3 border-t border-stone-100 pt-2 pl-[124px] pr-12">
+          <div style={{ display: 'flex', marginTop: 8, borderTop: `1px solid ${BT.border}`, paddingTop: 6, paddingLeft: 108, paddingRight: 48 }}>
             {[0, 6, 12, 18, 24, 30, 36, 42, 48].filter(m => m <= TOTAL_MO + 6).map(m => (
-              <div key={m} className="flex-1 text-[8px] text-stone-400 font-mono">M{m}</div>
+              <div key={m} style={{ flex: 1, fontSize: 8, color: BT.td, ...bMono }}>M{m}</div>
             ))}
           </div>
           )}
         </div>
       </div>
 
-      <SectionHead title="Returns Comparison + Site Diligence" right="M09 ProForma · M11 Capital" accentColor="border-amber-500" />
-      <div className="grid grid-cols-2 gap-px bg-stone-200">
-        <div className="bg-white p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] font-bold text-amber-700 tracking-wider">BUILD-TO-SELL</span>
-                <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">WIN</span>
+      <SectionHead title="Returns Comparison + Site Diligence" right="M09 ProForma · M11 Capital" accent={BT.amber} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
+        <div style={{ background: BT.bgCard, padding: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ padding: '10px 12px', background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, letterSpacing: 1, ...bMono }}>BUILD-TO-SELL</span>
+                <span style={{ fontSize: 7, fontWeight: 700, color: BT.greenL, background: `${BT.green}25`, border: `1px solid ${BT.greenL}50`, padding: '1px 5px', borderRadius: 2, letterSpacing: 1 }}>WIN</span>
               </div>
               {[
                 { l: 'Revenue', v: '$52.8M' },
                 { l: 'Margin', v: '30.4%' },
-                { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : buildingConfig.btsIrr, c: 'text-emerald-600' },
-                { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : buildingConfig.btsEm, c: 'text-emerald-600' },
+                { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : buildingConfig.btsIrr, c: BT.greenL },
+                { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : buildingConfig.btsEm, c: BT.greenL },
               ].map((r, i) => (
-                <div key={i} className="flex justify-between py-1">
-                  <span className="text-[10px] text-stone-500">{r.l}</span>
-                  <span className={`text-xs font-bold ${r.c || 'text-amber-600'}`}>{r.v}</span>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.l}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: (r as any).c || BT.amber, ...bMono }}>{r.v}</span>
                 </div>
               ))}
             </div>
-            <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg">
-              <div className="text-[10px] font-semibold text-stone-500 tracking-wider mb-3">HOLD AS RENTAL</div>
+            <div style={{ padding: '10px 12px', background: BT.bgPanel, border: `1px solid ${BT.border}`, borderRadius: 3 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, marginBottom: 10, ...bMono }}>HOLD AS RENTAL</div>
               {[
                 { l: 'Stab. NOI', v: financial?.noi ? `$${financial.noi.toLocaleString()}` : '$2,890,000' },
-                { l: 'YOC', v: buildingConfig.yoc || "—" },
+                { l: 'YOC', v: buildingConfig.yoc || '—' },
                 { l: 'Hold IRR', v: '18.4%' },
               ].map((r, i) => (
-                <div key={i} className="flex justify-between py-1">
-                  <span className="text-[10px] text-stone-500">{r.l}</span>
-                  <span className="text-xs font-semibold text-stone-600">{r.v}</span>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.l}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: BT.ts, ...bMono }}>{r.v}</span>
                 </div>
               ))}
-              <div className="text-[9px] text-stone-400 mt-3 leading-relaxed border-t border-stone-200 pt-2">
+              <div style={{ fontSize: 8, color: BT.td, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BT.border}`, lineHeight: 1.5, ...bSans }}>
                 BTS outperforms · Exit cap 5.0%
               </div>
             </div>
           </div>
         </div>
-        <div className="bg-white p-4">
-          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">SITE DILIGENCE ITEMS</div>
+        <div style={{ background: BT.bgCard, padding: 14 }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 10, ...bMono }}>SITE DILIGENCE ITEMS</div>
           {(deal?.stateData?.ddItems || [
             { l: 'Site Control / Title', done: true },
             { l: 'Zoning Pre-Application', done: true },

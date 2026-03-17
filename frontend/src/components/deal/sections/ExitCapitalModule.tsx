@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { computeExitReturns, computeSensitivityIRR } from '../../../shared/calculations/returns';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 /**
  * ExitCapitalModule
@@ -845,63 +846,71 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   }, [selectedFwd, selectedExitStrategy, dealType, ret, stack, annualDS, onUpdate]);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0B0E13', color: '#E8E6E1', fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: BT.bgBase, color: BT.tm, ...bSans }}>
+      {/* F9 Banner */}
+      <div style={{ background: BT.amberBg, borderBottom: `1px solid ${BT.amber}40`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: `${BT.amber}25`, border: `1px solid ${BT.amber}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F9</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: BT.amberL, ...bSans }}>EXIT &amp; CAPITAL STRUCTURE</span>
+        <span style={{ fontSize: 10, color: BT.td, ...bSans, marginLeft: 4 }}>21-yr convergence · RSS · Capital stack · Sensitivity</span>
+      </div>
+
       {/* Header */}
       <div
         style={{
-          padding: '14px 24px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          padding: '12px 20px',
+          borderBottom: `1px solid ${BT.border}`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          background: BT.bgCard,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>M11+M12</span>
-          <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>Exit & Capital Structure</h2>
-          <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: `${rssColor}15`, color: rssColor }}>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: BT.td, ...bMono }}>M11+M12</span>
+          <h2 style={{ fontSize: 14, fontWeight: 800, margin: 0, color: BT.tm, ...bSans }}>Exit & Capital Structure</h2>
+          <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 3, background: `${rssColor}20`, color: rssColor, border: `1px solid ${rssColor}40`, ...bMono }}>
             RSS {rssData.rss} — {rssVerdict}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#68D391' }}>{Q_LABELS[NOW_IDX + selectedFwd]?.label}</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', letterSpacing: 1, fontFamily: "'JetBrains Mono'" }}>TARGET EXIT</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: BT.greenL, ...bMono }}>{Q_LABELS[NOW_IDX + selectedFwd]?.label}</div>
+            <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1, ...bMono }}>TARGET EXIT</div>
           </div>
-          <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.06)' }} />
+          <div style={{ width: 1, height: 28, background: BT.border }} />
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: ret.irr >= 15 ? '#68D391' : '#F6E05E' }}>{ret.irr.toFixed(1)}%</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>IRR</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: ret.irr >= 15 ? BT.greenL : BT.amber, ...bMono }}>{ret.irr.toFixed(1)}%</div>
+            <div style={{ fontSize: 8, color: BT.td, ...bMono }}>IRR</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{ret.em.toFixed(2)}x</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EM</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: BT.blueL, ...bMono }}>{ret.em.toFixed(2)}x</div>
+            <div style={{ fontSize: 8, color: BT.td, ...bMono }}>EM</div>
           </div>
         </div>
       </div>
 
       {/* Tab navigation */}
-      <div style={{ padding: '0 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex' }}>
+      <div style={{ padding: '0 20px', borderBottom: `1px solid ${BT.border}`, display: 'flex', background: BT.bgCard }}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '10px 16px',
-              fontSize: 10.5,
+              padding: '8px 14px',
+              fontSize: 10,
               fontWeight: 600,
               cursor: 'pointer',
               border: 'none',
-              fontFamily: "'DM Sans', sans-serif",
+              ...bSans,
               display: 'flex',
               alignItems: 'center',
               gap: 5,
               background: 'transparent',
-              borderBottom: activeTab === tab.id ? '2px solid #63B3ED' : '2px solid transparent',
-              color: activeTab === tab.id ? '#E8E6E1' : 'rgba(232,230,225,0.22)',
+              borderBottom: activeTab === tab.id ? `2px solid ${BT.amber}` : '2px solid transparent',
+              color: activeTab === tab.id ? BT.tm : BT.td,
             }}
           >
-            <span style={{ fontSize: 11, opacity: 0.6 }}>{tab.icon}</span> {tab.label}
+            <span style={{ fontSize: 11, opacity: 0.7 }}>{tab.icon}</span> {tab.label}
           </button>
         ))}
       </div>
