@@ -17,6 +17,7 @@ import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 interface ZoningModuleSectionProps {
   deal?: any;

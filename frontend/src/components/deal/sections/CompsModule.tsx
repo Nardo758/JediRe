@@ -9,6 +9,7 @@ import {
   Building2, Users, Target, BarChart3, AlertCircle
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 interface CompsModuleProps {
   deal?: any;

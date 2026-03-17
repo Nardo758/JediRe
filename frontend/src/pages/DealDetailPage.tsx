@@ -122,8 +122,17 @@ function DevPathBadge() {
   );
 }
 
+// ─── Shared screen props type ──────────────────────────────────────────────────
+interface ScreenProps {
+  deal?: Record<string, unknown>;
+  dealId: string;
+  dealType?: string;
+  onUpdate?: () => void;
+  [k: string]: unknown;
+}
+
 // ─── Module-level screen wrappers (stable references — prevents remount blink) ──
-const CollaborationSection = (props: any) => {
+const CollaborationSection = (props: ScreenProps) => {
   const dId = props?.dealId;
   if (!dId) return <div className="p-4 text-sm text-slate-500">No deal selected</div>;
   return (
@@ -135,7 +144,7 @@ const CollaborationSection = (props: any) => {
   );
 };
 
-const OverviewScreen = (props: any) => (
+const OverviewScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'overview',    label: 'Deal Overview',   component: OverviewRouter },
     { id: 'context',     label: 'Context Tracker', component: ContextTrackerSection },
@@ -144,7 +153,7 @@ const OverviewScreen = (props: any) => (
     { id: 'deal-status', label: 'Deal Status',     component: DealStatusSection },
   ]} />
 );
-const MarketScreen = (props: any) => (
+const MarketScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'market-intelligence', label: 'Market Intel', component: MarketIntelligencePage },
     { id: 'unit-mix',            label: 'Unit Mix',     component: UnitMixIntelligence },
@@ -152,26 +161,26 @@ const MarketScreen = (props: any) => (
     { id: 'opportunity',         label: 'Opportunity',  component: OpportunityEngineSection },
   ]} />
 );
-const CompetitionScreen = (props: any) => (
+const CompetitionScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'competition', label: 'Competition Analysis', component: CompetitionPage },
     { id: 'comps',       label: 'Sale Comps',           component: CompsModule },
   ]} />
 );
-const StrategyScreen = (props: any) => (
+const StrategyScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'strategy',  label: 'Strategy',    component: StrategySection },
     { id: '3d-design', label: '3D Building', component: Design3DPageEnhanced },
   ]} />
 );
-const ProformaScreen = (props: any) => (
+const ProformaScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'proforma',            label: 'Pro Forma',           component: ProFormaTab },
     { id: 'tax',                 label: 'Tax Intelligence',    component: TaxModule },
     { id: 'financial-dashboard', label: 'Financial Dashboard', component: FinancialDashboard },
   ]} />
 );
-const RiskScreen = (props: any) => (
+const RiskScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'risk-intelligence', label: 'Risk Intelligence',  component: RiskIntelligence },
     { id: 'collision',         label: 'Collision Analysis', component: CollisionAnalysisSection },
@@ -179,7 +188,7 @@ const RiskScreen = (props: any) => (
     { id: 'files',             label: 'Files & Assets',     component: FilesSection },
   ]} />
 );
-const ExecutionScreen = (props: any) => (
+const ExecutionScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'timeline',           label: 'Project Timeline',   component: ProjectTimelinePage },
     { id: 'project-management', label: 'Project Management', component: ProjectManagementSection },
@@ -187,19 +196,19 @@ const ExecutionScreen = (props: any) => (
     { id: 'notarize-closing',   label: 'Closing (RON)',      component: NotarizeClosingSection },
   ]} />
 );
-const DocumentsScreen = (props: any) => (
+const DocumentsScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'files',         label: 'Files & Assets',  component: FilesSection },
     { id: 'due-diligence', label: 'DD Checklist',    component: DueDiligencePage },
   ]} />
 );
-const CapitalStructureScreen = (props: { deal?: any; dealId: string; dealType?: any; [k: string]: unknown }) => (
+const CapitalStructureScreen = (props: ScreenProps) => (
   <ExitCapitalModule dealId={props.dealId} deal={props.deal} dealType={props.dealType} initialTab="stack" />
 );
-const ExitStrategyScreen = (props: { deal?: any; dealId: string; dealType?: any; [k: string]: unknown }) => (
+const ExitStrategyScreen = (props: ScreenProps) => (
   <ExitCapitalModule dealId={props.dealId} deal={props.deal} dealType={props.dealType} initialTab="exit" />
 );
-const AIAgentScreen = (props: any) => (
+const AIAgentScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'opus-ai',            label: 'Opus AI Agent',      component: OpusAISection },
     { id: 'ai-recommendations', label: 'AI Recommendations', component: AIRecommendationsSection },
@@ -350,7 +359,7 @@ const DealDetailPage: React.FC = () => {
   }, [activeTab]);
 
   // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ─── aligned to deal-type-visibility.ts ───
-  const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<any> }[] = [
+  const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
     { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',             icon: <LayoutDashboard size={14} />, component: OverviewScreen },
     { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Property & Zoning',    icon: <Landmark size={14} />,        component: ZoningModuleSection },
     { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', label: 'Market Intelligence',  icon: <TrendingUp size={14} />,      component: MarketScreen },

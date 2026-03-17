@@ -14,6 +14,7 @@
  * DESIGN REFERENCE: /jedire/DEV_ANALYSIS_MODULES_DESIGN.md - Section 3
  */
 
+import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
@@ -157,9 +158,9 @@ const SupplyPipelinePage: React.FC = () => {
             total: totalSupply,
           };
         });
-        setSupplyWave(waveData.length > 0 ? waveData : generateMockSupplyWave());
+        setSupplyWave(waveData.length > 0 ? waveData : []);
       } else {
-        setSupplyWave(generateMockSupplyWave());
+        setSupplyWave([]);
       }
 
       if (submarkets.length > 0) {
@@ -205,10 +206,10 @@ const SupplyPipelinePage: React.FC = () => {
           delayRate: 0,
           marketShare: (d.units / totalPipelineUnits) * 100,
         })).sort((a, b) => b.totalUnits - a.totalUnits);
-        setDeveloperActivity(devActivity.length > 0 ? devActivity : generateMockDevelopers());
+        setDeveloperActivity(devActivity.length > 0 ? devActivity : []);
       } else {
-        setPipelineProjects(generateMockPipeline());
-        setDeveloperActivity(generateMockDevelopers());
+        setPipelineProjects([]);
+        setDeveloperActivity([]);
       }
 
       if (trends.length >= 2) {
@@ -243,7 +244,7 @@ const SupplyPipelinePage: React.FC = () => {
           })(),
         });
       } else {
-        setAbsorption(generateMockAbsorption());
+        setAbsorption(null);
       }
 
       if (submarkets.length > 0 || trends.length > 0) {
@@ -274,15 +275,15 @@ const SupplyPipelinePage: React.FC = () => {
           ],
         });
       } else {
-        setRiskScore(generateMockRiskScore());
+        setRiskScore(null);
       }
     } catch (error) {
       console.error('Error fetching supply data:', error);
-      setSupplyWave(generateMockSupplyWave());
-      setPipelineProjects(generateMockPipeline());
-      setDeveloperActivity(generateMockDevelopers());
-      setAbsorption(generateMockAbsorption());
-      setRiskScore(generateMockRiskScore());
+      setSupplyWave([]);
+      setPipelineProjects([]);
+      setDeveloperActivity([]);
+      setAbsorption(null);
+      setRiskScore(null);
     } finally {
       setLoading(false);
     }
@@ -528,7 +529,7 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
 
         <ResponsiveContainer width="100%" height={400}>
           <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
             <XAxis 
               dataKey="quarter" 
               tick={{ fontSize: 12 }}
@@ -542,8 +543,8 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: 'white', 
-                border: '1px solid #e5e7eb',
+                backgroundColor: '#0d1f35', 
+                border: '1px solid #1e2a3d',
                 borderRadius: '8px',
                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
               }}
@@ -719,7 +720,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Distance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-[#1e2a3d]">
               {filteredProjects.map((project) => (
                 <tr key={project.id} className="hover:bg-[#131920] transition-colors">
                   <td className="px-6 py-4">
@@ -829,7 +830,7 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Reliability</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-[#1e2a3d]">
               {developers.map((dev, idx) => {
                 const reliability = 100 - dev.delayRate;
                 const reliabilityColor = reliability >= 80 ? 'text-green-400' : reliability >= 60 ? 'text-yellow-400' : 'text-red-400';
@@ -1045,7 +1046,7 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Impact Timeline</h3>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={supplyWave}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
             <XAxis dataKey="quarter" tick={{ fontSize: 12 }} />
             <YAxis yAxisId="left" tick={{ fontSize: 12 }} label={{ value: 'Units', angle: -90, position: 'insideLeft' }} />
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} label={{ value: 'Absorption (mo)', angle: 90, position: 'insideRight' }} />
@@ -1189,110 +1190,6 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
     </div>
   );
 };
-
-// ============================================================================
-// MOCK DATA GENERATORS (Fallback when API returns empty)
-// ============================================================================
-
-function generateMockSupplyWave(): SupplyWaveData[] {
-  const quarters = [];
-  const startYear = 2025;
-  const startQuarter = 1;
-  
-  for (let i = 0; i < 20; i++) {
-    const year = startYear + Math.floor((startQuarter + i - 1) / 4);
-    const quarter = ((startQuarter + i - 1) % 4) + 1;
-    
-    // Simulate wave pattern with peak in middle
-    const waveFactor = Math.sin((i / 20) * Math.PI);
-    const confirmed = Math.floor(waveFactor * 800 + (i * 7) % 200);
-    const underConstruction = Math.floor(waveFactor * 600 + (i * 11) % 150);
-    const planned = Math.floor(waveFactor * 400 + (i * 13) % 100);
-    
-    quarters.push({
-      year,
-      quarter: `${year}Q${quarter}`,
-      confirmed,
-      underConstruction,
-      planned,
-      total: confirmed + underConstruction + planned,
-    });
-  }
-  
-  return quarters;
-}
-
-function generateMockPipeline(): PipelineProject[] {
-  const developers = ['Greystar', 'Avalon Bay', 'Camden', 'Lincoln Property', 'Mill Creek', 'Trammell Crow'];
-  const submarkets = ['Downtown', 'Midtown', 'East Village', 'West End', 'Uptown'];
-  const phases: ('planned' | 'under_construction' | 'delivered')[] = ['planned', 'under_construction', 'delivered'];
-  
-  return Array.from({ length: 15 }, (_, i) => ({
-    id: `proj-${i}`,
-    name: `Project ${String.fromCharCode(65 + i)}`,
-    developer: developers[Math.floor(Math.random() * developers.length)],
-    units: Math.floor(Math.random() * 400) + 100,
-    phase: phases[Math.floor(Math.random() * phases.length)],
-    expectedDelivery: `Q${Math.floor(Math.random() * 4) + 1} 202${Math.floor(Math.random() * 3) + 5}`,
-    submarket: submarkets[Math.floor(Math.random() * submarkets.length)],
-    distanceMiles: Math.random() * 5 + 0.5,
-    unitMix: {
-      studio: Math.random() * 20,
-      oneBed: Math.random() * 50 + 20,
-      twoBed: Math.random() * 30 + 20,
-      threeBed: Math.random() * 15,
-    },
-    status: Math.random() > 0.7 ? 'On Track' : 'Delayed',
-    delayMonths: Math.random() > 0.7 ? Math.floor(Math.random() * 6) + 1 : 0,
-  }));
-}
-
-function generateMockDevelopers(): DeveloperActivity[] {
-  const developers = ['Greystar', 'Avalon Bay', 'Camden', 'Lincoln Property', 'Mill Creek', 'Trammell Crow', 'Cortland'];
-  
-  return developers.map(name => ({
-    developer: name,
-    activeProjects: Math.floor(Math.random() * 5) + 2,
-    totalUnits: Math.floor(Math.random() * 2000) + 500,
-    pipelineShare: Math.random() * 20 + 5,
-    avgDeliveryTime: Math.floor(Math.random() * 6) + 18,
-    delayRate: Math.random() * 40,
-    marketShare: Math.random() * 15 + 5,
-  })).sort((a, b) => b.totalUnits - a.totalUnits);
-}
-
-function generateMockAbsorption(): AbsorptionAnalysis {
-  return {
-    currentRate: 45 + Math.random() * 20,
-    historicalAvg: 52,
-    projectedRate: 48,
-    monthsToAbsorb: 28 + Math.random() * 10,
-    riskLevel: 'medium',
-    demandSupplyGap: (Math.random() - 0.3) * 100,
-    peakSupplyQuarter: '2026Q2',
-  };
-}
-
-function generateMockRiskScore(): RiskScore {
-  const overall = Math.random() * 40 + 30;
-  
-  return {
-    overall,
-    level: overall > 70 ? 'critical' : overall > 50 ? 'high' : overall > 30 ? 'medium' : 'low',
-    factors: {
-      pipelineConcentration: Math.random() * 100,
-      absorptionRisk: Math.random() * 100,
-      timingRisk: Math.random() * 100,
-      unitMixCompetition: Math.random() * 100,
-    },
-    recommendations: [
-      'Consider targeting Q3 2026 delivery to avoid peak supply in Q2',
-      'Increase 1BR allocation to differentiate from competing projects',
-      'Monitor Greystar and Avalon Bay projects for potential delays',
-      'Plan for 24-month lease-up period given absorption risk',
-    ],
-  };
-}
 
 // Helper functions at module level
 function getRiskColor(level: string): string {

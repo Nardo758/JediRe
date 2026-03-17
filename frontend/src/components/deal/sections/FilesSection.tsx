@@ -5,6 +5,7 @@
  * - owned → Performance mode: Operational files, leases, reports, work orders
  */
 
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
