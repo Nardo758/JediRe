@@ -421,9 +421,9 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-300 flex items-center justify-between">
+        <div className="bg-red-900/20 border border-red-500/40 rounded-lg p-3 text-sm text-red-400 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-300">✕</button>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">✕</button>
         </div>
       )}
 
@@ -830,7 +830,7 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
           {onDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-900/20"
+              className="px-2 py-1 text-xs bg-red-900/20 text-red-400 rounded hover:bg-red-900/40"
             >
               🗑️
             </button>

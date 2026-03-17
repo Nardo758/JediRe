@@ -656,9 +656,47 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       </div>
 
       {/* F6 Underwriting Comparison: Broker vs Platform vs User */}
-      <div style={{ margin: '12px 16px 0 16px' }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 6, ...bMono }}>UNDERWRITING COMPARISON</div>
-        <UnderwritingComparison
+      {(() => {
+        const brokerPrice = deal?.deal_data?.asking_price ?? null;
+        const platformPrice = platformData?.purchasePrice ?? null;
+        const userPrice = purchasePrice || null;
+        const brokerCap = deal?.deal_data?.broker_cap_rate ?? null;
+        const platformCap = platformData?.capRate ? platformData.capRate * 100 : null;
+        const userCap = capRate ? capRate * 100 : null;
+
+        const priceDivergence = brokerPrice && userPrice
+          ? Math.abs((userPrice - brokerPrice) / brokerPrice)
+          : brokerPrice && platformPrice
+          ? Math.abs((platformPrice - brokerPrice) / brokerPrice)
+          : null;
+        const capDivergence = brokerCap && userCap
+          ? Math.abs(userCap - brokerCap)
+          : brokerCap && platformCap
+          ? Math.abs(platformCap - brokerCap)
+          : null;
+
+        const hasCollision = (priceDivergence !== null && priceDivergence > 0.05) || (capDivergence !== null && capDivergence > 0.5);
+
+        return (
+          <div style={{ margin: '12px 16px 0 16px' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 6, ...bMono }}>UNDERWRITING COMPARISON</div>
+            {hasCollision && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: `${BT.amber}15`, border: `1px solid ${BT.amber}50`, borderRadius: 5, padding: '7px 12px', marginBottom: 8 }}>
+                <span style={{ fontSize: 12 }}>⚠</span>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: BT.amberL, letterSpacing: 0.5, ...bMono }}>UNDERWRITING COLLISION DETECTED</div>
+                  <div style={{ fontSize: 9, color: BT.tm, ...bSans }}>
+                    {priceDivergence !== null && priceDivergence > 0.05 && (
+                      <span>Price delta: {(priceDivergence * 100).toFixed(1)}% from broker. </span>
+                    )}
+                    {capDivergence !== null && capDivergence > 0.5 && (
+                      <span>Cap rate spread: {capDivergence.toFixed(2)}bps from broker.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <UnderwritingComparison
           rows={[
             {
               label: 'Purchase Price',
@@ -691,8 +729,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
               user: `${holdPeriod}yr`,
             },
           ]}
-        />
-      </div>
+            />
+          </div>
+        );
+      })()}
 
       {modelResults && <ModelResultsSummary results={modelResults} />}
 
@@ -1244,7 +1284,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
               <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">
                 {ongoing ? 'Annual Cost' : 'Total Cost'}
               </div>
-              <div className="text-sm font-bold font-mono text-red-700">{fmt$(Math.round(totalConcessionCost))}</div>
+              <div className="text-sm font-bold font-mono text-red-400">{fmt$(Math.round(totalConcessionCost))}</div>
               {durationMonths > 0 && !ongoing && (
                 <div className="text-[9px] text-[#6b7f94] mt-0.5">over {durationMonths} months</div>
               )}

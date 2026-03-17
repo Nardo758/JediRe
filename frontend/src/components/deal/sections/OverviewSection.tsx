@@ -773,17 +773,25 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
 
       {/* Underwriting Comparison — Broker · Platform · User */}
       {(() => {
-        const brokerCapRateNum = deal.capRate ? parseFloat(String(deal.capRate)) : null;
-        const brokerNOI = financial?.noi || null;
+        // Layer 1 — Broker: raw deal fields from the OM/listing
+        const brokerCapRateNum = deal.capRate ? parseFloat(String(deal.capRate)) : deal.deal_data?.broker_cap_rate ?? null;
+        const brokerNOI = deal.deal_data?.noi ?? deal.noi ?? null;
+        const brokerPrice = deal.purchasePrice ?? deal.deal_data?.asking_price ?? null;
         const brokerCapRateStr = brokerCapRateNum ? `${brokerCapRateNum.toFixed(2)}%` : null;
+        // Layer 2 — Platform: computed/assumed values from the analysis engine
         const platCapRate = (marketCapRate && !isNaN(marketCapRate)) ? `${marketCapRate.toFixed(2)}%` : null;
         const platNOI = financial?.noi ? `$${Math.round(financial.noi).toLocaleString()}` : null;
+        const platDscr = capitalStructure?.dscr ? `${capitalStructure.dscr.toFixed(2)}x` : null;
+        const platPrice = computedReturns?.purchasePrice ?? null;
+        // Layer 3 — User: user-editable overrides from strategyDefaults/assumptions
         const userCapRate = deal.strategyDefaults?.assumptions?.capRate ? `${parseFloat(String(deal.strategyDefaults.assumptions.capRate)).toFixed(2)}%` : null;
+        const userNOI = deal.strategyDefaults?.assumptions?.noi ? `$${Math.round(deal.strategyDefaults.assumptions.noi).toLocaleString()}` : null;
         const uwRows = [
+          { label: 'Purchase Price', broker: brokerPrice ? `$${(brokerPrice / 1_000_000).toFixed(1)}M` : null, platform: platPrice ? `$${(platPrice / 1_000_000).toFixed(1)}M` : null, user: null },
           { label: 'Going-In Cap Rate', broker: brokerCapRateStr, platform: platCapRate, user: userCapRate },
-          { label: 'NOI (T-12)', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: platNOI, user: null },
+          { label: 'NOI (T-12)', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: platNOI, user: userNOI },
           { label: 'Price / Unit', broker: ppu !== '—' ? ppu : null, platform: null, user: null },
-          { label: 'DSCR', broker: null, platform: capitalStructure?.dscr ? `${capitalStructure.dscr.toFixed(2)}x` : null, user: null },
+          { label: 'DSCR', broker: null, platform: platDscr, user: null },
         ].filter(r => r.broker || r.platform || r.user);
         if (uwRows.length === 0) return null;
         return (

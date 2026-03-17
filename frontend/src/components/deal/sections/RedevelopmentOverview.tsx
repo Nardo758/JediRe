@@ -782,9 +782,18 @@ export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ de
             const brokerCapRateStr = brokerCapRate != null ? `${parseFloat(String(brokerCapRate)).toFixed(2)}%` : null;
             const brokerNOI = deal?.brokerNoi ?? deal?.noi ?? null;
             const stabNOIStr = stabNoi != null ? `$${Math.round(stabNoi).toLocaleString()}` : null;
+            // Layer 3 — User: user-editable overrides from strategyDefaults
+            const userCapRate = deal?.strategyDefaults?.assumptions?.capRate
+              ? `${parseFloat(String(deal.strategyDefaults.assumptions.capRate)).toFixed(2)}%`
+              : null;
+            const userNOI = deal?.strategyDefaults?.assumptions?.noi
+              ? `$${Math.round(deal.strategyDefaults.assumptions.noi).toLocaleString()}`
+              : null;
+            const brokerAskPrice = askPrice ? `$${(askPrice / 1_000_000).toFixed(1)}M` : null;
             const uwRows = [
-              { label: 'Going-In Cap Rate', broker: brokerCapRateStr, platform: existingNoi != null && askPrice != null ? `${((existingNoi / askPrice) * 100).toFixed(2)}%` : null, user: null },
-              { label: 'Stabilized NOI', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: stabNOIStr, user: null },
+              { label: 'Purchase Price', broker: brokerAskPrice, platform: null, user: null },
+              { label: 'Going-In Cap Rate', broker: brokerCapRateStr, platform: existingNoi != null && askPrice != null ? `${((existingNoi / askPrice) * 100).toFixed(2)}%` : null, user: userCapRate },
+              { label: 'Stabilized NOI', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: stabNOIStr, user: userNOI },
               { label: 'Levered IRR', broker: null, platform: irr != null ? `${typeof irr === 'number' ? irr.toFixed(1) : irr}%` : null, user: null },
               { label: 'Equity Multiple', broker: null, platform: em != null ? `${typeof em === 'number' ? em.toFixed(2) : em}x` : null, user: null },
             ].filter(r => r.broker || r.platform || r.user);
