@@ -536,8 +536,16 @@ export const MainLayout: React.FC = () => {
         try {
           const scoreRes = await api.get(`/jedi/score/${dealId}`);
           const s = scoreRes.data?.data || scoreRes.data;
-          const resolvedScore = s?.totalScore ?? s?.total_score ?? s?.score;
-          if (resolvedScore != null) ctx = { ...ctx, jedi_score: resolvedScore, delta_30d: s.delta_30d ?? s.delta ?? ctx.delta_30d };
+          // endpoint shape: { data: { score: <scoreObj>, trend: {...} } }
+          // scoreObj has totalScore as a number; fall back to flat totalScore/score fields
+          const scoreObj = s?.score && typeof s.score === 'object' ? s.score : s;
+          const resolvedScore: number | undefined =
+            typeof scoreObj?.totalScore === 'number' ? scoreObj.totalScore :
+            typeof scoreObj?.total_score === 'number' ? scoreObj.total_score :
+            typeof s?.totalScore === 'number' ? s.totalScore : undefined;
+          const resolvedDelta: number | undefined =
+            s?.trend?.change ?? scoreObj?.scoreDelta ?? s?.delta_30d ?? s?.delta ?? ctx.delta_30d;
+          if (resolvedScore != null) ctx = { ...ctx, jedi_score: resolvedScore, delta_30d: resolvedDelta };
         } catch {
           /* JEDI score endpoint may not have data */
         }
