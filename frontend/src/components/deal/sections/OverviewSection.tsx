@@ -399,7 +399,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
       )}
 
       {viewMode === 'existing'
-        ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} capitalStackData={capitalStackData} marketCapRate={marketCapRate} />
+        ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} capitalStackData={capitalStackData} marketCapRate={marketCapRate} computedReturns={computedReturns} />
         : <DevOverview deal={deal} navigateToTab={navigateToTab} financial={financial} design3D={design3D} activeScenario={activeScenario} zoningProfile={zoningProfile} entitlements={entitlements} entitlementBenchmarks={entitlementBenchmarks} />
       }
     </div>
@@ -642,9 +642,10 @@ interface ExistingOverviewProps {
   market?: any;
   capitalStackData?: any;
   marketCapRate?: number | null;
+  computedReturns?: any;
 }
 
-const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab, capitalStructure, financial, market, capitalStackData, marketCapRate }) => {
+const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab, capitalStructure, financial, market, capitalStackData, marketCapRate, computedReturns }) => {
   const price = deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : deal.budget ? `$${(deal.budget / 1_000_000).toFixed(1)}M` : '—';
   const units = deal.units || deal.targetUnits || 0;
   const ppu = units > 0 && deal.purchasePrice ? `$${Math.round(deal.purchasePrice / units).toLocaleString()}` : '—';
