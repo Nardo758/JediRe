@@ -385,8 +385,8 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-2">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-300' 
-              : 'bg-green-100 text-green-300'
+              ? 'bg-blue-900/20 text-blue-300' 
+              : 'bg-green-900/20 text-green-300'
           }`}>
             {isPipeline ? '📋 Acquisition Files' : '📂 Property Files'}
           </div>
@@ -407,13 +407,13 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
+            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-900/20 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
           >
             ⊞
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
+            className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-900/20 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
           >
             ≡
           </button>
@@ -421,9 +421,9 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-center justify-between">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-300 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">✕</button>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-300">✕</button>
         </div>
       )}
 
@@ -830,7 +830,7 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
           {onDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100"
+              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-900/20"
             >
               🗑️
             </button>
@@ -898,7 +898,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
         {hasLiveData && file.type === 'file' && onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-            className="p-2 hover:bg-red-100 rounded text-red-600"
+            className="p-2 hover:bg-red-900/20 rounded text-red-600"
           >
             <span className="text-sm">🗑️</span>
           </button>

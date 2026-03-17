@@ -655,7 +655,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">🏗️</span>
-            <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded">UNDER CONSTRUCTION</span>
+            <span className="text-xs font-semibold text-orange-600 bg-orange-900/20 px-2 py-1 rounded">UNDER CONSTRUCTION</span>
           </div>
           <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.underConstruction.reduce((sum, p) => sum + p.units, 0))}

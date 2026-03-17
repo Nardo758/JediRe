@@ -720,7 +720,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <>
                       {designSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-900/20 text-violet-300 border border-violet-200">
                             Source: {designSource}
                           </span>
                           <span className="text-[10px] text-[#6b7f94]">Units & SF pre-filled from 3D Design module — edit to override</span>
@@ -742,7 +742,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <>
                       {designSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-900/20 text-violet-300 border border-violet-200">
                             Source: {designSource}
                           </span>
                           <span className="text-[10px] text-[#6b7f94]">Unit mix pre-filled from 3D Design module — edit to override</span>
@@ -821,7 +821,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <>
                       {debtSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-700/50">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-900/20 text-blue-300 border border-blue-700/50">
                             Source: {debtSource}
                           </span>
                           <span className="text-[10px] text-[#6b7f94]">Values pre-filled from Debt & Equity module — edit to override</span>

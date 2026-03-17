@@ -183,7 +183,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
       case 'complete':
         return <CheckCircle className="w-5 h-5 text-green-600" />;
       case 'in_progress':
-        return <Clock className="w-5 h-5 text-blue-600" />;
+        return <Clock className="w-5 h-5 text-blue-300" />;
       case 'issue':
         return <AlertTriangle className="w-5 h-5 text-orange-600" />;
       case 'blocked':
@@ -197,7 +197,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <RefreshCw className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
+          <RefreshCw className="w-8 h-8 text-blue-300 animate-spin mx-auto mb-4" />
           <p className="text-[#6B7585]">Loading due diligence data...</p>
         </div>
       </div>
@@ -245,7 +245,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
               {/* Overall Progress */}
               {dueDiligence && (
                 <div className="flex items-center space-x-2 px-4 py-2 bg-[#131920] rounded-lg">
-                  <TrendingUp className="w-5 h-5 text-blue-600" />
+                  <TrendingUp className="w-5 h-5 text-blue-300" />
                   <div>
                     <div className="text-xs text-[#6B7585]">Overall Progress</div>
                     <div className="text-lg font-semibold text-[#E8E6E1]">{dueDiligence.overallProgress}%</div>
@@ -338,7 +338,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
                   <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-medium text-[#6B7585]">Entitlement Status</h3>
-                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      <CheckCircle className="w-5 h-5 text-blue-300" />
                     </div>
                     <p className="text-2xl font-bold text-[#E8E6E1]">
                       {zoningAnalysis?.upzoningPotential ? 'Upzoning Pending' : 'By-Right'}
@@ -537,8 +537,8 @@ function buildChecklistFromPreset(preset: DDChecklistPreset): DDChecklistItem[] 
 
 const STATUS_OPTIONS: { value: DDItemStatus; label: string; color: string }[] = [
   { value: 'pending', label: 'Pending', color: 'bg-[#1e2a3d] text-[#9EA8B4]' },
-  { value: 'in_progress', label: 'In Progress', color: 'bg-blue-100 text-blue-700' },
-  { value: 'complete', label: 'Complete', color: 'bg-green-100 text-green-700' },
+  { value: 'in_progress', label: 'In Progress', color: 'bg-blue-900/20 text-blue-300' },
+  { value: 'complete', label: 'Complete', color: 'bg-green-900/20 text-green-300' },
   { value: 'na', label: 'N/A', color: 'bg-[#131920] text-[#4a5568]' },
 ];
 
@@ -606,7 +606,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
   const getStatusIcon = (status: DDItemStatus) => {
     switch (status) {
       case 'complete': return <CheckCircle className="w-4 h-4 text-green-600" />;
-      case 'in_progress': return <Clock className="w-4 h-4 text-blue-600" />;
+      case 'in_progress': return <Clock className="w-4 h-4 text-blue-300" />;
       case 'na': return <XCircle className="w-4 h-4 text-[#4a5568]" />;
       default: return <AlertCircle className="w-4 h-4 text-[#4a5568]" />;
     }
@@ -703,7 +703,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                               href={att.fileUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline truncate max-w-[120px]"
+                              className="text-blue-300 hover:underline truncate max-w-[120px]"
                               title={att.fileName}
                             >
                               {att.fileName}
@@ -719,7 +719,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                         ))}
                         <button
                           onClick={() => addAttachment(item.id)}
-                          className="flex items-center gap-1 text-[10px] text-blue-600 hover:text-blue-700"
+                          className="flex items-center gap-1 text-[10px] text-blue-300 hover:text-blue-300"
                         >
                           <Upload className="w-3 h-3" /> Attach file
                         </button>
@@ -746,7 +746,7 @@ const EnvironmentalPhysicalDDSection: React.FC<EnvironmentalPhysicalDDSectionPro
                 attachments: [],
               }]);
             }}
-            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+            className="flex items-center gap-2 text-sm text-blue-300 hover:text-blue-300 font-medium"
           >
             <Plus className="w-4 h-4" /> Add Custom DD Item
           </button>

@@ -435,8 +435,8 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
         <div className="flex items-center gap-3">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-300' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-blue-900/20 text-blue-300' 
+              : 'bg-green-900/20 text-green-300'
           }`}>
             {isPipeline ? '🎯 Strategy Planning' : '📊 Strategy Execution'}
           </div>
@@ -805,7 +805,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                   >
                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-base font-bold ${
                       matched === true ? 'bg-emerald-900/20 text-emerald-300' :
-                      matched === false ? 'bg-red-100 text-red-600' :
+                      matched === false ? 'bg-red-900/20 text-red-600' :
                       'bg-[#1a2a3a] text-[#6b7f94]'
                     }`}>
                       {matched === true ? '✓' : matched === false ? '✗' : '?'}
@@ -814,7 +814,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-[#e8e9ea] text-sm">{strategy.name}</span>
                         {strategy.isPreset && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-300 tracking-wider">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-900/20 text-blue-300 tracking-wider">
                             PRESET
                           </span>
                         )}
@@ -889,9 +889,9 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
             {stat.trend && (
               <span className={`text-xs font-semibold px-2 py-1 rounded ${
                 stat.trend.direction === 'up' 
-                  ? 'bg-green-100 text-green-700'
+                  ? 'bg-green-900/20 text-green-300'
                   : stat.trend.direction === 'down'
-                  ? 'bg-red-100 text-red-700'
+                  ? 'bg-red-900/20 text-red-300'
                   : 'bg-[#1a2a3a] text-[#a0b0c0]'
               }`}>
                 {stat.trend.value}
@@ -916,7 +916,7 @@ const TrafficGateBadge: React.FC<{ strategyId: string }> = ({ strategyId }) => {
   const config = {
     qualified: { icon: '✅', label: 'Qualified', bg: 'bg-emerald-900/20', text: 'text-emerald-300', border: 'border-emerald-300' },
     marginal: { icon: '⚠️', label: 'Marginal', bg: 'bg-amber-900/20', text: 'text-amber-800', border: 'border-amber-300' },
-    disqualified: { icon: '❌', label: 'Disqualified', bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-300' },
+    disqualified: { icon: '❌', label: 'Disqualified', bg: 'bg-red-900/20', text: 'text-red-300', border: 'border-red-300' },
   }[gate.status];
 
   return (
@@ -948,8 +948,8 @@ const T04QuadrantInfluencer: React.FC<{ strategyId: string }> = ({ strategyId })
   const quadrantColors: Record<string, string> = {
     'Hidden Gem': 'bg-emerald-900/20 text-emerald-300 border-emerald-200',
     'Validated Winner': 'bg-blue-900/20 text-blue-300 border-blue-200',
-    'Hype Risk': 'bg-orange-50 text-orange-700 border-orange-200',
-    'Dead Weight': 'bg-red-50 text-red-700 border-red-200',
+    'Hype Risk': 'bg-orange-50 text-orange-300 border-orange-200',
+    'Dead Weight': 'bg-red-50 text-red-300 border-red-200',
   };
 
   const shiftColor = influence.direction === 'boost'
@@ -996,10 +996,10 @@ const StrategyCardComponent: React.FC<StrategyCardComponentProps> = ({
 }) => {
   const getRiskBadgeColor = (level: string) => {
     switch (level) {
-      case 'low': return 'bg-green-100 text-green-700';
-      case 'medium': return 'bg-yellow-100 text-yellow-700';
-      case 'high': return 'bg-orange-100 text-orange-700';
-      case 'very-high': return 'bg-red-100 text-red-700';
+      case 'low': return 'bg-green-900/20 text-green-300';
+      case 'medium': return 'bg-yellow-900/20 text-yellow-300';
+      case 'high': return 'bg-orange-900/20 text-orange-300';
+      case 'very-high': return 'bg-red-900/20 text-red-300';
       default: return 'bg-[#1a2a3a] text-[#a0b0c0]';
     }
   };
@@ -1122,7 +1122,7 @@ const ROIComparisonChart: React.FC<ROIComparisonChartProps> = ({ projections }) 
                 <td className="text-right py-3 px-4 text-green-600 font-semibold">
                   {proj.exit.toFixed(1)}%
                 </td>
-                <td className="text-right py-3 px-4 text-green-700 font-bold">
+                <td className="text-right py-3 px-4 text-green-300 font-bold">
                   {proj.totalReturn.toFixed(1)}%
                 </td>
               </tr>
@@ -1239,8 +1239,8 @@ const ImplementationChecklist: React.FC<ImplementationChecklistProps> = ({ tasks
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
-      case 'high': return 'bg-red-100 text-red-700';
-      case 'medium': return 'bg-yellow-100 text-yellow-700';
+      case 'high': return 'bg-red-900/20 text-red-300';
+      case 'medium': return 'bg-yellow-900/20 text-yellow-300';
       case 'low': return 'bg-[#1a2a3a] text-[#7f8ea3]';
       default: return 'bg-[#1a2a3a] text-[#7f8ea3]';
     }
@@ -1310,9 +1310,9 @@ interface RiskAssessmentSectionProps {
 const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) => {
   const getRiskColor = (level: string) => {
     switch (level) {
-      case 'low': return 'bg-green-100 text-green-700 border-green-300';
-      case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-      case 'high': return 'bg-red-100 text-red-700 border-red-300';
+      case 'low': return 'bg-green-900/20 text-green-300 border-green-300';
+      case 'medium': return 'bg-yellow-900/20 text-yellow-300 border-yellow-300';
+      case 'high': return 'bg-red-900/20 text-red-300 border-red-300';
       default: return 'bg-[#1a2a3a] text-[#a0b0c0] border-[#2a3a4d]';
     }
   };
@@ -1391,8 +1391,8 @@ const StrategyProgressSection: React.FC<StrategyProgressSectionProps> = ({ progr
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-700';
-      case 'active': return 'bg-blue-100 text-blue-300';
+      case 'completed': return 'bg-green-900/20 text-green-300';
+      case 'active': return 'bg-blue-900/20 text-blue-300';
       case 'upcoming': return 'bg-[#1a2a3a] text-[#a0b0c0]';
       default: return 'bg-[#1a2a3a] text-[#a0b0c0]';
     }
@@ -1495,7 +1495,7 @@ const OptimizationsSection: React.FC<OptimizationsSectionProps> = ({ optimizatio
                 <div className="flex items-center justify-between mb-1">
                   <span className="font-semibold text-[#e8e9ea]">{opt.action}</span>
                   <span className={`text-xs font-semibold px-2 py-1 rounded ${
-                    opt.category === 'Revenue' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-300'
+                    opt.category === 'Revenue' ? 'bg-green-900/20 text-green-300' : 'bg-blue-900/20 text-blue-300'
                   }`}>
                     {opt.category}
                   </span>

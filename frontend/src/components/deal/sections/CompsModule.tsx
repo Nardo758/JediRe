@@ -139,16 +139,16 @@ export default function CompsModule({
     if (!compSet) {
       return (
         <div className="flex flex-col items-center justify-center py-12">
-          <MapPin className="w-12 h-12 mb-4 text-gray-600" />
-          <p className="text-sm text-gray-400 mb-4">No comp set available</p>
+          <MapPin className="w-12 h-12 mb-4 text-[#7f8ea3]" />
+          <p className="text-sm text-[#6b7f94] mb-4">No comp set available</p>
           <button
             onClick={handleGenerateComps}
             disabled={generating}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-700 text-white text-sm font-medium rounded transition-colors"
+            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-[#1a2a3a] text-white text-sm font-medium rounded transition-colors"
           >
             {generating ? 'Generating...' : 'Generate Comp Set'}
           </button>
-          <p className="text-xs text-gray-500 mt-3">
+          <p className="text-xs text-[#6b7f94] mt-3">
             3-mile radius • 24 months • Multifamily only
           </p>
         </div>
@@ -159,15 +159,15 @@ export default function CompsModule({
       <div className="space-y-6">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-gray-400 text-xs mb-2">
+          <div className="bg-[#0d1f35]/50 border border-[#1e2a3d] rounded-lg p-4">
+            <div className="flex items-center gap-2 text-[#6b7f94] text-xs mb-2">
               <Building2 className="w-3.5 h-3.5" />
               <span>Comp Count</span>
             </div>
-            <div className="text-2xl font-bold text-gray-300">
+            <div className="text-2xl font-bold text-[#a0b0c0]">
               {compSet.comp_count}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-[#6b7f94] mt-1">
               Sales in last 24 mo
             </div>
           </div>
@@ -216,38 +216,38 @@ export default function CompsModule({
         </div>
 
         {/* Comp Table */}
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 bg-gray-800/50 border-b border-gray-700">
-            <h4 className="text-sm font-semibold text-gray-300">Comparable Sales</h4>
+        <div className="bg-[#0d1f35]/30 border border-[#1e2a3d] rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-[#0d1f35]/50 border-b border-[#1e2a3d]">
+            <h4 className="text-sm font-semibold text-[#a0b0c0]">Comparable Sales</h4>
           </div>
           
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-700 bg-gray-800/30">
-                  <th className="text-left py-2 px-3 text-gray-400 font-medium">Address</th>
-                  <th className="text-center py-2 px-3 text-gray-400 font-medium">Date</th>
-                  <th className="text-right py-2 px-3 text-gray-400 font-medium">Units</th>
-                  <th className="text-right py-2 px-3 text-gray-400 font-medium">Sale Price</th>
-                  <th className="text-right py-2 px-3 text-gray-400 font-medium">$/Unit</th>
-                  <th className="text-right py-2 px-3 text-gray-400 font-medium">Cap Rate</th>
-                  <th className="text-left py-2 px-3 text-gray-400 font-medium">Buyer</th>
-                  <th className="text-right py-2 px-3 text-gray-400 font-medium">Distance</th>
+                <tr className="border-b border-[#1e2a3d] bg-[#0d1f35]/30">
+                  <th className="text-left py-2 px-3 text-[#6b7f94] font-medium">Address</th>
+                  <th className="text-center py-2 px-3 text-[#6b7f94] font-medium">Date</th>
+                  <th className="text-right py-2 px-3 text-[#6b7f94] font-medium">Units</th>
+                  <th className="text-right py-2 px-3 text-[#6b7f94] font-medium">Sale Price</th>
+                  <th className="text-right py-2 px-3 text-[#6b7f94] font-medium">$/Unit</th>
+                  <th className="text-right py-2 px-3 text-[#6b7f94] font-medium">Cap Rate</th>
+                  <th className="text-left py-2 px-3 text-[#6b7f94] font-medium">Buyer</th>
+                  <th className="text-right py-2 px-3 text-[#6b7f94] font-medium">Distance</th>
                 </tr>
               </thead>
               <tbody>
                 {compSet.comps.map((comp) => (
-                  <tr key={comp.id} className="border-b border-gray-800/50 hover:bg-gray-800/20">
-                    <td className="py-2 px-3 text-gray-300 max-w-[200px] truncate">
+                  <tr key={comp.id} className="border-b border-[#1a2a3a]/50 hover:bg-[#0d1f35]/20">
+                    <td className="py-2 px-3 text-[#a0b0c0] max-w-[200px] truncate">
                       {comp.property_address}
                     </td>
-                    <td className="py-2 px-3 text-center text-gray-400">
+                    <td className="py-2 px-3 text-center text-[#6b7f94]">
                       {formatDate(comp.recording_date)}
                     </td>
-                    <td className="py-2 px-3 text-right text-gray-300">
+                    <td className="py-2 px-3 text-right text-[#a0b0c0]">
                       {comp.units}
                     </td>
-                    <td className="py-2 px-3 text-right text-gray-300 font-medium">
+                    <td className="py-2 px-3 text-right text-[#a0b0c0] font-medium">
                       {formatCurrency(comp.derived_sale_price)}
                     </td>
                     <td className="py-2 px-3 text-right text-green-400 font-medium">
@@ -256,10 +256,10 @@ export default function CompsModule({
                     <td className="py-2 px-3 text-right text-blue-400">
                       {comp.implied_cap_rate ? formatPercent(comp.implied_cap_rate) : '-'}
                     </td>
-                    <td className="py-2 px-3 text-gray-400 max-w-[150px] truncate">
+                    <td className="py-2 px-3 text-[#6b7f94] max-w-[150px] truncate">
                       {comp.grantee_name}
                     </td>
-                    <td className="py-2 px-3 text-right text-gray-500">
+                    <td className="py-2 px-3 text-right text-[#6b7f94]">
                       {comp.distance_miles.toFixed(1)} mi
                     </td>
                   </tr>
@@ -274,7 +274,7 @@ export default function CompsModule({
           <button
             onClick={handleGenerateComps}
             disabled={generating}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800/50 border border-gray-700 text-gray-300 text-sm font-medium rounded transition-colors"
+            className="px-4 py-2 bg-[#0d1f35] hover:bg-[#1a2a3a] disabled:bg-[#0d1f35]/50 border border-[#1e2a3d] text-[#a0b0c0] text-sm font-medium rounded transition-colors"
           >
             {generating ? 'Regenerating...' : 'Regenerate Comp Set'}
           </button>
@@ -286,9 +286,9 @@ export default function CompsModule({
   const renderPatternsTab = () => {
     return (
       <div className="space-y-4">
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4">
-          <div className="text-sm font-semibold text-gray-300 mb-3">Transaction Patterns</div>
-          <div className="text-xs text-gray-500 mb-4">
+        <div className="bg-[#0d1f35]/30 border border-[#1e2a3d] rounded-lg p-4">
+          <div className="text-sm font-semibold text-[#a0b0c0] mb-3">Transaction Patterns</div>
+          <div className="text-xs text-[#6b7f94] mb-4">
             Coming soon: Velocity shifts, price migration, buyer rotation, and holding period analysis.
           </div>
         </div>
@@ -299,7 +299,7 @@ export default function CompsModule({
   const renderCapRatesTab = () => {
     if (!compSet || !compSet.median_implied_cap_rate) {
       return (
-        <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-12 text-[#6b7f94]">
           <BarChart3 className="w-12 h-12 mb-4 opacity-50" />
           <p className="text-sm">Cap rate data unavailable</p>
         </div>
@@ -336,9 +336,9 @@ export default function CompsModule({
           </div>
         </div>
 
-        <div className="bg-gray-800/30 border border-gray-700 rounded-lg p-4">
-          <div className="text-sm font-semibold text-gray-300 mb-3">Cap Rate Intelligence</div>
-          <div className="text-xs text-gray-500 mb-4">
+        <div className="bg-[#0d1f35]/30 border border-[#1e2a3d] rounded-lg p-4">
+          <div className="text-sm font-semibold text-[#a0b0c0] mb-3">Cap Rate Intelligence</div>
+          <div className="text-xs text-[#6b7f94] mb-4">
             Coming soon: Cap rate trends by class, vintage, and submarket. Spread vs treasuries.
           </div>
         </div>
@@ -349,7 +349,7 @@ export default function CompsModule({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="text-gray-400 text-sm">Loading comp data...</div>
+        <div className="text-[#6b7f94] text-sm">Loading comp data...</div>
       </div>
     );
   }
@@ -359,18 +359,18 @@ export default function CompsModule({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+          <h3 className="text-lg font-bold text-[#e8e9ea] flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-green-400" />
             Sale Comp Intelligence
           </h3>
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-[#6b7f94] mt-1">
             Transaction intelligence and pattern detection
           </p>
         </div>
         {onBack && (
           <button
             onClick={onBack}
-            className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-gray-300"
+            className="px-3 py-1.5 text-xs bg-[#0d1f35] hover:bg-[#1a2a3a] border border-[#1e2a3d] rounded text-[#a0b0c0]"
           >
             Back
           </button>
@@ -378,7 +378,7 @@ export default function CompsModule({
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-700">
+      <div className="flex gap-2 border-b border-[#1e2a3d]">
         {(['grid', 'patterns', 'cap-rates'] as const).map((tab) => (
           <button
             key={tab}
@@ -386,7 +386,7 @@ export default function CompsModule({
             className={`px-4 py-2 text-sm font-medium capitalize transition-colors border-b-2 ${
               activeTab === tab
                 ? 'text-green-400 border-green-400'
-                : 'text-gray-500 border-transparent hover:text-gray-300'
+                : 'text-[#6b7f94] border-transparent hover:text-[#a0b0c0]'
             }`}
           >
             {tab.replace('-', ' ')}

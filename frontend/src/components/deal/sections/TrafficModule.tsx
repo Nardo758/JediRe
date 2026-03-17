@@ -268,7 +268,7 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
           <div className="text-sm font-semibold text-blue-900">
             Based on {actualsCount} week{actualsCount !== 1 ? 's' : ''} of actual data + market intelligence
           </div>
-          <p className="text-[11px] text-blue-700 mt-1">
+          <p className="text-[11px] text-blue-300 mt-1">
             Predictions are calibrated with your uploaded operating data. More data improves accuracy.
           </p>
         </div>
@@ -755,7 +755,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <h3 className="text-lg font-bold text-[#E8E6E1]">Market Intelligence Adjustments</h3>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
               dataSource === 'uploaded' ? 'bg-emerald-900/20 text-emerald-300' :
-              dataSource === 'blended' ? 'bg-blue-100 text-blue-700' :
+              dataSource === 'blended' ? 'bg-blue-900/20 text-blue-300' :
               'bg-amber-900/20 text-amber-300'
             }`}>
               {dataSource === 'uploaded' ? 'LIVE DATA' : dataSource === 'blended' ? 'BLENDED' : 'MARKET SIGNALS'}
