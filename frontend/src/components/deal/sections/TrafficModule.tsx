@@ -234,13 +234,13 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
           : <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
         }
         <div className="flex-1">
-          <div className={`text-sm font-semibold ${isCompPattern ? 'text-emerald-900' : 'text-amber-900'}`}>
+          <div className={`text-sm font-semibold ${isCompPattern ? 'text-emerald-300' : 'text-amber-300'}`}>
             {isCompPattern
               ? `Baseline calibrated from ${baselineComps!.length} comp deal${baselineComps!.length !== 1 ? 's' : ''}`
               : 'Projections based on property characteristics and market intelligence'
             }
           </div>
-          <p className={`text-[11px] mt-1 ${isCompPattern ? 'text-emerald-700' : 'text-amber-700'}`}>
+          <p className={`text-[11px] mt-1 ${isCompPattern ? 'text-emerald-300' : 'text-amber-300'}`}>
             {isCompPattern
               ? `Traffic, seasonal patterns, and trend rates derived from: ${baselineComps!.join(', ')}. Metrics are scaled to this deal's unit count.`
               : (calibrationSource || 'Using industry-standard baselines for multifamily leasing.')
@@ -537,12 +537,12 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-[#E8E6E1]">Leasing Funnel</h3>
           {!hasHistory && (
-            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED TYPICAL WEEK</span>
+            <span className="text-[10px] bg-amber-900/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">PREDICTED TYPICAL WEEK</span>
           )}
         </div>
         <div className="flex items-center gap-2 mb-4">
           {[
-            { label: 'Traffic', value: Math.round(funnelTraffic), color: 'bg-stone-900' },
+            { label: 'Traffic', value: Math.round(funnelTraffic), color: 'bg-[#4B5563]' },
             { label: 'Tours', value: Math.round(funnelTours), color: 'bg-stone-700' },
             { label: 'Apps', value: Math.round(funnelApps), color: 'bg-stone-500' },
             { label: 'Cancel/Deny', value: Math.round(funnelCancelDeny), color: 'bg-red-400' },
@@ -754,9 +754,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-[#E8E6E1]">Market Intelligence Adjustments</h3>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-              dataSource === 'uploaded' ? 'bg-emerald-100 text-emerald-700' :
+              dataSource === 'uploaded' ? 'bg-emerald-900/20 text-emerald-300' :
               dataSource === 'blended' ? 'bg-blue-100 text-blue-700' :
-              'bg-amber-100 text-amber-700'
+              'bg-amber-900/20 text-amber-300'
             }`}>
               {dataSource === 'uploaded' ? 'LIVE DATA' : dataSource === 'blended' ? 'BLENDED' : 'MARKET SIGNALS'}
             </span>
@@ -770,8 +770,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           <div className="rounded-lg p-3 flex items-start gap-3 border border-amber-800" style={{ background: "rgba(245,158,11,0.08)" }}>
             <TrendingUp size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
             <div>
-              <div className="text-sm font-semibold text-amber-900">{mi.overallSummary}</div>
-              <p className="text-[11px] text-amber-700 mt-1">These factors are applied to your base traffic trend to produce the adjusted projections.</p>
+              <div className="text-sm font-semibold text-amber-300">{mi.overallSummary}</div>
+              <p className="text-[11px] text-amber-300 mt-1">These factors are applied to your base traffic trend to produce the adjusted projections.</p>
             </div>
           </div>
         </div>
@@ -790,7 +790,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   { label: 'Unrented Vacant', value: latest.vacant_unrented || 0, color: 'bg-red-500' },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">
-                    <span className="text-xs text-stone-600 w-28">{item.label}</span>
+                    <span className="text-xs text-[#6B7585] w-28">{item.label}</span>
                     <div className="flex-1 bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full`}
                         style={{ width: `${(latest.total_units || 290) > 0 ? (item.value / (latest.total_units || 290)) * 100 : 0}%` }} />
@@ -812,7 +812,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   { label: 'Unrented Notice', value: latest.notice_unrented || 0, color: 'bg-red-400' },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">
-                    <span className="text-xs text-stone-600 w-28">{item.label}</span>
+                    <span className="text-xs text-[#6B7585] w-28">{item.label}</span>
                     <div className="flex-1 bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full`}
                         style={{ width: `${(latest.total_units || 290) > 0 ? (item.value / (latest.total_units || 290)) * 100 : 0}%` }} />
@@ -838,7 +838,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 ].map(item => (
                   <div key={item.label}>
                     <div className="flex justify-between mb-1">
-                      <span className="text-xs text-stone-600">{item.label}</span>
+                      <span className="text-xs text-[#6B7585]">{item.label}</span>
                       <span className="text-xs font-mono font-bold text-[#E8E6E1]">{item.value} units</span>
                     </div>
                     <div className="bg-[#131920] rounded-full h-3 overflow-hidden">
@@ -889,7 +889,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </p>
           </div>
           {calibration?.calibrated && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono ml-auto">CALIBRATED</span>
+            <span className="text-[10px] bg-emerald-900/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono ml-auto">CALIBRATED</span>
           )}
         </div>
 
@@ -928,7 +928,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               )}
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 text-stone-600 rounded-lg text-xs hover:bg-[#0F1319] transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#1e2a3d] text-[#6B7585] rounded-lg text-xs hover:bg-[#0F1319] transition-colors"
               >
                 <Database size={12} /> Data Library <ExternalLink size={10} />
               </a>
@@ -944,13 +944,13 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <div className="flex items-center gap-3 justify-center">
               <button
                 onClick={triggerUpload}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm hover:bg-stone-800 transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-[#E8E6E1] hover:bg-[#131920] transition-colors" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}
               >
                 <Upload size={14} /> Upload Weekly Report
               </button>
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-stone-300 text-[#9EA8B4] rounded-lg text-sm hover:bg-[#0F1319] transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#1e2a3d] text-[#9EA8B4] rounded-lg text-sm hover:bg-[#0F1319] transition-colors"
               >
                 <Database size={14} /> Open Data Library <ExternalLink size={11} />
               </a>

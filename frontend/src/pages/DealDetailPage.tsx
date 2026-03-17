@@ -95,7 +95,7 @@ interface DealTab extends Tab {
 const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
   by_right: { label: 'By-Right', color: 'bg-green-100 text-green-700' },
   overlay_bonus: { label: 'Overlay Bonus', color: 'bg-blue-100 text-blue-700' },
-  variance: { label: 'Variance', color: 'bg-amber-100 text-amber-700' },
+  variance: { label: 'Variance', color: 'bg-amber-900/20 text-amber-300' },
   rezone: { label: 'Full Rezone', color: 'bg-red-100 text-red-700' },
 };
 

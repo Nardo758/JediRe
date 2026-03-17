@@ -1448,8 +1448,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
                 <span style={{ fontSize: 7, fontWeight: 700, color: BT.greenL, background: `${BT.green}25`, border: `1px solid ${BT.greenL}50`, padding: '1px 5px', borderRadius: 2, letterSpacing: 1 }}>WIN</span>
               </div>
               {[
-                { l: 'Revenue', v: '$52.8M' },
-                { l: 'Margin', v: '30.4%' },
+                { l: 'Revenue', v: computedReturns?.totalRevenue ? `$${(computedReturns.totalRevenue / 1_000_000).toFixed(1)}M` : assumptions?.totalRevenue ? `$${(assumptions.totalRevenue / 1_000_000).toFixed(1)}M` : '—' },
+                { l: 'Margin', v: computedReturns?.profitMargin ? `${(computedReturns.profitMargin * 100).toFixed(1)}%` : '—' },
                 { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : buildingConfig.btsIrr, c: BT.greenL },
                 { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : buildingConfig.btsEm, c: BT.greenL },
               ].map((r, i) => (
@@ -1462,9 +1462,9 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             <div style={{ padding: '10px 12px', background: BT.bgPanel, border: `1px solid ${BT.border}`, borderRadius: 3 }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, marginBottom: 10, ...bMono }}>HOLD AS RENTAL</div>
               {[
-                { l: 'Stab. NOI', v: financial?.noi ? `$${financial.noi.toLocaleString()}` : '$2,890,000' },
-                { l: 'YOC', v: buildingConfig.yoc || '—' },
-                { l: 'Hold IRR', v: '18.4%' },
+                { l: 'Stab. NOI', v: financial?.noi ? `$${financial.noi.toLocaleString()}` : computedReturns?.stabilizedNoi ? `$${computedReturns.stabilizedNoi.toLocaleString()}` : '—' },
+                { l: 'YOC', v: buildingConfig.yoc || (computedReturns?.yieldOnCost ? `${(computedReturns.yieldOnCost * 100).toFixed(1)}%` : '—') },
+                { l: 'Hold IRR', v: computedReturns?.irrLevered ? `${(computedReturns.irrLevered * 100).toFixed(1)}%` : assumptions?.targetIRR ? `${assumptions.targetIRR.toFixed(1)}%` : '—' },
               ].map((r, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
                   <span style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.l}</span>

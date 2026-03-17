@@ -391,7 +391,7 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
           </div>
 
           {hasLiveData && (
-            <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 animate-pulse">
+            <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-900/20 text-emerald-300 animate-pulse">
               ● LIVE DATA
             </span>
           )}

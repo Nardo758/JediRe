@@ -1151,7 +1151,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
           }
         </span>
         {absorptionLinked && (
-          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+          <span className="text-[10px] bg-emerald-900/20 text-emerald-300 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
             Linked to Absorption
           </span>
         )}
@@ -1216,7 +1216,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
             </div>
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">% of GPR</div>
-              <div className="text-sm font-bold font-mono text-amber-700">{(concessionPctOfGPR * 100).toFixed(2)}%</div>
+              <div className="text-sm font-bold font-mono text-amber-300">{(concessionPctOfGPR * 100).toFixed(2)}%</div>
             </div>
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">EGI Reduction</div>
