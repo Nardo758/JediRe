@@ -91,26 +91,22 @@ function AppContent() {
           } />
           <Route path="/dashboard" element={<Navigate to="/terminal" replace />} />
           <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
-          <Route path="/dashboard/email" element={<EmailPage />} />
-          <Route path="/dashboard/email/sent" element={<EmailPage />} />
-          <Route path="/dashboard/email/drafts" element={<EmailPage />} />
-          <Route path="/dashboard/email/flagged" element={<EmailPage />} />
-          <Route path="/strategy-builder" element={<StrategyBuilderPage />} />
-          <Route path="/strategy-builder/:id" element={<StrategyBuilderPage />} />
-          <Route path="/news-intel" element={<NewsIntelligencePage />} />
-          <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
-          <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/dashboard/email" element={<Navigate to="/terminal" replace />} />
+          <Route path="/dashboard/email/sent" element={<Navigate to="/terminal" replace />} />
+          <Route path="/dashboard/email/drafts" element={<Navigate to="/terminal" replace />} />
+          <Route path="/dashboard/email/flagged" element={<Navigate to="/terminal" replace />} />
+          <Route path="/strategy-builder" element={<Navigate to="/terminal" replace />} />
+          <Route path="/strategy-builder/:id" element={<Navigate to="/terminal" replace />} />
+          <Route path="/news-intel" element={<Navigate to="/terminal" replace />} />
+          <Route path="/news-intel/dashboard" element={<Navigate to="/terminal" replace />} />
+          <Route path="/news-intel/network" element={<Navigate to="/terminal" replace />} />
+          <Route path="/news-intel/alerts" element={<Navigate to="/terminal" replace />} />
           <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/news" element={<NewsPage />} />
-          <Route path="/assets-owned" element={
-            <Suspense fallback={<PageLoadingFallback />}>
-              <AssetsOwnedPage />
-            </Suspense>
-          } />
+          <Route path="/assets-owned" element={<Navigate to="/terminal" replace />} />
           <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
@@ -135,7 +131,7 @@ function AppContent() {
           <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
           
           {/* Market Intelligence */}
-          <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
+          <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
           <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
           <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
           <Route path="/market-intelligence/compare" element={<Navigate to="/market-intelligence" replace />} />
@@ -145,11 +141,11 @@ function AppContent() {
           <Route path="/market-intelligence/competitive-position" element={<Navigate to="/market-intelligence" replace />} />
 
           {/* Competitive Intelligence */}
-          <Route path="/competitive-intelligence" element={<Navigate to="/competitive-intelligence/performance" replace />} />
-          <Route path="/competitive-intelligence/performance" element={<PerformanceRankingsPage />} />
-          <Route path="/competitive-intelligence/acquisition" element={<AcquisitionIntelPage />} />
-          <Route path="/competitive-intelligence/comps" element={<CompAnalysisPage />} />
-          <Route path="/competitive-intelligence/alerts" element={<OpportunityAlertsPage />} />
+          <Route path="/competitive-intelligence" element={<Navigate to="/terminal" replace />} />
+          <Route path="/competitive-intelligence/performance" element={<Navigate to="/terminal" replace />} />
+          <Route path="/competitive-intelligence/acquisition" element={<Navigate to="/terminal" replace />} />
+          <Route path="/competitive-intelligence/comps" element={<Navigate to="/terminal" replace />} />
+          <Route path="/competitive-intelligence/alerts" element={<Navigate to="/terminal" replace />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
@@ -171,9 +167,9 @@ function AppContent() {
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
           <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/team" element={<TeamPage />} />
+          <Route path="/tasks" element={<Navigate to="/terminal" replace />} />
+          <Route path="/reports" element={<Navigate to="/terminal" replace />} />
+          <Route path="/team" element={<Navigate to="/terminal" replace />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/modules" element={<ModulesPage />} />

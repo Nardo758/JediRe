@@ -852,7 +852,7 @@ export default function TerminalPage() {
         </svg>
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:8,color:"#8B95A5",opacity:0.18,textAlign:"center",pointerEvents:"none"}}>MAPBOX GL JS<br/>PORTFOLIO OVERVIEW</div>
         <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center"}}>
-          <button onClick={()=>navigate("/map")} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer"}}>OPEN FULL MAP →</button>
+          <button onClick={()=>setMapOpen(true)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer"}}>OPEN FULL MAP →</button>
         </div>
       </div>
     </div>
@@ -1386,7 +1386,7 @@ export default function TerminalPage() {
   // ─── VIEW: F3 PORTFOLIO ────────────────────────────────────
   const ViewPortfolio = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="OWNED ASSETS" subtitle="Portfolio performance" borderColor={T.text.green} right={<button onClick={()=>navigate("/assets-owned")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW ALL →</button>}/>
+      <PanelHeader T={T} title="OWNED ASSETS" subtitle="Portfolio performance" borderColor={T.text.green} right={<button onClick={()=>setFkey("F3")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW ALL →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle}}>
         {[{l:"PORTFOLIO VALUE",v:"$312M",c:T.text.amberBright},{l:"WEIGHTED IRR",v:"16.8%",c:T.text.amber},{l:"AVG OCCUPANCY",v:"93.4%",c:T.text.green},{l:"NOI VARIANCE",v:"+2.3%",c:T.text.green}].map((m,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px"}}>
@@ -1398,7 +1398,7 @@ export default function TerminalPage() {
       <div style={{padding:10}}>
         <div style={{fontSize:9,color:T.text.muted,marginBottom:6}}>Actual vs. projected variance tracking | Monthly actuals upload | Decision timeline</div>
         {["Midtown Heights (248u)","West End Lofts (180u)","Buckhead Tower (312u)","Downtown Station (156u)"].map((a,i)=>(
-          <div key={i} onClick={()=>navigate("/assets-owned")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F3")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
             <span style={{fontSize:10,color:T.text.primary,fontWeight:600}}>{a}</span>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <span style={{fontSize:10,fontWeight:700,color:T.text.green}}>{[76,72,81,68][i]}</span>
@@ -1442,7 +1442,7 @@ export default function TerminalPage() {
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
+      <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>setFkey("F4")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
       <div style={{display:"flex",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.header,flexShrink:0}}>
         {([["overview","MARKET OVERVIEW"],["corphealth","CORPORATE HEALTH"]] as const).map(([k,l])=>(
           <div key={k} onClick={()=>setMarketTab(k)} style={{padding:"6px 14px",fontSize:9,fontWeight:700,color:marketTab===k?T.text.amber:T.text.secondary,cursor:"pointer",borderBottom:marketTab===k?`2px solid ${T.text.amber}`:"2px solid transparent",letterSpacing:0.5,transition:"all 0.1s"}}>{l}</div>
@@ -1661,7 +1661,7 @@ export default function TerminalPage() {
       <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
         <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
           <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-            <button onClick={()=>navigate("/dashboard/email")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
+            <button onClick={()=>setFkey("F5")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
           </div>
           <div style={{flex:1,overflow:"auto"}}>
             {folders.map(f=>(
@@ -1720,7 +1720,7 @@ export default function TerminalPage() {
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:8}}>
                   {["REPLY","FORWARD"].map(a=>(
-                    <button key={a} onClick={()=>navigate("/dashboard/email")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
+                    <button key={a} onClick={()=>setFkey("F5")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
                   ))}
                 </div>
               </div>
@@ -1737,7 +1737,7 @@ export default function TerminalPage() {
   // ─── VIEW: F6 COMPETE ─────────────────────────────────────
   const ViewCompete = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="COMPETITIVE INTELLIGENCE" subtitle="Performance Rankings | Acquisition Intel | Comp Analysis" borderColor={T.text.purple} right={<button onClick={()=>navigate("/competitive-intel")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>FULL REPORT →</button>}/>
+      <PanelHeader T={T} title="COMPETITIVE INTELLIGENCE" subtitle="Performance Rankings | Acquisition Intel | Comp Analysis" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F6")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>FULL REPORT →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>PERFORMANCE RANKINGS</div>
@@ -1774,7 +1774,7 @@ export default function TerminalPage() {
   // ─── VIEW: F7 STRATEGIES ───────────────────────────────────
   const ViewStrategies = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>navigate("/strategy-builder")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F7")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
         {[
           {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
@@ -1782,7 +1782,7 @@ export default function TerminalPage() {
           {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
           {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
         ].map((row,i)=>(
-          <div key={i} onClick={()=>navigate("/strategy-builder")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F7")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
               <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
               <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
@@ -1805,14 +1805,14 @@ export default function TerminalPage() {
           {liveTasks.slice(0,4).map((t,i)=>(
             <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{t.title} <span style={{color:T.text.amber}}>({t.deal})</span></div>
           ))}
-          <button onClick={()=>navigate("/tasks")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW ALL TASKS →</button>
+          <button onClick={()=>setBottomTab("tasks")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW ALL TASKS →</button>
         </div>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>REPORTS</div>
           {["Deal Memo (latest deal)","LP Quarterly Report Q1 2026 (draft)","Market Report: Tampa MSA (auto)","Comp Report: Dadeland submarket"].map((r,i)=>(
             <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{r}</div>
           ))}
-          <button onClick={()=>navigate("/reports")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
+          <button onClick={()=>setFkey("F8")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
         </div>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TEAM</div>
@@ -1822,7 +1822,7 @@ export default function TerminalPage() {
               <Bd c={T.text.green}>{m.status}</Bd>
             </div>
           ))}
-          <button onClick={()=>navigate("/team")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
+          <button onClick={()=>setFkey("F9")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
         </div>
       </div>
       <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
@@ -2427,7 +2427,7 @@ export default function TerminalPage() {
           ))}
           <div style={{flex:1}}/>
           <div style={{display:"flex",alignItems:"center",paddingRight:12,gap:6}}>
-            <button onClick={()=>navigate("/news-intel")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>NEWS INTEL →</button>
+            <button onClick={()=>setBottomTab("news")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>NEWS INTEL →</button>
           </div>
         </div>
         <div style={{flex:1,overflow:"auto"}}>
