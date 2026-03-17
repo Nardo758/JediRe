@@ -145,9 +145,10 @@ const CapsuleDetailPage: React.FC = () => {
       : (rawCollision as Record<string, CollisionResult>) ?? {};
 
   const collision = { ...DEFAULT_COLLISION, ...collisionAnalyses };
-  const overallScore = capsule.collision_score
-    ?? (rawCollision && 'overall_score' in rawCollision ? (rawCollision.overall_score ?? 0) : 0)
-    || (Object.keys(collisionAnalyses).length > 0
+  const overallScore =
+    capsule.collision_score ??
+    (rawCollision && 'overall_score' in rawCollision ? (rawCollision.overall_score ?? 0) : null) ??
+    (Object.keys(collisionAnalyses).length > 0
       ? Math.round(Object.values(collisionAnalyses).reduce((sum, c) => sum + (c?.score || 0), 0) / Object.keys(collisionAnalyses).length)
       : 0);
 
