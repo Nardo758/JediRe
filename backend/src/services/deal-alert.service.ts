@@ -582,8 +582,8 @@ export class DealAlertService {
        FROM deals d
        JOIN deal_properties dp ON dp.deal_id = d.id
        JOIN properties p ON p.id = dp.property_id
-       JOIN submarkets s ON s.id = p.submarket_id
-       JOIN submarket_corporate_health sch ON sch.submarket_id = p.submarket_id
+       JOIN submarkets s ON s.id = CAST(p.submarket_id AS INTEGER)
+       JOIN submarket_corporate_health sch ON sch.submarket_id = CAST(p.submarket_id AS INTEGER)
        WHERE d.user_id = $1
          AND ABS(sch.divergence_score) > 15
          AND sch.quarter = (SELECT MAX(quarter) FROM submarket_corporate_health WHERE submarket_id = sch.submarket_id)
