@@ -2088,7 +2088,7 @@ export default function TerminalPage() {
       return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
     });
     if(bottomTab==="news") return liveNews.map((n,i)=>(
-      <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+      <div key={i} id={`news-row-${n.id}`} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
         <span style={{fontSize:8,color:T.text.muted,minWidth:34}}>{n.time}</span>
         <div style={{flex:1}}><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{n.hl}</div>{n.affects.length>0&&<div style={{display:"flex",gap:3,marginTop:2}}>{n.affects.map((a,j)=><Bd key={j} c={T.text.amber}>{a}</Bd>)}</div>}</div>
         <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize:8,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div><div style={{fontSize:8,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</div></div>
@@ -2312,7 +2312,7 @@ export default function TerminalPage() {
       </div>
 
       {/* ═══ NEWS TICKER — 24px ═══ */}
-      <div style={{height:24,background:"#06080E",borderBottom:`1px solid ${T.border.subtle}`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
+      <div style={{height:24,background:theme==="dark"?"#06080E":T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
         <div style={{padding:"0 8px",flexShrink:0,borderRight:`1px solid ${T.text.cyan}33`,height:"100%",display:"flex",alignItems:"center"}}>
           <span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:800,color:T.text.cyan,letterSpacing:1.5}}>NEWS</span>
         </div>
@@ -2321,7 +2321,7 @@ export default function TerminalPage() {
             {[...liveNews,...liveNews].map((n,i)=>{
               const impactColor = n.impact?.includes("DEMAND")?T.text.green:n.impact?.includes("SUPPLY")||n.impact?.includes("RISK")?T.text.red:T.text.amber;
               return (
-                <span key={i} onClick={()=>setBottomTab("news")} style={{cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
+                <span key={i} onClick={()=>{setBottomTab("news");setTimeout(()=>{const el=document.getElementById(`news-row-${n.id}`);el?.scrollIntoView({block:"nearest",behavior:"smooth"});},50);}} style={{cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
                   <span style={{color:T.text.muted,fontSize:8}}>{n.time}</span>
                   <span style={{color:T.text.primary}}>{n.hl}</span>
                   <span style={{fontWeight:700,color:impactColor,fontSize:8}}>{n.impact}</span>
