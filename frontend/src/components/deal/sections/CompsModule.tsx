@@ -70,10 +70,12 @@ export default function CompsModule({
       setLoading(true);
       setError(null);
       
-      const response = await apiClient.get(`/deals/${dealId}/comps`);
-      
-      if (response.success && response.data) {
-        setCompSet(response.data);
+      const response = await apiClient.get(`/api/v1/deals/${dealId}/comps`);
+      const payload = response.data;
+      if (payload && (payload.data || payload.comps)) {
+        setCompSet(payload.data ?? payload.comps ?? payload);
+      } else if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        setCompSet(payload);
       } else {
         setCompSet(null);
       }
@@ -94,7 +96,7 @@ export default function CompsModule({
       setGenerating(true);
       setError(null);
       
-      const response = await apiClient.post(`/deals/${dealId}/comps/generate`, {
+      const response = await apiClient.post(`/api/v1/deals/${dealId}/comps/generate`, {
         radius_miles: 3.0,
         date_range_months: 24,
         min_units: 50,
@@ -102,9 +104,11 @@ export default function CompsModule({
         exclude_distress: true,
         arms_length_only: true
       });
-      
-      if (response.success && response.data) {
-        setCompSet(response.data);
+      const payload = response.data;
+      if (payload && (payload.data || payload.comps)) {
+        setCompSet(payload.data ?? payload.comps ?? payload);
+      } else if (payload && typeof payload === 'object') {
+        setCompSet(payload);
       }
     } catch (err: any) {
       console.error('Generate comps error:', err);

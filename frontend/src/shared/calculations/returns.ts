@@ -60,27 +60,36 @@ export interface ExitReturns {
 
 export type DealType = 'existing' | 'development' | 'redevelopment';
 
+export interface DealEconomics {
+  baseNOI: number;
+  totalBasis: number;
+  equity: number;
+  annualDS?: number;
+}
+
 /**
  * Compute exit returns for a given forward quarter index and deal type
  * @param fwdIdx Forward quarter index (0 = Q1 2026, NOW_IDX)
  * @param dealType Deal type affecting base economics
  * @param rentGrowth Optional override for rent growth multiplier (used in sensitivity)
  * @param exitCapRate Optional override for exit cap rate (used in sensitivity)
+ * @param economics Optional deal-context economics to replace type-based defaults
  */
 export function computeExitReturns(
   fwdIdx: number,
   dealType: DealType,
   rentGrowth?: number,
-  exitCapRate?: number
+  exitCapRate?: number,
+  economics?: DealEconomics
 ): ExitReturns {
   const absIdx = NOW_IDX + fwdIdx;
   const holdYears = Math.max(0.25, (fwdIdx + 1) / 4);
 
-  // Base deal economics by type
-  const baseNOI = dealType === 'development' ? 2800000 : 3420000;
-  const totalBasis = dealType === 'development' ? 52000000 : 46420000;
-  const equity = dealType === 'development' ? 18200000 : 14920000;
-  const annualDS = 2340000;
+  // Base deal economics: prefer live deal context, fall back to type-based defaults
+  const baseNOI = economics?.baseNOI ?? (dealType === 'development' ? 2800000 : 3420000);
+  const totalBasis = economics?.totalBasis ?? (dealType === 'development' ? 52000000 : 46420000);
+  const equity = economics?.equity ?? (dealType === 'development' ? 18200000 : 14920000);
+  const annualDS = economics?.annualDS ?? 2340000;
 
   // Build NOI through hold period
   let noiMult = 1;

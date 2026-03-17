@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { computeExitReturns, computeSensitivityIRR } from '../../../shared/calculations/returns';
+import { computeExitReturns, computeSensitivityIRR, type DealEconomics } from '../../../shared/calculations/returns';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 /**
@@ -755,9 +755,22 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     setSelectedFwd(optimalFwd);
   }, [optimalFwd]);
 
+  // Derive deal economics from live deal/context data; fall back to defaults inside computeExitReturns
+  const dealEconomics = useMemo<DealEconomics | undefined>(() => {
+    const noi = deal?.noi ?? deal?.deal_data?.noi ?? deal?.financial?.noi ?? null;
+    const purchasePrice = deal?.purchasePrice ?? deal?.deal_data?.asking_price ?? deal?.budget ?? null;
+    const totalDevCost = deal?.totalDevCost ?? deal?.deal_data?.total_dev_cost ?? null;
+    const totalBasis = totalDevCost ?? purchasePrice;
+    const equityPct = deal?.capitalStructure?.equityPct ?? deal?.equity_pct ?? null;
+    const equity = equityPct != null && totalBasis ? totalBasis * (equityPct / 100) : deal?.equity ?? null;
+    const debtService = deal?.annualDebtService ?? deal?.deal_data?.annual_debt_service ?? null;
+    if (!noi || !totalBasis || !equity) return undefined;
+    return { baseNOI: noi, totalBasis, equity, annualDS: debtService ?? undefined };
+  }, [deal]);
+
   // Compute returns for selected and optimal quarters
-  const ret = useMemo(() => computeExitReturns(selectedFwd, dealType), [selectedFwd, dealType]);
-  const optRet = useMemo(() => computeExitReturns(optimalFwd, dealType), [optimalFwd, dealType]);
+  const ret = useMemo(() => computeExitReturns(selectedFwd, dealType, undefined, undefined, dealEconomics), [selectedFwd, dealType, dealEconomics]);
+  const optRet = useMemo(() => computeExitReturns(optimalFwd, dealType, undefined, undefined, dealEconomics), [optimalFwd, dealType, dealEconomics]);
 
   // Get capital stack preset
   const stack = STACK_PRESETS[selectedExitStrategy] ?? STACK_PRESETS['sell-stabilized'];
@@ -1096,7 +1109,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               </span>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 140, marginTop: 12 }}>
                 {Array.from({ length: TOTAL_Q - NOW_IDX }, (_, i) => {
-                  const r = computeExitReturns(i, dealType);
+                  const r = computeExitReturns(i, dealType, undefined, undefined, dealEconomics);
                   const h = Math.max(4, (r.irr / 30) * 130);
                   const isSelected = i === selectedFwd;
                   const isOptimal = i === optimalFwd;
