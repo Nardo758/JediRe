@@ -636,8 +636,8 @@ export const DD_CHECKLISTS: Record<DDChecklistPreset, DDChecklistCategory[]> = {
     { category: 'Cost Validation', items: ['Independent cost estimate', 'Hard cost budget review', 'Soft cost budget review', 'Construction schedule review', 'GC qualification & references'] },
   ],
   redevelopment: [
-    { category: 'Existing Structure', items: ['Structural engineering assessment', 'Roof condition & remaining life', 'HVAC system evaluation', 'Plumbing & electrical assessment', 'Foundation integrity', 'Load-bearing wall identification', 'Code compliance gap analysis'] },
-    { category: 'Environmental & Hazmat', items: ['Phase I ESA', 'Asbestos abatement survey', 'Lead paint assessment', 'Mold remediation assessment', 'Underground storage tank search', 'Hazardous materials inventory'] },
+    { category: 'Existing Structure', items: ['Structural engineering assessment', 'Roof condition & remaining life', 'HVAC system evaluation', 'Plumbing & electrical assessment', 'Foundation integrity', 'Load-bearing wall identification', 'Seismic evaluation (if applicable)', 'Code compliance gap analysis'] },
+    { category: 'Environmental & Hazmat', items: ['Phase I ESA', 'Phase II ESA (if applicable)', 'Asbestos abatement survey', 'Lead paint assessment', 'Mold remediation assessment', 'Underground storage tank search', 'Hazardous materials inventory'] },
     { category: 'Entitlement & Regulatory', items: ['Zoning change/variance feasibility', 'Historic preservation review', 'Building code upgrade requirements', 'ADA retrofit requirements', 'Change of use permits', 'Impact fee assessment'] },
     { category: 'Financial Audit (Existing Ops)', items: ['Current rent roll', 'Trailing 12-month P&L', 'Tenant relocation cost estimate', 'Lease termination provisions', 'Service contract termination costs'] },
     { category: 'Renovation Scope', items: ['Architectural scope document', 'Demo vs renovation boundary', 'Independent cost estimate', 'Construction phasing plan', 'Temporary relocation plan (if occupied)', 'GC qualification & references'] },

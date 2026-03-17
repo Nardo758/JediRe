@@ -767,6 +767,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       unitsPct={concessionUnitsPct} setUnitsPct={setConcessionUnitsPct}
                       durationMonths={concessionDurationMonths} setDurationMonths={setConcessionDurationMonths}
                       ongoing={concessionOngoing} setOngoing={setConcessionOngoing}
+                      absorptionLinked={absorptionLinked}
                       totalUnits={totalUnits}
                       unitMix={unitMix}
                       modelType={modelType}
@@ -1118,12 +1119,13 @@ interface ConcessionsSectionProps {
   totalUnits: number;
   unitMix: UnitMixRow[];
   modelType: 'existing' | 'development';
+  absorptionLinked?: boolean;
 }
 
 const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
   freeWeeks, setFreeWeeks, unitsPct, setUnitsPct,
   durationMonths, setDurationMonths, ongoing, setOngoing,
-  totalUnits, unitMix, modelType,
+  totalUnits, unitMix, modelType, absorptionLinked,
 }) => {
   const avgMonthlyRent = unitMix.length > 0
     ? unitMix.reduce((s, u) => s + u.marketRent * u.units, 0) / Math.max(1, unitMix.reduce((s, u) => s + u.units, 0))
@@ -1131,9 +1133,17 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
   const weeklyRent = avgMonthlyRent / 4.33;
   const concessionUnits = Math.round(totalUnits * unitsPct);
   const concessionCostPerUnit = weeklyRent * freeWeeks;
-  const totalConcessionCost = concessionCostPerUnit * concessionUnits;
+  const leaseUpCycles = durationMonths > 0 ? Math.max(1, Math.ceil(durationMonths / 12)) : 1;
+  const totalConcessionCost = ongoing
+    ? concessionCostPerUnit * concessionUnits * leaseUpCycles
+    : concessionCostPerUnit * concessionUnits;
+  const annualizedConcessionCost = ongoing
+    ? concessionCostPerUnit * concessionUnits
+    : durationMonths > 0
+      ? (concessionCostPerUnit * concessionUnits * 12) / Math.max(1, durationMonths)
+      : concessionCostPerUnit * concessionUnits;
   const gpr = unitMix.reduce((s, u) => s + u.marketRent * u.units * 12, 0);
-  const concessionPctOfGPR = gpr > 0 ? totalConcessionCost / gpr : 0;
+  const concessionPctOfGPR = gpr > 0 ? annualizedConcessionCost / gpr : 0;
 
   return (
     <div className="mt-3 space-y-4">
@@ -1141,10 +1151,17 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
         <Info size={14} className="text-blue-500" />
         <span className="text-[11px] text-stone-500">
           {modelType === 'development'
-            ? 'Concessions reduce Effective Gross Income during lease-up. Link to Absorption Schedule in Traffic module for lease-up period.'
-            : 'Model ongoing renewal concessions that reduce effective rent collection.'
+            ? `Concessions reduce EGI during the ${durationMonths > 0 ? durationMonths + '-month ' : ''}lease-up period. Duration and eligible units are auto-linked from the Absorption Schedule (Traffic module).`
+            : ongoing
+              ? 'Ongoing renewal concessions are annualized and reduce effective rent collection each year.'
+              : 'One-time lease-up concessions applied during the specified duration period.'
           }
         </span>
+        {absorptionLinked && (
+          <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+            Linked to Absorption
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-4 gap-4">
@@ -1186,14 +1203,23 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
       {(freeWeeks > 0 && unitsPct > 0) && (
         <div className="bg-stone-50 rounded-xl border border-stone-200 p-4">
           <h5 className="text-[10px] font-semibold text-stone-600 uppercase tracking-wider mb-3">Concession Impact</h5>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-5 gap-4">
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">Cost / Unit</div>
               <div className="text-sm font-bold font-mono text-stone-900">{fmt$(Math.round(concessionCostPerUnit))}</div>
             </div>
             <div>
-              <div className="text-[10px] text-stone-400 uppercase tracking-wider">Total Concession Cost</div>
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider">
+                {ongoing ? 'Annual Cost' : 'Total Cost'}
+              </div>
               <div className="text-sm font-bold font-mono text-red-700">{fmt$(Math.round(totalConcessionCost))}</div>
+              {durationMonths > 0 && !ongoing && (
+                <div className="text-[9px] text-stone-400 mt-0.5">over {durationMonths} months</div>
+              )}
+            </div>
+            <div>
+              <div className="text-[10px] text-stone-400 uppercase tracking-wider">Annualized</div>
+              <div className="text-sm font-bold font-mono text-red-600">{fmt$(Math.round(annualizedConcessionCost))}/yr</div>
             </div>
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">% of GPR</div>
@@ -1201,7 +1227,7 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
             </div>
             <div>
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">EGI Reduction</div>
-              <div className="text-sm font-bold font-mono text-red-600">({fmt$(Math.round(totalConcessionCost))})</div>
+              <div className="text-sm font-bold font-mono text-red-600">({fmt$(Math.round(annualizedConcessionCost))})</div>
             </div>
           </div>
           <div className="mt-3 pt-3 border-t border-stone-200">
@@ -1210,12 +1236,12 @@ const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
               <span className="font-mono text-stone-800">{fmt$(Math.round(gpr))}</span>
             </div>
             <div className="flex justify-between text-xs text-red-600 mt-1">
-              <span>Less: Concessions</span>
-              <span className="font-mono">({fmt$(Math.round(totalConcessionCost))})</span>
+              <span>Less: Concessions {ongoing ? '(annual)' : durationMonths > 0 ? `(annualized from ${durationMonths}mo)` : ''}</span>
+              <span className="font-mono">({fmt$(Math.round(annualizedConcessionCost))})</span>
             </div>
             <div className="flex justify-between text-xs font-semibold mt-1 pt-1 border-t border-stone-200">
               <span className="text-stone-800">Effective Gross Income (post-concessions)</span>
-              <span className="font-mono text-stone-900">{fmt$(Math.round(gpr - totalConcessionCost))}</span>
+              <span className="font-mono text-stone-900">{fmt$(Math.round(gpr - annualizedConcessionCost))}</span>
             </div>
           </div>
         </div>
