@@ -210,16 +210,18 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
   const [offlineUnits, setOfflineUnits] = useState(isRedev ? Math.round(dealUnits * 0.4) : 0);
   const [renovationMonths, setRenovationMonths] = useState(isRedev ? 12 : 0);
 
+  const effectiveVelocity = Math.max(1, Math.round(monthlyVelocity * supplyPressureFactor));
+
   const periods = useMemo(() => {
     if (isRedev) {
       return generateDisplacementSchedule(
-        totalUnits, unitMix, monthlyVelocity, startOccupancy, targetOccupancy, offlineUnits, renovationMonths,
+        totalUnits, unitMix, effectiveVelocity, startOccupancy, targetOccupancy, offlineUnits, renovationMonths,
       );
     }
     return generateAbsorptionSchedule(
-      totalUnits, unitMix, monthlyVelocity, startOccupancy, targetOccupancy, rampUpMonths,
+      totalUnits, unitMix, effectiveVelocity, startOccupancy, targetOccupancy, rampUpMonths,
     );
-  }, [totalUnits, unitMix, monthlyVelocity, startOccupancy, targetOccupancy, rampUpMonths, offlineUnits, renovationMonths, isRedev]);
+  }, [totalUnits, unitMix, effectiveVelocity, startOccupancy, targetOccupancy, rampUpMonths, offlineUnits, renovationMonths, isRedev]);
 
   const { emitEvent } = useDealModule();
 
@@ -233,7 +235,6 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
   const avgMonthlyVelocity = periods.length > 0 ? totalAbsorbed / periods.length : 0;
   const peakMonth = periods.reduce((max, p) => p.unitsAbsorbed > max.unitsAbsorbed ? p : max, periods[0] || { month: 0, unitsAbsorbed: 0 });
 
-  const adjustedVelocity = avgMonthlyVelocity * supplyPressureFactor;
   const breakEvenOccupancy = useMemo(() => {
     const avgRent = unitMix.reduce((s, u) => s + u.units * u.monthlyRent, 0) / (totalUnits || 1);
     const estimatedExpensePerUnit = avgRent * 0.45;
@@ -248,16 +249,16 @@ export const AbsorptionScheduleTab: React.FC<AbsorptionScheduleTabProps> = ({
       payload: {
         monthsToStabilization,
         totalAbsorbed,
-        avgMonthlyVelocity: adjustedVelocity,
+        avgMonthlyVelocity,
         concessionPeriodMonths: monthsToStabilization,
-        eligibleUnitsPct: totalUnits > 0 ? Math.round((totalAbsorbed / totalUnits) * 100) : 0,
+        eligibleUnitsPct: totalUnits > 0 ? totalAbsorbed / totalUnits : 0,
         marketAbsorptionRate,
         supplyPressureFactor,
         breakEvenOccupancy,
         dealType,
       },
     });
-  }, [monthsToStabilization, totalAbsorbed, adjustedVelocity, marketAbsorptionRate, supplyPressureFactor, breakEvenOccupancy, dealType]);
+  }, [monthsToStabilization, totalAbsorbed, avgMonthlyVelocity, marketAbsorptionRate, supplyPressureFactor, breakEvenOccupancy, dealType]);
 
   const showForExisting = isExisting && (dealOcc < 0.92 || startOccupancy < 0.92);
 

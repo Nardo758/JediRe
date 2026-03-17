@@ -189,7 +189,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       const { concessionPeriodMonths, eligibleUnitsPct, dealType: absDealType } = lastEvent.payload;
       if (absDealType === 'development' || absDealType === 'redevelopment') {
         setConcessionDurationMonths(concessionPeriodMonths || 0);
-        setConcessionUnitsPct(eligibleUnitsPct || 0);
+        setConcessionUnitsPct(eligibleUnitsPct > 1 ? eligibleUnitsPct / 100 : eligibleUnitsPct || 0);
         if (concessionFreeWeeks === 0) {
           setConcessionFreeWeeks(absDealType === 'development' ? 4 : 2);
         }
