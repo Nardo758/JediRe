@@ -961,8 +961,11 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     </div>
   );
 
+  const BT2_MONO = "'JetBrains Mono','Fira Code','SF Mono',monospace";
+  const BT2_HEADER = '#1A1F2E', BT2_BORDER = '#1E2538', BT2_CYAN = '#00BCD4', BT2_AMBER = '#F5A623', BT2_AMBER_BRIGHT = '#FFD166', BT2_TEXT = '#E8ECF1', BT2_SEC = '#8B95A5', BT2_MET_PHYS = '#60a5fa', BT2_MET_DIG = '#f59e0b', BT2_MET_COMP = '#a855f7', BT2_MET_OCC = '#14b8a6', BT2_GREEN = '#00D26A';
+
   return (
-    <div style={{ background: BT.bgBase, minHeight: '100%', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ background: '#0A0E17', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
       <input
         ref={fileInputRef}
         type="file"
@@ -971,32 +974,41 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         style={{ display: 'none' }}
       />
 
-      {/* Header Banner */}
-      <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, borderLeft: `3px solid ${BT.amber}`, padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: BT.amber, letterSpacing: 2, marginBottom: 4, ...bMono }}>F7 — TRAFFIC INTELLIGENCE</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>Leasing Velocity &amp; Traffic Analysis</div>
-          <p style={{ fontSize: 11, color: BT.td, margin: '2px 0 0', ...bSans }}>What is this property's true leasing velocity — and can we improve it?</p>
+      {/* Bloomberg v0.34 PanelHeader */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px',
+        background: BT2_HEADER,
+        borderBottom: `1px solid ${BT2_BORDER}`,
+        borderTop: `2px solid ${BT2_AMBER}`,
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT2_TEXT, letterSpacing: 0.8, fontFamily: BT2_MONO }}>TRAFFIC INTELLIGENCE</span>
+          <span style={{ fontSize: 8, color: BT2_SEC, fontFamily: BT2_MONO }}>M07 | Leasing Velocity &amp; Demand Signals</span>
+          <span style={{ fontSize: 6, color: BT2_AMBER, background: `${BT2_AMBER}18`, padding: '0 3px', borderRadius: 2, fontFamily: BT2_MONO, fontWeight: 600 }}>P_TRAFFIC</span>
+          <span style={{ fontSize: 6, color: BT2_MET_DIG, background: `${BT2_MET_DIG}18`, padding: '0 3px', borderRadius: 2, fontFamily: BT2_MONO, fontWeight: 600 }}>D_TRAFFIC</span>
+          <span style={{ fontSize: 6, color: BT2_MET_COMP, background: `${BT2_MET_COMP}18`, padding: '0 3px', borderRadius: 2, fontFamily: BT2_MONO, fontWeight: 600 }}>C_TRAFFIC</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {projection?.marketIntelligence && (
+            <span style={{ fontSize: 8, fontWeight: 700, color: BT2_GREEN, fontFamily: BT2_MONO }}>
+              OCC {((projection.periods[0]?.adjOccPct ?? 0) * 100).toFixed(0)}%
+            </span>
+          )}
           {dataSource === 'uploaded' && (
-            <span style={{ fontSize: 9, fontWeight: 700, color: BT.greenL, background: BT.greenBg, border: `1px solid ${BT.green}40`, borderRadius: 4, padding: '3px 8px', ...bMono }}>LIVE DATA</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 6px', fontFamily: BT2_MONO }}>LIVE</span>
           )}
           {dataSource === 'blended' && (
-            <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: BT.blueBg, border: `1px solid ${BT.blue}40`, borderRadius: 4, padding: '3px 8px', ...bMono }}>BLENDED</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: '#60A5FA', background: '#0d1e3d', border: '1px solid #60A5FA40', padding: '1px 6px', fontFamily: BT2_MONO }}>BLENDED</span>
           )}
           {dataSource === 'predicted' && (
-            <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 4, padding: '3px 8px', ...bMono }}>PREDICTED</span>
+            <span style={{ fontSize: 8, fontWeight: 700, color: BT2_AMBER, background: '#1a1200', border: `1px solid ${BT2_AMBER}40`, padding: '1px 6px', fontFamily: BT2_MONO }}>PREDICTED</span>
           )}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: BT.bgPanel, color: BT.tm, borderRadius: 6, border: `1px solid ${BT.border}`, cursor: 'pointer', fontSize: 11, ...bSans }}>
-            <Upload size={12} />
-            {uploading ? 'Uploading...' : 'Upload Report'}
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleUpload}
-              style={{ display: 'none' }}
-            />
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'transparent', color: BT2_SEC, border: `1px solid #2A3348`, cursor: 'pointer', fontSize: 8, fontFamily: BT2_MONO }}>
+            <Upload size={10} />
+            {uploading ? 'UPLOADING...' : 'UPLOAD'}
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} style={{ display: 'none' }} />
           </label>
         </div>
       </div>

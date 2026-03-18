@@ -360,10 +360,21 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
   return (
     <BloombergPage>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-        {/* Decision Banner */}
-        <div style={{ background: T.bgCard, borderRadius: 8, border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.amber}`, padding: '14px 18px', marginBottom: 16 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.amber, letterSpacing: 2, marginBottom: 4, ...mono }}>THE DECISION THIS PAGE DRIVES</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>What could kill this deal and how do I protect against it?</div>
+        {/* Bloomberg v0.34 PanelHeader */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '6px 10px', background: T.bgMid,
+          borderBottom: `1px solid ${T.border}`, borderTop: `2px solid ${T.red}`, marginBottom: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.text, letterSpacing: 0.8, ...mono }}>RISK INTELLIGENCE</span>
+            <span style={{ fontSize: 8, color: T.td, ...mono }}>M14 | Due Diligence · Exposure · Mitigation</span>
+            <span style={{ fontSize: 6, fontWeight: 700, color: '#FF4757', background: '#FF475715', border: '1px solid #FF475730', padding: '0 3px', borderRadius: 2, ...mono }}>RISK</span>
+            <span style={{ fontSize: 6, fontWeight: 700, color: '#F5A623', background: '#F5A62315', border: '1px solid #F5A62330', padding: '0 3px', borderRadius: 2, ...mono }}>DD</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <BLiveBadge live={isLiveData} />
+          </div>
         </div>
 
         {/* Composite Score + Heatmap */}

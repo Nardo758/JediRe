@@ -409,26 +409,54 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
     { id: 'custom', label: 'Custom Screen', emoji: '⚙️' },
   ];
 
-  return (
-    <div className="space-y-6 p-6">
+  const BT2_MONO_S = "'JetBrains Mono','Fira Code','SF Mono',monospace";
+  const BT2_AMBER_S = '#F5A623', BT2_PURPLE = '#A78BFA', BT2_TEXT_S = '#E8ECF1', BT2_SEC_S = '#8B95A5', BT2_HDR = '#1A1F2E', BT2_BDR = '#1E2538', BT2_MED = '#2A3348';
 
-      {/* Sub-tab Navigation */}
-      <div className="flex gap-1 border-b border-[#1e2a3d]">
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0A0E17' }}>
+
+      {/* Bloomberg v0.34 PanelHeader */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', background: BT2_HDR,
+        borderBottom: `1px solid ${BT2_BDR}`, borderTop: `2px solid ${BT2_PURPLE}`, flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT2_TEXT_S, letterSpacing: 0.8, fontFamily: BT2_MONO_S }}>STRATEGY ARBITRAGE</span>
+          <span style={{ fontSize: 8, color: BT2_SEC_S, fontFamily: BT2_MONO_S }}>M08 | BTS · Flip · Rental · STR</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {isLiveData ? (
+            <span style={{ fontSize: 7, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 5px', fontFamily: BT2_MONO_S }}>LIVE</span>
+          ) : (
+            <span style={{ fontSize: 7, fontWeight: 700, color: BT2_AMBER_S, background: '#1a1200', border: `1px solid ${BT2_AMBER_S}40`, padding: '1px 5px', fontFamily: BT2_MONO_S }}>SAMPLE</span>
+          )}
+        </div>
+      </div>
+
+      {/* Bloomberg v0.34 sub-tab bar */}
+      <div style={{
+        display: 'flex', background: BT2_HDR,
+        borderBottom: `1px solid ${BT2_MED}`, flexShrink: 0, height: 28, alignItems: 'stretch',
+      }}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-              activeTab === tab.id
-                ? 'border-blue-500 text-blue-300 bg-blue-900/20'
-                : 'border-transparent text-[#6b7f94] hover:text-[#a0b0c0] hover:bg-[#0a1628]'
-            }`}
+            style={{
+              fontFamily: BT2_MONO_S, fontSize: 8, fontWeight: activeTab === tab.id ? 700 : 500,
+              padding: '0 14px', background: 'transparent', border: 'none',
+              borderBottom: activeTab === tab.id ? `2px solid ${BT2_PURPLE}` : '2px solid transparent',
+              color: activeTab === tab.id ? BT2_PURPLE : BT2_SEC_S,
+              cursor: 'pointer', whiteSpace: 'nowrap' as const, letterSpacing: 0.5,
+            }}
           >
-            <span>{tab.emoji}</span>
-            <span className="hidden sm:inline">{tab.label}</span>
+            {tab.label.toUpperCase()}
           </button>
         ))}
       </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
 
       {/* Mode Indicator */}
       <div className="flex items-center justify-between">
@@ -846,6 +874,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
         </div>
       )}
 
+    </div>
     </div>
   );
 };

@@ -356,79 +356,52 @@ const SupplyPipelinePage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#131920]">
-      {/* Header */}
-      <div className=" border-b border-[#1e2a3d] shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={() => navigate(-1)}
-                className="p-2 hover:bg-[#1e2a3d] rounded-lg transition-colors"
-              >
-                <svg className="w-6 h-6 text-[#6B7585]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <div className="flex items-center space-x-3">
-                  <h1 className="text-2xl font-bold text-[#E8E6E1]">Supply Pipeline Analysis</h1>
-                  {isLiveData && (
-                    <span className="px-2.5 py-1 bg-green-900/30 text-green-400 text-xs font-bold rounded-full border border-green-700 animate-pulse">
-                      ● LIVE DATA
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-[#6B7585] mt-1">
-                  Track future supply to time market entry and identify delivery windows
-                </p>
-              </div>
-            </div>
-            
-            {/* Time Horizon Selector */}
-            <div className="flex items-center space-x-3">
-              <span className="text-sm text-[#6B7585]">Time Horizon:</span>
-              <div className="flex bg-[#1e2a3d] rounded-lg p-1">
-                {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
-                  <button
-                    key={horizon}
-                    onClick={() => setTimeHorizon(horizon)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      timeHorizon === horizon
-                        ? ' text-blue-400 shadow-sm'
-                        : 'text-[#6B7585] hover:text-[#E8E6E1]'
-                    }`}
-                  >
-                    {horizon === '3yr' ? '3 Years' : horizon === '5yr' ? '5 Years' : '10 Years'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div className="flex space-x-1 mt-6 border-b border-[#1e2a3d]">
-            {[
-              { id: 'wave', label: 'Supply Wave', icon: '📊' },
-              { id: 'pipeline', label: 'Pipeline by Phase', icon: '🏗️' },
-              { id: 'developers', label: 'Developer Activity', icon: '👷' },
-              { id: 'absorption', label: 'Absorption Impact', icon: '📈' },
-              { id: 'risk', label: 'Risk Scoring', icon: '⚠️' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-400'
-                    : 'border-transparent text-[#6B7585] hover:text-[#E8E6E1] hover:border-[#253347]'
-                }`}
-              >
-                <span className="mr-2">{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
+      {/* Bloomberg v0.34 PanelHeader */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', background: '#1A1F2E',
+        borderBottom: '1px solid #1E2538', borderTop: '2px solid #F97316',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, fontFamily: "'JetBrains Mono',monospace" }}>SUPPLY PIPELINE</span>
+          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>M04 | Pipeline · Absorption · Developer Activity · Risk</span>
+          <span style={{ fontSize: 6, fontWeight: 700, color: '#F97316', background: '#F9731615', border: '1px solid #F9731630', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>SUPPLY</span>
+          {isLiveData && <span style={{ fontSize: 6, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>LIVE</span>}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>HORIZON:</span>
+          {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
+            <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
+              fontSize: 7, padding: '1px 6px', fontFamily: "'JetBrains Mono',monospace",
+              background: timeHorizon === horizon ? '#F9731620' : 'transparent',
+              border: timeHorizon === horizon ? '1px solid #F9731660' : '1px solid #2A3348',
+              color: timeHorizon === horizon ? '#F97316' : '#8B95A5',
+              cursor: 'pointer',
+            }}>{horizon.toUpperCase()}</button>
+          ))}
+        </div>
+      </div>
+      {/* Bloomberg v0.34 Sub-tab Bar */}
+      <div style={{ display: 'flex', background: '#1A1F2E', borderBottom: '1px solid #2A3348', height: 28, alignItems: 'stretch' }}>
+        {[
+          { id: 'wave', label: 'SUPPLY WAVE' },
+          { id: 'pipeline', label: 'PIPELINE' },
+          { id: 'developers', label: 'DEVELOPERS' },
+          { id: 'absorption', label: 'ABSORPTION' },
+          { id: 'risk', label: 'RISK SCORING' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as 'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk')}
+            style={{
+              fontFamily: "'JetBrains Mono',monospace", fontSize: 8, fontWeight: activeTab === tab.id ? 700 : 500,
+              padding: '0 14px', background: 'transparent', border: 'none',
+              borderBottom: activeTab === tab.id ? '2px solid #F97316' : '2px solid transparent',
+              color: activeTab === tab.id ? '#F97316' : '#8B95A5',
+              cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >{tab.label}</button>
+        ))}
       </div>
 
       {/* Main Content */}

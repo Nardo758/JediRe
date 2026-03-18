@@ -118,21 +118,28 @@ export const MarketIntelligencePage: React.FC = () => {
 
   return (
     <div className="space-y-0">
-      <div style={{ background: "#0F1319", borderLeft: "4px solid #7C3AED", borderRadius: "4px 4px 0 0" }} className="px-5 py-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-white text-lg font-bold tracking-tight">Market Intelligence</h2>
-          <p className="text-[#6B7585] text-xs mt-0.5">Economic drivers, demand signals, and competitive landscape</p>
+      {/* Bloomberg v0.34 PanelHeader */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', background: '#1A1F2E',
+        borderBottom: '1px solid #1E2538', borderTop: '2px solid #60A5FA',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, ...bMono }}>MARKET INTELLIGENCE</span>
+          <span style={{ fontSize: 8, color: '#8B95A5', ...bMono }}>M05 | Economy · Demographics · News · Supply Context</span>
+          <span style={{ fontSize: 6, fontWeight: 700, color: '#60A5FA', background: '#60A5FA15', border: '1px solid #60A5FA30', padding: '0 3px', borderRadius: 2, ...bMono }}>MKT</span>
+          <span style={{ fontSize: 6, fontWeight: 700, color: '#A78BFA', background: '#A78BFA15', border: '1px solid #A78BFA30', padding: '0 3px', borderRadius: 2, ...bMono }}>DEMAND</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {cached && (
-            <span className="text-xs px-2 py-0.5 rounded" style={{ color: "#6B7585", background: "#131920", border: "1px solid #1e2a3d" }}>Cached</span>
+            <span style={{ fontSize: 7, color: '#8B95A5', background: '#0F1319', border: '1px solid #1e2a3d', padding: '1px 5px', ...bMono }}>CACHED</span>
           )}
           <button
             onClick={() => fetchData(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-300 bg-violet-500/10 border border-violet-500/20 rounded-md hover:bg-violet-500/20 transition-colors"
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: '#60A5FA', background: 'transparent', border: '1px solid #60A5FA30', cursor: 'pointer', ...bMono }}
           >
-            <RefreshCw size={12} />
-            Refresh
+            <RefreshCw size={10} />
+            REFRESH
           </button>
         </div>
       </div>

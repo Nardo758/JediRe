@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { T as BT, mono as bMono, sans as bSans } from './bloomberg-tokens';
+import { BT } from './bloomberg-ui';
 
 export interface DealScreenTab {
   id: string;
@@ -27,8 +27,17 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, pass
   const C = activeTab.component;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: BT.bgBase }}>
-      <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border}`, background: BT.bgCard, flexShrink: 0, overflowX: 'auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: BT.bg.terminal }}>
+      {/* Bloomberg v0.34 sub-tab bar */}
+      <div style={{
+        display: 'flex',
+        background: BT.bg.header,
+        borderBottom: `1px solid ${BT.border.medium}`,
+        flexShrink: 0,
+        overflowX: 'auto',
+        height: 28,
+        alignItems: 'stretch',
+      }}>
         {tabs.map(tab => {
           const isActive = active === tab.id;
           return (
@@ -36,26 +45,26 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, pass
               key={tab.id}
               onClick={() => setActive(tab.id)}
               style={{
-                padding: '8px 16px',
-                fontSize: 10,
+                fontFamily: BT.font.mono,
+                fontSize: 8,
                 fontWeight: isActive ? 700 : 500,
-                whiteSpace: 'nowrap',
-                color: isActive ? BT.tm : BT.td,
-                background: isActive ? BT.bgPanel : 'none',
+                padding: '0 14px',
+                background: 'transparent',
                 border: 'none',
-                borderBottom: isActive ? `2px solid ${BT.amber}` : '2px solid transparent',
+                borderBottom: isActive ? `2px solid ${BT.text.amber}` : '2px solid transparent',
+                color: isActive ? BT.text.amber : BT.text.secondary,
                 cursor: 'pointer',
-                letterSpacing: 0.5,
-                transition: 'all 0.15s',
-                ...bSans,
-              } satisfies React.CSSProperties}
+                whiteSpace: 'nowrap',
+                letterSpacing: 0.6,
+                transition: 'color 0.1s, border-color 0.1s',
+              }}
             >
               {tab.label.toUpperCase()}
             </button>
           );
         })}
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BT.bg.terminal }}>
         <C {...passProps} />
       </div>
     </div>
