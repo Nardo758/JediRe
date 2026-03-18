@@ -176,6 +176,11 @@ const MAP_TYPES = [
 
 const TICKERS = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE +2400","^ JAX EMPL +3.2%","* FL HOME $412K","^ RENT TPA +3.7%","* FDOT I-275 148.2K","v INS +18% YoY","^ NOCATEE +42%","* TPA JOBS #3"];
 
+const CURATED_METRIC_IDS_T = ['F_CAP_RATE','F_RENT_GROWTH','M_VACANCY','M_ABSORPTION','E_EMPLOYMENT_GROWTH','E_WAGE_GROWTH','E_POPULATION_GROWTH','C_SURGE_INDEX','S_PIPELINE_TO_STOCK','S_MONTHS_OF_SUPPLY','M_LEASE_VELOCITY','D_SEARCH_MOMENTUM'];
+const CURATED_METRIC_LABELS_T: Record<string,string> = {F_CAP_RATE:'CAP RATE',F_RENT_GROWTH:'RENT GROWTH',M_VACANCY:'VACANCY',M_ABSORPTION:'ABSORPTION',E_EMPLOYMENT_GROWTH:'EMPL GROWTH',E_WAGE_GROWTH:'WAGE GROWTH',E_POPULATION_GROWTH:'POP GROWTH',C_SURGE_INDEX:'SURGE IDX',S_PIPELINE_TO_STOCK:'PIPELINE/STOCK',S_MONTHS_OF_SUPPLY:'MOS SUPPLY',M_LEASE_VELOCITY:'LEASE VEL',D_SEARCH_MOMENTUM:'SRCH MOM'};
+const STATIC_METRICS_TICKER_T = [{raw:'CAP RATE  5.2%',color:'#F5A623'},{raw:'RENT GROWTH  +3.2%',color:'#00D26A'},{raw:'VACANCY  5.2%',color:'#F5A623'},{raw:'ABSORPTION  +125u/mo',color:'#00D26A'},{raw:'EMPL GROWTH  +2.1%',color:'#00D26A'},{raw:'WAGE GROWTH  +3.4%',color:'#00D26A'},{raw:'POP GROWTH  +1.8%',color:'#00D26A'},{raw:'SURGE IDX  +0.35',color:'#00D26A'},{raw:'PIPELINE/STOCK  8.5%',color:'#F5A623'},{raw:'MOS SUPPLY  4.2mo',color:'#F5A623'},{raw:'LEASE VEL  24d',color:'#F5A623'},{raw:'SRCH MOM  +18%',color:'#00D26A'}];
+const fmtMetric = (id:string, ev:string, hib:boolean) => { const label=CURATED_METRIC_LABELS_T[id]||id; const v=(ev||'').trim().split(' ')[0]; const isPos=v.startsWith('+'),isNeg=v.startsWith('-'); const color=hib?(isPos?'#00D26A':isNeg?'#FF4757':'#F5A623'):(isNeg?'#00D26A':isPos?'#FF4757':'#F5A623'); return {raw:`${label}  ${v}`,color}; };
+
 // ─── API RESPONSE TYPES ──────────────────────────────────────
 interface ApiDeal {
   id: string;
@@ -498,6 +503,7 @@ export default function TerminalPage() {
   const [liveNews, setLiveNews] = useState(STATIC_NEWS);
   const [liveEmails, setLiveEmails] = useState(STATIC_EMAILS);
   const [liveAgents] = useState(STATIC_AGENTS);
+  const [metricsTicker, setMetricsTicker] = useState(STATIC_METRICS_TICKER_T);
 
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
@@ -581,6 +587,16 @@ export default function TerminalPage() {
         }
       })
       .catch(()=>{});
+  },[]);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/metrics/catalog').then(res => {
+      const metrics: Array<Record<string,unknown>> = res.data?.metrics || [];
+      const ordered = CURATED_METRIC_IDS_T
+        .map(id => metrics.find(m => m.id === id))
+        .filter(Boolean) as Array<Record<string,unknown>>;
+      if (ordered.length > 0) setMetricsTicker(ordered.map(m => fmtMetric(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean)));
+    }).catch(()=>{});
   },[]);
 
   useEffect(() => {
@@ -2205,15 +2221,8 @@ export default function TerminalPage() {
       <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
         items={TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
       />
-      <TickerBar height={20} speed={28} label="PLATFORM" labelColor={T.text.amber}
-        items={[
-          { raw: `PIPELINE  ${totalPV > 0 ? `$${totalPV.toFixed(1)}M` : `${liveDeals.length} DEALS`}`, color: T.text.amber },
-          { raw: `AVG JEDI  ${liveDeals.length > 0 ? Math.round(liveDeals.reduce((s,d) => s + (d.score||0), 0) / liveDeals.length) : '—'}`, color: T.text.amber },
-          { raw: `ACTIVE  ${activeCount} DEALS`, color: T.text.cyan },
-          { raw: `AGENTS  ${liveAgents.filter(a => a.st === "ON").length} ONLINE`, color: liveAgents.filter(a => a.st === "ON").length > 0 ? T.text.green : T.text.muted },
-          { raw: `EMAIL  ${liveEmails.filter(e => e.unread).length} UNREAD`, color: liveEmails.filter(e => e.unread).length > 0 ? T.text.orange : T.text.muted },
-          { raw: `SYSTEM  NOMINAL`, color: T.text.green },
-        ]}
+      <TickerBar height={20} speed={28} label="METRICS" labelColor={T.text.amber}
+        items={metricsTicker}
       />
 
       {/* ═══ KPI BAR — 50px ═══ */}

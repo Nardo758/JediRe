@@ -14,6 +14,50 @@ import { GeographicScopeTabs } from '../trade-area';
 
 const DEFAULT_MAP_ID = 'default';
 
+const CURATED_METRIC_IDS = [
+  'F_CAP_RATE', 'F_RENT_GROWTH', 'M_VACANCY', 'M_ABSORPTION',
+  'E_EMPLOYMENT_GROWTH', 'E_WAGE_GROWTH', 'E_POPULATION_GROWTH',
+  'C_SURGE_INDEX', 'S_PIPELINE_TO_STOCK', 'S_MONTHS_OF_SUPPLY',
+  'M_LEASE_VELOCITY', 'D_SEARCH_MOMENTUM',
+];
+
+const CURATED_METRIC_LABELS: Record<string, string> = {
+  F_CAP_RATE: 'CAP RATE', F_RENT_GROWTH: 'RENT GROWTH', M_VACANCY: 'VACANCY',
+  M_ABSORPTION: 'ABSORPTION', E_EMPLOYMENT_GROWTH: 'EMPL GROWTH',
+  E_WAGE_GROWTH: 'WAGE GROWTH', E_POPULATION_GROWTH: 'POP GROWTH',
+  C_SURGE_INDEX: 'SURGE IDX', S_PIPELINE_TO_STOCK: 'PIPELINE/STOCK',
+  S_MONTHS_OF_SUPPLY: 'MOS SUPPLY', M_LEASE_VELOCITY: 'LEASE VEL',
+  D_SEARCH_MOMENTUM: 'SRCH MOM',
+};
+
+interface MetricTickerItem { raw: string; color: string; }
+
+const formatMetricItem = (id: string, exampleValue: string, higherIsBetter: boolean): MetricTickerItem => {
+  const label = CURATED_METRIC_LABELS[id] || id;
+  const ev = (exampleValue || '').trim().split(' ')[0];
+  const isPos = ev.startsWith('+');
+  const isNeg = ev.startsWith('-');
+  const color = higherIsBetter
+    ? (isPos ? T.text.green : isNeg ? T.text.red : T.text.amber)
+    : (isNeg ? T.text.green : isPos ? T.text.red : T.text.amber);
+  return { raw: `${label}  ${ev}`, color };
+};
+
+const STATIC_METRICS_TICKER: MetricTickerItem[] = [
+  { raw: 'CAP RATE  5.2%',         color: T.text.amber },
+  { raw: 'RENT GROWTH  +3.2%',     color: T.text.green },
+  { raw: 'VACANCY  5.2%',          color: T.text.amber },
+  { raw: 'ABSORPTION  +125u/mo',   color: T.text.green },
+  { raw: 'EMPL GROWTH  +2.1%',     color: T.text.green },
+  { raw: 'WAGE GROWTH  +3.4%',     color: T.text.green },
+  { raw: 'POP GROWTH  +1.8%',      color: T.text.green },
+  { raw: 'SURGE IDX  +0.35',       color: T.text.green },
+  { raw: 'PIPELINE/STOCK  8.5%',   color: T.text.amber },
+  { raw: 'MOS SUPPLY  4.2mo',      color: T.text.amber },
+  { raw: 'LEASE VEL  24d',         color: T.text.amber },
+  { raw: 'SRCH MOM  +18%',         color: T.text.green },
+];
+
 const MKTDATA_TICKERS = [
   "^ TAMPA CAP 5.2% (-15bps)",
   "* MIAMI ABS 94.7%",
@@ -573,6 +617,7 @@ export const MainLayout: React.FC = () => {
   const [commandPanelOpen, setCommandPanelOpen] = useState(false);
   const [tickerItems, setTickerItems] = useState<TickerDeal[]>([]);
   const [newsTickerItems, setNewsTickerItems] = useState(STATIC_NEWS_TICKER);
+  const [metricsTicker, setMetricsTicker] = useState<MetricTickerItem[]>(STATIC_METRICS_TICKER);
   const [dealContext, setDealContext] = useState<DealContextInfo | null>(null);
 
   const isInsideDeal = location.pathname.startsWith('/deals/');
@@ -653,6 +698,20 @@ export const MainLayout: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    api.get('/metrics/catalog').then(res => {
+      const metrics: Array<Record<string, unknown>> = res.data?.metrics || [];
+      const ordered = CURATED_METRIC_IDS
+        .map(id => metrics.find(m => m.id === id))
+        .filter(Boolean) as Array<Record<string, unknown>>;
+      if (ordered.length > 0) {
+        setMetricsTicker(ordered.map(m =>
+          formatMetricItem(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean)
+        ));
+      }
+    }).catch(() => { /* keep static fallback */ });
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
@@ -724,21 +783,8 @@ export const MainLayout: React.FC = () => {
       <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
         items={MKTDATA_TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
       />
-      <TickerBar height={20} speed={28} label="PLATFORM" labelColor={T.text.amber}
-        items={(() => {
-          const avgScore = tickerItems.length > 0
-            ? Math.round(tickerItems.filter(d => d.score != null).reduce((s, d) => s + (d.score ?? 0), 0) / Math.max(1, tickerItems.filter(d => d.score != null).length))
-            : null;
-          const onlineAgents = agents.filter(a => a.status === 'online').length;
-          const critAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'high').length;
-          return [
-            { raw: `PIPELINE  ${tickerItems.length} DEALS`, color: T.text.amber },
-            { raw: `AVG JEDI  ${avgScore ?? '—'}`, color: avgScore != null && avgScore >= 75 ? T.text.green : avgScore != null && avgScore >= 50 ? T.text.amber : T.text.red },
-            { raw: `AGENTS  ${onlineAgents} ONLINE`, color: onlineAgents > 0 ? T.text.green : T.text.muted },
-            { raw: `ALERTS  ${critAlerts} ACTIVE`, color: critAlerts > 0 ? T.text.red : T.text.muted },
-            { raw: `SYSTEM  NOMINAL`, color: T.text.green },
-          ];
-        })()}
+      <TickerBar height={20} speed={28} label="METRICS" labelColor={T.text.amber}
+        items={metricsTicker}
       />
 
       {!isInsideDeal && <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={false} />}
