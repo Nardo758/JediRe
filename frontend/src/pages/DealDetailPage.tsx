@@ -86,6 +86,7 @@ import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
+import BloombergOverviewSection from '../components/deal/sections/BloombergOverviewSection';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
@@ -143,15 +144,54 @@ const CollaborationSection = (props: ScreenProps) => {
   );
 };
 
-const OverviewScreen = (props: ScreenProps) => (
-  <DealScreenWrapper passProps={props} tabs={[
-    { id: 'overview',    label: 'Deal Overview',   component: OverviewRouter },
-    { id: 'context',     label: 'Context Tracker', component: ContextTrackerSection },
-    { id: 'team',        label: 'Team',            component: TeamManagementSection },
-    { id: 'collaborate', label: 'Collaborate',      component: CollaborationSection },
-    { id: 'deal-status', label: 'Deal Status',     component: DealStatusSection },
-  ]} />
-);
+const OverviewScreen: React.FC<ScreenProps> = (props) => {
+  const [secondaryTab, setSecondaryTab] = React.useState<string | null>(null);
+
+  if (secondaryTab === 'context') return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#1A1F2E', borderBottom: '1px solid #1E2538' }}>
+        <button onClick={() => setSecondaryTab(null)} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 7, color: '#8B95A5', background: '#0D1117', border: '1px solid #1E2538', padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}>← OVERVIEW</button>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#E8ECF1', fontFamily: "'JetBrains Mono',monospace" }}>CONTEXT TRACKER</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto' }}><ContextTrackerSection {...props} /></div>
+    </div>
+  );
+  if (secondaryTab === 'team') return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#1A1F2E', borderBottom: '1px solid #1E2538' }}>
+        <button onClick={() => setSecondaryTab(null)} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 7, color: '#8B95A5', background: '#0D1117', border: '1px solid #1E2538', padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}>← OVERVIEW</button>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#E8ECF1', fontFamily: "'JetBrains Mono',monospace" }}>TEAM MANAGEMENT</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto' }}><TeamManagementSection {...props} /></div>
+    </div>
+  );
+  if (secondaryTab === 'collaborate') return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#1A1F2E', borderBottom: '1px solid #1E2538' }}>
+        <button onClick={() => setSecondaryTab(null)} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 7, color: '#8B95A5', background: '#0D1117', border: '1px solid #1E2538', padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}>← OVERVIEW</button>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#E8ECF1', fontFamily: "'JetBrains Mono',monospace" }}>COLLABORATE</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto' }}><CollaborationSection {...props} /></div>
+    </div>
+  );
+  if (secondaryTab === 'deal-status') return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#1A1F2E', borderBottom: '1px solid #1E2538' }}>
+        <button onClick={() => setSecondaryTab(null)} style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 7, color: '#8B95A5', background: '#0D1117', border: '1px solid #1E2538', padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}>← OVERVIEW</button>
+        <span style={{ fontSize: 9, fontWeight: 700, color: '#E8ECF1', fontFamily: "'JetBrains Mono',monospace" }}>DEAL STATUS</span>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto' }}><DealStatusSection {...props} /></div>
+    </div>
+  );
+
+  return (
+    <BloombergOverviewSection
+      deal={props.deal}
+      dealId={props.dealId as string}
+      onTabChange={setSecondaryTab}
+    />
+  );
+};
 const MarketScreen = (props: ScreenProps) => (
   <DealScreenWrapper passProps={props} tabs={[
     { id: 'market-intelligence', label: 'Market Intel', component: MarketIntelligencePage },
