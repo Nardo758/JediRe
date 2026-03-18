@@ -154,7 +154,7 @@ const MOUNT_PREFIX = {
   'design.routes':                 '/api/v1/design-assistant',
   'design-assistant.routes':       '/api/v1/design-assistant',
   'visibility.routes':             '/api/v1/visibility',
-  'intelligence.routes':           '/api/v1/zoning-intelligence',
+  'intelligence.routes':           '/api/v1/intelligence',
   'correlation.routes':            '/api/v1/correlations',
   'contacts-sync.routes':          '/api/v1',
   'notarize.routes':               '/api/v1/deals',

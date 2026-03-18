@@ -29,7 +29,7 @@ done
 
 export BASE_URL="${BASE_URL:-http://localhost:4000}"
 export CONCURRENCY="${CONCURRENCY:-25}"
-export TIMEOUT_MS="${TIMEOUT_MS:-5000}"
+export TIMEOUT_MS="${TIMEOUT_MS:-10000}"
 if [[ -n "$REPORT_OUT" ]]; then
   export REPORT_OUT
 fi

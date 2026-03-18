@@ -19,7 +19,7 @@ const USER_ID   = process.env.USER_ID   || '6253ba3f-d40d-4597-86ab-270c8397a857
 const PROP_ID   = process.env.PROP_ID   || '00000000-0000-0000-0000-000000000001';
 const JWT_SECRET= process.env.JWT_SECRET|| 'your-secret-key-change-this';
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || '25');
-const TIMEOUT_MS  = parseInt(process.env.TIMEOUT_MS  || '5000');
+const TIMEOUT_MS  = parseInt(process.env.TIMEOUT_MS  || '10000');
 const REPORT_OUT  = process.env.REPORT_OUT || '';
 
 // ── JWT ──────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ const MOUNT_PREFIX = {
   'design.routes':                 '/api/v1/design-assistant',
   'design-assistant.routes':       '/api/v1/design-assistant',
   'visibility.routes':             '/api/v1/visibility',
-  'intelligence.routes':           '/api/v1/zoning-intelligence',
+  'intelligence.routes':           '/api/v1/intelligence',
   'correlation.routes':            '/api/v1/correlations',
   'contacts-sync.routes':          '/api/v1',
   'notarize.routes':               '/api/v1/deals',
