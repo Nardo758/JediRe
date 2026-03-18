@@ -678,7 +678,7 @@ export const MainLayout: React.FC = () => {
     }}>
       <TopStatusBar contextLabel={contextLabel} agentCount={5} emailCount={5} />
 
-      <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={18} speed={30} />
+      <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={22} speed={30} label="DEALS" labelColor={T.text.amber} />
 
       {!isInsideDeal && <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={false} />}
 

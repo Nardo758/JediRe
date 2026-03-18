@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { TickerBar } from "../components/terminal/TickerBar";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
@@ -2193,37 +2194,35 @@ export default function TerminalPage() {
         </div>
       </div>
 
-      {/* ═══ TICKER — 27px ═══ */}
-      <div style={{height:27,background:"#06080E",borderBottom:`1px solid ${T.border.subtle}`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
-        <div style={{display:"flex",gap:24,whiteSpace:"nowrap",animation:"ticker 45s linear infinite",fontSize:9,lineHeight:"27px"}}>
-          {[...TICKERS,...TICKERS].map((t,i)=>(
-            <span key={i} style={{color:t.startsWith("^")?T.text.green:t.startsWith("v")?T.text.red:T.text.amber}}>{t}</span>
-          ))}
-        </div>
-      </div>
+      {/* ═══ MARKET DATA TICKER — 24px ═══ */}
+      <TickerBar
+        height={24}
+        speed={45}
+        label="MKTDATA"
+        labelColor={T.text.green}
+        items={TICKERS.map(t => ({
+          raw: t,
+          color: t.startsWith("^") ? T.text.green : t.startsWith("v") ? T.text.red : T.text.amber,
+        }))}
+      />
 
-      {/* ═══ NEWS TICKER — 24px ═══ */}
-      <div style={{height:24,background:theme==="dark"?"#06080E":T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
-        <div style={{padding:"0 8px",flexShrink:0,borderRight:`1px solid ${T.text.cyan}33`,height:"100%",display:"flex",alignItems:"center"}}>
-          <span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:800,color:T.text.cyan,letterSpacing:1.5}}>NEWS</span>
-        </div>
-        <div style={{flex:1,overflow:"hidden",display:"flex",alignItems:"center"}}>
-          <div style={{display:"flex",gap:20,whiteSpace:"nowrap",animation:"ticker 60s linear infinite",fontSize:9,lineHeight:"24px"}}>
-            {[...liveNews,...liveNews].map((n,i)=>{
-              const impactColor = n.impact?.includes("DEMAND")?T.text.green:n.impact?.includes("SUPPLY")||n.impact?.includes("RISK")?T.text.red:T.text.amber;
-              return (
-                <span key={i} onClick={()=>{setBottomTab("news");setTimeout(()=>{const el=document.getElementById(`news-row-${n.id}`);el?.scrollIntoView({block:"nearest",behavior:"smooth"});},50);}} style={{cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}>
-                  <span style={{color:T.text.muted,fontSize:8}}>[{n.time}]</span>
-                  <span style={{color:T.text.primary}}>{n.hl}</span>
-                  <span style={{color:T.text.muted}}>—</span>
-                  <span style={{fontWeight:700,color:impactColor,fontSize:8}}>{n.impact} {n.pts} pts</span>
-                  <span style={{color:T.text.muted,margin:"0 4px"}}>·</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      {/* ═══ NEWS TICKER — 22px ═══ */}
+      <TickerBar
+        height={22}
+        speed={60}
+        label="NEWS"
+        labelColor={T.text.cyan}
+        items={liveNews.map(n => {
+          const impactColor = n.impact?.includes("DEMAND") ? T.text.green : n.impact?.includes("SUPPLY") || n.impact?.includes("RISK") ? T.text.red : T.text.amber;
+          return {
+            raw: `[${n.time}]  ${n.hl}`,
+            color: T.text.primary,
+            sub: `${n.impact}  ${n.pts}pts`,
+            subColor: impactColor,
+            onClick: () => { setBottomTab("news"); setTimeout(() => { const el = document.getElementById(`news-row-${n.id}`); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50); },
+          };
+        })}
+      />
 
       {/* ═══ KPI BAR — 50px ═══ */}
       <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,height:50}}>
