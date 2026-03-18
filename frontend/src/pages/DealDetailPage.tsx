@@ -492,8 +492,8 @@ const DealDetailPage: React.FC = () => {
   const BG_CARD = '#0F1319';
   const BG_NAV = '#080C12';
   const BORDER = '#1e2a3d';
-  const AMBER = '#F59E0B';
-  const AMBER_L = '#FCD34D';
+  const AMBER = '#F5A623';
+  const AMBER_L = '#FFD166';
   const GREEN = '#10B981';
   const TEXT = '#E8E6E1';
   const TEXT_MID = '#9EA8B4';

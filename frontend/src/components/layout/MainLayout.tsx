@@ -10,7 +10,6 @@ import { T } from '../../styles/terminal-tokens';
 import { TickerBar } from '../terminal/TickerBar';
 import { Badge } from '../terminal/Badge';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
-import { GeographicScopeTabs } from '../trade-area';
 
 const DEFAULT_MAP_ID = 'default';
 
@@ -336,77 +335,118 @@ interface DealContextInfo {
 }
 
 const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) => {
-  const { activeScope, setScope, geographicStats, activeTradeArea } = useTradeAreaStore();
+  const { geographicStats, activeTradeArea } = useTradeAreaStore();
 
   if (!deal) return null;
 
   const dealName    = deal.name;
   const dealAddress = deal.address || deal.location;
 
+  const fmtOcc = (v: unknown): string | null => {
+    const n = Number(v);
+    if (!v || isNaN(n)) return null;
+    const pct = n > 1 ? n : n * 100;
+    return `${pct.toFixed(1)}%`;
+  };
+  const fmtRent = (v: unknown): string | null => {
+    const n = Number(v);
+    if (!v || isNaN(n)) return null;
+    return `$${Math.round(n).toLocaleString()}`;
+  };
+
+  const smOcc  = fmtOcc(geographicStats?.submarket?.occupancy);
+  const smRent = fmtRent(geographicStats?.submarket?.avg_rent);
+  const msaOcc  = fmtOcc(geographicStats?.msa?.occupancy);
+  const msaRent = fmtRent(geographicStats?.msa?.avg_rent);
+
+  const pipe = <span style={{ color: '#2A3348', margin: '0 8px', fontSize: 10 }}>│</span>;
+
   return (
     <div style={{
-      height: 36,
-      background: 'rgba(245, 166, 35, 0.08)',
-      borderBottom: `1px solid ${T.text.amber}22`,
+      height: 28,
+      background: '#060A14',
+      borderBottom: `1px solid #1E2538`,
       display: 'flex',
       alignItems: 'center',
-      padding: '0 12px',
-      gap: 16,
+      padding: '0 10px',
+      gap: 0,
       flexShrink: 0,
       fontFamily: T.font.mono,
-      fontSize: T.fontSize.sm,
       overflow: 'hidden',
     }}>
-      {/* Deal name + address */}
-      <span style={{ color: T.text.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, minWidth: 0 }}>
-        📍
+      {/* Left: pin + name + address + JEDI score */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
+        <span style={{ color: '#FF4757', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
         {dealName && (
-          <span style={{ color: T.text.primary, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+          <span style={{ color: '#E8ECF1', fontWeight: 700, fontSize: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.3 }}>
             {dealName}
           </span>
         )}
-        {dealName && dealAddress && (
-          <span style={{ color: T.text.muted, fontWeight: 400 }}>·</span>
-        )}
         {dealAddress && (
-          <span style={{ color: T.text.secondary, fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: dealName ? 180 : 280 }}>
-            {dealAddress}
+          <>
+            <span style={{ color: '#2A3348', margin: '0 5px', fontSize: 9 }}>·</span>
+            <span style={{ color: '#6B7585', fontSize: 7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.2 }}>
+              {dealAddress}
+            </span>
+          </>
+        )}
+        {deal.jedi_score != null && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
+            <span style={{ color: '#F5A623', fontSize: 8, fontWeight: 700, letterSpacing: 0.3 }}>JEDI {deal.jedi_score}</span>
+            {deal.delta_30d != null && (
+              <span style={{ fontSize: 7, fontWeight: 700, color: deal.delta_30d >= 0 ? '#00D26A' : '#FF4757' }}>
+                {deal.delta_30d >= 0 ? '▲' : '▼'}{deal.delta_30d >= 0 ? '+' : ''}{deal.delta_30d}
+              </span>
+            )}
           </span>
         )}
-        {!dealName && !dealAddress && (
-          <span style={{ color: T.text.primary }}>Deal</span>
-        )}
-      </span>
-      {deal.jedi_score != null && (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          <span style={{ color: T.text.amber, fontWeight: 700 }}>JEDI {deal.jedi_score}</span>
-          {deal.delta_30d != null && (
-            <span style={{
-              color: deal.delta_30d >= 0 ? T.text.green : T.text.red,
-              fontWeight: 600,
-            }}>
-              {deal.delta_30d >= 0 ? '▲' : '▼'}{deal.delta_30d >= 0 ? '+' : ''}{deal.delta_30d}
-            </span>
-          )}
-        </span>
-      )}
-      {deal.pipeline_stage && (
-        <Badge label={deal.pipeline_stage.toUpperCase()} color={T.text.cyan} />
-      )}
-      {deal.recommended_strategy && (
-        <Badge label={deal.recommended_strategy.toUpperCase()} color={T.text.purple} />
-      )}
+      </div>
 
-      {/* Geographic scope tabs — right-aligned in this bar */}
-      <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
-        <GeographicScopeTabs
-          activeScope={activeScope}
-          onChange={setScope}
-          tradeAreaEnabled={!!activeTradeArea}
-          onDefineTradeArea={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
-          stats={geographicStats as any}
-          compact
-        />
+      {/* Right: TRADE AREA | SUBMARKET | MSA | EDIT */}
+      <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            fontFamily: T.font.mono, fontSize: 7, fontWeight: 800,
+            color: activeTradeArea ? '#F5A623' : '#9EA8B4',
+            letterSpacing: 0.8,
+          }}
+        >
+          TRADE AREA
+        </button>
+
+        {(smOcc || smRent) && (
+          <>
+            {pipe}
+            <span style={{ fontSize: 7, color: '#6B7585', letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
+            <span style={{ fontSize: 7, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.2 }}>
+              {[smOcc, smRent].filter(Boolean).join(' · ')}
+            </span>
+          </>
+        )}
+
+        {(msaOcc || msaRent) && (
+          <>
+            {pipe}
+            <span style={{ fontSize: 7, color: '#6B7585', letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
+            <span style={{ fontSize: 7, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.2 }}>
+              {[msaOcc, msaRent].filter(Boolean).join(' · ')}
+            </span>
+          </>
+        )}
+
+        {pipe}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
+          style={{
+            background: 'none', border: `1px solid #2A3348`, cursor: 'pointer',
+            padding: '1px 6px', fontFamily: T.font.mono,
+            fontSize: 7, fontWeight: 600, color: '#6B7585', letterSpacing: 0.5,
+          }}
+        >
+          EDIT
+        </button>
       </div>
     </div>
   );
