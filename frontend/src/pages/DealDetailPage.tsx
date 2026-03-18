@@ -224,12 +224,11 @@ const DealDetailPage: React.FC = () => {
   const dealType = useDealType();
   const developmentEnvelope = useDealStore((s) => s.developmentEnvelope);
   const selectedDevelopmentPathId = useDealStore((s) => s.selectedDevelopmentPathId);
-  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
+  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea, setGeographicStats } = useTradeAreaStore();
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [geographicStats, setGeographicStats] = useState<any>(null);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
 
@@ -352,6 +351,12 @@ const DealDetailPage: React.FC = () => {
     };
     window.addEventListener('deal-tab-change', handleNavTabChange);
     return () => window.removeEventListener('deal-tab-change', handleNavTabChange);
+  }, []);
+
+  useEffect(() => {
+    const handleOpenTradeAreaPanel = () => setShowTradeAreaPanel(true);
+    window.addEventListener('open-trade-area-panel', handleOpenTradeAreaPanel);
+    return () => window.removeEventListener('open-trade-area-panel', handleOpenTradeAreaPanel);
   }, []);
 
   useEffect(() => {
@@ -512,16 +517,8 @@ const DealDetailPage: React.FC = () => {
             );
           })}
 
-          {/* Right side: scope selector, presence, module code */}
+          {/* Right side: presence indicator + module code */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingRight: 12, borderLeft: `1px solid ${BORDER}`, flexShrink: 0 }}>
-            <GeographicScopeTabs
-              activeScope={activeScope}
-              onChange={setScope}
-              tradeAreaEnabled={!!geographicStats?.trade_area}
-              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-              stats={geographicStats || {}}
-              compact
-            />
             {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
             <span style={{ fontSize: 8, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1.5, fontWeight: 700 }}>
               {activeScreenData.code}

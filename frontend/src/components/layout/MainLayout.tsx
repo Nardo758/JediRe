@@ -9,6 +9,8 @@ import api from '../../lib/api';
 import { T } from '../../styles/terminal-tokens';
 import { TickerBar } from '../terminal/TickerBar';
 import { Badge } from '../terminal/Badge';
+import { useTradeAreaStore } from '../../stores/tradeAreaStore';
+import { GeographicScopeTabs } from '../trade-area';
 
 const DEFAULT_MAP_ID = 'default';
 
@@ -246,13 +248,15 @@ interface DealContextInfo {
 }
 
 const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) => {
+  const { activeScope, setScope, geographicStats, activeTradeArea } = useTradeAreaStore();
+
   if (!deal) return null;
 
   const label = deal.address || deal.location || deal.name || 'Deal';
 
   return (
     <div style={{
-      height: 32,
+      height: 36,
       background: 'rgba(245, 166, 35, 0.08)',
       borderBottom: `1px solid ${T.text.amber}22`,
       display: 'flex',
@@ -262,12 +266,14 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
       flexShrink: 0,
       fontFamily: T.font.mono,
       fontSize: T.fontSize.sm,
+      overflow: 'hidden',
     }}>
-      <span style={{ color: T.text.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-        📍 <span style={{ color: T.text.primary }}>{label}</span>
+      {/* Deal address + JEDI score */}
+      <span style={{ color: T.text.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        📍 <span style={{ color: T.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{label}</span>
       </span>
       {deal.jedi_score != null && (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           <span style={{ color: T.text.amber, fontWeight: 700 }}>JEDI {deal.jedi_score}</span>
           {deal.delta_30d != null && (
             <span style={{
@@ -285,6 +291,18 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
       {deal.recommended_strategy && (
         <Badge label={deal.recommended_strategy.toUpperCase()} color={T.text.purple} />
       )}
+
+      {/* Geographic scope tabs — right-aligned in this bar */}
+      <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+        <GeographicScopeTabs
+          activeScope={activeScope}
+          onChange={setScope}
+          tradeAreaEnabled={!!activeTradeArea}
+          onDefineTradeArea={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
+          stats={geographicStats as any}
+          compact
+        />
+      </div>
     </div>
   );
 };
