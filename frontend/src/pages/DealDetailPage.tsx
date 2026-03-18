@@ -640,12 +640,25 @@ const DealDetailPage: React.FC = () => {
                 </div>
               )}
             </div>
-            {/* Presence indicator + module code */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingRight: 12, borderLeft: `1px solid ${BORDER}`, height: '100%', paddingLeft: 10 }}>
+            {/* Search bar */}
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
+              <input
+                type="text"
+                placeholder="⌕  SEARCH DEAL..."
+                style={{
+                  fontFamily: MONO, fontSize: 8, fontWeight: 500,
+                  background: '#0D1117', color: TEXT,
+                  border: `1px solid ${BORDER}`,
+                  padding: '3px 10px', width: 160, letterSpacing: 0.4,
+                  outline: 'none',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                onBlur={e => { e.currentTarget.style.borderColor = BORDER; }}
+              />
+            </div>
+            {/* Presence indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', paddingLeft: 10, paddingRight: 10 }}>
               {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
-              <span style={{ fontSize: 8, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1.5, fontWeight: 700 }}>
-                {activeScreenData.code}
-              </span>
             </div>
           </div>
         </div>

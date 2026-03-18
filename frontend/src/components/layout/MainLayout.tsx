@@ -407,13 +407,13 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
           style={{
-            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
-            fontFamily: T.font.mono, fontSize: 7, fontWeight: 800,
-            color: activeTradeArea ? '#F5A623' : '#9EA8B4',
-            letterSpacing: 0.8,
+            background: 'transparent', border: `1px solid #F5A62355`, cursor: 'pointer',
+            padding: '2px 8px', fontFamily: T.font.mono,
+            fontSize: 7, fontWeight: 800, color: '#F5A623', letterSpacing: 0.8,
+            display: 'flex', alignItems: 'center', gap: 4,
           }}
         >
-          TRADE AREA
+          ▶ TRADE AREA
         </button>
 
         {(smOcc || smRent) && (
@@ -435,18 +435,6 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
             </span>
           </>
         )}
-
-        {pipe}
-        <button
-          onClick={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
-          style={{
-            background: 'none', border: `1px solid #2A3348`, cursor: 'pointer',
-            padding: '1px 6px', fontFamily: T.font.mono,
-            fontSize: 7, fontWeight: 600, color: '#6B7585', letterSpacing: 0.5,
-          }}
-        >
-          EDIT
-        </button>
       </div>
     </div>
   );
