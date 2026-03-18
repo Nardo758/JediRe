@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
@@ -2193,6 +2194,22 @@ export default function TerminalPage() {
         </div>
       </div>
 
+
+      {/* ═══ GLOBAL TICKERS — 3 × 20px ═══ */}
+      <TickerBar height={20} speed={30} label="DEALS" labelColor={T.text.amber}
+        items={liveDeals.length > 0
+          ? liveDeals.slice(0, 30).map(d => ({ name: d.name, score: d.score }))
+          : [{ name: 'JEDI RE' }]}
+      />
+      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
+        items={TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
+      />
+      <TickerBar height={20} speed={55} label="NEWS" labelColor={T.text.cyan}
+        items={liveNews.map(n => {
+          const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
+          return { raw: `[${n.time}]  ${n.hl}`, color: T.text.primary, sub: `${n.impact}  ${n.pts}pts`, subColor: impactColor };
+        })}
+      />
 
       {/* ═══ KPI BAR — 50px ═══ */}
       <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,height:50}}>
