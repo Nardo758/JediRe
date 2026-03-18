@@ -1385,10 +1385,10 @@ export function TerminalPrototype() {
       {/* CRT scanline overlay */}
       <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)"}}/>
 
-      {/* ═══ TOP STATUS BAR — 36px ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:36,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+      {/* ═══ TOP STATUS BAR — 24px (matches MainLayout TopStatusBar) ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:24,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2}}>JEDI RE</span>
+          <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,letterSpacing:2,background:"linear-gradient(135deg,#00E5A0,#00B4D8)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>JEDI RE</span>
           <span style={{fontSize:9,color:T.text.muted}}>|</span>
           <span style={{fontSize:9,color:T.text.secondary}}>{ctx==="portfolio"?"PORTFOLIO VIEW":"DEAL CAPSULE"}</span>
         </div>
