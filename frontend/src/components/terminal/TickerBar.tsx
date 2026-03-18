@@ -5,9 +5,9 @@ interface TickerItem {
   name: string;
   score?: number;
   delta?: string;
-  raw?: string;        // pre-formatted string (used by market ticker)
-  color?: string;      // explicit color override for raw items
-  sub?: string;        // secondary text (e.g. impact label)
+  raw?: string;
+  color?: string;
+  sub?: string;
   subColor?: string;
   onClick?: () => void;
 }
@@ -16,31 +16,31 @@ interface TickerBarProps {
   items: TickerItem[];
   speed?: number;
   height?: number;
-  label?: string;       // left prefix tab label e.g. "DEALS" / "MKTDATA" / "NEWS"
+  label?: string;
   labelColor?: string;
   style?: React.CSSProperties;
 }
 
 const MONO = T.font.mono;
 const BORDER = T.border.subtle;
+const TOP_BAR_BG = '#06080E';
 
 export const TickerBar: React.FC<TickerBarProps> = ({
   items,
   speed = 40,
-  height = 24,
+  height = 18,
   label,
   labelColor,
   style,
 }) => {
   const doubled = [...items, ...items];
   const durationSecs = Math.max(items.length * speed, 20);
-
   const labelCol = labelColor ?? T.text.cyan;
 
   return (
     <div style={{
       height,
-      background: T.bg.topBar,
+      background: TOP_BAR_BG,
       borderBottom: `1px solid ${BORDER}`,
       overflow: 'hidden',
       display: 'flex',
@@ -53,18 +53,34 @@ export const TickerBar: React.FC<TickerBarProps> = ({
           0%   { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
+        @keyframes tickerPulse {
+          0%, 100% { opacity: 1; box-shadow: 0 0 3px ${labelCol}66; }
+          50%       { opacity: 0.5; box-shadow: 0 0 6px ${labelCol}99; }
+        }
       `}</style>
 
-      {/* Label tab */}
+      {/* Label tab — v0.34: ultra-dark bg + 2px left accent border + pulsing live dot */}
       {label && (
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '0 8px',
-          borderRight: `1px solid ${labelCol}33`,
+          gap: 5,
+          padding: '0 8px 0 6px',
+          borderLeft: `2px solid ${labelCol}`,
+          borderRight: `1px solid ${labelCol}22`,
           flexShrink: 0,
-          background: `${labelCol}0D`,
+          background: TOP_BAR_BG,
         }}>
+          {/* Live pulsing dot */}
+          <span style={{
+            display: 'inline-block',
+            width: 3,
+            height: 3,
+            borderRadius: '50%',
+            background: labelCol,
+            flexShrink: 0,
+            animation: 'tickerPulse 2s ease-in-out infinite',
+          }} />
           <span style={{
             fontFamily: MONO,
             fontSize: 7,
@@ -79,7 +95,7 @@ export const TickerBar: React.FC<TickerBarProps> = ({
       )}
 
       {/* Scrolling content */}
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center' }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', background: TOP_BAR_BG }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -99,15 +115,14 @@ export const TickerBar: React.FC<TickerBarProps> = ({
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: 5,
-                  padding: '0 14px',
+                  gap: 4,
+                  padding: '0 12px',
                   borderRight: `1px solid ${BORDER}`,
-                  fontSize: 9,
+                  fontSize: 8,
                   fontFamily: MONO,
                   cursor: item.onClick ? 'pointer' : 'default',
                 }}
               >
-                {/* Raw pre-formatted string (market ticker) */}
                 {item.raw != null ? (
                   <span style={{ color: item.color ?? T.text.amber }}>{item.raw}</span>
                 ) : (
@@ -121,9 +136,8 @@ export const TickerBar: React.FC<TickerBarProps> = ({
                     )}
                   </>
                 )}
-                {/* Secondary label (e.g. news impact) */}
                 {item.sub && (
-                  <span style={{ color: item.subColor ?? T.text.muted, fontSize: 8, fontWeight: 700 }}>
+                  <span style={{ color: item.subColor ?? T.text.muted, fontSize: 7, fontWeight: 700 }}>
                     {item.sub}
                   </span>
                 )}

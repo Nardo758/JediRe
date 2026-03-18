@@ -2221,17 +2221,17 @@ export default function TerminalPage() {
       </div>
 
 
-      {/* ═══ GLOBAL TICKERS — 3 × 20px ═══ */}
-      <TickerBar height={20} speed={55} label="NEWS" labelColor={T.text.cyan}
+      {/* ═══ GLOBAL TICKERS — 3 × 18px (Bloomberg v0.34) ═══ */}
+      <TickerBar height={18} speed={55} label="NEWS" labelColor={T.text.cyan}
         items={liveNews.map(n => {
           const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
           return { raw: `[${n.time}]  ${n.hl}`, color: T.text.primary, sub: `${n.impact}  ${n.pts}pts`, subColor: impactColor };
         })}
       />
-      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
+      <TickerBar height={18} speed={45} label="MKTDATA" labelColor={T.text.green}
         items={TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
       />
-      <TickerBar height={20} speed={28} label="METRICS" labelColor={T.text.amber}
+      <TickerBar height={18} speed={28} label="METRICS" labelColor={T.text.amber}
         items={metricsTicker}
       />
 
