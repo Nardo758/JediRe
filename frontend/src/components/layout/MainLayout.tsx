@@ -252,7 +252,8 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
 
   if (!deal) return null;
 
-  const label = deal.address || deal.location || deal.name || 'Deal';
+  const dealName    = deal.name;
+  const dealAddress = deal.address || deal.location;
 
   return (
     <div style={{
@@ -268,9 +269,25 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
       fontSize: T.fontSize.sm,
       overflow: 'hidden',
     }}>
-      {/* Deal address + JEDI score */}
-      <span style={{ color: T.text.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        📍 <span style={{ color: T.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{label}</span>
+      {/* Deal name + address */}
+      <span style={{ color: T.text.amber, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0, minWidth: 0 }}>
+        📍
+        {dealName && (
+          <span style={{ color: T.text.primary, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+            {dealName}
+          </span>
+        )}
+        {dealName && dealAddress && (
+          <span style={{ color: T.text.muted, fontWeight: 400 }}>·</span>
+        )}
+        {dealAddress && (
+          <span style={{ color: T.text.secondary, fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: dealName ? 180 : 280 }}>
+            {dealAddress}
+          </span>
+        )}
+        {!dealName && !dealAddress && (
+          <span style={{ color: T.text.primary }}>Deal</span>
+        )}
       </span>
       {deal.jedi_score != null && (
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
@@ -541,7 +558,7 @@ export const MainLayout: React.FC = () => {
   const dealId = dealIdMatch?.[1];
 
   const contextLabel = isInsideDeal
-    ? (dealContext?.address || dealContext?.name || 'DEAL')
+    ? (dealContext?.name || dealContext?.address || 'DEAL')
     : 'PORTFOLIO';
 
   useEffect(() => {
