@@ -392,6 +392,11 @@ export default function TerminalPage() {
   const [fStage, setFStage] = useState("ALL");
   const [fStrat, setFStrat] = useState("ALL");
   const [bottomTab, setBottomTab] = useState("alerts");
+  const [bottomOpen, setBottomOpen] = useState(true);
+  const [capsulePickerOpen, setCapsulePickerOpen] = useState(false);
+  const [capsulesList, setCapsulesList] = useState<Array<{id:string;deal_name:string}>>([]);
+  const [selectedCapsuleId, setSelectedCapsuleId] = useState<string>("");
+  const [pushStatus, setPushStatus] = useState<"idle"|"sending"|"ok"|"err">("idle");
   const [mapOpen, setMapOpen] = useState(false);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
@@ -607,6 +612,33 @@ export default function TerminalPage() {
       setMetricsTicker(rawCatalogMetricsT.map(m => fmtMetric(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean, metricsScope)));
     }
   }, [rawCatalogMetricsT, metricsScope]);
+
+  useEffect(() => {
+    apiClient.get('/api/capsules', { params:{ user_id:'user-1', limit:50 } })
+      .then(res => {
+        const list = res.data?.capsules || [];
+        setCapsulesList(list.map((c: Record<string,unknown>) => ({ id: c.id as string, deal_name: (c.deal_name || c.title || c.id) as string })));
+        if (list.length > 0 && !selectedCapsuleId) setSelectedCapsuleId((list[0] as Record<string,unknown>).id as string);
+      }).catch(()=>{});
+  }, []);
+
+  const pushToCapsule = () => {
+    if (!selectedCapsuleId) return;
+    setPushStatus("sending");
+    const tabLabels: Record<string,string> = { alerts:"Alerts", news:"News Intel", email:"Emails", agents:"AI Agents", tasks:"Tasks", media:"Media" };
+    apiClient.post(`/api/capsules/${selectedCapsuleId}/activity`, {
+      user_id: 'user-1',
+      activity_type: 'intel_push',
+      activity_data: { source_tab: bottomTab, tab_label: tabLabels[bottomTab] || bottomTab, pushed_at: new Date().toISOString() },
+    }).then(() => {
+      setPushStatus("ok");
+      setCapsulePickerOpen(false);
+      setTimeout(() => setPushStatus("idle"), 2500);
+    }).catch(() => {
+      setPushStatus("err");
+      setTimeout(() => setPushStatus("idle"), 2500);
+    });
+  };
 
   useEffect(() => {
     apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })
@@ -2310,9 +2342,14 @@ export default function TerminalPage() {
         {mapOpen&&<MapSidebar/>}
       </div>
 
-      {/* ═══ BOTTOM PANEL — 190px ═══ */}
-      <div style={{height:190,borderTop:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel}}>
-        <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+      {/* ═══ BOTTOM PANEL — collapsible ═══ */}
+      <div style={{position:"relative",height:bottomOpen?190:28,borderTop:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel,transition:"height 0.18s ease"}}>
+        {/* Tab bar */}
+        <div style={{display:"flex",background:T.bg.header,borderBottom:bottomOpen?`1px solid ${T.border.subtle}`:"none",flexShrink:0,height:28,alignItems:"center"}}>
+          {/* Collapse / expand toggle */}
+          <button onClick={()=>setBottomOpen(o=>!o)} title={bottomOpen?"Collapse panel":"Expand panel"} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 8px",height:"100%",flexShrink:0,lineHeight:1}}>
+            {bottomOpen?"▼":"▲"}
+          </button>
           {[
             {id:"alerts",l:"ALERTS",ct:hAlerts,cc:T.text.red},
             {id:"news",l:"NEWS",ct:liveNews.length,cc:T.text.cyan},
@@ -2321,19 +2358,49 @@ export default function TerminalPage() {
             {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
             {id:"media",l:"MEDIA",ct:mediaWindows.length,cc:T.text.orange},
           ].map(tab=>(
-            <button key={tab.id} onClick={()=>setBottomTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 14px",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            <button key={tab.id} onClick={()=>{setBottomTab(tab.id);if(!bottomOpen)setBottomOpen(true);}} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"0 14px",height:"100%",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
               {tab.l}
               <span style={{fontSize:7,fontWeight:700,padding:"0px 4px",background:bottomTab===tab.id?"rgba(0,0,0,0.2)":tab.cc+"18",color:bottomTab===tab.id?"rgba(0,0,0,0.7)":tab.cc}}>{tab.ct}</span>
             </button>
           ))}
           <div style={{flex:1}}/>
-          <div style={{display:"flex",alignItems:"center",paddingRight:12,gap:6}}>
-            <button onClick={()=>setBottomTab("news")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>NEWS INTEL →</button>
+          <div style={{display:"flex",alignItems:"center",paddingRight:8,gap:6,position:"relative"}}>
+            {/* Capsule push status flash */}
+            {pushStatus==="ok"&&<span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.green,fontWeight:700,letterSpacing:0.5}}>✓ PUSHED</span>}
+            {pushStatus==="err"&&<span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.red,fontWeight:700}}>✗ FAILED</span>}
+            {/* Push to capsule button */}
+            <button
+              onClick={()=>{setCapsulePickerOpen(o=>!o);}}
+              style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:capsulePickerOpen?T.text.amber:"transparent",color:capsulePickerOpen?T.bg.terminal:T.text.amber,border:`1px solid ${T.text.amber}55`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.4,height:20,display:"flex",alignItems:"center",gap:4}}
+            >
+              ▶ CAPSULE
+            </button>
+            {/* Capsule picker dropdown */}
+            {capsulePickerOpen&&(
+              <div style={{position:"absolute",bottom:30,right:0,background:T.bg.panelAlt,border:`1px solid ${T.text.amber}55`,padding:10,width:260,zIndex:999,boxShadow:"0 8px 24px rgba(0,0,0,0.6)"}}>
+                <div style={{fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>PUSH "{bottomTab.toUpperCase()}" INTEL TO CAPSULE</div>
+                {capsulesList.length===0
+                  ? <div style={{fontSize:8,color:T.text.muted,marginBottom:8}}>No capsules found. Create one first.</div>
+                  : <select value={selectedCapsuleId} onChange={e=>setSelectedCapsuleId(e.target.value)} style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.medium}`,padding:"4px 6px",width:"100%",marginBottom:8}}>
+                      {capsulesList.map(c=><option key={c.id} value={c.id}>{c.deal_name}</option>)}
+                    </select>
+                }
+                <div style={{display:"flex",gap:6,justifyContent:"flex-end"}}>
+                  <button onClick={()=>setCapsulePickerOpen(false)} style={{fontFamily:T.font.mono,fontSize:8,background:"transparent",color:T.text.muted,border:`1px solid ${T.border.subtle}`,padding:"3px 10px",cursor:"pointer"}}>CANCEL</button>
+                  <button disabled={!selectedCapsuleId||pushStatus==="sending"||capsulesList.length===0} onClick={pushToCapsule} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 12px",cursor:"pointer",opacity:(!selectedCapsuleId||capsulesList.length===0)?0.4:1}}>
+                    {pushStatus==="sending"?"SENDING…":"PUSH"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        <div style={{flex:1,overflow:"auto"}}>
-          {renderBottomTab()}
-        </div>
+        {/* Content — only rendered when open */}
+        {bottomOpen&&(
+          <div style={{flex:1,overflow:"auto"}}>
+            {renderBottomTab()}
+          </div>
+        )}
       </div>
 
       {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}

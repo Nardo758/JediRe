@@ -544,9 +544,41 @@ export function createCapsuleRoutes(pool: Pool): Router {
   });
 
   /**
-   * GET /api/capsules/:id/activity
-   * Get activity log for a capsule
+   * POST /api/capsules/:id/activity
+   * Push an intel item to a capsule's activity feed
    */
+  router.post('/:id/activity', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { user_id, activity_type, activity_data } = req.body;
+
+      if (!user_id || !activity_type) {
+        return res.status(400).json({ error: 'Missing required parameters: user_id, activity_type' });
+      }
+
+      const capsuleResult = await pool.query(
+        `SELECT id FROM deal_capsules WHERE id = $1 AND user_id = $2`,
+        [id, user_id]
+      );
+
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Capsule not found' });
+      }
+
+      const result = await pool.query(
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [id, user_id, activity_type, JSON.stringify(activity_data ?? {})]
+      );
+
+      res.status(201).json({ success: true, activity: result.rows[0] });
+    } catch (error) {
+      console.error('Error logging capsule activity:', error);
+      res.status(500).json({ error: 'Failed to log capsule activity' });
+    }
+  });
+
   router.get('/:id/activity', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
