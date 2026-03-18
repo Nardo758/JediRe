@@ -14,6 +14,27 @@ import { GeographicScopeTabs } from '../trade-area';
 
 const DEFAULT_MAP_ID = 'default';
 
+const MKTDATA_TICKERS = [
+  "^ TAMPA CAP 5.2% (-15bps)",
+  "* MIAMI ABS 94.7%",
+  "v ORL PIPELINE +2400",
+  "^ JAX EMPL +3.2%",
+  "* FL HOME $412K",
+  "^ RENT TPA +3.7%",
+  "* FDOT I-275 148.2K",
+  "v INS +18% YoY",
+  "^ NOCATEE +42%",
+  "* TPA JOBS #3",
+];
+
+const STATIC_NEWS_TICKER = [
+  { id: "n1", time: "14:23", hl: "Amazon announces 2,000-job Tampa HQ expansion",            impact: "+DEMAND", pts: "+3.2" },
+  { id: "n2", time: "13:41", hl: "Greystar breaks ground 380-unit tower Downtown Tampa",    impact: "+SUPPLY", pts: "-1.8" },
+  { id: "n3", time: "11:15", hl: "FL Legislature passes insurance reform, 8% rate cap",     impact: "RISK DN", pts: "+1.2" },
+  { id: "n4", time: "09:32", hl: "Nocatee named #2 top-selling MPC nationally",             impact: "+DEMAND", pts: "+2.4" },
+  { id: "n5", time: "YST",   hl: "Miami-Dade condo reserve law triggers $2.1B assessments", impact: "+DEMAND", pts: "+0.8" },
+];
+
 const PORTFOLIO_NAV = [
   { key: 'F1', label: 'DASHBOARD', path: '/dashboard' },
   { key: 'F2', label: 'PIPELINE',  path: '/deals' },
@@ -551,6 +572,7 @@ export const MainLayout: React.FC = () => {
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [commandPanelOpen, setCommandPanelOpen] = useState(false);
   const [tickerItems, setTickerItems] = useState<TickerDeal[]>([]);
+  const [newsTickerItems, setNewsTickerItems] = useState(STATIC_NEWS_TICKER);
   const [dealContext, setDealContext] = useState<DealContextInfo | null>(null);
 
   const isInsideDeal = location.pathname.startsWith('/deals/');
@@ -616,6 +638,21 @@ export const MainLayout: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    api.get('/news/feed').then(res => {
+      const raw: Array<Record<string, unknown>> = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.events || res.data?.news || []);
+      if (raw.length > 0) {
+        setNewsTickerItems(raw.slice(0, 12).map((n, i) => ({
+          id: (n.id as string) || String(i),
+          time: n.publishedAt ? new Date(n.publishedAt as string).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : (n.time as string) || '—',
+          hl: (n.headline || n.title || n.description || 'Market update') as string,
+          impact: (n.impact || n.marketImpact || (n.sentiment === 'positive' ? '+DEMAND' : n.sentiment === 'negative' ? 'RISK DN' : 'INFO')) as string,
+          pts: n.scoreImpact != null ? ((n.scoreImpact as number) > 0 ? `+${(n.scoreImpact as number).toFixed(1)}` : (n.scoreImpact as number).toFixed(1)) : (n.pts as string) || '0.0',
+        })));
+      }
+    }).catch(() => { /* keep static fallback */ });
+  }, []);
+
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
@@ -678,7 +715,16 @@ export const MainLayout: React.FC = () => {
     }}>
       <TopStatusBar contextLabel={contextLabel} agentCount={5} emailCount={5} />
 
-      <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={22} speed={30} label="DEALS" labelColor={T.text.amber} />
+      <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={20} speed={30} label="DEALS" labelColor={T.text.amber} />
+      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
+        items={MKTDATA_TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
+      />
+      <TickerBar height={20} speed={55} label="NEWS" labelColor={T.text.cyan}
+        items={newsTickerItems.map(n => {
+          const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
+          return { raw: `[${n.time}]  ${n.hl}`, color: T.text.primary, sub: `${n.impact}  ${n.pts}pts`, subColor: impactColor };
+        })}
+      />
 
       {!isInsideDeal && <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={false} />}
 

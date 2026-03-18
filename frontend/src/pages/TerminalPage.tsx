@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { TickerBar } from "../components/terminal/TickerBar";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
@@ -2194,35 +2193,6 @@ export default function TerminalPage() {
         </div>
       </div>
 
-      {/* ═══ MARKET DATA TICKER — 24px ═══ */}
-      <TickerBar
-        height={24}
-        speed={45}
-        label="MKTDATA"
-        labelColor={T.text.green}
-        items={TICKERS.map(t => ({
-          raw: t,
-          color: t.startsWith("^") ? T.text.green : t.startsWith("v") ? T.text.red : T.text.amber,
-        }))}
-      />
-
-      {/* ═══ NEWS TICKER — 22px ═══ */}
-      <TickerBar
-        height={22}
-        speed={60}
-        label="NEWS"
-        labelColor={T.text.cyan}
-        items={liveNews.map(n => {
-          const impactColor = n.impact?.includes("DEMAND") ? T.text.green : n.impact?.includes("SUPPLY") || n.impact?.includes("RISK") ? T.text.red : T.text.amber;
-          return {
-            raw: `[${n.time}]  ${n.hl}`,
-            color: T.text.primary,
-            sub: `${n.impact}  ${n.pts}pts`,
-            subColor: impactColor,
-            onClick: () => { setBottomTab("news"); setTimeout(() => { const el = document.getElementById(`news-row-${n.id}`); el?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50); },
-          };
-        })}
-      />
 
       {/* ═══ KPI BAR — 50px ═══ */}
       <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,height:50}}>
