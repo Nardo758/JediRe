@@ -31,8 +31,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  BarChart3, DollarSign, Bot, TrendingUp,
-  Building2, Target, Package, MapPin, Calculator,
+  DollarSign, Bot, TrendingUp,
+  Building2, Target, Package, Calculator,
   ArrowLeft, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, ArrowRight
 } from 'lucide-react';
@@ -438,80 +438,19 @@ const DealDetailPage: React.FC = () => {
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, marginBottom: -24, marginLeft: -24, marginRight: -24 }}>
-        {/* ── Bloomberg Terminal Top Bar ── */}
-        <div style={{
-          background: BG_NAV, borderBottom: `1px solid ${BORDER}`,
-          padding: '10px 20px', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
-            <button
-              style={{ color: TEXT_DIM, background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }}
-              onClick={() => navigate(-1)}
-            >
-              <ArrowLeft size={15} />
-            </button>
-            {/* Terminal identifier */}
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 2, color: AMBER_L, fontFamily: MONO,
-              background: '#1a1200', border: `1px solid ${AMBER}50`, borderRadius: 4, padding: '2px 8px' }}>
-              DEAL CAPSULE
-            </span>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: TEXT, fontFamily: SANS, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {deal.name || 'Untitled Deal'}
-                </span>
-                <span style={{ fontSize: 9, fontWeight: 700, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1,
-                  background: `${BORDER}80`, borderRadius: 4, padding: '2px 7px', textTransform: 'uppercase' }}>
-                  {deal.project_type || deal.property_type || 'MULTIFAMILY'}
-                </span>
-                {deal.status && (
-                  <span style={{
-                    fontSize: 9, fontWeight: 700, letterSpacing: 1, fontFamily: MONO,
-                    borderRadius: 4, padding: '2px 7px',
-                    background: deal.status === 'active' ? '#022c22' : deal.status === 'closed' ? '#0d1e3d' : '#1a1200',
-                    color: deal.status === 'active' ? GREEN : deal.status === 'closed' ? '#60A5FA' : AMBER,
-                    border: `1px solid ${deal.status === 'active' ? GREEN : deal.status === 'closed' ? '#3B82F6' : AMBER}50`,
-                  }}>
-                    {deal.status.toUpperCase()}
-                  </span>
-                )}
-                <DevPathBadge />
-              </div>
-              {(deal.address || deal.location) && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
-                  <MapPin size={10} style={{ color: TEXT_DIM, flexShrink: 0 }} />
-                  <span style={{ fontSize: 10, color: TEXT_DIM, fontFamily: MONO, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {deal.address || deal.location}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-            <GeographicScopeTabs
-              activeScope={activeScope}
-              onChange={setScope}
-              tradeAreaEnabled={!!geographicStats?.trade_area}
-              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-              stats={geographicStats || {}}
-              compact
-            />
-            {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
-            {deal.jedi_score && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: AMBER, fontFamily: MONO, fontWeight: 700 }}>
-                <Activity size={11} />
-                {deal.jedi_score}
-              </span>
-            )}
-          </div>
-        </div>
 
         {/* ── F-Key Navigation Bar ── */}
         <div style={{
           background: BG_CARD, borderBottom: `1px solid ${BORDER}`,
-          padding: '0 16px', flexShrink: 0, display: 'flex', alignItems: 'stretch', overflowX: 'auto',
+          padding: '0 0 0 8px', flexShrink: 0, display: 'flex', alignItems: 'stretch', overflowX: 'auto',
         }}>
+          {/* Back button */}
+          <button
+            onClick={() => navigate(-1)}
+            style={{ color: TEXT_DIM, background: 'none', border: 'none', borderRight: `1px solid ${BORDER}`, cursor: 'pointer', padding: '0 10px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+          >
+            <ArrowLeft size={13} />
+          </button>
           {dealScreens.map(s => {
             const isActive = s.id === activeTab;
             return (
@@ -537,8 +476,17 @@ const DealDetailPage: React.FC = () => {
               </button>
             );
           })}
-          {/* Right side: module code */}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', paddingRight: 8 }}>
+          {/* Right side: geographic scope + presence + module code */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, paddingRight: 10, flexShrink: 0 }}>
+            <GeographicScopeTabs
+              activeScope={activeScope}
+              onChange={setScope}
+              tradeAreaEnabled={!!geographicStats?.trade_area}
+              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
+              stats={geographicStats || {}}
+              compact
+            />
+            {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
             <span style={{ fontSize: 9, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1 }}>
               {activeScreenData.code}
             </span>

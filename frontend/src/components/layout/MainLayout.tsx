@@ -641,7 +641,7 @@ export const MainLayout: React.FC = () => {
 
       <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={18} speed={30} />
 
-      <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={isInsideDeal} />
+      {!isInsideDeal && <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={false} />}
 
       {isInsideDeal && <DealContextBar deal={dealContext} />}
 
