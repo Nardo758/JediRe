@@ -134,7 +134,7 @@ const MOUNT_PREFIX = {
   'proforma-generator.routes':     '/api/v1/properties',
   'entitlement.routes':            '/api/v1/entitlements',
   'regulatory-alert.routes':       '/api/v1/regulatory-alerts',
-  'capsule.routes':                '/api/capsules',
+  'capsule.routes':                '/api/v1/capsules',
   'trafficPrediction.routes':      '/api/v1/traffic',
   'traffic-comps.routes':          '/api/v1/traffic-comps',
   'traffic-data.routes':           '/api/v1/traffic-data',
@@ -217,7 +217,6 @@ const MOUNT_PREFIX = {
   'notifications.routes':          '/api/v1/notifications',
   'media.routes':                  '/api/media',
   'validation':                    '/api/v1',
-  'pipeline':                      '/api/v1',
 };
 
 const UUID0 = '00000000-0000-0000-0000-000000000001';
@@ -371,8 +370,20 @@ function request(method, urlStr) {
     };
     const t0 = Date.now();
     const req = lib.request(opts, (res) => {
-      res.resume();
-      resolve({ status: res.statusCode, ms: Date.now() - t0 });
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        let firstErrorLine = '';
+        if (res.statusCode >= 400) {
+          try {
+            const raw = Buffer.concat(chunks).toString('utf8').trim();
+            firstErrorLine = raw.split('\n')[0].slice(0, 200);
+          } catch {}
+        } else {
+          res.resume && res.resume();
+        }
+        resolve({ status: res.statusCode, ms: Date.now() - t0, firstErrorLine });
+      });
     });
     req.on('timeout', () => { req.destroy(); resolve({ status: 0, ms: TIMEOUT_MS }); });
     req.on('error',   () => { resolve({ status: 0, ms: Date.now() - t0 }); });
@@ -440,7 +451,8 @@ async function runAll(routes) {
     let verdict;
     if      (r.status >= 200 && r.status < 300) { verdict='PASS'; pass++; fileStats[r.file].pass++; }
     else if (r.status >= 500 || r.status === 0)  { verdict='FAIL'; fail++; fileStats[r.file].fail++;
-      failLines.push(`FAIL | ${r.method.padEnd(6)} | ${r.status} | ${r.ms}ms | ${r.file}: ${r.method} ${r.path}`);
+      const errSnippet = r.firstErrorLine ? ` | ${r.firstErrorLine}` : '';
+      failLines.push(`FAIL | ${r.method.padEnd(6)} | ${r.status} | ${r.ms}ms | ${r.file}: ${r.method} ${r.path}${errSnippet}`);
     } else { verdict='WARN'; warn++; fileStats[r.file].warn++; }
 
     const label = `${r.file}: ${r.method} ${r.path}`.slice(0,70);
