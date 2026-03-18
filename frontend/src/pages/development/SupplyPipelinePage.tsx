@@ -203,7 +203,7 @@ const SupplyPipelinePage: React.FC = () => {
             phase,
             expectedDelivery: sm.snapshot_date ? new Date(sm.snapshot_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 'TBD',
             submarket: sm.submarket_name || sm.name || 'Unknown',
-            distanceMiles: null,
+            distanceMiles: 0,
             unitMix: {
               studio: 10,
               oneBed: 40,
@@ -748,7 +748,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                   </td>
                   <td className="px-6 py-4 text-sm text-[#6B7585]">{project.expectedDelivery}</td>
                   <td className="px-6 py-4 text-sm text-[#6B7585]">{project.submarket}</td>
-                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.distanceMiles.toFixed(1)} mi</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—'}</td>
                 </tr>
               ))}
             </tbody>
