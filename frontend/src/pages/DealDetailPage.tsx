@@ -87,6 +87,7 @@ import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSec
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 import BloombergOverviewSection from '../components/deal/sections/BloombergOverviewSection';
+import { TickerBar } from '../components/terminal/TickerBar';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
@@ -268,6 +269,8 @@ const DealDetailPage: React.FC = () => {
   const [capsulesList, setCapsulesList] = useState<Array<{id:string;deal_name:string}>>([]);
   const [selectedCapsuleId, setSelectedCapsuleId] = useState<string>('');
   const [pushStatus, setPushStatus] = useState<'idle'|'sending'|'ok'|'err'>('idle');
+  const [clockStr, setClockStr] = useState('');
+  const [headerJediScore, setHeaderJediScore] = useState<number | null>(null);
 
   useEffect(() => {
     if (dealId) {
@@ -425,6 +428,30 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
+  useEffect(() => {
+    const tick = () => {
+      const n = new Date();
+      const hh = String(n.getHours()).padStart(2, '0');
+      const mm = String(n.getMinutes()).padStart(2, '0');
+      const ss = String(n.getSeconds()).padStart(2, '0');
+      setClockStr(`${hh}:${mm}:${ss}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!deal?.id) return;
+    apiClient.get(`/api/v1/jedi/score/${deal.id}`)
+      .then(res => {
+        const s = res.data?.data?.score;
+        const total = Math.round(s?.totalScore ?? s?.total_score ?? 0);
+        if (total > 0) setHeaderJediScore(total);
+      })
+      .catch(() => {});
+  }, [deal?.id]);
+
   // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ── Station-logical Bloomberg order ──
   const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
     { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',          icon: <LayoutDashboard size={14} />, component: OverviewScreen },
@@ -505,6 +532,180 @@ const DealDetailPage: React.FC = () => {
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
+
+        {/* ══ ROW 1: Bloomberg Terminal Top Bar ══ */}
+        {(() => {
+          const ta = (geographicContext as any)?.trade_area;
+          const sm = (geographicContext as any)?.submarket;
+          const msa = (geographicContext as any)?.msa;
+          const dealStage = (deal as any)?.stage ?? (deal as any)?.status ?? 'PROSPECT';
+          const dealRisk  = (deal as any)?.risk_level ?? (deal as any)?.risk ?? 'LOW';
+          const stageColor = { PROSPECT: '#00BCD4', ACTIVE: '#00D26A', CLOSED: '#F5A623', DEAD: '#FF4757' }[String(dealStage).toUpperCase()] ?? '#00BCD4';
+          const riskColor  = { LOW: '#00D26A', MEDIUM: '#F5A623', HIGH: '#FF4757' }[String(dealRisk).toUpperCase()] ?? '#00D26A';
+
+          const newsItems = [
+            { raw: '[M28] NAR: Existing home sales ▲2.1% MoM — inventory tightest since 2005', color: '#E8ECF1' },
+            { raw: 'Miami-Dade condo reserve law triggers $2.1B in assessments', color: '#E8ECF1' },
+            { raw: 'Amazon announces 2,000-job Tampa Bay HQ expansion +DEMAND +8.9pts', color: '#00D26A' },
+            { raw: 'Fed holds rates; market prices 3 cuts in 2025', color: '#E8ECF1' },
+            { raw: 'FL multifamily absorption outpaces new supply for 3rd consecutive quarter', color: '#00D26A' },
+            { raw: 'Construction costs ▼4.2% — lumber futures retreat to 18-month low', color: '#F5A623' },
+            { raw: 'Tampa surpasses Orlando as FL top job-growth metro — BLS Q1', color: '#00BCD4' },
+            { raw: 'Blackstone acquires $900M Sunbelt BTR portfolio', color: '#E8ECF1' },
+          ];
+
+          const mktdataItems = [
+            { name: '∆MPL', delta: '+3.2%' },
+            { name: 'FL HOME', raw: '$412K', color: '#E8ECF1' },
+            { name: 'RENT TPA', delta: '+3.7%' },
+            { name: 'FDOT I-275', raw: '148.2K', color: '#E8ECF1' },
+            { name: 'INS', delta: '+18% YoY' },
+            { name: 'NOCATEE', delta: '+42%' },
+            { name: 'TPA JOBS', raw: '#3', color: '#F5A623' },
+            { name: 'TAMPA CAP', raw: '5.2% (-15bps)', color: '#E8ECF1' },
+            { name: 'MIAMI ABS', raw: '94.7%', color: '#00D26A' },
+          ];
+
+          const metricsItems = [
+            { name: '∆ROWTH',        delta: '+1.8%' },
+            { name: 'SURGE IDX',      raw: '+0.35', color: '#00D26A' },
+            { name: 'PIPELINE/STOCK', raw: '8.5%', color: '#F5A623' },
+            { name: 'LEASE VEL',      raw: '24', color: '#E8ECF1' },
+            { name: 'MOS SUPPLY',     raw: '4.2', color: '#E8ECF1' },
+            { name: 'SRCM MOM',       delta: '+18%' },
+            { name: 'CAP RATE',       raw: '5.2%', color: '#E8ECF1' },
+          ];
+
+          const taOcc  = ta?.stats?.occupancy  ? `${Math.round(Number(ta.stats.occupancy)  * 100)}%` : null;
+          const taRent = ta?.stats?.avg_rent   ? `$${Math.round(Number(ta.stats.avg_rent)  / 100) * 100}` : null;
+          const smOcc  = sm?.stats?.avg_occupancy ? `${Math.round(Number(sm.stats.avg_occupancy) * 100)}%` : null;
+          const smRent = sm?.stats?.avg_rent   ? `$${Math.round(Number(sm.stats.avg_rent)  / 100) * 100}` : null;
+          const msaOcc = msa?.stats?.avg_occupancy ? `${Math.round(Number(msa.stats.avg_occupancy) * 100)}%` : null;
+          const msaRent= msa?.stats?.avg_rent  ? `$${Math.round(Number(msa.stats.avg_rent) / 100) * 100}` : null;
+
+          return (
+            <>
+              {/* Row 1 — Terminal header */}
+              <div style={{
+                height: 24, flexShrink: 0,
+                background: '#050810',
+                borderBottom: `1px solid #1E2538`,
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0 10px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 900, color: AMBER, letterSpacing: '0.12em' }}>JEDI RE</span>
+                  <span style={{ color: '#3B4A6B', fontSize: 9 }}>│</span>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 600, color: TEXT_MID, letterSpacing: '0.05em', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {deal ? String((deal as any).name ?? '').toUpperCase() : 'LOADING…'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#00D26A', display: 'inline-block', boxShadow: '0 0 4px #00D26A88' }} />
+                    <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: TEXT_DIM, letterSpacing: '0.1em' }}>5 AGENTS</span>
+                  </div>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_DIM, letterSpacing: '0.08em' }}>EMAIL: 5</span>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_DIM, letterSpacing: '0.08em' }}>KAFKA: 312/s</span>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: TEXT, letterSpacing: '0.05em' }}>{clockStr}</span>
+                </div>
+              </div>
+
+              {/* Row 2 — NEWS ticker */}
+              <TickerBar items={newsItems} label="NEWS" labelColor="#00D26A" height={18} speed={35} />
+
+              {/* Row 3 — MKTDATA ticker */}
+              <TickerBar items={mktdataItems} label="MKTDATA" labelColor={AMBER} height={18} speed={28} />
+
+              {/* Row 4 — METRICS ticker */}
+              <TickerBar items={metricsItems} label="METRICS" labelColor="#00BCD4" height={18} speed={25} />
+
+              {/* Row 5 — Deal info bar */}
+              <div style={{
+                height: 26, flexShrink: 0,
+                background: '#0B0F1A',
+                borderBottom: `1px solid #1E2538`,
+                display: 'flex', alignItems: 'center',
+                padding: '0 10px', gap: 10, overflowX: 'auto',
+              }}>
+                {/* Live dot + deal name + address */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: AMBER, display: 'inline-block', flexShrink: 0 }} />
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: TEXT, whiteSpace: 'nowrap', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {deal ? String((deal as any).name ?? '') : 'Loading…'}
+                  </span>
+                  {(deal as any)?.address && (
+                    <>
+                      <span style={{ color: '#3B4A6B', fontSize: 8 }}>·</span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_DIM, whiteSpace: 'nowrap', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {String((deal as any).address)}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* JEDI score */}
+                {headerJediScore != null && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_DIM, letterSpacing: '0.08em' }}>JEDI</span>
+                    <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 900, color: AMBER }}>{headerJediScore}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: '#00D26A', fontWeight: 700 }}>▲+0</span>
+                  </div>
+                )}
+
+                {/* Scope badges */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 4, flexShrink: 0 }}>
+                  {/* Trade Area */}
+                  <button
+                    onClick={() => setShowTradeAreaPanel(true)}
+                    style={{ fontFamily: MONO, fontSize: 7, fontWeight: 800, color: '#0B0F1A', background: AMBER, border: 'none', padding: '1px 7px', letterSpacing: '0.08em', cursor: 'pointer', flexShrink: 0 }}
+                  >
+                    TRADE AREA
+                  </button>
+
+                  {/* Submarket badge */}
+                  {(smOcc || smRent) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_DIM, letterSpacing: '0.06em' }}>SUBMARKET</span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: TEXT }}>
+                        {smOcc}{smOcc && smRent ? ' – ' : ''}{smRent}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* MSA badge */}
+                  {(msaOcc || msaRent) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: TEXT_DIM, letterSpacing: '0.06em' }}>MSA</span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: TEXT }}>
+                        {msaOcc}{msaOcc && msaRent ? ' – ' : ''}{msaRent}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Stage + Risk + EDIT right-aligned */}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 6, color: TEXT_DIM, letterSpacing: '0.1em' }}>STAGE</span>
+                    <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 800, color: stageColor, letterSpacing: '0.06em' }}>{String(dealStage).toUpperCase()}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 6, color: TEXT_DIM, letterSpacing: '0.1em' }}>RISK</span>
+                    <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 800, color: riskColor, letterSpacing: '0.06em' }}>{String(dealRisk).toUpperCase()}</span>
+                  </div>
+                  <button
+                    onClick={() => setShowTradeAreaPanel(true)}
+                    style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: TEXT_DIM, background: 'transparent', border: `1px solid #2A3348`, padding: '1px 7px', cursor: 'pointer', letterSpacing: '0.08em' }}
+                  >
+                    EDIT
+                  </button>
+                </div>
+              </div>
+            </>
+          );
+        })()}
 
         {/* ── Bloomberg-style F-Key Navigation Bar ── */}
         <div style={{
