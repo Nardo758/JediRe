@@ -437,47 +437,83 @@ const DealDetailPage: React.FC = () => {
 
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, marginBottom: -24, marginLeft: -24, marginRight: -24 }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
-        {/* ── F-Key Navigation Bar ── */}
+        {/* ── Bloomberg-style F-Key Navigation Bar ── */}
         <div style={{
-          background: BG_CARD, borderBottom: `1px solid ${BORDER}`,
-          padding: '0 0 0 8px', flexShrink: 0, display: 'flex', alignItems: 'stretch', overflowX: 'auto',
+          background: BG_NAV,
+          borderBottom: `1px solid ${BORDER}`,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'stretch',
+          overflowX: 'auto',
+          height: 44,
         }}>
-          {/* Back button */}
+          {/* Back arrow — styled as a Bloomberg panel key */}
           <button
             onClick={() => navigate(-1)}
-            style={{ color: TEXT_DIM, background: 'none', border: 'none', borderRight: `1px solid ${BORDER}`, cursor: 'pointer', padding: '0 10px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+            title="Go back"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 36, flexShrink: 0,
+              background: 'none', border: 'none', borderRight: `1px solid ${BORDER}`,
+              cursor: 'pointer', color: TEXT_DIM,
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = TEXT)}
+            onMouseLeave={e => (e.currentTarget.style.color = TEXT_DIM)}
           >
-            <ArrowLeft size={13} />
+            <ArrowLeft size={12} />
           </button>
-          {dealScreens.map(s => {
+
+          {/* F-key module buttons */}
+          {dealScreens.map((s) => {
             const isActive = s.id === activeTab;
             return (
               <button
                 key={s.id}
                 onClick={() => setActiveTab(s.id)}
                 style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  gap: 3, padding: '8px 14px', border: 'none', cursor: 'pointer',
-                  background: isActive ? `${AMBER}12` : 'transparent',
+                  position: 'relative',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'flex-start', justifyContent: 'center',
+                  gap: 2,
+                  padding: '5px 12px 5px 10px',
+                  border: 'none',
+                  borderRight: `1px solid ${BORDER}`,
                   borderBottom: isActive ? `2px solid ${AMBER}` : '2px solid transparent',
-                  borderTop: '2px solid transparent',
-                  minWidth: 72, flexShrink: 0,
-                  transition: 'all 0.12s',
+                  cursor: 'pointer',
+                  background: isActive ? `${AMBER}0f` : 'transparent',
+                  minWidth: 68, flexShrink: 0,
+                  transition: 'all 0.1s',
+                  textAlign: 'left',
                 }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = `${BORDER}60`; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
               >
-                <span style={{ fontSize: 8, fontWeight: 700, color: isActive ? AMBER_L : TEXT_DIM, letterSpacing: 1, fontFamily: MONO }}>
+                {/* F-key label — top-left superscript */}
+                <span style={{
+                  fontSize: 7, fontWeight: 800, letterSpacing: 1.2, fontFamily: MONO,
+                  color: isActive ? AMBER_L : TEXT_DIM,
+                  lineHeight: 1,
+                }}>
                   {s.fkey}
                 </span>
-                <span style={{ fontSize: 9, fontWeight: isActive ? 600 : 400, color: isActive ? TEXT : TEXT_DIM, fontFamily: MONO, letterSpacing: 0.5, textAlign: 'center', lineHeight: 1.2 }}>
+                {/* Module name */}
+                <span style={{
+                  fontSize: 9, fontWeight: isActive ? 700 : 500,
+                  color: isActive ? TEXT : TEXT_MID,
+                  fontFamily: MONO, letterSpacing: 0.4,
+                  lineHeight: 1.1, whiteSpace: 'nowrap',
+                }}>
                   {s.label.split(' ').slice(0, 2).join(' ')}
                 </span>
               </button>
             );
           })}
-          {/* Right side: geographic scope + presence + module code */}
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, paddingRight: 10, flexShrink: 0 }}>
+
+          {/* Right side: scope selector, presence, module code */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10, paddingRight: 12, borderLeft: `1px solid ${BORDER}`, flexShrink: 0 }}>
             <GeographicScopeTabs
               activeScope={activeScope}
               onChange={setScope}
@@ -487,7 +523,7 @@ const DealDetailPage: React.FC = () => {
               compact
             />
             {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
-            <span style={{ fontSize: 9, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1 }}>
+            <span style={{ fontSize: 8, color: TEXT_DIM, fontFamily: MONO, letterSpacing: 1.5, fontWeight: 700 }}>
               {activeScreenData.code}
             </span>
           </div>

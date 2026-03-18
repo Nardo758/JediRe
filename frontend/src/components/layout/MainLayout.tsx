@@ -167,12 +167,11 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
 
   return (
     <div style={{
-      height: 28,
-      background: T.bg.header,
+      height: 40,
+      background: T.bg.topBar,
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'stretch',
       gap: 0,
-      padding: '0 8px',
       borderBottom: `1px solid ${T.border.subtle}`,
       flexShrink: 0,
       overflow: 'hidden',
@@ -195,17 +194,20 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
             }}
             style={{
               display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '0 10px',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              gap: 2,
+              padding: '5px 12px 5px 10px',
               height: '100%',
               border: 'none',
+              borderRight: `1px solid ${T.border.subtle}`,
+              borderBottom: isActive ? `2px solid ${T.text.amber}` : '2px solid transparent',
               cursor: 'pointer',
               fontFamily: T.font.mono,
-              background: isActive ? T.text.amber : 'transparent',
-              color: isActive ? T.bg.terminal : T.text.secondary,
-              transition: 'all 0.15s',
-              borderRight: `1px solid ${T.border.subtle}`,
+              background: isActive ? `${T.text.amber}0f` : 'transparent',
+              color: isActive ? T.text.primary : T.text.secondary,
+              transition: 'all 0.12s',
               flexShrink: 0,
             }}
             onMouseEnter={e => {
@@ -215,18 +217,20 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
               if (!isActive) (e.currentTarget.style.background = 'transparent');
             }}
           >
-            <span style={{ fontSize: '7px', fontWeight: 700, opacity: isActive ? 0.7 : 0.5 }}>{item.key}</span>
-            <span style={{ fontSize: T.fontSize.sm, fontWeight: 600, letterSpacing: 0.5 }}>{item.label}</span>
+            <span style={{ fontSize: '7px', fontWeight: 800, letterSpacing: 1.2, color: isActive ? T.text.amber : T.text.muted, lineHeight: 1 }}>{item.key}</span>
+            <span style={{ fontSize: T.fontSize.sm, fontWeight: isActive ? 700 : 500, letterSpacing: 0.4, lineHeight: 1.1 }}>{item.label}</span>
           </button>
         );
       })}
       <div style={{ flex: 1 }} />
-      <span style={{
-        fontSize: T.fontSize.xs,
-        color: T.text.muted,
-        fontFamily: T.font.mono,
-        paddingRight: 4,
-      }}>⌘K CMD</span>
+      <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${T.border.subtle}`, paddingLeft: 12, paddingRight: 12 }}>
+        <span style={{
+          fontSize: T.fontSize.xs,
+          color: T.text.muted,
+          fontFamily: T.font.mono,
+          letterSpacing: 0.8,
+        }}>⌘K CMD</span>
+      </div>
     </div>
   );
 };
