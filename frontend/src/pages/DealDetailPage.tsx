@@ -86,7 +86,6 @@ import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
-import { OverviewRouter } from '../components/deal/sections/OverviewRouter';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
