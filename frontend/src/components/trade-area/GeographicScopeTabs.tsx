@@ -4,9 +4,9 @@ import { GeographicScope } from '../../types/trade-area';
 const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
 
 const AMBER       = '#F5A623';
-const AMBER_DIM   = '#9B6914';
-const TEXT_DIM    = '#4A5568';
-const TEXT_SEC    = '#6B7585';
+const AMBER_DIM   = '#C48A1F';
+const TEXT_DIM    = '#7A8899';
+const TEXT_SEC    = '#9EA8B4';
 const TEXT_ACTIVE = '#F5A623';
 const BORDER      = '#1E2538';
 const BG_HOVER    = 'rgba(245,166,35,0.06)';
