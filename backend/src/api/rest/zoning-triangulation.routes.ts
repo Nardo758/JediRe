@@ -275,7 +275,11 @@ router.post('/zoning/recommendations/:dealId/analyze', async (req: Request, res:
     res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Recommendation analysis error:', error);
-    res.status(500).json({ error: error.message });
+    const msg = error.message || '';
+    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('no zoning')) {
+      return res.status(404).json({ error: msg });
+    }
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -573,7 +577,9 @@ router.post('/deals/:dealId/properties/:propertyId/link', async (req: Request, r
     res.json({ success: true, message: 'Property linked to deal' });
   } catch (error: any) {
     console.error('Link property error:', error);
-    res.status(500).json({ error: error.message });
+    const msg = error.message || '';
+    const status = msg.includes('foreign key') || msg.includes('not found') || msg.includes('violates') ? 400 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 
@@ -599,14 +605,11 @@ router.post('/admin/deal-property-autolink', async (req: Request, res: Response)
 });
 
 router.post('/admin/benchmark-enrichment/run', async (req: Request, res: Response) => {
-  try {
-    const { county } = req.query;
-    const result = await enrichmentService.enrichBenchmarkProjects(county as string | undefined);
-    res.json({ success: true, data: result });
-  } catch (error: any) {
-    console.error('Benchmark enrichment error:', error);
-    res.status(500).json({ error: error.message });
-  }
+  const { county } = req.query;
+  res.status(202).json({ success: true, message: 'Benchmark enrichment queued' });
+  enrichmentService.enrichBenchmarkProjects(county as string | undefined).catch((error: any) => {
+    console.error('Benchmark enrichment error:', error.message);
+  });
 });
 
 router.post('/properties/:id/enrich', async (req: Request, res: Response) => {

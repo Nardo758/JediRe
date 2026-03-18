@@ -504,7 +504,12 @@ router.get('/:id/results', requireAuth, async (req: AuthenticatedRequest, res: R
     }
 
     const runData = result.rows[0];
-    const results = JSON.parse(runData.results);
+    let results: any[] = [];
+    try {
+      results = runData.results ? JSON.parse(runData.results) : [];
+    } catch {
+      results = [];
+    }
 
     res.json({
       success: true,

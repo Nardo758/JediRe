@@ -31,6 +31,7 @@ import geographicContextRoutes from './geographic-context.routes';
 import geographyRoutes from './geography.routes';
 import isochroneRoutes from './isochrone.routes';
 import trafficAiRoutes from './traffic-ai.routes';
+import trafficPredictionRoutes from './trafficPrediction.routes';
 import layersRoutes from './layers.routes';
 import mapConfigsRoutes from './map-configs.routes';
 import gridRoutes from './grid.routes';
@@ -309,6 +310,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Traffic Comps routes (M07 Traffic Engine - comp traffic analysis per deal)
   app.use(`${API_PREFIX}/traffic-comps`, trafficCompsRoutes);
+
+  // Traffic Prediction routes (foot traffic predictions, calibration, validation)
+  app.use(`${API_PREFIX}/traffic`, trafficPredictionRoutes);
 
   // Correlation Engine routes (COR-01 through COR-20 market correlations)
   app.use(`${API_PREFIX}/correlations`, correlationRoutes);

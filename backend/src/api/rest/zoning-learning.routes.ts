@@ -80,7 +80,8 @@ export function createZoningLearningRoutes(pool: Pool): Router {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Correction resolve error:', error);
-      res.status(500).json({ success: false, error: error.message });
+      const status = error.message && error.message.includes('not found') ? 404 : 500;
+      res.status(status).json({ success: false, error: error.message });
     }
   });
 

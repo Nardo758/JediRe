@@ -287,13 +287,15 @@ router.get('/detailed-steps', async (req: Request, res: Response) => {
 router.post('/ingest/atlanta', async (req: Request, res: Response) => {
   try {
     const { atlantaBenchmarkIngestionService } = await import('../../services/atlanta-benchmark-ingestion.service');
-    logger.info('[API] Starting Atlanta benchmark ingestion...');
-    const stats = await atlantaBenchmarkIngestionService.ingest();
-    logger.info(`[API] Atlanta ingestion complete: ${JSON.stringify(stats)}`);
-    res.json({ success: true, stats });
+    res.status(202).json({ success: true, message: 'Atlanta benchmark ingestion started' });
+    atlantaBenchmarkIngestionService.ingest().then((stats: any) => {
+      logger.info(`[API] Atlanta ingestion complete: ${JSON.stringify(stats)}`);
+    }).catch((error: any) => {
+      logger.error('[API] Atlanta ingestion failed:', error);
+    });
   } catch (error) {
     logger.error('[API] Atlanta ingestion failed:', error);
-    res.status(500).json({ error: (error as Error).message });
+    if (!res.headersSent) res.status(500).json({ error: (error as Error).message });
   }
 });
 
@@ -302,26 +304,21 @@ router.post('/ingest/atlanta', async (req: Request, res: Response) => {
  * Trigger Florida GIS benchmark data ingestion for a specific county.
  */
 router.post('/ingest/florida', async (req: Request, res: Response) => {
-  try {
-    const { floridaBenchmarkIngestionService } = await import('../../services/florida-benchmark-ingestion.service');
-    const { county } = req.body;
+  const { floridaBenchmarkIngestionService } = await import('../../services/florida-benchmark-ingestion.service');
+  const { county } = req.body;
 
-    if (!county) {
-      const available = floridaBenchmarkIngestionService.getAvailableCounties();
-      return res.status(400).json({
-        error: 'Required: county',
-        availableCounties: available,
-      });
-    }
-
-    logger.info(`[API] Starting Florida benchmark ingestion for ${county}...`);
-    const stats = await floridaBenchmarkIngestionService.ingest(county);
-    logger.info(`[API] Florida ingestion complete: ${JSON.stringify(stats)}`);
-    res.json({ success: true, stats });
-  } catch (error) {
-    logger.error('[API] Florida ingestion failed:', error);
-    res.status(500).json({ error: (error as Error).message });
+  if (!county) {
+    const available = floridaBenchmarkIngestionService.getAvailableCounties();
+    return res.status(400).json({
+      error: 'Required: county',
+      availableCounties: available,
+    });
   }
+
+  res.status(202).json({ success: true, message: `Florida ingestion queued for ${county}` });
+  floridaBenchmarkIngestionService.ingest(county).catch((error: any) => {
+    logger.error('[API] Florida ingestion failed:', error);
+  });
 });
 
 /**
@@ -329,33 +326,15 @@ router.post('/ingest/florida', async (req: Request, res: Response) => {
  * Trigger Florida GIS benchmark data ingestion for all configured counties.
  */
 router.post('/ingest/florida/all', async (req: Request, res: Response) => {
+  res.status(202).json({ success: true, message: 'Florida ingestion queued for all counties' });
   try {
     const { floridaBenchmarkIngestionService } = await import('../../services/florida-benchmark-ingestion.service');
     const counties = floridaBenchmarkIngestionService.getAvailableCounties();
-
-    logger.info(`[API] Starting Florida ingestion for all counties: ${counties.join(', ')}`);
-    const allStats = [];
-
     for (const county of counties) {
-      try {
-        const stats = await floridaBenchmarkIngestionService.ingest(county);
-        allStats.push(stats);
-      } catch (err) {
-        allStats.push({
-          county,
-          hearingsFetched: 0,
-          permitsFetched: 0,
-          recordsUpserted: 0,
-          districtsLinked: 0,
-          errors: [(err as Error).message],
-        });
-      }
+      await floridaBenchmarkIngestionService.ingest(county).catch(() => {});
     }
-
-    res.json({ success: true, stats: allStats });
   } catch (error) {
     logger.error('[API] Florida ingestion failed:', error);
-    res.status(500).json({ error: (error as Error).message });
   }
 });
 

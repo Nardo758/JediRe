@@ -205,7 +205,8 @@ router.post('/:slug/purchase', async (req: Request, res: Response) => {
 router.post('/:slug/subscribe', async (req: Request, res: Response) => {
   try {
     const { slug } = req.params;
-    const { userId, bundleId } = req.body;
+    const { bundleId } = req.body;
+    const userId = req.body.userId || (req as any).user?.userId;
 
     const result = await db.query(`
       INSERT INTO user_module_settings (user_id, module_slug, enabled, subscribed, bundle_id, activated_at)
@@ -228,9 +229,11 @@ router.post('/:slug/subscribe', async (req: Request, res: Response) => {
       bundleId: row.bundle_id,
       activatedAt: row.activated_at,
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('[Modules] Error subscribing to module:', error);
-    res.status(500).json({ error: 'Failed to subscribe to module' });
+    const msg = error.message || 'Failed to subscribe to module';
+    const status = (msg.includes('not found') || msg.includes('null value') || msg.includes('NOT NULL') || msg.includes('foreign key') || msg.includes('violates')) ? 400 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 

@@ -584,7 +584,7 @@ export class TrafficDataSourcesService {
   async bulkLinkProperties(limit: number = 50): Promise<{ linked: number; failed: number }> {
     const result = await this.pool.query(
       `SELECT p.id FROM properties p
-       LEFT JOIN property_traffic_context ptc ON ptc.property_id = p.id
+       LEFT JOIN property_traffic_context ptc ON ptc.property_id = p.id::text
        WHERE ptc.property_id IS NULL
          AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL
        LIMIT $1`,

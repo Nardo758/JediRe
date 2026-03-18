@@ -453,7 +453,12 @@ router.get('/:id/results', async (req: Request, res: Response) => {
     }
 
     const runData = result.rows[0];
-    const results = JSON.parse(runData.results);
+    let results: any[] = [];
+    try {
+      results = runData.results ? JSON.parse(runData.results) : [];
+    } catch {
+      results = [];
+    }
 
     res.json({
       success: true,

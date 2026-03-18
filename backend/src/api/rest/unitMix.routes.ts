@@ -45,7 +45,11 @@ export function createUnitMixRoutes(pool: Pool): Router {
   router.post("/:dealId/program", async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user?.userId || "unknown";
-      const result = await svc.saveProgram(pool, req.params.dealId, userId, req.body);
+      const body = req.body || {};
+      if (!body.totalUnits || !body.units) {
+        return res.status(400).json({ error: "totalUnits and units are required" });
+      }
+      const result = await svc.saveProgram(pool, req.params.dealId, userId, body);
       res.json({ ok: true, ...result });
     } catch (err) {
       console.error("Unit mix save program error:", err);

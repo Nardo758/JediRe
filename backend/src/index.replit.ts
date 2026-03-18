@@ -543,8 +543,9 @@ if (isProduction) {
 
 app.use(errorWebhookMiddleware);
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({
+  const statusCode = (err && typeof err.statusCode === 'number' && err.statusCode >= 100 && err.statusCode < 600) ? err.statusCode : 500;
+  if (statusCode >= 500) console.error('Error:', err);
+  res.status(statusCode).json({
     success: false,
     error: err.message || 'Internal server error'
   });

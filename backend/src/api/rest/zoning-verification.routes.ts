@@ -29,7 +29,15 @@ router.post('/verify', requireAuth, async (req: AuthenticatedRequest, res: Respo
 router.post('/verify/:verificationId/confirm', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { verificationId } = req.params;
-    const result = await verificationService.confirmVerification(verificationId);
+    let result = null;
+    try {
+      result = await verificationService.confirmVerification(verificationId);
+    } catch (innerErr: any) {
+      if (innerErr.message && innerErr.message.includes('invalid input syntax for type uuid')) {
+        return res.status(404).json({ error: 'Verification record not found' });
+      }
+      throw innerErr;
+    }
 
     if (!result) {
       return res.status(404).json({ error: 'Verification record not found' });
@@ -44,7 +52,15 @@ router.post('/verify/:verificationId/confirm', requireAuth, async (req: Authenti
 router.post('/verify/:verificationId/flag', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { verificationId } = req.params;
-    const result = await verificationService.flagVerification(verificationId);
+    let result = null;
+    try {
+      result = await verificationService.flagVerification(verificationId);
+    } catch (innerErr: any) {
+      if (innerErr.message && innerErr.message.includes('invalid input syntax for type uuid')) {
+        return res.status(404).json({ error: 'Verification record not found' });
+      }
+      throw innerErr;
+    }
 
     if (!result) {
       return res.status(404).json({ error: 'Verification record not found' });

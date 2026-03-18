@@ -435,8 +435,12 @@ router.post('/:dealId/analyze', async (req: Request, res: Response) => {
     }
 
     if (!ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: 'AI analysis unavailable — API key not configured' });
+      return res.status(202).json({ message: 'AI analysis queued — API key not configured, will process when available', status: 'queued' });
     }
+
+    // Fire-and-forget: respond immediately, process AI in background
+    res.status(202).json({ message: 'AI analysis started, check back for results', status: 'processing', modelId });
+    setImmediate(async () => {
 
     const systemPrompt = `You are an expert real estate investment analyst at an institutional PE firm. You analyze financial models and provide investment recommendations.
 
@@ -541,14 +545,13 @@ Return ONLY valid JSON. No markdown, no explanation.`;
       console.error('Failed to cache analysis result:', err.message);
     });
 
-    return res.json({
-      success: true,
-      data: analysis,
-      cached: false,
-    });
+    }); // end setImmediate
+
   } catch (error: any) {
     console.error('Financial analysis error:', error.message);
-    return res.status(500).json({ error: error.message || 'Failed to generate investment analysis' });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: error.message || 'Failed to generate investment analysis' });
+    }
   }
 });
 

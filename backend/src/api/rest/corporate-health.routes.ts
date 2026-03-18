@@ -12,7 +12,7 @@ router.use(requireAuth);
 router.get('/submarket/:submarketId', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const submarketId = parseInt(req.params.submarketId);
-    if (isNaN(submarketId)) {
+    if (isNaN(submarketId) || submarketId <= 0) {
       return res.status(400).json({ success: false, error: 'Invalid submarket ID' });
     }
 

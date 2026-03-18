@@ -55,7 +55,7 @@ class ProformaTemplateService {
         $30, $31, $32, $33, $34
       ) RETURNING *`,
       [
-        userId, input.name, input.description || null,
+        userId, input.name || 'Untitled Template', input.description || null,
         input.propertyType || null, input.productType || null, input.strategy || null,
         input.holdYears || 5,
         input.rentGrowthYr1 || 0.03, input.rentGrowthYr2_5 || 0.025, input.rentGrowthYr6_10 || 0.02,
