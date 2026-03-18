@@ -86,7 +86,7 @@ import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
-import BloombergOverviewSection from '../components/deal/sections/BloombergOverviewSection';
+import { OverviewRouter } from '../components/deal/sections/OverviewRouter';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
@@ -185,10 +185,11 @@ const OverviewScreen: React.FC<ScreenProps> = (props) => {
   );
 
   return (
-    <BloombergOverviewSection
+    <OverviewRouter
       deal={props.deal}
       dealId={props.dealId as string}
       onTabChange={setSecondaryTab}
+      geographicContext={props.geographicContext}
     />
   );
 };
