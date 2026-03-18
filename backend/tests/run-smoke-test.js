@@ -407,7 +407,7 @@ async function runAll(routes) {
         const url = BASE_URL + route.path;
         const t0  = Date.now();
         request(route.method, url).then((r) => {
-          results.push({ ...route, status: r.status, ms: r.ms });
+          results.push({ ...route, status: r.status, ms: r.ms, firstErrorLine: r.firstErrorLine || '' });
           inFlight--;
           next();
           if (idx >= queue.length && inFlight === 0) resolve(results);
