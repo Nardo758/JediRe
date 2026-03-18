@@ -665,7 +665,7 @@ router.post('/data/refresh-cache', requireAdminAuth, async (req: AuthenticatedRe
   try {
     const cleared: Record<string, number> = {};
 
-    const r1 = await query(`DELETE FROM zoning_code_interpretations WHERE cached_at < NOW() - INTERVAL '7 days'`);
+    const r1 = await query(`DELETE FROM zoning_code_interpretations WHERE created_at < NOW() - INTERVAL '7 days'`);
     cleared['zoning_code_interpretations'] = r1.rowCount || 0;
 
     const r2 = await query(`DELETE FROM zoning_ai_analysis_cache WHERE created_at < NOW() - INTERVAL '7 days'`);
@@ -703,7 +703,7 @@ router.get('/users', requireAdminAuth, async (req: AuthenticatedRequest, res: Re
     const total = parseInt(countResult.rows[0].cnt);
 
     const usersResult = await query(`
-      SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at,
+      SELECT id, email, first_name, last_name, role, created_at, updated_at,
         (SELECT count(*) FROM deals WHERE user_id = users.id) as deal_count
       FROM users ${whereClause}
       ORDER BY created_at DESC
@@ -726,7 +726,7 @@ router.get('/users', requireAdminAuth, async (req: AuthenticatedRequest, res: Re
 router.get('/users/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userResult = await query(`
-      SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at
+      SELECT id, email, first_name, last_name, role, created_at, updated_at
       FROM users WHERE id = $1
     `, [req.params.id]);
 
@@ -758,19 +758,20 @@ router.get('/users/:id', requireAdminAuth, async (req: AuthenticatedRequest, res
 
 router.post('/users/:id/suspend', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userResult = await query(`SELECT id, is_active FROM users WHERE id = $1`, [req.params.id]);
+    const userResult = await query(`SELECT id, email_verified FROM users WHERE id = $1`, [req.params.id]);
     if (userResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
-    const newStatus = !userResult.rows[0].is_active;
-    await query(`UPDATE users SET is_active = $1 WHERE id = $2`, [newStatus, req.params.id]);
+    const isCurrentlyVerified = userResult.rows[0].email_verified !== false;
+    const newVerified = !isCurrentlyVerified;
+    await query(`UPDATE users SET email_verified = $1, updated_at = NOW() WHERE id = $2`, [newVerified, req.params.id]);
 
-    logger.info(`Admin action: User ${req.params.id} ${newStatus ? 'reactivated' : 'suspended'} by ${(req.user as any)?.userId}`);
+    logger.info(`Admin action: User ${req.params.id} ${newVerified ? 'reactivated' : 'suspended'} by ${(req.user as any)?.userId}`);
     res.json({
       success: true,
-      message: newStatus ? 'User reactivated' : 'User suspended',
-      is_active: newStatus,
+      message: newVerified ? 'User reactivated' : 'User suspended',
+      active: newVerified,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

@@ -1,9 +1,9 @@
 JediRe Core Platform Smoke Test Results
-Run: Wed Mar 18 03:01:09 AM UTC 2026
+Run: Wed Mar 18 03:08:11 AM UTC 2026
 BASE_URL: http://localhost:4000
 DEAL_ID : e044db04-439b-4442-82df-b36a840f2fd8
 
-PASS=124  WARN=143  FAIL=11  TOTAL=278
+PASS=130  WARN=148  FAIL=0  TOTAL=278
 
 
 ── HEALTH (inline-health) ──
@@ -41,12 +41,12 @@ PASS 200  GET    /api/v1/admin/system/logs
 PASS 200  GET    /api/v1/admin/data/municipalities
 PASS 200  GET    /api/v1/admin/data/zoning-coverage
 PASS 200  GET    /api/v1/admin/data/benchmark-stats
-FAIL 500  POST   /api/v1/admin/data/refresh-cache
+PASS 200  POST   /api/v1/admin/data/refresh-cache
 
 ── ADMIN — Users ──
-FAIL 500  GET    /api/v1/admin/users
-FAIL 500  GET    /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857
-FAIL 500  POST   /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857/suspend
+PASS 200  GET    /api/v1/admin/users
+PASS 200  GET    /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857
+PASS 200  POST   /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857/suspend
 
 ── ADMIN — Deals ──
 PASS 200  GET    /api/v1/admin/deals
@@ -136,7 +136,7 @@ PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/properties
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/activity
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/key-moments
-FAIL 500  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/lease-analysis
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/lease-analysis
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/trade-area
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/zoning-analysis
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/analysis/latest
@@ -152,9 +152,9 @@ PASS 200  GET    /api/v1/inbox/stats
 
 ── INLINE NEWS ──
 PASS 200  GET    /api/v1/news/events
-FAIL 500  GET    /api/v1/news/events/1
+WARN 404  GET    /api/v1/news/events/1
 PASS 200  GET    /api/v1/news/alerts
-FAIL 500  PATCH  /api/v1/news/alerts/1
+WARN 404  PATCH  /api/v1/news/alerts/1
 PASS 200  GET    /api/v1/news/dashboard
 PASS 200  GET    /api/v1/news/network
 
@@ -220,11 +220,11 @@ WARN 404  POST   /api/v1/map-configs/00000000-0000-0000-0000-000000000099/set-de
 
 ── AGENTS ──
 PASS 200  GET    /api/v1/agents/tasks
-FAIL 500  GET    /api/v1/agents/tasks/fake-task-id
+WARN 404  GET    /api/v1/agents/tasks/fake-task-id
 WARN 400  POST   /api/v1/agents/tasks
 
 ── CHAT ──
-WARN 000000  POST   /api/v1/chat
+PASS 200  POST   /api/v1/chat
 
 ── CLAWDBOT WEBHOOKS ──
 PASS 200  GET    /api/v1/clawdbot/health
@@ -265,7 +265,7 @@ PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/dis
 WARN 400  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set
 PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/discover-tiered
 WARN 400  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/add-to-set
-FAIL 500  DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
+WARN 404  DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
 WARN 400  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
 
 ── DEAL PHOTOS ──
@@ -304,8 +304,8 @@ PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/recompute
 WARN 400  POST   /api/v1/dd-checklists
 WARN 404  GET    /api/v1/dd-checklists/e044db04-439b-4442-82df-b36a840f2fd8
 WARN 400  POST   /api/v1/dd-checklists/tasks
-FAIL 500  PATCH  /api/v1/dd-checklists/tasks/fake-id
-FAIL 500  DELETE /api/v1/dd-checklists/tasks/fake-id
+WARN 404  PATCH  /api/v1/dd-checklists/tasks/fake-id
+WARN 404  DELETE /api/v1/dd-checklists/tasks/fake-id
 
 ── DEAL ACTUALS ──
 WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/actuals
@@ -397,15 +397,4 @@ WARN 404  POST   /api/v1/pipeline/analyze-batch
 WARN 404  POST   /api/v1/pipeline/analyze
 
 
-FAILURES (5xx errors):
-  FAIL 500 POST /api/v1/admin/data/refresh-cache
-  FAIL 500 GET /api/v1/admin/users
-  FAIL 500 GET /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857
-  FAIL 500 POST /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857/suspend
-  FAIL 500 GET /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/lease-analysis
-  FAIL 500 GET /api/v1/news/events/1
-  FAIL 500 PATCH /api/v1/news/alerts/1
-  FAIL 500 GET /api/v1/agents/tasks/fake-task-id
-  FAIL 500 DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
-  FAIL 500 PATCH /api/v1/dd-checklists/tasks/fake-id
-  FAIL 500 DELETE /api/v1/dd-checklists/tasks/fake-id
+No 5xx failures.
