@@ -243,7 +243,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         })}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', background: '#0d1f35', padding: '12px 16px' }}>
+      <div style={{ flex: 1, overflow: 'auto', background: BT2.bg.terminal, padding: '12px 16px' }}>
         {renderActiveTab()}
       </div>
     </div>

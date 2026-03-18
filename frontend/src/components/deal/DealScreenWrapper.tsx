@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BT } from './bloomberg-ui';
+import { BT, BT_CSS, PanelHeader } from './bloomberg-ui';
 
 export interface DealScreenTab {
   id: string;
@@ -11,14 +11,32 @@ interface DealScreenWrapperProps {
   tabs: DealScreenTab[];
   passProps?: Record<string, any>;
   initialTab?: string;
+  moduleTitle?: string;
+  moduleSubtitle?: string;
+  moduleBorderColor?: string;
+  moduleMetrics?: Array<{ l: string; c: string }>;
+  moduleRight?: React.ReactNode;
+  accentColor?: string;
 }
 
-export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, passProps = {}, initialTab }) => {
+export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({
+  tabs,
+  passProps = {},
+  initialTab,
+  moduleTitle,
+  moduleSubtitle,
+  moduleBorderColor,
+  moduleMetrics,
+  moduleRight,
+  accentColor,
+}) => {
   const [active, setActive] = useState(initialTab || tabs[0]?.id || '');
 
   if (tabs.length === 0) return null;
 
-  if (tabs.length === 1) {
+  const ac = accentColor ?? BT.text.amber;
+
+  if (tabs.length === 1 && !moduleTitle) {
     const C = tabs[0].component;
     return <C {...passProps} />;
   }
@@ -27,43 +45,60 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, pass
   const C = activeTab.component;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, background: BT.bg.terminal }}>
-      {/* Bloomberg v0.34 sub-tab bar */}
-      <div style={{
-        display: 'flex',
-        background: BT.bg.header,
-        borderBottom: `1px solid ${BT.border.medium}`,
-        flexShrink: 0,
-        overflowX: 'auto',
-        height: 28,
-        alignItems: 'stretch',
-      }}>
-        {tabs.map(tab => {
-          const isActive = active === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActive(tab.id)}
-              style={{
-                fontFamily: BT.font.mono,
-                fontSize: 8,
-                fontWeight: isActive ? 700 : 500,
-                padding: '0 14px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? `2px solid ${BT.text.amber}` : '2px solid transparent',
-                color: isActive ? BT.text.amber : BT.text.secondary,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                letterSpacing: 0.6,
-                transition: 'color 0.1s, border-color 0.1s',
-              }}
-            >
-              {tab.label.toUpperCase()}
-            </button>
-          );
-        })}
-      </div>
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
+      background: BT.bg.terminal, animation: 'bt-fade 0.15s',
+    }}>
+      <style>{BT_CSS}</style>
+
+      {moduleTitle && (
+        <PanelHeader
+          title={moduleTitle}
+          subtitle={moduleSubtitle}
+          borderColor={moduleBorderColor}
+          metrics={moduleMetrics}
+          right={moduleRight}
+        />
+      )}
+
+      {tabs.length > 1 && (
+        <div style={{
+          display: 'flex',
+          background: BT.bg.header,
+          borderBottom: `1px solid ${BT.border.medium}`,
+          flexShrink: 0,
+          overflowX: 'auto',
+          height: 28,
+          alignItems: 'stretch',
+        }}>
+          {tabs.map(tab => {
+            const isActive = active === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActive(tab.id)}
+                style={{
+                  fontFamily: BT.font.mono,
+                  fontSize: 8,
+                  fontWeight: isActive ? 700 : 500,
+                  padding: '0 14px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? `2px solid ${ac}` : '2px solid transparent',
+                  color: isActive ? ac : BT.text.secondary,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  letterSpacing: 0.6,
+                  transition: 'color 0.1s, border-color 0.1s',
+                }}
+              >
+                {tab.label.toUpperCase()}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BT.bg.terminal }}>
         <C {...passProps} />
       </div>
