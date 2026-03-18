@@ -145,6 +145,24 @@ interface AgentItem {
   message_count?: number;
 }
 
+interface EmailItem {
+  id: string;
+  from?: string;
+  subject?: string;
+  preview?: string;
+  received_at?: string;
+  read?: boolean;
+}
+
+interface TaskItem {
+  id: string;
+  title: string;
+  status?: string;
+  priority?: string;
+  due_date?: string;
+  assigned_to?: string;
+}
+
 const TopStatusBar: React.FC<{ contextLabel: string; agentCount: number; emailCount: number }> = ({
   contextLabel, agentCount, emailCount,
 }) => {
@@ -401,19 +419,36 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: T.text.green,
 };
 
+const BOTTOM_TABS = [
+  { id: 'alerts' as const, label: 'ALERTS', color: T.text.red    },
+  { id: 'news'   as const, label: 'NEWS',   color: T.text.cyan   },
+  { id: 'email'  as const, label: 'EMAIL',  color: T.text.orange },
+  { id: 'agents' as const, label: 'AGENTS', color: T.text.green  },
+  { id: 'tasks'  as const, label: 'TASKS',  color: T.text.amber  },
+] as const;
+type BottomTabId = typeof BOTTOM_TABS[number]['id'];
+
+const TASK_PRIORITY_COLORS: Record<string, string> = {
+  critical: T.text.red, high: T.text.orange, medium: T.text.amber, low: T.text.green,
+};
+
 const BottomPanel: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'alerts' | 'news' | 'agents'>('alerts');
+  const [activeTab, setActiveTab] = useState<BottomTabId>('alerts');
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [email, setEmail] = useState<EmailItem[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
 
   const fetchData = useCallback(async () => {
     try {
-      const [alertRes, newsRes, agentRes] = await Promise.allSettled([
+      const [alertRes, newsRes, agentRes, emailRes, taskRes] = await Promise.allSettled([
         api.get('/jedi/alerts'),
         api.get('/news/feed'),
         api.get('/agent-status'),
+        api.get('/email/inbox'),
+        api.get('/tasks'),
       ]);
       if (alertRes.status === 'fulfilled') {
         const ad = alertRes.value.data;
@@ -430,6 +465,16 @@ const BottomPanel: React.FC = () => {
         const raw = gd?.data?.agents || gd?.agents || gd?.data;
         setAgents(Array.isArray(raw) ? raw : []);
       }
+      if (emailRes.status === 'fulfilled') {
+        const ed = emailRes.value.data;
+        const raw = ed?.data?.emails || ed?.emails || ed?.data;
+        setEmail(Array.isArray(raw) ? raw : []);
+      }
+      if (taskRes.status === 'fulfilled') {
+        const td = taskRes.value.data;
+        const raw = td?.data?.tasks || td?.tasks || td?.data;
+        setTasks(Array.isArray(raw) ? raw : []);
+      }
     } catch (err) {
       console.warn('[BottomPanel] Failed to fetch panel data', err);
     }
@@ -441,11 +486,13 @@ const BottomPanel: React.FC = () => {
     return () => clearInterval(id);
   }, [fetchData]);
 
-  const tabs = [
-    { id: 'alerts' as const, label: 'ALERTS', count: alerts.length },
-    { id: 'news' as const,   label: 'NEWS',   count: news.length },
-    { id: 'agents' as const, label: 'AGENTS', count: agents.length },
-  ];
+  const counts: Record<BottomTabId, number> = {
+    alerts: alerts.length,
+    news:   news.length,
+    email:  email.length,
+    agents: agents.length,
+    tasks:  tasks.length,
+  };
 
   return (
     <div style={{
@@ -455,7 +502,7 @@ const BottomPanel: React.FC = () => {
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
-      transition: 'height 0.2s ease',
+      transition: 'height 0.18s ease',
       fontFamily: T.font.mono,
     }}>
       <div style={{
@@ -467,7 +514,22 @@ const BottomPanel: React.FC = () => {
         borderBottom: collapsed ? 'none' : `1px solid ${T.border.subtle}`,
         flexShrink: 0,
       }}>
-        {tabs.map(tab => (
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          style={{
+            border: 'none',
+            background: 'transparent',
+            color: T.text.muted,
+            cursor: 'pointer',
+            fontSize: '9px',
+            fontFamily: T.font.mono,
+            padding: '2px 8px 2px 2px',
+            letterSpacing: 0.5,
+          }}
+        >
+          {collapsed ? '▲' : '▼'}
+        </button>
+        {BOTTOM_TABS.map(tab => (
           <button
             key={tab.id}
             onClick={() => { setActiveTab(tab.id); if (collapsed) setCollapsed(false); }}
@@ -475,9 +537,9 @@ const BottomPanel: React.FC = () => {
               height: '100%',
               padding: '0 12px',
               border: 'none',
-              borderBottom: activeTab === tab.id && !collapsed ? `2px solid ${T.text.amber}` : '2px solid transparent',
+              borderBottom: activeTab === tab.id && !collapsed ? `2px solid ${tab.color}` : '2px solid transparent',
               background: 'transparent',
-              color: activeTab === tab.id ? T.text.amber : T.text.muted,
+              color: activeTab === tab.id && !collapsed ? tab.color : T.text.muted,
               fontSize: T.fontSize.xs,
               fontFamily: T.font.mono,
               fontWeight: 700,
@@ -489,33 +551,18 @@ const BottomPanel: React.FC = () => {
             }}
           >
             {tab.label}
-            {tab.count > 0 && (
+            {counts[tab.id] > 0 && (
               <span style={{
                 fontSize: '7px',
-                background: `${T.text.amber}22`,
-                color: T.text.amber,
+                background: `${tab.color}22`,
+                color: tab.color,
                 padding: '1px 4px',
                 borderRadius: 3,
                 fontWeight: 600,
-              }}>{tab.count}</span>
+              }}>{counts[tab.id]}</span>
             )}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          style={{
-            border: 'none',
-            background: 'transparent',
-            color: T.text.muted,
-            cursor: 'pointer',
-            fontSize: T.fontSize.sm,
-            fontFamily: T.font.mono,
-            padding: '2px 6px',
-          }}
-        >
-          {collapsed ? '▲ EXPAND' : '▼ COLLAPSE'}
-        </button>
       </div>
 
       {!collapsed && (
@@ -527,15 +574,10 @@ const BottomPanel: React.FC = () => {
               )}
               {alerts.map(a => (
                 <div key={a.id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '3px 6px',
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
                   borderLeft: `3px solid ${SEVERITY_COLORS[a.severity] || T.text.muted}`,
-                  marginBottom: 2,
-                  fontSize: T.fontSize.sm,
-                  background: T.bg.panelAlt,
-                  borderRadius: '0 3px 3px 0',
+                  marginBottom: 2, fontSize: T.fontSize.sm,
+                  background: T.bg.panelAlt, borderRadius: '0 3px 3px 0',
                 }}>
                   <Badge label={a.type?.toUpperCase() || 'ALERT'} color={SEVERITY_COLORS[a.severity] || T.text.amber} />
                   {a.deal_name && <span style={{ color: T.text.amber, fontWeight: 600 }}>{a.deal_name}</span>}
@@ -554,14 +596,9 @@ const BottomPanel: React.FC = () => {
               )}
               {news.map(n => (
                 <div key={n.id} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '3px 6px',
-                  marginBottom: 2,
-                  fontSize: T.fontSize.sm,
-                  background: T.bg.panelAlt,
-                  borderRadius: 3,
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
+                  marginBottom: 2, fontSize: T.fontSize.sm,
+                  background: T.bg.panelAlt, borderRadius: 3,
                 }}>
                   <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, flexShrink: 0, width: 50 }}>
                     {n.published_at ? new Date(n.published_at).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
@@ -577,6 +614,31 @@ const BottomPanel: React.FC = () => {
               ))}
             </div>
           )}
+          {activeTab === 'email' && (
+            <div>
+              {email.length === 0 && (
+                <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center' }}>No emails</div>
+              )}
+              {email.map(e => (
+                <div key={e.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
+                  marginBottom: 2, fontSize: T.fontSize.sm,
+                  background: T.bg.panelAlt, borderRadius: 3,
+                  borderLeft: `3px solid ${e.read ? T.border.subtle : T.text.orange}`,
+                }}>
+                  {!e.read && <span style={{ color: T.text.orange, fontSize: '7px', fontWeight: 700 }}>●</span>}
+                  <span style={{ color: T.text.cyan, fontSize: T.fontSize.xs, flexShrink: 0, width: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {e.from || '—'}
+                  </span>
+                  <span style={{ color: T.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.subject}</span>
+                  {e.preview && <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{e.preview}</span>}
+                  <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, flexShrink: 0 }}>
+                    {e.received_at ? new Date(e.received_at).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {activeTab === 'agents' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
               {agents.length === 0 && (
@@ -584,9 +646,7 @@ const BottomPanel: React.FC = () => {
               )}
               {agents.map(ag => (
                 <div key={ag.id} style={{
-                  background: T.bg.panelAlt,
-                  borderRadius: 4,
-                  padding: '6px 8px',
+                  background: T.bg.panelAlt, borderRadius: 4, padding: '6px 8px',
                   borderLeft: `3px solid ${ag.status === 'online' ? T.text.green : T.text.muted}`,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -602,6 +662,31 @@ const BottomPanel: React.FC = () => {
                       <span style={{ color: T.text.muted, fontSize: '7px' }}>{ag.message_count} msgs</span>
                     )}
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {activeTab === 'tasks' && (
+            <div>
+              {tasks.length === 0 && (
+                <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center' }}>No tasks</div>
+              )}
+              {tasks.map(t => (
+                <div key={t.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
+                  marginBottom: 2, fontSize: T.fontSize.sm,
+                  background: T.bg.panelAlt, borderRadius: 3,
+                  borderLeft: `3px solid ${TASK_PRIORITY_COLORS[t.priority || ''] || T.text.muted}`,
+                }}>
+                  {t.priority && <Badge label={t.priority.toUpperCase()} color={TASK_PRIORITY_COLORS[t.priority] || T.text.amber} />}
+                  <span style={{ color: T.text.primary, flex: 1 }}>{t.title}</span>
+                  {t.assigned_to && <span style={{ color: T.text.cyan, fontSize: T.fontSize.xs }}>{t.assigned_to}</span>}
+                  {t.status && <Badge label={t.status.toUpperCase()} color={T.text.muted} />}
+                  {t.due_date && (
+                    <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, flexShrink: 0 }}>
+                      {new Date(t.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
