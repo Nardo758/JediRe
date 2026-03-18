@@ -715,15 +715,30 @@ export const MainLayout: React.FC = () => {
     }}>
       <TopStatusBar contextLabel={contextLabel} agentCount={5} emailCount={5} />
 
-      <TickerBar items={tickerItems.length > 0 ? tickerItems : [{ name: 'JEDI RE' }]} height={20} speed={30} label="DEALS" labelColor={T.text.amber} />
-      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
-        items={MKTDATA_TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
-      />
       <TickerBar height={20} speed={55} label="NEWS" labelColor={T.text.cyan}
         items={newsTickerItems.map(n => {
           const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
           return { raw: `[${n.time}]  ${n.hl}`, color: T.text.primary, sub: `${n.impact}  ${n.pts}pts`, subColor: impactColor };
         })}
+      />
+      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
+        items={MKTDATA_TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
+      />
+      <TickerBar height={20} speed={28} label="PLATFORM" labelColor={T.text.amber}
+        items={(() => {
+          const avgScore = tickerItems.length > 0
+            ? Math.round(tickerItems.filter(d => d.score != null).reduce((s, d) => s + (d.score ?? 0), 0) / Math.max(1, tickerItems.filter(d => d.score != null).length))
+            : null;
+          const onlineAgents = agents.filter(a => a.status === 'online').length;
+          const critAlerts = alerts.filter(a => a.severity === 'critical' || a.severity === 'high').length;
+          return [
+            { raw: `PIPELINE  ${tickerItems.length} DEALS`, color: T.text.amber },
+            { raw: `AVG JEDI  ${avgScore ?? '—'}`, color: avgScore != null && avgScore >= 75 ? T.text.green : avgScore != null && avgScore >= 50 ? T.text.amber : T.text.red },
+            { raw: `AGENTS  ${onlineAgents} ONLINE`, color: onlineAgents > 0 ? T.text.green : T.text.muted },
+            { raw: `ALERTS  ${critAlerts} ACTIVE`, color: critAlerts > 0 ? T.text.red : T.text.muted },
+            { raw: `SYSTEM  NOMINAL`, color: T.text.green },
+          ];
+        })()}
       />
 
       {!isInsideDeal && <FKeyNavBar activePath={location.pathname} onNavigate={navigate} isInsideDeal={false} />}

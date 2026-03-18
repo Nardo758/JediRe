@@ -2196,19 +2196,24 @@ export default function TerminalPage() {
 
 
       {/* ═══ GLOBAL TICKERS — 3 × 20px ═══ */}
-      <TickerBar height={20} speed={30} label="DEALS" labelColor={T.text.amber}
-        items={liveDeals.length > 0
-          ? liveDeals.slice(0, 30).map(d => ({ name: d.name, score: d.score }))
-          : [{ name: 'JEDI RE' }]}
-      />
-      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
-        items={TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
-      />
       <TickerBar height={20} speed={55} label="NEWS" labelColor={T.text.cyan}
         items={liveNews.map(n => {
           const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
           return { raw: `[${n.time}]  ${n.hl}`, color: T.text.primary, sub: `${n.impact}  ${n.pts}pts`, subColor: impactColor };
         })}
+      />
+      <TickerBar height={20} speed={45} label="MKTDATA" labelColor={T.text.green}
+        items={TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
+      />
+      <TickerBar height={20} speed={28} label="PLATFORM" labelColor={T.text.amber}
+        items={[
+          { raw: `PIPELINE  ${totalPV > 0 ? `$${totalPV.toFixed(1)}M` : `${liveDeals.length} DEALS`}`, color: T.text.amber },
+          { raw: `AVG JEDI  ${liveDeals.length > 0 ? Math.round(liveDeals.reduce((s,d) => s + (d.score||0), 0) / liveDeals.length) : '—'}`, color: T.text.amber },
+          { raw: `ACTIVE  ${activeCount} DEALS`, color: T.text.cyan },
+          { raw: `AGENTS  ${liveAgents.filter(a => a.st === "ON").length} ONLINE`, color: liveAgents.filter(a => a.st === "ON").length > 0 ? T.text.green : T.text.muted },
+          { raw: `EMAIL  ${liveEmails.filter(e => e.unread).length} UNREAD`, color: liveEmails.filter(e => e.unread).length > 0 ? T.text.orange : T.text.muted },
+          { raw: `SYSTEM  NOMINAL`, color: T.text.green },
+        ]}
       />
 
       {/* ═══ KPI BAR — 50px ═══ */}
