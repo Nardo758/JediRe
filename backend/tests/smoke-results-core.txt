@@ -1,0 +1,411 @@
+JediRe Core Platform Smoke Test Results
+Run: Wed Mar 18 03:01:09 AM UTC 2026
+BASE_URL: http://localhost:4000
+DEAL_ID : e044db04-439b-4442-82df-b36a840f2fd8
+
+PASS=124  WARN=143  FAIL=11  TOTAL=278
+
+
+── HEALTH (inline-health) ──
+PASS 200  GET    /health/
+PASS 200  GET    /health/db
+
+── HEALTH (health.routes.ts — not separately mounted; expect 404) ──
+WARN 404  GET    /health/health
+WARN 404  GET    /health/health/db
+WARN 404  GET    /health/health/ready
+WARN 404  GET    /health/health/live
+
+── AUTH (inline-auth) ──
+WARN 401  POST   /api/v1/auth/login
+PASS 200  GET    /api/v1/auth/me
+
+── ADMIN — Ingest ──
+PASS 200  GET    /api/v1/admin/ingest/status
+PASS 200  POST   /api/v1/admin/ingest/zoning-districts
+PASS 200  POST   /api/v1/admin/ingest/atlanta-benchmarks
+PASS 200  POST   /api/v1/admin/ingest/florida-benchmarks
+PASS 200  POST   /api/v1/admin/ingest/map-properties-to-zoning
+PASS 200  POST   /api/v1/admin/ingest/full
+PASS 200  POST   /api/v1/admin/ingest/bls-qcew
+PASS 200  POST   /api/v1/admin/ingest/census-acs
+PASS 200  POST   /api/v1/admin/ingest/census-building-permits
+PASS 200  POST   /api/v1/admin/ingest/florida-geographies
+
+── ADMIN — System ──
+PASS 200  GET    /api/v1/admin/system/health
+PASS 200  GET    /api/v1/admin/system/stats
+PASS 200  GET    /api/v1/admin/system/logs
+
+── ADMIN — Data ──
+PASS 200  GET    /api/v1/admin/data/municipalities
+PASS 200  GET    /api/v1/admin/data/zoning-coverage
+PASS 200  GET    /api/v1/admin/data/benchmark-stats
+FAIL 500  POST   /api/v1/admin/data/refresh-cache
+
+── ADMIN — Users ──
+FAIL 500  GET    /api/v1/admin/users
+FAIL 500  GET    /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857
+FAIL 500  POST   /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857/suspend
+
+── ADMIN — Deals ──
+PASS 200  GET    /api/v1/admin/deals
+PASS 200  GET    /api/v1/admin/deals/e044db04-439b-4442-82df-b36a840f2fd8/audit
+PASS 200  POST   /api/v1/admin/deals/e044db04-439b-4442-82df-b36a840f2fd8/fix
+
+── ADMIN — Quality ──
+PASS 200  GET    /api/v1/admin/quality/missing-zoning
+PASS 200  GET    /api/v1/admin/quality/invalid-boundaries
+PASS 200  GET    /api/v1/admin/quality/orphaned-data
+PASS 200  POST   /api/v1/admin/quality/auto-fix
+
+── ADMIN — Integrations ──
+PASS 200  GET    /api/v1/admin/integrations/apartment-locator-ai
+PASS 200  GET    /api/v1/admin/integrations/apis
+PASS 200  POST   /api/v1/admin/integrations/test
+
+── ADMIN — Jobs ──
+PASS 200  GET    /api/v1/admin/jobs
+WARN 404  POST   /api/v1/admin/jobs/fake-job-id/cancel
+WARN 404  GET    /api/v1/admin/jobs/fake-job-id/logs
+
+── ADMIN-API-KEY ──
+WARN 403  GET    /api/v1/admin-api/data/status
+WARN 403  GET    /api/v1/admin-api/data/zoning-coverage
+WARN 403  GET    /api/v1/admin-api/data/benchmark-stats
+WARN 403  POST   /api/v1/admin-api/ingest/run
+WARN 403  GET    /api/v1/admin-api/municipalities
+WARN 403  POST   /api/v1/admin-api/ingest/bls-qcew
+WARN 403  POST   /api/v1/admin-api/ingest/census-acs
+WARN 403  POST   /api/v1/admin-api/ingest/census-building-permits
+WARN 403  POST   /api/v1/admin-api/ingest/florida-geographies
+WARN 403  GET    /api/v1/admin-api/health
+
+── ADMIN DATA COVERAGE ──
+WARN 404  GET    /api/v1/admin/activity/recent
+WARN 404  GET    /api/v1/admin/data-quality/georgia
+WARN 404  GET    /api/v1/admin/Hillsborough/FL
+WARN 404  POST   /api/v1/admin/Hillsborough/FL/scrape
+WARN 404  POST   /api/v1/admin/refresh-stale
+WARN 404  POST   /api/v1/admin/Hillsborough/FL/test-api
+WARN 404  PUT    /api/v1/admin/Hillsborough/FL
+
+── CONTEXT TRACKER — Notes ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/notes
+PASS 200  POST   /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/notes
+PASS 200  PUT    /api/v1/context/notes/00000000-0000-0000-0000-000000000099
+PASS 200  DELETE /api/v1/context/notes/00000000-0000-0000-0000-000000000099
+
+── CONTEXT TRACKER — Activity ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/activity
+PASS 200  POST   /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/activity
+
+── CONTEXT TRACKER — Contacts ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/contacts
+PASS 200  POST   /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/contacts
+PASS 200  PUT    /api/v1/context/contacts/00000000-0000-0000-0000-000000000099
+PASS 200  DELETE /api/v1/context/contacts/00000000-0000-0000-0000-000000000099
+
+── CONTEXT TRACKER — Documents ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/documents
+PASS 200  DELETE /api/v1/context/documents/00000000-0000-0000-0000-000000000099
+
+── CONTEXT TRACKER — Key Dates ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/key-dates
+PASS 200  POST   /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/key-dates
+PASS 200  PUT    /api/v1/context/key-dates/00000000-0000-0000-0000-000000000099
+PASS 200  DELETE /api/v1/context/key-dates/00000000-0000-0000-0000-000000000099
+
+── CONTEXT TRACKER — Decisions ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/decisions
+PASS 200  POST   /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/decisions
+PASS 200  PUT    /api/v1/context/decisions/00000000-0000-0000-0000-000000000099
+PASS 200  DELETE /api/v1/context/decisions/00000000-0000-0000-0000-000000000099
+
+── CONTEXT TRACKER — Risks ──
+PASS 200  GET    /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/risks
+PASS 200  POST   /api/v1/context/deals/e044db04-439b-4442-82df-b36a840f2fd8/risks
+PASS 200  PUT    /api/v1/context/risks/00000000-0000-0000-0000-000000000099
+PASS 200  DELETE /api/v1/context/risks/00000000-0000-0000-0000-000000000099
+
+── INLINE DEALS ──
+PASS 200  GET    /api/v1/deals
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/modules
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/properties
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/activity
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/key-moments
+FAIL 500  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/lease-analysis
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/trade-area
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/zoning-analysis
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/analysis/latest
+PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/analysis/trigger
+PASS 200  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8
+PASS 200  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/property
+
+── INLINE INBOX ──
+PASS 200  GET    /api/v1/inbox
+PASS 200  GET    /api/v1/inbox/accounts
+PASS 200  GET    /api/v1/inbox/pst-imports
+PASS 200  GET    /api/v1/inbox/stats
+
+── INLINE NEWS ──
+PASS 200  GET    /api/v1/news/events
+FAIL 500  GET    /api/v1/news/events/1
+PASS 200  GET    /api/v1/news/alerts
+FAIL 500  PATCH  /api/v1/news/alerts/1
+PASS 200  GET    /api/v1/news/dashboard
+PASS 200  GET    /api/v1/news/network
+
+── INLINE TASKS ──
+PASS 200  GET    /api/v1/tasks
+PASS 200  GET    /api/v1/tasks/stats
+PASS 201  POST   /api/v1/tasks
+PASS 200  PATCH  /api/v1/tasks/1
+WARN 404  DELETE /api/v1/tasks/999
+
+── INLINE DATA ──
+PASS 200  GET    /api/v1/supply/Tampa
+PASS 200  GET    /api/v1/markets
+PASS 200  GET    /api/v1/properties
+PASS 200  GET    /api/v1/alerts
+
+── DASHBOARD ──
+PASS 200  GET    /api/v1/dashboard
+PASS 200  GET    /api/v1/dashboard/stats
+PASS 200  GET    /api/v1/dashboard/findings
+PASS 200  GET    /api/v1/dashboard/assets
+
+── BILLING ──
+WARN 400  POST   /api/v1/billing/create-checkout-session
+WARN 400  POST   /api/v1/billing/create-portal-session
+PASS 200  GET    /api/v1/billing/subscription
+PASS 200  GET    /api/v1/billing/usage
+
+── GRID ──
+PASS 200  GET    /api/v1/grid/pipeline
+PASS 200  GET    /api/v1/grid/owned
+WARN 404  GET    /api/v1/grid/owned/e044db04-439b-4442-82df-b36a840f2fd8/report
+WARN 400  POST   /api/v1/grid/export
+
+── PORTFOLIO ──
+WARN 404  GET    /api/v1/portfolio/e044db04-439b-4442-82df-b36a840f2fd8/summary
+WARN 404  GET    /api/v1/portfolio/e044db04-439b-4442-82df-b36a840f2fd8/financials
+WARN 404  GET    /api/v1/portfolio/e044db04-439b-4442-82df-b36a840f2fd8/leasing
+WARN 404  GET    /api/v1/portfolio/e044db04-439b-4442-82df-b36a840f2fd8/traffic
+
+── RANKINGS ──
+PASS 200  GET    /api/v1/rankings/Tampa
+PASS 200  GET    /api/v1/rankings/performance/Tampa
+PASS 200  GET    /api/v1/rankings/owned/Tampa
+PASS 200  GET    /api/v1/rankings/pipeline/Tampa
+
+── MODULES ──
+PASS 200  GET    /api/v1/modules
+PASS 200  GET    /api/v1/modules/enabled
+WARN 404  PATCH  /api/v1/modules/supply/toggle
+PASS 200  POST   /api/v1/modules/supply/purchase
+WARN 400  POST   /api/v1/modules/supply/subscribe
+
+── MAP CONFIGS ──
+PASS 200  GET    /api/v1/map-configs
+PASS 200  GET    /api/v1/map-configs/default
+WARN 400  POST   /api/v1/map-configs
+WARN 404  GET    /api/v1/map-configs/00000000-0000-0000-0000-000000000099
+WARN 404  PUT    /api/v1/map-configs/00000000-0000-0000-0000-000000000099
+WARN 404  DELETE /api/v1/map-configs/00000000-0000-0000-0000-000000000099
+WARN 400  POST   /api/v1/map-configs/00000000-0000-0000-0000-000000000099/clone
+WARN 404  POST   /api/v1/map-configs/00000000-0000-0000-0000-000000000099/set-default
+
+── AGENTS ──
+PASS 200  GET    /api/v1/agents/tasks
+FAIL 500  GET    /api/v1/agents/tasks/fake-task-id
+WARN 400  POST   /api/v1/agents/tasks
+
+── CHAT ──
+WARN 000000  POST   /api/v1/chat
+
+── CLAWDBOT WEBHOOKS ──
+PASS 200  GET    /api/v1/clawdbot/health
+WARN 401  POST   /api/v1/clawdbot/command
+WARN 401  POST   /api/v1/clawdbot/query
+
+── CAPSULES ──
+PASS 200  GET    /api/capsules
+WARN 400  POST   /api/capsules
+WARN 400  GET    /api/capsules/00000000-0000-0000-0000-000000000099
+WARN 400  PUT    /api/capsules/00000000-0000-0000-0000-000000000099
+WARN 400  DELETE /api/capsules/00000000-0000-0000-0000-000000000099
+WARN 400  POST   /api/capsules/00000000-0000-0000-0000-000000000099/documents
+WARN 400  DELETE /api/capsules/00000000-0000-0000-0000-000000000099/documents/fake-doc-id
+WARN 400  POST   /api/capsules/00000000-0000-0000-0000-000000000099/share
+WARN 400  DELETE /api/capsules/00000000-0000-0000-0000-000000000099/share/fake-share-id
+WARN 404  POST   /api/capsules/00000000-0000-0000-0000-000000000099/activity
+WARN 400  GET    /api/capsules/00000000-0000-0000-0000-000000000099/activity
+
+── COMMAND CENTER (not mounted — expect 404) ──
+WARN 404  GET    /api/v1/command-center/status
+WARN 404  POST   /api/v1/command-center/sync-atlanta
+WARN 404  POST   /api/v1/command-center/sync-all-metros
+WARN 404  GET    /api/v1/command-center/jobs/active
+WARN 404  GET    /api/v1/command-center/jobs/history
+WARN 404  GET    /api/v1/command-center/job/fake-id
+
+── DEAL ASSUMPTIONS ──
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/assumptions
+PASS 200  PUT    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/assumptions
+PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/compute-returns
+PASS 200  PUT    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/site-data
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/full-context
+
+── DEAL COMP SETS ──
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set
+PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/discover
+WARN 400  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/discover-tiered
+WARN 400  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/add-to-set
+FAIL 500  DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
+WARN 400  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
+
+── DEAL PHOTOS ──
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/photos
+PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/photos
+WARN 404  DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/photos/fake-photo-id
+WARN 404  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/photos/fake-photo-id
+
+── DEAL STATE ──
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/state
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/state
+WARN 404  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/state
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/snapshots
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/snapshots
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/restore
+
+── DEAL TIMELINE (not mounted — expect 404) ──
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline-events
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline-events
+WARN 404  PUT    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline-events/fake-id
+WARN 404  DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline-events/fake-id
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline-summary
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/timeline-events/reorder
+
+── DEAL VALIDATION ──
+PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/validate
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/validation-status
+PASS 200  POST   /api/v1/deals/validate-all
+
+── DEAL CONTEXT ──
+PASS 200  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/context
+PASS 200  PATCH  /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/context
+PASS 200  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/recompute
+
+── DD CHECKLISTS ──
+WARN 400  POST   /api/v1/dd-checklists
+WARN 404  GET    /api/v1/dd-checklists/e044db04-439b-4442-82df-b36a840f2fd8
+WARN 400  POST   /api/v1/dd-checklists/tasks
+FAIL 500  PATCH  /api/v1/dd-checklists/tasks/fake-id
+FAIL 500  DELETE /api/v1/dd-checklists/tasks/fake-id
+
+── DEAL ACTUALS ──
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/actuals
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/actuals
+WARN 404  PUT    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/actuals/fake-id/verify
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/traffic
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/traffic
+WARN 404  POST   /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/flywheel-feeds
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/flywheel-feeds
+WARN 404  GET    /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/actuals-summary
+
+── DOCUMENTS FILES (check mount) ──
+WARN 404  POST   /api/v1/documents
+WARN 404  GET    /api/v1/documents?deal_id=e044db04-439b-4442-82df-b36a840f2fd8
+WARN 404  GET    /api/v1/documents/fake-id
+WARN 404  PUT    /api/v1/documents/fake-id
+WARN 404  DELETE /api/v1/documents/fake-id
+WARN 404  POST   /api/v1/documents/fake-id/share
+WARN 404  GET    /api/v1/documents/fake-id/versions
+WARN 404  GET    /api/v1/documents/stats
+WARN 404  GET    /api/v1/documents/recent
+WARN 404  POST   /api/v1/documents/fake-id/versions
+WARN 404  GET    /api/v1/documents/fake-id/preview
+
+── FILES (check mount) ──
+WARN 404  POST   /api/v1/files
+WARN 404  GET    /api/v1/files?deal_id=e044db04-439b-4442-82df-b36a840f2fd8
+WARN 404  DELETE /api/v1/files/fake-id
+WARN 404  GET    /api/v1/files/fake-id/download
+WARN 404  DELETE /api/v1/files/fake-id/permanent
+
+── TASKS (tasks.routes.ts — check mount) ──
+WARN 404  GET    /api/v1/deal-tasks
+WARN 404  GET    /api/v1/deal-tasks/stats
+WARN 404  GET    /api/v1/deal-tasks/fake-id
+WARN 404  POST   /api/v1/deal-tasks
+WARN 404  PATCH  /api/v1/deal-tasks/fake-id
+WARN 404  DELETE /api/v1/deal-tasks/fake-id
+
+── EVENTS (check mount) ──
+WARN 401  POST   /api/v1/events/track
+WARN 401  POST   /api/v1/events/track-batch
+WARN 401  GET    /api/v1/events/daily/00000000-0000-0000-0000-000000000001
+WARN 401  GET    /api/v1/events/score/00000000-0000-0000-0000-000000000001
+WARN 401  GET    /api/v1/events/trending
+WARN 401  POST   /api/v1/events/aggregate-daily
+
+── ERRORS (check mount) ──
+WARN 404  POST   /api/v1/frontend-errors
+WARN 404  GET    /api/v1/frontend-errors/stats
+WARN 404  GET    /api/v1/frontend-errors/recent
+
+── NOTIFICATIONS (check mount) ──
+WARN 404  GET    /api/v1/notifications
+WARN 404  POST   /api/v1/notifications/fake-id/read
+WARN 404  POST   /api/v1/notifications/read-all
+
+── PREFERENCES ──
+PASS 200  GET    /api/v1/preferences
+WARN 400  POST   /api/v1/preferences
+PASS 200  DELETE /api/v1/preferences
+PASS 200  GET    /api/v1/preferences/available-markets
+PASS 200  GET    /api/v1/preferences/property-types
+WARN 400  PUT    /api/v1/preferences/user
+PASS 200  GET    /api/v1/preferences/user
+
+── USER PREFERENCES (check mount) ──
+WARN 404  GET    /api/v1/settings/preferences
+WARN 404  PUT    /api/v1/settings/preferences
+WARN 404  GET    /api/v1/settings/preferences/available-markets
+WARN 404  GET    /api/v1/settings/preferences/property-types
+
+── INBOX (inbox.routes.ts — check mount) ──
+WARN 404  GET    /api/v1/email/inbox
+WARN 404  GET    /api/v1/email/inbox/stats
+WARN 404  GET    /api/v1/email/inbox/fake-id
+WARN 404  PATCH  /api/v1/email/inbox/fake-id
+WARN 404  DELETE /api/v1/email/inbox/fake-id
+WARN 404  POST   /api/v1/email/inbox/sync
+WARN 404  POST   /api/v1/email/inbox/compose
+WARN 404  POST   /api/v1/email/inbox/bulk-action
+
+── PIPELINE (check mount) ──
+WARN 404  GET    /api/v1/pipeline/status
+WARN 404  POST   /api/v1/pipeline/load-parcels
+WARN 404  POST   /api/v1/pipeline/load-mock-data
+WARN 404  GET    /api/v1/pipeline/analyze/fake-id
+WARN 404  POST   /api/v1/pipeline/analyze-batch
+WARN 404  POST   /api/v1/pipeline/analyze
+
+
+FAILURES (5xx errors):
+  FAIL 500 POST /api/v1/admin/data/refresh-cache
+  FAIL 500 GET /api/v1/admin/users
+  FAIL 500 GET /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857
+  FAIL 500 POST /api/v1/admin/users/6253ba3f-d40d-4597-86ab-270c8397a857/suspend
+  FAIL 500 GET /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/lease-analysis
+  FAIL 500 GET /api/v1/news/events/1
+  FAIL 500 PATCH /api/v1/news/alerts/1
+  FAIL 500 GET /api/v1/agents/tasks/fake-task-id
+  FAIL 500 DELETE /api/v1/deals/e044db04-439b-4442-82df-b36a840f2fd8/comp-set/fake-comp-id
+  FAIL 500 PATCH /api/v1/dd-checklists/tasks/fake-id
+  FAIL 500 DELETE /api/v1/dd-checklists/tasks/fake-id
