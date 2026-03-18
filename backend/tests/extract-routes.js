@@ -108,7 +108,7 @@ const MOUNT_PREFIX = {
   'entitlements.routes':           '/api/v1/entitlements',
   'regulatory-alert.routes':       '/api/v1/regulatory-alerts',
   'regulatory-alerts.routes':      '/api/v1/regulatory-alerts',
-  'capsule.routes':                '/api/v1/capsules',
+  'capsule.routes':                '/api/capsules',
   'trafficPrediction.routes':      '/api/v1/traffic',
   'traffic-comps.routes':          '/api/v1/traffic-comps',
   'traffic-data.routes':           '/api/v1/traffic-data',

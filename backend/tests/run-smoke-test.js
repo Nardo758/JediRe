@@ -134,7 +134,7 @@ const MOUNT_PREFIX = {
   'proforma-generator.routes':     '/api/v1/properties',
   'entitlement.routes':            '/api/v1/entitlements',
   'regulatory-alert.routes':       '/api/v1/regulatory-alerts',
-  'capsule.routes':                '/api/v1/capsules',
+  'capsule.routes':                '/api/capsules',
   'trafficPrediction.routes':      '/api/v1/traffic',
   'traffic-comps.routes':          '/api/v1/traffic-comps',
   'traffic-data.routes':           '/api/v1/traffic-data',
@@ -350,12 +350,81 @@ function buildRoutes() {
   return routes;
 }
 
+// ── Endpoint-specific payload fixtures ────────────────────────
+// Minimal valid bodies that pass schema validation for key endpoints.
+// Pattern: `METHOD:/path/pattern` → payload JSON string
+const PAYLOAD_FIXTURES = {
+  // Auth
+  'POST:/api/v1/auth/login':          '{"email":"demo@jedire.com","password":"password"}',
+  'POST:/api/v1/auth/register':       '{"email":"smoke@test.com","password":"password123","name":"Smoke Test"}',
+  // Deals
+  'POST:/api/v1/deals':               `{"name":"Smoke Deal","project_type":"multifamily","status":"prospect"}`,
+  // Context tracker
+  'POST:/api/v1/context/deals/*/notes':    '{"title":"Smoke Note","content":"Test content"}',
+  'POST:/api/v1/context/deals/*/risks':    '{"title":"Smoke Risk","impact":"medium","likelihood":"medium"}',
+  'POST:/api/v1/context/deals/*/activity': '{"action_type":"update","description":"Smoke activity"}',
+  // Zoning
+  'POST:/api/v1/deals/*/zoning-confirmation': '{"zoning_code":"MF","municipality":"Austin","state":"TX"}',
+  // Benchmark timeline
+  'POST:/api/v1/benchmark-timeline/ingest/atlanta': '{}',
+  'POST:/api/v1/benchmark-timeline/ingest/florida': '{"county":"Orange"}',
+  // Traffic
+  'POST:/api/v1/traffic/calibrate':    '{"factor_type":"seasonal","factor_key":"Q1","multiplier":1.0}',
+  'POST:/api/v1/traffic/validate':     '{"property_id":"00000000-0000-0000-0000-000000000001","date":"2024-01-01"}',
+  // Email extractions
+  'POST:/api/v1/email-extractions/*/approve': '{}',
+  'POST:/api/v1/email-extractions/*/reject':  '{"reason":"Smoke test"}',
+};
+
+// Webhook auth: clawdbot routes use HMAC signature or bearer token
+const CLAWDBOT_TOKEN = process.env.CLAWDBOT_AUTH_TOKEN || '';
+const CLAWDBOT_SECRET = process.env.CLAWDBOT_WEBHOOK_SECRET || '';
+
+function getPayloadAndHeaders(method, urlPath) {
+  const isWriteMethod = ['POST','PUT','PATCH'].includes(method);
+
+  // Determine if this is a webhook path (clawdbot)
+  const isWebhook = urlPath.startsWith('/api/v1/clawdbot');
+
+  // Try to find a matching fixture
+  let body = isWriteMethod ? '{"_smoke":true}' : undefined;
+  if (isWriteMethod) {
+    const pathForMatch = urlPath.replace(/\/[0-9a-f-]{36}\//g, '/*/').replace(/\/[0-9a-f-]{36}$/, '/*');
+    for (const [pattern, payload] of Object.entries(PAYLOAD_FIXTURES)) {
+      const [pm, pp] = pattern.split(':');
+      if (pm === method) {
+        const re = new RegExp('^' + pp.replace(/\*/g, '[^/]+') + '$');
+        if (re.test(urlPath) || re.test(pathForMatch)) {
+          body = payload;
+          break;
+        }
+      }
+    }
+  }
+
+  const extraHeaders = {};
+
+  // Add webhook auth headers for clawdbot routes
+  if (isWebhook) {
+    if (CLAWDBOT_SECRET && body) {
+      const crypto = require('crypto');
+      const sig = crypto.createHmac('sha256', CLAWDBOT_SECRET).update(body).digest('hex');
+      extraHeaders['x-webhook-signature'] = sig;
+    }
+    if (CLAWDBOT_TOKEN) {
+      extraHeaders['Authorization'] = `Bearer ${CLAWDBOT_TOKEN}`;
+    }
+  }
+
+  return { body, extraHeaders };
+}
+
 // ── HTTP request helper ────────────────────────────────────────
 function request(method, urlStr) {
   return new Promise((resolve) => {
     const url  = new URL(urlStr);
     const lib  = url.protocol === 'https:' ? https : http;
-    const body = ['POST','PUT','PATCH'].includes(method) ? '{"_smoke":true}' : undefined;
+    const { body, extraHeaders } = getPayloadAndHeaders(method, url.pathname);
     const opts = {
       hostname : url.hostname,
       port     : url.port || (url.protocol === 'https:' ? 443 : 80),
@@ -365,6 +434,7 @@ function request(method, urlStr) {
         'Authorization': `Bearer ${TOKEN}`,
         'Content-Type' : 'application/json',
         ...(body ? { 'Content-Length': Buffer.byteLength(body) } : {}),
+        ...extraHeaders,
       },
       timeout  : TIMEOUT_MS,
     };
@@ -379,8 +449,6 @@ function request(method, urlStr) {
             const raw = Buffer.concat(chunks).toString('utf8').trim();
             firstErrorLine = raw.split('\n')[0].slice(0, 200);
           } catch {}
-        } else {
-          res.resume && res.resume();
         }
         resolve({ status: res.statusCode, ms: Date.now() - t0, firstErrorLine });
       });

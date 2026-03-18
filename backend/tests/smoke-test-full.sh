@@ -17,6 +17,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$SCRIPT_DIR/run-smoke-test.js"
+VERIFY="$SCRIPT_DIR/verify-mount-coverage.js"
 REPORT_OUT=""
 
 for arg in "$@"; do
@@ -31,6 +32,13 @@ export CONCURRENCY="${CONCURRENCY:-25}"
 export TIMEOUT_MS="${TIMEOUT_MS:-5000}"
 if [[ -n "$REPORT_OUT" ]]; then
   export REPORT_OUT
+fi
+
+# Emit mount coverage reconciliation (coverage report vs actual registrations)
+if [[ -f "$VERIFY" ]]; then
+  echo "=== Mount Coverage Reconciliation ==="
+  node "$VERIFY" 2>/dev/null | grep -E "MISSING|STALE|covered|Total|All actual" | head -20
+  echo ""
 fi
 
 exec node "$RUNNER"
