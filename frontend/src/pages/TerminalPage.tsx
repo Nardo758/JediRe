@@ -178,8 +178,9 @@ const TICKERS = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE
 
 const CURATED_METRIC_IDS_T = ['F_CAP_RATE','F_RENT_GROWTH','M_VACANCY','M_ABSORPTION','E_EMPLOYMENT_GROWTH','E_WAGE_GROWTH','E_POPULATION_GROWTH','C_SURGE_INDEX','S_PIPELINE_TO_STOCK','S_MONTHS_OF_SUPPLY','M_LEASE_VELOCITY','D_SEARCH_MOMENTUM'];
 const CURATED_METRIC_LABELS_T: Record<string,string> = {F_CAP_RATE:'CAP RATE',F_RENT_GROWTH:'RENT GROWTH',M_VACANCY:'VACANCY',M_ABSORPTION:'ABSORPTION',E_EMPLOYMENT_GROWTH:'EMPL GROWTH',E_WAGE_GROWTH:'WAGE GROWTH',E_POPULATION_GROWTH:'POP GROWTH',C_SURGE_INDEX:'SURGE IDX',S_PIPELINE_TO_STOCK:'PIPELINE/STOCK',S_MONTHS_OF_SUPPLY:'MOS SUPPLY',M_LEASE_VELOCITY:'LEASE VEL',D_SEARCH_MOMENTUM:'SRCH MOM'};
-const STATIC_METRICS_TICKER_T = [{raw:'CAP RATE  5.2%',color:'#F5A623'},{raw:'RENT GROWTH  +3.2%',color:'#00D26A'},{raw:'VACANCY  5.2%',color:'#F5A623'},{raw:'ABSORPTION  +125u/mo',color:'#00D26A'},{raw:'EMPL GROWTH  +2.1%',color:'#00D26A'},{raw:'WAGE GROWTH  +3.4%',color:'#00D26A'},{raw:'POP GROWTH  +1.8%',color:'#00D26A'},{raw:'SURGE IDX  +0.35',color:'#00D26A'},{raw:'PIPELINE/STOCK  8.5%',color:'#F5A623'},{raw:'MOS SUPPLY  4.2mo',color:'#F5A623'},{raw:'LEASE VEL  24d',color:'#F5A623'},{raw:'SRCH MOM  +18%',color:'#00D26A'}];
-const fmtMetric = (id:string, ev:string, hib:boolean) => { const label=CURATED_METRIC_LABELS_T[id]||id; const v=(ev||'').trim().split(' ')[0]; const isPos=v.startsWith('+'),isNeg=v.startsWith('-'); const color=hib?(isPos?'#00D26A':isNeg?'#FF4757':'#F5A623'):(isNeg?'#00D26A':isPos?'#FF4757':'#F5A623'); return {raw:`${label}  ${v}`,color}; };
+const SCOPE_ABBREV_T: Record<string,string> = {property:'PROP',submarket:'SBMKT',zip:'ZIP',county:'CNTY',msa:'MSA'};
+const STATIC_METRICS_TICKER_T = [{raw:'CAP RATE  5.2%',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'RENT GROWTH  +3.2%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'VACANCY  5.2%',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'ABSORPTION  +125u/mo',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'EMPL GROWTH  +2.1%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'WAGE GROWTH  +3.4%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'POP GROWTH  +1.8%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'SURGE IDX  +0.35',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'PIPELINE/STOCK  8.5%',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'MOS SUPPLY  4.2mo',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'LEASE VEL  24d',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'SRCH MOM  +18%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'}];
+const fmtMetric = (id:string, ev:string, hib:boolean, scope?:string) => { const label=CURATED_METRIC_LABELS_T[id]||id; const v=(ev||'').trim().split(' ')[0]; const isPos=v.startsWith('+'),isNeg=v.startsWith('-'); const color=hib?(isPos?'#00D26A':isNeg?'#FF4757':'#F5A623'):(isNeg?'#00D26A':isPos?'#FF4757':'#F5A623'); const sub=scope?(SCOPE_ABBREV_T[scope]??scope.toUpperCase()):undefined; return {raw:`${label}  ${v}`,color,sub,subColor:'rgba(245,166,35,0.45)'}; };
 
 // ─── API RESPONSE TYPES ──────────────────────────────────────
 interface ApiDeal {
@@ -504,6 +505,8 @@ export default function TerminalPage() {
   const [liveEmails, setLiveEmails] = useState(STATIC_EMAILS);
   const [liveAgents] = useState(STATIC_AGENTS);
   const [metricsTicker, setMetricsTicker] = useState(STATIC_METRICS_TICKER_T);
+  const [rawCatalogMetricsT, setRawCatalogMetricsT] = useState<Array<Record<string,unknown>>>([]);
+  const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
@@ -595,9 +598,15 @@ export default function TerminalPage() {
       const ordered = CURATED_METRIC_IDS_T
         .map(id => metrics.find(m => m.id === id))
         .filter(Boolean) as Array<Record<string,unknown>>;
-      if (ordered.length > 0) setMetricsTicker(ordered.map(m => fmtMetric(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean)));
+      if (ordered.length > 0) setRawCatalogMetricsT(ordered);
     }).catch(()=>{});
   },[]);
+
+  useEffect(() => {
+    if (rawCatalogMetricsT.length > 0) {
+      setMetricsTicker(rawCatalogMetricsT.map(m => fmtMetric(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean, metricsScope)));
+    }
+  }, [rawCatalogMetricsT, metricsScope]);
 
   useEffect(() => {
     apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })

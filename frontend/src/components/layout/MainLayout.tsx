@@ -30,9 +30,13 @@ const CURATED_METRIC_LABELS: Record<string, string> = {
   D_SEARCH_MOMENTUM: 'SRCH MOM',
 };
 
-interface MetricTickerItem { raw: string; color: string; }
+const SCOPE_ABBREV: Record<string, string> = {
+  property: 'PROP', submarket: 'SBMKT', zip: 'ZIP', county: 'CNTY', msa: 'MSA',
+};
 
-const formatMetricItem = (id: string, exampleValue: string, higherIsBetter: boolean): MetricTickerItem => {
+interface MetricTickerItem { raw: string; color: string; sub?: string; subColor?: string; }
+
+const formatMetricItem = (id: string, exampleValue: string, higherIsBetter: boolean, scope?: string): MetricTickerItem => {
   const label = CURATED_METRIC_LABELS[id] || id;
   const ev = (exampleValue || '').trim().split(' ')[0];
   const isPos = ev.startsWith('+');
@@ -40,7 +44,8 @@ const formatMetricItem = (id: string, exampleValue: string, higherIsBetter: bool
   const color = higherIsBetter
     ? (isPos ? T.text.green : isNeg ? T.text.red : T.text.amber)
     : (isNeg ? T.text.green : isPos ? T.text.red : T.text.amber);
-  return { raw: `${label}  ${ev}`, color };
+  const sub = scope ? (SCOPE_ABBREV[scope] ?? scope.toUpperCase()) : undefined;
+  return { raw: `${label}  ${ev}`, color, sub, subColor: 'rgba(245,166,35,0.45)' };
 };
 
 const STATIC_METRICS_TICKER: MetricTickerItem[] = [
@@ -619,6 +624,9 @@ export const MainLayout: React.FC = () => {
   const [newsTickerItems, setNewsTickerItems] = useState(STATIC_NEWS_TICKER);
   const [metricsTicker, setMetricsTicker] = useState<MetricTickerItem[]>(STATIC_METRICS_TICKER);
   const [dealContext, setDealContext] = useState<DealContextInfo | null>(null);
+  const [rawCatalogMetrics, setRawCatalogMetrics] = useState<Array<Record<string, unknown>>>([]);
+
+  const { activeScope } = useTradeAreaStore();
 
   const isInsideDeal = location.pathname.startsWith('/deals/');
   const dealIdMatch = isInsideDeal ? location.pathname.match(/\/deals\/([^/]+)/) : null;
@@ -703,13 +711,17 @@ export const MainLayout: React.FC = () => {
       const ordered = CURATED_METRIC_IDS
         .map(id => metrics.find(m => m.id === id))
         .filter(Boolean) as Array<Record<string, unknown>>;
-      if (ordered.length > 0) {
-        setMetricsTicker(ordered.map(m =>
-          formatMetricItem(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean)
-        ));
-      }
+      if (ordered.length > 0) setRawCatalogMetrics(ordered);
     }).catch(() => { /* keep static fallback */ });
   }, []);
+
+  useEffect(() => {
+    if (rawCatalogMetrics.length > 0) {
+      setMetricsTicker(rawCatalogMetrics.map(m =>
+        formatMetricItem(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean, activeScope)
+      ));
+    }
+  }, [rawCatalogMetrics, activeScope]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
