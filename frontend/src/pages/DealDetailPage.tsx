@@ -339,16 +339,6 @@ const ExecutionScreen = (props: ScreenProps) => (
 const SupplyPipelineScreen = (props: ScreenProps) => (
   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
     <style>{BT_CSS}</style>
-    <PanelHeader
-      title="SUPPLY PIPELINE"
-      subtitle="M04 · PIPELINE PRESSURE ENGINE"
-      borderColor={BT.met.supply}
-      metrics={[
-        { l: 'UNITS', c: BT.met.supply },
-        { l: 'DELIVER', c: BT.text.orange },
-        { l: 'ABSORB', c: BT.met.occupancy },
-      ]}
-    />
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
       <SupplyPipelinePage {...props} />
     </div>
@@ -358,17 +348,6 @@ const SupplyPipelineScreen = (props: ScreenProps) => (
 const TrafficScreen = (props: ScreenProps) => (
   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
     <style>{BT_CSS}</style>
-    <PanelHeader
-      title="TRAFFIC INTELLIGENCE"
-      subtitle="M07 · PHYSICAL + DIGITAL FUSION"
-      borderColor={BT.met.occupancy}
-      metrics={[
-        { l: 'PHYS', c: BT.met.physTraffic },
-        { l: 'DIGI', c: BT.met.digTraffic },
-        { l: 'QUAD', c: BT.met.compTraffic },
-        { l: 'FDOT', c: BT.met.occupancy },
-      ]}
-    />
     <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
       <TrafficModule {...props} />
     </div>
