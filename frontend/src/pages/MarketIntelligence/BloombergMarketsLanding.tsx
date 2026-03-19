@@ -114,11 +114,16 @@ export default function BloombergMarketsLanding() {
 
       {/* BREADCRUMB BAR */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
+        <button
+          onClick={() => navigate(-1)}
+          style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", fontFamily: "'JetBrains Mono','Fira Code',monospace", borderRadius: 2, flexShrink: 0 }}
+        >
+          ◀ BACK
+        </button>
+        <span style={{ color: T.borderM }}>|</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>MSA INDEX</span>
         <span style={{ color: T.borderM }}>/</span>
         <span style={{ fontSize: 11, color: T.muted }}>SUBMARKET SECTOR</span>
-        <span style={{ color: T.borderM }}>/</span>
-        <span style={{ fontSize: 11, color: T.muted }}>PROPERTY STOCK</span>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 10, color: T.muted }}>{MSA_DATA.length} markets · {MSA_DATA.reduce((s, m) => s + m.props, 0).toLocaleString()} properties · Double-click row to open market detail</span>
       </div>
