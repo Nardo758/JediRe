@@ -124,14 +124,14 @@ function ScoreCell({ value, size = 11 }: { value: number; size?: number }) {
 }
 
 function DeltaCell({ value }: { value: string }) {
-  if (!value || value === "—") return <span style={{ color: T.muted, fontSize: 9 }}>—</span>;
+  if (!value || value === "—") return <span style={{ color: T.muted, fontSize: 11 }}>—</span>;
   const positive = value.startsWith("+");
   const negative = value.startsWith("-");
-  return <span style={{ fontSize: 9, fontWeight: 600, color: positive ? T.green : negative ? T.red : T.muted, ...mono }}>{value}</span>;
+  return <span style={{ fontSize: 11, fontWeight: 600, color: positive ? T.green : negative ? T.red : T.muted, ...mono }}>{value}</span>;
 }
 
 function Badge({ label, color }: { label: string; color: string }) {
-  return <span style={{ ...mono, fontSize: 8, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5 }}>{label}</span>;
+  return <span style={{ ...mono, fontSize: 11, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "2px 7px", letterSpacing: 0.5 }}>{label}</span>;
 }
 
 function ThresholdVal({ value, thresholds, invert }: { value: string; thresholds: [number, number]; invert?: boolean }) {
@@ -139,7 +139,7 @@ function ThresholdVal({ value, thresholds, invert }: { value: string; thresholds
   let c: string;
   if (invert) c = n <= thresholds[0] ? T.green : n <= thresholds[1] ? T.amber : T.red;
   else c = n >= thresholds[0] ? T.green : n >= thresholds[1] ? T.amber : T.red;
-  return <span style={{ fontSize: 10, fontWeight: 600, color: c, ...mono }}>{value}</span>;
+  return <span style={{ fontSize: 12, fontWeight: 600, color: c, ...mono }}>{value}</span>;
 }
 
 function MiniChart({ data, color = T.green, h = 80 }: { data: number[]; color?: string; h?: number }) {
@@ -156,9 +156,9 @@ function MiniChart({ data, color = T.green, h = 80 }: { data: number[]; color?: 
 
 function MetricRow({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${T.borderS}` }}>
-      <span style={{ fontSize: 9, color: T.secondary, ...sans }}>{label}</span>
-      <span style={{ fontSize: 10, fontWeight: 600, color: color || T.primary, ...mono }}>{value}</span>
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${T.borderS}` }}>
+      <span style={{ fontSize: 11, color: T.secondary, ...sans }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, color: color || T.primary, ...mono }}>{value}</span>
     </div>
   );
 }
@@ -189,76 +189,76 @@ export default function BloombergMarketDetail() {
   const cycleColor = msa.cycle === "EXPANSION" ? T.green : msa.cycle === "LATE EXP" ? T.amber : T.orange;
 
   return (
-    <div style={{ background: T.bg, height: "100vh", display: "flex", flexDirection: "column", color: T.primary, ...mono, overflow: "hidden" }}>
+    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", color: T.primary, ...mono }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-        * { scrollbar-width: thin; scrollbar-color: ${T.borderM} ${T.bg}; }
-        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        * { scrollbar-width: thin; scrollbar-color: ${T.borderM} ${T.bg}; box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: ${T.bg}; }
-        ::-webkit-scrollbar-thumb { background: ${T.borderM}; }
+        ::-webkit-scrollbar-thumb { background: ${T.borderM}; border-radius: 3px; }
       `}</style>
 
       {/* TOP BAR */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 22, padding: "0 12px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JEDI RE</span>
-          <span style={{ fontSize: 8, color: T.muted }}>|</span>
-          <span style={{ fontSize: 8, color: T.secondary }}>F4 MARKETS · MARKET OVERVIEW</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 32, padding: "0 16px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JEDI RE</span>
+          <span style={{ fontSize: 10, color: T.muted }}>|</span>
+          <span style={{ fontSize: 10, color: T.secondary }}>F4 MARKETS · MARKET OVERVIEW</span>
         </div>
       </div>
 
       {/* BREADCRUMB BAR */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 12px", height: 28, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
         <button
           onClick={() => navigate("/market-intelligence")}
-          style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "1px 8px", fontSize: 9, cursor: "pointer", ...mono, borderRadius: 2 }}
+          style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", ...mono, borderRadius: 2 }}
         >
           ◀ MSA INDEX
         </button>
-        <span style={{ fontSize: 9, color: T.amber }}>{msa.name}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>{msa.name}</span>
         <span style={{ color: T.borderM }}>/</span>
-        <span style={{ fontSize: 9, color: T.muted }}>SUBMARKET SECTOR</span>
+        <span style={{ fontSize: 11, color: T.muted }}>SUBMARKET SECTOR</span>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 8, color: T.muted }}>{msa.props.toLocaleString()} properties · {msa.units} units</span>
+        <span style={{ fontSize: 10, color: T.muted }}>{msa.props.toLocaleString()} properties · {msa.units} units</span>
       </div>
 
       {/* QUOTE BAR */}
-      <div style={{ padding: "5px 12px", background: T.blueBg, borderBottom: `1px solid ${T.borderM}`, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-        <span style={{ fontSize: 15, fontWeight: 800, color: T.amberBright, ...sans }}>{msa.name}</span>
-        <span style={{ fontSize: 10, color: T.secondary, ...sans }}>{msa.full}</span>
-        <span style={{ fontSize: 8, color: T.muted }}>|</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: T.green, ...mono }}>{msa.rent}</span>
+      <div style={{ padding: "6px 16px", background: T.blueBg, borderBottom: `1px solid ${T.borderM}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+        <span style={{ fontSize: 17, fontWeight: 800, color: T.amberBright, ...sans }}>{msa.name}</span>
+        <span style={{ fontSize: 12, color: T.secondary, ...sans }}>{msa.full}</span>
+        <span style={{ fontSize: 10, color: T.muted }}>|</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: T.green, ...mono }}>{msa.rent}</span>
         <DeltaCell value={msa.rentD} />
-        <span style={{ fontSize: 8, color: T.muted }}>|</span>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>Vac</span>
+        <span style={{ fontSize: 10, color: T.muted }}>|</span>
+        <span style={{ fontSize: 10, color: T.muted, ...mono }}>Vac</span>
         <ThresholdVal value={msa.vac} thresholds={[5, 8]} invert />
-        <span style={{ fontSize: 8, color: T.muted }}>|</span>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>JEDI</span>
-        <ScoreCell value={msa.jedi} size={13} />
+        <span style={{ fontSize: 10, color: T.muted }}>|</span>
+        <span style={{ fontSize: 10, color: T.muted, ...mono }}>JEDI</span>
+        <ScoreCell value={msa.jedi} size={15} />
         <DeltaCell value={msa.d30} />
         <div style={{ flex: 1 }} />
         <Badge label={msa.cycle} color={cycleColor} />
-        <span style={{ fontSize: 8, color: T.muted }}>Mo {msa.cycleMonth}</span>
+        <span style={{ fontSize: 10, color: T.muted }}>Mo {msa.cycleMonth}</span>
       </div>
 
       {/* SCROLLABLE CONTENT */}
-      <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: 1, background: T.borderS }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, background: T.borderS }}>
 
         {/* MARKET PRIMER */}
-        <div style={{ background: T.panel, padding: "12px 16px", flexShrink: 0 }}>
-          <div style={{ fontSize: 9, letterSpacing: 2, color: T.amber, marginBottom: 6, ...mono }}>MARKET PRIMER · {msa.name.toUpperCase()}</div>
+        <div style={{ background: T.panel, padding: "14px 18px", flexShrink: 0 }}>
+          <div style={{ fontSize: 11, letterSpacing: 2, color: T.amber, marginBottom: 8, ...mono }}>MARKET PRIMER · {msa.name.toUpperCase()}</div>
           <PrimerText text={msa.primer} msa={msa} />
         </div>
 
         {/* 3-COLUMN: Rent Chart | Supply-Demand | Economic Profile */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1, flexShrink: 0 }}>
           {/* Rent Chart */}
-          <div style={{ background: T.panel, padding: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 9, letterSpacing: 1, color: T.muted, ...mono }}>AVG RENT · 12MO</span>
+          <div style={{ background: T.panel, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+              <span style={{ fontSize: 11, letterSpacing: 1, color: T.muted, ...mono }}>AVG RENT · 12MO</span>
               <div style={{ display: "flex", gap: 4 }}>
                 {["1Y","3Y","5Y"].map((p, i) => (
-                  <span key={p} style={{ fontSize: 7, padding: "1px 4px", background: i === 0 ? T.amber : "transparent", color: i === 0 ? T.bg : T.muted, ...mono, cursor: "pointer" }}>{p}</span>
+                  <span key={p} style={{ fontSize: 10, padding: "2px 6px", background: i === 0 ? T.amber : "transparent", color: i === 0 ? T.bg : T.muted, ...mono, cursor: "pointer" }}>{p}</span>
                 ))}
               </div>
             </div>
@@ -274,8 +274,8 @@ export default function BloombergMarketDetail() {
           </div>
 
           {/* Supply-Demand */}
-          <div style={{ background: T.panel, padding: 14 }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.cyan, ...mono }}>SUPPLY-DEMAND BALANCE</span>
+          <div style={{ background: T.panel, padding: 16 }}>
+            <span style={{ fontSize: 11, letterSpacing: 1, color: T.cyan, ...mono }}>SUPPLY-DEMAND BALANCE</span>
             <div style={{ marginTop: 8 }}>
               <MetricRow label="Vacancy Rate" value={msa.vac} color={T.green} />
               <MetricRow label="Net Absorption" value={msa.absorb} />
@@ -285,7 +285,7 @@ export default function BloombergMarketDetail() {
               <MetricRow label="Permit Velocity" value={msa.permitVel} color={T.green} />
             </div>
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.borderM}` }}>
-              <span style={{ fontSize: 9, letterSpacing: 1, color: T.amber, ...mono }}>TRANSACTION ACTIVITY</span>
+              <span style={{ fontSize: 11, letterSpacing: 1, color: T.amber, ...mono }}>TRANSACTION ACTIVITY</span>
               <div style={{ marginTop: 4 }}>
                 <MetricRow label="Avg Cap Rate" value={msa.cap} />
                 <MetricRow label="Cap Δ YoY" value={msa.capD} color={T.green} />
@@ -298,8 +298,8 @@ export default function BloombergMarketDetail() {
           </div>
 
           {/* Economic Profile */}
-          <div style={{ background: T.panel, padding: 14 }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.muted, ...mono }}>ECONOMIC PROFILE</span>
+          <div style={{ background: T.panel, padding: 16 }}>
+            <span style={{ fontSize: 11, letterSpacing: 1, color: T.muted, ...mono }}>ECONOMIC PROFILE</span>
             <div style={{ marginTop: 8 }}>
               <MetricRow label="Population" value={msa.pop} />
               <MetricRow label="Pop Growth" value={msa.popD} color={T.green} />
@@ -311,17 +311,17 @@ export default function BloombergMarketDetail() {
               <MetricRow label="Jobs/Apt Ratio" value={msa.jobsApt} />
             </div>
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.borderM}` }}>
-              <span style={{ fontSize: 9, letterSpacing: 1, color: T.purple, ...mono }}>CYCLE POSITION</span>
+              <span style={{ fontSize: 11, letterSpacing: 1, color: T.purple, ...mono }}>CYCLE POSITION</span>
               <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
                 <Badge label={msa.cycle} color={cycleColor} />
-                <span style={{ fontSize: 9, color: T.secondary, ...mono }}>Month {msa.cycleMonth}</span>
+                <span style={{ fontSize: 11, color: T.secondary, ...mono }}>Month {msa.cycleMonth}</span>
               </div>
               <div style={{ marginTop: 6, height: 6, background: T.bg, borderRadius: 3, overflow: "hidden" }}>
                 <div style={{ width: `${msa.cyclePct}%`, height: "100%", background: `linear-gradient(90deg, ${T.green}, ${T.amber})`, borderRadius: 3 }} />
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
                 {["Trough", "Expansion", "Peak", "Contraction"].map(l => (
-                  <span key={l} style={{ fontSize: 7, color: T.muted, ...mono }}>{l}</span>
+                  <span key={l} style={{ fontSize: 9, color: T.muted, ...mono }}>{l}</span>
                 ))}
               </div>
             </div>
@@ -329,26 +329,26 @@ export default function BloombergMarketDetail() {
         </div>
 
         {/* JEDI Score + Signals */}
-        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 1, flexShrink: 0 }}>
-          <div style={{ background: T.panel, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-            <div style={{ fontSize: 8, color: T.muted, letterSpacing: 1.5, ...mono }}>MARKET JEDI</div>
-            <div style={{ width: 80, height: 80, borderRadius: "50%", border: `3px solid ${T.green}`, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: `0 0 16px ${T.green}33` }}>
-              <span style={{ fontSize: 26, fontWeight: 800, color: T.green }}>{msa.jedi}</span>
-              <span style={{ fontSize: 8, color: T.green, fontWeight: 600, ...mono }}>{msa.d30} 30d</span>
+        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 1, flexShrink: 0 }}>
+          <div style={{ background: T.panel, padding: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <div style={{ fontSize: 10, color: T.muted, letterSpacing: 1.5, ...mono }}>MARKET JEDI</div>
+            <div style={{ width: 90, height: 90, borderRadius: "50%", border: `3px solid ${T.green}`, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: `0 0 16px ${T.green}33` }}>
+              <span style={{ fontSize: 30, fontWeight: 800, color: T.green }}>{msa.jedi}</span>
+              <span style={{ fontSize: 10, color: T.green, fontWeight: 600, ...mono }}>{msa.d30} 30d</span>
             </div>
-            <span style={{ fontSize: 8, color: T.muted, ...mono }}>Conf: {msa.confidence}%</span>
+            <span style={{ fontSize: 10, color: T.muted, ...mono }}>Conf: {msa.confidence}%</span>
           </div>
-          <div style={{ background: T.panel, padding: 12 }}>
-            <div style={{ fontSize: 9, letterSpacing: 1, color: T.muted, marginBottom: 8, ...mono }}>JEDI SIGNAL BREAKDOWN</div>
+          <div style={{ background: T.panel, padding: 16 }}>
+            <div style={{ fontSize: 11, letterSpacing: 1, color: T.muted, marginBottom: 10, ...mono }}>JEDI SIGNAL BREAKDOWN</div>
             {msa.signals.map(s => (
-              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 8, color: T.muted, minWidth: 82, ...mono }}>{s.name} ({s.weight}%)</span>
-                <div style={{ flex: "0 0 120px", height: 5, background: T.bg, borderRadius: 1 }}>
+              <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <span style={{ fontSize: 10, color: T.muted, minWidth: 110, ...mono }}>{s.name} ({s.weight}%)</span>
+                <div style={{ flex: "0 0 140px", height: 6, background: T.bg, borderRadius: 1 }}>
                   <div style={{ height: "100%", width: `${s.score}%`, background: s.score >= 70 ? T.green : s.score >= 50 ? T.amber : T.red, borderRadius: 1 }} />
                 </div>
-                <ScoreCell value={s.score} size={10} />
+                <ScoreCell value={s.score} size={12} />
                 <DeltaCell value={s.delta} />
-                <span style={{ fontSize: 8, color: T.muted, flex: 1, ...sans }}>{s.desc}</span>
+                <span style={{ fontSize: 11, color: T.muted, flex: 1, ...sans }}>{s.desc}</span>
               </div>
             ))}
           </div>
@@ -356,28 +356,28 @@ export default function BloombergMarketDetail() {
 
         {/* SUBMARKET PEER COMPARISON */}
         <div style={{ background: T.panel, flexShrink: 0 }}>
-          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.borderS}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.muted, ...mono }}>SUBMARKET PEER COMPARISON · {msa.name.toUpperCase()}</span>
+          <div style={{ padding: "8px 16px", borderBottom: `1px solid ${T.borderS}` }}>
+            <span style={{ fontSize: 11, letterSpacing: 1, color: T.muted, ...mono }}>SUBMARKET PEER COMPARISON · {msa.name.toUpperCase()}</span>
           </div>
           <div style={{ display: "flex", background: T.header, borderBottom: `1px solid ${T.borderM}` }}>
-            {[{ l: "Submarket", w: 130 },{ l: "JEDI", w: 44 },{ l: "Rent", w: 64 },{ l: "Rent Δ", w: 52 },{ l: "Vac", w: 48 },{ l: "Pipe %", w: 52 },{ l: "Opp", w: 44 },{ l: "Cap", w: 44 }].map((c, i) => (
-              <div key={i} style={{ width: c.w, minWidth: c.w, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderRight: `1px solid ${T.borderS}`, ...mono }}>{c.l}</div>
+            {[{ l: "Submarket", w: 160 },{ l: "JEDI", w: 52 },{ l: "Rent", w: 76 },{ l: "Rent Δ", w: 64 },{ l: "Vac", w: 56 },{ l: "Pipe %", w: 64 },{ l: "Opp", w: 52 },{ l: "Cap", w: 52 }].map((c, i) => (
+              <div key={i} style={{ width: c.w, minWidth: c.w, padding: "4px 8px", fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderRight: `1px solid ${T.borderS}`, textTransform: "uppercase", ...mono }}>{c.l}</div>
             ))}
           </div>
           {msa.submarkets.map((s, i) => (
             <div key={i} style={{ display: "flex", background: s.isTop ? T.amber + "0A" : i % 2 === 0 ? T.panel : T.panelAlt, borderBottom: `1px solid ${T.borderS}`, borderLeft: s.isTop ? `2px solid ${T.amber}` : "2px solid transparent", cursor: "pointer" }}
               onMouseEnter={e => { if (!s.isTop) (e.currentTarget as HTMLDivElement).style.background = T.hover; }}
               onMouseLeave={e => { if (!s.isTop) (e.currentTarget as HTMLDivElement).style.background = i % 2 === 0 ? T.panel : T.panelAlt; }}>
-              <div style={{ width: 130, minWidth: 130, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
-                <span style={{ fontSize: 9, fontWeight: s.isTop ? 700 : 500, color: s.isTop ? T.amberBright : T.primary, ...sans }}>{s.name}</span>
+              <div style={{ width: 160, minWidth: 160, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}>
+                <span style={{ fontSize: 11, fontWeight: s.isTop ? 700 : 500, color: s.isTop ? T.amberBright : T.primary, ...sans }}>{s.name}</span>
               </div>
-              <div style={{ width: 44, minWidth: 44, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}><ScoreCell value={s.jedi} /></div>
-              <div style={{ width: 64, minWidth: 64, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}><span style={{ fontSize: 10, fontWeight: 600, color: T.primary, ...mono }}>{s.rent}</span></div>
-              <div style={{ width: 52, minWidth: 52, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}><DeltaCell value={s.rentD} /></div>
-              <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}><ThresholdVal value={s.vac} thresholds={[5, 8]} invert /></div>
-              <div style={{ width: 52, minWidth: 52, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}><ThresholdVal value={s.pipe} thresholds={[8, 12]} invert /></div>
-              <div style={{ width: 44, minWidth: 44, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}><ScoreCell value={s.opp} size={9} /></div>
-              <div style={{ width: 44, minWidth: 44, padding: "4px 6px" }}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{s.cap}</span></div>
+              <div style={{ width: 52, minWidth: 52, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}><ScoreCell value={s.jedi} size={13} /></div>
+              <div style={{ width: 76, minWidth: 76, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}><span style={{ fontSize: 12, fontWeight: 600, color: T.primary, ...mono }}>{s.rent}</span></div>
+              <div style={{ width: 64, minWidth: 64, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}><DeltaCell value={s.rentD} /></div>
+              <div style={{ width: 56, minWidth: 56, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}><ThresholdVal value={s.vac} thresholds={[5, 8]} invert /></div>
+              <div style={{ width: 64, minWidth: 64, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}><ThresholdVal value={s.pipe} thresholds={[8, 12]} invert /></div>
+              <div style={{ width: 52, minWidth: 52, padding: "5px 8px", borderRight: `1px solid ${T.borderS}` }}><ScoreCell value={s.opp} size={12} /></div>
+              <div style={{ width: 52, minWidth: 52, padding: "5px 8px" }}><span style={{ fontSize: 11, color: T.secondary, ...mono }}>{s.cap}</span></div>
             </div>
           ))}
         </div>
@@ -385,9 +385,9 @@ export default function BloombergMarketDetail() {
       </div>
 
       {/* FOOTER */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 12px", background: T.topBar, borderTop: `1px solid ${T.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits</span>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>{msa.name} · JEDI {msa.jedi} · MSA Level</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 16px", background: T.topBar, borderTop: `1px solid ${T.borderS}`, flexShrink: 0 }}>
+        <span style={{ fontSize: 10, color: T.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits</span>
+        <span style={{ fontSize: 10, color: T.muted, ...mono }}>{msa.name} · JEDI {msa.jedi} · MSA Level</span>
       </div>
     </div>
   );
