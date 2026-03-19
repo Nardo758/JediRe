@@ -2165,22 +2165,21 @@ export default function TerminalPage() {
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
-    <div style={{background:T.bg.terminal,height:"100vh",overflowX:"auto",overflowY:"hidden"}}>
-    <div style={{background:T.bg.terminal,minWidth:"960px",height:"100vh",fontFamily:T.font.mono,color:T.text.primary,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{background:T.bg.terminal,height:"100vh",fontFamily:T.font.mono,color:T.text.primary,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <style>{TERMINAL_CSS}</style>
       {/* CRT overlay */}
       <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)"}}/>
 
       {/* ═══ TOP STATUS BAR — 36px ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:36,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:36,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2}}>JEDI RE</span>
           <span style={{fontSize:10,color:T.text.muted}}>|</span>
           <span style={{fontSize:10,color:T.text.secondary}}>PORTFOLIO VIEW</span>
           <span style={{fontSize:10,color:T.text.muted}}>|</span>
           <span style={{fontSize:10,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:10,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
           <span style={{fontSize:10,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
           {mediaWindows.length>0&&(
@@ -2242,26 +2241,26 @@ export default function TerminalPage() {
           {l:"PORTFOLIO ASSETS",v:"23",c:T.text.green,sub:"owned"},
           {l:"AVG DAYS/DEAL",v:liveDeals.length>0?String(Math.round(liveDeals.reduce((s,d)=>s+d.days,0)/liveDeals.length)):"—",c:T.text.amber,sub:"avg time"},
         ].map((kpi,i)=>(
-          <div key={i} style={{padding:"5px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:110}}>
+          <div key={i} style={{padding:"5px 10px",borderRight:`1px solid ${T.border.subtle}`,minWidth:90}}>
             <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>{kpi.l}</div>
             <div style={{fontSize:17,fontWeight:800,color:kpi.c,lineHeight:1.1}}>{kpi.v}</div>
             <div style={{fontSize:9,color:T.text.secondary}}>{kpi.sub}</div>
           </div>
         ))}
-        <div style={{padding:"5px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:120}}>
+        <div style={{padding:"5px 10px",borderRight:`1px solid ${T.border.subtle}`,minWidth:100}}>
           <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>BY STAGE</div>
-          <div style={{display:"flex",gap:10,marginTop:1}}>{Object.entries(stages).map(([s,c])=>(
+          <div style={{display:"flex",gap:6,marginTop:1}}>{Object.entries(stages).map(([s,c])=>(
             <div key={s} style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:c>0?T.text.amber:T.text.muted}}>{c}</div><div style={{fontSize:9,color:T.text.muted}}>{s}</div></div>
           ))}</div>
         </div>
-        <div onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{padding:"5px 14px",borderRight:`1px solid ${T.border.subtle}`,cursor:"pointer",minWidth:80}}>
+        <div onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{padding:"5px 10px",borderRight:`1px solid ${T.border.subtle}`,cursor:"pointer",minWidth:70}}>
           <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>ALERTS</div>
           <div style={{fontSize:17,fontWeight:800,color:hAlerts>0?T.text.red:T.text.green,animation:hAlerts>0?"pulse 2s infinite":"none",lineHeight:1.1}}>{hAlerts}</div>
         </div>
         <div style={{flex:1}}/>
-        <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:12}}>
-          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"5px 12px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
-          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
+        <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:8}}>
+          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"4px 10px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
+          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 10px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
         </div>
       </div>
 
@@ -2468,7 +2467,6 @@ export default function TerminalPage() {
           <span style={{fontSize:9,color:T.text.muted}}>{liveDeals.length} deals loaded</span>
         </div>
       </div>
-    </div>
     </div>
   );
 }
