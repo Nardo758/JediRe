@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
+import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
