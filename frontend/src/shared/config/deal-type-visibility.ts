@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M17' | 'M18' | 'M22';
+  | 'M17' | 'M18' | 'M20' | 'M22';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -409,6 +409,17 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
         documentCategories: ['offering_memo', 'rent_roll', 't12', 'inspection', 'structural_assessment', 'site_plans', 'permits', 'cost_estimates', 'environmental', 'hazmat'],
       },
     },
+  },
+
+  {
+    moduleId: 'M20',
+    name: 'AI Agent',
+    fKey: 'F12',
+    station: 'S6',
+    stationLabel: 'Post-Close',
+    category: 'Operations',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'Opus AI Agent + AI Recommendations — available for all deal types.',
   },
 
   // ─── S6: Post-Close ────────────────────────────────────────────────────────

@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield, ArrowRight, Box
+  Landmark, HardHat, Shield,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -45,7 +45,7 @@ import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
 
-import { BT, BT_CSS, PanelHeader } from '../components/deal/bloomberg-ui';
+import { BT, BT_CSS } from '../components/deal/bloomberg-ui';
 import { OverviewRouter } from '../components/deal/sections/OverviewRouter';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { Design3DPageEnhanced } from './Design3DPage.enhanced';
@@ -218,7 +218,7 @@ const CompetitionScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
     moduleTitle="COMPETITION & COMPS"
-    moduleSubtitle="M10 · PEER BENCHMARKING"
+    moduleSubtitle="M15 · PEER BENCHMARKING"
     moduleBorderColor={BT.text.amber}
     moduleMetrics={[
       { l: 'F_CAP', c: BT.met.financial },
@@ -233,40 +233,32 @@ const CompetitionScreen = (props: ScreenProps) => (
 const StrategyScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
-    moduleTitle="STRATEGY ARBITRAGE"
-    moduleSubtitle="M06 · BEST-USE MATRIX"
+    moduleTitle="STRATEGY & DESIGN"
+    moduleSubtitle="M08 · BEST-USE MATRIX + MASSING"
     moduleBorderColor={BT.text.amber}
     moduleMetrics={[
       { l: 'IRR', c: BT.met.financial },
       { l: 'EM', c: BT.text.amber },
       { l: 'YOC', c: BT.met.occupancy },
+      { l: 'FAR', c: BT.text.purple },
     ]}
     tabs={[
-      { id: 'strategy',    label: 'Strategy',    component: StrategySection },
-      { id: 'opportunity', label: 'Opportunity', component: OpportunityEngineSection },
-      { id: 'ai-recs',     label: 'AI Recs',     component: AIRecommendationsSection },
+      { id: 'strategy',  label: 'Strategy',   component: StrategySection },
+      { id: 'design-3d', label: '3D Design',  component: (p: ScreenProps) => (
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
+          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+            <Design3DPageEnhanced {...p} dealId={p.dealId} />
+          </div>
+        </div>
+      )},
     ]}
   />
 );
-const ThreeDScreen = (props: ScreenProps) => (
-  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
-    <style>{BT_CSS}</style>
-    <PanelHeader
-      title="3D DESIGN & MASSING"
-      subtitle="M_3D · BUILDING ENVELOPE VISUALIZER"
-      borderColor={BT.text.purple}
-      metrics={[{ l: 'FAR', c: BT.text.purple }, { l: 'UNITS', c: BT.text.cyan }]}
-    />
-    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      <Design3DPageEnhanced {...props} dealId={props.dealId} />
-    </div>
-  </div>
-);
-const FinancialEngineScreen = (props: ScreenProps) => (
+const ProFormaScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
-    moduleTitle="FINANCIAL ENGINE"
-    moduleSubtitle="M08 · 3-LAYER MODEL + CAPITAL + EXIT"
+    moduleTitle="PRO FORMA"
+    moduleSubtitle="M09 · 3-LAYER MODEL + TAX + DASHBOARD"
     moduleBorderColor={BT.met.financial}
     moduleMetrics={[
       { l: 'F_IRR', c: BT.met.financial },
@@ -276,11 +268,27 @@ const FinancialEngineScreen = (props: ScreenProps) => (
     ]}
     accentColor={BT.met.financial}
     tabs={[
-      { id: 'financial-dashboard', label: 'Financial Dashboard', component: FinancialDashboard },
       { id: 'proforma',            label: 'Pro Forma',           component: ProFormaTab },
       { id: 'tax',                 label: 'Tax Intelligence',    component: TaxModule },
-      { id: 'capital',             label: 'Capital Structure',   component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} initialTab="stack" /> },
-      { id: 'exit',                label: 'Exit Analysis',       component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} initialTab="exit" /> },
+      { id: 'financial-dashboard', label: 'Financial Dashboard', component: FinancialDashboard },
+    ]}
+  />
+);
+const DebtCapitalScreen = (props: ScreenProps) => (
+  <DealScreenWrapper
+    passProps={props}
+    moduleTitle="DEBT & CAPITAL"
+    moduleSubtitle="M12 · CAPITAL STACK + EXIT ANALYSIS"
+    moduleBorderColor={BT.text.cyan}
+    moduleMetrics={[
+      { l: 'LTV', c: BT.text.cyan },
+      { l: 'DSCR', c: BT.met.financial },
+      { l: 'EXIT', c: BT.text.amber },
+    ]}
+    accentColor={BT.text.cyan}
+    tabs={[
+      { id: 'capital', label: 'Capital Structure', component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} initialTab="stack" /> },
+      { id: 'exit',    label: 'Exit Analysis',     component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} initialTab="exit" /> },
     ]}
   />
 );
@@ -288,7 +296,7 @@ const RiskScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
     moduleTitle="RISK & DUE DILIGENCE"
-    moduleSubtitle="M09 · INTELLIGENCE ENGINE"
+    moduleSubtitle="M13 · INTELLIGENCE ENGINE + FILES"
     moduleBorderColor={BT.text.red}
     moduleMetrics={[
       { l: 'RISK', c: BT.text.red },
@@ -299,19 +307,7 @@ const RiskScreen = (props: ScreenProps) => (
       { id: 'risk-intelligence', label: 'Risk Intelligence',  component: RiskIntelligence },
       { id: 'collision',         label: 'Collision Analysis', component: CollisionAnalysisSection },
       { id: 'due-diligence',     label: 'DD Checklist',       component: DueDiligencePage },
-    ]}
-  />
-);
-const DocumentsScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="DOCUMENTS & FILES"
-    moduleSubtitle="M11 · ASSET REPOSITORY"
-    moduleBorderColor={BT.text.secondary}
-    moduleMetrics={[{ l: 'FILES', c: BT.text.secondary }]}
-    tabs={[
-      { id: 'files',         label: 'Files & Assets',  component: FilesSection },
-      { id: 'due-diligence', label: 'DD Checklist',    component: DueDiligencePage },
+      { id: 'files',             label: 'Files & Assets',     component: FilesSection },
     ]}
   />
 );
@@ -319,7 +315,7 @@ const ExecutionScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
     moduleTitle="EXECUTION"
-    moduleSubtitle="M12 · CLOSE + MANAGE"
+    moduleSubtitle="M17 · CLOSE + MANAGE"
     moduleBorderColor={BT.text.cyan}
     moduleMetrics={[
       { l: 'TIMELINE', c: BT.text.cyan },
@@ -331,7 +327,23 @@ const ExecutionScreen = (props: ScreenProps) => (
       { id: 'project-management', label: 'Project Management', component: ProjectManagementSection },
       { id: 'construction-mgmt',  label: 'Construction Mgmt',  component: ConstructionManagementSection },
       { id: 'notarize-closing',   label: 'Closing (RON)',      component: NotarizeClosingSection },
-      { id: 'opus-ai',            label: 'Opus AI',            component: OpusAISection },
+    ]}
+  />
+);
+const AIAgentScreen = (props: ScreenProps) => (
+  <DealScreenWrapper
+    passProps={props}
+    moduleTitle="AI AGENT"
+    moduleSubtitle="M20 · OPUS + RECOMMENDATIONS"
+    moduleBorderColor={BT.text.purple}
+    moduleMetrics={[
+      { l: 'OPUS', c: BT.text.purple },
+      { l: 'AI', c: BT.text.cyan },
+    ]}
+    accentColor={BT.text.purple}
+    tabs={[
+      { id: 'opus-ai',  label: 'Opus AI Agent',     component: OpusAISection },
+      { id: 'ai-recs',  label: 'AI Recommendations', component: AIRecommendationsSection },
     ]}
   />
 );
@@ -498,9 +510,9 @@ const DealDetailPage: React.FC = () => {
         return;
       }
       const fKeyMap: { [key: string]: string } = {
-        F1: 'overview',    F2: 'zoning',    F3: 'market',    F4: 'supply',
-        F5: 'traffic',     F6: 'strategy',  F7: 'design-3d', F8: 'financial',
-        F9: 'risk',        F10: 'competition', F11: 'documents', F12: 'execution',
+        F1: 'overview',    F2: 'zoning',    F3: 'market',   F4: 'supply',
+        F5: 'competition', F6: 'strategy',  F7: 'traffic',  F8: 'proforma',
+        F9: 'capital',     F10: 'risk',     F11: 'execution', F12: 'ai-agent',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -536,14 +548,14 @@ const DealDetailPage: React.FC = () => {
     { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Zoning',            icon: <Landmark size={14} />,        component: ZoningModuleSection },
     { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', label: 'Market Intel',      icon: <TrendingUp size={14} />,      component: MarketScreen },
     { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',   icon: <Package size={14} />,         component: SupplyPipelineScreen },
-    { id: 'traffic',     moduleId: 'M07', fkey: 'F5',  code: 'M07', label: 'Traffic Intel',     icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'competition', moduleId: 'M15', fkey: 'F5',  code: 'M15', label: 'Comps',             icon: <Target size={14} />,          component: CompetitionScreen },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F6',  code: 'M08', label: 'Strategy',          icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', label: '3D Design',         icon: <Box size={14} />,             component: ThreeDScreen },
-    { id: 'financial',   moduleId: 'M09', fkey: 'F8',  code: 'M09', label: 'Financial Engine',  icon: <Calculator size={14} />,      component: FinancialEngineScreen },
-    { id: 'risk',        moduleId: 'M14', fkey: 'F9',  code: 'M14', label: 'Risk & DD',         icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'competition', moduleId: 'M15', fkey: 'F10', code: 'M15', label: 'Comps',             icon: <Target size={14} />,          component: CompetitionScreen },
-    { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', label: 'Documents',         icon: <HardHat size={14} />,         component: DocumentsScreen },
-    { id: 'execution',   moduleId: 'M17', fkey: 'F12', code: 'M17', label: 'Execution',         icon: <Bot size={14} />,             component: ExecutionScreen },
+    { id: 'traffic',     moduleId: 'M10', fkey: 'F7',  code: 'M10', label: 'Traffic Intel',     icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'proforma',    moduleId: 'M09', fkey: 'F8',  code: 'M09', label: 'Pro Forma',         icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'capital',     moduleId: 'M12', fkey: 'F9',  code: 'M12', label: 'Debt & Capital',    icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', label: 'Risk & DD',         icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', label: 'Execution',         icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F12', code: 'M20', label: 'AI Agent',          icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
   // Filter by deal-type visibility rules
