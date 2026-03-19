@@ -88,6 +88,10 @@ function AppContent() {
 
         {/* Terminal — full-page, no MainLayout */}
         <Route path="/terminal" element={<TerminalPage />} />
+
+        {/* Bloomberg Market Intelligence — full-page, no MainLayout */}
+        <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
+        <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
         
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/terminal" replace />} />
@@ -137,9 +141,7 @@ function AppContent() {
           <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
           <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
           
-          {/* Market Intelligence */}
-          <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
-          <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
+          {/* Market Intelligence redirects (full pages are top-level routes) */}
           <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
           <Route path="/market-intelligence/compare" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/market-intelligence/owners" element={<Navigate to="/market-intelligence" replace />} />
