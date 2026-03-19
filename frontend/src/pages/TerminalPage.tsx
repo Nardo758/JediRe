@@ -869,6 +869,22 @@ export default function TerminalPage() {
   // ─── DEAL GRID (F2) ────────────────────────────────────────
   const DealGrid = () => (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+      {/* F2-specific filter bar */}
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:28,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:0.5}}>FILTER</span>
+        <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"1px 5px",height:20}}>
+          <option value="ALL">All Stages</option>
+          {["DD","LOI","PROSPECT","LEAD"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={fStrat} onChange={e=>setFStrat(e.target.value)} style={{fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"1px 5px",height:20}}>
+          <option value="ALL">All Strats</option>
+          {["BTS","FLIP","RENTAL","STR"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <div style={{flex:1}}/>
+        {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
+        {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
+        <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>{sorted.length} deals</span>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
           <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:9,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
@@ -2194,26 +2210,6 @@ export default function TerminalPage() {
             <span style={{width:5,height:11,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block",flexShrink:0}}/>
           </div>
         </div>
-      </div>
-
-      {/* ═══ GLOBAL FILTER TOOLBAR ═══ */}
-      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:32,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <span style={{fontSize:10,color:T.text.muted,fontWeight:600,letterSpacing:0.5}}>FILTER:</span>
-        <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:10,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:24}}>
-          <option value="ALL">All Stages</option>
-          {["DD","LOI","PROSPECT","LEAD"].map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={fStrat} onChange={e=>setFStrat(e.target.value)} style={{fontFamily:T.font.mono,fontSize:10,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:24}}>
-          <option value="ALL">All Strats</option>
-          {["BTS","FLIP","RENTAL","STR"].map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-        <button onClick={()=>setMapOpen(!mapOpen)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:24,cursor:"pointer"}}>
-          MAP
-        </button>
-        <div style={{flex:1}}/>
-        {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
-        {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
-        <span style={{fontSize:10,color:T.text.muted}}>{sorted.length} deals</span>
       </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
