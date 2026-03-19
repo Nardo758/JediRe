@@ -2165,7 +2165,8 @@ export default function TerminalPage() {
 
   // ─── RENDER ────────────────────────────────────────────────
   return (
-    <div style={{background:T.bg.terminal,height:"100vh",fontFamily:T.font.mono,color:T.text.primary,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{background:T.bg.terminal,height:"100vh",overflowX:"auto",overflowY:"hidden"}}>
+    <div style={{background:T.bg.terminal,minWidth:"960px",height:"100vh",fontFamily:T.font.mono,color:T.text.primary,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <style>{TERMINAL_CSS}</style>
       {/* CRT overlay */}
       <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)"}}/>
@@ -2467,6 +2468,7 @@ export default function TerminalPage() {
           <span style={{fontSize:9,color:T.text.muted}}>{liveDeals.length} deals loaded</span>
         </div>
       </div>
+    </div>
     </div>
   );
 }
