@@ -390,9 +390,72 @@ app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: any, res) 
   }
 });
 
+app.get('/api/v1/apartment-sync/market-snapshots', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_market_snapshots WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/demand-signals', requireAuth, async (req: any, res) => {
+  try {
+    const { city } = req.query;
+    const result = await pool.query(
+      `SELECT analytics_type, data, synced_at FROM apartment_user_analytics
+       WHERE analytics_type = 'demand-signals' ${city ? 'AND (city = $1 OR city IS NULL)' : ''}
+       ORDER BY synced_at DESC LIMIT 20`,
+      city ? [city] : []
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/user-analytics', requireAuth, async (req: any, res) => {
+  try {
+    const { city, type } = req.query;
+    const params: any[] = [];
+    let where = 'WHERE 1=1';
+    if (city) { params.push(city); where += ` AND (city = $${params.length} OR city IS NULL)`; }
+    if (type) { params.push(type); where += ` AND analytics_type = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT analytics_type, data, synced_at FROM apartment_user_analytics ${where} ORDER BY synced_at DESC LIMIT 50`,
+      params
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/rent-comps', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta', submarket } = req.query;
+    const params: any[] = [city];
+    let where = 'WHERE city = $1';
+    if (submarket) { params.push(submarket); where += ` AND submarket_name = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT * FROM apartment_submarkets ${where} ORDER BY snapshot_date DESC LIMIT 30`,
+      params
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
+app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
+app.use('/api/v1/email', emailRouter);
 
 const activeUsers = new Map<string, any>();
 const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();

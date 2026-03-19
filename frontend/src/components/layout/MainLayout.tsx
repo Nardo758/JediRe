@@ -475,7 +475,7 @@ const BottomPanel: React.FC = () => {
         api.get('/jedi/alerts'),
         api.get('/news/feed'),
         api.get('/agent-status'),
-        api.get('/email/inbox'),
+        api.get('/inbox'),
         api.get('/tasks'),
       ]);
       if (alertRes.status === 'fulfilled') {
