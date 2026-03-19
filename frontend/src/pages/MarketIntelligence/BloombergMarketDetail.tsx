@@ -341,70 +341,85 @@ function OverviewTab({ msa, cycleColor }: { msa: MSARecord; cycleColor: string }
   );
 }
 
-export default function BloombergMarketDetail() {
-  const { marketId } = useParams<{ marketId: string }>();
+interface BloombergMarketDetailProps {
+  embedded?: boolean;
+  marketId?: string;
+}
+
+export default function BloombergMarketDetail({ embedded = false, marketId: marketIdProp }: BloombergMarketDetailProps = {}) {
+  const params = useParams<{ marketId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
 
-  const msa = (marketId && MSA_RECORDS[marketId]) || MSA_RECORDS["atlanta-ga"];
+  const resolvedId = marketIdProp || params.marketId || "atlanta-ga";
+  const msa = MSA_RECORDS[resolvedId] || MSA_RECORDS["atlanta-ga"];
   const cycleColor = msa.cycle === "EXPANSION" ? T.green : msa.cycle === "LATE EXP" ? T.amber : T.orange;
-  const resolvedId = marketId || "atlanta-ga";
+
+  // When the marketId prop changes (MSA selector in terminal), reset to overview tab
+  React.useEffect(() => { setActiveTab("overview"); }, [resolvedId]);
 
   return (
-    <div style={{ background: T.bg, minHeight: "100vh", display: "flex", flexDirection: "column", color: T.primary, ...mono }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-        * { scrollbar-width: thin; scrollbar-color: ${T.borderM} ${T.bg}; box-sizing: border-box; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: ${T.bg}; }
-        ::-webkit-scrollbar-thumb { background: ${T.borderM}; border-radius: 3px; }
-      `}</style>
+    <div style={{ background: T.bg, display: "flex", flexDirection: "column", color: T.primary, ...mono, ...(embedded ? { flex: 1, overflow: "hidden" } : { minHeight: "100vh" }) }}>
+      {!embedded && (
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+          * { scrollbar-width: thin; scrollbar-color: ${T.borderM} ${T.bg}; box-sizing: border-box; }
+          ::-webkit-scrollbar { width: 6px; height: 6px; }
+          ::-webkit-scrollbar-track { background: ${T.bg}; }
+          ::-webkit-scrollbar-thumb { background: ${T.borderM}; border-radius: 3px; }
+        `}</style>
+      )}
 
-      {/* TOP BAR */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 32, padding: "0 16px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JEDI RE</span>
-          <span style={{ fontSize: 10, color: T.muted }}>|</span>
-          <span style={{ fontSize: 10, color: T.secondary }}>F4 MARKETS · {TABS.find(t => t.id === activeTab)?.label}</span>
+      {/* TOP BAR — standalone only */}
+      {!embedded && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 32, padding: "0 16px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JEDI RE</span>
+            <span style={{ fontSize: 10, color: T.muted }}>|</span>
+            <span style={{ fontSize: 10, color: T.secondary }}>F4 MARKETS · {TABS.find(t => t.id === activeTab)?.label}</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* BREADCRUMB BAR */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
-        <button
-          onClick={() => navigate("/terminal", { state: { fkey: "F4" } })}
-          style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", ...mono, borderRadius: 2 }}
-        >
-          ◀ F4 MARKETS
-        </button>
-        <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>{msa.name}</span>
-        <span style={{ color: T.borderM }}>/</span>
-        <span style={{ fontSize: 11, color: T.muted }}>{TABS.find(t => t.id === activeTab)?.label}</span>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 10, color: T.muted }}>{msa.props.toLocaleString()} properties · {msa.units} units</span>
-      </div>
+      {/* BREADCRUMB BAR — standalone only */}
+      {!embedded && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
+          <button
+            onClick={() => navigate("/terminal", { state: { fkey: "F4" } })}
+            style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", ...mono, borderRadius: 2 }}
+          >
+            ◀ F4 MARKETS
+          </button>
+          <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>{msa.name}</span>
+          <span style={{ color: T.borderM }}>/</span>
+          <span style={{ fontSize: 11, color: T.muted }}>{TABS.find(t => t.id === activeTab)?.label}</span>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: T.muted }}>{msa.props.toLocaleString()} properties · {msa.units} units</span>
+        </div>
+      )}
 
-      {/* QUOTE BAR */}
-      <div style={{ padding: "6px 16px", background: T.blueBg, borderBottom: `1px solid ${T.borderM}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-        <span style={{ fontSize: 17, fontWeight: 800, color: T.amberBright, ...sans }}>{msa.name}</span>
-        <span style={{ fontSize: 12, color: T.secondary, ...sans }}>{msa.full}</span>
+      {/* QUOTE BAR — always visible */}
+      <div style={{ padding: embedded ? "4px 12px" : "6px 16px", background: T.blueBg, borderBottom: `1px solid ${T.borderM}`, display: "flex", alignItems: "center", gap: embedded ? 10 : 14, flexShrink: 0 }}>
+        {!embedded && <span style={{ fontSize: 17, fontWeight: 800, color: T.amberBright, ...sans }}>{msa.name}</span>}
+        <span style={{ fontSize: embedded ? 10 : 12, color: T.secondary, ...sans }}>{msa.full}</span>
         <span style={{ fontSize: 10, color: T.muted }}>|</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: T.green, ...mono }}>{msa.rent}</span>
+        <span style={{ fontSize: embedded ? 11 : 13, fontWeight: 700, color: T.green, ...mono }}>{msa.rent}</span>
         <DeltaCell value={msa.rentD} />
         <span style={{ fontSize: 10, color: T.muted }}>|</span>
         <span style={{ fontSize: 10, color: T.muted, ...mono }}>Vac</span>
         <ThresholdVal value={msa.vac} thresholds={[5, 8]} invert />
         <span style={{ fontSize: 10, color: T.muted }}>|</span>
         <span style={{ fontSize: 10, color: T.muted, ...mono }}>JEDI</span>
-        <ScoreCell value={msa.jedi} size={15} />
+        <ScoreCell value={msa.jedi} size={embedded ? 12 : 15} />
         <DeltaCell value={msa.d30} />
         <div style={{ flex: 1 }} />
         <Badge label={msa.cycle} color={cycleColor} />
         <span style={{ fontSize: 10, color: T.muted }}>Mo {msa.cycleMonth}</span>
+        {embedded && <span style={{ fontSize: 10, color: T.muted }}>· {msa.props.toLocaleString()} props</span>}
       </div>
 
       {/* TAB BAR */}
-      <div style={{ display: "flex", alignItems: "stretch", background: T.topBar, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0, height: 32, overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "stretch", background: T.topBar, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0, height: 30, overflowX: "auto" }}>
         {TABS.map(tab => {
           const isActive = activeTab === tab.id;
           return (
@@ -417,7 +432,7 @@ export default function BloombergMarketDetail() {
                 border: "none",
                 borderRight: `1px solid ${T.borderS}`,
                 borderBottom: isActive ? `2px solid ${T.amber}` : "2px solid transparent",
-                padding: "0 16px",
+                padding: "0 14px",
                 fontSize: 10,
                 fontWeight: isActive ? 700 : 500,
                 cursor: "pointer",
@@ -434,41 +449,21 @@ export default function BloombergMarketDetail() {
 
       {/* TAB CONTENT */}
       <div style={{ flex: 1, overflowY: "auto", background: T.bg }}>
-        {activeTab === "overview" && (
-          <OverviewTab msa={msa} cycleColor={cycleColor} />
-        )}
-        {activeTab === "submarkets" && (
-          <div style={{ background: T.bg, minHeight: "100%" }}>
-            <SubmarketsTab marketId={resolvedId} />
-          </div>
-        )}
-        {activeTab === "trends" && (
-          <div style={{ background: T.bg, minHeight: "100%" }}>
-            <TrendsTab marketId={resolvedId} />
-          </div>
-        )}
-        {activeTab === "properties" && (
-          <div style={{ background: T.bg, minHeight: "100%" }}>
-            <PropertyDataTab marketId={resolvedId} />
-          </div>
-        )}
-        {activeTab === "deals" && (
-          <div style={{ background: T.bg, minHeight: "100%" }}>
-            <DealsTab marketId={resolvedId} />
-          </div>
-        )}
-        {activeTab === "rankings" && (
-          <div style={{ background: T.bg, minHeight: "100%" }}>
-            <PowerRankingsTab marketId={resolvedId} />
-          </div>
-        )}
+        {activeTab === "overview" && <OverviewTab msa={msa} cycleColor={cycleColor} />}
+        {activeTab === "submarkets" && <div style={{ background: T.bg, minHeight: "100%" }}><SubmarketsTab marketId={resolvedId} /></div>}
+        {activeTab === "trends" && <div style={{ background: T.bg, minHeight: "100%" }}><TrendsTab marketId={resolvedId} /></div>}
+        {activeTab === "properties" && <div style={{ background: T.bg, minHeight: "100%" }}><PropertyDataTab marketId={resolvedId} /></div>}
+        {activeTab === "deals" && <div style={{ background: T.bg, minHeight: "100%" }}><DealsTab marketId={resolvedId} /></div>}
+        {activeTab === "rankings" && <div style={{ background: T.bg, minHeight: "100%" }}><PowerRankingsTab marketId={resolvedId} /></div>}
       </div>
 
-      {/* FOOTER */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 16px", background: T.topBar, borderTop: `1px solid ${T.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 10, color: T.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits</span>
-        <span style={{ fontSize: 10, color: T.muted, ...mono }}>{msa.name} · JEDI {msa.jedi} · MSA Level</span>
-      </div>
+      {/* FOOTER — standalone only */}
+      {!embedded && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 16px", background: T.topBar, borderTop: `1px solid ${T.borderS}`, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: T.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits</span>
+          <span style={{ fontSize: 10, color: T.muted, ...mono }}>{msa.name} · JEDI {msa.jedi} · MSA Level</span>
+        </div>
+      )}
     </div>
   );
 }

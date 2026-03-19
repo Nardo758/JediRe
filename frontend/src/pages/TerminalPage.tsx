@@ -6,6 +6,7 @@ import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateH
 import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
+import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 
 // ═══════════════════════════════════════════════════════════════
@@ -484,7 +485,8 @@ export default function TerminalPage() {
   const [inviteRole, setInviteRole] = useState("analyst");
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
-  const [marketTab, setMarketTab] = useState<"msaindex"|"subindex"|"corphealth">("msaindex");
+  const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
+  const [showCorpHealth, setShowCorpHealth] = useState(false);
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1547,18 +1549,39 @@ export default function TerminalPage() {
   );
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
+  const MSA_OPTIONS = [
+    { id: "atlanta-ga",    name: "Atlanta, GA" },
+    { id: "raleigh-nc",    name: "Raleigh, NC" },
+    { id: "charlotte-nc",  name: "Charlotte, NC" },
+  ];
+
   const ViewMarkets = () => (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan}/>
-      <div style={{display:"flex",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.header,flexShrink:0}}>
-        {([["msaindex","MSA INDEX"],["subindex","SUBMARKET INDEX"],["corphealth","CORPORATE HEALTH"]] as const).map(([k,l])=>(
-          <div key={k} onClick={()=>setMarketTab(k)} style={{padding:"6px 14px",fontSize:9,fontWeight:700,color:marketTab===k?T.text.amber:T.text.secondary,cursor:"pointer",borderBottom:marketTab===k?`2px solid ${T.text.amber}`:"2px solid transparent",letterSpacing:0.5,transition:"all 0.1s"}}>{l}</div>
-        ))}
+    <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
+      {/* MSA selector bar */}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+        <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
+        <select
+          value={selectedMsaId}
+          onChange={e => setSelectedMsaId(e.target.value)}
+          style={{background:T.bg.input||T.bg.panel,color:T.text.amber,border:`1px solid ${T.border.medium}`,fontSize:10,fontFamily:T.font.mono,fontWeight:700,padding:"2px 6px",cursor:"pointer",outline:"none"}}
+        >
+          {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+        </select>
+        <div style={{flex:1}}/>
+        <button
+          onClick={() => setShowCorpHealth(v => !v)}
+          style={{background:showCorpHealth?T.bg.active:"transparent",color:showCorpHealth?T.text.amber:T.text.secondary,border:`1px solid ${showCorpHealth?T.text.amber:T.border.medium}`,fontSize:9,fontFamily:T.font.mono,fontWeight:700,padding:"2px 10px",cursor:"pointer",letterSpacing:0.5}}
+        >
+          CORP HEALTH {showCorpHealth?"▲":"▼"}
+        </button>
       </div>
-      {marketTab==="corphealth" ? (
-        <div style={{flex:1,overflow:"auto"}}>
-          <div style={{padding:"10px 10px 0"}}>
-            <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
+
+      {/* Corp Health collapsible panel */}
+      {showCorpHealth && (
+        <div style={{flexShrink:0,maxHeight:320,overflow:"auto",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.panel}}>
+          <PanelHeader T={T} title="CORPORATE HEALTH INTELLIGENCE" subtitle="SCHI · Divergence Scanner · Employer Risk" borderColor={T.text.orange}/>
+          <div style={{padding:"0 10px 10px"}}>
+            <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PANEL DRIVES:</div>
             <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Are the employers in this submarket healthy enough to sustain demand?</div>
           </div>
           {(() => {
@@ -1573,12 +1596,6 @@ export default function TerminalPage() {
               {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,top5Share:0.31,employerCount:45,publicCount:15},
               {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,top5Share:0.48,employerCount:30,publicCount:9},
             ];
-            const topEmps = corpHealthLive.topEmployers.length > 0 ? corpHealthLive.topEmployers : CORP_HEALTH_DEMO.slice(0,10).map(c=>({company:c.company,ticker:c.ticker,employees:c.employees,share:c.share/100,submarket:"Bellevue CBD",chs:c.chs,tier:c.tier,delta:c.delta,naics:"51"}));
-            const sectorColors:Record<string,string> = {"51":T.text.cyan,"33":T.text.orange,"48":T.text.purple,"44":T.text.amber,"62":T.text.red,"72":T.text.green,"52":T.text.purple,"54":T.text.orange};
-            const naicsLabels:Record<string,string> = {"51":"Technology","33":"Aerospace/Mfg","48":"Telecom","44":"Retail","62":"Healthcare","72":"Hospitality","52":"Finance","54":"Professional Svc","XX":"Other"};
-            const rotation = corpHealthLive.sectorRotation;
-            const rotSectors:SectorRotEntry[] = rotation?.sectors || [];
-            const rotMarkets:string[] = rotation?.markets || [];
             return <>
             <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
               <MetricBox T={T} label="SCHI SCORE" value={schi.toFixed(1)} sub="Submarket Corporate Health" color={schi>=60?T.text.green:schi>=40?T.text.amber:T.text.red}/>
@@ -1586,15 +1603,14 @@ export default function TerminalPage() {
               <MetricBox T={T} label="DIVERGENCE" value={(div>0?"+":"")+div.toFixed(1)} sub={Math.abs(div)>15?(div>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(div)>15?(div>0?T.text.green:T.text.red):T.text.amber}/>
               <MetricBox T={T} label="HERFINDAHL" value={hhi.toFixed(3)} sub={hhi<0.1?"Low concentration":"High concentration"} color={hhi<0.1?T.text.green:T.text.red}/>
             </div>
-            <div style={{margin:"0 10px 10px",padding:"6px 10px",background:(Math.abs(div)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(div)>15?T.text.amber:T.text.green}`}}>
+            <div style={{margin:"0 10px 10px",padding:"4px 10px",background:(Math.abs(div)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(div)>15?T.text.amber:T.text.green}`}}>
               <span style={{fontSize:9,color:T.text.secondary}}>
                 Corporate health is <span style={{fontWeight:700,color:schi>=60?T.text.green:T.text.red}}>{schi>=60?"STABLE":"AT RISK"}</span>.
                 {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(div)>15?T.text.amber:T.text.green}}>{Math.abs(div)>15?(div>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
-                {corpHealthLive.employers.length > 0 ? ` Top employer: ${corpHealthLive.employers[0]?.company_name || corpHealthLive.employers[0]?.company || "\u2014"}.` : ` Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`}
+                {corpHealthLive.employers.length > 0 ? ` Top employer: ${corpHealthLive.employers[0]?.company_name||corpHealthLive.employers[0]?.company||"\u2014"}.` : ` Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`}
               </span>
             </div>
-
-            <div style={{margin:"0 10px"}}>
+            <div style={{margin:"0 10px 10px"}}>
               <PanelHeader T={T} title="DIVERGENCE SCANNER \u2014 ALL SUBMARKETS" subtitle="Sorted by |divergence|"/>
               <div style={{display:"grid",gridTemplateColumns:"1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.6fr 0.5fr 0.5fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
                 {["SUBMARKET","MSA","SCHI","RE HEALTH","DIVERGENCE","SIGNAL","HHI","EMPLOYERS"].map(h=>(
@@ -1615,247 +1631,17 @@ export default function TerminalPage() {
                 </div>;
               })}
             </div>
-
-            <div style={{margin:"10px"}}>
-              <PanelHeader T={T} title="TOP 10 PUBLIC EMPLOYERS \u2014 PORTFOLIO-WIDE"/>
-              <div style={{display:"grid",gridTemplateColumns:"1.3fr 0.5fr 0.6fr 0.6fr 0.5fr 0.5fr 0.5fr 0.8fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-                {["COMPANY","TICKER","EMPLOYEES","SHARE %","CHS","TIER","\u0394 QoQ","SUBMARKET"].map(h=>(
-                  <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-                ))}
-              </div>
-              {topEmps.slice(0,10).map((e,i)=>(
-                <div key={i} style={{display:"grid",gridTemplateColumns:"1.3fr 0.5fr 0.6fr 0.6fr 0.5fr 0.5fr 0.5fr 0.8fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{e.company}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:e.ticker?T.text.cyan:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.ticker||"PVT"}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{e.employees?.toLocaleString()||"\u2014"}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{(e.share*100).toFixed(1)}%</div>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:e.chs?tierColor(e.tier):T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.chs??"\u2014"}</div>
-                  <div style={{padding:"5px 6px",display:"flex",alignItems:"center",borderRight:`1px solid ${T.border.subtle}`}}><Bd c={tierColor(e.tier)}>{e.tier?.toUpperCase()||"N/A"}</Bd></div>
-                  <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:e.delta!=null?(e.delta>0?T.text.green:e.delta<0?T.text.red:T.text.muted):T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{e.delta!=null?(e.delta>0?"+":"")+e.delta:"\u2014"}</div>
-                  <div style={{padding:"5px 6px",fontSize:8,color:T.text.secondary}}>{e.submarket||"\u2014"}</div>
-                </div>
-              ))}
-            </div>
-
-            <div style={{margin:"10px"}}>
-              <PanelHeader T={T} title="SECTOR ROTATION MATRIX" subtitle="Sectors \u00D7 Markets \u2014 Avg CHS Heat Grid"/>
-              {rotSectors.length > 0 && rotMarkets.length > 0 ? (
-                <div style={{overflowX:"auto"}}>
-                  <div style={{display:"grid",gridTemplateColumns:`120px repeat(${rotMarkets.length}, 1fr)`,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-                    <div style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>SECTOR</div>
-                    {rotMarkets.map((m:string)=>(
-                      <div key={m} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,textAlign:"center"}}>{m.length>12?m.slice(0,12)+"..":m}</div>
-                    ))}
-                  </div>
-                  {rotSectors.map((sec,si)=>(
-                    <div key={si} style={{display:"grid",gridTemplateColumns:`120px repeat(${rotMarkets.length}, 1fr)`,background:si%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-                      <div style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{naicsLabels[sec.naics]||sec.naics}</div>
-                      {rotMarkets.map((m:string)=>{
-                        const cell = sec.markets?.[m];
-                        const v = cell?.avgCHS;
-                        const bg = v!=null ? (v>=70?T.text.green+"22":v>=50?T.text.amber+"22":T.text.red+"22") : "transparent";
-                        const tc = v!=null ? (v>=70?T.text.green:v>=50?T.text.amber:T.text.red) : T.text.muted;
-                        return <div key={m} style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:tc,background:bg,textAlign:"center",borderRight:`1px solid ${T.border.subtle}`}}>{v!=null?v.toFixed(0):"\u2014"}</div>;
-                      })}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{display:"grid",gridTemplateColumns:"120px repeat(3, 1fr)",gap:0}}>
-                  <div style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.medium}`}}>SECTOR</div>
-                  {["Seattle","Bellevue","Redmond"].map(m=>(
-                    <div key={m} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.medium}`,textAlign:"center"}}>{m}</div>
-                  ))}
-                  {[{s:"Technology",v:[78,82,85]},{s:"Aerospace",v:[38,null,null]},{s:"Telecom",v:[65,61,null]},{s:"Retail",v:[88,71,74]},{s:"Healthcare",v:[null,72,68]}].map((row,ri)=><>
-                    <div key={ri+"s"} style={{padding:"5px 6px",fontSize:9,fontWeight:600,color:T.text.primary,background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}`}}>{row.s}</div>
-                    {row.v.map((v,ci)=>{
-                      const bg2 = v!=null?(v>=70?T.text.green+"22":v>=50?T.text.amber+"22":T.text.red+"22"):"transparent";
-                      const tc2 = v!=null?(v>=70?T.text.green:v>=50?T.text.amber:T.text.red):T.text.muted;
-                      return <div key={ci} style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:tc2,background:ri%2===0?`${T.bg.panel}`:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}`,textAlign:"center"}}><span style={{background:bg2,padding:"1px 6px",borderRadius:2}}>{v!=null?v:"\u2014"}</span></div>;
-                    })}
-                  </>)}
-                </div>
-              )}
-            </div>
-
-            <div style={{margin:"10px",display:"flex",gap:10}}>
-              <div style={{flex:1}}>
-                <PanelHeader T={T} title="SECTOR CONCENTRATION"/>
-                {(() => {
-                  const sectorBreakdown = corpHealthLive.sectors && typeof corpHealthLive.sectors === 'object' && !Array.isArray(corpHealthLive.sectors) && Object.keys(corpHealthLive.sectors).length > 0
-                    ? Object.entries(corpHealthLive.sectors).map(([k,v])=>({sector:naicsLabels[k]||k,pct:typeof v === 'number' ? v : parseFloat(String(v))||0,color:sectorColors[k]||T.text.muted})).sort((a,b)=>b.pct-a.pct)
-                    : [{sector:"Technology",pct:33.2,color:T.text.cyan},{sector:"Aerospace",pct:9.9,color:T.text.orange},{sector:"Telecom",pct:6.0,color:T.text.purple},{sector:"Consumer",pct:5.1,color:T.text.amber},{sector:"Retail",pct:4.2,color:T.text.green},{sector:"Healthcare",pct:3.5,color:T.text.red},{sector:"Other",pct:38.1,color:T.text.muted}];
-                  return sectorBreakdown.map((s,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}`}}>
-                      <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
-                      <span style={{fontSize:9,color:T.text.primary,flex:1}}>{s.sector}</span>
-                      <div style={{width:100,height:6,background:T.bg.header,borderRadius:3,overflow:"hidden"}}>
-                        <div style={{width:`${Math.min(s.pct,100)}%`,height:"100%",background:s.color,borderRadius:3}}/>
-                      </div>
-                      <span style={{fontSize:8,color:T.text.secondary,width:35,textAlign:"right"}}>{s.pct.toFixed(1)}%</span>
-                    </div>
-                  ));
-                })()}
-              </div>
-              <div style={{flex:1}}>
-                <PanelHeader T={T} title="STRESS ALERTS"/>
-                {(corpHealthLive.alerts.length > 0 ? corpHealthLive.alerts.slice(0,5).map((a)=>({sev:a.severity||"med",msg:a.message||"",time:a.time||"now"})) : [
-                  {sev:"high",msg:"Boeing (BA) CHS dropped to 38 \u2014 stress tier. 6,800 employees at risk.",time:"2h"},
-                  {sev:"med",msg:"Expedia (EXPE) CHS declining: 59 (-4 QoQ). Watch for layoff announcements.",time:"5h"},
-                  {sev:"low",msg:"T-Mobile (TMUS) slight CHS decline to 65. Monitor next earnings.",time:"1d"},
-                ]).map((a,i)=>{
-                  const bc=({high:T.text.red,med:T.text.orange,low:T.text.amber} as Record<string,string>)[a.sev]||T.text.muted;
-                  return <div key={i} style={{display:"flex",gap:6,padding:"5px 8px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev.toUpperCase()}</Bd></div>
-                      <div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div>
-                    </div>
-                    <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{a.time}</span>
-                  </div>;
-                })}
-              </div>
-            </div>
-          </>;})()}
-        </div>
-      ) : (
-        /* ─── MSA INDEX / SUBMARKET INDEX ──────────────────── */
-        <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          {/* Level header */}
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"4px 10px",background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <span style={{fontSize:13,fontWeight:700,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{marketTab==="msaindex"?"All Markets":"Atlanta, GA"}</span>
-            <span style={{fontSize:9,color:T.text.muted}}>|</span>
-            <span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>
-              {marketTab==="msaindex"?"7 tracked markets · Sort by JEDI Score · Double-click to open market detail":"6 submarkets · Double-click for properties"}
-            </span>
-            <div style={{flex:1}}/>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{marketTab==="msaindex"?"18 cols":"20 cols"}</span>
-          </div>
-          {/* Grid area */}
-          <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-            {(()=>{
-              const PCH=(props:{w:number;sorted?:boolean;children:React.ReactNode})=>(
-                <div style={{width:props.w,minWidth:props.w,padding:"3px 6px",fontSize:7,fontWeight:700,color:props.sorted?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,userSelect:"none" as const,fontFamily:T.font.mono,flexShrink:0}}>{props.children}{props.sorted&&<span style={{marginLeft:2}}>▼</span>}</div>
-              );
-              const PCC=(props:{w:number;children?:React.ReactNode;align?:string})=>(
-                <div style={{width:props.w,minWidth:props.w,padding:"4px 6px",borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center",justifyContent:props.align==="right"?"flex-end":"flex-start",flexShrink:0}}>{props.children}</div>
-              );
-              const Spk=(props:{data:number[];color:string})=>{
-                const mx=Math.max(...props.data),mn=Math.min(...props.data),r=mx-mn||1;
-                const pts=props.data.map((v,i)=>`${(i/(props.data.length-1))*52},${14-((v-mn)/r)*14}`).join(" ");
-                return <svg width={52} height={14} style={{display:"block"}}><polyline points={pts} fill="none" stroke={props.color} strokeWidth="1.2" strokeLinejoin="round"/></svg>;
-              };
-              const deltaColor=(v:string)=>v.startsWith("+")?T.text.green:v.startsWith("-")?T.text.red:T.text.muted;
-              const scoreColor=(n:number)=>n>=80?T.text.green:n>=65?T.text.amber:T.text.red;
-              const threshColor=(v:string,t1:number,t2:number,inv=false)=>{const n=parseFloat(v);return inv?(n<=t1?T.text.green:n<=t2?T.text.amber:T.text.red):(n>=t1?T.text.green:n>=t2?T.text.amber:T.text.red);};
-              const cycleColor:Record<string,string>={EXPANSION:T.text.green,"LATE EXP":T.text.amber,PEAK:"#FF8C42",CONTRACTION:T.text.red,TROUGH:T.text.cyan};
-              const pressColor:Record<string,string>={BUYER:T.text.green,BALANCED:T.text.amber,SELLER:T.text.cyan};
-              const stratColor:Record<string,string>={BTS:"#A78BFA",FLIP:T.text.cyan,RENTAL:T.text.green,STR:"#FF8C42"};
-              const riskColor:Record<string,string>={LOW:T.text.green,MED:"#FF8C42",HIGH:T.text.red};
-              const stageColor:Record<string,string>={DD:T.text.cyan,LOI:T.text.amber,PROSPECT:T.text.secondary,LEAD:T.text.muted,CLOSED:T.text.green};
-              const rowBg=(i:number)=>i%2===0?T.bg.panel:T.bg.panelAlt;
-
-              if(marketTab==="msaindex") return (
-                <>
-                  <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflowX:"auto"}}>
-                    <PCH w={28}>#</PCH><PCH w={140}>MSA</PCH><PCH w={48}>PROPS</PCH><PCH w={52}>UNITS</PCH>
-                    <PCH w={44} sorted>JEDI</PCH><PCH w={36}>Δ30</PCH><PCH w={56}>TREND</PCH>
-                    <PCH w={64}>RENT</PCH><PCH w={52}>RENT Δ</PCH><PCH w={48}>VAC</PCH>
-                    <PCH w={56}>ABSORB</PCH><PCH w={56}>PIPE %</PCH><PCH w={44}>CNSTR</PCH>
-                    <PCH w={44}>J/APT</PCH><PCH w={44}>POP Δ</PCH><PCH w={56}>MED INC</PCH>
-                    <PCH w={44}>CAP</PCH><PCH w={72}>CYCLE</PCH>
-                  </div>
-                  <div style={{display:"flex",background:T.text.amber+"08",borderBottom:`1px solid ${T.text.amber}33`,flexShrink:0}}>
-                    <PCC w={28}><span style={{fontSize:8,color:T.text.amber,fontFamily:T.font.mono}}>M</span></PCC>
-                    <PCC w={140}><span style={{fontSize:9,fontWeight:700,color:T.text.amber,fontFamily:T.font.mono}}>Median</span></PCC>
-                    <PCC w={48}/><PCC w={52}/>
-                    <PCC w={44}><span style={{fontSize:11,fontWeight:800,color:T.text.amber,fontFamily:T.font.mono}}>81</span></PCC>
-                    <PCC w={36}/><PCC w={56}/>
-                    <PCC w={64}><span style={{fontSize:9,fontWeight:600,color:T.text.amber,fontFamily:T.font.mono}}>$1,879</span></PCC>
-                    <PCC w={52}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>+3.4%</span></PCC>
-                    <PCC w={48}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>6.4%</span></PCC>
-                    <PCC w={56}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>1,800</span></PCC>
-                    <PCC w={56}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>14.2%</span></PCC>
-                    <PCC w={44}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>60</span></PCC>
-                    <PCC w={44}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>5.2</span></PCC>
-                    <PCC w={44}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>+2.0%</span></PCC>
-                    <PCC w={56}/><PCC w={44}><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>5.3%</span></PCC><PCC w={72}/>
-                  </div>
-                  <div style={{flex:1,overflow:"auto"}}>
-                    {PEER_MSA_DATA.map((d,i)=>(
-                      <div key={i} onDoubleClick={()=>navigate(`/market-intelligence/markets/${d.id}`)} style={{display:"flex",background:rowBg(i),borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:"2px solid transparent"}} onMouseEnter={e=>e.currentTarget.style.background=T.bg.header} onMouseLeave={e=>e.currentTarget.style.background=rowBg(i)}>
-                        <PCC w={28}><span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{i+1}</span></PCC>
-                        <PCC w={140}><span style={{fontSize:10,fontWeight:600,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{d.name}</span></PCC>
-                        <PCC w={48}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.props.toLocaleString()}</span></PCC>
-                        <PCC w={52}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.units}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:11,fontWeight:800,color:scoreColor(d.jedi),fontFamily:T.font.mono}}>{d.jedi}</span></PCC>
-                        <PCC w={36}><span style={{fontSize:9,fontWeight:600,color:deltaColor(d.d30),fontFamily:T.font.mono}}>{d.d30}</span></PCC>
-                        <PCC w={56}><Spk data={d.trend} color={d.jedi>=80?T.text.green:T.text.amber}/></PCC>
-                        <PCC w={64}><span style={{fontSize:10,fontWeight:600,color:T.text.white,fontFamily:T.font.mono}}>{d.rent}</span></PCC>
-                        <PCC w={52}><span style={{fontSize:9,fontWeight:600,color:deltaColor(d.rentD),fontFamily:T.font.mono}}>{d.rentD}</span></PCC>
-                        <PCC w={48}><span style={{fontSize:9,fontWeight:600,color:threshColor(d.vac,5,8,true),fontFamily:T.font.mono}}>{d.vac}</span></PCC>
-                        <PCC w={56}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.absorb}</span></PCC>
-                        <PCC w={56}><span style={{fontSize:9,fontWeight:600,color:threshColor(d.pipeline,8,12,true),fontFamily:T.font.mono}}>{d.pipeline}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:10,fontWeight:800,color:scoreColor(d.constraint),fontFamily:T.font.mono}}>{d.constraint}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.jobs}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:9,fontWeight:600,color:deltaColor(d.pop),fontFamily:T.font.mono}}>{d.pop}</span></PCC>
-                        <PCC w={56}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.medInc}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.cap}</span></PCC>
-                        <PCC w={72}><span style={{fontSize:8,fontWeight:700,color:cycleColor[d.cycle]||T.text.muted,background:(cycleColor[d.cycle]||T.text.muted)+"18",border:`1px solid ${(cycleColor[d.cycle]||T.text.muted)}33`,padding:"1px 5px",letterSpacing:0.5,fontFamily:T.font.mono}}>{d.cycle}</span></PCC>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-              return (
-                <>
-                  <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflowX:"auto"}}>
-                    <PCH w={28}>#</PCH><PCH w={120}>SUBMARKET</PCH><PCH w={40}>PROPS</PCH><PCH w={52}>UNITS</PCH>
-                    <PCH w={44} sorted>JEDI</PCH><PCH w={36}>Δ30</PCH><PCH w={52}>TREND</PCH>
-                    <PCH w={60}>RENT</PCH><PCH w={48}>RENT Δ</PCH><PCH w={44}>R/SF</PCH>
-                    <PCH w={44}>VAC</PCH><PCH w={44}>ABSRB</PCH><PCH w={48}>PIPE %</PCH>
-                    <PCH w={40}>MO S</PCH><PCH w={40}>OPP</PCH><PCH w={56}>PRESS</PCH>
-                    <PCH w={40}>CAP</PCH><PCH w={52}>$/UNIT</PCH><PCH w={40}>AFF</PCH><PCH w={36}>REV</PCH>
-                  </div>
-                  <div style={{flex:1,overflow:"auto"}}>
-                    {PEER_SUB_DATA.map((d,i)=>(
-                      <div key={i} onDoubleClick={()=>{setPeerLevel("property");setPeerContext(d.name);}} style={{display:"flex",background:rowBg(i),borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:"2px solid transparent"}} onMouseEnter={e=>e.currentTarget.style.background=T.bg.header} onMouseLeave={e=>e.currentTarget.style.background=rowBg(i)}>
-                        <PCC w={28}><span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{i+1}</span></PCC>
-                        <PCC w={120}><span style={{fontSize:10,fontWeight:600,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{d.name}</span></PCC>
-                        <PCC w={40}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.props}</span></PCC>
-                        <PCC w={52}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.units}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:11,fontWeight:800,color:scoreColor(d.jedi),fontFamily:T.font.mono}}>{d.jedi}</span></PCC>
-                        <PCC w={36}><span style={{fontSize:9,fontWeight:600,color:deltaColor(d.d30),fontFamily:T.font.mono}}>{d.d30}</span></PCC>
-                        <PCC w={52}><Spk data={d.trend} color={d.jedi>=80?T.text.green:T.text.amber}/></PCC>
-                        <PCC w={60}><span style={{fontSize:10,fontWeight:600,color:T.text.white,fontFamily:T.font.mono}}>{d.rent}</span></PCC>
-                        <PCC w={48}><span style={{fontSize:9,fontWeight:600,color:deltaColor(d.rentD),fontFamily:T.font.mono}}>{d.rentD}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.rentSf}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:9,fontWeight:600,color:threshColor(d.vac,5,8,true),fontFamily:T.font.mono}}>{d.vac}</span></PCC>
-                        <PCC w={44}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.absorb}</span></PCC>
-                        <PCC w={48}><span style={{fontSize:9,fontWeight:600,color:threshColor(d.pipeline,8,12,true),fontFamily:T.font.mono}}>{d.pipeline}</span></PCC>
-                        <PCC w={40}><span style={{fontSize:9,fontWeight:600,color:threshColor(String(d.moSupply),12,18,true),fontFamily:T.font.mono}}>{d.moSupply}</span></PCC>
-                        <PCC w={40}><span style={{fontSize:10,fontWeight:800,color:scoreColor(d.opp),fontFamily:T.font.mono}}>{d.opp}</span></PCC>
-                        <PCC w={56}><span style={{fontSize:8,fontWeight:700,color:pressColor[d.pressure]||T.text.muted,background:(pressColor[d.pressure]||T.text.muted)+"18",border:`1px solid ${(pressColor[d.pressure]||T.text.muted)}33`,padding:"1px 5px",fontFamily:T.font.mono}}>{d.pressure}</span></PCC>
-                        <PCC w={40}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.cap}</span></PCC>
-                        <PCC w={52}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.ppu}</span></PCC>
-                        <PCC w={40}><span style={{fontSize:9,fontWeight:600,color:threshColor(d.afford,30,35,true),fontFamily:T.font.mono}}>{d.afford}</span></PCC>
-                        <PCC w={36}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.review}</span></PCC>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-          {/* Footer hint */}
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3px 10px",background:T.bg.topBar||T.bg.terminal,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{marketTab==="msaindex"?"Double-click row → Market Detail page":"Double-click row → drill down"}</span>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>MSA INTELLIGENCE · {marketTab==="msaindex"?"MSA":"SUBMARKET"} LEVEL</span>
-          </div>
+            </>;
+          })()}
         </div>
       )}
+
+      {/* Embedded market detail — fills remaining space */}
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        <BloombergMarketDetail embedded marketId={selectedMsaId} />
+      </div>
     </div>
   );
-
   // ─── VIEW: F5 COMPETE (CompetitiveIntelligencePage) ──────
   const ViewCompete = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
@@ -1990,7 +1776,7 @@ export default function TerminalPage() {
   const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
 
   useEffect(() => {
-    if (fkey !== "F4" || marketTab !== "corphealth" || corpHealthLive.loaded || corpHealthLive.loading) return;
+    if (fkey !== "F4" || !showCorpHealth || corpHealthLive.loaded || corpHealthLive.loading) return;
     setCorpHealthLive(prev => ({...prev, loading: true}));
 
     const submarketIds = SUBMARKETS.map((_, i) => i + 1);
@@ -2029,7 +1815,7 @@ export default function TerminalPage() {
     }).catch(() => {
       setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
     });
-  }, [fkey, marketTab, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
+  }, [fkey, showCorpHealth, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
   const handleInvite = () => {
     if(!inviteEmail || !orgData) return;
