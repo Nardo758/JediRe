@@ -192,6 +192,45 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
     }
   });
 
+  // GET /api/v1/markets/available - List all markets available for tracking
+  router.get('/available', async (req, res) => {
+    try {
+      let markets: { market_id: string; display_name: string; state_code: string }[] = [];
+
+      try {
+        const result = await pool.query(
+          `SELECT DISTINCT market_id, market_name AS display_name, state_code
+           FROM market_coverage_status
+           ORDER BY market_name ASC`
+        );
+        markets = result.rows;
+      } catch {
+        try {
+          const result = await pool.query(
+            `SELECT DISTINCT city AS market_id, city AS display_name, state AS state_code
+             FROM apartment_submarkets
+             WHERE city IS NOT NULL
+             ORDER BY city ASC`
+          );
+          markets = result.rows;
+        } catch {
+          markets = [
+            { market_id: 'atlanta', display_name: 'Atlanta', state_code: 'GA' },
+            { market_id: 'charlotte', display_name: 'Charlotte', state_code: 'NC' },
+            { market_id: 'nashville', display_name: 'Nashville', state_code: 'TN' },
+            { market_id: 'dallas', display_name: 'Dallas', state_code: 'TX' },
+            { market_id: 'phoenix', display_name: 'Phoenix', state_code: 'AZ' },
+          ];
+        }
+      }
+
+      return res.json({ markets });
+    } catch (err) {
+      console.error('GET /markets/available error:', err);
+      return res.status(500).json({ error: 'Failed to fetch available markets' });
+    }
+  });
+
   // GET /api/v1/markets/overview - Dashboard data for "My Markets"
   router.get('/overview', async (req, res) => {
     try {
