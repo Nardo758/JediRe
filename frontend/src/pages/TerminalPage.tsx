@@ -7,7 +7,7 @@ import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
 import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
-import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
+import WatchlistPage from "./MarketIntelligence/WatchlistPage";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 
 // ═══════════════════════════════════════════════════════════════
@@ -487,7 +487,7 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
+  const [marketsView, setMarketsView] = useState<"detail"|"watchlist">("detail");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1603,13 +1603,13 @@ export default function TerminalPage() {
             {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </>}
-        {marketsView === "peers" && (
-          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>PEER COMPARISON</span>
+        {marketsView === "watchlist" && (
+          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>WATCHLIST</span>
         )}
         <div style={{flex:1}}/>
         {/* View toggle */}
         <div style={{display:"flex",gap:2}}>
-          {([["detail","MARKET DETAIL"],["peers","PEERS"]] as ["detail"|"peers", string][]).map(([v,label]) => (
+          {([["detail","MARKET DETAIL"],["watchlist","WATCHLIST"]] as ["detail"|"watchlist", string][]).map(([v,label]) => (
             <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
               {label}
             </button>
@@ -1622,8 +1622,8 @@ export default function TerminalPage() {
         {marketsView === "detail" && (
           <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
         )}
-        {marketsView === "peers" && (
-          <PeerComparisonPage embedded />
+        {marketsView === "watchlist" && (
+          <WatchlistPage embedded />
         )}
       </div>
     </div>
