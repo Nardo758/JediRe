@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import SubmarketsTab from "./tabs/SubmarketsTab";
 import TrendsTab from "./tabs/TrendsTab";
+import OwnersTab from "./tabs/OwnersTab";
 import PropertyDataTab from "./tabs/PropertyDataTab";
 import DealsTab from "./tabs/DealsTab";
 import PowerRankingsTab from "./tabs/PowerRankingsTab";
@@ -124,7 +125,7 @@ type MSARecord = {
   submarkets: Submarket[];
 };
 
-type TabId = "overview" | "submarkets" | "trends" | "properties" | "deals" | "rankings" | "corphealth";
+type TabId = "overview" | "submarkets" | "trends" | "properties" | "deals" | "rankings" | "corphealth" | "owners";
 
 const BASE_TABS: { id: TabId; label: string; code: string }[] = [
   { id: "overview",    label: "OVERVIEW",       code: "F4-1" },
@@ -135,6 +136,7 @@ const BASE_TABS: { id: TabId; label: string; code: string }[] = [
   { id: "rankings",    label: "RANKINGS",       code: "F4-6" },
 ];
 const CORP_HEALTH_TAB = { id: "corphealth" as TabId, label: "CORP HEALTH", code: "F4-7" };
+const OWNERS_TAB      = { id: "owners"    as TabId, label: "OWNERS",      code: "F4-8" };
 
 export interface CorpHealthSubmarket {
   name: string; msa: string | null; schi: number; divergence: number;
@@ -420,7 +422,9 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
   const msa = MSA_RECORDS[resolvedId] || MSA_RECORDS["atlanta-ga"];
   const cycleColor = msa.cycle === "EXPANSION" ? T.green : msa.cycle === "LATE EXP" ? T.amber : T.orange;
 
-  const effectiveTabs = (embedded && corpHealthData) ? [...BASE_TABS, CORP_HEALTH_TAB] : BASE_TABS;
+  const effectiveTabs = (embedded && corpHealthData)
+    ? [...BASE_TABS, CORP_HEALTH_TAB, OWNERS_TAB]
+    : [...BASE_TABS, OWNERS_TAB];
 
   // When the marketId prop changes (MSA selector in terminal), reset to overview tab
   React.useEffect(() => { setActiveTab("overview"); }, [resolvedId]);
@@ -524,6 +528,7 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
         {activeTab === "deals" && <div style={{ background: T.bg, minHeight: "100%" }}><DealsTab marketId={resolvedId} /></div>}
         {activeTab === "rankings" && <div style={{ background: T.bg, minHeight: "100%" }}><PowerRankingsTab marketId={resolvedId} /></div>}
         {activeTab === "corphealth" && corpHealthData && <CorpHealthTab d={corpHealthData} />}
+        {activeTab === "owners" && <div style={{ background: T.bg, minHeight: "100%" }}><OwnersTab marketId={resolvedId} /></div>}
       </div>
 
       {/* FOOTER — standalone only */}
