@@ -99,12 +99,13 @@ const SUBMARKETS = [
 ];
 
 const PEER_MSA_DATA = [
-  { name:"Atlanta, GA", props:1028, units:"250K", jedi:87, d30:"+4", trend:[78,80,81,82,83,84,85,86,87], rent:"$2,150", rentD:"+4.2%", vac:"5.8%", absorb:"2,840", pipeline:"15.8%", constraint:58, jobs:5.8, pop:"+2.1%", medInc:"$72,400", cap:"5.2%", cycle:"EXPANSION" },
-  { name:"Raleigh, NC", props:480, units:"98K", jedi:85, d30:"+3", trend:[77,78,80,81,82,83,84,84,85], rent:"$1,740", rentD:"+3.9%", vac:"6.2%", absorb:"1,120", pipeline:"11.8%", constraint:72, jobs:5.5, pop:"+2.8%", medInc:"$78,200", cap:"5.0%", cycle:"EXPANSION" },
-  { name:"Tampa, FL", props:892, units:"215K", jedi:82, d30:"+2", trend:[74,75,76,77,78,79,80,81,82], rent:"$1,908", rentD:"+3.0%", vac:"6.5%", absorb:"2,150", pipeline:"13.4%", constraint:64, jobs:5.2, pop:"+1.9%", medInc:"$65,800", cap:"5.4%", cycle:"LATE EXP" },
-  { name:"Orlando, FL", props:714, units:"178K", jedi:78, d30:"+1", trend:[72,73,74,74,75,76,77,77,78], rent:"$1,820", rentD:"+2.4%", vac:"7.1%", absorb:"1,680", pipeline:"16.2%", constraint:48, jobs:4.9, pop:"+1.7%", medInc:"$62,400", cap:"5.6%", cycle:"PEAK" },
-  { name:"Miami, FL", props:1245, units:"310K", jedi:74, d30:"-2", trend:[80,79,78,77,76,75,75,74,74], rent:"$2,480", rentD:"+1.2%", vac:"8.4%", absorb:"1,920", pipeline:"18.6%", constraint:38, jobs:4.4, pop:"+0.8%", medInc:"$58,900", cap:"4.8%", cycle:"PEAK" },
-  { name:"Jacksonville, FL", props:386, units:"82K", jedi:80, d30:"+5", trend:[70,72,73,74,75,76,77,79,80], rent:"$1,580", rentD:"+3.8%", vac:"5.4%", absorb:"980", pipeline:"9.2%", constraint:76, jobs:5.1, pop:"+2.4%", medInc:"$64,200", cap:"5.8%", cycle:"EXPANSION" },
+  { id:"atlanta-ga",      name:"Atlanta, GA",      props:1028, units:"250K", jedi:87, d30:"+4", trend:[78,80,81,82,83,84,85,86,87], rent:"$2,150", rentD:"+4.2%", vac:"5.8%", absorb:"2,840", pipeline:"15.8%", constraint:58, jobs:5.8, pop:"+2.1%", medInc:"$72,400", cap:"5.2%", cycle:"EXPANSION" },
+  { id:"raleigh-nc",      name:"Raleigh, NC",      props:480,  units:"98K",  jedi:85, d30:"+3", trend:[77,78,80,81,82,83,84,84,85], rent:"$1,740", rentD:"+3.9%", vac:"6.2%", absorb:"1,120", pipeline:"11.8%", constraint:72, jobs:5.5, pop:"+2.8%", medInc:"$78,200", cap:"5.0%", cycle:"EXPANSION" },
+  { id:"tampa-fl",        name:"Tampa, FL",         props:892,  units:"215K", jedi:82, d30:"+2", trend:[74,75,76,77,78,79,80,81,82], rent:"$1,908", rentD:"+3.0%", vac:"6.5%", absorb:"2,150", pipeline:"13.4%", constraint:64, jobs:5.2, pop:"+1.9%", medInc:"$65,800", cap:"5.4%", cycle:"LATE EXP" },
+  { id:"charlotte-nc",   name:"Charlotte, NC",    props:680,  units:"142K", jedi:82, d30:"+3", trend:[76,77,78,79,80,80,81,81,82], rent:"$1,680", rentD:"+3.5%", vac:"6.0%", absorb:"1,540", pipeline:"12.4%", constraint:68, jobs:5.2, pop:"+2.2%", medInc:"$68,400", cap:"5.2%", cycle:"EXPANSION" },
+  { id:"jacksonville-fl", name:"Jacksonville, FL", props:386,  units:"82K",  jedi:80, d30:"+5", trend:[70,72,73,74,75,76,77,79,80], rent:"$1,580", rentD:"+3.8%", vac:"5.4%", absorb:"980",   pipeline:"9.2%",  constraint:76, jobs:5.1, pop:"+2.4%", medInc:"$64,200", cap:"5.8%", cycle:"EXPANSION" },
+  { id:"orlando-fl",      name:"Orlando, FL",       props:714,  units:"178K", jedi:78, d30:"+1", trend:[72,73,74,74,75,76,77,77,78], rent:"$1,820", rentD:"+2.4%", vac:"7.1%", absorb:"1,680", pipeline:"16.2%", constraint:48, jobs:4.9, pop:"+1.7%", medInc:"$62,400", cap:"5.6%", cycle:"PEAK" },
+  { id:"miami-fl",        name:"Miami, FL",         props:1245, units:"310K", jedi:74, d30:"-2", trend:[80,79,78,77,76,75,75,74,74], rent:"$2,480", rentD:"+1.2%", vac:"8.4%", absorb:"1,920", pipeline:"18.6%", constraint:38, jobs:4.4, pop:"+0.8%", medInc:"$58,900", cap:"4.8%", cycle:"PEAK" },
 ];
 const PEER_SUB_DATA = [
   { name:"Midtown", props:52, units:"14,856", jedi:88, d30:"+3", trend:[80,82,83,84,85,86,86,87,88], rent:"$2,056", rentD:"+4.8%", rentSf:"$2.14", vac:"5.1%", absorb:"3.2%", pipeline:"12.4%", moSupply:14, opp:82, pressure:"BUYER", cap:"4.8%", ppu:"$245K", afford:"28%", review:4.2 },
@@ -1500,7 +1501,7 @@ export default function TerminalPage() {
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
       <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
       <div style={{display:"flex",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.header,flexShrink:0}}>
-        {([["overview","MARKET OVERVIEW"],["corphealth","CORPORATE HEALTH"],["peercompare","PEER COMPARE"]] as const).map(([k,l])=>(
+        {([["overview","MARKET OVERVIEW"],["corphealth","CORPORATE HEALTH"],["peercompare","MSA"]] as const).map(([k,l])=>(
           <div key={k} onClick={()=>setMarketTab(k)} style={{padding:"6px 14px",fontSize:9,fontWeight:700,color:marketTab===k?T.text.amber:T.text.secondary,cursor:"pointer",borderBottom:marketTab===k?`2px solid ${T.text.amber}`:"2px solid transparent",letterSpacing:0.5,transition:"all 0.1s"}}>{l}</div>
         ))}
       </div>
@@ -1723,7 +1724,7 @@ export default function TerminalPage() {
             <span style={{fontSize:13,fontWeight:700,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{peerContext}</span>
             <span style={{fontSize:9,color:T.text.muted}}>|</span>
             <span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>
-              {peerLevel==="msa"?"6 tracked markets · Sort by JEDI Score · Double-click to drill":peerLevel==="submarket"?"6 submarkets · Double-click for properties":"6 properties · ▸ = subject property"}
+              {peerLevel==="msa"?"7 tracked markets · Sort by JEDI Score · Double-click to open market detail":peerLevel==="submarket"?"6 submarkets · Double-click for properties":"6 properties · ▸ = subject property"}
             </span>
             <div style={{flex:1}}/>
             <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{peerLevel==="msa"?"18 cols":peerLevel==="submarket"?"20 cols":"22 cols"}</span>
@@ -1780,7 +1781,7 @@ export default function TerminalPage() {
                   </div>
                   <div style={{flex:1,overflow:"auto"}}>
                     {PEER_MSA_DATA.map((d,i)=>(
-                      <div key={i} onDoubleClick={()=>{setPeerLevel("submarket");setPeerContext(d.name);}} style={{display:"flex",background:rowBg(i),borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:"2px solid transparent"}} onMouseEnter={e=>e.currentTarget.style.background=T.bg.header} onMouseLeave={e=>e.currentTarget.style.background=rowBg(i)}>
+                      <div key={i} onDoubleClick={()=>navigate(`/market-intelligence/markets/${d.id}`)} style={{display:"flex",background:rowBg(i),borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:"2px solid transparent"}} onMouseEnter={e=>e.currentTarget.style.background=T.bg.header} onMouseLeave={e=>e.currentTarget.style.background=rowBg(i)}>
                         <PCC w={28}><span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{i+1}</span></PCC>
                         <PCC w={140}><span style={{fontSize:10,fontWeight:600,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{d.name}</span></PCC>
                         <PCC w={48}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.props.toLocaleString()}</span></PCC>
@@ -1889,8 +1890,8 @@ export default function TerminalPage() {
           </div>
           {/* Footer hint */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3px 10px",background:T.bg.topBar||T.bg.terminal,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>Double-click row → drill down · ▸ = subject property</span>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>PEER COMPARE · {peerLevel.toUpperCase()} LEVEL</span>
+            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{peerLevel==="msa"?"Double-click row → Market Detail page":"Double-click row → drill down · ▸ = subject property"}</span>
+            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>MSA INTELLIGENCE · {peerLevel.toUpperCase()} LEVEL</span>
           </div>
         </div>
       )}
