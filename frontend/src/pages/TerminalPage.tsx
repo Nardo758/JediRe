@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { TickerBar } from "../components/terminal/TickerBar";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
@@ -419,6 +419,7 @@ interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; 
 // ─── MAIN TERMINAL PAGE ───────────────────────────────────────
 export default function TerminalPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
@@ -427,7 +428,7 @@ export default function TerminalPage() {
 
   // Core UI state
   const [time, setTime] = useState(new Date());
-  const [fkey, setFkey] = useState("F1");
+  const [fkey, setFkey] = useState(() => (location.state as {fkey?:string})?.fkey || "F1");
   const [cmd, setCmd] = useState("");
   const [sortBy, setSortBy] = useState("score");
   const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
