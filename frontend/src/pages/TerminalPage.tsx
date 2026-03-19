@@ -327,7 +327,7 @@ function Spark({data,color,w=56,h=16}:{data:number[];color:string;w?:number;h?:n
 }
 
 function Bd({children,c}:{children:React.ReactNode;c:string}) {
-  return <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8,fontWeight:700,color:c,background:c+"18",border:`1px solid ${c}33`,padding:"1px 5px",letterSpacing:0.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;
+  return <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,fontWeight:700,color:c,background:c+"18",border:`1px solid ${c}33`,padding:"2px 6px",letterSpacing:0.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;
 }
 
 function StageBd({stage,T}:{stage:string;T:ThemeType}) {
@@ -790,7 +790,7 @@ export default function TerminalPage() {
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
-          <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:7,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
+          <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:9,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
             {h.l}{h.c&&sortBy===h.c&&<span style={{color:T.text.amber,marginLeft:1}}>{sortDir==="desc"?"v":"^"}</span>}
           </div>
         ))}
@@ -810,7 +810,7 @@ export default function TerminalPage() {
             <div style={{padding:4,fontSize:8,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}>
               <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{d.name}</div>
-              <div style={{fontSize:7,color:T.text.muted}}>{d.addr}</div>
+              <div style={{fontSize:9,color:T.text.muted}}>{d.addr}</div>
             </div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}><div style={{fontSize:8,color:T.text.secondary}}>{d.market}</div></div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>
@@ -952,7 +952,7 @@ export default function TerminalPage() {
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveAlerts.map((a,i)=>{
         const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
-        return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
+        return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:10,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:10,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:9,color:T.text.muted}}>{a.time}</span></div>;
       })}
     </div>
   );
@@ -962,9 +962,9 @@ export default function TerminalPage() {
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
         {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:9,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary,fontWeight:600}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
-            <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
-            <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{a.t} ago · {a.m} msgs</div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:10,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary,fontWeight:600}}>{a.name}</span></span><span style={{fontSize:9,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
+            <div style={{fontSize:10,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
+            <div style={{fontSize:9,color:T.text.muted,marginTop:2}}>{a.t} ago · {a.m} msgs</div>
           </div>
         ))}
       </div>
@@ -2174,14 +2174,14 @@ export default function TerminalPage() {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:36,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2}}>JEDI RE</span>
-          <span style={{fontSize:9,color:T.text.muted}}>|</span>
-          <span style={{fontSize:9,color:T.text.secondary}}>PORTFOLIO VIEW</span>
-          <span style={{fontSize:9,color:T.text.muted}}>|</span>
-          <span style={{fontSize:9,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
+          <span style={{fontSize:10,color:T.text.muted}}>|</span>
+          <span style={{fontSize:10,color:T.text.secondary}}>PORTFOLIO VIEW</span>
+          <span style={{fontSize:10,color:T.text.muted}}>|</span>
+          <span style={{fontSize:10,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
-          <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
+          <span style={{fontSize:10,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
+          <span style={{fontSize:10,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
           {mediaWindows.length>0&&(
             <div style={{position:"relative"}}>
               <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
@@ -2221,88 +2221,86 @@ export default function TerminalPage() {
       </div>
 
 
-      {/* ═══ GLOBAL TICKERS — 3 × 18px (Bloomberg v0.34) ═══ */}
-      <TickerBar height={18} speed={55} label="NEWS" labelColor={T.text.cyan}
-        items={liveNews.map(n => {
-          const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
-          return { raw: `[${n.time}]  ${n.hl}`, color: T.text.primary, sub: `${n.impact}  ${n.pts}pts`, subColor: impactColor };
-        })}
-      />
-      <TickerBar height={18} speed={45} label="MKTDATA" labelColor={T.text.green}
-        items={TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber }))}
-      />
-      <TickerBar height={18} speed={28} label="METRICS" labelColor={T.text.amber}
-        items={metricsTicker}
+      {/* ═══ COMBINED TICKER — 20px ═══ */}
+      <TickerBar height={20} speed={45} label="LIVE" labelColor={T.text.amber}
+        items={[
+          ...liveNews.map(n => {
+            const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
+            return { raw: `[${n.time}] ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
+          }),
+          ...TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber })),
+          ...metricsTicker,
+        ]}
       />
 
-      {/* ═══ KPI BAR — 50px ═══ */}
-      <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,height:50}}>
+      {/* ═══ KPI BAR — 54px ═══ */}
+      <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,minHeight:54,flexWrap:"wrap",overflowX:"auto"}}>
         {[
           {l:"TOTAL PIPELINE",v:totalPV>0?`$${totalPV.toFixed(1)}M`:`${liveDeals.length}`,c:T.text.amberBright,sub:`${liveDeals.length} deals`},
           {l:"ACTIVE DEALS",v:String(activeCount),c:T.text.cyan,sub:"in progress"},
           {l:"PORTFOLIO ASSETS",v:"23",c:T.text.green,sub:"owned"},
           {l:"AVG DAYS/DEAL",v:liveDeals.length>0?String(Math.round(liveDeals.reduce((s,d)=>s+d.days,0)/liveDeals.length)):"—",c:T.text.amber,sub:"avg time"},
         ].map((kpi,i)=>(
-          <div key={i} style={{padding:"4px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:110}}>
-            <div style={{fontSize:7,fontWeight:600,color:T.text.muted,letterSpacing:1}}>{kpi.l}</div>
-            <div style={{fontSize:16,fontWeight:800,color:kpi.c}}>{kpi.v}</div>
-            <div style={{fontSize:7,color:T.text.secondary}}>{kpi.sub}</div>
+          <div key={i} style={{padding:"5px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:110}}>
+            <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>{kpi.l}</div>
+            <div style={{fontSize:17,fontWeight:800,color:kpi.c,lineHeight:1.1}}>{kpi.v}</div>
+            <div style={{fontSize:9,color:T.text.secondary}}>{kpi.sub}</div>
           </div>
         ))}
-        <div style={{padding:"4px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:120}}>
-          <div style={{fontSize:7,fontWeight:600,color:T.text.muted,letterSpacing:1}}>BY STAGE</div>
-          <div style={{display:"flex",gap:10}}>{Object.entries(stages).map(([s,c])=>(
-            <div key={s} style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:c>0?T.text.amber:T.text.muted}}>{c}</div><div style={{fontSize:6,color:T.text.muted}}>{s}</div></div>
+        <div style={{padding:"5px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:120}}>
+          <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>BY STAGE</div>
+          <div style={{display:"flex",gap:10,marginTop:1}}>{Object.entries(stages).map(([s,c])=>(
+            <div key={s} style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:c>0?T.text.amber:T.text.muted}}>{c}</div><div style={{fontSize:9,color:T.text.muted}}>{s}</div></div>
           ))}</div>
         </div>
-        <div onClick={()=>setBottomTab("alerts")} style={{padding:"4px 14px",borderRight:`1px solid ${T.border.subtle}`,cursor:"pointer",minWidth:80}}>
-          <div style={{fontSize:7,fontWeight:600,color:T.text.muted,letterSpacing:1}}>ALERTS</div>
-          <div style={{fontSize:16,fontWeight:800,color:hAlerts>0?T.text.red:T.text.green,animation:hAlerts>0?"pulse 2s infinite":"none"}}>{hAlerts}</div>
+        <div onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{padding:"5px 14px",borderRight:`1px solid ${T.border.subtle}`,cursor:"pointer",minWidth:80}}>
+          <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>ALERTS</div>
+          <div style={{fontSize:17,fontWeight:800,color:hAlerts>0?T.text.red:T.text.green,animation:hAlerts>0?"pulse 2s infinite":"none",lineHeight:1.1}}>{hAlerts}</div>
         </div>
         <div style={{flex:1}}/>
         <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:12}}>
-          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"5px 12px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
-          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
+          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"5px 12px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
+          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
         </div>
       </div>
 
       {/* ═══ F-KEY NAV BAR ═══ */}
       <div style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
-        <div style={{display:"flex",flex:1,overflow:"auto"}}>
+        <div style={{display:"flex",flex:1,overflowX:"auto"}}>
           {PORTFOLIO_NAV.map(n=>(
-            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,padding:"0 11px",height:30,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap",flexShrink:0}}>
-              <span style={{fontSize:7,fontWeight:700,opacity:0.6,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
+            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:1,minWidth:0}}>
+              <span style={{fontSize:9,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
               {n.label}
             </button>
           ))}
         </div>
-        <div style={{padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,width:190}}>
-            <span style={{color:T.text.amber,fontSize:9,fontWeight:700}}>{">"}</span>
-            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary,flex:1,width:"100%"}}/>
+        <div style={{padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:24,width:180}}>
+            <span style={{color:T.text.amber,fontSize:10,fontWeight:700}}>{">"}</span>
+            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:10,color:T.text.primary,flex:1,width:"100%"}}/>
             <span style={{width:6,height:12,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block"}}/>
           </div>
         </div>
       </div>
 
       {/* ═══ GLOBAL FILTER TOOLBAR ═══ */}
-      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:32,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <span style={{fontSize:8,color:T.text.muted,fontWeight:600,letterSpacing:0.5}}>FILTER:</span>
-        <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:22}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:34,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <span style={{fontSize:10,color:T.text.muted,fontWeight:600,letterSpacing:0.5}}>FILTER:</span>
+        <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:10,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:24}}>
           <option value="ALL">All Stages</option>
           {["DD","LOI","PROSPECT","LEAD"].map(s=><option key={s} value={s}>{s}</option>)}
         </select>
-        <select value={fStrat} onChange={e=>setFStrat(e.target.value)} style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:22}}>
+        <select value={fStrat} onChange={e=>setFStrat(e.target.value)} style={{fontFamily:T.font.mono,fontSize:10,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:24}}>
           <option value="ALL">All Strats</option>
           {["BTS","FLIP","RENTAL","STR"].map(s=><option key={s} value={s}>{s}</option>)}
         </select>
-        <button onClick={()=>setMapOpen(!mapOpen)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:22,cursor:"pointer"}}>
+        <button onClick={()=>setMapOpen(!mapOpen)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:24,cursor:"pointer"}}>
           MAP
         </button>
         <div style={{flex:1}}/>
         {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
         {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
-        <span style={{fontSize:8,color:T.text.muted}}>{sorted.length} deals</span>
+        <span style={{fontSize:10,color:T.text.muted}}>{sorted.length} deals</span>
       </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
@@ -2327,9 +2325,9 @@ export default function TerminalPage() {
             {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
             {id:"media",l:"MEDIA",ct:mediaWindows.length,cc:T.text.orange},
           ].map(tab=>(
-            <button key={tab.id} onClick={()=>{setBottomTab(tab.id);if(!bottomOpen)setBottomOpen(true);}} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"0 14px",height:"100%",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            <button key={tab.id} onClick={()=>{setBottomTab(tab.id);if(!bottomOpen)setBottomOpen(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"0 14px",height:"100%",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
               {tab.l}
-              <span style={{fontSize:7,fontWeight:700,padding:"0px 4px",background:bottomTab===tab.id?"rgba(0,0,0,0.2)":tab.cc+"18",color:bottomTab===tab.id?"rgba(0,0,0,0.7)":tab.cc}}>{tab.ct}</span>
+              <span style={{fontSize:9,fontWeight:700,padding:"1px 4px",background:bottomTab===tab.id?"rgba(0,0,0,0.2)":tab.cc+"18",color:bottomTab===tab.id?"rgba(0,0,0,0.7)":tab.cc}}>{tab.ct}</span>
             </button>
           ))}
           <div style={{flex:1}}/>
@@ -2457,16 +2455,16 @@ export default function TerminalPage() {
         </div>
       )}
 
-      {/* ═══ STATUS BAR — 16px ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:16,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+      {/* ═══ STATUS BAR — 20px ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:20,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",gap:12}}>
-          <span style={{fontSize:7,color:T.text.muted}}>JEDI RE v3.0</span>
-          <span style={{fontSize:7,color:T.text.muted}}>REACT + VITE + MAPBOX + KAFKA</span>
+          <span style={{fontSize:9,color:T.text.muted}}>JEDI RE v3.0</span>
+          <span style={{fontSize:9,color:T.text.muted}}>REACT + VITE + MAPBOX + KAFKA</span>
         </div>
         <div style={{display:"flex",gap:12}}>
-          <span style={{fontSize:7,color:T.text.green}}>DB OK</span>
-          <span style={{fontSize:7,color:T.text.green}}>REDIS OK</span>
-          <span style={{fontSize:7,color:T.text.muted}}>{liveDeals.length} deals loaded</span>
+          <span style={{fontSize:9,color:T.text.green}}>DB OK</span>
+          <span style={{fontSize:9,color:T.text.green}}>REDIS OK</span>
+          <span style={{fontSize:9,color:T.text.muted}}>{liveDeals.length} deals loaded</span>
         </div>
       </div>
     </div>
