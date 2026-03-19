@@ -372,10 +372,10 @@ export default function BloombergMarketDetail() {
       {/* BREADCRUMB BAR */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
         <button
-          onClick={() => navigate("/market-intelligence")}
+          onClick={() => navigate("/terminal", { state: { fkey: "F4" } })}
           style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", ...mono, borderRadius: 2 }}
         >
-          ◀ MSA INDEX
+          ◀ F4 MARKETS
         </button>
         <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>{msa.name}</span>
         <span style={{ color: T.borderM }}>/</span>
