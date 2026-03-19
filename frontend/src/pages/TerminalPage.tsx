@@ -1521,7 +1521,7 @@ export default function TerminalPage() {
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
+      <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan}/>
       <div style={{display:"flex",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.header,flexShrink:0}}>
         {([["msaindex","MSA INDEX"],["subindex","SUBMARKET INDEX"],["corphealth","CORPORATE HEALTH"]] as const).map(([k,l])=>(
           <div key={k} onClick={()=>setMarketTab(k)} style={{padding:"6px 14px",fontSize:9,fontWeight:700,color:marketTab===k?T.text.amber:T.text.secondary,cursor:"pointer",borderBottom:marketTab===k?`2px solid ${T.text.amber}`:"2px solid transparent",letterSpacing:0.5,transition:"all 0.1s"}}>{l}</div>

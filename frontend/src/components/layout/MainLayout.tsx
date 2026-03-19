@@ -87,7 +87,7 @@ const PORTFOLIO_NAV = [
   { key: 'F1', label: 'DASHBOARD', path: '/dashboard' },
   { key: 'F2', label: 'PIPELINE',  path: '/deals' },
   { key: 'F3', label: 'PORTFOLIO', path: '/assets-owned' },
-  { key: 'F4', label: 'MARKETS',   path: '/market-intelligence' },
+  { key: 'F4', label: 'MARKETS',   path: '/terminal' },
   { key: 'F5', label: 'COMPETE',   path: '/competitive-intelligence' },
   { key: 'F6', label: 'NEWS',      path: '/news-intel' },
   { key: 'F7', label: 'OPPS',      path: '/opportunities' },

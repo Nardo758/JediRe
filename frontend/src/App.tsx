@@ -52,7 +52,6 @@ import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
-  BloombergMarketsLanding,
   BloombergMarketDetail,
 } from './pages/MarketIntelligence';
 import {
@@ -89,8 +88,8 @@ function AppContent() {
         {/* Terminal — full-page, no MainLayout */}
         <Route path="/terminal" element={<TerminalPage />} />
 
-        {/* Bloomberg Market Intelligence — full-page, no MainLayout */}
-        <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
+        {/* Bloomberg Market Detail — full-page, no MainLayout (/market-intelligence landing removed) */}
+        <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
         <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
         
         <Route element={<MainLayout />}>
@@ -112,10 +111,10 @@ function AppContent() {
           <Route path="/news-intel/dashboard" element={<Navigate to="/terminal" replace />} />
           <Route path="/news-intel/network" element={<Navigate to="/terminal" replace />} />
           <Route path="/news-intel/alerts" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/terminal" replace />} />
           <Route path="/news" element={<NewsPage />} />
           <Route path="/assets-owned" element={<Navigate to="/terminal" replace />} />
           <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
@@ -137,17 +136,17 @@ function AppContent() {
           } />
           
           {/* Market Research Redirects */}
-          <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
-          <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
+          <Route path="/market-research" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-research/active-owners" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-research/future-supply" element={<Navigate to="/terminal" replace />} />
           
-          {/* Market Intelligence redirects (full pages are top-level routes) */}
+          {/* Market Intelligence redirects → terminal */}
           <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
-          <Route path="/market-intelligence/compare" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-intelligence/owners" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-intelligence/supply" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/market-intelligence" replace />} />
-          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/compare" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-intelligence/owners" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-intelligence/supply" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/terminal" replace />} />
 
           {/* Competitive Intelligence */}
           <Route path="/competitive-intelligence" element={<Navigate to="/terminal" replace />} />
