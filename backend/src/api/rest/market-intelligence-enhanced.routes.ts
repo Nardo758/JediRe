@@ -12,81 +12,62 @@ export function createEnhancedMarketIntelligenceRoutes(pool: Pool) {
     try {
       const { marketId } = req.params;
 
-      // Define WHERE clause based on marketId
-      let whereClause = 'WHERE pr.units > 0';
-      if (marketId === 'atlanta') {
-        whereClause = "WHERE pr.county = 'Fulton' AND pr.state = 'GA' AND pr.units > 0";
-      }
+      // Resolve msa_id by matching the marketId slug against the MSA name
+      const msaResult = await pool.query(
+        `SELECT id FROM msas WHERE LOWER(REPLACE(REPLACE(name, ' ', '-'), ',', '')) LIKE $1 LIMIT 1`,
+        [`%${marketId.split('-').slice(0, 2).join('-')}%`]
+      );
+      const msaId = msaResult.rows.length > 0 ? msaResult.rows[0].id : 1;
 
-      // Query submarkets with real property data
+      // Query from the named submarkets table
       const result = await pool.query(
-        `SELECT 
-          COALESCE(pr.neighborhood_code, 'Unknown') as name,
-          COUNT(*) as total_properties,
-          COALESCE(SUM(pr.units), 0) as total_units,
-          ROUND(AVG(pr.units)::numeric, 1) as avg_units,
-          ROUND(AVG(CASE WHEN pr.assessed_value > 0 AND pr.units > 0 
-            THEN pr.assessed_value::numeric / pr.units 
-            ELSE NULL END)::numeric, 0) as avg_price_per_unit,
-          ROUND(AVG(pr.year_built::integer)::numeric, 0) as avg_year_built,
-          ROUND(AVG(CASE WHEN pr.assessed_value > 0 THEN pr.assessed_value::numeric ELSE NULL END)::numeric, 0) as avg_assessed_value,
-          MAX(pr.assessed_value) as max_assessed_value,
-          MIN(pr.assessed_value) FILTER (WHERE pr.assessed_value > 0) as min_assessed_value,
-          COUNT(DISTINCT pr.owner_name) as unique_owners,
-          ROUND(STDDEV(pr.assessed_value)::numeric, 0) as value_stddev,
-          COUNT(*) FILTER (WHERE pr.year_built::integer >= 2010) as new_construction_count,
-          COUNT(*) FILTER (WHERE pr.year_built::integer < 1990) as legacy_count
-        FROM property_records pr
-        ${whereClause} AND pr.neighborhood_code IS NOT NULL
-        GROUP BY pr.neighborhood_code
-        HAVING COUNT(*) >= 3
-        ORDER BY total_units DESC
-        LIMIT 20`
+        `SELECT id, name, properties_count, total_units, avg_occupancy, avg_rent, avg_cap_rate
+         FROM submarkets
+         WHERE msa_id = $1
+         ORDER BY total_units DESC
+         LIMIT 20`,
+        [msaId]
       );
 
-      // Calculate derived metrics for each submarket
+      // Derive JEDI-style scores from real submarket metrics
       const submarkets = result.rows.map((row: any) => {
-        const totalProps = parseInt(row.total_properties);
-        const totalUnits = parseInt(row.total_units);
-        const avgPricePerUnit = parseFloat(row.avg_price_per_unit) || 0;
-        const uniqueOwners = parseInt(row.unique_owners);
-        const newConstCount = parseInt(row.new_construction_count);
-        const legacyCount = parseInt(row.legacy_count);
+        const totalProps    = parseInt(row.properties_count) || 0;
+        const totalUnits    = parseInt(row.total_units) || 0;
+        const avgRent       = parseFloat(row.avg_rent) || 0;
+        const avgOccupancy  = parseFloat(row.avg_occupancy) || 90;
+        const avgCapRate    = parseFloat(row.avg_cap_rate) || 5;
 
-        // Calculate JEDI components (simplified)
-        const demandScore = Math.min(100, Math.round(60 + (totalUnits / 500) * 30));
-        const supplyScore = totalProps;
-        const saturation = totalUnits / 10000; // Simplified saturation metric
-        const rentAccel = `+${(3 + Math.random() * 3).toFixed(1)}%`;
-        const constraint = Math.min(100, Math.round(70 + (uniqueOwners / totalProps) * 30));
-        const pricingPower = Math.min(100, Math.round(50 + (avgPricePerUnit / 2000)));
-        const jedi = Math.min(100, Math.round((demandScore * 0.4) + (constraint * 0.3) + (pricingPower * 0.3)));
+        const demandScore   = Math.min(100, Math.round(avgOccupancy * 1.05));
+        const saturation    = (totalUnits / 50000).toFixed(2);
+        const constraint    = Math.min(100, Math.round(100 - (avgCapRate - 4) * 15));
+        const pricingPower  = Math.min(100, Math.round((avgRent / 2500) * 100));
+        const jedi          = Math.min(100, Math.round(demandScore * 0.4 + constraint * 0.35 + pricingPower * 0.25));
+        const rentAccel     = `+${(2.5 + (avgRent / 1000)).toFixed(1)}%`;
+        const avgPricePerUnit = Math.round(avgRent * 180);
 
         return {
-          name: row.name,
+          name:        row.name,
           jedi,
-          demand: demandScore,
-          supply: supplyScore,
-          saturation: saturation.toFixed(2),
+          demand:      demandScore,
+          supply:      totalProps,
+          saturation,
           rentAccel,
-          trfcRent: (2 + Math.random()).toFixed(1),
-          capacity: `${Math.round(20 + Math.random() * 40)}%`,
-          buildout: `${(5 + Math.random() * 10).toFixed(1)}yr`,
+          trfcRent:    (avgCapRate - 2).toFixed(1),
+          capacity:    `${Math.round(20 + (totalUnits / 3000))}%`,
+          buildout:    `${(5 + (avgCapRate * 0.8)).toFixed(1)}yr`,
           constraint,
-          overhang: constraint > 60 ? 'LOW' : 'MOD',
-          lastMover: constraint > 80,
+          overhang:    constraint > 60 ? 'LOW' : 'MOD',
+          lastMover:   constraint > 80,
           pricingPower,
-          adjRent: rentAccel,
-          traffic: Math.min(100, Math.round(60 + Math.random() * 30)),
-          entryPrice: `$${Math.round(avgPricePerUnit / 1000)}K/unit`,
-          total_properties: totalProps,
-          total_units: totalUnits,
-          avg_units: parseFloat(row.avg_units),
+          adjRent:     rentAccel,
+          traffic:     Math.min(100, Math.round(demandScore * 0.9)),
+          entryPrice:  `$${Math.round(avgPricePerUnit / 1000)}K/unit`,
+          total_properties:  totalProps,
+          total_units:       totalUnits,
           avg_price_per_unit: avgPricePerUnit,
-          avg_year_built: parseInt(row.avg_year_built),
-          unique_owners: uniqueOwners,
-          new_construction_pct: totalProps > 0 ? Math.round((newConstCount / totalProps) * 100) : 0,
-          legacy_pct: totalProps > 0 ? Math.round((legacyCount / totalProps) * 100) : 0,
+          avg_occupancy:     avgOccupancy,
+          avg_rent:          avgRent,
+          avg_cap_rate:      avgCapRate,
         };
       });
 
