@@ -7,6 +7,7 @@ import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
 import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
+import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 
 // ═══════════════════════════════════════════════════════════════
@@ -486,6 +487,7 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
+  const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1575,19 +1577,38 @@ export default function TerminalPage() {
     <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
       {/* MSA selector bar */}
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
-        <select
-          value={selectedMsaId}
-          onChange={e => setSelectedMsaId(e.target.value)}
-          style={{background:T.bg.input||T.bg.panel,color:T.text.amber,border:`1px solid ${T.border.medium}`,fontSize:10,fontFamily:T.font.mono,fontWeight:700,padding:"2px 6px",cursor:"pointer",outline:"none"}}
-        >
-          {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-        </select>
+        {marketsView === "detail" && <>
+          <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
+          <select
+            value={selectedMsaId}
+            onChange={e => setSelectedMsaId(e.target.value)}
+            style={{background:T.bg.input||T.bg.panel,color:T.text.amber,border:`1px solid ${T.border.medium}`,fontSize:10,fontFamily:T.font.mono,fontWeight:700,padding:"2px 6px",cursor:"pointer",outline:"none"}}
+          >
+            {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </>}
+        {marketsView === "peers" && (
+          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>PEER COMPARISON</span>
+        )}
+        <div style={{flex:1}}/>
+        {/* View toggle */}
+        <div style={{display:"flex",gap:2}}>
+          {([["detail","MARKET DETAIL"],["peers","PEERS"]] as ["detail"|"peers", string][]).map(([v,label]) => (
+            <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Embedded market detail — fills remaining space; CORP HEALTH appears as 7th tab */}
+      {/* Content */}
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
+        {marketsView === "detail" && (
+          <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
+        )}
+        {marketsView === "peers" && (
+          <PeerComparisonPage embedded />
+        )}
       </div>
     </div>
   );

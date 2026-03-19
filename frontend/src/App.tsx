@@ -54,6 +54,7 @@ import {
   MyMarketsDashboard,
   BloombergMarketDetail,
 } from './pages/MarketIntelligence';
+import PeerComparisonPage from './pages/MarketIntelligence/PeerComparisonPage';
 import {
   CompetitiveIntelligencePage,
   PerformanceRankingsPage,
@@ -92,6 +93,7 @@ function AppContent() {
         {/* Bloomberg Market Detail — full-page, no MainLayout (/market-intelligence landing removed) */}
         <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
         <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
+        <Route path="/market-intelligence/peers" element={<PeerComparisonPage />} />
         
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/terminal" replace />} />
