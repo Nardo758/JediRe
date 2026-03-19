@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { TickerBar } from "../components/terminal/TickerBar";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
@@ -135,6 +135,14 @@ const PORTFOLIO_NAV = [
   {key:"F8",label:"REPORTS"},
   {key:"F9",label:"SETTINGS"},
 ];
+
+const FKEY_SLUG: Record<string,string> = {
+  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
+  F5:"compete",   F6:"news",     F7:"strategies",F8:"reports", F9:"settings",
+};
+const SLUG_FKEY: Record<string,string> = Object.fromEntries(
+  Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
+);
 
 const WIDGET_CATALOG = [
   {id:"pipeline",   label:"Deal Pipeline",         desc:"Live scrollable deal list with JEDI scores",            category:"DEALS",  color:"#F5A623"},
@@ -427,6 +435,7 @@ const MSA_CITY_MAP: Record<string,string> = {
 export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { section } = useParams<{ section?: string }>();
 
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
@@ -435,7 +444,10 @@ export default function TerminalPage() {
 
   // Core UI state
   const [time, setTime] = useState(new Date());
-  const [fkey, setFkey] = useState(() => (location.state as {fkey?:string})?.fkey || "F1");
+  const [fkey, setFkey] = useState(() => {
+    if (section && SLUG_FKEY[section]) return SLUG_FKEY[section];
+    return (location.state as {fkey?:string})?.fkey || "F1";
+  });
   const [cmd, setCmd] = useState("");
   const [sortBy, setSortBy] = useState("score");
   const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
@@ -564,6 +576,22 @@ export default function TerminalPage() {
 
   // ─── Effects ──────────────────────────────────────────────
   useEffect(() => { const t=setInterval(()=>setTime(new Date()),1000); return()=>clearInterval(t); }, []);
+
+  // Sync URL slug + browser tab title whenever fkey changes
+  useEffect(() => {
+    const slug = FKEY_SLUG[fkey] || "dashboard";
+    const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
+    document.title = `JEDI RE | ${label}`;
+    const target = `/terminal/${slug}`;
+    if (window.location.pathname !== target) navigate(target, { replace: true });
+  }, [fkey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Respond to browser back/forward button (URL changes without component re-mount)
+  useEffect(() => {
+    if (section && SLUG_FKEY[section] && SLUG_FKEY[section] !== fkey) {
+      setFkey(SLUG_FKEY[section]);
+    }
+  }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if(liveDeals.length===0) return;

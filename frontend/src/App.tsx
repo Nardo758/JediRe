@@ -85,8 +85,9 @@ function AppContent() {
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
-        {/* Terminal — full-page, no MainLayout */}
+        {/* Terminal — full-page, no MainLayout; :section gives each F-key a bookmarkable URL */}
         <Route path="/terminal" element={<TerminalPage />} />
+        <Route path="/terminal/:section" element={<TerminalPage />} />
 
         {/* Bloomberg Market Detail — full-page, no MainLayout (/market-intelligence landing removed) */}
         <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
