@@ -52,11 +52,11 @@ const STATIC_ALERTS = [
 ];
 
 const STATIC_NEWS = [
-  {id:"n1",time:"14:23",hl:"Amazon announces 2,000-job Tampa HQ expansion",impact:"+DEMAND",pts:"+3.2",affects:["Pipeline"]},
-  {id:"n2",time:"13:41",hl:"Greystar breaks ground 380-unit tower Downtown Tampa",impact:"+SUPPLY",pts:"-1.8",affects:[]},
-  {id:"n3",time:"11:15",hl:"FL Legislature passes insurance reform, 8% rate cap",impact:"RISK DN",pts:"+1.2",affects:["All FL"]},
-  {id:"n4",time:"09:32",hl:"Nocatee named #2 top-selling MPC nationally",impact:"+DEMAND",pts:"+2.4",affects:[]},
-  {id:"n5",time:"YST",hl:"Miami-Dade condo reserve law triggers $2.1B assessments",impact:"+DEMAND",pts:"+0.8",affects:[]},
+  {id:"n1",time:"14:23",hl:"Amazon announces 2,000-job Tampa HQ expansion",impact:"+DEMAND",pts:"+3.2",affects:["Pipeline"],mkt:"TAMPA·MF"},
+  {id:"n2",time:"13:41",hl:"Greystar breaks ground 380-unit tower Downtown Tampa",impact:"+SUPPLY",pts:"-1.8",affects:[],mkt:"TAMPA·MF"},
+  {id:"n3",time:"11:15",hl:"FL Legislature passes insurance reform, 8% rate cap",impact:"RISK DN",pts:"+1.2",affects:["All FL"],mkt:"FL·ALL"},
+  {id:"n4",time:"09:32",hl:"Nocatee named #2 top-selling MPC nationally",impact:"+DEMAND",pts:"+2.4",affects:[],mkt:"JAX·MF/SFR"},
+  {id:"n5",time:"YST",hl:"Miami-Dade condo reserve law triggers $2.1B assessments",impact:"+DEMAND",pts:"+0.8",affects:[],mkt:"MIA·CONDO"},
 ];
 
 const STATIC_AGENTS = [
@@ -200,12 +200,28 @@ const MAP_TYPES = [
   {id:"marketheat",  label:"Market Heat",   color:"#00BCD4"},
 ];
 
-const TICKERS = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE +2400","^ JAX EMPL +3.2%","* FL HOME $412K","^ RENT TPA +3.7%","* FDOT I-275 148.2K","v INS +18% YoY","^ NOCATEE +42%","* TPA JOBS #3"];
+const TICKERS = ["^ TAMPA·MF  CAP 5.2% (-15bps)","* MIAMI·MF  ABS 94.7%","v ORL·MF  PIPELINE +2,400u","^ JAX·MF  EMPL +3.2%","* ATL·MF  MED RENT $2,056","^ TPA·MF  RENT +3.7%","* CHAR·MF  LEASE VEL 22d","v MIA·CONDO  SUPPLY +18%","^ JAX·SFR  DEMAND +42%","* ATL·MF  JOBS +5.8%","^ ORL·MF  OCC 92.9%","* TPA·IND  ABSORB 1.2M SF","v ATL·OFF  VACANCY 21.4%","^ CHAR·MF  JEDI 82 (+3)"];
 
 const CURATED_METRIC_IDS_T = ['F_CAP_RATE','F_RENT_GROWTH','M_VACANCY','M_ABSORPTION','E_EMPLOYMENT_GROWTH','E_WAGE_GROWTH','E_POPULATION_GROWTH','C_SURGE_INDEX','S_PIPELINE_TO_STOCK','S_MONTHS_OF_SUPPLY','M_LEASE_VELOCITY','D_SEARCH_MOMENTUM'];
 const CURATED_METRIC_LABELS_T: Record<string,string> = {F_CAP_RATE:'CAP RATE',F_RENT_GROWTH:'RENT GROWTH',M_VACANCY:'VACANCY',M_ABSORPTION:'ABSORPTION',E_EMPLOYMENT_GROWTH:'EMPL GROWTH',E_WAGE_GROWTH:'WAGE GROWTH',E_POPULATION_GROWTH:'POP GROWTH',C_SURGE_INDEX:'SURGE IDX',S_PIPELINE_TO_STOCK:'PIPELINE/STOCK',S_MONTHS_OF_SUPPLY:'MOS SUPPLY',M_LEASE_VELOCITY:'LEASE VEL',D_SEARCH_MOMENTUM:'SRCH MOM'};
 const SCOPE_ABBREV_T: Record<string,string> = {property:'PROP',submarket:'SBMKT',zip:'ZIP',county:'CNTY',msa:'MSA'};
-const STATIC_METRICS_TICKER_T = [{raw:'CAP RATE  5.2%',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'RENT GROWTH  +3.2%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'VACANCY  5.2%',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'ABSORPTION  +125u/mo',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'EMPL GROWTH  +2.1%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'WAGE GROWTH  +3.4%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'POP GROWTH  +1.8%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'SURGE IDX  +0.35',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'PIPELINE/STOCK  8.5%',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'MOS SUPPLY  4.2mo',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'LEASE VEL  24d',color:'#F5A623',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'},{raw:'SRCH MOM  +18%',color:'#00D26A',sub:'SBMKT',subColor:'rgba(245,166,35,0.45)'}];
+const STATIC_METRICS_TICKER_T = [
+  {raw:'ATL·MF  CAP RATE  5.2%',    color:'#F5A623',sub:'MIDTOWN ATL',  subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  RENT GROWTH  +3.0%',color:'#00D26A',sub:'YBOR CITY',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·MF  VACANCY  6.9%',     color:'#F5A623',sub:'DOWNTOWN ATL', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  ABSORPTION  +2,150u/mo',color:'#00D26A',sub:'TPA MSA', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'JAX·MF  EMPL GROWTH  +2.4%',color:'#00D26A',sub:'JAX MSA',     subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·ALL  WAGE GROWTH  +3.4%',color:'#00D26A',sub:'ATL MSA',    subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ORL·MF  POP GROWTH  +1.7%', color:'#00D26A',sub:'ORL MSA',     subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  SURGE IDX  +0.42',  color:'#00D26A',sub:'YBOR CITY',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·MF  PIPELINE/STOCK  15.8%',color:'#F5A623',sub:'ATL MSA',  subColor:'rgba(245,166,35,0.45)'},
+  {raw:'MIA·CONDO  MOS SUPPLY  6.2mo',color:'#FF4757',sub:'BRICKELL',  subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·MF  LEASE VEL  18d',    color:'#00D26A',sub:'MIDTOWN ATL', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  SRCH MOM  +22%',    color:'#00D26A',sub:'YBOR CITY',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'CHAR·MF  CAP RATE  5.4%',   color:'#F5A623',sub:'UPTOWN CHAR', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ORL·MF  VACANCY  7.1%',     color:'#F5A623',sub:'LAKE NONA',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'JAX·SFR  RENT GROWTH  +4.1%',color:'#00D26A',sub:'NOCATEE',   subColor:'rgba(245,166,35,0.45)'},
+];
 const fmtMetric = (id:string, ev:string, hib:boolean, scope?:string) => { const label=CURATED_METRIC_LABELS_T[id]||id; const v=(ev||'').trim().split(' ')[0]; const isPos=v.startsWith('+'),isNeg=v.startsWith('-'); const color=hib?(isPos?'#00D26A':isNeg?'#FF4757':'#F5A623'):(isNeg?'#00D26A':isPos?'#FF4757':'#F5A623'); const sub=scope?(SCOPE_ABBREV_T[scope]??scope.toUpperCase()):undefined; return {raw:`${label}  ${v}`,color,sub,subColor:'rgba(245,166,35,0.45)'}; };
 
 // ─── API RESPONSE TYPES ──────────────────────────────────────
@@ -2360,7 +2376,7 @@ export default function TerminalPage() {
         items={[
           ...liveNews.map(n => {
             const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
-            return { raw: `[${n.time}] ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
+            return { raw: `[${n.time}]${(n as {mkt?:string}).mkt ? ` [${(n as {mkt?:string}).mkt}]` : ''} ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
           }),
           ...TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber })),
           ...metricsTicker,

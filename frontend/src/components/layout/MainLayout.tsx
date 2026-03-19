@@ -48,31 +48,31 @@ const formatMetricItem = (id: string, exampleValue: string, higherIsBetter: bool
 };
 
 const STATIC_METRICS_TICKER: MetricTickerItem[] = [
-  { raw: 'CAP RATE  5.2%',         color: T.text.amber },
-  { raw: 'RENT GROWTH  +3.2%',     color: T.text.green },
-  { raw: 'VACANCY  5.2%',          color: T.text.amber },
-  { raw: 'ABSORPTION  +125u/mo',   color: T.text.green },
-  { raw: 'EMPL GROWTH  +2.1%',     color: T.text.green },
-  { raw: 'WAGE GROWTH  +3.4%',     color: T.text.green },
-  { raw: 'POP GROWTH  +1.8%',      color: T.text.green },
-  { raw: 'SURGE IDX  +0.35',       color: T.text.green },
-  { raw: 'PIPELINE/STOCK  8.5%',   color: T.text.amber },
-  { raw: 'MOS SUPPLY  4.2mo',      color: T.text.amber },
-  { raw: 'LEASE VEL  24d',         color: T.text.amber },
-  { raw: 'SRCH MOM  +18%',         color: T.text.green },
+  { raw: 'ATL·MF  CAP RATE  5.2%',       color: T.text.amber, sub: 'MIDTOWN ATL',  subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'TPA·MF  RENT GROWTH  +3.0%',   color: T.text.green, sub: 'YBOR CITY',    subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'ATL·MF  VACANCY  6.9%',        color: T.text.amber, sub: 'DOWNTOWN ATL', subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'TPA·MF  ABSORPTION  +2,150u/mo', color: T.text.green, sub: 'TPA MSA',   subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'JAX·MF  EMPL GROWTH  +2.4%',   color: T.text.green, sub: 'JAX MSA',     subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'ATL·ALL  WAGE GROWTH  +3.4%',  color: T.text.green, sub: 'ATL MSA',     subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'ORL·MF  POP GROWTH  +1.7%',   color: T.text.green, sub: 'ORL MSA',     subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'TPA·MF  SURGE IDX  +0.42',    color: T.text.green, sub: 'YBOR CITY',   subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'ATL·MF  PIPELINE/STOCK  15.8%', color: T.text.amber, sub: 'ATL MSA',   subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'MIA·CONDO  MOS SUPPLY  6.2mo', color: '#FF4757',   sub: 'BRICKELL',    subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'ATL·MF  LEASE VEL  18d',      color: T.text.green, sub: 'MIDTOWN ATL', subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'TPA·MF  SRCH MOM  +22%',      color: T.text.green, sub: 'YBOR CITY',   subColor: 'rgba(245,166,35,0.45)' },
 ];
 
 const MKTDATA_TICKERS = [
-  "^ TAMPA CAP 5.2% (-15bps)",
-  "* MIAMI ABS 94.7%",
-  "v ORL PIPELINE +2400",
-  "^ JAX EMPL +3.2%",
-  "* FL HOME $412K",
-  "^ RENT TPA +3.7%",
-  "* FDOT I-275 148.2K",
-  "v INS +18% YoY",
-  "^ NOCATEE +42%",
-  "* TPA JOBS #3",
+  "^ TAMPA·MF  CAP 5.2% (-15bps)",
+  "* MIAMI·MF  ABS 94.7%",
+  "v ORL·MF  PIPELINE +2,400u",
+  "^ JAX·MF  EMPL +3.2%",
+  "* ATL·MF  MED RENT $2,056",
+  "^ TPA·MF  RENT +3.7%",
+  "* CHAR·MF  LEASE VEL 22d",
+  "v MIA·CONDO  SUPPLY +18%",
+  "^ JAX·SFR  DEMAND +42%",
+  "* ATL·MF  JOBS +5.8%",
 ];
 
 const STATIC_NEWS_TICKER = [
