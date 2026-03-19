@@ -448,9 +448,7 @@ export default function TerminalPage() {
   const [inviteRole, setInviteRole] = useState("analyst");
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
-  const [marketTab, setMarketTab] = useState<"overview"|"corphealth"|"peercompare">("overview");
-  const [peerLevel, setPeerLevel] = useState<"msa"|"submarket"|"property">("msa");
-  const [peerContext, setPeerContext] = useState("All Markets");
+  const [marketTab, setMarketTab] = useState<"msaindex"|"subindex"|"corphealth">("msaindex");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1501,44 +1499,11 @@ export default function TerminalPage() {
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
       <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
       <div style={{display:"flex",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.header,flexShrink:0}}>
-        {([["overview","MARKET OVERVIEW"],["corphealth","CORPORATE HEALTH"],["peercompare","MSA"]] as const).map(([k,l])=>(
+        {([["msaindex","MSA INDEX"],["subindex","SUBMARKET INDEX"],["corphealth","CORPORATE HEALTH"]] as const).map(([k,l])=>(
           <div key={k} onClick={()=>setMarketTab(k)} style={{padding:"6px 14px",fontSize:9,fontWeight:700,color:marketTab===k?T.text.amber:T.text.secondary,cursor:"pointer",borderBottom:marketTab===k?`2px solid ${T.text.amber}`:"2px solid transparent",letterSpacing:0.5,transition:"all 0.1s"}}>{l}</div>
         ))}
       </div>
-      {marketTab==="overview" ? (
-        <div style={{flex:1,overflow:"auto"}}>
-          <div style={{padding:"10px 10px 0"}}>
-            <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
-            <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Is this submarket getting stronger or weaker — and how fast?</div>
-          </div>
-          <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
-            {MARKET_VITALS.map((v,i)=><MetricBox key={i} {...v} T={T}/>)}
-          </div>
-          <div style={{margin:"0 10px 10px",padding:"6px 10px",background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`}}>
-            <span style={{fontSize:9,color:T.text.secondary}}>Tracking 5 submarkets. Momentum signal: <span style={{fontWeight:700,color:T.text.amber}}>STRONG</span>.</span>
-          </div>
-          <div style={{margin:"0 10px"}}>
-            <PanelHeader T={T} title="SUBMARKET COMPARISON"/>
-            <div style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-              {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h=>(
-                <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-              ))}
-            </div>
-            {SUBMARKETS.map((s,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-                <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
-                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.props}</div>
-                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.units}</div>
-                <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
-                <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
-                <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
-                <div style={{padding:"5px 6px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.opp}</div>
-                <div style={{padding:"5px 6px",display:"flex",alignItems:"center"}}><Bd c={s.pressure==="seller"?T.text.red:T.text.green}>{s.pressure}</Bd></div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : marketTab==="corphealth" ? (
+      {marketTab==="corphealth" ? (
         <div style={{flex:1,overflow:"auto"}}>
           <div style={{padding:"10px 10px 0"}}>
             <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
@@ -1701,33 +1666,17 @@ export default function TerminalPage() {
           </>;})()}
         </div>
       ) : (
-        /* ─── PEER COMPARE TAB ─────────────────────────────── */
+        /* ─── MSA INDEX / SUBMARKET INDEX ──────────────────── */
         <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          {/* Breadcrumb / level switcher */}
-          <div style={{display:"flex",alignItems:"center",gap:8,padding:"0 10px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-            {peerLevel!=="msa" && (
-              <button onClick={()=>{if(peerLevel==="property"){setPeerLevel("submarket");setPeerContext("Atlanta, GA");}else{setPeerLevel("msa");setPeerContext("All Markets");}}} style={{background:"transparent",border:`1px solid ${T.border.subtle}`,color:T.text.secondary,padding:"1px 8px",fontSize:9,cursor:"pointer",fontFamily:T.font.mono,borderRadius:2}}>◀ BACK</button>
-            )}
-            <div style={{display:"flex",gap:4,alignItems:"center"}}>
-              <span onClick={()=>{setPeerLevel("msa");setPeerContext("All Markets");}} style={{fontSize:9,color:peerLevel==="msa"?T.text.amber:T.text.cyan,cursor:"pointer",textDecoration:peerLevel!=="msa"?"underline":"none",fontFamily:T.font.mono}}>MSA</span>
-              {peerLevel!=="msa"&&<><span style={{color:T.text.muted,fontSize:9}}>/</span><span onClick={()=>{setPeerLevel("submarket");setPeerContext("Atlanta, GA");}} style={{fontSize:9,color:peerLevel==="submarket"?T.text.amber:T.text.cyan,cursor:"pointer",textDecoration:peerLevel==="property"?"underline":"none",fontFamily:T.font.mono}}>Atlanta, GA</span></>}
-              {peerLevel==="property"&&<><span style={{color:T.text.muted,fontSize:9}}>/</span><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>{peerContext}</span></>}
-            </div>
-            <div style={{flex:1}}/>
-            {(["msa","submarket","property"] as const).map((lvl,li)=>{
-              const labels=["MSA INDEX","SUBMARKET SECTOR","PROPERTY STOCK"];
-              return <span key={lvl} onClick={()=>{setPeerLevel(lvl);setPeerContext(lvl==="msa"?"All Markets":lvl==="submarket"?"Atlanta, GA":"Midtown");}} style={{fontSize:8,fontWeight:peerLevel===lvl?700:400,color:peerLevel===lvl?T.bg.terminal:T.text.secondary,background:peerLevel===lvl?T.text.amber:"transparent",padding:"2px 8px",cursor:"pointer",border:`1px solid ${peerLevel===lvl?T.text.amber:T.border.subtle}`,fontFamily:T.font.mono}}>{labels[li]}</span>;
-            })}
-          </div>
           {/* Level header */}
           <div style={{display:"flex",alignItems:"center",gap:8,padding:"4px 10px",background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <span style={{fontSize:13,fontWeight:700,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{peerContext}</span>
+            <span style={{fontSize:13,fontWeight:700,color:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{marketTab==="msaindex"?"All Markets":"Atlanta, GA"}</span>
             <span style={{fontSize:9,color:T.text.muted}}>|</span>
             <span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>
-              {peerLevel==="msa"?"7 tracked markets · Sort by JEDI Score · Double-click to open market detail":peerLevel==="submarket"?"6 submarkets · Double-click for properties":"6 properties · ▸ = subject property"}
+              {marketTab==="msaindex"?"7 tracked markets · Sort by JEDI Score · Double-click to open market detail":"6 submarkets · Double-click for properties"}
             </span>
             <div style={{flex:1}}/>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{peerLevel==="msa"?"18 cols":peerLevel==="submarket"?"20 cols":"22 cols"}</span>
+            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{marketTab==="msaindex"?"18 cols":"20 cols"}</span>
           </div>
           {/* Grid area */}
           <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -1753,7 +1702,7 @@ export default function TerminalPage() {
               const stageColor:Record<string,string>={DD:T.text.cyan,LOI:T.text.amber,PROSPECT:T.text.secondary,LEAD:T.text.muted,CLOSED:T.text.green};
               const rowBg=(i:number)=>i%2===0?T.bg.panel:T.bg.panelAlt;
 
-              if(peerLevel==="msa") return (
+              if(marketTab==="msaindex") return (
                 <>
                   <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflowX:"auto"}}>
                     <PCH w={28}>#</PCH><PCH w={140}>MSA</PCH><PCH w={48}>PROPS</PCH><PCH w={52}>UNITS</PCH>
@@ -1805,7 +1754,7 @@ export default function TerminalPage() {
                   </div>
                 </>
               );
-              if(peerLevel==="submarket") return (
+              return (
                 <>
                   <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflowX:"auto"}}>
                     <PCH w={28}>#</PCH><PCH w={120}>SUBMARKET</PCH><PCH w={40}>PROPS</PCH><PCH w={52}>UNITS</PCH>
@@ -1843,55 +1792,12 @@ export default function TerminalPage() {
                   </div>
                 </>
               );
-              return (
-                <>
-                  <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflowX:"auto"}}>
-                    <PCH w={28}>#</PCH><PCH w={150}>PROPERTY</PCH><PCH w={44} sorted>JEDI</PCH><PCH w={36}>Δ30</PCH>
-                    <PCH w={52}>TREND</PCH><PCH w={48}>STRAT</PCH><PCH w={32}>ARB</PCH><PCH w={36}>UNIT</PCH>
-                    <PCH w={36}>YR</PCH><PCH w={56}>RENT</PCH><PCH w={44}>R Δ</PCH><PCH w={44}>v MKT</PCH>
-                    <PCH w={52}>RevPAU</PCH><PCH w={44}>OCC</PCH><PCH w={52}>NOI</PCH><PCH w={40}>CAP</PCH>
-                    <PCH w={48}>$/UNIT</PCH><PCH w={40}>IRR</PCH><PCH w={40}>TRAF</PCH><PCH w={36}>REV</PCH>
-                    <PCH w={40}>RISK</PCH><PCH w={44}>STAGE</PCH>
-                  </div>
-                  <div style={{flex:1,overflow:"auto"}}>
-                    {PEER_PROP_DATA.map((d,i)=>{
-                      const isSubj=i===0;
-                      return (
-                        <div key={i} style={{display:"flex",background:isSubj?T.text.amber+"0A":rowBg(i),borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:isSubj?`2px solid ${T.text.amber}`:"2px solid transparent"}} onMouseEnter={e=>{if(!isSubj)e.currentTarget.style.background=T.bg.header;}} onMouseLeave={e=>{if(!isSubj)e.currentTarget.style.background=rowBg(i);}}>
-                          <PCC w={28}><span style={{fontSize:8,color:isSubj?T.text.amber:T.text.muted,fontFamily:T.font.mono}}>{isSubj?"▸":i+1}</span></PCC>
-                          <PCC w={150}><div><div style={{fontSize:9,fontWeight:600,color:isSubj?T.text.amber:T.text.white,fontFamily:"'IBM Plex Sans',sans-serif"}}>{d.name}</div><div style={{fontSize:7,color:T.text.muted}}>{d.addr}</div></div></PCC>
-                          <PCC w={44}><span style={{fontSize:11,fontWeight:800,color:scoreColor(d.jedi),fontFamily:T.font.mono}}>{d.jedi}</span></PCC>
-                          <PCC w={36}><span style={{fontSize:9,fontWeight:600,color:deltaColor(d.d30),fontFamily:T.font.mono}}>{d.d30}</span></PCC>
-                          <PCC w={52}><Spk data={d.trend} color={d.jedi>=80?T.text.green:T.text.amber}/></PCC>
-                          <PCC w={48}><span style={{fontSize:8,fontWeight:700,color:stratColor[d.strat]||T.text.muted,background:(stratColor[d.strat]||T.text.muted)+"18",border:`1px solid ${(stratColor[d.strat]||T.text.muted)}33`,padding:"1px 5px",fontFamily:T.font.mono}}>{d.strat}</span></PCC>
-                          <PCC w={32}>{d.arbGap>=15?<span style={{fontSize:10,color:T.text.amber}}>⚡</span>:<span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>{d.arbGap}</span>}</PCC>
-                          <PCC w={36}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.units}</span></PCC>
-                          <PCC w={36}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.year||"—"}</span></PCC>
-                          <PCC w={56}><span style={{fontSize:10,fontWeight:600,color:T.text.white,fontFamily:T.font.mono}}>{d.rent}</span></PCC>
-                          <PCC w={44}><span style={{fontSize:9,fontWeight:600,color:d.rentD==="—"?T.text.muted:deltaColor(d.rentD),fontFamily:T.font.mono}}>{d.rentD}</span></PCC>
-                          <PCC w={44}><span style={{fontSize:9,fontWeight:600,color:d.vsMkt==="—"?T.text.muted:deltaColor(d.vsMkt),fontFamily:T.font.mono}}>{d.vsMkt}</span></PCC>
-                          <PCC w={52}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.revpau}</span></PCC>
-                          <PCC w={44}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.occ}</span></PCC>
-                          <PCC w={52}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.noi}</span></PCC>
-                          <PCC w={40}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.cap}</span></PCC>
-                          <PCC w={48}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.ppu}</span></PCC>
-                          <PCC w={40}><span style={{fontSize:9,fontWeight:600,color:d.irr==="—"?T.text.muted:deltaColor("+"),fontFamily:T.font.mono}}>{d.irr}</span></PCC>
-                          <PCC w={40}><span style={{fontSize:10,fontWeight:800,color:scoreColor(d.traffic),fontFamily:T.font.mono}}>{d.traffic}</span></PCC>
-                          <PCC w={36}><span style={{fontSize:9,color:T.text.secondary,fontFamily:T.font.mono}}>{d.review}</span></PCC>
-                          <PCC w={40}><span style={{fontSize:8,fontWeight:700,color:riskColor[d.risk]||T.text.muted,background:(riskColor[d.risk]||T.text.muted)+"18",border:`1px solid ${(riskColor[d.risk]||T.text.muted)}33`,padding:"1px 5px",fontFamily:T.font.mono}}>{d.risk}</span></PCC>
-                          <PCC w={44}><span style={{fontSize:8,fontWeight:700,color:stageColor[d.stage]||T.text.muted,background:(stageColor[d.stage]||T.text.muted)+"18",border:`1px solid ${(stageColor[d.stage]||T.text.muted)}33`,padding:"1px 5px",fontFamily:T.font.mono}}>{d.stage}</span></PCC>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              );
             })()}
           </div>
           {/* Footer hint */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"3px 10px",background:T.bg.topBar||T.bg.terminal,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{peerLevel==="msa"?"Double-click row → Market Detail page":"Double-click row → drill down · ▸ = subject property"}</span>
-            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>MSA INTELLIGENCE · {peerLevel.toUpperCase()} LEVEL</span>
+            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>{marketTab==="msaindex"?"Double-click row → Market Detail page":"Double-click row → drill down"}</span>
+            <span style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>MSA INTELLIGENCE · {marketTab==="msaindex"?"MSA":"SUBMARKET"} LEVEL</span>
           </div>
         </div>
       )}
