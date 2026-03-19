@@ -416,6 +416,13 @@ function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:stri
 
 interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; maximized:boolean; zIndex:number }
 
+// ─── WATCHLIST HELPERS ────────────────────────────────────────
+const MSA_CITY_MAP: Record<string,string> = {
+  'atlanta-ga':'Atlanta','raleigh-nc':'Raleigh','tampa-fl':'Tampa',
+  'charlotte-nc':'Charlotte','jacksonville-fl':'Jacksonville',
+  'orlando-fl':'Orlando','miami-fl':'Miami',
+};
+
 // ─── MAIN TERMINAL PAGE ───────────────────────────────────────
 export default function TerminalPage() {
   const navigate = useNavigate();
