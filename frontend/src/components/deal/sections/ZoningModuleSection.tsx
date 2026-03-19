@@ -101,9 +101,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
     if (onUpdate) onUpdate();
   };
 
-  const isTabUnlocked = (tabId: ZoningTabId): boolean => {
-    if (tabId === 'boundary_zoning') return true;
-    return boundaryAndZoningComplete;
+  const isTabUnlocked = (_tabId: ZoningTabId): boolean => {
+    return true;
   };
 
   const renderActiveTab = () => {
