@@ -419,7 +419,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             const histLen = RENT_VINTAGE_DATA.length;
             return (
               <>
-                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto' }}>
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto', maxHeight: '140px' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     const val = minV + (maxV - minV) * frac;
@@ -503,7 +503,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
                 const maxQ = Math.max(...SUPPLY_QUARTERLY.map(d => d.underConstruction + d.permitted));
                 const barW = 50, gap = 70;
                 return (
-                  <svg viewBox={`0 0 ${SUPPLY_QUARTERLY.length * gap + 20} 160`} style={{ width: '100%', height: 'auto' }}>
+                  <svg viewBox={`0 0 ${SUPPLY_QUARTERLY.length * gap + 20} 160`} style={{ width: '100%', height: 'auto', maxHeight: '110px' }}>
                     {SUPPLY_QUARTERLY.map((d, i) => {
                       const x = i * gap + 20;
                       const ucH  = (d.underConstruction / maxQ) * 110;
@@ -531,7 +531,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
                   {leg('#fb923c', 'Capacity Conversion')}
                 </div>
               </div>
-              <svg viewBox="0 0 450 160" style={{ width: '100%', height: 'auto' }}>
+              <svg viewBox="0 0 450 160" style={{ width: '100%', height: 'auto', maxHeight: '110px' }}>
                 {SUPPLY_WAVE_DATA.map((d, i) => {
                   const barWidth = 35, gap = 50, x = i * gap + 15;
                   const confirmedH = (d.confirmed / maxSupplyVal) * 120;
@@ -584,7 +584,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             };
             return (
               <>
-                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto' }}>
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto', maxHeight: '140px' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     return (
@@ -643,7 +643,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
               const toY = (v: number) => pT + plotH - ((v - minP) / (maxP - minP)) * plotH;
               const capColor = (cap: number) => cap < 5.1 ? T.green : cap > 5.3 ? T.red : T.amber;
               return (
-                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto' }}>
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto', maxHeight: '130px' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     const val = minP + (maxP - minP) * frac;
@@ -698,7 +698,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
                 + ` L${pL + (CONCESSION_DATA.length - 1) * step},${pT + plotH} L${pL},${pT + plotH} Z`;
               const occLine = CONCESSION_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toYO(d.occupancy)}`).join(' ');
               return (
-                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto' }}>
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto', maxHeight: '120px' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     return (
@@ -760,7 +760,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             ];
             return (
               <>
-                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto' }}>
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ width: '100%', height: 'auto', maxHeight: '140px' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     const val = minS + (maxS - minS) * frac;
@@ -821,7 +821,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
               </div>
             </div>
             <div style={{ padding: '10px 14px' }}>
-              <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{ width: '100%', height: 'auto' }}>
+              <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{ width: '100%', height: 'auto', maxHeight: '140px' }}>
                 {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                   const y = padT + plotH * (1 - frac);
                   return (
@@ -993,7 +993,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             const currX   = toX(AFFORDABILITY_DATA.currentPercent);
             const overThresh = AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent;
             return (
-              <svg viewBox={`0 0 ${gaugeW} ${gaugeH}`} style={{ width: '100%', height: 'auto' }}>
+              <svg viewBox={`0 0 ${gaugeW} ${gaugeH}`} style={{ width: '100%', height: 'auto', maxHeight: '64px' }}>
                 <rect x={30} y={barY} width={gaugeW - 60} height={barH} rx={4} fill={T.dimBg} stroke={T.border} strokeWidth={1} />
                 <rect x={30} y={barY} width={Math.max(0, currX - 30)} height={barH} rx={4} fill={overThresh ? T.red : T.green} opacity={0.7} />
                 <line x1={threshX} y1={barY - 6} x2={threshX} y2={barY + barH + 6} stroke={T.red} strokeWidth={2.5} strokeDasharray="4,3" />
@@ -1066,7 +1066,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
                     </div>
                   ))}
                 </div>
-                <svg viewBox={`0 0 ${barW} ${barH}`} style={{ width: '100%', height: 'auto' }}>
+                <svg viewBox={`0 0 ${barW} ${barH}`} style={{ width: '100%', height: 'auto', maxHeight: '55px' }}>
                   <rect x={40} y={8}  width={toBarWidth(wageGrowth)} height={18} rx={4} fill={T.green} opacity={0.8} />
                   <text x={36} y={21} textAnchor="end" fill={T.secondary} fontSize={10}>Wages</text>
                   <text x={44 + toBarWidth(wageGrowth)} y={21} fill={T.green} fontSize={10} fontWeight={700}>{wageGrowth}%</text>

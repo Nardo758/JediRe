@@ -210,7 +210,7 @@ const OwnersTab: React.FC<OwnersTabProps> = ({ marketId, summary }) => {
             </div>
           </div>
           <div style={{ padding: '10px 14px' }}>
-            <svg viewBox={`0 0 ${OWNERSHIP_TIMELINE.length * 60 + 20} 120`} style={{ width: '100%', height: 'auto' }}>
+            <svg viewBox={`0 0 ${OWNERSHIP_TIMELINE.length * 60 + 20} 120`} style={{ width: '100%', height: 'auto', maxHeight: '110px' }}>
               {OWNERSHIP_TIMELINE.map((d, i) => {
                 const x = i * 60 + 20, bW = 20;
                 const acqH = (d.acquisitions / maxTimeline) * 80;
