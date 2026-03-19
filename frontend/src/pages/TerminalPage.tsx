@@ -392,7 +392,7 @@ export default function TerminalPage() {
   const [fStage, setFStage] = useState("ALL");
   const [fStrat, setFStrat] = useState("ALL");
   const [bottomTab, setBottomTab] = useState("alerts");
-  const [bottomOpen, setBottomOpen] = useState(true);
+  const [bottomOpen, setBottomOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
