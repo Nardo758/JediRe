@@ -382,41 +382,12 @@ const DealDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
-  const [capsulePickerOpen, setCapsulePickerOpen] = useState(false);
-  const [capsulesList, setCapsulesList] = useState<Array<{id:string;deal_name:string}>>([]);
-  const [selectedCapsuleId, setSelectedCapsuleId] = useState<string>('');
-  const [pushStatus, setPushStatus] = useState<'idle'|'sending'|'ok'|'err'>('idle');
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
       fetchGeographicContext(dealId);
     }
   }, [dealId]);
-
-  useEffect(() => {
-    apiClient.get('/api/capsules', { params: { limit: 50 } })
-      .then((res: any) => {
-        const list: any[] = res.data?.capsules || [];
-        setCapsulesList(list.map(c => ({ id: c.id, deal_name: c.property_address || c.id })));
-        if (list.length > 0) setSelectedCapsuleId(list[0].id);
-      }).catch(() => {});
-  }, []);
-
-  const pushToCapsule = () => {
-    if (!selectedCapsuleId || !dealId) return;
-    setPushStatus('sending');
-    apiClient.post(`/api/capsules/${selectedCapsuleId}/activity`, {
-      activity_type: 'deal_intel_push',
-      activity_data: { deal_id: dealId, active_module: activeTab, pushed_at: new Date().toISOString() },
-    }).then(() => {
-      setPushStatus('ok');
-      setCapsulePickerOpen(false);
-      setTimeout(() => setPushStatus('idle'), 2500);
-    }).catch(() => {
-      setPushStatus('err');
-      setTimeout(() => setPushStatus('idle'), 2500);
-    });
-  };
 
   const fetchGeographicContext = async (id: string) => {
     try {
@@ -696,68 +667,8 @@ const DealDetailPage: React.FC = () => {
             );
           })}
 
-          {/* Right side: capsule push + presence indicator + module code */}
+          {/* Right side: search */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
-            {/* Push to Capsule */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, padding: '0 10px', height: '100%', gap: 8 }}>
-              {pushStatus === 'ok' && (
-                <span style={{ fontFamily: MONO, fontSize: 8, color: GREEN, fontWeight: 700, letterSpacing: 0.5 }}>✓ PUSHED</span>
-              )}
-              {pushStatus === 'err' && (
-                <span style={{ fontFamily: MONO, fontSize: 8, color: '#EF4444', fontWeight: 700 }}>✗ FAILED</span>
-              )}
-              <button
-                onClick={() => setCapsulePickerOpen(o => !o)}
-                style={{
-                  fontFamily: MONO, fontSize: 8, fontWeight: 700,
-                  background: capsulePickerOpen ? AMBER : 'transparent',
-                  color: capsulePickerOpen ? '#0A0E17' : AMBER,
-                  border: `1px solid ${AMBER}55`,
-                  padding: '3px 10px', cursor: 'pointer', letterSpacing: 0.5,
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}
-              >
-                ▶ CAPSULE
-              </button>
-              {capsulePickerOpen && (
-                <div style={{
-                  position: 'absolute', top: 46, right: 0, zIndex: 200,
-                  background: '#0F1319', border: `1px solid ${AMBER}55`,
-                  padding: 12, width: 270,
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-                }}>
-                  <div style={{ fontSize: 7, fontWeight: 700, color: TEXT_DIM, letterSpacing: 1, marginBottom: 8 }}>
-                    PUSH "{activeTab.toUpperCase()}" VIEW TO CAPSULE
-                  </div>
-                  {capsulesList.length === 0 ? (
-                    <div style={{ fontSize: 8, color: TEXT_DIM, marginBottom: 10 }}>No capsules yet. Create one first.</div>
-                  ) : (
-                    <select
-                      value={selectedCapsuleId}
-                      onChange={e => setSelectedCapsuleId(e.target.value)}
-                      style={{ fontFamily: MONO, fontSize: 8, background: '#0D1117', color: TEXT, border: `1px solid ${BORDER}`, padding: '4px 6px', width: '100%', marginBottom: 10 }}
-                    >
-                      {capsulesList.map(c => <option key={c.id} value={c.id}>{c.deal_name}</option>)}
-                    </select>
-                  )}
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => setCapsulePickerOpen(false)}
-                      style={{ fontFamily: MONO, fontSize: 8, background: 'transparent', color: TEXT_DIM, border: `1px solid ${BORDER}`, padding: '3px 10px', cursor: 'pointer' }}
-                    >
-                      CANCEL
-                    </button>
-                    <button
-                      disabled={!selectedCapsuleId || pushStatus === 'sending' || capsulesList.length === 0}
-                      onClick={pushToCapsule}
-                      style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, background: AMBER, color: '#0A0E17', border: 'none', padding: '3px 12px', cursor: 'pointer', opacity: (!selectedCapsuleId || capsulesList.length === 0) ? 0.4 : 1 }}
-                    >
-                      {pushStatus === 'sending' ? 'SENDING…' : 'PUSH'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
             {/* Search bar */}
             <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
               <input
