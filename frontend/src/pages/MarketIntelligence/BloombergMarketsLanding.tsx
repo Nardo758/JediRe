@@ -115,7 +115,7 @@ export default function BloombergMarketsLanding() {
       {/* BREADCRUMB BAR */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
         <button
-          onClick={() => navigate("/terminal")}
+          onClick={() => navigate("/market-intelligence")}
           style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", fontFamily: "'JetBrains Mono','Fira Code',monospace", borderRadius: 2, flexShrink: 0 }}
         >
           ◀ BACK
