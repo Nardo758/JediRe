@@ -124,9 +124,9 @@ type MSARecord = {
   submarkets: Submarket[];
 };
 
-type TabId = "overview" | "submarkets" | "trends" | "properties" | "deals" | "rankings";
+type TabId = "overview" | "submarkets" | "trends" | "properties" | "deals" | "rankings" | "corphealth";
 
-const TABS: { id: TabId; label: string; code: string }[] = [
+const BASE_TABS: { id: TabId; label: string; code: string }[] = [
   { id: "overview",    label: "OVERVIEW",       code: "F4-1" },
   { id: "submarkets",  label: "SUBMARKETS",     code: "F4-2" },
   { id: "trends",      label: "TRENDS",         code: "F4-3" },
@@ -134,6 +134,70 @@ const TABS: { id: TabId; label: string; code: string }[] = [
   { id: "deals",       label: "DEALS",          code: "F4-5" },
   { id: "rankings",    label: "RANKINGS",       code: "F4-6" },
 ];
+const CORP_HEALTH_TAB = { id: "corphealth" as TabId, label: "CORP HEALTH", code: "F4-7" };
+
+export interface CorpHealthSubmarket {
+  name: string; msa: string | null; schi: number; divergence: number;
+  signal: string; reHealth: number; hhi: number; employerCount: number; publicCount: number;
+}
+export interface CorpHealthData {
+  schi: number; reHealth: number; divergence: number; herfindahl: number;
+  portfolioSubmarkets: CorpHealthSubmarket[];
+  topEmployerText: string;
+}
+
+function CorpHealthTab({ d }: { d: CorpHealthData }) {
+  const { schi, reHealth: reH, divergence: div, herfindahl: hhi, portfolioSubmarkets, topEmployerText } = d;
+  const sigColor = (s: string) => s === "bullish_divergence" ? T.green : s === "bearish_divergence" ? T.red : T.amber;
+  const metric = (label: string, value: string, sub: string, color: string) => (
+    <div style={{ flex: 1, background: T.panel, border: `1px solid ${T.borderS}`, padding: "8px 10px" }}>
+      <div style={{ fontSize: 9, color: T.muted, letterSpacing: 1, marginBottom: 3, ...mono }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color, ...mono, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 9, color: T.secondary, marginTop: 3, ...mono }}>{sub}</div>
+    </div>
+  );
+  return (
+    <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 9, color: T.muted, letterSpacing: 1, ...mono }}>CORPORATE HEALTH INTELLIGENCE · SCHI · DIVERGENCE SCANNER · EMPLOYER RISK</div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {metric("SCHI SCORE", schi.toFixed(1), "Submarket Corporate Health", schi >= 60 ? T.green : schi >= 40 ? T.amber : T.red)}
+        {metric("RE HEALTH", reH.toFixed(1), "Real Estate Fundamentals", T.cyan)}
+        {metric("DIVERGENCE", (div > 0 ? "+" : "") + div.toFixed(1), Math.abs(div) > 15 ? (div > 0 ? "BULLISH DIVERGENCE" : "BEARISH DIVERGENCE") : "ALIGNED", Math.abs(div) > 15 ? (div > 0 ? T.green : T.red) : T.amber)}
+        {metric("HERFINDAHL", hhi.toFixed(3), hhi < 0.1 ? "Low concentration" : "High concentration", hhi < 0.1 ? T.green : T.red)}
+      </div>
+      <div style={{ padding: "6px 10px", background: (Math.abs(div) > 15 ? T.red : T.green) + "08", borderLeft: `3px solid ${Math.abs(div) > 15 ? T.amber : T.green}` }}>
+        <span style={{ fontSize: 10, color: T.secondary }}>
+          Corporate health is <span style={{ fontWeight: 700, color: schi >= 60 ? T.green : T.red }}>{schi >= 60 ? "STABLE" : "AT RISK"}</span>.
+          {" "}Divergence: <span style={{ fontWeight: 700, color: Math.abs(div) > 15 ? T.amber : T.green }}>{Math.abs(div) > 15 ? (div > 0 ? "BULLISH" : "BEARISH") : "ALIGNED"}</span>.
+          {" "}{topEmployerText}
+        </span>
+      </div>
+      <div>
+        <div style={{ fontSize: 9, color: T.amber, letterSpacing: 1, marginBottom: 6, ...mono }}>DIVERGENCE SCANNER — ALL SUBMARKETS · Sorted by |divergence|</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.7fr 0.5fr 0.5fr", background: T.topBar, borderBottom: `1px solid ${T.borderM}` }}>
+          {["SUBMARKET","MSA","SCHI","RE HLTH","DIVERG","SIGNAL","HHI","EMP"].map(h => (
+            <div key={h} style={{ padding: "4px 6px", fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 0.7, borderRight: `1px solid ${T.borderS}`, ...mono }}>{h}</div>
+          ))}
+        </div>
+        {[...portfolioSubmarkets].sort((a, b) => Math.abs(b.divergence) - Math.abs(a.divergence)).map((s, i) => {
+          const sc = sigColor(s.signal);
+          return (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.7fr 0.5fr 0.5fr", background: i % 2 === 0 ? T.panel : T.panelAlt, borderBottom: `1px solid ${T.borderS}` }}>
+              <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 600, color: T.primary, borderRight: `1px solid ${T.borderS}`, ...mono }}>{s.name}</div>
+              <div style={{ padding: "5px 6px", fontSize: 9, color: T.secondary, borderRight: `1px solid ${T.borderS}`, ...mono }}>{s.msa || "—"}</div>
+              <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, color: s.schi >= 60 ? T.green : s.schi >= 40 ? T.amber : T.red, borderRight: `1px solid ${T.borderS}`, ...mono }}>{s.schi.toFixed(1)}</div>
+              <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, color: T.cyan, borderRight: `1px solid ${T.borderS}`, ...mono }}>{s.reHealth.toFixed(1)}</div>
+              <div style={{ padding: "5px 6px", fontSize: 10, fontWeight: 700, color: sc, borderRight: `1px solid ${T.borderS}`, ...mono }}>{(s.divergence > 0 ? "+" : "") + s.divergence.toFixed(1)}</div>
+              <div style={{ padding: "5px 6px", fontSize: 9, fontWeight: 700, color: sc, borderRight: `1px solid ${T.borderS}`, ...mono }}>{s.signal === "bullish_divergence" ? "BULL" : s.signal === "bearish_divergence" ? "BEAR" : "ALIGN"}</div>
+              <div style={{ padding: "5px 6px", fontSize: 9, color: s.hhi < 0.1 ? T.green : T.red, borderRight: `1px solid ${T.borderS}`, ...mono }}>{s.hhi.toFixed(3)}</div>
+              <div style={{ padding: "5px 6px", fontSize: 9, color: T.secondary, ...mono }}>{s.employerCount}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function ScoreCell({ value, size = 11 }: { value: number; size?: number }) {
   const c = value >= 80 ? T.green : value >= 65 ? T.amber : T.red;
@@ -344,9 +408,10 @@ function OverviewTab({ msa, cycleColor }: { msa: MSARecord; cycleColor: string }
 interface BloombergMarketDetailProps {
   embedded?: boolean;
   marketId?: string;
+  corpHealthData?: CorpHealthData;
 }
 
-export default function BloombergMarketDetail({ embedded = false, marketId: marketIdProp }: BloombergMarketDetailProps = {}) {
+export default function BloombergMarketDetail({ embedded = false, marketId: marketIdProp, corpHealthData }: BloombergMarketDetailProps = {}) {
   const params = useParams<{ marketId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
@@ -354,6 +419,8 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
   const resolvedId = marketIdProp || params.marketId || "atlanta-ga";
   const msa = MSA_RECORDS[resolvedId] || MSA_RECORDS["atlanta-ga"];
   const cycleColor = msa.cycle === "EXPANSION" ? T.green : msa.cycle === "LATE EXP" ? T.amber : T.orange;
+
+  const effectiveTabs = (embedded && corpHealthData) ? [...BASE_TABS, CORP_HEALTH_TAB] : BASE_TABS;
 
   // When the marketId prop changes (MSA selector in terminal), reset to overview tab
   React.useEffect(() => { setActiveTab("overview"); }, [resolvedId]);
@@ -376,7 +443,7 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 13, fontWeight: 800, color: T.amber, letterSpacing: 2 }}>JEDI RE</span>
             <span style={{ fontSize: 10, color: T.muted }}>|</span>
-            <span style={{ fontSize: 10, color: T.secondary }}>F4 MARKETS · {TABS.find(t => t.id === activeTab)?.label}</span>
+            <span style={{ fontSize: 10, color: T.secondary }}>F4 MARKETS · {BASE_TABS.find(t => t.id === activeTab)?.label}</span>
           </div>
         </div>
       )}
@@ -392,7 +459,7 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
           </button>
           <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>{msa.name}</span>
           <span style={{ color: T.borderM }}>/</span>
-          <span style={{ fontSize: 11, color: T.muted }}>{TABS.find(t => t.id === activeTab)?.label}</span>
+          <span style={{ fontSize: 11, color: T.muted }}>{BASE_TABS.find(t => t.id === activeTab)?.label}</span>
           <div style={{ flex: 1 }} />
           <span style={{ fontSize: 10, color: T.muted }}>{msa.props.toLocaleString()} properties · {msa.units} units</span>
         </div>
@@ -420,18 +487,19 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
 
       {/* TAB BAR */}
       <div style={{ display: "flex", alignItems: "stretch", background: T.topBar, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0, height: 30, overflowX: "auto" }}>
-        {TABS.map(tab => {
+        {effectiveTabs.map(tab => {
           const isActive = activeTab === tab.id;
+          const isCorpHealth = tab.id === "corphealth";
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
                 background: isActive ? T.panel : "transparent",
-                color: isActive ? T.amber : T.secondary,
+                color: isActive ? (isCorpHealth ? T.orange : T.amber) : T.secondary,
                 border: "none",
                 borderRight: `1px solid ${T.borderS}`,
-                borderBottom: isActive ? `2px solid ${T.amber}` : "2px solid transparent",
+                borderBottom: isActive ? `2px solid ${isCorpHealth ? T.orange : T.amber}` : "2px solid transparent",
                 padding: "0 14px",
                 fontSize: 10,
                 fontWeight: isActive ? 700 : 500,
@@ -455,6 +523,7 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
         {activeTab === "properties" && <div style={{ background: T.bg, minHeight: "100%" }}><PropertyDataTab marketId={resolvedId} /></div>}
         {activeTab === "deals" && <div style={{ background: T.bg, minHeight: "100%" }}><DealsTab marketId={resolvedId} /></div>}
         {activeTab === "rankings" && <div style={{ background: T.bg, minHeight: "100%" }}><PowerRankingsTab marketId={resolvedId} /></div>}
+        {activeTab === "corphealth" && corpHealthData && <CorpHealthTab d={corpHealthData} />}
       </div>
 
       {/* FOOTER — standalone only */}

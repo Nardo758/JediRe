@@ -486,7 +486,6 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [showCorpHealth, setShowCorpHealth] = useState(false);
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1555,6 +1554,23 @@ export default function TerminalPage() {
     { id: "charlotte-nc",  name: "Charlotte, NC" },
   ];
 
+  const viewMarketsCorpHealthData = {
+    schi: corpHealthLive.schi ?? DEMO_SCHI,
+    reHealth: corpHealthLive.reHealth ?? DEMO_RE_HEALTH,
+    divergence: corpHealthLive.divergence ?? DEMO_DIVERGENCE,
+    herfindahl: corpHealthLive.herfindahl ?? DEMO_HERFINDAHL,
+    portfolioSubmarkets: corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
+      {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,employerCount:24,publicCount:8},
+      {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,employerCount:18,publicCount:6},
+      {name:"Redmond Tech",msa:"Seattle",schi:76.9,divergence:-8.1,signal:"aligned",reHealth:71.2,hhi:0.203,employerCount:12,publicCount:5},
+      {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,employerCount:45,publicCount:15},
+      {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,employerCount:30,publicCount:9},
+    ],
+    topEmployerText: corpHealthLive.employers.length > 0
+      ? `Top employer: ${corpHealthLive.employers[0]?.company_name||corpHealthLive.employers[0]?.company||"\u2014"}.`
+      : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
+  };
+
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
       {/* MSA selector bar */}
@@ -1567,78 +1583,11 @@ export default function TerminalPage() {
         >
           {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
         </select>
-        <div style={{flex:1}}/>
-        <button
-          onClick={() => setShowCorpHealth(v => !v)}
-          style={{background:showCorpHealth?T.bg.active:"transparent",color:showCorpHealth?T.text.amber:T.text.secondary,border:`1px solid ${showCorpHealth?T.text.amber:T.border.medium}`,fontSize:9,fontFamily:T.font.mono,fontWeight:700,padding:"2px 10px",cursor:"pointer",letterSpacing:0.5}}
-        >
-          CORP HEALTH {showCorpHealth?"▲":"▼"}
-        </button>
       </div>
 
-      {/* Corp Health collapsible panel */}
-      {showCorpHealth && (
-        <div style={{flexShrink:0,maxHeight:320,overflow:"auto",borderBottom:`1px solid ${T.border.medium}`,background:T.bg.panel}}>
-          <PanelHeader T={T} title="CORPORATE HEALTH INTELLIGENCE" subtitle="SCHI · Divergence Scanner · Employer Risk" borderColor={T.text.orange}/>
-          <div style={{padding:"0 10px 10px"}}>
-            <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PANEL DRIVES:</div>
-            <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Are the employers in this submarket healthy enough to sustain demand?</div>
-          </div>
-          {(() => {
-            const schi = corpHealthLive.schi ?? DEMO_SCHI;
-            const reH = corpHealthLive.reHealth ?? DEMO_RE_HEALTH;
-            const div = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
-            const hhi = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
-            const divSubmarkets = corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
-              {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,top5Share:0.42,employerCount:24,publicCount:8},
-              {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,top5Share:0.58,employerCount:18,publicCount:6},
-              {name:"Redmond Tech",msa:"Seattle",schi:76.9,divergence:-8.1,signal:"aligned",reHealth:71.2,hhi:0.203,top5Share:0.63,employerCount:12,publicCount:5},
-              {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,top5Share:0.31,employerCount:45,publicCount:15},
-              {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,top5Share:0.48,employerCount:30,publicCount:9},
-            ];
-            return <>
-            <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
-              <MetricBox T={T} label="SCHI SCORE" value={schi.toFixed(1)} sub="Submarket Corporate Health" color={schi>=60?T.text.green:schi>=40?T.text.amber:T.text.red}/>
-              <MetricBox T={T} label="RE HEALTH" value={reH.toFixed(1)} sub="Real Estate Fundamentals" color={T.text.cyan}/>
-              <MetricBox T={T} label="DIVERGENCE" value={(div>0?"+":"")+div.toFixed(1)} sub={Math.abs(div)>15?(div>0?"BULLISH DIVERGENCE":"BEARISH DIVERGENCE"):"ALIGNED"} color={Math.abs(div)>15?(div>0?T.text.green:T.text.red):T.text.amber}/>
-              <MetricBox T={T} label="HERFINDAHL" value={hhi.toFixed(3)} sub={hhi<0.1?"Low concentration":"High concentration"} color={hhi<0.1?T.text.green:T.text.red}/>
-            </div>
-            <div style={{margin:"0 10px 10px",padding:"4px 10px",background:(Math.abs(div)>15?T.text.red:T.text.green)+"08",borderLeft:`3px solid ${Math.abs(div)>15?T.text.amber:T.text.green}`}}>
-              <span style={{fontSize:9,color:T.text.secondary}}>
-                Corporate health is <span style={{fontWeight:700,color:schi>=60?T.text.green:T.text.red}}>{schi>=60?"STABLE":"AT RISK"}</span>.
-                {" "}Divergence signal: <span style={{fontWeight:700,color:Math.abs(div)>15?T.text.amber:T.text.green}}>{Math.abs(div)>15?(div>0?"BULLISH":"BEARISH"):"ALIGNED"}</span>.
-                {corpHealthLive.employers.length > 0 ? ` Top employer: ${corpHealthLive.employers[0]?.company_name||corpHealthLive.employers[0]?.company||"\u2014"}.` : ` Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`}
-              </span>
-            </div>
-            <div style={{margin:"0 10px 10px"}}>
-              <PanelHeader T={T} title="DIVERGENCE SCANNER \u2014 ALL SUBMARKETS" subtitle="Sorted by |divergence|"/>
-              <div style={{display:"grid",gridTemplateColumns:"1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.6fr 0.5fr 0.5fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-                {["SUBMARKET","MSA","SCHI","RE HEALTH","DIVERGENCE","SIGNAL","HHI","EMPLOYERS"].map(h=>(
-                  <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-                ))}
-              </div>
-              {divSubmarkets.sort((a,b)=>Math.abs(b.divergence)-Math.abs(a.divergence)).map((s,i)=>{
-                const sigColor = s.signal==="bullish_divergence"?T.text.green:s.signal==="bearish_divergence"?T.text.red:T.text.amber;
-                return <div key={i} style={{display:"grid",gridTemplateColumns:"1.4fr 0.8fr 0.6fr 0.6fr 0.7fr 0.6fr 0.5fr 0.5fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.msa||"\u2014"}</div>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.schi>=60?T.text.green:s.schi>=40?T.text.amber:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.schi.toFixed(1)}</div>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.cyan,borderRight:`1px solid ${T.border.subtle}`}}>{s.reHealth.toFixed(1)}</div>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:sigColor,borderRight:`1px solid ${T.border.subtle}`}}>{(s.divergence>0?"+":"")+s.divergence.toFixed(1)}</div>
-                  <div style={{padding:"5px 6px",display:"flex",alignItems:"center",borderRight:`1px solid ${T.border.subtle}`}}><Bd c={sigColor}>{s.signal==="bullish_divergence"?"BULL":s.signal==="bearish_divergence"?"BEAR":"ALIGN"}</Bd></div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:s.hhi<0.1?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.hhi.toFixed(3)}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary}}>{s.employerCount} ({s.publicCount} pub)</div>
-                </div>;
-              })}
-            </div>
-            </>;
-          })()}
-        </div>
-      )}
-
-      {/* Embedded market detail — fills remaining space */}
+      {/* Embedded market detail — fills remaining space; CORP HEALTH appears as 7th tab */}
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <BloombergMarketDetail embedded marketId={selectedMsaId} />
+        <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
       </div>
     </div>
   );
@@ -1776,7 +1725,7 @@ export default function TerminalPage() {
   const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
 
   useEffect(() => {
-    if (fkey !== "F4" || !showCorpHealth || corpHealthLive.loaded || corpHealthLive.loading) return;
+    if (fkey !== "F4" || corpHealthLive.loaded || corpHealthLive.loading) return;
     setCorpHealthLive(prev => ({...prev, loading: true}));
 
     const submarketIds = SUBMARKETS.map((_, i) => i + 1);
@@ -1815,7 +1764,7 @@ export default function TerminalPage() {
     }).catch(() => {
       setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
     });
-  }, [fkey, showCorpHealth, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
+  }, [fkey, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
   const handleInvite = () => {
     if(!inviteEmail || !orgData) return;
