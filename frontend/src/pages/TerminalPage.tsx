@@ -1302,7 +1302,7 @@ export default function TerminalPage() {
         )}
 
         {/* Dashboard header */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:32,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
             {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
@@ -2170,18 +2170,24 @@ export default function TerminalPage() {
       {/* CRT overlay */}
       <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)"}}/>
 
-      {/* ═══ TOP STATUS BAR — 36px ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:36,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2}}>JEDI RE</span>
-          <span style={{fontSize:10,color:T.text.muted}}>|</span>
-          <span style={{fontSize:10,color:T.text.secondary}}>PORTFOLIO VIEW</span>
-          <span style={{fontSize:10,color:T.text.muted}}>|</span>
-          <span style={{fontSize:10,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
+      {/* ═══ TOP STATUS BAR — 28px ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+          <span style={{fontFamily:T.font.display,fontSize:13,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JEDI RE</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,color:T.text.secondary,flexShrink:0}}>PORTFOLIO</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          {totalPV>0&&<span style={{fontSize:9,fontWeight:700,color:T.text.amberBright,flexShrink:0}}>PIPELINE: ${totalPV.toFixed(1)}M</span>}
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,fontWeight:600,color:T.text.cyan,flexShrink:0}}>ACTIVE: {activeCount}</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{fontSize:9,fontWeight:700,color:hAlerts>0?T.text.red:T.text.green,cursor:"pointer",flexShrink:0,animation:hAlerts>0?"pulse 2s infinite":"none"}}>ALERTS: {hAlerts}</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:10,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
-          <span style={{fontSize:10,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGT</span>
+          <span style={{fontSize:9,color:T.text.cyan}}>MAIL: {liveEmails.filter(e=>e.unread).length}</span>
           {mediaWindows.length>0&&(
             <div style={{position:"relative"}}>
               <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
@@ -2233,37 +2239,6 @@ export default function TerminalPage() {
         ]}
       />
 
-      {/* ═══ KPI BAR — 54px ═══ */}
-      <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,minHeight:54,flexWrap:"wrap",overflowX:"auto"}}>
-        {[
-          {l:"TOTAL PIPELINE",v:totalPV>0?`$${totalPV.toFixed(1)}M`:`${liveDeals.length}`,c:T.text.amberBright,sub:`${liveDeals.length} deals`},
-          {l:"ACTIVE DEALS",v:String(activeCount),c:T.text.cyan,sub:"in progress"},
-          {l:"PORTFOLIO ASSETS",v:"23",c:T.text.green,sub:"owned"},
-          {l:"AVG DAYS/DEAL",v:liveDeals.length>0?String(Math.round(liveDeals.reduce((s,d)=>s+d.days,0)/liveDeals.length)):"—",c:T.text.amber,sub:"avg time"},
-        ].map((kpi,i)=>(
-          <div key={i} style={{padding:"5px 10px",borderRight:`1px solid ${T.border.subtle}`,minWidth:90}}>
-            <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>{kpi.l}</div>
-            <div style={{fontSize:17,fontWeight:800,color:kpi.c,lineHeight:1.1}}>{kpi.v}</div>
-            <div style={{fontSize:9,color:T.text.secondary}}>{kpi.sub}</div>
-          </div>
-        ))}
-        <div style={{padding:"5px 10px",borderRight:`1px solid ${T.border.subtle}`,minWidth:100}}>
-          <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>BY STAGE</div>
-          <div style={{display:"flex",gap:6,marginTop:1}}>{Object.entries(stages).map(([s,c])=>(
-            <div key={s} style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:c>0?T.text.amber:T.text.muted}}>{c}</div><div style={{fontSize:9,color:T.text.muted}}>{s}</div></div>
-          ))}</div>
-        </div>
-        <div onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{padding:"5px 10px",borderRight:`1px solid ${T.border.subtle}`,cursor:"pointer",minWidth:70}}>
-          <div style={{fontSize:9,fontWeight:600,color:T.text.muted,letterSpacing:0.8}}>ALERTS</div>
-          <div style={{fontSize:17,fontWeight:800,color:hAlerts>0?T.text.red:T.text.green,animation:hAlerts>0?"pulse 2s infinite":"none",lineHeight:1.1}}>{hAlerts}</div>
-        </div>
-        <div style={{flex:1}}/>
-        <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:8}}>
-          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"4px 10px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
-          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 10px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
-        </div>
-      </div>
-
       {/* ═══ F-KEY NAV BAR ═══ */}
       <div style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
         <div style={{display:"flex",flex:1,overflowX:"auto"}}>
@@ -2274,17 +2249,19 @@ export default function TerminalPage() {
             </button>
           ))}
         </div>
-        <div style={{padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:24,width:180}}>
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 9px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>+ DEAL</button>
+          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"3px 8px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>MAP</button>
+          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,flex:"0 1 130px",minWidth:60}}>
             <span style={{color:T.text.amber,fontSize:10,fontWeight:700}}>{">"}</span>
-            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:10,color:T.text.primary,flex:1,width:"100%"}}/>
-            <span style={{width:6,height:12,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block"}}/>
+            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:10,color:T.text.primary,flex:1,width:"100%",minWidth:0}}/>
+            <span style={{width:5,height:11,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block",flexShrink:0}}/>
           </div>
         </div>
       </div>
 
       {/* ═══ GLOBAL FILTER TOOLBAR ═══ */}
-      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:34,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:32,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <span style={{fontSize:10,color:T.text.muted,fontWeight:600,letterSpacing:0.5}}>FILTER:</span>
         <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:10,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:24}}>
           <option value="ALL">All Stages</option>
