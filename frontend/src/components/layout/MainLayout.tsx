@@ -10,6 +10,7 @@ import { T } from '../../styles/terminal-tokens';
 import { TickerBar } from '../terminal/TickerBar';
 import { Badge } from '../terminal/Badge';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const DEFAULT_MAP_ID = 'default';
 
@@ -243,6 +244,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
 }) => {
   const items = isInsideDeal ? DEAL_NAV : PORTFOLIO_NAV;
   const [dealActiveTab, setDealActiveTab] = useState('overview');
+  const { isDark, toggleTheme } = useTheme();
 
   useEffect(() => {
     if (!isInsideDeal) return;
@@ -312,6 +314,24 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
         );
       })}
       <div style={{ flex: 1 }} />
+      <button
+        onClick={toggleTheme}
+        title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          height: '100%', padding: '0 12px',
+          background: 'transparent', border: 'none',
+          borderLeft: `1px solid ${T.border.subtle}`,
+          cursor: 'pointer',
+          fontSize: 14,
+          color: T.text.secondary,
+          transition: 'color 0.15s',
+        }}
+        onMouseEnter={e => { (e.currentTarget.style.color = T.text.amber); }}
+        onMouseLeave={e => { (e.currentTarget.style.color = T.text.secondary); }}
+      >
+        {isDark ? '☀' : '☾'}
+      </button>
       <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${T.border.subtle}`, paddingLeft: 12, paddingRight: 12 }}>
         <span style={{
           fontSize: T.fontSize.xs,

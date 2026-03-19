@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
+import { useTabTheme } from '../../../hooks/useTabTheme';
 
 interface SubmarketsTabProps {
   marketId: string;
@@ -7,34 +8,7 @@ interface SubmarketsTabProps {
   onUpdate?: () => void;
 }
 
-// Bloomberg terminal color tokens
-const T = {
-  bg: '#0A0E17',
-  panel: '#0F1319',
-  border: '#1C2333',
-  borderLight: '#242D3E',
-  amber: '#F5A623',
-  green: '#00D26A',
-  red: '#FF4757',
-  cyan: '#00BCD4',
-  violet: '#9B5DE5',
-  text: '#E0E4EE',
-  secondary: '#8892A4',
-  muted: '#4A5568',
-  dimBg: '#0D1220',
-};
-
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
-
-const CHOROPLETH_LAYERS = [
-  { key: 'JEDI',         label: 'JEDI',          color: T.cyan },
-  { key: 'Demand',       label: 'Demand',         color: T.green },
-  { key: 'Supply Risk',  label: 'Supply Risk',    color: T.red },
-  { key: 'Rent Growth',  label: 'Rent Growth',    color: T.amber },
-  { key: 'Cap Rate',     label: 'Cap Rate',       color: T.secondary },
-  { key: 'Pricing Pwr', label: 'Pricing Pwr ★',  color: T.violet },
-  { key: 'Constraint',   label: 'Constraint ★',   color: T.violet },
-] as const;
 
 const HEATMAP_LAYERS = [
   { key: 'D-05', label: 'Road Traffic (D-05)',    desc: 'AADT counts by road segment, color-coded by growth rate' },
@@ -69,64 +43,60 @@ const DETAIL_SECTIONS = [
   { title: 'Traffic★',     key: 'traffic',     color: SIGNAL_GROUPS.TRAFFIC.color,      signals: ['T-02 avg', 'T-08 avg'] },
 ];
 
-// Score utilities — dark theme
-function scoreInlineStyle(value: number, max: number, invert = false): React.CSSProperties {
-  const ratio = Math.min(value / max, 1);
-  const eff = invert ? 1 - ratio : ratio;
-  let color: string;
-  if (eff >= 0.8) color = T.green;
-  else if (eff >= 0.6) color = '#4ade80';
-  else if (eff >= 0.4) color = T.amber;
-  else if (eff >= 0.2) color = '#fb923c';
-  else color = T.red;
-  return { color, background: color + '18', padding: '1px 6px', borderRadius: 2, fontSize: 10, fontWeight: 700, ...mono };
-}
-
-function overhangStyle(val: string): React.CSSProperties {
-  return { color: val === 'MOD' ? T.amber : T.green, fontSize: 10, fontWeight: 700, ...mono };
-}
-
-function getCellContent(sub: any, key: string): React.ReactNode {
-  const val = (sub as any)[key];
-  switch (key) {
-    case 'jedi':       return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
-    case 'demand':     return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
-    case 'supply':     return <span style={{ color: T.secondary, fontSize: 11, ...mono }}>{val.toLocaleString()}</span>;
-    case 'saturation': return <span style={scoreInlineStyle(val, 1.5, true)}>{val}</span>;
-    case 'rentAccel':  return <span style={{ color: T.green, fontSize: 11, fontWeight: 600, ...mono }}>{val}</span>;
-    case 'trfcRent':   return <span style={{ color: T.secondary, fontSize: 11, ...mono }}>{val}</span>;
-    case 'capacity':   return <span style={{ color: T.violet, fontSize: 11, fontWeight: 600, ...mono }}>{val}</span>;
-    case 'buildout':   return <span style={{ color: T.violet, fontSize: 11, ...mono }}>{val}</span>;
-    case 'constraint': return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
-    case 'overhang':   return <span style={overhangStyle(val)}>{val}</span>;
-    case 'lastMover':  return sub.lastMover
-      ? <span style={{ color: T.violet, fontSize: 10, fontWeight: 700, ...mono }}>Yes★</span>
-      : <span style={{ color: T.muted, fontSize: 10, ...mono }}>No</span>;
-    case 'pricingPower': return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
-    case 'adjRent':    return <span style={{ color: T.green, fontSize: 11, fontWeight: 600, ...mono }}>{val}</span>;
-    case 'traffic':    return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
-    default:           return <span style={{ color: T.text, fontSize: 11, ...mono }}>{String(val)}</span>;
-  }
-}
-
-// Shared section card styles
-const sectionCard: React.CSSProperties = {
-  background: T.panel,
-  border: `1px solid ${T.border}`,
-  borderRadius: 3,
-  overflow: 'hidden',
-};
-const sectionHeader = (accentColor: string): React.CSSProperties => ({
-  padding: '8px 14px',
-  borderBottom: `1px solid ${T.border}`,
-  borderLeft: `3px solid ${accentColor}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  background: T.dimBg,
-});
-
 const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
+  const T = useTabTheme();
+  const sectionCard: React.CSSProperties = {
+    background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden',
+  };
+  const sectionHeader = (accentColor: string): React.CSSProperties => ({
+    padding: '8px 14px', borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accentColor}`,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: T.dimBg,
+  });
+  const scoreInlineStyle = (value: number, max: number, invert = false): React.CSSProperties => {
+    const ratio = Math.min(value / max, 1);
+    const eff = invert ? 1 - ratio : ratio;
+    let color: string;
+    if (eff >= 0.8) color = T.green;
+    else if (eff >= 0.6) color = '#4ade80';
+    else if (eff >= 0.4) color = T.amber;
+    else if (eff >= 0.2) color = '#fb923c';
+    else color = T.red;
+    return { color, background: color + '18', padding: '1px 6px', borderRadius: 2, fontSize: 10, fontWeight: 700, ...mono };
+  };
+  const overhangStyle = (val: string): React.CSSProperties => ({
+    color: val === 'MOD' ? T.amber : T.green, fontSize: 10, fontWeight: 700, ...mono,
+  });
+  const getCellContent = (sub: any, key: string): React.ReactNode => {
+    const val = (sub as any)[key];
+    switch (key) {
+      case 'jedi':       return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
+      case 'demand':     return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
+      case 'supply':     return <span style={{ color: T.secondary, fontSize: 11, ...mono }}>{val.toLocaleString()}</span>;
+      case 'saturation': return <span style={scoreInlineStyle(val, 1.5, true)}>{val}</span>;
+      case 'rentAccel':  return <span style={{ color: T.green, fontSize: 11, fontWeight: 600, ...mono }}>{val}</span>;
+      case 'trfcRent':   return <span style={{ color: T.secondary, fontSize: 11, ...mono }}>{val}</span>;
+      case 'capacity':   return <span style={{ color: T.violet, fontSize: 11, fontWeight: 600, ...mono }}>{val}</span>;
+      case 'buildout':   return <span style={{ color: T.violet, fontSize: 11, ...mono }}>{val}</span>;
+      case 'constraint': return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
+      case 'overhang':   return <span style={overhangStyle(val)}>{val}</span>;
+      case 'lastMover':  return sub.lastMover
+        ? <span style={{ color: T.violet, fontSize: 10, fontWeight: 700, ...mono }}>Yes★</span>
+        : <span style={{ color: T.muted, fontSize: 10, ...mono }}>No</span>;
+      case 'pricingPower': return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
+      case 'adjRent':    return <span style={{ color: T.green, fontSize: 11, fontWeight: 600, ...mono }}>{val}</span>;
+      case 'traffic':    return <span style={scoreInlineStyle(val, 100)}>{val}</span>;
+      default:           return <span style={{ color: T.text, fontSize: 11, ...mono }}>{String(val)}</span>;
+    }
+  };
+  const CHOROPLETH_LAYERS = [
+    { key: 'JEDI',         label: 'JEDI',          color: T.cyan },
+    { key: 'Demand',       label: 'Demand',         color: T.green },
+    { key: 'Supply Risk',  label: 'Supply Risk',    color: T.red },
+    { key: 'Rent Growth',  label: 'Rent Growth',    color: T.amber },
+    { key: 'Cap Rate',     label: 'Cap Rate',       color: T.secondary },
+    { key: 'Pricing Pwr', label: 'Pricing Pwr ★',  color: T.violet },
+    { key: 'Constraint',   label: 'Constraint ★',   color: T.violet },
+  ] as const;
   const [activeLayer, setActiveLayer] = useState<string>('JEDI');
   const [mapMode, setMapMode] = useState<'choropleth' | 'heatmap'>('choropleth');
   const [activeHeatmap, setActiveHeatmap] = useState<string>('D-05');

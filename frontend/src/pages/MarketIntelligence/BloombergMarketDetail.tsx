@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useTabTheme } from "@/hooks/useTabTheme";
+import { useTheme } from "@/contexts/ThemeContext";
 import SubmarketsTab from "./tabs/SubmarketsTab";
 import TrendsTab from "./tabs/TrendsTab";
 import OwnersTab from "./tabs/OwnersTab";
@@ -7,15 +9,6 @@ import PropertyDataTab from "./tabs/PropertyDataTab";
 import DealsTab from "./tabs/DealsTab";
 import PowerRankingsTab from "./tabs/PowerRankingsTab";
 
-const T = {
-  bg: "#0A0E17", panel: "#0F1319", panelAlt: "#131821", header: "#1A1F2E",
-  hover: "#1E2538", active: "#252D40", topBar: "#050810",
-  primary: "#E8ECF1", secondary: "#8B95A5", muted: "#4A5568",
-  amber: "#F5A623", amberBright: "#FFD166", green: "#00D26A",
-  red: "#FF4757", cyan: "#00BCD4", orange: "#FF8C42", purple: "#A78BFA",
-  blue: "#3B82F6", blueBg: "#1e3a5f",
-  borderS: "#1E2538", borderM: "#2A3348",
-};
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
 const sans: React.CSSProperties = { fontFamily: "'IBM Plex Sans',sans-serif" };
 
@@ -414,6 +407,23 @@ interface BloombergMarketDetailProps {
 }
 
 export default function BloombergMarketDetail({ embedded = false, marketId: marketIdProp, corpHealthData }: BloombergMarketDetailProps = {}) {
+  const baseT = useTabTheme();
+  const { isDark } = useTheme();
+  const T = {
+    ...baseT,
+    panelAlt:   isDark ? "#131821" : "#F8FAFC",
+    header:     isDark ? "#1A1F2E" : "#E2E8F0",
+    hover:      isDark ? "#1E2538" : "#E2E8F0",
+    active:     isDark ? "#252D40" : "#CBD5E1",
+    primary:    baseT.text,
+    amberBright:isDark ? "#FFD166" : "#F59E0B",
+    orange:     isDark ? "#FF8C42" : "#EA580C",
+    purple:     baseT.violet,
+    blue:       isDark ? "#3B82F6" : "#2563EB",
+    blueBg:     isDark ? "#1e3a5f" : "#DBEAFE",
+    borderS:    isDark ? "#1E2538" : "#E2E8F0",
+    borderM:    isDark ? "#2A3348" : "#CBD5E1",
+  };
   const params = useParams<{ marketId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabId>("overview");

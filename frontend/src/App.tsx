@@ -37,6 +37,7 @@ import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { DataTrackerPage } from './pages/admin/DataTrackerPage';
@@ -218,11 +219,13 @@ function AppContent() {
 function App() {
   return (
     <ErrorBoundary fallback={<ErrorFallback />}>
-      <ArchitectureProvider>
-        <MapLayersProvider>
-          <AppContent />
-        </MapLayersProvider>
-      </ArchitectureProvider>
+      <ThemeProvider>
+        <ArchitectureProvider>
+          <MapLayersProvider>
+            <AppContent />
+          </MapLayersProvider>
+        </ArchitectureProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

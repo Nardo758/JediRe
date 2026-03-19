@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
 import { apiClient } from '../../../api/client';
+import { useTabTheme } from '../../../hooks/useTabTheme';
 
 interface TrendsTabProps {
   marketId: string;
@@ -25,23 +26,7 @@ interface CorrelationReport {
   };
 }
 
-// Bloomberg terminal color tokens
-const T = {
-  bg: '#0A0E17', panel: '#0F1319', dimBg: '#0D1220',
-  border: '#1C2333', borderLight: '#242D3E',
-  amber: '#F5A623', green: '#00D26A', red: '#FF4757',
-  cyan: '#00BCD4', violet: '#9B5DE5', orange: '#F97316',
-  text: '#E0E4EE', secondary: '#8892A4', muted: '#4A5568',
-};
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
-
-// Section card + header helpers
-const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden' };
-const hdr = (accent: string): React.CSSProperties => ({
-  padding: '8px 14px', background: T.dimBg,
-  borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accent}`,
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-});
 const badge = (color: string): React.CSSProperties => ({
   fontSize: 8, fontWeight: 700, color, background: color + '20',
   padding: '1px 6px', borderRadius: 2, letterSpacing: 1, ...mono,
@@ -198,6 +183,13 @@ function checkDivergence(): boolean {
 
 // ── COMPONENT ──
 const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
+  const T = useTabTheme();
+  const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden' };
+  const hdr = (accent: string): React.CSSProperties => ({
+    padding: '8px 14px', background: T.dimBg,
+    borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accent}`,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  });
   const [timeRange, setTimeRange] = useState<string>('1Y');
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('2yr');

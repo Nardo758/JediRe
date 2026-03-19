@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../api/client';
+import { useTabTheme } from '../../../hooks/useTabTheme';
 
 interface PowerRankingsTabProps {
   marketId: string;
@@ -26,22 +27,6 @@ interface PropertyRanking {
     marketPosition: number;
   };
 }
-
-const T = {
-  bg:        '#0A0E17',
-  panel:     '#0F1319',
-  dimBg:     '#0D1220',
-  border:    '#1C2333',
-  borderLight:'#242D3E',
-  amber:     '#F5A623',
-  green:     '#00D26A',
-  red:       '#FF4757',
-  cyan:      '#00BCD4',
-  violet:    '#9B5DE5',
-  text:      '#E0E4EE',
-  secondary: '#8892A4',
-  muted:     '#4A5568',
-};
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
 
@@ -78,46 +63,35 @@ function matchesSize(units: number, filter: string): boolean {
   return true;
 }
 
-function pcsColor(score: number): string {
-  if (score >= 85) return T.green;
-  if (score >= 70) return T.amber;
-  if (score >= 55) return '#fb923c';
-  return T.red;
-}
-
-function classColor(cls: string): string {
-  if (cls === 'A')            return T.cyan;
-  if (cls.startsWith('B'))    return T.amber;
-  return T.secondary;
-}
-
-const COMPONENT_LABELS: { key: keyof PropertyRanking['components']; label: string; color: string }[] = [
-  { key: 'trafficPerformance', label: 'Traffic Performance', color: T.cyan   },
-  { key: 'revenueStrength',    label: 'Revenue Strength',    color: T.green  },
-  { key: 'operationalQuality', label: 'Operational Quality', color: T.amber  },
-  { key: 'assetCondition',     label: 'Asset Condition',     color: T.violet },
-  { key: 'marketPosition',     label: 'Market Position',     color: '#14b8a6'},
-];
-
-const sectionCard: React.CSSProperties = {
-  background: T.panel,
-  border: `1px solid ${T.border}`,
-  borderRadius: 3,
-  overflow: 'hidden',
-};
-
-const sectionHeader = (accentColor: string): React.CSSProperties => ({
-  padding: '8px 14px',
-  borderBottom: `1px solid ${T.border}`,
-  borderLeft: `3px solid ${accentColor}`,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  background: T.dimBg,
-});
-
 const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
+  const T = useTabTheme();
   const navigate = useNavigate();
+
+  const pcsColor = (score: number): string => {
+    if (score >= 85) return T.green;
+    if (score >= 70) return T.amber;
+    if (score >= 55) return '#fb923c';
+    return T.red;
+  };
+  const classColor = (cls: string): string => {
+    if (cls === 'A') return T.cyan;
+    if (cls.startsWith('B')) return T.amber;
+    return T.secondary;
+  };
+  const COMPONENT_LABELS: { key: keyof PropertyRanking['components']; label: string; color: string }[] = [
+    { key: 'trafficPerformance', label: 'Traffic Performance', color: T.cyan   },
+    { key: 'revenueStrength',    label: 'Revenue Strength',    color: T.green  },
+    { key: 'operationalQuality', label: 'Operational Quality', color: T.amber  },
+    { key: 'assetCondition',     label: 'Asset Condition',     color: T.violet },
+    { key: 'marketPosition',     label: 'Market Position',     color: '#14b8a6'},
+  ];
+  const sectionCard: React.CSSProperties = {
+    background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden',
+  };
+  const sectionHeader = (accentColor: string): React.CSSProperties => ({
+    padding: '8px 14px', borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accentColor}`,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: T.dimBg,
+  });
   const [classFilter,   setClassFilter]   = useState<string>('All');
   const [vintageFilter, setVintageFilter] = useState<string>('All');
   const [sizeFilter,    setSizeFilter]    = useState<string>('All');

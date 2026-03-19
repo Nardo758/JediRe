@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTabTheme } from '@/hooks/useTabTheme';
 import { SIGNAL_GROUPS } from '../signalGroups';
 import {
   exportToCSV,
@@ -24,30 +25,7 @@ interface PropertyRow {
   enrichmentSource: string | null; enrichedAt: string | null; county: string | null;
 }
 
-const T = {
-  bg: '#0A0E17', panel: '#0F1319', dimBg: '#0D1220',
-  border: '#1C2333', borderLight: '#242D3E',
-  amber: '#F5A623', green: '#00D26A', red: '#FF4757',
-  cyan: '#00BCD4', violet: '#9B5DE5', pink: '#EC4899',
-  text: '#E0E4EE', secondary: '#8892A4', muted: '#4A5568',
-};
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
-
-const sectionCard: React.CSSProperties = {
-  background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden',
-};
-const sectionHeader = (color: string): React.CSSProperties => ({
-  padding: '8px 14px', borderBottom: `1px solid ${T.border}`,
-  borderLeft: `3px solid ${color}`, display: 'flex', alignItems: 'center',
-  justifyContent: 'space-between', background: T.dimBg,
-});
-
-function jediColor(v: number) {
-  return v >= 90 ? T.green : v >= 80 ? T.cyan : v >= 70 ? T.amber : T.red;
-}
-function classColor(cls: string) {
-  return cls === 'A' || cls === 'A+' ? T.cyan : cls.startsWith('B') ? T.amber : T.secondary;
-}
 
 const NEIGHBORHOOD_NAMES: Record<string, string> = {
   'CB04':'Downtown','CB03':'Midtown','CB02':'Midtown West','CB01':'Atlantic Station',
@@ -78,6 +56,17 @@ const MOCK_ROWS: PropertyRow[] = [
 ];
 
 const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
+  const T = useTabTheme();
+  const sectionCard: React.CSSProperties = {
+    background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden',
+  };
+  const sectionHeader = (color: string): React.CSSProperties => ({
+    padding: '8px 14px', borderBottom: `1px solid ${T.border}`,
+    borderLeft: `3px solid ${color}`, display: 'flex', alignItems: 'center',
+    justifyContent: 'space-between', background: T.dimBg,
+  });
+  const jediColor = (v: number) => v >= 90 ? T.green : v >= 80 ? T.cyan : v >= 70 ? T.amber : T.red;
+  const classColor = (cls: string) => cls === 'A' || cls === 'A+' ? T.cyan : cls.startsWith('B') ? T.amber : T.secondary;
   const navigate = useNavigate();
   const isAtlanta = marketId === 'atlanta';
   const [selectedProperty, setSelectedProperty] = useState<PropertyRow | null>(null);

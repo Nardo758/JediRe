@@ -1,55 +1,18 @@
 import React, { useState } from 'react';
+import { useTabTheme } from '../../../hooks/useTabTheme';
 
 interface OwnersTabProps {
   marketId: string;
   summary?: Record<string, any>;
 }
 
-const T = {
-  bg: '#0A0E17', panel: '#0F1319', dimBg: '#0D1220',
-  border: '#1C2333', amber: '#F5A623', green: '#00D26A',
-  red: '#FF4757', cyan: '#00BCD4', violet: '#9B5DE5',
-  orange: '#F97316', text: '#E0E4EE', secondary: '#8892A4', muted: '#4A5568',
-};
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
-const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden' };
-const hdr = (accent: string): React.CSSProperties => ({
-  padding: '8px 14px', background: T.dimBg,
-  borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accent}`,
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-});
 const insightBox = (color: string): React.CSSProperties => ({
   background: color + '0A', border: `1px solid ${color}28`, padding: '8px 10px', borderRadius: 2, marginTop: 8,
 });
 const badge = (color: string): React.CSSProperties => ({
   fontSize: 8, fontWeight: 700, color, background: color + '20', padding: '1px 6px', borderRadius: 2, letterSpacing: 1, ...mono,
 });
-
-// ── DATA ──
-const TOP_OWNERS = [
-  { owner: 'Camden Property Trust',  ticker: 'CPT',  props: 42, units: 18400, avgHold: '4.2yr', mktCap: '$11.2B', signal: 'BUY',   signalColor: T.green,  motivation: 68, holdRisk: 'LOW',   notes: 'Active acquirer — Atlanta core focus' },
-  { owner: 'Cortland',               ticker: null,   props: 34, units: 12800, avgHold: '3.5yr', mktCap: 'Private', signal: 'BUY',  signalColor: T.green,  motivation: 72, holdRisk: 'LOW',   notes: 'Value-add specialist; B+ focus'       },
-  { owner: 'Greystone Capital',       ticker: null,   props: 4,  units:  2200, avgHold: '5.8yr', mktCap: 'Private', signal: 'SELL?',signalColor: T.amber,  motivation: 81, holdRisk: 'HIGH',  notes: 'Tax step-up risk; hold >5yr threshold' },
-  { owner: 'AvalonBay Communities',   ticker: 'AVB',  props: 18, units:  8400, avgHold: '6.1yr', mktCap: '$27.1B', signal: 'HOLD', signalColor: T.secondary,motivation:44, holdRisk: 'MOD',  notes: 'Institutional long-hold; Class A only' },
-  { owner: 'Equity Residential',      ticker: 'EQR',  props: 12, units:  5600, avgHold: '7.3yr', mktCap: '$24.4B', signal: 'HOLD', signalColor: T.secondary,motivation:38, holdRisk: 'LOW',  notes: 'Low disposition probability near-term'  },
-  { owner: 'Brookfield Asset Mgmt',   ticker: 'BAM',  props: 8,  units:  3900, avgHold: '2.9yr', mktCap: '$82.0B', signal: 'BUY',  signalColor: T.green,  motivation: 65, holdRisk: 'MOD',   notes: 'Short cycle; likely to transact 2025-26' },
-];
-
-const PORTFOLIO_CONCENTRATION = [
-  { submarket: 'Buckhead',      units: 14200, pct: 31, color: T.cyan   },
-  { submarket: 'Midtown',       units:  9800, pct: 21, color: T.violet },
-  { submarket: 'Decatur',       units:  7400, pct: 16, color: T.green  },
-  { submarket: 'Sandy Springs', units:  6200, pct: 13, color: T.amber  },
-  { submarket: 'East Atlanta',  units:  5100, pct: 11, color: T.orange },
-  { submarket: 'Other',         units:  3900, pct: 8,  color: T.muted  },
-];
-
-const MOTIVATION_CRITERIA = [
-  { label: 'Hold Period > 5yr',             matched: 142, total: 680, color: T.amber  },
-  { label: 'Tax Step-Up Risk > 20%',        matched: 89,  total: 680, color: T.orange },
-  { label: 'Seller Motivation Score > 65',  matched: 194, total: 680, color: T.red    },
-  { label: 'All Three (Combined)',           matched: 38,  total: 680, color: T.red    },
-];
 
 const OWNERSHIP_TIMELINE = [
   { year: '2019', acquisitions: 18, dispositions: 4  },
@@ -62,6 +25,35 @@ const OWNERSHIP_TIMELINE = [
 ];
 
 const OwnersTab: React.FC<OwnersTabProps> = ({ marketId, summary }) => {
+  const T = useTabTheme();
+  const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden' };
+  const hdr = (accent: string): React.CSSProperties => ({
+    padding: '8px 14px', background: T.dimBg,
+    borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accent}`,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  });
+  const TOP_OWNERS = [
+    { owner: 'Camden Property Trust',  ticker: 'CPT',  props: 42, units: 18400, avgHold: '4.2yr', mktCap: '$11.2B', signal: 'BUY',   signalColor: T.green,    motivation: 68, holdRisk: 'LOW',  notes: 'Active acquirer — Atlanta core focus' },
+    { owner: 'Cortland',               ticker: null,   props: 34, units: 12800, avgHold: '3.5yr', mktCap: 'Private',signal: 'BUY',   signalColor: T.green,    motivation: 72, holdRisk: 'LOW',  notes: 'Value-add specialist; B+ focus'       },
+    { owner: 'Greystone Capital',       ticker: null,   props: 4,  units:  2200, avgHold: '5.8yr', mktCap: 'Private',signal: 'SELL?', signalColor: T.amber,    motivation: 81, holdRisk: 'HIGH', notes: 'Tax step-up risk; hold >5yr threshold' },
+    { owner: 'AvalonBay Communities',   ticker: 'AVB',  props: 18, units:  8400, avgHold: '6.1yr', mktCap: '$27.1B', signal: 'HOLD',  signalColor: T.secondary, motivation: 44, holdRisk: 'MOD', notes: 'Institutional long-hold; Class A only' },
+    { owner: 'Equity Residential',      ticker: 'EQR',  props: 12, units:  5600, avgHold: '7.3yr', mktCap: '$24.4B', signal: 'HOLD',  signalColor: T.secondary, motivation: 38, holdRisk: 'LOW', notes: 'Low disposition probability near-term'  },
+    { owner: 'Brookfield Asset Mgmt',   ticker: 'BAM',  props: 8,  units:  3900, avgHold: '2.9yr', mktCap: '$82.0B', signal: 'BUY',   signalColor: T.green,    motivation: 65, holdRisk: 'MOD', notes: 'Short cycle; likely to transact 2025-26' },
+  ];
+  const PORTFOLIO_CONCENTRATION = [
+    { submarket: 'Buckhead',      units: 14200, pct: 31, color: T.cyan   },
+    { submarket: 'Midtown',       units:  9800, pct: 21, color: T.violet },
+    { submarket: 'Decatur',       units:  7400, pct: 16, color: T.green  },
+    { submarket: 'Sandy Springs', units:  6200, pct: 13, color: T.amber  },
+    { submarket: 'East Atlanta',  units:  5100, pct: 11, color: T.secondary },
+    { submarket: 'Other',         units:  3900, pct: 8,  color: T.muted  },
+  ];
+  const MOTIVATION_CRITERIA = [
+    { label: 'Hold Period > 5yr',             matched: 142, total: 680, color: T.amber  },
+    { label: 'Tax Step-Up Risk > 20%',        matched: 89,  total: 680, color: T.secondary },
+    { label: 'Seller Motivation Score > 65',  matched: 194, total: 680, color: T.red    },
+    { label: 'All Three (Combined)',           matched: 38,  total: 680, color: T.red    },
+  ];
   const [showMotivated, setShowMotivated] = useState(false);
   const [sortBy, setSortBy] = useState<'units' | 'props' | 'hold' | 'motivation'>('units');
 
