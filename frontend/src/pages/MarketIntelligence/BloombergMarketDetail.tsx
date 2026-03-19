@@ -12,6 +12,16 @@ import PowerRankingsTab from "./tabs/PowerRankingsTab";
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
 const sans: React.CSSProperties = { fontFamily: "'IBM Plex Sans',sans-serif" };
 
+const T = {
+  bg: "#0A0E17", panel: "#0F1319", panelAlt: "#131821", header: "#1A1F2E",
+  hover: "#1E2538", active: "#252D40", topBar: "#050810",
+  primary: "#E8ECF1", secondary: "#8B95A5", muted: "#4A5568",
+  amber: "#F5A623", amberBright: "#FFD166", green: "#00D26A",
+  red: "#FF4757", cyan: "#00BCD4", orange: "#FF8C42", purple: "#A78BFA",
+  blue: "#3B82F6", blueBg: "#1e3a5f",
+  borderS: "#1E2538", borderM: "#2A3348",
+};
+
 const MSA_RECORDS: Record<string, MSARecord> = {
   "atlanta-ga": {
     id: "atlanta-ga", name: "Atlanta, GA", full: "Atlanta-Sandy Springs-Roswell MSA",
