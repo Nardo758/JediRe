@@ -1,0 +1,124 @@
+PASS | GET    | 200 | fin-models: GET /                                            | 
+PASS | GET    | 200 | fin-models: GET /:dealId                                     | 
+PASS | POST   | 200 | fin-models: POST /                                           | 
+WARN | GET    | 400 | fin-models: GET /:dealId/assumptions                         | {"success":false,"error":"No development path selected"}
+PASS | PATCH  | 200 | fin-models: PATCH assumptions                                | 
+PASS | POST   | 200 | fin-models: POST validate                                    | 
+WARN | POST   | 400 | fin-models: POST compute-claude                              | {"success":false,"error":"No development path selected"}
+WARN | GET    | 404 | fin-models: GET claude-output                                | {"success":false,"error":"No Claude-computed model found for this deal"}
+WARN | POST   | 400 | fin-model: POST build                                        | {"error":"dealId and assumptions are required"}
+PASS | GET    | 200 | fin-model: GET latest                                        | 
+PASS | GET    | 200 | fin-model: GET export/excel                                  | 
+PASS | GET    | 200 | fin-dashboard: GET summary                                   | 
+PASS | POST   | 200 | fin-dashboard: POST auto-assumptions                         | 
+PASS | POST   | 202 | fin-dashboard: POST analyze                                  | 
+WARN | POST   | 400 | cap-struct: POST stack                                       | {"error":"Missing required fields: dealId, strategy, layers, uses, noi"}
+WARN | POST   | 400 | cap-struct: POST size-senior                                 | {"error":"Missing required fields: totalCost, noi, propertyValue"}
+PASS | POST   | 200 | cap-struct: POST size-mezz                                   | 
+WARN | POST   | 400 | cap-struct: POST insights                                    | {"error":"Missing required field: metrics"}
+WARN | POST   | 400 | cap-struct: POST debt-products/recommend                     | {"error":"Missing required fields: strategy, products"}
+WARN | POST   | 400 | cap-struct: POST debt-products/mismatch                      | {"error":"Missing required fields: strategy, products"}
+PASS | POST   | 200 | cap-struct: POST rate/cycle-phase                            | 
+PASS | POST   | 200 | cap-struct: POST rate/all-in                                 | 
+WARN | POST   | 400 | cap-struct: POST rate/lock-vs-float                          | {"error":"Missing required fields: loanAmount, lockRate"}
+PASS | POST   | 200 | cap-struct: POST rate/sensitivity                            | 
+PASS | POST   | 200 | cap-struct: POST rate/spread-percentile                      | 
+WARN | POST   | 400 | cap-struct: POST waterfall                                   | {"error":"Missing required fields: config, exitProceeds"}
+WARN | POST   | 400 | cap-struct: POST scenarios/compare                           | {"error":"Missing required fields: scenarios, noi"}
+WARN | POST   | 400 | cap-struct: POST lifecycle/refi                              | {"error":"Missing required fields: stabilizedValue, existingDebt"}
+PASS | POST   | 200 | cap-struct: POST lifecycle/draw-progress                     | 
+PASS | GET    | 200 | cap-struct: GET rates/live                                   | 
+WARN | GET    | 400 | cap-struct: GET rates/history                                | {"error":"Invalid period. Use 6m, 1y, or 2y"}
+WARN | GET    | 404 | cap-struct: GET rate-sheet/latest                            | {"error":"No rate sheet found for this deal"}
+PASS | POST   | 202 | cap-struct: POST optimal-strategy                            | 
+WARN | GET    | 404 | proforma: GET /:dealId                                       | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | proforma: POST initialize                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | GET    | 404 | proforma: GET history                                        | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | proforma: GET adjustments                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | proforma: POST recalculate                                   | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | GET    | 404 | proforma: GET comparison                                     | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | proforma: GET export                                         | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 400 | proforma: POST batch/recalculate                             | {"success":false,"error":"triggerType is required (news_event, demand_signal, periodic_update)"}
+WARN | PATCH  | 404 | proforma: PATCH override                                     | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot PATCH /ap
+WARN | POST   | 400 | proforma-gen: POST generate                                  | {"error":"strategy is required (bts, flip, rental, str)"}
+PASS | GET    | 200 | proforma-gen: GET snapshots                                  | 
+PASS | GET    | 200 | proforma-gen: GET templates                                  | 
+PASS | GET    | 200 | deal-assumptions: GET                                        | 
+PASS | PUT    | 200 | deal-assumptions: PUT                                        | 
+PASS | POST   | 200 | deal-assumptions: POST compute-returns                       | 
+PASS | PUT    | 200 | deal-assumptions: PUT site-data                              | 
+PASS | GET    | 200 | deal-assumptions: GET full-context                           | 
+PASS | GET    | 200 | strategy: GET /:dealId                                       | 
+WARN | POST   | 400 | strategy: POST /                                             | {"success":false,"error":"dealId and strategySlug are required"}
+WARN | POST   | 400 | strategy: POST compare                                       | {"success":false,"error":"dealId and strategySlugs array are required"}
+WARN | GET    | 404 | dd-checklists: GET /:dealId                                  | {"success":false,"error":"DD checklist not found"}
+PASS | POST   | 200 | deal-validate: POST validate                                 | 
+PASS | GET    | 200 | deal-validate: GET status                                    | 
+PASS | POST   | 200 | deal-validate: POST validate-all                             | 
+PASS | GET    | 200 | comp-set: GET                                                | 
+PASS | POST   | 200 | comp-set: POST discover                                      | 
+PASS | GET    | 200 | competition: GET competitors                                 | 
+PASS | GET    | 200 | competition: GET advantage-matrix                            | 
+PASS | GET    | 200 | competition: GET waitlist-properties                         | 
+PASS | GET    | 200 | competition: GET aging-competitors                           | 
+PASS | GET    | 200 | competition: GET insights                                    | 
+PASS | GET    | 200 | competition: GET export                                      | 
+PASS | GET    | 200 | competition: GET ranking                                     | 
+PASS | GET    | 200 | unit-mix: GET status                                         | 
+WARN | POST   | 400 | unit-mix: POST set                                           | {"success":false,"error":"Unit mix data required"}
+PASS | POST   | 200 | unit-mix: POST apply                                         | 
+WARN | POST   | 400 | unit-mix: POST dev-path/select                               | {"success":false,"error":"No development paths available"}
+PASS | GET    | 200 | dev-scenarios: GET /                                         | 
+PASS | GET    | 200 | dev-scenarios: GET hbu                                       | 
+PASS | GET    | 200 | dev-scenarios: GET recommendations                           | 
+PASS | GET    | 200 | dev-scenarios: GET lookup-district                           | 
+PASS | GET    | 200 | dev-scenarios: GET regulatory-risk                           | 
+PASS | GET    | 200 | dev-scenarios: GET timeline-intel                            | 
+PASS | GET    | 200 | dev-scenarios: GET rezone-analysis                           | 
+PASS | GET    | 200 | dev-scenarios: GET envelope-enrichment                       | 
+PASS | POST   | 201 | dev-scenarios: POST create                                   | 
+PASS | POST   | 200 | dev-scenarios: POST deactivate-all                           | 
+WARN | POST   | 400 | bench-timeline: POST simulate                                | {"error":"Required: dealId, county, state, developmentPath, unitCount"}
+WARN | GET    | 400 | bench-timeline: GET benchmarks                               | {"error":"Required: county, state"}
+WARN | POST   | 400 | bench-timeline: POST compare-paths                           | {"error":"Required: dealId, county, state, unitCount"}
+WARN | GET    | 400 | bench-timeline: GET detailed-steps                           | {"error":"Required: county, state"}
+WARN | GET    | 400 | bench-timeline: GET jurisdiction-comparison                  | {"error":"Required: state"}
+WARN | GET    | 404 | m26-tax: GET projection                                      | {"success":false,"error":"No tax projection found for this deal"}
+WARN | POST   | 400 | m26-tax: POST projection                                     | {"success":false,"error":"purchase_price and units are required"}
+PASS | GET    | 200 | m26-tax: GET summary                                         | 
+WARN | GET    | 404 | tax-comp: GET                                                | {"success":false,"error":"No tax comp analysis found for this deal"}
+PASS | POST   | 200 | tax-comp: POST                                               | 
+WARN | GET    | 404 | tax-comp: GET summary                                        | {"success":false,"error":"No tax comp analysis found for this deal"}
+PASS | GET    | 200 | f40: GET market                                              | 
+PASS | GET    | 200 | f40: GET rankings                                            | 
+WARN | GET    | 400 | f40: GET comp-set                                            | {"success":false,"error":"submarket query parameter is required"}
+PASS | POST   | 200 | f40: POST calculate                                          | 
+PASS | GET    | 200 | opportunity: GET detect                                      | 
+PASS | GET    | 200 | opportunity: GET rankings                                    | 
+WARN | GET    | 404 | cycle-intel: GET phase                                       | {"success":false,"error":"No cycle data found for this market"}
+WARN | GET    | 400 | cycle-intel: GET phases                                      | {"success":false,"error":"marketIds query parameter required"}
+WARN | GET    | 404 | cycle-intel: GET divergence                                  | {"success":false,"error":"No divergence data found for this market"}
+PASS | GET    | 200 | cycle-intel: GET rate-env                                    | 
+PASS | GET    | 200 | cycle-intel: GET rate-history                                | 
+PASS | GET    | 200 | cycle-intel: GET indicators                                  | 
+PASS | GET    | 200 | cycle-intel: GET patterns                                    | 
+PASS | GET    | 200 | cycle-intel: GET predict/rent                                | 
+PASS | GET    | 200 | cycle-intel: GET predict/value                               | 
+PASS | GET    | 200 | cycle-intel: GET predict/cap                                 | 
+PASS | GET    | 200 | cycle-intel: GET predict/chain                               | 
+WARN | GET    | 404 | cycle-intel: GET strategy                                    | {"success":false,"error":"No strategy data found for this market"}
+PASS | GET    | 200 | cycle-intel: GET const-cost                                  | 
+PASS | GET    | 200 | cycle-intel: GET macro-risk                                  | 
+PASS | GET    | 200 | cycle-intel: GET metrics-hist                                | 
+PASS | GET    | 200 | cycle-intel: GET deal-perf                                   | 
+PASS | GET    | 200 | cycle-intel: test rate-env                                   | 
+PASS | GET    | 200 | cycle-intel: test indicators                                 | 
+WARN | GET    | 400 | opus: GET conversations                                      | {"error":"dealId required"}
+PASS | POST   | 201 | opus: POST conversations                                     | 
+WARN | GET    | 400 | opus: GET proforma-versions                                  | {"error":"dealId required"}
+PASS | GET    | 200 | data-lib: GET /                                              | 
+PASS | GET    | 200 | data-lib: GET comparables                                    | 
+WARN | GET    | 404 | deal-timeline: GET deal                                      | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | deal-timeline: GET benchmarks                                | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | deal-timeline: GET jurisdiction                              | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | deal-timeline: GET carrying-costs                            | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/

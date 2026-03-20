@@ -64,6 +64,7 @@ import {
   OpportunityAlertsPage,
 } from './pages/CompetitiveIntelligence';
 import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
+import M08StrategyControlPanel from './pages/M08StrategyControlPanel';
 import TerminalPage from './pages/TerminalPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
 
@@ -190,8 +191,8 @@ function AppContent() {
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
 
-          {/* Strategy Builder */}
-          <Route path="/strategies" element={<Navigate to="/deals" replace />} />
+          {/* M08 Strategy Control Panel */}
+          <Route path="/strategies" element={<M08StrategyControlPanel />} />
           <Route path="/strategies/:id" element={<StrategyBuilderPage />} />
 
           {/* Opportunities (F7) */}

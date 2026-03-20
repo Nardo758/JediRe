@@ -177,15 +177,13 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   // Sub-tab state
   const [activeSubTab, setActiveSubTab] = useState<'scores' | 'heatmap' | 'roi' | 'custom'>('scores');
 
-  // Custom strategies for CustomScreenTab
-  interface CustomStrategyScore {
-    strategyId: string;
-    strategyName: string;
-    score: number;
-    matched: boolean;
-    conditionResults: Array<{ conditionId: string; metricId: string; passed: boolean; score: number }>;
-  }
-  const [customStrategyScores, setCustomStrategyScores] = useState<CustomStrategyScore[]>([]);
+  // M08 real arbitrage result from backend
+  const [m08Arbitrage, setM08Arbitrage] = useState<{
+    winning_strategy_name: string | null;
+    runner_up_strategy_name: string | null;
+    delta: number;
+    arbitrage_detected: boolean;
+  } | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLiveData, setIsLiveData] = useState(false);
@@ -354,6 +352,27 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
     return () => { cancelled = true; };
   }, [activeTab, deal.id]);
 
+  // Fetch M08 real arbitrage on mount
+  useEffect(() => {
+    if (!deal.id) return;
+    let cancelled = false;
+    apiClient.get(`/api/v1/deals/${deal.id}/arbitrage`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.success) {
+          const arb = res.data.arbitrage;
+          setM08Arbitrage({
+            winning_strategy_name: arb.winning_strategy_name || null,
+            runner_up_strategy_name: arb.runner_up_strategy_name || null,
+            delta: arb.delta || 0,
+            arbitrage_detected: arb.arbitrage_detected || false,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [deal.id]);
+
   // Column visibility based on deal project type
   const dealPT = (deal.projectType || '').toLowerCase();
   const showBTS = dealPT !== 'existing';
@@ -501,8 +520,20 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
       {/* ======== SIGNALS TAB: Strategy Intelligence Layer ======== */}
       {isPipeline && activeTab === 'signals' && (
         <>
-          {/* Arbitrage Alert Banner (conditional) */}
-          {arbitrageAlert.show && <ArbitrageAlertBanner alert={arbitrageAlert} />}
+          {/* Arbitrage Alert Banner — real M08 data preferred, mock fallback */}
+          {m08Arbitrage?.arbitrage_detected ? (
+            <ArbitrageAlertBanner alert={{
+              ...mockArbitrageAlert,
+              show: true,
+              recommended: m08Arbitrage.winning_strategy_name || 'Recommended',
+              recommendedLabel: m08Arbitrage.winning_strategy_name || 'Recommended',
+              defaultLabel: m08Arbitrage.runner_up_strategy_name || 'Current',
+              delta: m08Arbitrage.delta,
+              insight: `M08 arbitrage engine detected a ${m08Arbitrage.delta.toFixed(1)}-point strategy gap.`,
+            }} />
+          ) : (
+            arbitrageAlert.show && <ArbitrageAlertBanner alert={arbitrageAlert} />
+          )}
 
           {/* Strategy Analysis Tabs */}
           <div className="bg-[#0d1f35] rounded-lg  border border-[#1e2a3d]">

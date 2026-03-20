@@ -1,0 +1,141 @@
+PASS | GET    | 200 | zoning-tri: parcels/stats                                    | 
+PASS | GET    | 200 | zoning-tri: parcels/nearby                                   | 
+PASS | GET    | 200 | zoning-tri: zoning/calibration                               | 
+WARN | GET    | 404 | zoning-tri: triangulation/:dealId                            | {"error":"No triangulation found for this deal"}
+WARN | GET    | 404 | zoning-tri: chain/:dealId                                    | {"error":"No chain result found for this deal"}
+PASS | GET    | 200 | zoning-tri: recommendations/:dealId                          | 
+PASS | GET    | 200 | zoning-tri: nearby-entitlements                              | 
+PASS | GET    | 200 | zoning-tri: deals/properties                                 | 
+WARN | POST   | 400 | zoning-tri: triangulate                                      | {"error":"municipality and state are required"}
+PASS | GET    | 200 | zoning-cap: GET                                              | 
+PASS | POST   | 200 | zoning-cap: POST                                             | 
+PASS | GET    | 200 | zoning-cap: districts/lookup                                 | 
+PASS | GET    | 200 | zoning-cap: districts/by-code                                | 
+PASS | GET    | 200 | zoning-prof: GET                                             | 
+PASS | POST   | 200 | zoning-prof: resolve                                         | 
+WARN | PUT    | 400 | zoning-prof: overrides                                       | {"error":"Must provide overrides object"}
+WARN | POST   | 400 | zoning-prof: overlays                                        | {"error":"Must provide overlay name and modifications"}
+PASS | GET    | 200 | zoning-intel: GET /                                          | 
+PASS | POST   | 000 | zoning-intel: query                                          | 
+WARN | POST   | 400 | zoning-intel: analyze                                        | {"success":false,"error":"Could not resolve required data from property boundary. Missing: municipality, districtCode, l
+PASS | GET    | 200 | zoning-intel: resolve/:dealId                                | 
+PASS | GET    | 200 | zoning-intel: constraints/:dealId                            | 
+PASS | GET    | 200 | zoning-intel: analyses                                       | 
+WARN | POST   | 400 | zoning-intel: use-check                                      | {"success":false,"error":"Required: districtCode, municipality, useType"}
+WARN | POST   | 400 | zoning-intel: parking-calc                                   | {"success":false,"error":"Required: districtCode, municipality"}
+PASS | GET    | 200 | zoning-intel: maturity/:municipality                         | 
+PASS | GET    | 200 | zoning-learn: corrections                                    | 
+PASS | GET    | 200 | zoning-learn: precedents/search                              | 
+WARN | GET    | 400 | zoning-learn: precedents/patterns                            | {"success":false,"error":"municipality is required"}
+PASS | GET    | 200 | zoning-learn: calibration/:municipality                      | 
+PASS | GET    | 200 | zoning-learn: confidence/:municipality                       | 
+PASS | GET    | 200 | zoning-learn: maturity                                       | 
+PASS | GET    | 200 | zoning-learn: maturity/:municipality                         | 
+PASS | GET    | 200 | zoning-learn: credibility/:userId                            | 
+WARN | POST   | 400 | zoning-verify: verify                                        | {"error":"gisZoning and jurisdictionId are required"}
+PASS | GET    | 200 | zoning-verify: deal/:dealId                                  | 
+PASS | POST   | 200 | zoning-analyze: geocode                                      | 
+WARN | POST   | 404 | zoning-analyze: lookup                                       | {"success":false,"error":"No zoning district found for these coordinates"}
+PASS | GET    | 200 | zoning-analyze: districts/:municipality                      | 
+WARN | POST   | 400 | zoning-analyze: analyze                                      | {"success":false,"error":"Validation failed","details":[{"path":"lot_size_sqft","message":"Invalid input: expected numbe
+WARN | POST   | 400 | building-env: POST                                           | {"error":"No land area available. Please draw a property boundary first."}
+PASS | GET    | 200 | building-env: property-type-configs                          | 
+PASS | GET    | 200 | dev-scenarios: hbu                                           | 
+PASS | GET    | 200 | dev-scenarios: regulatory-risk                               | 
+WARN | GET    | 404 | prop-boundary: GET                                           | {"error":"Boundary not found"}
+WARN | GET    | 404 | prop-boundary: export                                        | {"error":"Boundary not found"}
+WARN | GET    | 404 | prop-boundary: dev-capacity                                  | {"error":"No property boundary saved. Draw a boundary in the Property Boundary tab first."}
+PASS | GET    | 200 | prop-types: GET /                                            | 
+WARN | GET    | 404 | prop-types: /:typeKey                                        | {"success":false,"error":"Property type not found"}
+PASS | GET    | 200 | prop-type-strat: GET /                                       | 
+PASS | GET    | 200 | prop-type-strat: /:typeKey                                   | 
+PASS | GET    | 200 | prop-proxy: health                                           | 
+PASS | GET    | 200 | prop-proxy: api-health                                       | 
+PASS | GET    | 200 | prop-metrics: benchmarks                                     | 
+PASS | GET    | 200 | prop-metrics: submarkets                                     | 
+PASS | GET    | 200 | prop-metrics: owners/top                                     | 
+WARN | GET    | 400 | prop-metrics: owners/search                                  | {"error":"name query required"}
+PASS | GET    | 200 | prop-metrics: rent-comps                                     | 
+PASS | GET    | 200 | prop-metrics: rent-comps/summary                             | 
+PASS | GET    | 200 | prop-scoring: seller-propensity                              | 
+PASS | GET    | 200 | prop-scoring: value-add                                      | 
+PASS | GET    | 200 | prop-scoring: hidden-gems                                    | 
+PASS | GET    | 200 | prop-scoring: cap-rates                                      | 
+PASS | GET    | 200 | prop-scoring: tax-burden                                     | 
+PASS | GET    | 200 | prop-scoring: supply-intelligence                            | 
+PASS | GET    | 200 | prop-scoring: design-inputs                                  | 
+PASS | GET    | 200 | prop-analytics: connection/:id                               | 
+PASS | GET    | 200 | site-intel: GET                                              | 
+PASS | POST   | 200 | site-intel: POST                                             | 
+PASS | GET    | 200 | geo-context: GET /:id                                        | 
+PASS | GET    | 200 | geo-context: deals GET                                       | 
+PASS | GET    | 200 | geo-context: submarkets/lookup                               | 
+PASS | GET    | 200 | geo-context: msas/lookup                                     | 
+PASS | GET    | 200 | entitlements: GET /                                          | 
+PASS | GET    | 200 | entitlements: kanban                                         | 
+PASS | GET    | 200 | entitlements: deal/:dealId                                   | 
+PASS | GET    | 200 | reg-alerts: GET /                                            | 
+PASS | GET    | 200 | reg-alerts: categories                                       | 
+WARN | GET    | 400 | reg-alerts: strategy-matrix                                  | {"success":false,"error":"municipality is required"}
+PASS | GET    | 200 | reg-alerts: municipality/:name                               | 
+WARN | GET    | 400 | municode: resolve                                            | {"error":"Required: municipality, section"}
+PASS | GET    | 200 | municode: sections/:id                                       | 
+PASS | GET    | 200 | municode: chapter/:id                                        | 
+PASS | GET    | 200 | design-refs: GET /:dealId                                    | 
+PASS | GET    | 200 | custom-strat: GET /                                          | 
+PASS | GET    | 200 | data-upload: actuals                                         | 
+PASS | GET    | 200 | data-upload: uploads                                         | 
+PASS | GET    | 200 | upload-templates: GET /                                      | 
+PASS | GET    | 200 | uploads: templates                                           | 
+PASS | POST   | 200 | comps: search                                                | 
+PASS | POST   | 200 | comps: search/v2                                             | 
+PASS | GET    | 200 | comps: summary                                               | 
+PASS | GET    | 200 | supply: deals/:id/supply                                     | 
+PASS | GET    | 200 | supply: events                                               | 
+PASS | GET    | 200 | demand: deals/:id/demand                                     | 
+WARN | GET    | 404 | demand: events                                               | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+PASS | GET    | 200 | trade-areas: GET /                                           | 
+PASS | GET    | 200 | trade-areas: library                                         | 
+WARN | POST   | 400 | isochrone: generate                                          | {"error":"Missing required fields: lng, lat, minutes, profile"}
+WARN | POST   | 400 | traffic-ai: generate                                         | {"error":"Latitude and longitude are required"}
+PASS | GET    | 200 | traffic-data: adt/stations                                   | 
+PASS | GET    | 200 | traffic-data: adt/nearest                                    | 
+WARN | GET    | 400 | traffic-data: realtime                                       | {"error":"lat and lng query parameters are required"}
+PASS | GET    | 200 | traffic-comps: /:dealId                                      | 
+PASS | GET    | 200 | traffic-comps: /:dealId/averages                             | 
+PASS | GET    | 200 | traffic-comps: proxy-candidates                              | 
+PASS | GET    | 200 | traffic-pred: model/performance                              | 
+PASS | GET    | 200 | traffic-pred: calibration/active                             | 
+PASS | GET    | 200 | traffic-pred: validation/errors                              | 
+WARN | GET    | 404 | leasing-traffic: predict/:id                                 | {"error":"Property not found","property_id":"e044db04-439b-4442-82df-b36a840f2fd8"}
+WARN | GET    | 404 | leasing-traffic: forecast/:id                                | {"error":"Property not found","property_id":"e044db04-439b-4442-82df-b36a840f2fd8"}
+WARN | GET    | 404 | leasing-traffic: optimize/:id                                | {"error":"Property not found","property_id":"e044db04-439b-4442-82df-b36a840f2fd8"}
+PASS | GET    | 200 | leasing-traffic: historical/:id                              | 
+PASS | GET    | 200 | correlation: report                                          | 
+PASS | GET    | 200 | correlation: summary                                         | 
+WARN | GET    | 401 | market-intel: preferences                                    | {"error":"Unauthorized"}
+WARN | GET    | 401 | market-intel: overview                                       | {"error":"Unauthorized"}
+WARN | GET    | 401 | market-intel: compare                                        | {"error":"Unauthorized"}
+PASS | GET    | 200 | market-intel: properties                                     | 
+WARN | GET    | 401 | market-intel: /:id/summary                                   | {"error":"Unauthorized"}
+WARN | GET    | 401 | market-intel: /:id/alerts                                    | {"error":"Unauthorized"}
+PASS | GET    | 200 | market-enh: submarkets/detailed                              | 
+WARN | GET    | 400 | market-enh: compare-data                                     | {"error":"markets parameter required (comma-separated)"}
+PASS | GET    | 200 | market-enh: /:id/owners                                      | 
+WARN | GET    | 404 | market-res: report/:dealId                                   | {"error":"No market research report found","message":"Generate a report first using POST /generate/:dealId"}
+PASS | GET    | 200 | market-res: metrics/:dealId                                  | 
+WARN | GET    | 404 | market-res: intelligence/:dealId                             | {"error":"No market intelligence found","message":"Generate a market research report first"}
+PASS | GET    | 200 | market-res: sources/:dealId                                  | 
+PASS | GET    | 200 | market-res: analysis-input/:dealId                           | 
+PASS | GET    | 200 | market-res: status/:dealId                                   | 
+PASS | GET    | 200 | deal-mkt-intel: /:dealId                                     | 
+PASS | GET    | 200 | news: events                                                 | 
+PASS | GET    | 200 | news: alerts                                                 | 
+PASS | GET    | 200 | news: dashboard                                              | 
+PASS | GET    | 200 | news: network                                                | 
+PASS | GET    | 200 | intelligence: stats                                          | 
+PASS | GET    | 200 | intelligence: docs/pending                                   | 
+PASS | GET    | 200 | intelligence: docs/flagged                                   | 
+PASS | GET    | 200 | intelligence: patterns                                       | 
+PASS | GET    | 200 | intelligence: user/stats                                     | 
+PASS | GET    | 200 | intelligence: user/preferences                               | 

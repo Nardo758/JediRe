@@ -28,7 +28,7 @@ function scoreToVerdict(score: number): { verdict: string; verdictColor: string 
 
 function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
   const signalDefs = [
-    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-900/10', moduleLink: 'demand' },
+    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-900/10', moduleLink: 'market-intelligence' },
     { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-900/10', moduleLink: 'supply' },
     { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-900/10', moduleLink: 'market-intelligence' },
     { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-900/10', moduleLink: 'market-intelligence' },
@@ -1488,16 +1488,19 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         </div>
         <div style={{ background: BT.bgCard, padding: 14 }}>
           <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 10, ...bMono }}>SITE DILIGENCE ITEMS</div>
-          {(deal?.stateData?.ddItems || [
-            { l: 'Site Control / Title', done: true },
-            { l: 'Zoning Pre-Application', done: true },
-            { l: 'Geotech / Survey', done: false },
-            { l: 'HOA / CDD Review', done: false },
-            { l: 'Utility Capacity Confirm', done: true },
-            { l: 'Soft Cost Budget', done: false },
-          ]).map((item: any, i: number) => (
-            <DDItem key={i} label={item.l} done={item.done} />
-          ))}
+          {deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0
+            ? deal.stateData.ddItems.map((item: any, i: number) => (
+                <DDItem key={i} label={item.l} done={item.done} />
+              ))
+            : (
+              <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>No diligence items added</p>
+                <button onClick={() => navigateToTab('due-diligence')} style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}>
+                  Add Site Diligence Items →
+                </button>
+              </div>
+            )
+          }
         </div>
       </div>
     </div>
