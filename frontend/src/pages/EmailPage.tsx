@@ -235,8 +235,9 @@ export function EmailPage() {
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
   const [propPanelOpen, setPropPanelOpen] = useState(true);
   const [newsPanelOpen, setNewsPanelOpen] = useState(true);
-  const [composeMode, setComposeMode] = useState<null | 'reply' | 'reply-all' | 'forward'>(null);
+  const [composeMode, setComposeMode] = useState<null | 'reply' | 'reply-all' | 'forward' | 'new'>(null);
   const [replyTo, setReplyTo] = useState('');
+  const [replySubject, setReplySubject] = useState('');
   const [replyBody, setReplyBody] = useState('');
   const [replyCc, setReplyCc] = useState('');
   const [replySending, setReplySending] = useState(false);
@@ -518,6 +519,7 @@ export function EmailPage() {
 
   const filteredEmails = useMemo(() => {
     let result = emails;
+    if (activeView === 'tasks') result = result.filter(e => e.is_flagged || e.deal_id);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(e =>
@@ -531,7 +533,7 @@ export function EmailPage() {
     if (activeFilter === 'attachments') result = result.filter(e => e.has_attachments);
     if (activeFilter === 'critical') result = result.filter(e => e.is_flagged || e.deal_id);
     return result;
-  }, [emails, searchQuery, activeFilter]);
+  }, [emails, searchQuery, activeFilter, activeView]);
 
   const selectedEmail = useMemo(() =>
     emails.find(e => e.id === selectedEmailId) || null
@@ -561,11 +563,13 @@ export function EmailPage() {
   }, [emails]);
 
   const summaryStats = useMemo(() => {
+    const now = Date.now();
+    const weekMs = 7 * 24 * 60 * 60 * 1000;
     const newOpps = emails.filter(e => classifyEmail(e) === 'new-opportunity').length;
     const dealEvents = emails.filter(e => classifyEmail(e) === 'deal-event').length;
-    const deadlines = emails.filter(e => e.is_flagged).length;
+    const deadlines = emails.filter(e => e.is_flagged && (now - new Date(e.received_at || 0).getTime()) < weekMs).length;
     const withDocs = emails.filter(e => e.has_attachments).length;
-    const tasksCreated = emails.filter(e => e.deal_id).length;
+    const tasksCreated = emails.filter(e => e.is_flagged && e.deal_id).length;
     return [
       { label: "New Opportunities", value: String(newOpps), color: T.accent.green },
       { label: "Deal Events", value: String(dealEvents), color: T.accent.blue },
@@ -691,7 +695,7 @@ export function EmailPage() {
             Accounts
           </button>
           <button
-            onClick={() => { setComposeMode('reply'); setReplyTo(''); setReplyBody(''); setReplyCc(''); setSelectedEmailId(null); }}
+            onClick={() => { setComposeMode('new'); setReplyTo(''); setReplyBody(''); setReplyCc(''); setSelectedEmailId(null); }}
             style={{
               background: T.accent.blue, border: "none", borderRadius: 6,
               color: "#fff", fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600,
@@ -823,9 +827,6 @@ export function EmailPage() {
                           <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.accent.blue, flexShrink: 0 }} />
                         )}
                       </div>
-                      <span style={{ fontSize: 10, color: T.text.tertiary }}>
-                        {extractCompany(email.from_address)}
-                      </span>
                     </div>
                   </div>
 
@@ -855,7 +856,29 @@ export function EmailPage() {
         </div>
 
         <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, overflow: "hidden" }}>
-          {selectedEmail && selectedDetail ? (
+          {composeMode === 'new' ? (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column" as const, overflow: "hidden" }}>
+              <div style={{ padding: "16px 24px", borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: T.text.primary }}>New Message</h2>
+                <button onClick={() => { setComposeMode(null); setReplyBody(''); setReplyTo(''); setReplyCc(''); }} style={{ background: "transparent", border: "none", color: T.text.tertiary, fontSize: 18, cursor: "pointer" }}>✕</button>
+              </div>
+              <div style={{ flex: 1, padding: "20px 24px", display: "flex", flexDirection: "column" as const, gap: 12 }}>
+                <div style={{ borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 10 }}>
+                  <input value={replyTo} onChange={e => setReplyTo(e.target.value)} placeholder="To:" style={{ width: "100%", background: "transparent", border: "none", color: T.text.primary, fontSize: 13, fontFamily: FONTS.sans, outline: "none" }} />
+                </div>
+                <div style={{ borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 10 }}>
+                  <input value={replySubject} onChange={e => setReplySubject(e.target.value)} placeholder="Subject:" style={{ width: "100%", background: "transparent", border: "none", color: T.text.primary, fontSize: 13, fontFamily: FONTS.sans, outline: "none" }} />
+                </div>
+                <textarea value={replyBody} onChange={e => setReplyBody(e.target.value)} placeholder="Write your message..." style={{ flex: 1, background: "transparent", border: "none", color: T.text.primary, fontSize: 13, fontFamily: FONTS.sans, outline: "none", resize: "none" as const, minHeight: 300, lineHeight: 1.6 }} autoFocus />
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                  <button onClick={() => { setComposeMode(null); setReplyBody(''); setReplyTo(''); setReplyCc(''); }} style={{ padding: "8px 16px", background: T.bg.tertiary, border: `1px solid ${T.border.subtle}`, borderRadius: 6, color: T.text.secondary, fontSize: 12, fontFamily: FONTS.sans, cursor: "pointer" }}>Discard</button>
+                  <button disabled={!replyBody.trim() || !replyTo.trim() || replySending} onClick={async () => { setReplySending(true); try { await new Promise(r => setTimeout(r, 800)); setComposeMode(null); setReplyBody(''); setReplyTo(''); setReplyCc(''); } catch {} finally { setReplySending(false); } }} style={{ padding: "8px 20px", background: replyBody.trim() && replyTo.trim() ? T.accent.green : T.bg.tertiary, border: "none", borderRadius: 6, color: replyBody.trim() && replyTo.trim() ? "#fff" : T.text.tertiary, fontSize: 12, fontFamily: FONTS.sans, fontWeight: 600, cursor: replyBody.trim() && replyTo.trim() ? "pointer" : "not-allowed" }}>
+                    {replySending ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : selectedEmail && selectedDetail ? (
             <>
               <div style={{ padding: "16px 24px", borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1368,7 +1391,7 @@ export function EmailPage() {
                   <div style={{ textAlign: "center" as const, padding: 12, fontSize: 10, color: T.text.tertiary }}>Loading intelligence...</div>
                 )}
                 <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 10, marginTop: 4, textTransform: "uppercase" as const }}>Quick Actions</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                <div style={{ display: "flex", flexDirection: "column" as const, gap: 4, marginBottom: 8 }}>
                   {[
                     { label: "Link to Deal", icon: "\uD83D\uDD17", color: T.accent.blue, action: handleLinkToDeal },
                     { label: "Create Task", icon: "\u2713", color: T.accent.cyan, action: () => handleExecuteAction() },
@@ -1401,17 +1424,17 @@ export function EmailPage() {
                     }},
                   ].map((act, i) => (
                     <button key={i} onClick={act.action} style={{
-                      display: "flex", flexDirection: "column" as const, alignItems: "flex-start",
-                      gap: 4, padding: "10px 10px",
+                      display: "flex", alignItems: "center", gap: 10, padding: "9px 12px",
                       background: T.bg.card, border: `1px solid ${T.border.subtle}`,
-                      borderRadius: 7, cursor: "pointer", textAlign: "left" as const,
-                      transition: "border-color 0.12s",
+                      borderRadius: 6, cursor: "pointer", textAlign: "left" as const,
+                      transition: "border-color 0.12s", width: "100%",
                     }}
                       onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = act.color + '60'; }}
                       onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = T.border.subtle; }}
                     >
-                      <span style={{ fontSize: 16, lineHeight: 1 }}>{act.icon}</span>
-                      <span style={{ fontSize: 10, fontFamily: FONTS.sans, color: T.text.primary, fontWeight: 500, lineHeight: 1.3 }}>{act.label}</span>
+                      <span style={{ fontSize: 14, lineHeight: 1, flexShrink: 0 }}>{act.icon}</span>
+                      <span style={{ flex: 1, fontSize: 11, fontFamily: FONTS.sans, color: T.text.primary, fontWeight: 500 }}>{act.label}</span>
+                      <span style={{ fontSize: 9, color: T.text.tertiary }}>›</span>
                     </button>
                   ))}
                 </div>
@@ -1477,17 +1500,17 @@ export function EmailPage() {
                     </div>
                   )}
                 </div>
-                {teamActivity.length > 0 && (
-                  <div style={{ marginTop: 12, marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 8, textTransform: "uppercase" as const }}>Recent Activity</div>
-                    {teamActivity.map((event: any, i: number) => (
-                      <div key={i} style={{ padding: "5px 10px", borderLeft: `2px solid ${T.accent.blue}40`, marginBottom: 4 }}>
-                        <div style={{ fontSize: 10, color: T.text.secondary }}>{event.actor_name} {event.action}</div>
-                        <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{event.created_at ? formatDate(event.created_at) : ''}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div style={{ marginTop: 12, marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 8, textTransform: "uppercase" as const }}>Recent Activity</div>
+                  {teamActivity.length > 0 ? teamActivity.map((event, i) => (
+                    <div key={i} style={{ padding: "5px 10px", borderLeft: `2px solid ${T.accent.blue}40`, marginBottom: 4 }}>
+                      <div style={{ fontSize: 10, color: T.text.secondary }}>{event.actor_name} {event.action}</div>
+                      <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{event.created_at ? formatDate(event.created_at) : ''}</div>
+                    </div>
+                  )) : (
+                    <div style={{ fontSize: 10, color: T.text.tertiary, textAlign: "center" as const, padding: "8px 0" }}>No recent activity</div>
+                  )}
+                </div>
                 <button onClick={() => { window.location.href = `/dashboard/deals/${selectedEmail.deal_id}`; }} style={{
                   width: "100%", padding: "9px",
                   background: `${T.accent.blue}10`, border: `1px solid ${T.accent.blue}30`,
