@@ -927,8 +927,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
     if (unitMixProgram?.units && Object.keys(unitMixProgram.units).length > 0) {
       const totalU = unitMixProgram.totalUnits || buildingConfig.units;
       return Object.entries(unitMixProgram.units).map(([key, u]) => {
-        const pctNum = Math.round((u.mix || 0) * 100);
-        const unitCount = Math.round(totalU * (u.mix || 0));
+        const pctNum = Math.round(u.mix || 0);
+        const unitCount = Math.round(totalU * ((u.mix || 0) / 100));
         const psf = u.sf > 0 ? u.rent / u.sf : 0;
         return {
           type: labels[key] || key,
@@ -1229,7 +1229,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <div style={{ textAlign: 'center', padding: '24px 0' }}>
           <p style={{ fontSize: 11, color: BT.ts, marginBottom: 4, ...bSans }}>No unit mix data available</p>
           <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
-          <button onClick={() => navigateToTab('market')} style={{ fontSize: 10, color: BT.cyanL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+          <button onClick={() => navigateToTab('unit-mix-intelligence')} style={{ fontSize: 10, color: BT.cyanL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
             Configure Unit Mix →
           </button>
         </div>
