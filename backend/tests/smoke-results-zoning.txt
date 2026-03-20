@@ -1,0 +1,230 @@
+JediRe Zoning/Property/Design Smoke Test Results (Phase 2)
+Run: Fri Mar 20 01:39:40 AM UTC 2026
+BASE_URL: http://localhost:4000
+DEAL_ID : 12eb9e11-3b2d-44d5-9f59-877a76344c18
+PROP_ID : 750a68ce-d0cf-4d3e-b184-82335a774b9c
+MUNI_ID : montgomery-al
+
+PASS=87  WARN=77  FAIL=0  TOTAL=164
+
+
+── INLINE ZONING ANALYZE ──
+WARN 401  GET    /api/v1/geocode?address=123+Main+St+Atlanta+GA
+WARN 401  GET    /api/v1/zoning/lookup?address=123+Main+St+Atlanta+GA
+PASS 200  GET    /api/v1/zoning/districts/atlanta-ga
+WARN 400  POST   /api/v1/analyze
+
+── BUILDING ENVELOPE ──
+PASS 200  GET    /api/v1/property-type-configs
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/building-envelope
+
+── PROPERTY PROXY (external worker — 5xx expected if worker down) ──
+WARN 401  GET    /api/v1/properties/health
+WARN 401  GET    /api/v1/properties/api-health
+WARN 401  POST   /api/v1/properties/scrape
+
+── PROPERTY METRICS ──
+WARN 404  GET    /api/v1/property-metrics/property/750a68ce-d0cf-4d3e-b184-82335a774b9c/metrics
+WARN 404  GET    /api/v1/property-metrics/property/750a68ce-d0cf-4d3e-b184-82335a774b9c/density
+PASS 200  GET    /api/v1/property-metrics/neighborhoods/benchmarks
+PASS 200  GET    /api/v1/property-metrics/submarkets/comparison
+PASS 200  GET    /api/v1/property-metrics/owners/top
+WARN 400  GET    /api/v1/property-metrics/owners/search?q=Smith
+PASS 200  GET    /api/v1/property-metrics/rent-comps
+PASS 200  GET    /api/v1/property-metrics/rent-comps/summary
+
+── PROPERTY SCORING ──
+PASS 200  GET    /api/v1/property-scoring/seller-propensity
+PASS 200  GET    /api/v1/property-scoring/value-add
+PASS 200  GET    /api/v1/property-scoring/hidden-gems
+PASS 200  GET    /api/v1/property-scoring/cap-rates
+PASS 200  GET    /api/v1/property-scoring/tax-burden
+PASS 200  GET    /api/v1/property-scoring/supply-intelligence
+PASS 200  GET    /api/v1/property-scoring/design-inputs
+
+── ZONING CAPACITY — Deal ──
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-capacity
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-capacity
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-capacity/auto-fill
+PASS 200  DELETE /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-capacity
+
+── ZONING CAPACITY — Districts ──
+PASS 200  GET    /api/v1/zoning-districts/lookup?municipality=atlanta&state=GA
+PASS 200  GET    /api/v1/zoning-districts/by-code?code=R-4&municipality=atlanta
+PASS 200  GET    /api/v1/zoning-districts/f3a91101-29f1-4057-b360-54aa78a9c824/rezone-history
+PASS 200  GET    /api/v1/zoning-districts/f3a91101-29f1-4057-b360-54aa78a9c824
+PASS 200  GET    /api/v1/zoning-districts/f3a91101-29f1-4057-b360-54aa78a9c824/detail
+
+── ZONING CAPACITY — Municipalities ──
+PASS 200  GET    /api/v1/municipalities
+PASS 200  GET    /api/v1/municipalities/montgomery-al
+
+── ZONING CAPACITY — Lookup / Misc ──
+PASS 200  GET    /api/v1/zoning/lookup?address=123+Main+St+Atlanta+GA
+WARN 400  GET    /api/v1/zoning/parcel-lookup?parcelId=12345
+PASS 200  GET    /api/v1/reverse-geocode?lat=33.7490&lng=-84.3880
+PASS 200  POST   /api/v1/zoning-capacity/reconcile
+WARN 400  POST   /api/v1/zoning-agent/retrieve
+
+── ZONING INTELLIGENCE ──
+PASS 200  GET    /api/v1/zoning-intelligence/
+WARN 400  POST   /api/v1/zoning-intelligence/query
+WARN 400  POST   /api/v1/zoning-intelligence/analyze
+PASS 200  GET    /api/v1/zoning-intelligence/resolve/12eb9e11-3b2d-44d5-9f59-877a76344c18
+PASS 200  GET    /api/v1/zoning-intelligence/constraints/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  GET    /api/v1/zoning-intelligence/profile/CP/montgomery-al
+WARN 400  POST   /api/v1/zoning-intelligence/extract-profile
+WARN 400  POST   /api/v1/zoning-intelligence/use-check
+PASS 200  POST   /api/v1/zoning-intelligence/parking-calc
+PASS 200  GET    /api/v1/zoning-intelligence/maturity/atlanta
+PASS 200  GET    /api/v1/zoning-intelligence/analyses
+WARN 404  GET    /api/v1/zoning-intelligence/analyses/fake-analysis-id
+
+── ZONING LEARNING ──
+WARN 400  POST   /api/v1/zoning-learning/corrections
+PASS 200  GET    /api/v1/zoning-learning/corrections
+WARN 404  POST   /api/v1/zoning-learning/corrections/fake-corr-id/resolve
+PASS 200  POST   /api/v1/zoning-learning/precedents
+PASS 200  GET    /api/v1/zoning-learning/precedents/search?municipality=atlanta
+WARN 400  GET    /api/v1/zoning-learning/precedents/similar?dealId=12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 400  GET    /api/v1/zoning-learning/precedents/patterns
+WARN 400  POST   /api/v1/zoning-learning/outcomes
+PASS 200  GET    /api/v1/zoning-learning/calibration/montgomery-al
+PASS 200  GET    /api/v1/zoning-learning/confidence/montgomery-al
+PASS 200  GET    /api/v1/zoning-learning/maturity
+PASS 200  GET    /api/v1/zoning-learning/maturity/montgomery-al
+PASS 200  GET    /api/v1/zoning-learning/credibility/6253ba3f-d40d-4597-86ab-270c8397a857
+WARN 400  PUT    /api/v1/zoning-learning/credibility/6253ba3f-d40d-4597-86ab-270c8397a857/tier
+
+── ZONING VERIFICATION ──
+WARN 400  POST   /api/v1/zoning-verification/verify
+WARN 404  POST   /api/v1/zoning-verification/verify/00000000-0000-0000-0000-000000000099/confirm
+WARN 404  POST   /api/v1/zoning-verification/verify/00000000-0000-0000-0000-000000000099/flag
+WARN 400  POST   /api/v1/zoning-verification/verify/00000000-0000-0000-0000-000000000099/correct
+PASS 200  GET    /api/v1/zoning-verification/verify/deal/12eb9e11-3b2d-44d5-9f59-877a76344c18
+PASS 200  GET    /api/v1/zoning-verification/citations/atlanta-ga/CP
+PASS 200  GET    /api/v1/zoning-verification/citations/atlanta-ga
+PASS 200  GET    /api/v1/zoning-verification/sources/atlanta-ga
+
+── ZONING TRIANGULATION — Parcels ──
+WARN 400  POST   /api/v1/parcels/ingest/geojson
+WARN 400  POST   /api/v1/parcels/ingest/batch
+PASS 200  GET    /api/v1/parcels/stats
+PASS 200  GET    /api/v1/parcels/nearby?lat=33.749&lng=-84.388&radius=500
+WARN 400  GET    /api/v1/parcels/fake-parcel-id
+
+── ZONING TRIANGULATION — Zoning ──
+WARN 400  POST   /api/v1/zoning/triangulate
+WARN 404  GET    /api/v1/zoning/triangulation/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  POST   /api/v1/zoning/triangulation/fake-tri-id/confirm
+WARN 400  POST   /api/v1/zoning/outcome
+WARN 400  POST   /api/v1/zoning/calibrate/atlanta
+PASS 200  GET    /api/v1/zoning/calibration
+WARN 400  POST   /api/v1/zoning/chain/execute
+WARN 404  GET    /api/v1/zoning/chain/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  POST   /api/v1/zoning/recommendations/12eb9e11-3b2d-44d5-9f59-877a76344c18/analyze
+WARN 404  GET    /api/v1/zoning/recommendations/12eb9e11-3b2d-44d5-9f59-877a76344c18
+
+── ZONING TRIANGULATION — Entitlements / Properties ──
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/nearby-entitlements
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/properties
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/link
+PASS 200  DELETE /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c
+PASS 200  POST   /api/v1/admin/deal-property-autolink
+
+── ZONING PROFILE ──
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-profile
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-profile/resolve
+WARN 400  PUT    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-profile/overrides
+WARN 400  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-profile/overlays
+
+── DEVELOPMENT SCENARIOS ──
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/hbu
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/regulatory-risk-analysis
+PASS 202  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/timeline-intelligence
+PASS 202  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/recommendations
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios
+WARN 400  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/lookup-district?districtCode=R-4
+PASS 201  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios
+WARN 400  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/rezone-analysis
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/envelope-enrichment
+WARN 404  PUT    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/00000000-0000-0000-0000-000000000098
+WARN 404  PUT    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/00000000-0000-0000-0000-000000000098/sync
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/deactivate-all
+WARN 404  PUT    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/00000000-0000-0000-0000-000000000098/activate
+WARN 404  DELETE /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/scenarios/00000000-0000-0000-0000-000000000098
+
+── ENTITLEMENTS ──
+PASS 200  GET    /api/v1/entitlements
+PASS 200  GET    /api/v1/entitlements/kanban
+PASS 200  GET    /api/v1/entitlements/deal/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  GET    /api/v1/entitlements/00000000-0000-0000-0000-000000000097
+PASS 200  GET    /api/v1/entitlements/00000000-0000-0000-0000-000000000097/risk-factors
+WARN 400  POST   /api/v1/entitlements
+WARN 404  PATCH  /api/v1/entitlements/00000000-0000-0000-0000-000000000097
+WARN 404  DELETE /api/v1/entitlements/00000000-0000-0000-0000-000000000097
+WARN 400  POST   /api/v1/entitlements/00000000-0000-0000-0000-000000000097/milestones
+WARN 404  PATCH  /api/v1/entitlements/milestones/00000000-0000-0000-0000-000000000096
+WARN 400  POST   /api/v1/entitlements/sync/path-selected
+WARN 400  POST   /api/v1/entitlements/sync/status-changed
+PASS 200  GET    /api/v1/entitlements/sync/milestone-template/by-right
+
+── PROPERTY BOUNDARY ──
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/boundary
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/boundary
+PASS 200  DELETE /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/boundary
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/boundary/export
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/development-capacity
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-confirmation
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-confirmation
+
+── SITE INTELLIGENCE ──
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/site-intelligence
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/site-intelligence
+
+── DESIGN REFERENCES ──
+WARN 404  GET    /api/v1/design-references/file/fake-filename.jpg
+PASS 200  GET    /api/v1/design-references/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  GET    /api/v1/design-references/12eb9e11-3b2d-44d5-9f59-877a76344c18/00bc469c-44ae-404f-bad6-b50ecf9dd8f3
+WARN 404  PUT    /api/v1/design-references/12eb9e11-3b2d-44d5-9f59-877a76344c18/00bc469c-44ae-404f-bad6-b50ecf9dd8f3
+WARN 404  DELETE /api/v1/design-references/12eb9e11-3b2d-44d5-9f59-877a76344c18/00000000-0000-0000-0000-000000000099
+WARN 404  POST   /api/v1/design-references/12eb9e11-3b2d-44d5-9f59-877a76344c18/00000000-0000-0000-0000-000000000099/analyze
+
+── REGULATORY ALERTS ──
+PASS 200  GET    /api/v1/regulatory-alerts
+PASS 200  GET    /api/v1/regulatory-alerts/municipality/atlanta?state=GA
+PASS 200  GET    /api/v1/regulatory-alerts/strategy-matrix?municipality=atlanta&state=GA
+PASS 200  GET    /api/v1/regulatory-alerts/categories
+WARN 404  GET    /api/v1/regulatory-alerts/00000000-0000-0000-0000-000000000095
+PASS 201  POST   /api/v1/regulatory-alerts
+WARN 404  PATCH  /api/v1/regulatory-alerts/00000000-0000-0000-0000-000000000095/deactivate
+PASS 200  POST   /api/v1/regulatory-alerts/score-risk
+
+── MUNICODE ──
+PASS 200  GET    /api/v1/municode/resolve?municipality=atlanta&section=16-18
+PASS 200  GET    /api/v1/municode/district/montgomery-al/CP
+PASS 200  GET    /api/v1/municode/sections/montgomery-al
+PASS 200  GET    /api/v1/municode/chapter/montgomery-al
+
+── NEIGHBORING PROPERTIES ──
+WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbors
+WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbors?includeNearby=true
+WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbors/fake-neighbor-id
+WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/assemblage-scenarios
+WARN 404  POST   /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbors/ai-analysis
+
+── AI RENDERING (not mounted — expect 404) ──
+WARN 401  GET    /api/v1/ai/render/styles
+WARN 401  GET    /api/v1/ai/render/status
+WARN 404  POST   /api/v1/ai/render
+
+── BUILDING DESIGN 3D (not mounted — expect 404) ──
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/design-3d
+WARN 404  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/design-3d
+
+── DESIGN ASSISTANT (not mounted — expect 404) ──
+WARN 401  GET    /api/v1/design-assistant/status
+WARN 404  POST   /api/v1/design-assistant/chat
+
+
+No 5xx failures.

@@ -141,6 +141,10 @@ router.get('/zoning/triangulation/:dealId', async (req: Request, res: Response) 
 router.post('/zoning/triangulation/:id/confirm', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRe.test(id)) {
+      return res.status(404).json({ error: 'Triangulation not found' });
+    }
     const { overrides } = req.body;
 
     await triangulationService.userConfirm(id, overrides);
@@ -295,7 +299,9 @@ router.get('/zoning/recommendations/:dealId', async (req: Request, res: Response
     res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Recommendation fetch error:', error);
-    res.status(500).json({ error: error.message });
+    const isNotFound = error.message &&
+      (error.message.includes('not found') || error.message.includes('no zoning'));
+    res.status(isNotFound ? 404 : 500).json({ error: error.message });
   }
 });
 

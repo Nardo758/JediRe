@@ -120,12 +120,28 @@ router.post('/score-risk', async (req: Request, res: Response) => {
     if (!dealId || !categories?.length) {
       return res.status(400).json({ error: 'Required: dealId, categories[]' });
     }
+    const normalizedCategories = (categories as any[]).map((cat) => {
+      if (typeof cat === 'string') {
+        return {
+          category: cat,
+          level: 'moderate' as const,
+          score: 50,
+          weight: 0.1,
+          trend: 'stable' as const,
+          strategyImpact: {},
+        };
+      }
+      return {
+        strategyImpact: {},
+        ...cat,
+      };
+    });
     const result = await regulatoryRiskScoringService.scoreRegulatory({
       dealId,
       municipality: municipality || '',
       state: state || '',
       developmentPath,
-      categories,
+      categories: normalizedCategories,
     });
     res.json(result);
   } catch (error: any) {
