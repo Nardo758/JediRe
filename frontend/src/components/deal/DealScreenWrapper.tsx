@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BT, BT_CSS, PanelHeader } from './bloomberg-ui';
 
 export interface DealScreenTab {
   id: string;
@@ -10,14 +11,32 @@ interface DealScreenWrapperProps {
   tabs: DealScreenTab[];
   passProps?: Record<string, any>;
   initialTab?: string;
+  moduleTitle?: string;
+  moduleSubtitle?: string;
+  moduleBorderColor?: string;
+  moduleMetrics?: Array<{ l: string; c: string }>;
+  moduleRight?: React.ReactNode;
+  accentColor?: string;
 }
 
-export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, passProps = {}, initialTab }) => {
+export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({
+  tabs,
+  passProps = {},
+  initialTab,
+  moduleTitle,
+  moduleSubtitle,
+  moduleBorderColor,
+  moduleMetrics,
+  moduleRight,
+  accentColor,
+}) => {
   const [active, setActive] = useState(initialTab || tabs[0]?.id || '');
 
   if (tabs.length === 0) return null;
 
-  if (tabs.length === 1) {
+  const ac = accentColor ?? BT.text.amber;
+
+  if (tabs.length === 1 && !moduleTitle) {
     const C = tabs[0].component;
     return <C {...passProps} />;
   }
@@ -26,23 +45,61 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({ tabs, pass
   const C = activeTab.component;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex gap-0 border-b border-slate-200 bg-white flex-shrink-0 overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActive(tab.id)}
-            className={`px-4 py-2 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors ${
-              active === tab.id
-                ? 'border-blue-500 text-blue-600 bg-blue-50'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto">
+    <div style={{
+      display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
+      background: BT.bg.terminal, animation: 'bt-fade 0.15s',
+    }}>
+      <style>{BT_CSS}</style>
+
+      {moduleTitle && (
+        <PanelHeader
+          title={moduleTitle}
+          subtitle={moduleSubtitle}
+          borderColor={moduleBorderColor}
+          metrics={moduleMetrics}
+          right={moduleRight}
+        />
+      )}
+
+      {tabs.length > 1 && (
+        <div style={{
+          display: 'flex',
+          background: BT.bg.header,
+          borderBottom: `1px solid ${BT.border.medium}`,
+          flexShrink: 0,
+          overflowX: 'auto',
+          height: 28,
+          alignItems: 'stretch',
+        }}>
+          {tabs.map(tab => {
+            const isActive = active === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActive(tab.id)}
+                style={{
+                  fontFamily: BT.font.mono,
+                  fontSize: 8,
+                  fontWeight: isActive ? 700 : 500,
+                  padding: '0 14px',
+                  background: 'transparent',
+                  border: 'none',
+                  borderBottom: isActive ? `2px solid ${ac}` : '2px solid transparent',
+                  color: isActive ? ac : BT.text.secondary,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  letterSpacing: 0.6,
+                  transition: 'color 0.1s, border-color 0.1s',
+                }}
+              >
+                {tab.label.toUpperCase()}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BT.bg.terminal }}>
         <C {...passProps} />
       </div>
     </div>

@@ -10,7 +10,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import { apiClient } from '../../../services/api.client';
+import { apiClient, api } from '../../../services/api.client';
+import { useDealStore } from '../../../stores/dealStore';
+import { T, mono, sans, BCard, BSection, BBadge, BLiveBadge, BloombergPage, BSparkline, BMiniBar } from '../bloomberg-tokens';
 
 interface RiskCategory {
   id: string;
@@ -126,15 +128,32 @@ const defaultRiskCategories: RiskCategory[] = [
     formula: 'Flood zone + hurricane + heat exposure',
     source: 'FEMA + climate data',
   },
+  {
+    id: 'corporate_concentration',
+    name: 'Corporate Concentration Risk',
+    weight: 10,
+    score: 40,
+    label: 'Moderate',
+    severity: 'moderate',
+    driver: 'Employer base concentration and corporate health scores affect demand stability.',
+    trend30d: 0,
+    trendDirection: 'stable',
+    sparkline: [40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40],
+    offsetting: 'Diversified employer base reduces single-company dependency.',
+    mitigation: 'Monitor top employer CHS scores for stress signals.',
+    formula: 'F72: hhiNormalized × (1 - minChs/100) × 100',
+    source: 'M33 Corporate Health Intelligence',
+  },
 ];
 
 const categoryWeights: Record<string, number> = {
-  supply: 35,
-  demand: 35,
+  supply: 30,
+  demand: 30,
   regulatory: 10,
   market: 10,
   execution: 5,
   climate: 5,
+  corporate_concentration: 10,
 };
 
 const categoryNames: Record<string, string> = {
@@ -144,6 +163,7 @@ const categoryNames: Record<string, string> = {
   market: 'Market Risk',
   execution: 'Execution Risk',
   climate: 'Climate Risk',
+  corporate_concentration: 'Corporate Concentration Risk',
 };
 
 function classifySeverity(score: number): 'low' | 'moderate' | 'elevated' | 'high' {
@@ -158,12 +178,10 @@ function severityLabel(s: 'low' | 'moderate' | 'elevated' | 'high'): string {
 }
 
 function generateSparkline(score: number): number[] {
-  const points: number[] = [];
-  for (let i = 0; i < 12; i++) {
-    points.push(Math.max(0, Math.min(100, score + Math.round((Math.random() - 0.5) * 6))));
-  }
-  points[11] = score;
-  return points;
+  const offsets = [3, -2, 4, -3, 2, -4, 3, -2, 1, -3, 2, 0];
+  return offsets.map((offset, i) =>
+    i === 11 ? score : Math.max(0, Math.min(100, score + offset))
+  );
 }
 
 function mapApiToCategories(apiData: any): RiskCategory[] {
@@ -218,6 +236,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
   const params = useParams<{ id?: string; dealId?: string }>();
 
   const resolvedDealId = propDealId || deal?.id || params.dealId || params.id;
+  const [corpHealthRisk, setCorpHealthRisk] = useState<{hhi:number|null,topShare:number|null,minChs:number|null,loaded:boolean}>({hhi:null,topShare:null,minChs:null,loaded:false});
 
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -246,26 +265,72 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     return () => { cancelled = true; };
   }, [resolvedDealId]);
 
-  // M11+ → M14: Augment risk categories with financial risk from Capital Structure
+  const fetchCorporateHealthFromDealStore = useDealStore(s => s.fetchCorporateHealth);
+
+  useEffect(() => {
+    if (!resolvedDealId || corpHealthRisk.loaded) return;
+    fetchCorporateHealthFromDealStore(resolvedDealId).catch(() => {});
+    api.corporateHealth.getDealOverlay(resolvedDealId)
+      .then(res => {
+        const d = res.data?.data;
+        if (d) {
+          setCorpHealthRisk({
+            hhi: d.herfindahl ?? null,
+            topShare: d.topEmployerShare ?? null,
+            minChs: d.minChs ?? null,
+            loaded: true,
+          });
+        } else {
+          setCorpHealthRisk(prev => ({...prev, loaded: true}));
+        }
+      })
+      .catch(() => {
+        setCorpHealthRisk(prev => ({...prev, loaded: true}));
+      });
+  }, [resolvedDealId, corpHealthRisk.loaded, fetchCorporateHealthFromDealStore]);
+
   const augmentedCategories = useMemo(() => {
-    if (!capitalStructure) return riskCategories;
-    return riskCategories.map(cat => {
-      if (cat.id !== 'market') return cat;
-      // Inject DSCR/LTV covenant exposure into market risk
-      const dscrRisk = capitalStructure.dscr < 1.25 ? 15 : capitalStructure.dscr < 1.35 ? 8 : 0;
-      const ltvRisk = capitalStructure.ltv > 80 ? 12 : capitalStructure.ltv > 75 ? 6 : 0;
-      const financialAdjustment = dscrRisk + ltvRisk;
-      const adjustedScore = Math.min(100, cat.score + financialAdjustment);
-      return {
-        ...cat,
-        score: adjustedScore,
-        driver: financialAdjustment > 0
-          ? `${cat.driver} + Financial: DSCR ${capitalStructure.dscr.toFixed(2)}x / LTV ${capitalStructure.ltv.toFixed(0)}%`
-          : cat.driver,
-        severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
-      };
-    });
-  }, [capitalStructure, riskCategories]);
+    let cats = riskCategories;
+
+    if (capitalStructure) {
+      cats = cats.map(cat => {
+        if (cat.id !== 'market') return cat;
+        const dscrRisk = capitalStructure.dscr < 1.25 ? 15 : capitalStructure.dscr < 1.35 ? 8 : 0;
+        const ltvRisk = capitalStructure.ltv > 80 ? 12 : capitalStructure.ltv > 75 ? 6 : 0;
+        const financialAdjustment = dscrRisk + ltvRisk;
+        const adjustedScore = Math.min(100, cat.score + financialAdjustment);
+        return {
+          ...cat,
+          score: adjustedScore,
+          driver: financialAdjustment > 0
+            ? `${cat.driver} + Financial: DSCR ${capitalStructure.dscr.toFixed(2)}x / LTV ${capitalStructure.ltv.toFixed(0)}%`
+            : cat.driver,
+          severity: adjustedScore >= 70 ? 'high' as const : adjustedScore >= 50 ? 'elevated' as const : cat.severity,
+        };
+      });
+    }
+
+    if (corpHealthRisk.loaded && (corpHealthRisk.hhi !== null || corpHealthRisk.minChs !== null)) {
+      const hhi = corpHealthRisk.hhi ?? 0;
+      const minChs = corpHealthRisk.minChs ?? 50;
+      const hhiNormalized = Math.min(1, hhi / 0.25);
+      const f72 = hhiNormalized * (1 - minChs / 100) * 100;
+      const f72Severity = classifySeverity(f72);
+
+      cats = cats.map(cat => {
+        if (cat.id !== 'corporate_concentration') return cat;
+        return {
+          ...cat,
+          score: Math.round(f72),
+          label: severityLabel(f72Severity),
+          severity: f72Severity,
+          driver: `F72 Score: ${f72.toFixed(1)} — HHI ${hhi.toFixed(3)}, Min CHS ${minChs.toFixed(0)}. ${corpHealthRisk.topShare !== null ? `Top employer share: ${(corpHealthRisk.topShare * 100).toFixed(1)}%` : ''}`,
+        };
+      });
+    }
+
+    return cats;
+  }, [capitalStructure, riskCategories, corpHealthRisk]);
 
   // Recalculate composite with augmented categories
   const adjustedCompositeScore = useMemo(
@@ -273,146 +338,131 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     [augmentedCategories],
   );
 
+  const scoreColor = (s: number) => s < 40 ? T.greenL : s < 60 ? T.amberL : T.redL;
+
   if (isLoading) {
     return (
-      <div className="space-y-5">
-        <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-amber-500">
-          <div className="text-[10px] font-mono text-amber-500 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
-          <div className="text-lg font-semibold">What could kill this deal and how do I protect against it?</div>
+      <BloombergPage>
+        <div style={{ background: T.bgCard, borderRadius: 8, border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.amber}`, padding: '14px 18px', marginBottom: 14 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.amber, letterSpacing: 2, marginBottom: 4, ...mono }}>THE DECISION THIS PAGE DRIVES</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>What could kill this deal and how do I protect against it?</div>
         </div>
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
-          <div className="flex items-center justify-center py-12">
-            <div className="flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm text-stone-500">Loading risk intelligence...</span>
-            </div>
+        <BCard style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 18, height: 18, border: `2px solid ${T.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontSize: 12, color: T.td, ...sans }}>Loading risk intelligence...</span>
           </div>
-        </div>
-      </div>
+        </BCard>
+      </BloombergPage>
     );
   }
 
   return (
-    <div className="space-y-5">
-      {/* Decision Banner */}
-      <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-amber-500">
-        <div className="text-[10px] font-mono text-amber-500 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
-        <div className="text-lg font-semibold">What could kill this deal and how do I protect against it?</div>
-      </div>
-
-      {/* Composite Score + Heatmap */}
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-lg font-bold text-stone-900">Risk Heatmap</h3>
-              {isLiveData ? (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 tracking-wider">
-                  LIVE DATA
-                </span>
-              ) : (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 tracking-wider">
-                  SAMPLE DATA
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-stone-500">6 categories weighted by impact. Click any card to drill down.</p>
+    <BloombergPage>
+      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+        {/* Bloomberg v0.34 PanelHeader */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '6px 10px', background: T.bgMid,
+          borderBottom: `1px solid ${T.border}`, borderTop: `2px solid ${T.red}`, marginBottom: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.text, letterSpacing: 0.8, ...mono }}>RISK INTELLIGENCE</span>
+            <span style={{ fontSize: 8, color: T.td, ...mono }}>M14 | Due Diligence · Exposure · Mitigation</span>
+            <span style={{ fontSize: 6, fontWeight: 700, color: '#FF4757', background: '#FF475715', border: '1px solid #FF475730', padding: '0 3px', borderRadius: 2, ...mono }}>RISK</span>
+            <span style={{ fontSize: 6, fontWeight: 700, color: '#F5A623', background: '#F5A62315', border: '1px solid #F5A62330', padding: '0 3px', borderRadius: 2, ...mono }}>DD</span>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] font-mono text-stone-400 tracking-wider">COMPOSITE RISK</div>
-            <div className={`text-3xl font-bold ${
-              adjustedCompositeScore < 40 ? 'text-emerald-600' :
-              adjustedCompositeScore < 60 ? 'text-amber-600' : 'text-red-600'
-            }`}>
-              {adjustedCompositeScore.toFixed(0)}<span className="text-sm text-stone-400">/100</span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <BLiveBadge live={isLiveData} />
           </div>
         </div>
 
-        {/* 2x3 Risk Card Grid */}
-        <div className="grid grid-cols-3 gap-3">
-          {augmentedCategories.map(cat => (
-            <RiskCard
-              key={cat.id}
-              category={cat}
-              isExpanded={expandedCategory === cat.id}
-              onToggle={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
-            />
-          ))}
-        </div>
-
-        {/* Insight */}
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs text-amber-800 leading-relaxed">
-            Supply Risk is your #1 exposure. But look at the OFFSET: Demand Risk is only 32 because you have 3
-            diversified demand drivers. The demand-supply NET position is still positive.
-            Set alerts on Supply Risk at 70 — if it crosses, revisit your underwriting.
-          </p>
-        </div>
-      </div>
-
-      {/* Risk Trend Strip */}
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <div className="flex items-center gap-2 mb-1">
-          <h3 className="text-lg font-bold text-stone-900">30-Day Risk Trends</h3>
-          {isLiveData ? (
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 tracking-wider">
-              LIVE DATA
-            </span>
-          ) : (
-            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 tracking-wider">
-              SAMPLE DATA
-            </span>
-          )}
-        </div>
-        <p className="text-xs text-stone-500 mb-4">Track how each risk category is evolving</p>
-
-        <div className="space-y-3">
-          {augmentedCategories.map(cat => (
-            <div key={cat.id} className="flex items-center gap-4">
-              <div className="w-28 text-xs font-medium text-stone-700">{cat.name}</div>
-              <div className="flex-1 flex items-center gap-2">
-                {/* Sparkline */}
-                <div className="flex-1 h-5 flex items-end gap-px">
-                  {cat.sparkline.map((v, i, arr) => {
-                    const min = Math.min(...arr);
-                    const max = Math.max(...arr);
-                    const range = max - min || 1;
-                    const height = ((v - min) / range) * 100;
-                    const isLast = i === arr.length - 1;
-                    const color =
-                      cat.severity === 'low' ? (isLast ? 'bg-emerald-500' : 'bg-emerald-200') :
-                      cat.severity === 'moderate' ? (isLast ? 'bg-amber-500' : 'bg-amber-200') :
-                      cat.severity === 'elevated' ? (isLast ? 'bg-orange-500' : 'bg-orange-200') :
-                      (isLast ? 'bg-red-500' : 'bg-red-200');
-                    return (
-                      <div key={i} className={`flex-1 rounded-sm ${color}`} style={{ height: `${Math.max(15, height)}%` }} />
-                    );
-                  })}
-                </div>
-                {/* Score */}
-                <div className="w-10 text-right text-xs font-mono font-bold text-stone-900">{cat.score}</div>
-                {/* Trend */}
-                <div className={`w-16 text-right text-[10px] font-mono ${
-                  cat.trendDirection === 'improving' ? 'text-emerald-600' :
-                  cat.trendDirection === 'worsening' ? 'text-red-500' : 'text-stone-400'
-                }`}>
-                  {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} ({cat.trendDirection === 'improving' ? 'better' : cat.trendDirection === 'worsening' ? 'worse' : 'stable'})
-                </div>
+        {/* Composite Score + Heatmap */}
+        <BCard style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>Risk Heatmap</span>
+                <BLiveBadge live={isLiveData} />
+              </div>
+              <p style={{ fontSize: 11, color: T.td, margin: 0, ...sans }}>Risk categories weighted by impact. Click any card to drill down.</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 9, color: T.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, ...mono }}>COMPOSITE RISK</div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(adjustedCompositeScore), ...mono }}>
+                {adjustedCompositeScore.toFixed(0)}<span style={{ fontSize: 14, color: T.td }}>/100</span>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <p className="text-xs text-blue-800 leading-relaxed">
-            Supply risk jumped +8 points this month because a new 280-unit permit was filed 1.5mi away.
-            But demand risk IMPROVED by 5 because of the Georgia Tech expansion.
-            Net change: +3 on composite risk — manageable.
-          </p>
-        </div>
+          {/* Risk Card Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+            {augmentedCategories.map(cat => (
+              <RiskCard
+                key={cat.id}
+                category={cat}
+                isExpanded={expandedCategory === cat.id}
+                onToggle={() => setExpandedCategory(expandedCategory === cat.id ? null : cat.id)}
+              />
+            ))}
+          </div>
+
+          {/* Insight */}
+          <div style={{ marginTop: 14, background: T.amberBg, borderRadius: 6, border: `1px solid ${T.amber}30`, padding: '10px 14px' }}>
+            <p style={{ fontSize: 11, color: T.amberL, lineHeight: 1.6, margin: 0, ...sans }}>
+              Supply Risk is your #1 exposure. But look at the OFFSET: Demand Risk is low because of diversified demand drivers.
+              The demand-supply NET position is positive. Set alerts on Supply Risk at 70.
+            </p>
+          </div>
+        </BCard>
+
+        {/* 30-Day Trend Strip */}
+        <BCard>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>30-Day Risk Trends</span>
+            <BLiveBadge live={isLiveData} />
+          </div>
+          <p style={{ fontSize: 11, color: T.td, marginBottom: 16, ...sans }}>Track how each risk category is evolving</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {augmentedCategories.map(cat => {
+              const severityColor = cat.severity === 'low' ? T.greenL : cat.severity === 'moderate' ? T.amberL : cat.severity === 'elevated' ? T.orangeL : T.redL;
+              const trendColor = cat.trendDirection === 'improving' ? T.greenL : cat.trendDirection === 'worsening' ? T.redL : T.td;
+              return (
+                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
+                  <div style={{ width: 120, fontSize: 11, color: T.tm, fontWeight: 500, ...sans }}>{cat.name}</div>
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2, height: 22 }}>
+                    {cat.sparkline.map((v, i, arr) => {
+                      const mn = Math.min(...arr), mx = Math.max(...arr);
+                      const h = Math.max(15, ((v - mn) / (mx - mn || 1)) * 100);
+                      const isLast = i === arr.length - 1;
+                      return (
+                        <div key={i} style={{
+                          flex: 1, height: `${h}%`, borderRadius: 1,
+                          background: isLast ? severityColor : `${severityColor}40`,
+                          alignSelf: 'flex-end',
+                        }} />
+                      );
+                    })}
+                  </div>
+                  <div style={{ width: 30, textAlign: 'right', fontSize: 12, fontWeight: 700, color: severityColor, ...mono }}>{cat.score}</div>
+                  <div style={{ width: 80, textAlign: 'right', fontSize: 9, fontWeight: 700, color: trendColor, letterSpacing: 0.5, ...mono }}>
+                    {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} {cat.trendDirection === 'improving' ? '▲' : cat.trendDirection === 'worsening' ? '▼' : '●'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{ marginTop: 14, background: T.blueBg, borderRadius: 6, border: `1px solid ${T.blue}30`, padding: '10px 14px' }}>
+            <p style={{ fontSize: 11, color: T.blueL, lineHeight: 1.6, margin: 0, ...sans }}>
+              Supply risk moved +8 pts due to a new 280-unit permit filed nearby. Demand risk improved because of local expansion.
+              Net composite change: +3 — manageable.
+            </p>
+          </div>
+        </BCard>
       </div>
-    </div>
+    </BloombergPage>
   );
 };
 
@@ -425,53 +475,60 @@ const RiskCard: React.FC<{
   isExpanded: boolean;
   onToggle: () => void;
 }> = ({ category, isExpanded, onToggle }) => {
-  const severityConfig = {
-    low: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', badge: 'bg-emerald-100 text-emerald-800' },
-    moderate: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-800' },
-    elevated: { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-800' },
-    high: { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', badge: 'bg-red-100 text-red-800' },
+  const severityMap = {
+    low:      { color: T.greenL, bg: T.greenBg, border: T.green },
+    moderate: { color: T.amberL, bg: T.amberBg, border: T.amber },
+    elevated: { color: T.orangeL, bg: T.orangeBg, border: T.orange },
+    high:     { color: T.redL,   bg: T.redBg,   border: T.red   },
   };
-
-  const config = severityConfig[category.severity];
+  const cfg = severityMap[category.severity] || severityMap.moderate;
+  const trendColor = category.trendDirection === 'improving' ? T.greenL : category.trendDirection === 'worsening' ? T.redL : T.td;
 
   return (
     <button
-      className={`${config.bg} border ${config.border} rounded-lg p-4 text-left transition-all hover:shadow-sm ${
-        isExpanded ? 'ring-2 ring-stone-300' : ''
-      }`}
       onClick={onToggle}
+      style={{
+        background: isExpanded ? T.bgHover : T.bgCard,
+        border: `1px solid ${isExpanded ? cfg.border : T.border}`,
+        borderTop: `3px solid ${cfg.border}`,
+        borderRadius: 8, padding: '14px 14px 12px', textAlign: 'left', cursor: 'pointer',
+        width: '100%', transition: 'all 0.15s',
+      }}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className={`text-xs font-bold ${config.text}`}>{category.name}</span>
-        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${config.badge}`}>
-          {category.score} — {category.label}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, ...sans }}>{category.name}</span>
+        <span style={{
+          fontSize: 9, fontWeight: 700, color: cfg.color, background: cfg.bg,
+          border: `1px solid ${cfg.border}40`, borderRadius: 4, padding: '2px 6px', ...mono,
+        }}>
+          {category.score} — {category.label.toUpperCase()}
         </span>
       </div>
 
-      <div className="text-[10px] text-stone-500 mb-1">Weight: {category.weight}%</div>
+      {/* Mini bar */}
+      <div style={{ height: 3, background: T.border, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${category.score}%`, background: cfg.color, borderRadius: 2 }} />
+      </div>
 
-      {/* Trend indicator */}
-      <div className={`text-[10px] font-mono ${
-        category.trendDirection === 'improving' ? 'text-emerald-600' :
-        category.trendDirection === 'worsening' ? 'text-red-500' : 'text-stone-400'
-      }`}>
+      <div style={{ fontSize: 9, color: T.td, marginBottom: 6, ...mono }}>WEIGHT: {category.weight}%</div>
+
+      <div style={{ fontSize: 9, fontWeight: 700, color: trendColor, ...mono }}>
         30d: {category.trend30d > 0 ? '+' : ''}{category.trend30d} ({category.trendDirection})
       </div>
 
-      {/* Expanded Detail */}
       {isExpanded && (
-        <div className="mt-3 pt-3 border-t border-stone-200 space-y-2">
-          <div>
-            <div className="text-[9px] font-mono text-stone-400 tracking-wider">DRIVER</div>
-            <p className="text-[11px] text-stone-700 leading-relaxed">{category.driver}</p>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, ...mono }}>DRIVER</div>
+            <p style={{ fontSize: 10, color: T.tm, lineHeight: 1.5, margin: 0, ...sans }}>{category.driver}</p>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.green, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, ...mono }}>OFFSET</div>
+            <p style={{ fontSize: 10, color: T.greenL, lineHeight: 1.5, margin: 0, ...sans }}>{category.offsetting}</p>
           </div>
           <div>
-            <div className="text-[9px] font-mono text-emerald-500 tracking-wider">OFFSET</div>
-            <p className="text-[11px] text-emerald-700 leading-relaxed">{category.offsetting}</p>
-          </div>
-          <div>
-            <div className="text-[9px] font-mono text-blue-500 tracking-wider">MITIGATION</div>
-            <p className="text-[11px] text-blue-700 leading-relaxed">{category.mitigation}</p>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.blue, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, ...mono }}>MITIGATION</div>
+            <p style={{ fontSize: 10, color: T.blueL, lineHeight: 1.5, margin: 0, ...sans }}>{category.mitigation}</p>
           </div>
         </div>
       )}

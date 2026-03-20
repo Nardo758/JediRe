@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { computeExitReturns, computeSensitivityIRR } from '../../../shared/calculations/returns';
+import { computeExitReturns, computeSensitivityIRR, type DealEconomics } from '../../../shared/calculations/returns';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 
 /**
  * ExitCapitalModule
@@ -19,12 +20,14 @@ import { computeExitReturns, computeSensitivityIRR } from '../../../shared/calcu
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type DealType = 'existing' | 'development' | 'redevelopment';
+export type TabId = 'exit' | 'stack' | 'market' | 'timing' | 'sensitivity';
 
 export interface ExitCapitalModuleProps {
   deal?: any;
   dealId: string;
   dealType?: DealType;
   embedded?: boolean;
+  initialTab?: TabId;
   onUpdate?: () => void;
   onBack?: () => void;
   geographicContext?: any;
@@ -719,8 +722,6 @@ function PushToProFormaBanner({ holdYears, exitCap, debtRate, debtIO, annualDS }
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-type TabId = 'exit' | 'stack' | 'market' | 'timing' | 'sensitivity';
-
 const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'exit', label: 'Exit Strategy', icon: '◉' },
   { id: 'stack', label: 'Capital Stack', icon: '◇' },
@@ -729,11 +730,11 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
   { id: 'sensitivity', label: 'Sensitivity', icon: '∿' },
 ];
 
-export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedded, onUpdate, onBack, geographicContext }: ExitCapitalModuleProps) {
+export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedded, initialTab, onUpdate, onBack, geographicContext }: ExitCapitalModuleProps) {
   // Determine deal type from prop or infer from deal object
   const dealType: DealType = propDealType || (deal?.dealType as DealType) || 'existing';
 
-  const [activeTab, setActiveTab] = useState<TabId>('exit');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'exit');
   const [selectedFwd, setSelectedFwd] = useState<number>(0);  // Will be set to optimal on mount
   const [selectedExitStrategy, setSelectedExitStrategy] = useState<string>(DEFAULT_EXIT_STRATEGY[dealType]);
 
@@ -754,9 +755,22 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     setSelectedFwd(optimalFwd);
   }, [optimalFwd]);
 
+  // Derive deal economics from live deal/context data; fall back to defaults inside computeExitReturns
+  const dealEconomics = useMemo<DealEconomics | undefined>(() => {
+    const noi = deal?.noi ?? deal?.deal_data?.noi ?? deal?.financial?.noi ?? null;
+    const purchasePrice = deal?.purchasePrice ?? deal?.deal_data?.asking_price ?? deal?.budget ?? null;
+    const totalDevCost = deal?.totalDevCost ?? deal?.deal_data?.total_dev_cost ?? null;
+    const totalBasis = totalDevCost ?? purchasePrice;
+    const equityPct = deal?.capitalStructure?.equityPct ?? deal?.equity_pct ?? null;
+    const equity = equityPct != null && totalBasis ? totalBasis * (equityPct / 100) : deal?.equity ?? null;
+    const debtService = deal?.annualDebtService ?? deal?.deal_data?.annual_debt_service ?? null;
+    if (!noi || !totalBasis || !equity) return undefined;
+    return { baseNOI: noi, totalBasis, equity, annualDS: debtService ?? undefined };
+  }, [deal]);
+
   // Compute returns for selected and optimal quarters
-  const ret = useMemo(() => computeExitReturns(selectedFwd, dealType), [selectedFwd, dealType]);
-  const optRet = useMemo(() => computeExitReturns(optimalFwd, dealType), [optimalFwd, dealType]);
+  const ret = useMemo(() => computeExitReturns(selectedFwd, dealType, undefined, undefined, dealEconomics), [selectedFwd, dealType, dealEconomics]);
+  const optRet = useMemo(() => computeExitReturns(optimalFwd, dealType, undefined, undefined, dealEconomics), [optimalFwd, dealType, dealEconomics]);
 
   // Get capital stack preset
   const stack = STACK_PRESETS[selectedExitStrategy] ?? STACK_PRESETS['sell-stabilized'];
@@ -804,104 +818,79 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const loanAmt = totalBasis * (stack.sr.pct / 100);
   const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PUSH TO PROFORMA EFFECT
-  // ═══════════════════════════════════════════════════════════════════════════
-  // When exit quarter or strategy changes, push downstream values to ProForma
+  // Push downstream values to ProForma/parent when exit quarter or strategy changes
   useEffect(() => {
-    // In a real app, this would write to dealStore:
-    // dealStore.setState({
-    //   financial: {
-    //     ...dealStore.getState().financial,
-    //     assumptions: {
-    //       ...dealStore.getState().financial.assumptions,
-    //       holdPeriod: { value: parseFloat(ret.holdYears), source: 'exit-module', confidence: 0.7 },
-    //       exitCapRate: { value: ret.exitCap / 100, source: 'exit-module', confidence: 0.6 },
-    //     },
-    //   },
-    //   capital: {
-    //     ...dealStore.getState().capital,
-    //     seniorDebt: {
-    //       rate: stack.sr.rate / 100,
-    //       ltv: stack.sr.pct / 100,
-    //       term: stack.sr.term,
-    //       ioPeriod: stack.sr.io,
-    //       annualDebtService: annualDS,
-    //     },
-    //   },
-    // });
-
-    // For now, log the values that would be pushed
     if (onUpdate) {
-      console.log('Push to ProForma:', {
-        holdPeriod: parseFloat(ret.holdYears),
-        exitCapRate: ret.exitCap / 100,
-        seniorRate: stack.sr.rate / 100,
-        ioPeriod: stack.sr.io,
-        annualDS,
-      });
       onUpdate();
     }
   }, [selectedFwd, selectedExitStrategy, dealType, ret, stack, annualDS, onUpdate]);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0B0E13', color: '#E8E6E1', fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: BT.bgBase, color: BT.tm, ...bSans }}>
+      {/* F9 Banner */}
+      <div style={{ background: BT.amberBg, borderBottom: `1px solid ${BT.amber}40`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: `${BT.amber}25`, border: `1px solid ${BT.amber}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F7·F12</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: BT.amberL, ...bSans }}>EXIT &amp; CAPITAL STRUCTURE</span>
+        <span style={{ fontSize: 10, color: BT.td, ...bSans, marginLeft: 4 }}>21-yr convergence · RSS · Capital stack · Sensitivity</span>
+      </div>
+
       {/* Header */}
       <div
         style={{
-          padding: '14px 24px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          padding: '12px 20px',
+          borderBottom: `1px solid ${BT.border}`,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          background: BT.bgCard,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>M11+M12</span>
-          <h2 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>Exit & Capital Structure</h2>
-          <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 12, background: `${rssColor}15`, color: rssColor }}>
+          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, color: BT.td, ...bMono }}>F7·F12 · M11+M12</span>
+          <h2 style={{ fontSize: 14, fontWeight: 800, margin: 0, color: BT.tm, ...bSans }}>Exit & Capital Structure</h2>
+          <span style={{ fontSize: 9, fontWeight: 600, padding: '2px 8px', borderRadius: 3, background: `${rssColor}20`, color: rssColor, border: `1px solid ${rssColor}40`, ...bMono }}>
             RSS {rssData.rss} — {rssVerdict}
           </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#68D391' }}>{Q_LABELS[NOW_IDX + selectedFwd]?.label}</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', letterSpacing: 1, fontFamily: "'JetBrains Mono'" }}>TARGET EXIT</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: BT.greenL, ...bMono }}>{Q_LABELS[NOW_IDX + selectedFwd]?.label}</div>
+            <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1, ...bMono }}>TARGET EXIT</div>
           </div>
-          <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.06)' }} />
+          <div style={{ width: 1, height: 28, background: BT.border }} />
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: ret.irr >= 15 ? '#68D391' : '#F6E05E' }}>{ret.irr.toFixed(1)}%</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>IRR</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: ret.irr >= 15 ? BT.greenL : BT.amber, ...bMono }}>{ret.irr.toFixed(1)}%</div>
+            <div style={{ fontSize: 8, color: BT.td, ...bMono }}>IRR</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{ret.em.toFixed(2)}x</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EM</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: BT.blueL, ...bMono }}>{ret.em.toFixed(2)}x</div>
+            <div style={{ fontSize: 8, color: BT.td, ...bMono }}>EM</div>
           </div>
         </div>
       </div>
 
       {/* Tab navigation */}
-      <div style={{ padding: '0 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex' }}>
+      <div style={{ padding: '0 20px', borderBottom: `1px solid ${BT.border}`, display: 'flex', background: BT.bgCard }}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '10px 16px',
-              fontSize: 10.5,
+              padding: '8px 14px',
+              fontSize: 10,
               fontWeight: 600,
               cursor: 'pointer',
               border: 'none',
-              fontFamily: "'DM Sans', sans-serif",
+              ...bSans,
               display: 'flex',
               alignItems: 'center',
               gap: 5,
               background: 'transparent',
-              borderBottom: activeTab === tab.id ? '2px solid #63B3ED' : '2px solid transparent',
-              color: activeTab === tab.id ? '#E8E6E1' : 'rgba(232,230,225,0.22)',
+              borderBottom: activeTab === tab.id ? `2px solid ${BT.amber}` : '2px solid transparent',
+              color: activeTab === tab.id ? BT.tm : BT.td,
             }}
           >
-            <span style={{ fontSize: 11, opacity: 0.6 }}>{tab.icon}</span> {tab.label}
+            <span style={{ fontSize: 11, opacity: 0.7 }}>{tab.icon}</span> {tab.label}
           </button>
         ))}
       </div>
@@ -955,7 +944,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               {[
                 { l: `Senior — ${stack.sr.type}`, pct: stack.sr.pct, rate: stack.sr.rate, c: '#63B3ED' },
                 ...(stack.mz ? [{ l: `Mezz — ${stack.mz.type}`, pct: stack.mz.pct, rate: stack.mz.rate, c: '#F6E05E' }] : []),
-                { l: 'Sponsor Equity', pct: stack.eq, rate: null as any, c: '#B794F4' },
+                { l: 'Sponsor Equity', pct: stack.eq, rate: null as (number | null), c: '#B794F4' },
               ].map((ly, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: `${ly.c}10`, borderRadius: 6, border: `1px solid ${ly.c}25`, minHeight: Math.max(36, ly.pct * 0.8), marginBottom: 2 }}>
                   <div>
@@ -1087,7 +1076,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               </span>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 140, marginTop: 12 }}>
                 {Array.from({ length: TOTAL_Q - NOW_IDX }, (_, i) => {
-                  const r = computeExitReturns(i, dealType);
+                  const r = computeExitReturns(i, dealType, undefined, undefined, dealEconomics);
                   const h = Math.max(4, (r.irr / 30) * 130);
                   const isSelected = i === selectedFwd;
                   const isOptimal = i === optimalFwd;
@@ -1124,13 +1113,13 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     { l: 'IRR', v: fmt.pct((r as ExitReturns).irr), c: (r as ExitReturns).irr >= 15 ? '#68D391' : '#F6E05E', big: 1 },
                     { l: 'EM', v: `${(r as ExitReturns).em.toFixed(2)}x`, c: '#63B3ED', big: 1 },
                     { l: 'RSS', v: RSS_21Y[NOW_IDX + fi as number]?.rss, c: RSS_21Y[NOW_IDX + fi as number]?.rss ?? 0 >= 70 ? '#68D391' : '#F6E05E', big: 1 },
-                  ].map((row, i) => {
-                    if ((row as any).sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
+                  ].map((row: { l?: string; v?: string | number; c?: string; big?: number | boolean; sep?: boolean }, i) => {
+                    if (row.sep) return <div key={i} style={{ height: 1, background: 'rgba(255,255,255,0.12)', margin: '6px 0' }} />;
                     return (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-                        <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{(row as any).l}</span>
-                        <span style={{ fontSize: (row as any).big ? 14 : 11, fontWeight: (row as any).big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: (row as any).c || '#E8E6E1' }}>
-                          {(row as any).v}
+                        <span style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)' }}>{row.l}</span>
+                        <span style={{ fontSize: row.big ? 14 : 11, fontWeight: row.big ? 800 : 600, fontFamily: "'JetBrains Mono'", color: row.c || '#E8E6E1' }}>
+                          {row.v}
                         </span>
                       </div>
                     );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   DollarSign, TrendingUp, BarChart3, Edit3, RotateCcw,
   ChevronDown, ChevronRight, Loader2, CheckCircle2,
@@ -9,6 +9,7 @@ import { apiClient } from '@/services/api.client';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { useDealType } from '../../../stores/dealStore';
 import { getProFormaTemplate, PROFORMA_TEMPLATES } from '../../../shared/config/deal-type-visibility';
+import { T as BT, mono as bMono, sans as bSans, UnderwritingComparison } from '../bloomberg-tokens';
 
 interface UnitMixRow {
   floorPlan: string;
@@ -124,7 +125,7 @@ function fmtPctRaw(n: number): string {
 
 export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const id = deal?.id || dealId;
-  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy, design3D } = useDealModule();
+  const { debtTerms, updateFinancial, emitEvent, lastEvent, market, strategy, design3D, absorptionData } = useDealModule();
   const dealType = useDealType();
   const proformaTemplate = useMemo(() => getProFormaTemplate(dealType), [dealType]);
 
@@ -178,6 +179,36 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [lossToLease, setLossToLease] = useState(0.03);
   const [stabilizedOccupancy, setStabilizedOccupancy] = useState(0.94);
   const [collectionLoss, setCollectionLoss] = useState(0.015);
+  const [concessionFreeWeeks, setConcessionFreeWeeks] = useState(0);
+  const [concessionUnitsPct, setConcessionUnitsPct] = useState(0);
+  const [concessionDurationMonths, setConcessionDurationMonths] = useState(0);
+  const [concessionOngoing, setConcessionOngoing] = useState(modelType === 'existing');
+  const [absorptionLinked, setAbsorptionLinked] = useState(false);
+
+  const applyAbsorptionData = useCallback((data: { concessionPeriodMonths: number; eligibleUnitsPct: number; dealType: string }) => {
+    const { concessionPeriodMonths, eligibleUnitsPct, dealType: absDealType } = data;
+    if (absDealType === 'development' || absDealType === 'redevelopment') {
+      setConcessionDurationMonths(concessionPeriodMonths || 0);
+      setConcessionUnitsPct(eligibleUnitsPct > 1 ? eligibleUnitsPct / 100 : eligibleUnitsPct || 0);
+      if (concessionFreeWeeks === 0) {
+        setConcessionFreeWeeks(absDealType === 'development' ? 4 : 2);
+      }
+      setAbsorptionLinked(true);
+    }
+  }, [concessionFreeWeeks]);
+
+  useEffect(() => {
+    if (absorptionData && !absorptionLinked) {
+      applyAbsorptionData(absorptionData);
+    }
+  }, [absorptionData]);
+
+  useEffect(() => {
+    if (lastEvent?.type === 'absorption-updated' && lastEvent.payload) {
+      applyAbsorptionData(lastEvent.payload);
+    }
+  }, [lastEvent]);
+
   const [otherIncome, setOtherIncome] = useState<Record<string, OtherIncomeItem>>({ ...DEFAULT_OTHER_INCOME });
 
   const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });
@@ -372,8 +403,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           }
         }
 
-        if (latestModelRes.status === 'fulfilled' && (latestModelRes.value as any)?.data?.data) {
-          const model = (latestModelRes.value as any).data.data;
+        if (latestModelRes.status === 'fulfilled' && (latestModelRes.value as { data?: { data?: unknown } })?.data?.data) {
+          const model = (latestModelRes.value as { data: { data: { results?: ModelResults } } }).data.data;
           if (model?.results) {
             setModelResults(model.results);
           }
@@ -404,6 +435,12 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
         lossToLease,
         stabilizedOccupancy,
         collectionLoss,
+        concessions: {
+          freeWeeks: concessionFreeWeeks,
+          unitsPct: concessionUnitsPct,
+          durationMonths: concessionDurationMonths,
+          ongoing: concessionOngoing,
+        },
         otherIncome,
       },
       expenses,
@@ -428,6 +465,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     originationFee, rateCapCost, prepayPenalty, capexItems, contingencyPct, reservesPerUnit,
     lpShare, gpShare, hurdles, equityContribution, landCost, hardCostPerSF, hardCostContingency,
     softCostPct, developerFee, constructionPeriod, leaseUpVelocity, constructionLoanLTC, constructionLoanRate,
+    concessionFreeWeeks, concessionUnitsPct, concessionDurationMonths, concessionOngoing,
   ]);
 
   const handleBuildModel = async () => {
@@ -437,7 +475,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     try {
       const assumptions = buildAssumptionsPayload();
       const res = await apiClient.post('/api/v1/financial-model/build', { dealId: id, assumptions });
-      const data = (res as any)?.data;
+      const data = (res as { data?: { data?: ModelResults } })?.data;
       let results: ModelResults | null = null;
       if (data?.data) {
         results = data.data;
@@ -504,7 +542,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       const response = await apiClient.get(`/api/v1/financial-model/${id}/export/excel`, {
         responseType: 'blob',
       });
-      const blob = new Blob([(response as any).data], {
+      const blob = new Blob([(response as { data: BlobPart }).data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const url = window.URL.createObjectURL(blob);
@@ -530,9 +568,9 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   if (loading) {
     return (
       <div className="space-y-5">
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-          <Loader2 className="w-6 h-6 animate-spin text-stone-400 mx-auto mb-3" />
-          <div className="text-xs text-stone-400">Loading Pro Forma data...</div>
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
+          <Loader2 className="w-6 h-6 animate-spin text-[#6b7f94] mx-auto mb-3" />
+          <div className="text-xs text-[#6b7f94]">Loading Pro Forma data...</div>
         </div>
       </div>
     );
@@ -544,6 +582,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     { id: 'acquisition', label: modelType === 'development' ? 'Development Costs' : 'Acquisition', icon: DollarSign },
     { id: 'disposition', label: 'Disposition', icon: TrendingUp },
     { id: 'revenue', label: 'Revenue Assumptions', icon: TrendingUp },
+    { id: 'concessions', label: 'Concessions', icon: ArrowRight },
     { id: 'otherIncome', label: 'Other Income', icon: DollarSign },
     { id: 'expenses', label: 'Operating Expenses', icon: BarChart3 },
     { id: 'financing', label: 'Financing', icon: DollarSign },
@@ -552,53 +591,42 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-stone-900">Pro Forma Control Grid</h2>
-          <p className="text-sm text-stone-500">
-            Input assumptions below, then click Build Model to generate a full financial forecast
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-stone-100 rounded-lg p-0.5">
-            <button
-              onClick={() => setModelType('existing')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                modelType === 'existing' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-              }`}
-            >
-              <Building2 size={12} className="inline mr-1" />
-              Existing Asset
-            </button>
-            <button
-              onClick={() => setModelType('development')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                modelType === 'development' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'
-              }`}
-            >
-              <Hammer size={12} className="inline mr-1" />
-              Development
-            </button>
-          </div>
+    <div style={{ background: BT.bgBase, minHeight: '100%' }}>
+      {/* F8 Banner */}
+      <div style={{ background: BT.blueBg, borderBottom: `1px solid ${BT.blue}40`, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: `${BT.blue}30`, border: `1px solid ${BT.blue}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>F6</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: BT.blueL, ...bSans }}>PRO FORMA CONTROL GRID</span>
+        <span style={{ fontSize: 10, color: BT.td, ...bSans, marginLeft: 4 }}>Financial model · DCF · Waterfall · Sensitivity</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => setModelType('existing')}
+            style={{ fontSize: 10, fontWeight: modelType === 'existing' ? 700 : 500, color: modelType === 'existing' ? BT.blueL : BT.td, background: modelType === 'existing' ? `${BT.blue}20` : 'none', border: `1px solid ${modelType === 'existing' ? BT.blue : BT.border}`, borderRadius: 3, padding: '3px 9px', cursor: 'pointer', ...bSans }}
+          >
+            <Building2 size={10} style={{ display: 'inline', marginRight: 4 }} />
+            EXISTING
+          </button>
+          <button
+            onClick={() => setModelType('development')}
+            style={{ fontSize: 10, fontWeight: modelType === 'development' ? 700 : 500, color: modelType === 'development' ? BT.blueL : BT.td, background: modelType === 'development' ? `${BT.blue}20` : 'none', border: `1px solid ${modelType === 'development' ? BT.blue : BT.border}`, borderRadius: 3, padding: '3px 9px', cursor: 'pointer', ...bSans }}
+          >
+            <Hammer size={10} style={{ display: 'inline', marginRight: 4 }} />
+            DEVELOPMENT
+          </button>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <Zap size={16} className="text-blue-600" />
-            <span className="text-sm font-semibold text-blue-900">Financial Model Engine</span>
-          </div>
-          <p className="text-xs text-blue-700">
-            Claude AI will build a complete {holdPeriod}-year financial model from your assumptions below
-          </p>
+      {/* Model Engine Bar */}
+      <div style={{ background: BT.bgCard, borderBottom: `1px solid ${BT.border}`, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Zap size={13} color={BT.blueL} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>FINANCIAL MODEL ENGINE</div>
+          <div style={{ fontSize: 10, color: BT.td, ...bSans }}>Claude AI builds a complete {holdPeriod}-year financial model from assumptions below</div>
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <select
             value={holdPeriod}
             onChange={(e) => setHoldPeriod(Number(e.target.value))}
-            className="text-xs border border-blue-300 rounded-lg px-2 py-1.5 bg-white text-blue-900"
+            style={{ fontSize: 10, border: `1px solid ${BT.border}`, borderRadius: 3, padding: '3px 6px', background: BT.bgPanel, color: BT.tm, ...bMono }}
           >
             <option value={3}>3-Year</option>
             <option value={5}>5-Year</option>
@@ -608,62 +636,134 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           <button
             onClick={handleBuildModel}
             disabled={building}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all"
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: building ? BT.bgPanel : BT.blue, border: `1px solid ${BT.blue}`, borderRadius: 3, color: building ? BT.td : '#fff', fontSize: 10, fontWeight: 700, cursor: building ? 'not-allowed' : 'pointer', opacity: building ? 0.6 : 1, ...bSans }}
           >
             {building ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Building Model...
-              </>
+              <><Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} /> BUILDING...</>
             ) : (
-              <>
-                <Zap size={14} />
-                {modelResults ? 'Rebuild Model' : 'Build Model'}
-              </>
+              <><Zap size={11} /> {modelResults ? 'REBUILD MODEL' : 'BUILD MODEL'}</>
             )}
           </button>
           {modelResults && (
             <button
               onClick={handleExportExcel}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-all"
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', background: BT.green, border: `1px solid ${BT.greenL}`, borderRadius: 3, color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', ...bSans }}
             >
-              <Download size={14} />
-              Export Excel
+              <Download size={11} /> EXPORT EXCEL
             </button>
           )}
         </div>
       </div>
 
+      {/* F6 Underwriting Comparison: Broker vs Platform vs User */}
+      {(() => {
+        const brokerPrice = deal?.deal_data?.asking_price ?? null;
+        const platformPrice = platformData?.purchasePrice ?? null;
+        const userPrice = purchasePrice || null;
+        const brokerCap = deal?.deal_data?.broker_cap_rate ?? null;
+        const platformCap = platformData?.capRate ? platformData.capRate * 100 : null;
+        const userCap = capRate ? capRate * 100 : null;
+
+        const priceDivergence = brokerPrice && userPrice
+          ? Math.abs((userPrice - brokerPrice) / brokerPrice)
+          : brokerPrice && platformPrice
+          ? Math.abs((platformPrice - brokerPrice) / brokerPrice)
+          : null;
+        const capDivergence = brokerCap && userCap
+          ? Math.abs(userCap - brokerCap)
+          : brokerCap && platformCap
+          ? Math.abs(platformCap - brokerCap)
+          : null;
+
+        const hasCollision = (priceDivergence !== null && priceDivergence > 0.05) || (capDivergence !== null && capDivergence > 0.5);
+
+        return (
+          <div style={{ margin: '12px 16px 0 16px' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 6, ...bMono }}>UNDERWRITING COMPARISON</div>
+            {hasCollision && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: `${BT.amber}15`, border: `1px solid ${BT.amber}50`, borderRadius: 5, padding: '7px 12px', marginBottom: 8 }}>
+                <span style={{ fontSize: 12 }}>⚠</span>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: BT.amberL, letterSpacing: 0.5, ...bMono }}>UNDERWRITING COLLISION DETECTED</div>
+                  <div style={{ fontSize: 9, color: BT.tm, ...bSans }}>
+                    {priceDivergence !== null && priceDivergence > 0.05 && (
+                      <span>Price delta: {(priceDivergence * 100).toFixed(1)}% from broker. </span>
+                    )}
+                    {capDivergence !== null && capDivergence > 0.5 && (
+                      <span>Cap rate spread: {capDivergence.toFixed(2)}bps from broker.</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <UnderwritingComparison
+          rows={[
+            {
+              label: 'Purchase Price',
+              broker: deal?.deal_data?.asking_price ? `$${(deal.deal_data.asking_price / 1_000_000).toFixed(1)}M` : null,
+              platform: platformData?.purchasePrice ? `$${(platformData.purchasePrice / 1_000_000).toFixed(1)}M` : null,
+              user: purchasePrice ? `$${(purchasePrice / 1_000_000).toFixed(1)}M` : null,
+            },
+            {
+              label: 'Cap Rate',
+              broker: deal?.deal_data?.broker_cap_rate ? `${deal.deal_data.broker_cap_rate.toFixed(2)}%` : null,
+              platform: platformData?.capRate ? `${(platformData.capRate * 100).toFixed(2)}%` : null,
+              user: capRate ? `${(capRate * 100).toFixed(2)}%` : null,
+            },
+            {
+              label: 'Gross Revenue',
+              broker: null,
+              platform: platformData?.grossRevenue ? `$${platformData.grossRevenue.toLocaleString()}` : null,
+              user: null,
+            },
+            {
+              label: 'NOI',
+              broker: null,
+              platform: platformData?.noi ? `$${platformData.noi.toLocaleString()}` : null,
+              user: null,
+            },
+            {
+              label: 'Hold Period',
+              broker: null,
+              platform: `${holdPeriod}yr`,
+              user: `${holdPeriod}yr`,
+            },
+          ]}
+            />
+          </div>
+        );
+      })()}
+
       {modelResults && <ModelResultsSummary results={modelResults} />}
 
-      <div className="space-y-3">
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         {sections.map(section => {
           const isExpanded = expandedSections.has(section.id);
           const Icon = section.icon;
 
           return (
-            <div key={section.id} className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+            <div key={section.id} style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, borderRadius: 4, overflow: 'hidden' }}>
               <button
                 onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center justify-between px-4 py-3 hover:bg-stone-50 transition-colors"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', background: isExpanded ? BT.bgPanel : 'none', border: 'none', cursor: 'pointer', transition: 'background 0.15s' } satisfies React.CSSProperties}
               >
-                <div className="flex items-center gap-2">
-                  <Icon size={14} className="text-stone-500" />
-                  <span className="text-sm font-semibold text-stone-800">{section.label}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon size={12} color={isExpanded ? BT.amber : BT.td} />
+                  <span style={{ fontSize: 11, fontWeight: isExpanded ? 700 : 600, color: isExpanded ? BT.tm : BT.ts, letterSpacing: 0.5, ...bSans }}>{section.label.toUpperCase()}</span>
                 </div>
-                {isExpanded ? <ChevronDown size={14} className="text-stone-400" /> : <ChevronRight size={14} className="text-stone-400" />}
+                {isExpanded ? <ChevronDown size={12} color={BT.amber} /> : <ChevronRight size={12} color={BT.td} />}
               </button>
 
               {isExpanded && (
-                <div className="px-4 pb-4 border-t border-stone-100">
+                <div style={{ padding: '12px 16px 16px', borderTop: `1px solid ${BT.border}` }}>
                   {section.id === 'dealInfo' && (
                     <>
                       {designSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-900/20 text-violet-300 border border-violet-200">
                             Source: {designSource}
                           </span>
-                          <span className="text-[10px] text-stone-400">Units & SF pre-filled from 3D Design module — edit to override</span>
+                          <span className="text-[10px] text-[#6b7f94]">Units & SF pre-filled from 3D Design module — edit to override</span>
                         </div>
                       )}
                       <DealInfoSection
@@ -682,10 +782,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <>
                       {designSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-900/20 text-violet-300 border border-violet-200">
                             Source: {designSource}
                           </span>
-                          <span className="text-[10px] text-stone-400">Unit mix pre-filled from 3D Design module — edit to override</span>
+                          <span className="text-[10px] text-[#6b7f94]">Unit mix pre-filled from 3D Design module — edit to override</span>
                         </div>
                       )}
                       <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
@@ -733,6 +833,18 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                       platformData={platformData}
                     />
                   )}
+                  {section.id === 'concessions' && (
+                    <ConcessionsSection
+                      freeWeeks={concessionFreeWeeks} setFreeWeeks={setConcessionFreeWeeks}
+                      unitsPct={concessionUnitsPct} setUnitsPct={setConcessionUnitsPct}
+                      durationMonths={concessionDurationMonths} setDurationMonths={setConcessionDurationMonths}
+                      ongoing={concessionOngoing} setOngoing={setConcessionOngoing}
+                      absorptionLinked={absorptionLinked}
+                      totalUnits={totalUnits}
+                      unitMix={unitMix}
+                      modelType={modelType}
+                    />
+                  )}
                   {section.id === 'otherIncome' && (
                     <OtherIncomeSection
                       otherIncome={otherIncome} setOtherIncome={setOtherIncome}
@@ -749,10 +861,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                     <>
                       {debtSource && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-900/20 text-blue-300 border border-blue-700/50">
                             Source: {debtSource}
                           </span>
-                          <span className="text-[10px] text-stone-400">Values pre-filled from Debt & Equity module — edit to override</span>
+                          <span className="text-[10px] text-[#6b7f94]">Values pre-filled from Debt & Equity module — edit to override</span>
                         </div>
                       )}
                       <FinancingSection
@@ -807,24 +919,24 @@ const InputField: React.FC<{
 }> = ({ label, value, onChange, type = 'number', platformValue, platformSource, step, suffix, className = '' }) => (
   <div className={`${className}`}>
     <div className="flex items-center justify-between mb-1">
-      <label className="text-[11px] font-medium text-stone-600">{label}</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3]">{label}</label>
       {platformValue !== undefined && (
-        <span className="text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono" title={platformSource}>
+        <span className="text-[9px] text-cyan-300 bg-cyan-900/20 px-1.5 py-0.5 rounded font-mono" title={platformSource}>
           Platform: {typeof platformValue === 'number' ? (type === 'percent' ? fmtPct(platformValue) : type === 'currency' ? fmt$(platformValue) : platformValue) : platformValue}
         </span>
       )}
     </div>
     <div className="flex items-center">
-      {type === 'currency' && <span className="text-xs text-stone-400 mr-1">$</span>}
+      {type === 'currency' && <span className="text-xs text-[#6b7f94] mr-1">$</span>}
       <input
         type={type === 'text' ? 'text' : 'number'}
         value={value}
         onChange={(e) => onChange(type === 'text' ? e.target.value : parseFloat(e.target.value) || 0)}
         step={step || (type === 'percent' ? 0.001 : type === 'currency' ? 1000 : 1)}
-        className="w-full text-xs font-mono border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 outline-none"
+        className="w-full text-xs font-mono border border-[#1e2a3d] rounded-lg px-2.5 py-1.5 focus:border-[#3B82F6] focus:ring-1 focus:ring-[#3B82F6]/20 outline-none"
       />
-      {suffix && <span className="text-xs text-stone-400 ml-1">{suffix}</span>}
-      {type === 'percent' && <span className="text-xs text-stone-400 ml-1">×100=%</span>}
+      {suffix && <span className="text-xs text-[#6b7f94] ml-1">{suffix}</span>}
+      {type === 'percent' && <span className="text-xs text-[#6b7f94] ml-1">×100=%</span>}
     </div>
   </div>
 );
@@ -845,7 +957,7 @@ const DealInfoSection: React.FC<any> = ({ dealName, setDealName, totalUnits, set
 const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any }> = ({ unitMix, setUnitMix, platformData }) => {
   const updateRow = (index: number, field: keyof UnitMixRow, value: any) => {
     const updated = [...unitMix];
-    (updated[index] as any)[field] = value;
+    (updated[index] as Record<string, unknown>)[field as string] = value;
     if (field === 'units' || field === 'occupied') {
       updated[index].vacant = updated[index].units - updated[index].occupied;
     }
@@ -873,7 +985,7 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-stone-500 border-b border-stone-200">
+            <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
               <th className="text-left py-2 px-2 font-medium">Floor Plan</th>
               <th className="text-right py-2 px-2 font-medium">SF</th>
               <th className="text-right py-2 px-2 font-medium">Beds</th>
@@ -888,47 +1000,47 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
           </thead>
           <tbody>
             {unitMix.map((row, i) => (
-              <tr key={i} className="border-b border-stone-100 hover:bg-stone-50">
+              <tr key={i} className="border-b border-[#1e2a3d] hover:bg-[#131920]">
                 <td className="py-1.5 px-2">
                   <input type="text" value={row.floorPlan} onChange={(e) => updateRow(i, 'floorPlan', e.target.value)}
-                    className="w-24 text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-24 text-xs font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.unitSize} onChange={(e) => updateRow(i, 'unitSize', parseInt(e.target.value) || 0)}
-                    className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.beds} onChange={(e) => updateRow(i, 'beds', parseInt(e.target.value) || 0)}
-                    className="w-12 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-12 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.units} onChange={(e) => updateRow(i, 'units', parseInt(e.target.value) || 0)}
-                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-14 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.occupied} onChange={(e) => updateRow(i, 'occupied', parseInt(e.target.value) || 0)}
-                    className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                    className="w-14 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
                 </td>
-                <td className="py-1.5 px-2 text-right font-mono text-stone-500">{row.vacant}</td>
+                <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">{row.vacant}</td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.marketRent} onChange={(e) => updateRow(i, 'marketRent', parseInt(e.target.value) || 0)}
-                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                    className="w-18 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" step={25} />
                 </td>
-                <td className="py-1.5 px-2 text-right font-mono text-stone-500">
+                <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">
                   ${row.unitSize > 0 ? (row.marketRent / row.unitSize).toFixed(2) : '0.00'}
                 </td>
                 <td className="py-1.5 px-2">
                   <input type="number" value={row.inPlaceRent} onChange={(e) => updateRow(i, 'inPlaceRent', parseInt(e.target.value) || 0)}
-                    className="w-18 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" step={25} />
+                    className="w-18 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" step={25} />
                 </td>
                 <td className="py-1.5 px-1">
-                  <button onClick={() => removeRow(i)} className="text-stone-300 hover:text-red-500 p-0.5">
+                  <button onClick={() => removeRow(i)} className="text-[#a0b0c0] hover:text-red-500 p-0.5">
                     <Trash2 size={12} />
                   </button>
                 </td>
               </tr>
             ))}
-            <tr className="bg-stone-50 font-semibold text-stone-700">
+            <tr className="font-semibold text-[#9EA8B4]" style={{ background: "#131920" }}>
               <td className="py-2 px-2">TOTAL</td>
               <td className="py-2 px-2 text-right font-mono">{totals.units > 0 ? Math.round(totals.totalSF / totals.units) : 0}</td>
               <td className="py-2 px-2"></td>
@@ -945,10 +1057,10 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
           </tbody>
         </table>
       </div>
-      <button onClick={addRow} className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+      <button onClick={addRow} className="flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-800 font-medium">
         <Plus size={12} /> Add Floor Plan
       </button>
-      <div className="mt-2 text-[10px] text-stone-400 font-mono">
+      <div className="mt-2 text-[10px] text-[#6b7f94] font-mono">
         GPR: ${(totals.weightedRent * 12).toLocaleString()}/yr | Avg Rent: ${totals.units > 0 ? Math.round(totals.weightedRent / totals.units) : 0}/unit/mo | Occupancy: {totals.units > 0 ? ((totals.occupied / totals.units) * 100).toFixed(1) : 0}%
       </div>
     </div>
@@ -962,22 +1074,22 @@ const AcquisitionSection: React.FC<any> = ({ purchasePrice, setPurchasePrice, ca
       <InputField label="Going-In Cap Rate" value={capRate} onChange={setCapRate} type="percent" step={0.0025}
         platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
       <div>
-        <label className="text-[11px] font-medium text-stone-600">Price/Unit</label>
-        <div className="text-sm font-mono text-stone-700 mt-1">{totalUnits > 0 ? fmt$(Math.round(purchasePrice / totalUnits)) : '—'}</div>
+        <label className="text-[11px] font-medium text-[#7f8ea3]">Price/Unit</label>
+        <div className="text-sm font-mono text-[#a0b0c0] mt-1">{totalUnits > 0 ? fmt$(Math.round(purchasePrice / totalUnits)) : '—'}</div>
       </div>
     </div>
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-2 block">Closing Costs</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-2 block">Closing Costs</label>
       <div className="grid grid-cols-3 gap-3">
         {Object.entries(closingCosts).map(([key, val]) => (
           <div key={key} className="flex items-center gap-2">
-            <span className="text-[10px] text-stone-500 w-24 truncate">{key}</span>
+            <span className="text-[10px] text-[#7f8ea3] w-24 truncate">{key}</span>
             <input type="number" value={val} onChange={(e) => setClosingCosts({ ...closingCosts, [key]: parseInt(e.target.value) || 0 })}
-              className="flex-1 text-xs text-right font-mono border border-stone-200 rounded px-2 py-1 focus:border-blue-400 outline-none" step={5000} />
+              className="flex-1 text-xs text-right font-mono border border-[#1e2a3d] rounded px-2 py-1 focus:border-[#3B82F6] outline-none" step={5000} />
           </div>
         ))}
       </div>
-      <div className="text-[10px] text-stone-400 font-mono mt-2">
+      <div className="text-[10px] text-[#6b7f94] font-mono mt-2">
         Total Closing Costs: {fmt$(Object.values(closingCosts).reduce((s, v) => s + v, 0))}
       </div>
     </div>
@@ -1009,7 +1121,7 @@ const DevelopmentCostsSection: React.FC<any> = ({
         <InputField label="Construction Loan LTC" value={constructionLoanLTC} onChange={setConstructionLoanLTC} type="percent" suffix="(decimal)" />
         <InputField label="Construction Loan Rate" value={constructionLoanRate} onChange={setConstructionLoanRate} type="percent" suffix="(decimal)" />
       </div>
-      <div className="bg-stone-50 rounded-lg p-3 text-[10px] font-mono text-stone-500">
+      <div className="rounded-lg p-3 text-[10px] font-mono text-[#6B7585]" style={{ background: "#131920" }}>
         Hard Cost: {fmt$(hardCost)} | Total Dev Cost (est): {fmt$(totalDev)} | Loan: {fmt$(totalDev * constructionLoanLTC)} | Equity: {fmt$(totalDev * (1 - constructionLoanLTC))}
       </div>
     </div>
@@ -1022,9 +1134,9 @@ const DispositionSection: React.FC<any> = ({ exitCapRate, setExitCapRate, sellin
       platformValue={platformData?.exitCap} platformSource="Strategy Module" suffix="(decimal)" />
     <InputField label="Selling Costs" value={sellingCosts} onChange={setSellingCosts} type="percent" suffix="(decimal)" />
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-1 block">Sale NOI Method</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-1 block">Sale NOI Method</label>
       <select value={saleNOIMethod} onChange={(e) => setSaleNOIMethod(e.target.value)}
-        className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+        className="w-full text-xs border border-[#1e2a3d] rounded-lg px-2.5 py-1.5 focus:border-[#3B82F6] outline-none">
         <option>Forward 12mo</option>
         <option>T-12</option>
       </select>
@@ -1041,10 +1153,10 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
       <InputField label="Collection Loss" value={collectionLoss} onChange={setCollectionLoss} type="percent" suffix="(decimal)" />
     </div>
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-2 block">
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-2 block">
         Annual Rent Growth
         {platformData?.rentGrowth && (
-          <span className="ml-2 text-[9px] text-cyan-600 bg-cyan-50 px-1.5 py-0.5 rounded font-mono">
+          <span className="ml-2 text-[9px] text-cyan-300 bg-cyan-900/20 px-1.5 py-0.5 rounded font-mono">
             Platform data available
           </span>
         )}
@@ -1052,13 +1164,13 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
       <div className="flex gap-2 flex-wrap">
         {rentGrowth.slice(0, Math.max(holdPeriod, 5)).map((val, i) => (
           <div key={i} className="text-center">
-            <div className="text-[9px] text-stone-400 mb-1">Y{i + 1}</div>
+            <div className="text-[9px] text-[#6b7f94] mb-1">Y{i + 1}</div>
             <input type="number" value={val} onChange={(e) => {
               const updated = [...rentGrowth];
               updated[i] = parseFloat(e.target.value) || 0;
               setRentGrowth(updated);
             }}
-              className="w-16 text-xs text-center font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none"
+              className="w-16 text-xs text-center font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none"
               step={0.001} />
           </div>
         ))}
@@ -1067,6 +1179,149 @@ const RevenueSection: React.FC<any> = ({ rentGrowth, setRentGrowth, lossToLease,
   </div>
 );
 
+interface ConcessionsSectionProps {
+  freeWeeks: number;
+  setFreeWeeks: (v: number) => void;
+  unitsPct: number;
+  setUnitsPct: (v: number) => void;
+  durationMonths: number;
+  setDurationMonths: (v: number) => void;
+  ongoing: boolean;
+  setOngoing: (v: boolean) => void;
+  totalUnits: number;
+  unitMix: UnitMixRow[];
+  modelType: 'existing' | 'development';
+  absorptionLinked?: boolean;
+}
+
+const ConcessionsSection: React.FC<ConcessionsSectionProps> = ({
+  freeWeeks, setFreeWeeks, unitsPct, setUnitsPct,
+  durationMonths, setDurationMonths, ongoing, setOngoing,
+  totalUnits, unitMix, modelType, absorptionLinked,
+}) => {
+  const avgMonthlyRent = unitMix.length > 0
+    ? unitMix.reduce((s, u) => s + u.marketRent * u.units, 0) / Math.max(1, unitMix.reduce((s, u) => s + u.units, 0))
+    : 1500;
+  const weeklyRent = avgMonthlyRent / 4.33;
+  const concessionUnits = Math.round(totalUnits * unitsPct);
+  const concessionCostPerUnit = weeklyRent * freeWeeks;
+  const leaseUpCycles = durationMonths > 0 ? Math.max(1, Math.ceil(durationMonths / 12)) : 1;
+  const totalConcessionCost = ongoing
+    ? concessionCostPerUnit * concessionUnits * leaseUpCycles
+    : concessionCostPerUnit * concessionUnits;
+  const annualizedConcessionCost = ongoing
+    ? concessionCostPerUnit * concessionUnits
+    : durationMonths > 0
+      ? (concessionCostPerUnit * concessionUnits * 12) / Math.max(1, durationMonths)
+      : concessionCostPerUnit * concessionUnits;
+  const gpr = unitMix.reduce((s, u) => s + u.marketRent * u.units * 12, 0);
+  const concessionPctOfGPR = gpr > 0 ? annualizedConcessionCost / gpr : 0;
+
+  return (
+    <div className="mt-3 space-y-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Info size={14} className="text-blue-500" />
+        <span className="text-[11px] text-[#7f8ea3]">
+          {modelType === 'development'
+            ? `Concessions reduce EGI during the ${durationMonths > 0 ? durationMonths + '-month ' : ''}lease-up period. Duration and eligible units are auto-linked from the Absorption Schedule (Traffic module).`
+            : ongoing
+              ? 'Ongoing renewal concessions are annualized and reduce effective rent collection each year.'
+              : 'One-time lease-up concessions applied during the specified duration period.'
+          }
+        </span>
+        {absorptionLinked && (
+          <span className="text-[10px] bg-emerald-900/20 text-emerald-300 px-2 py-0.5 rounded-full font-medium whitespace-nowrap">
+            Linked to Absorption
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <div>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Free Rent (weeks)</label>
+          <input type="number" value={freeWeeks} min={0} max={12} step={0.5}
+            onChange={e => setFreeWeeks(parseFloat(e.target.value) || 0)}
+            className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-[#3B82F6] outline-none" />
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">per lease</div>
+        </div>
+        <div>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Units Receiving (%)</label>
+          <input type="number" value={unitsPct} min={0} max={1} step={0.05}
+            onChange={e => setUnitsPct(parseFloat(e.target.value) || 0)}
+            className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-[#3B82F6] outline-none" />
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">{concessionUnits} units</div>
+        </div>
+        <div>
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Duration (months)</label>
+          <input type="number" value={durationMonths} min={0} max={36}
+            onChange={e => setDurationMonths(parseInt(e.target.value) || 0)}
+            className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-2 py-1.5 focus:border-[#3B82F6] outline-none" />
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">concession period</div>
+        </div>
+        <div className="flex flex-col">
+          <label className="text-[11px] font-medium text-[#7f8ea3] block mb-1">Ongoing?</label>
+          <button
+            onClick={() => setOngoing(!ongoing)}
+            className={`px-3 py-1.5 text-xs rounded border transition-colors ${
+              ongoing ? 'bg-blue-900/20 border-blue-700 text-blue-300' : 'text-[#6B7585] border-[#1e2a3d]'
+            }`}
+          >
+            {ongoing ? 'Yes — recurring' : 'No — lease-up only'}
+          </button>
+          <div className="text-[9px] text-[#6b7f94] mt-0.5">renewal concessions</div>
+        </div>
+      </div>
+
+      {(freeWeeks > 0 && unitsPct > 0) && (
+        <div className="rounded-xl p-4" style={{ background: "#131920", border: "1px solid #1e2a3d" }}>
+          <h5 className="text-[10px] font-semibold text-[#7f8ea3] uppercase tracking-wider mb-3">Concession Impact</h5>
+          <div className="grid grid-cols-5 gap-4">
+            <div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">Cost / Unit</div>
+              <div className="text-sm font-bold font-mono text-[#E8E6E1]">{fmt$(Math.round(concessionCostPerUnit))}</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">
+                {ongoing ? 'Annual Cost' : 'Total Cost'}
+              </div>
+              <div className="text-sm font-bold font-mono text-red-400">{fmt$(Math.round(totalConcessionCost))}</div>
+              {durationMonths > 0 && !ongoing && (
+                <div className="text-[9px] text-[#6b7f94] mt-0.5">over {durationMonths} months</div>
+              )}
+            </div>
+            <div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">Annualized</div>
+              <div className="text-sm font-bold font-mono text-red-600">{fmt$(Math.round(annualizedConcessionCost))}/yr</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">% of GPR</div>
+              <div className="text-sm font-bold font-mono text-amber-300">{(concessionPctOfGPR * 100).toFixed(2)}%</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-[#6b7f94] uppercase tracking-wider">EGI Reduction</div>
+              <div className="text-sm font-bold font-mono text-red-600">({fmt$(Math.round(annualizedConcessionCost))})</div>
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
+            <div className="flex justify-between text-xs">
+              <span className="text-[#7f8ea3]">Gross Potential Rent</span>
+              <span className="font-mono text-stone-800">{fmt$(Math.round(gpr))}</span>
+            </div>
+            <div className="flex justify-between text-xs text-red-600 mt-1">
+              <span>Less: Concessions {ongoing ? '(annual)' : durationMonths > 0 ? `(annualized from ${durationMonths}mo)` : ''}</span>
+              <span className="font-mono">({fmt$(Math.round(annualizedConcessionCost))})</span>
+            </div>
+            <div className="flex justify-between text-xs font-semibold mt-1 pt-1 border-t border-[#1e2a3d]">
+              <span className="text-stone-800">Effective Gross Income (post-concessions)</span>
+              <span className="font-mono text-[#E8E6E1]">{fmt$(Math.round(gpr - annualizedConcessionCost))}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem>; setOtherIncome: (v: Record<string, OtherIncomeItem>) => void; totalUnits: number }> = ({ otherIncome, setOtherIncome, totalUnits }) => {
   const totalAnnual = Object.values(otherIncome).reduce((sum, oi) => sum + oi.perUnitMonth * totalUnits * 12 * oi.penetration, 0);
 
@@ -1074,7 +1329,7 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
     <div className="mt-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Income Item</th>
             <th className="text-right py-2 px-2 font-medium">$/Unit/Mo</th>
             <th className="text-right py-2 px-2 font-medium">Penetration</th>
@@ -1083,24 +1338,24 @@ const OtherIncomeSection: React.FC<{ otherIncome: Record<string, OtherIncomeItem
         </thead>
         <tbody>
           {Object.entries(otherIncome).map(([name, oi]) => (
-            <tr key={name} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+            <tr key={name} className="border-b border-[#1a2a3a]">
+              <td className="py-1.5 px-2 text-[#a0b0c0]">{name}</td>
               <td className="py-1.5 px-2">
                 <input type="number" value={oi.perUnitMonth} step={5}
                   onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, perUnitMonth: parseFloat(e.target.value) || 0 } })}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={oi.penetration} step={0.05}
                   onChange={(e) => setOtherIncome({ ...otherIncome, [name]: { ...oi, penetration: parseFloat(e.target.value) || 0 } })}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
-              <td className="py-1.5 px-2 text-right font-mono text-stone-600">
+              <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">
                 {fmt$(Math.round(oi.perUnitMonth * totalUnits * 12 * oi.penetration))}
               </td>
             </tr>
           ))}
-          <tr className="bg-stone-50 font-semibold">
+          <tr className="font-semibold" style={{ background: "#131920" }}>
             <td className="py-2 px-2">TOTAL OTHER INCOME</td>
             <td></td><td></td>
             <td className="py-2 px-2 text-right font-mono">{fmt$(Math.round(totalAnnual))}</td>
@@ -1121,7 +1376,7 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
     <div className="mt-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Expense Category</th>
             <th className="text-right py-2 px-2 font-medium">Amount</th>
             <th className="text-right py-2 px-2 font-medium">Type</th>
@@ -1131,18 +1386,18 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
         </thead>
         <tbody>
           {Object.entries(expenses).map(([name, exp]) => (
-            <tr key={name} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-700">{name}</td>
+            <tr key={name} className="border-b border-[#1a2a3a]">
+              <td className="py-1.5 px-2 text-[#a0b0c0]">{name}</td>
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.amount}
                   step={exp.type === 'pctEGR' ? 0.005 : 1000}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, amount: parseFloat(e.target.value) || 0 } })}
-                  className="w-20 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-20 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <select value={exp.type}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, type: e.target.value } })}
-                  className="text-[10px] border border-stone-200 rounded px-1 py-0.5 outline-none">
+                  className="text-[10px] border border-[#1e2a3d] rounded px-1 py-0.5 outline-none">
                   <option value="total">Total</option>
                   <option value="perUnit">Per Unit</option>
                   <option value="pctEGR">% of EGR</option>
@@ -1151,14 +1406,14 @@ const ExpensesSection: React.FC<{ expenses: Record<string, ExpenseItem>; setExpe
               <td className="py-1.5 px-2">
                 <input type="number" value={exp.growthRate} step={0.005}
                   onChange={(e) => setExpenses({ ...expenses, [name]: { ...exp, growthRate: parseFloat(e.target.value) || 0 } })}
-                  className="w-14 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-14 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
-              <td className="py-1.5 px-2 text-right font-mono text-stone-600">
+              <td className="py-1.5 px-2 text-right font-mono text-[#7f8ea3]">
                 {exp.type === 'pctEGR' ? fmtPct(exp.amount) : fmt$(exp.type === 'perUnit' ? exp.amount * totalUnits : exp.amount)}
               </td>
             </tr>
           ))}
-          <tr className="bg-stone-50 font-semibold">
+          <tr className="font-semibold" style={{ background: "#131920" }}>
             <td className="py-2 px-2">TOTAL EXPENSES (excl. Mgmt %)</td>
             <td></td><td></td><td></td>
             <td className="py-2 px-2 text-right font-mono">{fmt$(Math.round(totalExpenses))}</td>
@@ -1179,9 +1434,9 @@ const FinancingSection: React.FC<any> = ({
     <div className="grid grid-cols-3 gap-4">
       <InputField label="Loan Amount" value={loanAmount} onChange={setLoanAmount} type="currency" step={100000} />
       <div>
-        <label className="text-[11px] font-medium text-stone-600 mb-1 block">Loan Type</label>
+        <label className="text-[11px] font-medium text-[#7f8ea3] mb-1 block">Loan Type</label>
         <select value={loanType} onChange={(e) => setLoanType(e.target.value)}
-          className="w-full text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 focus:border-blue-400 outline-none">
+          className="w-full text-xs border border-[#1e2a3d] rounded-lg px-2.5 py-1.5 focus:border-[#3B82F6] outline-none">
           <option>Fixed</option>
           <option>Floating</option>
         </select>
@@ -1213,7 +1468,7 @@ const CapexSection: React.FC<{
     <div className="mt-3 space-y-3">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Description</th>
             <th className="text-right py-2 px-2 font-medium">Amount</th>
             <th className="py-2 px-1"></th>
@@ -1221,14 +1476,14 @@ const CapexSection: React.FC<{
         </thead>
         <tbody>
           {capexItems.map((item, i) => (
-            <tr key={i} className="border-b border-stone-100">
+            <tr key={i} className="border-b border-[#1a2a3a]">
               <td className="py-1.5 px-2">
                 <input type="text" value={item.description} onChange={(e) => {
                   const updated = [...capexItems];
                   updated[i] = { ...item, description: e.target.value };
                   setCapexItems(updated);
                 }}
-                  className="w-full text-xs font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-full text-xs font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={item.amount} step={10000} onChange={(e) => {
@@ -1236,10 +1491,10 @@ const CapexSection: React.FC<{
                   updated[i] = { ...item, amount: parseInt(e.target.value) || 0 };
                   setCapexItems(updated);
                 }}
-                  className="w-28 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-28 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-1">
-                <button onClick={() => setCapexItems(capexItems.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
+                <button onClick={() => setCapexItems(capexItems.filter((_, idx) => idx !== i))} className="text-[#a0b0c0] hover:text-red-500">
                   <Trash2 size={12} />
                 </button>
               </td>
@@ -1248,18 +1503,18 @@ const CapexSection: React.FC<{
         </tbody>
       </table>
       <button onClick={() => setCapexItems([...capexItems, { description: 'New Item', amount: 0 }])}
-        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-800 font-medium">
         <Plus size={12} /> Add Line Item
       </button>
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <label className="text-[11px] font-medium text-stone-600">Subtotal</label>
-          <div className="text-sm font-mono text-stone-700">{fmt$(subtotal)}</div>
+          <label className="text-[11px] font-medium text-[#7f8ea3]">Subtotal</label>
+          <div className="text-sm font-mono text-[#a0b0c0]">{fmt$(subtotal)}</div>
         </div>
         <InputField label="GC Contingency" value={contingencyPct} onChange={setContingencyPct} type="percent" suffix="(decimal)" />
         <InputField label="Reserves/Unit/Year" value={reservesPerUnit} onChange={setReservesPerUnit} step={25} suffix="$/unit" />
       </div>
-      <div className="text-[10px] font-mono text-stone-400">
+      <div className="text-[10px] font-mono text-[#6b7f94]">
         Total CapEx (with contingency): {fmt$(Math.round(subtotal * (1 + contingencyPct)))}
       </div>
     </div>
@@ -1279,10 +1534,10 @@ const WaterfallSection: React.FC<{
       <InputField label="GP Share" value={gpShare} onChange={(v: number) => { setGpShare(v); setLpShare(+(1 - v).toFixed(4)); }} type="percent" suffix="(decimal)" />
     </div>
     <div>
-      <label className="text-[11px] font-medium text-stone-600 mb-2 block">Promote Hurdles</label>
+      <label className="text-[11px] font-medium text-[#7f8ea3] mb-2 block">Promote Hurdles</label>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
+          <tr className="text-[#7f8ea3] border-b border-[#1e2a3d]">
             <th className="text-left py-2 px-2 font-medium">Tier</th>
             <th className="text-right py-2 px-2 font-medium">Hurdle IRR</th>
             <th className="text-right py-2 px-2 font-medium">GP Promote</th>
@@ -1292,25 +1547,25 @@ const WaterfallSection: React.FC<{
         </thead>
         <tbody>
           {hurdles.map((h, i) => (
-            <tr key={i} className="border-b border-stone-100">
-              <td className="py-1.5 px-2 text-stone-600">Tier {i + 1}</td>
+            <tr key={i} className="border-b border-[#1a2a3a]">
+              <td className="py-1.5 px-2 text-[#7f8ea3]">Tier {i + 1}</td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.hurdleRate} step={0.01}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, hurdleRate: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.promoteToGP} step={0.05}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, promoteToGP: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-2">
                 <input type="number" value={h.lpSplit} step={0.05}
                   onChange={(e) => { const u = [...hurdles]; u[i] = { ...h, lpSplit: parseFloat(e.target.value) || 0 }; setHurdles(u); }}
-                  className="w-16 text-xs text-right font-mono border border-stone-200 rounded px-1.5 py-1 focus:border-blue-400 outline-none" />
+                  className="w-16 text-xs text-right font-mono border border-[#1e2a3d] rounded px-1.5 py-1 focus:border-[#3B82F6] outline-none" />
               </td>
               <td className="py-1.5 px-1">
-                <button onClick={() => setHurdles(hurdles.filter((_, idx) => idx !== i))} className="text-stone-300 hover:text-red-500">
+                <button onClick={() => setHurdles(hurdles.filter((_, idx) => idx !== i))} className="text-[#a0b0c0] hover:text-red-500">
                   <Trash2 size={12} />
                 </button>
               </td>
@@ -1319,7 +1574,7 @@ const WaterfallSection: React.FC<{
         </tbody>
       </table>
       <button onClick={() => setHurdles([...hurdles, { hurdleRate: 0.20, promoteToGP: 0.50, lpSplit: 0.50 }])}
-        className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium">
+        className="flex items-center gap-1 mt-2 text-xs text-blue-400 hover:text-blue-800 font-medium">
         <Plus size={12} /> Add Hurdle Tier
       </button>
     </div>
@@ -1331,32 +1586,30 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
   if (!s) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-emerald-200 overflow-hidden">
-      <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-200">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 size={16} className="text-emerald-600" />
-          <span className="text-sm font-semibold text-emerald-900">Model Results</span>
-        </div>
+    <div style={{ background: BT.bgCard, border: `1px solid ${BT.green}60`, borderRadius: 4, overflow: 'hidden', margin: '0 16px' }}>
+      <div style={{ padding: '8px 14px', background: BT.greenBg, borderBottom: `1px solid ${BT.green}40`, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <CheckCircle2 size={13} color={BT.greenL} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: BT.greenL, letterSpacing: 0.5, ...bSans }}>MODEL RESULTS</span>
       </div>
-      <div className="p-4">
-        <div className="grid grid-cols-5 gap-4 mb-4">
-          <MetricCard label="Levered IRR" value={s.irr != null ? `${(s.irr * 100).toFixed(1)}%` : '—'} color="blue" />
-          <MetricCard label="Equity Multiple" value={s.equityMultiple != null ? `${s.equityMultiple.toFixed(2)}x` : '—'} color="emerald" />
-          <MetricCard label="Year 1 NOI" value={s.noiYear1 ? fmt$(s.noiYear1) : '—'} color="violet" />
-          <MetricCard label="Exit Value" value={s.exitValue ? fmt$(s.exitValue) : '—'} color="amber" />
-          <MetricCard label="DSCR (Y1)" value={Array.isArray(s.dscr) && s.dscr[0] ? `${s.dscr[0].toFixed(2)}x` : (s.dscr ? `${Number(s.dscr).toFixed(2)}x` : '—')} color="stone" />
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12, marginBottom: 14 }}>
+          <MetricCard label="Levered IRR" value={s.irr != null ? `${(s.irr * 100).toFixed(1)}%` : '—'} color={BT.blueL} />
+          <MetricCard label="Equity Multiple" value={s.equityMultiple != null ? `${s.equityMultiple.toFixed(2)}x` : '—'} color={BT.greenL} />
+          <MetricCard label="Year 1 NOI" value={s.noiYear1 ? fmt$(s.noiYear1) : '—'} color={BT.violL} />
+          <MetricCard label="Exit Value" value={s.exitValue ? fmt$(s.exitValue) : '—'} color={BT.amber} />
+          <MetricCard label="DSCR (Y1)" value={Array.isArray(s.dscr) && s.dscr[0] ? `${s.dscr[0].toFixed(2)}x` : (s.dscr ? `${Number(s.dscr).toFixed(2)}x` : '—')} color={BT.ts} />
         </div>
 
         {results.annualCashFlow && results.annualCashFlow.length > 0 && (
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-stone-600 mb-2">Annual Cash Flow Summary</h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] font-mono">
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 8, ...bMono }}>ANNUAL CASH FLOW SUMMARY</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...bMono }}>
                 <thead>
-                  <tr className="text-stone-500 border-b border-stone-200">
-                    <th className="text-left py-1.5 px-2">Year</th>
+                  <tr style={{ borderBottom: `1px solid ${BT.border}` }}>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>Year</th>
                     {results.annualCashFlow.map((cf, i) => (
-                      <th key={i} className="text-right py-1.5 px-2">Y{cf.year || i + 1}</th>
+                      <th key={i} style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>Y{cf.year || i + 1}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1372,34 +1625,34 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
         )}
 
         {results.sensitivityAnalysis?.exitCapVsHoldPeriod?.length > 0 && (
-          <div className="mb-4">
-            <h4 className="text-xs font-semibold text-stone-600 mb-2">Sensitivity: Exit Cap vs Hold Period (IRR)</h4>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 8, ...bMono }}>SENSITIVITY: EXIT CAP vs HOLD PERIOD (IRR)</div>
             <SensitivityGrid data={results.sensitivityAnalysis.exitCapVsHoldPeriod} rowKey="holdPeriod" colKey="capRate" rowLabel="Hold" colLabel="Cap Rate" formatCol={(v: number) => `${(v * 100).toFixed(1)}%`} formatRow={(v: number) => `${v}yr`} />
           </div>
         )}
 
         {results.waterfallDistributions?.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-stone-600 mb-2">Waterfall Distributions</h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px] font-mono">
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, marginBottom: 8, ...bMono }}>WATERFALL DISTRIBUTIONS</div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...bMono }}>
                 <thead>
-                  <tr className="text-stone-500 border-b border-stone-200">
-                    <th className="text-left py-1.5 px-2">Year</th>
-                    <th className="text-right py-1.5 px-2">LP</th>
-                    <th className="text-right py-1.5 px-2">GP</th>
-                    <th className="text-right py-1.5 px-2">Promote</th>
-                    <th className="text-right py-1.5 px-2">Total</th>
+                  <tr style={{ borderBottom: `1px solid ${BT.border}` }}>
+                    <th style={{ textAlign: 'left', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>Year</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>LP</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>GP</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.greenL, fontWeight: 600 }}>PROMOTE</th>
+                    <th style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>TOTAL</th>
                   </tr>
                 </thead>
                 <tbody>
                   {results.waterfallDistributions.map((w, i) => (
-                    <tr key={i} className="border-b border-stone-100">
-                      <td className="py-1 px-2 text-stone-600">Y{w.year}</td>
-                      <td className="py-1 px-2 text-right">{fmt$(Math.round(w.lpDistribution))}</td>
-                      <td className="py-1 px-2 text-right">{fmt$(Math.round(w.gpDistribution))}</td>
-                      <td className="py-1 px-2 text-right text-emerald-600">{fmt$(Math.round(w.gpPromote))}</td>
-                      <td className="py-1 px-2 text-right font-semibold">{fmt$(Math.round(w.totalDistribution))}</td>
+                    <tr key={i} style={{ borderBottom: `1px solid ${BT.border}` }}>
+                      <td style={{ padding: '4px 8px', color: BT.ts }}>Y{w.year}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.tm }}>{fmt$(Math.round(w.lpDistribution))}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.tm }}>{fmt$(Math.round(w.gpDistribution))}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.greenL }}>{fmt$(Math.round(w.gpPromote))}</td>
+                      <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.amber, fontWeight: 700 }}>{fmt$(Math.round(w.totalDistribution))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1413,17 +1666,17 @@ const ModelResultsSummary: React.FC<{ results: ModelResults }> = ({ results }) =
 };
 
 const MetricCard: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
-  <div className="text-center">
-    <div className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">{label}</div>
-    <div className={`text-lg font-bold font-mono text-${color}-700`}>{value}</div>
+  <div style={{ textAlign: 'center', padding: '8px', background: BT.bgPanel, borderRadius: 3, border: `1px solid ${BT.border}` }}>
+    <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1.2, marginBottom: 4, ...bSans }}>{label.toUpperCase()}</div>
+    <div style={{ fontSize: 18, fontWeight: 700, color, ...bMono }}>{value}</div>
   </div>
 );
 
 const CashFlowRow: React.FC<{ label: string; values: number[]; bold?: boolean; negative?: boolean; highlight?: boolean }> = ({ label, values, bold, negative, highlight }) => (
-  <tr className={`border-b border-stone-100 ${highlight ? 'bg-blue-50' : ''}`}>
-    <td className={`py-1 px-2 ${bold ? 'font-semibold text-stone-800' : negative ? 'text-red-600' : 'text-stone-600'}`}>{label}</td>
+  <tr style={{ borderBottom: `1px solid ${BT.border}`, background: highlight ? BT.blueBg : 'transparent' }}>
+    <td style={{ padding: '4px 8px', fontWeight: bold ? 700 : 500, color: negative ? BT.redL : bold ? BT.tm : BT.ts }}>{label}</td>
     {(values || []).map((v, i) => (
-      <td key={i} className={`text-right py-1 px-2 ${bold ? 'font-semibold' : negative ? 'text-red-500' : ''}`}>
+      <td key={i} style={{ textAlign: 'right', padding: '4px 8px', fontWeight: bold ? 700 : 400, color: negative ? BT.redL : bold ? BT.amber : BT.tm }}>
         {v != null ? fmt$(Math.round(v)) : '—'}
       </td>
     ))}
@@ -1435,25 +1688,26 @@ const SensitivityGrid: React.FC<{ data: any[]; rowKey: string; colKey: string; r
   const cols = [...new Set(data.map((d: any) => d[colKey]))].sort((a: number, b: number) => a - b);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[10px] font-mono">
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', fontSize: 10, borderCollapse: 'collapse', ...bMono }}>
         <thead>
-          <tr className="text-stone-500 border-b border-stone-200">
-            <th className="text-left py-1.5 px-2">{rowLabel}\{colLabel}</th>
+          <tr style={{ borderBottom: `1px solid ${BT.border}` }}>
+            <th style={{ textAlign: 'left', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>{rowLabel}\{colLabel}</th>
             {cols.map((c, i) => (
-              <th key={i} className="text-right py-1.5 px-2">{formatCol(c)}</th>
+              <th key={i} style={{ textAlign: 'right', padding: '5px 8px', color: BT.td, fontWeight: 600 }}>{formatCol(c)}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {rows.map((r, ri) => (
-            <tr key={ri} className="border-b border-stone-100">
-              <td className="py-1 px-2 text-stone-600 font-semibold">{formatRow(r)}</td>
+            <tr key={ri} style={{ borderBottom: `1px solid ${BT.border}` }}>
+              <td style={{ padding: '4px 8px', color: BT.ts, fontWeight: 600 }}>{formatRow(r)}</td>
               {cols.map((c, ci) => {
                 const cell = data.find((d: any) => d[rowKey] === r && d[colKey] === c);
+                const irrVal = cell ? cell.irr * 100 : null;
                 return (
-                  <td key={ci} className="text-right py-1 px-2">
-                    {cell ? `${(cell.irr * 100).toFixed(1)}%` : '—'}
+                  <td key={ci} style={{ textAlign: 'right', padding: '4px 8px', color: irrVal != null ? (irrVal >= 20 ? BT.greenL : irrVal >= 15 ? BT.amber : BT.redL) : BT.td }}>
+                    {irrVal != null ? `${irrVal.toFixed(1)}%` : '—'}
                   </td>
                 );
               })}

@@ -14,6 +14,7 @@
  * DESIGN REFERENCE: /jedire/DEV_ANALYSIS_MODULES_DESIGN.md - Section 3
  */
 
+import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
@@ -94,6 +95,10 @@ const SupplyPipelinePage: React.FC = () => {
   const navigate = useNavigate();
   const { dealId } = useParams();
   
+  // Deal context for city/market
+  const [dealCity, setDealCity] = useState<string>('');
+  const [dealState, setDealState] = useState<string>('');
+
   // State
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk'>('wave');
@@ -112,18 +117,41 @@ const SupplyPipelinePage: React.FC = () => {
   // DATA FETCHING
   // ============================================================================
 
+  // Fetch deal city/state for market context
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/deals/${dealId}`)
+      .then(res => {
+        const d = res.data?.data ?? res.data;
+        const city = d?.city ?? d?.market_city ?? '';
+        const state = d?.state ?? d?.market_state ?? '';
+        setDealCity(city);
+        setDealState(state);
+      })
+      .catch(() => {});
+  }, [dealId]);
+
   useEffect(() => {
     fetchSupplyData();
   }, [dealId, timeHorizon]);
 
-  const fetchSupplyData = async () => {
+  // Re-fetch when deal city is resolved
+  useEffect(() => {
+    if (dealCity) {
+      fetchSupplyData(dealCity);
+    }
+  }, [dealCity]);
+
+  const fetchSupplyData = async (cityOverride?: string) => {
     setLoading(true);
     setIsLiveData(false);
+    const marketCity = cityOverride || dealCity || undefined;
+    const cityParam = marketCity ? { city: marketCity } : {};
     try {
       const [submarketRes, trendsRes, snapshotRes] = await Promise.allSettled([
-        apiClient.get('/api/v1/apartment-sync/submarkets', { params: { city: 'Atlanta' } }),
-        apiClient.get('/api/v1/apartment-sync/trends', { params: { city: 'Atlanta' } }),
-        apiClient.get('/api/v1/apartment-sync/market-snapshots', { params: { city: 'Atlanta' } }),
+        apiClient.get('/api/v1/apartment-sync/submarkets', { params: cityParam }),
+        apiClient.get('/api/v1/apartment-sync/trends', { params: cityParam }),
+        apiClient.get('/api/v1/apartment-sync/market-snapshots', { params: cityParam }),
       ]);
 
       const submarkets = submarketRes.status === 'fulfilled' ? (submarketRes.value.data?.data || []) : [];
@@ -157,9 +185,9 @@ const SupplyPipelinePage: React.FC = () => {
             total: totalSupply,
           };
         });
-        setSupplyWave(waveData.length > 0 ? waveData : generateMockSupplyWave());
+        setSupplyWave(waveData.length > 0 ? waveData : []);
       } else {
-        setSupplyWave(generateMockSupplyWave());
+        setSupplyWave([]);
       }
 
       if (submarkets.length > 0) {
@@ -175,7 +203,7 @@ const SupplyPipelinePage: React.FC = () => {
             phase,
             expectedDelivery: sm.snapshot_date ? new Date(sm.snapshot_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 'TBD',
             submarket: sm.submarket_name || sm.name || 'Unknown',
-            distanceMiles: Math.random() * 5 + 0.5,
+            distanceMiles: 0,
             unitMix: {
               studio: 10,
               oneBed: 40,
@@ -201,14 +229,14 @@ const SupplyPipelinePage: React.FC = () => {
           activeProjects: d.count,
           totalUnits: d.units,
           pipelineShare: (d.units / totalPipelineUnits) * 100,
-          avgDeliveryTime: 18 + Math.floor(Math.random() * 6),
-          delayRate: Math.random() * 30,
+          avgDeliveryTime: 18,
+          delayRate: 0,
           marketShare: (d.units / totalPipelineUnits) * 100,
         })).sort((a, b) => b.totalUnits - a.totalUnits);
-        setDeveloperActivity(devActivity.length > 0 ? devActivity : generateMockDevelopers());
+        setDeveloperActivity(devActivity.length > 0 ? devActivity : []);
       } else {
-        setPipelineProjects(generateMockPipeline());
-        setDeveloperActivity(generateMockDevelopers());
+        setPipelineProjects([]);
+        setDeveloperActivity([]);
       }
 
       if (trends.length >= 2) {
@@ -243,7 +271,7 @@ const SupplyPipelinePage: React.FC = () => {
           })(),
         });
       } else {
-        setAbsorption(generateMockAbsorption());
+        setAbsorption(null);
       }
 
       if (submarkets.length > 0 || trends.length > 0) {
@@ -274,15 +302,15 @@ const SupplyPipelinePage: React.FC = () => {
           ],
         });
       } else {
-        setRiskScore(generateMockRiskScore());
+        setRiskScore(null);
       }
     } catch (error) {
       console.error('Error fetching supply data:', error);
-      setSupplyWave(generateMockSupplyWave());
-      setPipelineProjects(generateMockPipeline());
-      setDeveloperActivity(generateMockDevelopers());
-      setAbsorption(generateMockAbsorption());
-      setRiskScore(generateMockRiskScore());
+      setSupplyWave([]);
+      setPipelineProjects([]);
+      setDeveloperActivity([]);
+      setAbsorption(null);
+      setRiskScore(null);
     } finally {
       setLoading(false);
     }
@@ -317,90 +345,63 @@ const SupplyPipelinePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#131920] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading supply pipeline data...</p>
+          <p className="mt-4 text-[#6B7585]">Loading supply pipeline data...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={() => navigate(-1)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <div>
-                <div className="flex items-center space-x-3">
-                  <h1 className="text-2xl font-bold text-gray-900">Supply Pipeline Analysis</h1>
-                  {isLiveData && (
-                    <span className="px-2.5 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full border border-green-300 animate-pulse">
-                      ● LIVE DATA
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  Track future supply to time market entry and identify delivery windows
-                </p>
-              </div>
-            </div>
-            
-            {/* Time Horizon Selector */}
-            <div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-600">Time Horizon:</span>
-              <div className="flex bg-gray-100 rounded-lg p-1">
-                {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
-                  <button
-                    key={horizon}
-                    onClick={() => setTimeHorizon(horizon)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                      timeHorizon === horizon
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900'
-                    }`}
-                  >
-                    {horizon === '3yr' ? '3 Years' : horizon === '5yr' ? '5 Years' : '10 Years'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div className="flex space-x-1 mt-6 border-b border-gray-200">
-            {[
-              { id: 'wave', label: 'Supply Wave', icon: '📊' },
-              { id: 'pipeline', label: 'Pipeline by Phase', icon: '🏗️' },
-              { id: 'developers', label: 'Developer Activity', icon: '👷' },
-              { id: 'absorption', label: 'Absorption Impact', icon: '📈' },
-              { id: 'risk', label: 'Risk Scoring', icon: '⚠️' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
-                }`}
-              >
-                <span className="mr-2">{tab.icon}</span>
-                {tab.label}
-              </button>
-            ))}
-          </div>
+    <div className="min-h-screen bg-[#131920]">
+      {/* Bloomberg v0.34 PanelHeader */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', background: '#1A1F2E',
+        borderBottom: '1px solid #1E2538', borderTop: '2px solid #F97316',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, fontFamily: "'JetBrains Mono',monospace" }}>SUPPLY PIPELINE</span>
+          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>M04 | Pipeline · Absorption · Developer Activity · Risk</span>
+          <span style={{ fontSize: 6, fontWeight: 700, color: '#F97316', background: '#F9731615', border: '1px solid #F9731630', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>SUPPLY</span>
+          {isLiveData && <span style={{ fontSize: 6, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>LIVE</span>}
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>HORIZON:</span>
+          {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
+            <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
+              fontSize: 7, padding: '1px 6px', fontFamily: "'JetBrains Mono',monospace",
+              background: timeHorizon === horizon ? '#F9731620' : 'transparent',
+              border: timeHorizon === horizon ? '1px solid #F9731660' : '1px solid #2A3348',
+              color: timeHorizon === horizon ? '#F97316' : '#8B95A5',
+              cursor: 'pointer',
+            }}>{horizon.toUpperCase()}</button>
+          ))}
+        </div>
+      </div>
+      {/* Bloomberg v0.34 Sub-tab Bar */}
+      <div style={{ display: 'flex', background: '#1A1F2E', borderBottom: '1px solid #2A3348', height: 28, alignItems: 'stretch' }}>
+        {[
+          { id: 'wave', label: 'SUPPLY WAVE' },
+          { id: 'pipeline', label: 'PIPELINE' },
+          { id: 'developers', label: 'DEVELOPERS' },
+          { id: 'absorption', label: 'ABSORPTION' },
+          { id: 'risk', label: 'RISK SCORING' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as 'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk')}
+            style={{
+              fontFamily: "'JetBrains Mono',monospace", fontSize: 8, fontWeight: activeTab === tab.id ? 700 : 500,
+              padding: '0 14px', background: 'transparent', border: 'none',
+              borderBottom: activeTab === tab.id ? '2px solid #F97316' : '2px solid transparent',
+              color: activeTab === tab.id ? '#F97316' : '#8B95A5',
+              cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >{tab.label}</button>
+        ))}
       </div>
 
       {/* Main Content */}
@@ -464,71 +465,71 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
     <div className="space-y-6">
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Total Pipeline</div>
-          <div className="text-3xl font-bold text-gray-900">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Total Pipeline</div>
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(data.reduce((sum, d) => sum + d.total, 0))}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units over {timeHorizon}</div>
+          <div className="text-xs text-[#6B7585] mt-1">units over {timeHorizon}</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Peak Supply Quarter</div>
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Peak Supply Quarter</div>
           <div className="text-3xl font-bold text-orange-600">
             {peakQuarter?.quarter || 'N/A'}
           </div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-[#6B7585] mt-1">
             {formatNumber(peakQuarter?.total || 0)} units delivering
           </div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Under Construction</div>
-          <div className="text-3xl font-bold text-yellow-600">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Under Construction</div>
+          <div className="text-3xl font-bold text-yellow-400">
             {formatNumber(data.reduce((sum, d) => sum + d.underConstruction, 0))}
           </div>
-          <div className="text-xs text-gray-500 mt-1">confirmed starts</div>
+          <div className="text-xs text-[#6B7585] mt-1">confirmed starts</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Risk Level</div>
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Risk Level</div>
           <div className="text-3xl font-bold" style={{ color: getRiskColor(riskScore?.level || 'low') }}>
             {riskScore?.level.toUpperCase() || 'N/A'}
           </div>
-          <div className="text-xs text-gray-500 mt-1">
+          <div className="text-xs text-[#6B7585] mt-1">
             Score: {riskScore?.overall.toFixed(0) || 0}/100
           </div>
         </div>
       </div>
 
       {/* Supply Wave Chart */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">10-Year Supply Wave</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">10-Year Supply Wave</h3>
+            <p className="text-sm text-[#6B7585] mt-1">
               Quarterly delivery timeline by project phase
             </p>
           </div>
           <div className="flex items-center space-x-4 text-sm">
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded"></div>
-              <span className="text-gray-600">Delivered</span>
+              <div className="w-3 h-3 bg-green-900/100 rounded"></div>
+              <span className="text-[#6B7585]">Delivered</span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-3 h-3 bg-orange-500 rounded"></div>
-              <span className="text-gray-600">Under Construction</span>
+              <span className="text-[#6B7585]">Under Construction</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-blue-500 rounded"></div>
-              <span className="text-gray-600">Planned</span>
+              <div className="w-3 h-3 bg-blue-900/100 rounded"></div>
+              <span className="text-[#6B7585]">Planned</span>
             </div>
           </div>
         </div>
 
         <ResponsiveContainer width="100%" height={400}>
           <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
             <XAxis 
               dataKey="quarter" 
               tick={{ fontSize: 12 }}
@@ -542,8 +543,8 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
             />
             <Tooltip 
               contentStyle={{ 
-                backgroundColor: 'white', 
-                border: '1px solid #e5e7eb',
+                backgroundColor: '#0d1f35', 
+                border: '1px solid #1e2a3d',
                 borderRadius: '8px',
                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
               }}
@@ -556,12 +557,12 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
         </ResponsiveContainer>
 
         {/* AI Insight */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="mt-6 border border-blue-800 rounded-lg p-4">
           <div className="flex items-start space-x-3">
             <span className="text-2xl">💡</span>
             <div className="flex-1">
-              <h4 className="font-semibold text-blue-900 mb-1">Optimal Delivery Window</h4>
-              <p className="text-sm text-blue-800">
+              <h4 className="font-semibold text-blue-200 mb-1">Optimal Delivery Window</h4>
+              <p className="text-sm text-blue-300">
                 Based on supply analysis, Q2-Q3 2026 shows a supply gap window. 
                 Consider timing your delivery to avoid the peak in {peakQuarter?.quarter || 'Q1 2027'}. 
                 Delays in competing projects may create additional opportunities.
@@ -572,16 +573,16 @@ const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, 
       </div>
 
       {/* Supply Gap Analysis */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Supply Gap Opportunities</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Gap Opportunities</h3>
         <div className="space-y-3">
           {data.filter(d => d.total < maxSupply * 0.3).slice(0, 3).map((gap, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+            <div key={idx} className="flex items-center justify-between p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
               <div className="flex items-center space-x-3">
                 <span className="text-2xl">🎯</span>
                 <div>
-                  <div className="font-semibold text-gray-900">{gap.quarter}</div>
-                  <div className="text-sm text-gray-600">
+                  <div className="font-semibold text-[#E8E6E1]">{gap.quarter}</div>
+                  <div className="text-sm text-[#6B7585]">
                     Only {formatNumber(gap.total)} units delivering
                   </div>
                 </div>
@@ -630,65 +631,65 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           onClick={() => setSelectedPhase('planned')}
-          className={`bg-white rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-blue-300'
+          className={`rounded-lg border-2 p-6 text-left transition-all ${
+            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-[#1e2a3d] hover:border-blue-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">📋</span>
-            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-1 rounded">PLANNED</span>
+            <span className="text-xs font-semibold text-blue-400 bg-blue-900/30 px-2 py-1 rounded">PLANNED</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.planned.reduce((sum, p) => sum + p.units, 0))}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-sm text-[#6B7585] mt-1">
             {phaseStats.planned.length} projects
           </div>
         </button>
 
         <button
           onClick={() => setSelectedPhase('under_construction')}
-          className={`bg-white rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'under_construction' ? 'border-orange-500 shadow-lg' : 'border-gray-200 hover:border-orange-300'
+          className={`rounded-lg border-2 p-6 text-left transition-all ${
+            selectedPhase === 'under_construction' ? 'border-orange-500 shadow-lg' : 'border-[#1e2a3d] hover:border-orange-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">🏗️</span>
-            <span className="text-xs font-semibold text-orange-600 bg-orange-100 px-2 py-1 rounded">UNDER CONSTRUCTION</span>
+            <span className="text-xs font-semibold text-orange-600 bg-orange-900/20 px-2 py-1 rounded">UNDER CONSTRUCTION</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.underConstruction.reduce((sum, p) => sum + p.units, 0))}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-sm text-[#6B7585] mt-1">
             {phaseStats.underConstruction.length} projects
           </div>
         </button>
 
         <button
           onClick={() => setSelectedPhase('delivered')}
-          className={`bg-white rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-gray-200 hover:border-green-300'
+          className={`rounded-lg border-2 p-6 text-left transition-all ${
+            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-[#1e2a3d] hover:border-green-300'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">✅</span>
-            <span className="text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded">DELIVERED</span>
+            <span className="text-xs font-semibold text-green-400 bg-green-900/30 px-2 py-1 rounded">DELIVERED</span>
           </div>
-          <div className="text-3xl font-bold text-gray-900">
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {formatNumber(phaseStats.delivered.reduce((sum, p) => sum + p.units, 0))}
           </div>
-          <div className="text-sm text-gray-600 mt-1">
+          <div className="text-sm text-[#6B7585] mt-1">
             {phaseStats.delivered.length} projects (last 12mo)
           </div>
         </button>
       </div>
 
       {/* Project Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+      <div className="rounded-lg overflow-hidden" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Pipeline Projects</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">Pipeline Projects</h3>
+            <p className="text-sm text-[#6B7585] mt-1">
               {filteredProjects.length} projects • {formatNumber(filteredProjects.reduce((sum, p) => sum + p.units, 0))} units
             </p>
           </div>
@@ -697,8 +698,8 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
               onClick={() => setSelectedPhase('all')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 selectedPhase === 'all'
-                  ? 'bg-gray-900 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-[#E8E6E1] text-[#0A0E17]'
+                  : 'bg-[#1e2a3d] text-[#9EA8B4] hover:bg-[#253347]'
               }`}
             >
               Show All
@@ -708,30 +709,30 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-[#131920]">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Project</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Developer</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Units</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Phase</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Delivery</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Submarket</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Distance</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Project</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Developer</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Units</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Phase</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delivery</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Submarket</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Distance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-[#1e2a3d]">
               {filteredProjects.map((project) => (
-                <tr key={project.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={project.id} className="hover:bg-[#131920] transition-colors">
                   <td className="px-6 py-4">
-                    <div className="font-medium text-gray-900">{project.name}</div>
+                    <div className="font-medium text-[#E8E6E1]">{project.name}</div>
                     {project.delayMonths && project.delayMonths > 0 && (
-                      <div className="text-xs text-red-600 mt-1">
+                      <div className="text-xs text-red-400 mt-1">
                         ⚠️ Delayed {project.delayMonths} months
                       </div>
                     )}
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.developer}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.developer}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
                     {formatNumber(project.units)}
                   </td>
                   <td className="px-6 py-4">
@@ -745,9 +746,9 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                       {project.phase.replace('_', ' ').toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.expectedDelivery}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.submarket}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{project.distanceMiles.toFixed(1)} mi</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.expectedDelivery}</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.submarket}</td>
+                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -774,30 +775,30 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       {/* Top Developers Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {topDevelopers.slice(0, 3).map((dev, idx) => (
-          <div key={idx} className="bg-white rounded-lg border border-gray-200 p-6">
+          <div key={idx} className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
             <div className="flex items-center justify-between mb-4">
               <span className="text-3xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
-              <span className="text-xs font-semibold text-gray-500">
+              <span className="text-xs font-semibold text-[#6B7585]">
                 {dev.pipelineShare.toFixed(1)}% of pipeline
               </span>
             </div>
-            <h4 className="font-bold text-gray-900 text-lg mb-2">{dev.developer}</h4>
+            <h4 className="font-bold text-[#E8E6E1] text-lg mb-2">{dev.developer}</h4>
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Total Units:</span>
-                <span className="font-semibold text-gray-900">{formatNumber(dev.totalUnits)}</span>
+                <span className="text-[#6B7585]">Total Units:</span>
+                <span className="font-semibold text-[#E8E6E1]">{formatNumber(dev.totalUnits)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Active Projects:</span>
-                <span className="font-semibold text-gray-900">{dev.activeProjects}</span>
+                <span className="text-[#6B7585]">Active Projects:</span>
+                <span className="font-semibold text-[#E8E6E1]">{dev.activeProjects}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Avg Delivery:</span>
-                <span className="font-semibold text-gray-900">{dev.avgDeliveryTime} months</span>
+                <span className="text-[#6B7585]">Avg Delivery:</span>
+                <span className="font-semibold text-[#E8E6E1]">{dev.avgDeliveryTime} months</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Delay Rate:</span>
-                <span className={`font-semibold ${dev.delayRate > 30 ? 'text-red-600' : 'text-green-600'}`}>
+                <span className="text-[#6B7585]">Delay Rate:</span>
+                <span className={`font-semibold ${dev.delayRate > 30 ? 'text-red-400' : 'text-green-400'}`}>
                   {dev.delayRate.toFixed(0)}%
                 </span>
               </div>
@@ -807,65 +808,65 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       </div>
 
       {/* Developer Activity Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Developer Activity Tracker</h3>
-          <p className="text-sm text-gray-500 mt-1">
+      <div className="rounded-lg overflow-hidden" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <div className="px-6 py-4 border-b border-[#1e2a3d]">
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Developer Activity Tracker</h3>
+          <p className="text-sm text-[#6B7585] mt-1">
             Track major developers' pipeline and execution history
           </p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-[#131920]">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Developer</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Projects</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Total Units</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Pipeline %</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Market Share</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Avg Delivery</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Delay Rate</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Reliability</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Developer</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Projects</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Total Units</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Pipeline %</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Market Share</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Avg Delivery</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delay Rate</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Reliability</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-[#1e2a3d]">
               {developers.map((dev, idx) => {
                 const reliability = 100 - dev.delayRate;
-                const reliabilityColor = reliability >= 80 ? 'text-green-600' : reliability >= 60 ? 'text-yellow-600' : 'text-red-600';
+                const reliabilityColor = reliability >= 80 ? 'text-green-400' : reliability >= 60 ? 'text-yellow-400' : 'text-red-400';
                 
                 return (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                  <tr key={idx} className="hover:bg-[#131920] transition-colors">
                     <td className="px-6 py-4">
-                      <div className="font-medium text-gray-900">{dev.developer}</div>
+                      <div className="font-medium text-[#E8E6E1]">{dev.developer}</div>
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
                       {dev.activeProjects}
                     </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900">
+                    <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
                       {formatNumber(dev.totalUnits)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
+                        <div className="flex-1 bg-[#253347] rounded-full h-2 max-w-[100px]">
                           <div 
-                            className="bg-blue-600 h-2 rounded-full"
+                            className="bg-blue-900/100 h-2 rounded-full"
                             style={{ width: `${dev.pipelineShare}%` }}
                           ></div>
                         </div>
-                        <span className="text-sm font-medium text-gray-700">
+                        <span className="text-sm font-medium text-[#9EA8B4]">
                           {dev.pipelineShare.toFixed(1)}%
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-4 text-sm text-[#6B7585]">
                       {dev.marketShare.toFixed(1)}%
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-4 text-sm text-[#6B7585]">
                       {dev.avgDeliveryTime} mo
                     </td>
                     <td className="px-6 py-4">
-                      <span className={`text-sm font-semibold ${dev.delayRate > 30 ? 'text-red-600' : dev.delayRate > 15 ? 'text-yellow-600' : 'text-green-600'}`}>
+                      <span className={`text-sm font-semibold ${dev.delayRate > 30 ? 'text-red-400' : dev.delayRate > 15 ? 'text-yellow-400' : 'text-green-400'}`}>
                         {dev.delayRate.toFixed(0)}%
                       </span>
                     </td>
@@ -883,8 +884,8 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       </div>
 
       {/* AI Insights */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">🤖 Developer Intelligence</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🤖 Developer Intelligence</h3>
         <div className="space-y-3">
           <div className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
             <span className="text-xl">⚠️</span>
@@ -897,11 +898,11 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
             </div>
           </div>
           
-          <div className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
+          <div className="flex items-start space-x-3 p-3 rounded-lg">
             <span className="text-xl">💡</span>
             <div className="flex-1">
-              <div className="font-semibold text-blue-900">Market Concentration</div>
-              <div className="text-sm text-blue-800 mt-1">
+              <div className="font-semibold text-blue-200">Market Concentration</div>
+              <div className="text-sm text-blue-300 mt-1">
                 Top 3 developers control {topDevelopers.slice(0, 3).reduce((sum, d) => sum + d.pipelineShare, 0).toFixed(0)}% 
                 of pipeline. Monitor their delivery schedules closely for timing advantages.
               </div>
@@ -924,7 +925,7 @@ interface AbsorptionImpactSectionProps {
 
 const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absorption, supplyWave }) => {
   if (!absorption) {
-    return <div className="text-center py-12 text-gray-500">Loading absorption data...</div>;
+    return <div className="text-center py-12 text-[#6B7585]">Loading absorption data...</div>;
   }
 
   // Calculate absorption scenarios
@@ -938,61 +939,61 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Current Absorption</div>
-          <div className="text-3xl font-bold text-gray-900">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Current Absorption</div>
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {absorption.currentRate.toFixed(0)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units/month</div>
+          <div className="text-xs text-[#6B7585] mt-1">units/month</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Historical Average</div>
-          <div className="text-3xl font-bold text-gray-900">
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Historical Average</div>
+          <div className="text-3xl font-bold text-[#E8E6E1]">
             {absorption.historicalAvg.toFixed(0)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units/month (3yr)</div>
+          <div className="text-xs text-[#6B7585] mt-1">units/month (3yr)</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Months to Absorb</div>
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Months to Absorb</div>
           <div className="text-3xl font-bold text-orange-600">
             {absorption.monthsToAbsorb.toFixed(1)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">at current rate</div>
+          <div className="text-xs text-[#6B7585] mt-1">at current rate</div>
         </div>
         
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-sm text-gray-600 mb-1">Demand-Supply Gap</div>
-          <div className={`text-3xl font-bold ${absorption.demandSupplyGap > 0 ? 'text-green-600' : 'text-red-600'}`}>
+        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+          <div className="text-sm text-[#6B7585] mb-1">Demand-Supply Gap</div>
+          <div className={`text-3xl font-bold ${absorption.demandSupplyGap > 0 ? 'text-green-400' : 'text-red-400'}`}>
             {absorption.demandSupplyGap > 0 ? '+' : ''}{absorption.demandSupplyGap.toFixed(0)}
           </div>
-          <div className="text-xs text-gray-500 mt-1">units/quarter</div>
+          <div className="text-xs text-[#6B7585] mt-1">units/quarter</div>
         </div>
       </div>
 
       {/* Absorption Scenarios */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Absorption Scenarios</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Scenarios</h3>
         <div className="space-y-4">
           {scenarios.map((scenario, idx) => (
-            <div key={idx} className="p-4 bg-gray-50 rounded-lg">
+            <div key={idx} className="p-4 bg-[#131920] rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <div className="font-semibold text-gray-900">{scenario.name}</div>
-                <div className="text-sm text-gray-600">
+                <div className="font-semibold text-[#E8E6E1]">{scenario.name}</div>
+                <div className="text-sm text-[#6B7585]">
                   {scenario.rate.toFixed(0)} units/month
                 </div>
               </div>
               <div className="flex items-center space-x-3">
-                <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div className="flex-1 bg-[#253347] rounded-full h-3 overflow-hidden">
                   <div 
                     className={`h-full rounded-full ${
-                      idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-yellow-500' : 'bg-green-500'
+                      idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-yellow-500' : 'bg-green-900/100'
                     }`}
                     style={{ width: `${Math.min((scenario.rate / (absorption.currentRate * 1.5)) * 100, 100)}%` }}
                   ></div>
                 </div>
-                <div className="text-sm font-semibold text-gray-900 min-w-[80px]">
+                <div className="text-sm font-semibold text-[#E8E6E1] min-w-[80px]">
                   {scenario.months.toFixed(1)} months
                 </div>
               </div>
@@ -1002,8 +1003,8 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Risk Assessment */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Absorption Risk Assessment</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Risk Assessment</h3>
         <div 
           className="p-6 rounded-lg border-l-4"
           style={{ 
@@ -1019,11 +1020,11 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
               <div className="text-xl font-bold" style={{ color: getRiskColor(absorption.riskLevel) }}>
                 {absorption.riskLevel.toUpperCase()} RISK
               </div>
-              <div className="text-sm text-gray-600">Peak supply in {absorption.peakSupplyQuarter}</div>
+              <div className="text-sm text-[#6B7585]">Peak supply in {absorption.peakSupplyQuarter}</div>
             </div>
           </div>
           
-          <div className="text-sm text-gray-700 space-y-2">
+          <div className="text-sm text-[#9EA8B4] space-y-2">
             {absorption.riskLevel === 'low' && (
               <p>Healthy absorption environment. Current demand exceeds incoming supply. Market can absorb new deliveries within 18 months.</p>
             )}
@@ -1041,11 +1042,11 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
       </div>
 
       {/* Impact Timeline */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Supply Impact Timeline</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Impact Timeline</h3>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={supplyWave}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
             <XAxis dataKey="quarter" tick={{ fontSize: 12 }} />
             <YAxis yAxisId="left" tick={{ fontSize: 12 }} label={{ value: 'Units', angle: -90, position: 'insideLeft' }} />
             <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} label={{ value: 'Absorption (mo)', angle: 90, position: 'insideRight' }} />
@@ -1070,7 +1071,7 @@ interface RiskScoringSectionProps {
 
 const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) => {
   if (!riskScore) {
-    return <div className="text-center py-12 text-gray-500">Loading risk assessment...</div>;
+    return <div className="text-center py-12 text-[#6B7585]">Loading risk assessment...</div>;
   }
 
   const riskFactors = [
@@ -1083,7 +1084,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
   return (
     <div className="space-y-6">
       {/* Overall Risk Score */}
-      <div className="bg-white rounded-lg border border-gray-200 p-8">
+      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-40 h-40 rounded-full border-8 mb-6"
             style={{ borderColor: getRiskColor(riskScore.level) }}>
@@ -1091,7 +1092,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
               <div className="text-5xl font-bold" style={{ color: getRiskColor(riskScore.level) }}>
                 {riskScore.overall.toFixed(0)}
               </div>
-              <div className="text-sm font-semibold uppercase mt-2 text-gray-600">
+              <div className="text-sm font-semibold uppercase mt-2 text-[#6B7585]">
                 Risk Score
               </div>
             </div>
@@ -1109,7 +1110,7 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
             </span>
           </div>
           
-          <p className="text-gray-600 max-w-2xl mx-auto">
+          <p className="text-[#6B7585] max-w-2xl mx-auto">
             Supply pipeline risk assessment based on delivery timing, absorption capacity, 
             competitive positioning, and market concentration factors.
           </p>
@@ -1117,8 +1118,8 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Risk Factor Breakdown */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-6">Risk Factor Analysis</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-6">Risk Factor Analysis</h3>
         <div className="space-y-6">
           {riskFactors.map((factor, idx) => {
             const percentage = (factor.score / 100) * 100;
@@ -1128,14 +1129,14 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
               <div key={idx}>
                 <div className="flex items-center justify-between mb-2">
                   <div>
-                    <div className="font-semibold text-gray-900">{factor.name}</div>
-                    <div className="text-sm text-gray-500">{factor.description}</div>
+                    <div className="font-semibold text-[#E8E6E1]">{factor.name}</div>
+                    <div className="text-sm text-[#6B7585]">{factor.description}</div>
                   </div>
                   <div className="text-2xl font-bold" style={{ color }}>
                     {factor.score.toFixed(0)}
                   </div>
                 </div>
-                <div className="bg-gray-200 rounded-full h-3 overflow-hidden">
+                <div className="bg-[#253347] rounded-full h-3 overflow-hidden">
                   <div 
                     className="h-full rounded-full transition-all duration-500"
                     style={{ 
@@ -1151,34 +1152,34 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
       </div>
 
       {/* Recommendations */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">🎯 Strategic Recommendations</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🎯 Strategic Recommendations</h3>
         <div className="space-y-3">
           {riskScore.recommendations.map((rec, idx) => (
-            <div key={idx} className="flex items-start space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div key={idx} className="flex items-start space-x-3 p-4 rounded-lg border-blue-800">
               <span className="text-xl flex-shrink-0">💡</span>
-              <p className="text-sm text-blue-900">{rec}</p>
+              <p className="text-sm text-blue-200">{rec}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Risk Matrix */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Matrix</h3>
+      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Risk Matrix</h3>
         <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-sm font-semibold text-green-900 mb-2">✅ Low Risk Factors</div>
-            <ul className="text-sm text-green-800 space-y-1">
+          <div className="p-4 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
+            <div className="text-sm font-semibold text-green-200 mb-2">✅ Low Risk Factors</div>
+            <ul className="text-sm text-green-300 space-y-1">
               {riskFactors.filter(f => f.score < 40).map((f, i) => (
                 <li key={i}>• {f.name} ({f.score.toFixed(0)})</li>
               ))}
             </ul>
           </div>
           
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <div className="text-sm font-semibold text-red-900 mb-2">⚠️ High Risk Factors</div>
-            <ul className="text-sm text-red-800 space-y-1">
+          <div className="p-4 border border-red-800 rounded-lg" style={{ background: 'rgba(220,38,38,0.08)' }}>
+            <div className="text-sm font-semibold text-red-200 mb-2">⚠️ High Risk Factors</div>
+            <ul className="text-sm text-red-300 space-y-1">
               {riskFactors.filter(f => f.score >= 40).map((f, i) => (
                 <li key={i}>• {f.name} ({f.score.toFixed(0)})</li>
               ))}
@@ -1189,110 +1190,6 @@ const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) =>
     </div>
   );
 };
-
-// ============================================================================
-// MOCK DATA GENERATORS (Fallback when API returns empty)
-// ============================================================================
-
-function generateMockSupplyWave(): SupplyWaveData[] {
-  const quarters = [];
-  const startYear = 2025;
-  const startQuarter = 1;
-  
-  for (let i = 0; i < 20; i++) {
-    const year = startYear + Math.floor((startQuarter + i - 1) / 4);
-    const quarter = ((startQuarter + i - 1) % 4) + 1;
-    
-    // Simulate wave pattern with peak in middle
-    const waveFactor = Math.sin((i / 20) * Math.PI);
-    const confirmed = Math.floor(waveFactor * 800 + Math.random() * 200);
-    const underConstruction = Math.floor(waveFactor * 600 + Math.random() * 150);
-    const planned = Math.floor(waveFactor * 400 + Math.random() * 100);
-    
-    quarters.push({
-      year,
-      quarter: `${year}Q${quarter}`,
-      confirmed,
-      underConstruction,
-      planned,
-      total: confirmed + underConstruction + planned,
-    });
-  }
-  
-  return quarters;
-}
-
-function generateMockPipeline(): PipelineProject[] {
-  const developers = ['Greystar', 'Avalon Bay', 'Camden', 'Lincoln Property', 'Mill Creek', 'Trammell Crow'];
-  const submarkets = ['Downtown', 'Midtown', 'East Village', 'West End', 'Uptown'];
-  const phases: ('planned' | 'under_construction' | 'delivered')[] = ['planned', 'under_construction', 'delivered'];
-  
-  return Array.from({ length: 15 }, (_, i) => ({
-    id: `proj-${i}`,
-    name: `Project ${String.fromCharCode(65 + i)}`,
-    developer: developers[Math.floor(Math.random() * developers.length)],
-    units: Math.floor(Math.random() * 400) + 100,
-    phase: phases[Math.floor(Math.random() * phases.length)],
-    expectedDelivery: `Q${Math.floor(Math.random() * 4) + 1} 202${Math.floor(Math.random() * 3) + 5}`,
-    submarket: submarkets[Math.floor(Math.random() * submarkets.length)],
-    distanceMiles: Math.random() * 5 + 0.5,
-    unitMix: {
-      studio: Math.random() * 20,
-      oneBed: Math.random() * 50 + 20,
-      twoBed: Math.random() * 30 + 20,
-      threeBed: Math.random() * 15,
-    },
-    status: Math.random() > 0.7 ? 'On Track' : 'Delayed',
-    delayMonths: Math.random() > 0.7 ? Math.floor(Math.random() * 6) + 1 : 0,
-  }));
-}
-
-function generateMockDevelopers(): DeveloperActivity[] {
-  const developers = ['Greystar', 'Avalon Bay', 'Camden', 'Lincoln Property', 'Mill Creek', 'Trammell Crow', 'Cortland'];
-  
-  return developers.map(name => ({
-    developer: name,
-    activeProjects: Math.floor(Math.random() * 5) + 2,
-    totalUnits: Math.floor(Math.random() * 2000) + 500,
-    pipelineShare: Math.random() * 20 + 5,
-    avgDeliveryTime: Math.floor(Math.random() * 6) + 18,
-    delayRate: Math.random() * 40,
-    marketShare: Math.random() * 15 + 5,
-  })).sort((a, b) => b.totalUnits - a.totalUnits);
-}
-
-function generateMockAbsorption(): AbsorptionAnalysis {
-  return {
-    currentRate: 45 + Math.random() * 20,
-    historicalAvg: 52,
-    projectedRate: 48,
-    monthsToAbsorb: 28 + Math.random() * 10,
-    riskLevel: 'medium',
-    demandSupplyGap: (Math.random() - 0.3) * 100,
-    peakSupplyQuarter: '2026Q2',
-  };
-}
-
-function generateMockRiskScore(): RiskScore {
-  const overall = Math.random() * 40 + 30;
-  
-  return {
-    overall,
-    level: overall > 70 ? 'critical' : overall > 50 ? 'high' : overall > 30 ? 'medium' : 'low',
-    factors: {
-      pipelineConcentration: Math.random() * 100,
-      absorptionRisk: Math.random() * 100,
-      timingRisk: Math.random() * 100,
-      unitMixCompetition: Math.random() * 100,
-    },
-    recommendations: [
-      'Consider targeting Q3 2026 delivery to avoid peak supply in Q2',
-      'Increase 1BR allocation to differentiate from competing projects',
-      'Monitor Greystar and Avalon Bay projects for potential delays',
-      'Plan for 24-month lease-up period given absorption risk',
-    ],
-  };
-}
 
 // Helper functions at module level
 function getRiskColor(level: string): string {

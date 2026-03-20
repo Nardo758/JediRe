@@ -1,24 +1,33 @@
 /**
- * Custom Screen Tab - Strategy Scoring for Individual Deal
- * Displays user's saved strategies with pass/fail indicators and scores
+ * Custom Screen Tab — M08 Strategy Arbitrage Scoring
+ * Shows M08 system strategy scores + arbitrage detection for the current deal
  */
 
 import React, { useState, useEffect } from 'react';
+import { T as BT, mono as bMono } from '../bloomberg-tokens';
 import { apiClient } from '../../../services/api.client';
-import { useNavigate } from 'react-router-dom';
 
-interface CustomStrategyScore {
-  strategyId: string;
-  strategyName: string;
-  score: number;
-  matched: boolean;
-  conditionResults: Array<{
-    conditionId: string;
-    metricId: string;
-    actualValue: number;
-    passed: boolean;
-    score: number;
-  }>;
+interface M08StrategyScore {
+  strategy_id: string;
+  strategy_name: string;
+  overall_score: number;
+  sub_scores: Record<string, number>;
+  gate_result: 'PASS' | 'FAIL' | 'N/A';
+  gate_failures: string[];
+  soft_penalty: number;
+  confidence: number;
+  is_system_template?: boolean;
+}
+
+interface M08ArbitrageResult {
+  winning_strategy_id: string | null;
+  winning_strategy_name: string | null;
+  runner_up_strategy_id: string | null;
+  runner_up_strategy_name: string | null;
+  winning_score: number;
+  runner_up_score: number;
+  delta: number;
+  arbitrage_detected: boolean;
 }
 
 interface CustomScreenTabProps {
@@ -26,48 +35,44 @@ interface CustomScreenTabProps {
 }
 
 export const CustomScreenTab: React.FC<CustomScreenTabProps> = ({ dealId }) => {
-  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [customStrategies, setCustomStrategies] = useState<CustomStrategyScore[]>([]);
-  const [expandedStrategy, setExpandedStrategy] = useState<string | null>(null);
+  const [scores, setScores] = useState<M08StrategyScore[]>([]);
+  const [arbitrage, setArbitrage] = useState<M08ArbitrageResult | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadCustomStrategies = async () => {
-      try {
-        setIsLoading(true);
-        setIsError(false);
+    if (!dealId) return;
+    let cancelled = false;
+    setIsLoading(true);
+    setIsError(false);
 
-        // Call POST /api/v1/strategies/score-deal/:dealId
-        const response = await apiClient.post(`/api/v1/strategies/score-deal/${dealId}`);
-
-        if (response.data.success && response.data.data) {
-          setCustomStrategies(response.data.data);
-        } else {
-          setCustomStrategies([]);
+    apiClient.post(`/api/v1/strategies/score-deal/${dealId}`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.success) {
+          const data: M08StrategyScore[] = res.data.data || [];
+          setScores(data);
+          setArbitrage(res.data.arbitrage || null);
         }
-      } catch (error: any) {
-        console.error('Error loading custom strategies:', error);
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
         setIsError(true);
-        setErrorMessage(error.response?.data?.error || 'Failed to load custom strategies');
-        setCustomStrategies([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+        setErrorMessage(error?.response?.data?.error || 'Failed to score deal');
+      })
+      .finally(() => { if (!cancelled) setIsLoading(false); });
 
-    if (dealId) {
-      loadCustomStrategies();
-    }
+    return () => { cancelled = true; };
   }, [dealId]);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-gray-500">Evaluating strategies...</span>
+          <div className="w-5 h-5 border-2 border-[#F5A623] border-t-transparent rounded-full animate-spin" />
+          <span className={`${bMono} text-xs text-[#7f8ea3]`}>SCORING STRATEGIES...</span>
         </div>
       </div>
     );
@@ -75,213 +80,228 @@ export const CustomScreenTab: React.FC<CustomScreenTabProps> = ({ dealId }) => {
 
   if (isError) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="text-red-600 text-lg">⚠️</div>
-          <div className="flex-1">
-            <h4 className="font-semibold text-red-900 mb-1">Failed to Load Strategies</h4>
-            <p className="text-sm text-red-800">{errorMessage}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-2 text-sm font-medium text-red-600 hover:text-red-700 underline"
-            >
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (customStrategies.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="text-4xl mb-3">📭</div>
-        <h4 className="text-lg font-semibold text-gray-900 mb-2">No Custom Strategies Yet</h4>
-        <p className="text-sm text-gray-600 mb-4 max-w-sm">
-          Create your first custom strategy to evaluate this deal against your specific criteria.
-        </p>
+      <div className="rounded border border-[#c0392b]/40 bg-[#c0392b]/10 p-4">
+        <p className={`${bMono} text-xs text-[#c0392b] mb-2`}>ERROR LOADING STRATEGY SCORES</p>
+        <p className="text-sm text-[#7f8ea3]">{errorMessage}</p>
         <button
-          onClick={() => navigate('/strategies')}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+          onClick={() => window.location.reload()}
+          className={`mt-3 ${bMono} text-xs text-[#F5A623] border border-[#F5A623]/40 px-3 py-1 rounded hover:bg-[#F5A623]/10 transition`}
         >
-          + Create Strategy
+          RETRY
         </button>
       </div>
     );
   }
 
-  // Separate matched and unmatched strategies
-  const matchedStrategies = customStrategies.filter(s => s.matched);
-  const unmatchedStrategies = customStrategies.filter(s => !s.matched);
+  if (scores.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <p className={`${bMono} text-xs text-[#7f8ea3] mb-2`}>NO STRATEGIES CONFIGURED</p>
+        <p className="text-sm text-[#4a5568]">System strategy templates are loading.</p>
+      </div>
+    );
+  }
+
+  const passScores = scores.filter(s => s.gate_result === 'PASS').sort((a, b) => b.overall_score - a.overall_score);
+  const naScores = scores.filter(s => s.gate_result === 'N/A');
+  const failScores = scores.filter(s => s.gate_result === 'FAIL').sort((a, b) => b.overall_score - a.overall_score);
 
   return (
     <div className="space-y-4">
-      {/* Matched Strategies */}
-      {matchedStrategies.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <span className="text-emerald-600">✓</span>
-            Matched Strategies ({matchedStrategies.length})
-          </h4>
-          <div className="space-y-2">
-            {matchedStrategies.map((strategy) => (
-              <StrategyCard
-                key={strategy.strategyId}
-                strategy={strategy}
-                isExpanded={expandedStrategy === strategy.strategyId}
-                onToggleExpand={() =>
-                  setExpandedStrategy(
-                    expandedStrategy === strategy.strategyId ? null : strategy.strategyId
-                  )
-                }
-              />
-            ))}
+      {/* Arbitrage Alert */}
+      {arbitrage?.arbitrage_detected && (
+        <div className="rounded border border-[#F5A623]/60 bg-[#F5A623]/10 p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-[#F5A623] text-lg flex-shrink-0">&#9889;</span>
+            <div className="flex-1 min-w-0">
+              <p className={`${bMono} text-xs text-[#F5A623] font-bold mb-1`}>
+                ARBITRAGE DETECTED &mdash; +{arbitrage.delta.toFixed(1)}pt GAP
+              </p>
+              <p className="text-sm text-[#c8cdd4]">
+                <span className="font-semibold text-[#F5A623]">{arbitrage.winning_strategy_name}</span>
+                {' '}outscores{' '}
+                <span className="font-semibold">{arbitrage.runner_up_strategy_name}</span>
+                {' '}by{' '}{arbitrage.delta.toFixed(1)} points.
+              </p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Unmatched Strategies */}
-      {unmatchedStrategies.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <span className="text-gray-400">✗</span>
-            Didn't Match ({unmatchedStrategies.length})
-          </h4>
+      {/* PASS strategies */}
+      {passScores.length > 0 && (
+        <section>
+          <p className={`${bMono} text-[10px] text-[#27ae60] mb-2 tracking-wider`}>
+            ELIGIBLE ({passScores.length})
+          </p>
           <div className="space-y-2">
-            {unmatchedStrategies.map((strategy) => (
-              <StrategyCard
-                key={strategy.strategyId}
-                strategy={strategy}
-                isExpanded={expandedStrategy === strategy.strategyId}
-                onToggleExpand={() =>
-                  setExpandedStrategy(
-                    expandedStrategy === strategy.strategyId ? null : strategy.strategyId
-                  )
-                }
+            {passScores.map(s => (
+              <ScoreCard
+                key={s.strategy_id}
+                score={s}
+                isExpanded={expandedId === s.strategy_id}
+                onToggle={() => setExpandedId(expandedId === s.strategy_id ? null : s.strategy_id)}
+                isWinner={arbitrage?.winning_strategy_id === s.strategy_id}
               />
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Create Strategy CTA */}
-      <button
-        onClick={() => navigate('/strategies')}
-        className="w-full mt-4 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition text-sm font-medium flex items-center justify-center gap-2"
-      >
-        <span>+</span>
-        <span>Create New Strategy</span>
-      </button>
+      {/* FAIL strategies */}
+      {failScores.length > 0 && (
+        <section>
+          <p className={`${bMono} text-[10px] text-[#e74c3c] mb-2 tracking-wider`}>
+            GATE FAIL ({failScores.length})
+          </p>
+          <div className="space-y-2">
+            {failScores.map(s => (
+              <ScoreCard
+                key={s.strategy_id}
+                score={s}
+                isExpanded={expandedId === s.strategy_id}
+                onToggle={() => setExpandedId(expandedId === s.strategy_id ? null : s.strategy_id)}
+                isWinner={false}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* N/A strategies */}
+      {naScores.length > 0 && (
+        <section>
+          <p className={`${bMono} text-[10px] text-[#7f8ea3] mb-2 tracking-wider`}>
+            NOT APPLICABLE ({naScores.length})
+          </p>
+          <div className="space-y-2">
+            {naScores.map(s => (
+              <ScoreCard
+                key={s.strategy_id}
+                score={s}
+                isExpanded={expandedId === s.strategy_id}
+                onToggle={() => setExpandedId(expandedId === s.strategy_id ? null : s.strategy_id)}
+                isWinner={false}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// STRATEGY CARD COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface StrategyCardProps {
-  strategy: CustomStrategyScore;
+interface ScoreCardProps {
+  score: M08StrategyScore;
   isExpanded: boolean;
-  onToggleExpand: () => void;
+  onToggle: () => void;
+  isWinner: boolean;
 }
 
-const StrategyCard: React.FC<StrategyCardProps> = ({ strategy, isExpanded, onToggleExpand }) => {
-  const getScoreColor = (score: number): string => {
-    if (score >= 80) return 'text-emerald-600';
-    if (score >= 60) return 'text-blue-600';
-    if (score >= 40) return 'text-amber-600';
-    return 'text-red-600';
-  };
+const ScoreCard: React.FC<ScoreCardProps> = ({ score, isExpanded, onToggle, isWinner }) => {
+  const gateColor =
+    score.gate_result === 'PASS' ? '#27ae60' :
+    score.gate_result === 'N/A' ? '#7f8ea3' : '#e74c3c';
 
-  const getScoreBgColor = (score: number): string => {
-    if (score >= 80) return 'bg-emerald-50';
-    if (score >= 60) return 'bg-blue-50';
-    if (score >= 40) return 'bg-amber-50';
-    return 'bg-red-50';
-  };
+  const scoreColor =
+    score.overall_score >= 75 ? '#27ae60' :
+    score.overall_score >= 55 ? '#F5A623' :
+    score.overall_score >= 35 ? '#e67e22' : '#e74c3c';
+
+  const subScoreEntries = Object.entries(score.sub_scores || {});
 
   return (
     <div
-      className={`border rounded-lg transition-all cursor-pointer ${
-        isExpanded
-          ? 'border-blue-300 bg-blue-50'
-          : 'border-gray-200 bg-white hover:border-gray-300'
+      className={`rounded border transition-all cursor-pointer ${
+        isWinner
+          ? 'border-[#F5A623]/60 bg-[#F5A623]/5'
+          : isExpanded
+          ? 'border-[#1e2a3d] bg-[#0d1424]'
+          : 'border-[#1a2233] bg-[#0a0e17] hover:border-[#1e2a3d]'
       }`}
     >
-      {/* Header */}
-      <div
-        onClick={onToggleExpand}
-        className="px-4 py-3 flex items-center justify-between"
-      >
-        <div className="flex items-center gap-3 flex-1">
-          {/* Pass/Fail Icon */}
-          <div className="text-lg">
-            {strategy.matched ? (
-              <span title="Strategy matched">✓</span>
-            ) : (
-              <span className="text-gray-300" title="Strategy didn't match">
-                ✗
-              </span>
-            )}
-          </div>
-
-          {/* Strategy Name */}
-          <div className="flex-1 min-w-0">
-            <h5 className="font-semibold text-gray-900 text-sm truncate">
-              {strategy.strategyName}
-            </h5>
-          </div>
-        </div>
-
-        {/* Score */}
-        {strategy.matched && (
-          <div className={`${getScoreBgColor(strategy.score)} ${getScoreColor(strategy.score)} px-3 py-1 rounded font-semibold text-sm`}>
-            {strategy.score.toFixed(1)}
-          </div>
+      <div onClick={onToggle} className="px-4 py-3 flex items-center gap-3">
+        {/* Winner indicator */}
+        {isWinner && (
+          <span className="text-[#F5A623] text-xs flex-shrink-0" title="Recommended strategy">&#9733;</span>
         )}
 
-        {/* Expand Icon */}
-        <div className="ml-2 text-gray-400 flex-shrink-0">
-          {isExpanded ? '▲' : '▼'}
-        </div>
+        {/* Gate status */}
+        <span
+          className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded border flex-shrink-0"
+          style={{ color: gateColor, borderColor: `${gateColor}40` }}
+        >
+          {score.gate_result}
+        </span>
+
+        {/* Name */}
+        <span className="flex-1 text-sm font-medium text-[#c8cdd4] truncate">
+          {score.strategy_name}
+        </span>
+
+        {/* Score */}
+        {score.gate_result !== 'N/A' && (
+          <span className="font-mono text-sm font-bold flex-shrink-0" style={{ color: scoreColor }}>
+            {score.overall_score.toFixed(1)}
+          </span>
+        )}
+
+        {/* Confidence */}
+        {score.gate_result === 'PASS' && (
+          <span className="font-mono text-[10px] text-[#7f8ea3] flex-shrink-0">
+            {score.confidence.toFixed(0)}% conf
+          </span>
+        )}
+
+        <span className="text-[#4a5568] text-xs flex-shrink-0">{isExpanded ? '▲' : '▼'}</span>
       </div>
 
-      {/* Expanded Details */}
-      {isExpanded && strategy.conditionResults.length > 0 && (
-        <div className="border-t border-gray-200 px-4 py-3 bg-gray-50">
-          <h6 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wider">
-            Condition Results
-          </h6>
-          <div className="space-y-1.5">
-            {strategy.conditionResults.map((condition) => (
-              <div
-                key={condition.conditionId}
-                className="flex items-center gap-2 text-xs text-gray-600"
-              >
-                <span className="flex-shrink-0 w-4 text-center">
-                  {condition.passed ? (
-                    <span className="text-emerald-600 font-bold">✓</span>
-                  ) : (
-                    <span className="text-red-500 font-bold">✗</span>
-                  )}
-                </span>
-                <span className="flex-1">
-                  <span className="font-mono text-gray-500">{condition.metricId}</span>
-                  {' = '}
-                  <span className="font-semibold text-gray-700">
-                    {condition.actualValue.toFixed(2)}
-                  </span>
-                </span>
-                {condition.passed && (
-                  <span className={`text-right font-semibold ${getScoreColor(condition.score)}`}>
-                    +{condition.score.toFixed(0)}
-                  </span>
-                )}
+      {isExpanded && (
+        <div className="border-t border-[#1a2233] px-4 py-3 space-y-2">
+          {/* Sub-scores */}
+          {subScoreEntries.length > 0 && (
+            <div>
+              <p className="font-mono text-[10px] text-[#7f8ea3] mb-2 tracking-wider">SIGNAL SCORES</p>
+              <div className="space-y-1.5">
+                {subScoreEntries.map(([signal, val]) => (
+                  <div key={signal} className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-[#4a5568] w-28 truncate">
+                      {signal.replace(/_/g, ' ').toUpperCase()}
+                    </span>
+                    <div className="flex-1 h-1 bg-[#1a2233] rounded overflow-hidden">
+                      <div
+                        className="h-full rounded transition-all"
+                        style={{
+                          width: `${Math.min(100, val)}%`,
+                          backgroundColor: val >= 70 ? '#27ae60' : val >= 50 ? '#F5A623' : '#e74c3c',
+                        }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] text-[#c8cdd4] w-8 text-right">
+                      {val.toFixed(0)}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+
+          {/* Gate failures */}
+          {score.gate_failures.length > 0 && (
+            <div>
+              <p className="font-mono text-[10px] text-[#7f8ea3] mb-1 tracking-wider">GATE FLAGS</p>
+              {score.gate_failures.map((f, i) => (
+                <p key={i} className="font-mono text-[10px] text-[#e74c3c]">&bull; {f}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Soft penalty */}
+          {score.soft_penalty > 0 && (
+            <p className="font-mono text-[10px] text-[#e67e22]">
+              SOFT PENALTY: &minus;{score.soft_penalty.toFixed(1)}pt
+            </p>
+          )}
         </div>
       )}
     </div>

@@ -1,766 +1,363 @@
-import React, { useState } from 'react';
+/**
+ * Bloomberg Terminal v0.34 — F1 OVERVIEW · REDEVELOPMENT variant
+ * Sections: JEDI Gauge · 5 Signals · As-Is Acquisition
+ *            NOI Transformation · Renovation Budget · Capital Structure
+ *            Timeline · Value Bridge · Returns · AI Brief · Activity
+ */
+
+import React, { useEffect, useState, useCallback } from 'react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { dealAnalysisService, type StrategyResults } from '@/services/dealAnalysis.service';
+import { apiClient } from '@/services/api.client';
+import {
+  BT, BT_CSS, Spark, Bd, StageBd, RiskDot, MetricTag,
+  PanelHeader, SectionPanel, DataRow,
+} from '../bloomberg-ui';
 
-// ─── Design tokens (Bloomberg terminal palette) ───────────────────────────────
-const T = {
-  bg:      '#0c0a09',
-  bgCard:  '#1c1917',
-  bgHover: '#292524',
-  border:  '#292524',
-  borderL: '#44403c',
-  text:    '#fafaf9',
-  tm:      '#a8a29e',
-  td:      '#78716c',
-  amber:   '#d97706',
-  amberBg: '#451a03',
-  amberL:  '#fbbf24',
-  green:   '#10b981',
-  greenBg: '#064e3b',
-  greenL:  '#34d399',
-  red:     '#ef4444',
-  redBg:   '#7f1d1d',
-  redL:    '#f87171',
-  blue:    '#3b82f6',
-  blueBg:  '#1e3a5f',
-  blueL:   '#60a5fa',
-  violet:  '#8b5cf6',
-  violBg:  '#4c1d95',
-  violL:   '#a78bfa',
-  cyan:    '#06b6d4',
-  cyanBg:  '#164e63',
-};
-const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
-const sans: React.CSSProperties = { fontFamily: "'IBM Plex Sans',-apple-system,sans-serif" };
+const MONO = BT.font.mono;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const fmt = (n: number | null | undefined, pre = '$'): string => {
-  if (n == null) return '—';
-  const a = Math.abs(n);
-  if (a >= 1e9) return `${pre}${(n / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `${pre}${(n / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${pre}${Math.round(n / 1e3)}K`;
-  return `${pre}${n.toLocaleString()}`;
-};
-const pct = (n: number | null | undefined): string => n != null ? `${(n * 100).toFixed(1)}%` : '—';
-const num = (n: number | null | undefined): string => n != null ? n.toLocaleString() : '—';
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-function SectionHeader({ n, title, subtitle, color }: { n: string; title: string; subtitle?: string; color?: string }) {
-  return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 2 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: color || T.amberL, letterSpacing: 2, ...mono }}>§{n}</span>
-        <span style={{ fontSize: 16, fontWeight: 700, color: T.text, ...sans }}>{title}</span>
-      </div>
-      {subtitle && <p style={{ fontSize: 12, color: T.td, marginLeft: 28, ...sans }}>{subtitle}</p>}
-    </div>
-  );
+const OVERVIEW_CSS = `${BT_CSS} @keyframes ov-fade{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}`;
+let cssMountedR = false;
+function mountCss() {
+  if (cssMountedR || typeof document === 'undefined') return;
+  cssMountedR = true;
+  const el = document.createElement('style');
+  el.textContent = OVERVIEW_CSS;
+  document.head.appendChild(el);
 }
 
-function Card({ children, style: s }: { children: React.ReactNode; style?: React.CSSProperties }) {
-  return (
-    <div style={{ background: T.bgCard, borderRadius: 10, border: `1px solid ${T.border}`, padding: 20, ...s }}>
-      {children}
-    </div>
-  );
+function fmt(v: number | null | undefined, prefix = '', suffix = ''): string {
+  if (v == null || isNaN(v)) return '—';
+  if (Math.abs(v) >= 1e9) return `${prefix}${(v / 1e9).toFixed(1)}B${suffix}`;
+  if (Math.abs(v) >= 1e6) return `${prefix}${(v / 1e6).toFixed(1)}M${suffix}`;
+  if (Math.abs(v) >= 1e3) return `${prefix}${Math.round(v / 1e3)}K${suffix}`;
+  return `${prefix}${v.toFixed(0)}${suffix}`;
+}
+function pct(v: number | null | undefined): string {
+  if (v == null) return '—';
+  const n = v > 1 ? v : v * 100;
+  return `${n.toFixed(1)}%`;
 }
 
-function Metric({ label, value, sub, color, small }: { label: string; value: string; sub?: string; color?: string; small?: boolean }) {
-  return (
-    <div style={{ padding: small ? '8px 0' : '10px 0' }}>
-      <div style={{ fontSize: 9, letterSpacing: 1.5, color: T.td, marginBottom: 3, ...mono }}>{label}</div>
-      <div style={{ fontSize: small ? 16 : 22, fontWeight: 700, color: color || T.text, ...sans }}>{value}</div>
-      {sub && <div style={{ fontSize: 10, color: T.td, marginTop: 2, ...sans }}>{sub}</div>}
-    </div>
-  );
+function scoreColor(v: number) {
+  return v >= 80 ? BT.text.green : v >= 60 ? BT.text.amber : BT.text.red;
+}
+function scoreVerdict(v: number) {
+  if (v >= 85) return 'STRONG BUY';
+  if (v >= 70) return 'OPPORTUNITY';
+  if (v >= 55) return 'MONITOR';
+  return 'CAUTION';
 }
 
-function DataRow({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '7px 0', borderBottom: `1px solid ${T.border}` }}>
-      <span style={{ fontSize: 12, color: T.text, fontWeight: bold ? 700 : 400, ...sans }}>{label}</span>
-      <span style={{ fontSize: 12, color: color || (bold ? T.amberL : T.text), fontWeight: bold ? 700 : 500, ...mono }}>{value}</span>
-    </div>
-  );
+function buildSignals(bd: any) {
+  const DEFS = [
+    { id: 'demand',   label: 'DEMAND',   weight: '30%', tags: [{l:'Economic',c:BT.met.economic},{l:'Dig Traffic',c:BT.met.digTraffic},{l:'Physical',c:BT.met.physTraffic}] },
+    { id: 'supply',   label: 'SUPPLY',   weight: '25%', tags: [{l:'Supply',c:BT.met.supply},{l:'Occupancy',c:BT.met.occupancy}] },
+    { id: 'momentum', label: 'MOMENTUM', weight: '20%', tags: [{l:'Financial',c:BT.met.financial},{l:'Comp Traffic',c:BT.met.compTraffic}] },
+    { id: 'position', label: 'POSITION', weight: '15%', tags: [{l:'Comp Traffic',c:BT.met.compTraffic},{l:'Dig Traffic',c:BT.met.digTraffic}] },
+    { id: 'risk',     label: 'RISK',     weight: '10%', tags: [{l:'Occupancy',c:BT.met.occupancy},{l:'Financial',c:BT.met.financial}] },
+  ];
+  return DEFS.map(d => ({ ...d, score: Math.round(bd?.[d.id]?.score ?? 0) }));
 }
 
-function Badge({ label, color, bg }: { label: string; color: string; bg: string }) {
-  return (
-    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: '3px 10px', borderRadius: 4, background: bg, color, border: `1px solid ${color}40`, ...mono, display: 'inline-flex', alignItems: 'center' }}>
-      {label}
-    </span>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const c: Record<string, string> = { complete: T.green, 'in-progress': T.amber, 'not-started': T.td };
-  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: c[status] || T.td, display: 'inline-block', flexShrink: 0 }} />;
-}
-
-// ─── Props ────────────────────────────────────────────────────────────────────
-export interface RedevelopmentOverviewProps {
+interface Props {
   deal: any;
   dealId?: string;
-  embedded?: boolean;
-  onUpdate?: () => void;
-  onBack?: () => void;
-  onTabChange?: (tabId: string) => void;
-  onStrategySelected?: (strategyId: string) => void;
+  onTabChange?: (tab: string) => void;
 }
 
-// ─── Default DD items ─────────────────────────────────────────────────────────
-// 3×3 module access grid — canonical redevelopment set M02…M20
-const DEFAULT_DD = [
-  { module: 'M02', label: 'Property & Zoning',    status: 'not-started', link: 'zoning' },
-  { module: 'M05', label: 'Market Intelligence',  status: 'not-started', link: 'market-intelligence' },
-  { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic-module' },
-  { module: 'M09', label: 'Pro Forma',            status: 'not-started', link: 'proforma' },
-  { module: 'M11', label: 'Capital Structure',    status: 'not-started', link: 'debt' },
-  { module: 'M14', label: 'Risk Intelligence',    status: 'not-started', link: 'risk-intelligence' },
-  { module: 'M15', label: 'Competition',          status: 'not-started', link: 'competition' },
-  { module: 'M16', label: 'Environmental & ESG',  status: 'not-started', link: 'due-diligence' },
-  { module: 'M20', label: 'Project Timeline',     status: 'not-started', link: 'timeline' },
-];
+export const RedevelopmentOverview: React.FC<Props> = ({ deal, onTabChange }) => {
+  mountCss();
+  const { capitalStructure, assumptions, computedReturns } = useDealModule();
 
-const BUDGET_PALETTE = [T.amberL, T.blueL, T.violL, T.redL, T.greenL, T.td, T.cyan];
+  const [jediScore, setJediScore]       = useState<number>(0);
+  const [jediDelta, setJediDelta]       = useState<number>(0);
+  const [signals, setSignals]           = useState<any[]>([]);
+  const [scoreLoading, setScoreLoading] = useState(true);
+  const [strategyResults, setStrategyResults] = useState<StrategyResults | null>(null);
 
-// ─── Component ────────────────────────────────────────────────────────────────
-export const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, onTabChange }) => {
-  const { capitalStructure, debtTerms } = useDealModule();
-  const [_ep, setEp] = useState<number | null>(null);
+  const dealId = deal?.id;
 
-  // ── Field extraction ──────────────────────────────────────────────────────
-  const name              = deal?.name ?? deal?.dealName ?? '—';
-  const address           = deal?.address ?? deal?.propertyAddress ?? '—';
-  const city              = deal?.city ?? '';
-  const state             = deal?.state ?? '';
-  const county            = deal?.county ?? '';
-  const propClass         = deal?.propertyClass ?? deal?.assetClass ?? '';
-  const parcelId          = deal?.parcelId ?? deal?.apn ?? '—';
-  const lotAcres          = deal?.lotSizeAcres ?? deal?.lotAcres ?? null;
-  const lotSf             = deal?.lotSizeSf ?? deal?.lotAreaSf ?? null;
-  const zoning            = deal?.zoning ?? deal?.zoningCode ?? '—';
-  const zoningDesc        = deal?.zoningDesc ?? deal?.zoningDescription ?? '';
-  const yearBuilt         = deal?.yearBuilt ?? null;
-  const stories           = deal?.stories ?? deal?.numStories ?? null;
-  const buildings         = deal?.buildings ?? deal?.numBuildings ?? null;
-  const assessedValue     = deal?.assessedValue ?? null;
-  const lastSaleDate      = deal?.lastSaleDate ?? null;
-  const lastSalePrice     = deal?.lastSalePrice ?? null;
-  const parkingSpaces     = deal?.parking?.spaces ?? deal?.parkingSpaces ?? null;
-  const parkingRatio      = deal?.parking?.ratio ?? deal?.parkingRatio ?? null;
+  const loadScore = useCallback(async () => {
+    if (!dealId) return;
+    setScoreLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/jedi/score/${dealId}`);
+      const s = res.data?.data?.score;
+      if (s) {
+        setJediScore(Math.round(s.totalScore ?? s.total_score ?? 0));
+        setJediDelta(Math.round(s.scoreDelta ?? s.score_delta ?? 0));
+        if (res.data?.data?.breakdown) setSignals(buildSignals(res.data.data.breakdown));
+      }
+    } catch {}
+    finally { setScoreLoading(false); }
+  }, [dealId]);
 
-  // §1 — Acquisition / As-Is
-  const askPrice          = deal?.askPrice ?? deal?.purchasePrice ?? deal?.listPrice ?? null;
-  const existingUnits     = deal?.existingUnits ?? deal?.units ?? deal?.targetUnits ?? null;
-  const existingNoi       = deal?.existingNoi ?? deal?.currentNoi ?? null;
-  const existingOcc       = deal?.existingOccupancy ?? deal?.occupancy ?? null;
-  const existingCapRate   = deal?.existingCapRate ?? deal?.capRate ?? null;
-  const existingRent      = deal?.existingRentPerUnit ?? deal?.rentPerUnit ?? null;
-  const existingExpRatio  = deal?.existingExpenseRatio ?? deal?.expenseRatio ?? null;
-  const pricePerUnit      = askPrice && existingUnits ? Math.round(askPrice / existingUnits) : (deal?.pricePerUnit ?? null);
-  const pricePerSf        = deal?.pricePerSf ?? null;
-  const roofAge           = deal?.roofAge ?? null;
-  const hvacAge           = deal?.hvacAge ?? null;
-  const plumbing          = deal?.plumbingCondition ?? '—';
-  const electrical        = deal?.electricalCondition ?? '—';
-  const deferred          = deal?.deferred ?? deal?.deferredMaintenance ?? null;
+  const loadAnalysis = useCallback(async () => {
+    if (!dealId) return;
+    try {
+      const a = await dealAnalysisService.getLatestAnalysis(dealId);
+      if (a) setStrategyResults(a);
+    } catch {}
+  }, [dealId]);
 
-  // §2 — Stabilized
-  const stabNoi           = deal?.stabilizedNoi ?? deal?.proformaNoi ?? null;
-  const stabOcc           = deal?.stabilizedOccupancy ?? null;
-  const stabRent          = deal?.stabilizedRentPerUnit ?? deal?.proformaRentPerUnit ?? null;
+  useEffect(() => { loadScore(); loadAnalysis(); }, [dealId]);
 
-  // §3 — Zoning capacity
-  const maxDensity        = deal?.maxDensity ?? null;
-  const maxHeight         = deal?.maxHeight ?? null;
-  const maxLotCoverage    = deal?.maxLotCoverage ?? null;
-  const addlByRight       = deal?.additionalByRight ?? 0;
-  const addlVariance      = deal?.additionalWithVariance ?? deal?.expansionUnits ?? null;
-  const addlRezone        = deal?.additionalIfRezoned ?? null;
-  const needsVariance     = deal?.expansionRequiresVariance ?? false;
+  const sc      = scoreLoading ? BT.text.secondary : scoreColor(jediScore);
+  const verdict = scoreLoading ? 'LOADING...' : scoreVerdict(jediScore);
+  const trend   = [68, 71, 70, 73, 75, 74, 77, 79, jediScore || 77];
+  const stageVal = (deal?.stage || deal?.dealStage || 'PROSPECT').toUpperCase();
 
-  // §4 — Renovation + Expansion
-  const renovBudget       = deal?.renovationBudget ?? null;
-  const renovPerUnit      = deal?.renovPerUnit ?? (renovBudget && existingUnits ? Math.round(renovBudget / existingUnits) : null);
-  const renovUnits        = deal?.unitRenovations ?? existingUnits ?? null;
-  const renovScope: any[] = deal?.renovScope ?? [];
-  const expUnits          = deal?.expansionUnits ?? null;
-  const expSqft           = deal?.expansionSqft ?? null;
-  const expCost           = deal?.expansionCost ?? null;
-  const expCostPerUnit    = deal?.expansionCostPerUnit ?? (expCost && expUnits ? Math.round(expCost / expUnits) : null);
-  const expType           = deal?.expansionType ?? '—';
-  const expParkingAdd     = deal?.expansionParkingAdd ?? null;
-  const existSqft         = deal?.existingSqft ?? deal?.sqft ?? deal?.squareFeet ?? null;
+  const f = (snake: string, camel: string, fallback: any = null) =>
+    deal?.[snake] ?? deal?.[camel] ?? fallback;
 
-  // §5 — Unit mix
-  const existMix: any[]   = deal?.existingMix ?? [];
-  const expMix: any[]     = deal?.expansionMix ?? [];
+  const purchasePrice  = f('purchase_price', 'purchasePrice') ?? deal?.budget;
+  const units          = f('units', 'units') ?? f('total_units', 'totalUnits');
+  const ppu            = purchasePrice && units ? purchasePrice / units : null;
+  const goingInCapRate = f('cap_rate', 'capRate') ?? f('going_in_cap_rate', 'goingInCapRate');
+  const currentNOI     = f('current_noi', 'currentNoi') ?? f('noi', 'noi') ?? computedReturns?.noi;
+  const projectedNOI   = f('projected_noi', 'projectedNoi') ?? f('stabilized_noi', 'stabilizedNoi');
+  const noiUpside      = currentNOI && projectedNOI ? projectedNOI - currentNOI : null;
+  const currentOcc     = f('current_occupancy', 'currentOccupancy') ?? f('occupancy', 'occupancy');
+  const targetOcc      = f('target_occupancy', 'targetOccupancy') ?? assumptions?.stabilizedOccupancy;
 
-  // §6 — Budget / timeline
-  const softCosts         = deal?.softCosts ?? deal?.soft_costs ?? deal?.closingCosts ?? null;
-  const totalInvestment   = deal?.totalInvestment ?? (
-    askPrice != null
-      ? askPrice + (renovBudget ?? 0) + (expCost ?? 0) + (deferred ?? 0) + (softCosts ?? 0)
-      : null
-  );
-  const rawBudget: any[]  = deal?.budgetBreakdown ?? [];
-  const budgetRows        = rawBudget.length > 0 ? rawBudget : [
-    askPrice    != null ? { category: 'Acquisition',    amount: askPrice,    color: T.amberL } : null,
-    renovBudget != null ? { category: 'Renovation',     amount: renovBudget, color: T.blueL  } : null,
-    expCost     != null ? { category: 'Expansion',      amount: expCost,     color: T.violL  } : null,
-    deferred    != null ? { category: 'Deferred Maint', amount: deferred,    color: T.redL   } : null,
-    softCosts   != null ? { category: 'Soft & Closing', amount: softCosts,   color: T.td     } : null,
-  ].filter(Boolean) as any[];
-  const renovMonths       = deal?.renovationMonths ?? null;
-  const totalMonths       = deal?.totalTimelineMonths ?? null;
-  const phases: any[]     = deal?.phases ?? [];
+  const renovCostPerUnit = f('renovation_cost_per_unit', 'renovationCostPerUnit');
+  const totalRenovCost   = f('renovation_budget', 'renovationBudget') ?? f('hard_costs', 'hardCosts') ?? capitalStructure?.hardCosts;
+  const softCosts        = f('soft_costs', 'softCosts') ?? capitalStructure?.softCosts;
+  const totalCapex       = totalRenovCost && softCosts ? totalRenovCost + softCosts : totalRenovCost;
+  const acquisitionCost  = purchasePrice;
+  const totalInvestment  = acquisitionCost && totalCapex ? acquisitionCost + totalCapex : null;
 
-  // §7 — Capital (prefer context)
-  const seniorDebt        = capitalStructure?.loanBalance?.[0] ?? deal?.seniorDebt ?? null;
-  const ltv               = capitalStructure?.ltv ?? deal?.ltv ?? null;
-  const rate              = debtTerms?.interestRate ?? deal?.rate ?? deal?.interestRate ?? null;
-  const loanTerm          = debtTerms?.term != null ? `${debtTerms.term}mo` : (deal?.term ?? '—');
-  const equityReq         = capitalStructure?.totalEquity ?? deal?.equityRequired ?? null;
-  const equitySplit       = deal?.equitySplit ?? '—';
-  const prefReturn        = deal?.prefReturn ?? null;
-  const promote           = deal?.promote ?? '—';
-  const lender            = deal?.lender ?? '—';
-  const drawSched: any[]  = deal?.drawSchedule ?? [];
+  const totalDebt   = capitalStructure?.loanBalance?.[0] ?? capitalStructure?.totalDebt;
+  const totalEquity = capitalStructure?.totalEquity;
+  const ltv = purchasePrice && totalDebt ? Math.round((totalDebt / purchasePrice) * 100) : null;
 
-  // §8 — Returns
-  const exitValue         = deal?.exitValue ?? deal?.exitPrice ?? null;
-  const irr               = deal?.irr ?? deal?.projectedIrr ?? null;
-  const em                = deal?.equityMultiple ?? deal?.projectedEm ?? null;
-  const coc               = deal?.cashOnCash ?? deal?.coc ?? null;
+  const constructionMo = f('construction_months', 'constructionMonths') ?? f('renovation_months', 'renovationMonths');
+  const leaseUpMo      = f('lease_up_months', 'leaseUpMonths');
+  const totalMo        = constructionMo && leaseUpMo ? constructionMo + leaseUpMo : constructionMo;
 
-  // Computed
-  const totalUnits        = (existingUnits ?? 0) + (expUnits ?? 0);
-  const noiDelta          = stabNoi != null && existingNoi != null ? stabNoi - existingNoi : null;
-  const rentDelta         = stabRent != null && existingRent != null ? stabRent - existingRent : null;
-  const renovROI          = noiDelta != null && renovBudget != null ? noiDelta / (renovBudget + (expCost ?? 0)) : null;
+  const irr    = computedReturns?.irrLevered ? computedReturns.irrLevered * 100 : (computedReturns?.irr ?? deal?.irr ?? null);
+  const em     = computedReturns?.equityMultiple ?? deal?.equityMultiple;
+  const coc    = computedReturns?.cashOnCash ?? deal?.cashOnCash;
+  const yoc    = computedReturns?.yieldOnCost ?? (computedReturns?.yoc ? computedReturns.yoc * 100 : null);
 
-  // §9 always uses canonical M02–M20 set; merge status from deal.ddItems if present
-  const ddItems = DEFAULT_DD.map(canonical => {
-    const override = (deal?.ddItems ?? []).find((d: any) => d.module === canonical.module);
-    return override ? { ...canonical, status: override.status ?? canonical.status } : canonical;
-  });
+  const valueAdd   = purchasePrice && projectedNOI && goingInCapRate ? (projectedNOI / goingInCapRate) - purchasePrice : null;
+  const rentUpside = f('rent_upside', 'rentUpside') ?? f('target_rent', 'targetRent');
+  const currentRent = f('current_rent', 'currentRent') ?? f('in_place_rent', 'inPlaceRent');
+
+  const rec = strategyResults?.strategies?.find((s: any) => s.id === strategyResults.recommendedStrategyId) ?? strategyResults?.strategies?.[0];
+
+  const sigList = signals.length ? signals : [
+    { label: 'DEMAND',   weight: '30%', score: 0, tags: [{l:'Economic',c:BT.met.economic},{l:'Dig Traffic',c:BT.met.digTraffic}] },
+    { label: 'SUPPLY',   weight: '25%', score: 0, tags: [{l:'Supply',c:BT.met.supply},{l:'Occupancy',c:BT.met.occupancy}] },
+    { label: 'MOMENTUM', weight: '20%', score: 0, tags: [{l:'Financial',c:BT.met.financial}] },
+    { label: 'POSITION', weight: '15%', score: 0, tags: [{l:'Comp Traffic',c:BT.met.compTraffic}] },
+    { label: 'RISK',     weight: '10%', score: 0, tags: [{l:'Financial',c:BT.met.financial}] },
+  ];
 
   return (
-    <div style={{ background: T.bg, padding: '20px 24px', color: T.text, ...sans }}>
-      <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ flex: 1, overflow: 'auto', animation: 'ov-fade 0.15s', background: BT.bg.terminal }}>
 
-        {/* ──────────────────────── HEADER ──────────────────────────────── */}
-        <div style={{ background: T.bgCard, borderRadius: 12, border: `1px solid ${T.border}`, overflow: 'hidden' }}>
-          {/* Name / price row */}
-          <div style={{ padding: '18px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `1px solid ${T.border}` }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 20, fontWeight: 700, color: T.text, ...sans }}>{name}</span>
-                <Badge label="REDEVELOPMENT" color={T.violL} bg={T.violBg} />
-                {propClass && <Badge label={propClass} color={T.amberL} bg={T.amberBg} />}
-              </div>
-              <div style={{ fontSize: 12, color: T.tm, ...sans }}>
-                📍 {address}{city ? ` · ${city}` : ''}{county ? `, ${county} County` : ''}{state ? `, ${state}` : ''}
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 16 }}>
-              <div style={{ fontSize: 10, color: T.td, ...mono }}>ASK PRICE</div>
-              <div style={{ fontSize: 24, fontWeight: 700, color: T.amberL, ...sans }}>{fmt(askPrice)}</div>
-              <div style={{ fontSize: 11, color: T.td, ...mono }}>
-                {pricePerUnit != null ? `${fmt(pricePerUnit)}/unit` : ''}
-                {pricePerSf != null ? ` · ${fmt(pricePerSf)}/SF` : ''}
-              </div>
-            </div>
-          </div>
+      <PanelHeader
+        title="OVERVIEW · REDEVELOPMENT"
+        subtitle="M01 · Renovation Command Center"
+        borderColor={BT.text.purple}
+        metrics={[
+          { l: 'JEDI',  c: BT.text.amber },
+          { l: 'F_NOI', c: BT.met.financial },
+          { l: 'F_IRR', c: BT.met.financial },
+          { l: 'F_VAL', c: BT.met.financial },
+        ]}
+        right={<StageBd stage={stageVal} />}
+      />
 
-          {/* Property detail grid */}
-          <div style={{ padding: '10px 24px', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', borderBottom: `1px solid ${T.border}` }}>
-            {[
-              { l: 'PARCEL ID',  v: parcelId },
-              { l: 'LOT SIZE',   v: lotAcres != null ? `${lotAcres} ac${lotSf ? ` (${num(lotSf)} SF)` : ''}` : '—' },
-              { l: 'ZONING',     v: zoning },
-              { l: 'YEAR BUILT', v: yearBuilt ?? '—' },
-              { l: 'BUILDINGS',  v: buildings != null ? `${buildings} bldg${stories ? ` · ${stories}-story` : ''}` : '—' },
-              { l: 'PARKING',    v: parkingSpaces != null ? `${parkingSpaces} sp${parkingRatio ? ` (${parkingRatio}/unit)` : ''}` : '—' },
-            ].map((f, i) => (
-              <div key={i} style={{ padding: '6px 8px' }}>
-                <div style={{ fontSize: 9, color: T.td, letterSpacing: 1, ...mono }}>{f.l}</div>
-                <div style={{ fontSize: 12, fontWeight: 500, color: T.text, marginTop: 2, ...sans }}>{String(f.v)}</div>
-              </div>
-            ))}
-          </div>
+      {/* ═══ ROW 1: JEDI Gauge · 5 Signals · As-Is Acquisition ═══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 195px', gap: 1, background: BT.border.subtle }}>
 
-          {/* Footer strip */}
-          <div style={{ padding: '8px 24px', display: 'flex', gap: 24, background: T.bg, flexWrap: 'wrap' }}>
-            {assessedValue  && <span style={{ fontSize: 10, color: T.td, ...mono }}>Assessed: <span style={{ color: T.text }}>{fmt(assessedValue)}</span></span>}
-            {lastSalePrice  && <span style={{ fontSize: 10, color: T.td, ...mono }}>Last Sale: <span style={{ color: T.text }}>{fmt(lastSalePrice)}{lastSaleDate ? ` (${new Date(lastSaleDate).getFullYear()})` : ''}</span></span>}
-            {zoningDesc     && <span style={{ fontSize: 10, color: T.td, ...mono }}>Zoning: <span style={{ color: T.text }}>{zoningDesc}</span></span>}
-          </div>
-        </div>
-
-        {/* ──────────────────── §1 ACQUISITION + AS-IS ─────────────────── */}
-        <div>
-          <SectionHeader n="1" title="Acquisition + As-Is Metrics" subtitle="What you're buying today — current operations baseline" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-            <Card><Metric label="GOING-IN CAP RATE" value={existingCapRate != null ? pct(existingCapRate) : '—'} sub="T-12 NOI basis" /></Card>
-            <Card><Metric label="CURRENT NOI" value={fmt(existingNoi)} sub={existingExpRatio != null ? `Expense ratio: ${pct(existingExpRatio)}` : undefined} /></Card>
-            <Card><Metric label="OCCUPANCY" value={existingOcc != null ? pct(existingOcc) : '—'} sub="Physical" color={existingOcc != null && existingOcc < 0.9 ? T.amberL : undefined} /></Card>
-            <Card><Metric label="AVG RENT / UNIT" value={existingRent != null ? `${fmt(existingRent)}/mo` : '—'} sub="Blended all types" /></Card>
-          </div>
-
-          {/* Condition strip */}
-          <div style={{ marginTop: 12 }}>
-            <Card>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-                <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-                  {[
-                    { l: 'Roof Age',   v: roofAge != null ? `${roofAge} yrs`  : '—', warn: roofAge != null && roofAge > 10 },
-                    { l: 'HVAC Age',   v: hvacAge != null ? `${hvacAge} yrs`  : '—', warn: hvacAge != null && hvacAge > 10 },
-                    { l: 'Plumbing',   v: plumbing,   warn: plumbing   === 'Poor' },
-                    { l: 'Electrical', v: electrical, warn: electrical === 'Poor' },
-                  ].map((c, i) => (
-                    <div key={i}>
-                      <div style={{ fontSize: 9, color: T.td, letterSpacing: 1, ...mono }}>{c.l}</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: c.warn ? T.amberL : T.text, ...sans }}>{c.v}</div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 9, color: T.td, letterSpacing: 1, ...mono }}>DEFERRED MAINTENANCE</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: T.redL, ...sans }}>{fmt(deferred)}</div>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-
-        {/* ──────────────────── §2 NOI TRANSFORMATION ──────────────────── */}
-        <div>
-          <SectionHeader n="2" title="NOI Transformation" subtitle="The value story — as-is → stabilized" color={T.greenL} />
-          <Card style={{ background: `linear-gradient(135deg, ${T.bgCard} 0%, ${T.greenBg}25 100%)`, border: `1px solid ${T.green}25` }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', alignItems: 'center' }}>
-              {/* As-Is */}
-              <div style={{ textAlign: 'center', padding: 20 }}>
-                <div style={{ fontSize: 10, color: T.td, marginBottom: 6, ...mono }}>AS-IS NOI</div>
-                <div style={{ fontSize: 36, fontWeight: 700, color: T.text, ...sans }}>{fmt(existingNoi)}</div>
-                <div style={{ fontSize: 11, color: T.tm, marginTop: 6, ...sans }}>
-                  {existingUnits != null ? `${existingUnits} units` : ''}
-                  {existingOcc  != null ? ` · ${pct(existingOcc)} occ` : ''}
-                  {existingRent != null ? ` · ${fmt(existingRent)}/mo` : ''}
-                </div>
-              </div>
-              <div style={{ fontSize: 24, color: T.td, padding: '0 8px' }}>→</div>
-              {/* Stabilized */}
-              <div style={{ textAlign: 'center', padding: 20, background: T.greenBg, borderRadius: 10 }}>
-                <div style={{ fontSize: 10, color: T.greenL, marginBottom: 6, ...mono }}>STABILIZED NOI</div>
-                <div style={{ fontSize: 36, fontWeight: 700, color: T.greenL, ...sans }}>{fmt(stabNoi)}</div>
-                <div style={{ fontSize: 11, color: T.tm, marginTop: 6, ...sans }}>
-                  {totalUnits > 0 ? `${totalUnits} units` : ''}
-                  {stabOcc != null ? ` · ${pct(stabOcc)} occ` : ''}
-                  {stabRent != null ? ` · ${fmt(stabRent)}/mo` : ''}
-                </div>
-              </div>
-              <div style={{ fontSize: 24, color: T.td, padding: '0 8px' }}>=</div>
-              {/* Uplift */}
-              <div style={{ textAlign: 'center', padding: 20, background: T.amberBg, borderRadius: 10 }}>
-                <div style={{ fontSize: 10, color: T.amberL, marginBottom: 6, ...mono }}>NOI UPLIFT</div>
-                <div style={{ fontSize: 36, fontWeight: 700, color: T.amberL, ...sans }}>
-                  {noiDelta != null ? `+${fmt(noiDelta)}` : '—'}
-                </div>
-                <div style={{ fontSize: 11, color: T.tm, marginTop: 6, ...sans }}>
-                  {noiDelta != null && existingNoi != null ? `+${pct(noiDelta / existingNoi)} increase` : ''}
-                  {rentDelta != null ? ` · +${fmt(rentDelta)}/unit rent lift` : ''}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* ──────────────────── §3 SITE + ZONING CAPACITY ─────────────── */}
-        <div>
-          <SectionHeader n="3" title="Site + Zoning Capacity" subtitle="What the entitlements allow — expansion feasibility" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Card>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>DENSITY ANALYSIS</div>
-              {existingUnits != null && addlRezone != null && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, color: T.tm, ...sans }}>Existing: {existingUnits} units</span>
-                    <span style={{ fontSize: 10, color: T.tm, ...sans }}>Max (rezoned): {existingUnits + addlRezone}</span>
-                  </div>
-                  <div style={{ height: 20, background: T.bg, borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ width: `${(existingUnits / (existingUnits + addlRezone)) * 100}%`, height: '100%', background: T.blue, borderRadius: '6px 0 0 6px' }} />
-                    {addlVariance != null && (
-                      <div style={{ position: 'absolute', left: `${(existingUnits / (existingUnits + addlRezone)) * 100}%`, width: `${(addlVariance / (existingUnits + addlRezone)) * 100}%`, height: '100%', background: `${T.violet}60`, top: 0 }} />
-                    )}
-                  </div>
-                  <div style={{ display: 'flex', gap: 12, marginTop: 4, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 9, color: T.blueL, ...mono }}>● Existing ({existingUnits})</span>
-                    {addlVariance != null && <span style={{ fontSize: 9, color: T.violL, ...mono }}>● Variance (+{addlVariance})</span>}
-                    {addlVariance != null && <span style={{ fontSize: 9, color: T.td, ...mono }}>○ Rezone (+{addlRezone - addlVariance} more)</span>}
-                  </div>
-                </div>
-              )}
-              <DataRow label="Current Zoning" value={`${zoning}${zoningDesc ? ` — ${zoningDesc}` : ''}`} />
-              {maxDensity != null   && <DataRow label="Max Density" value={`${maxDensity} DU/acre`} />}
-              <DataRow label="By-Right Additional" value={addlByRight > 0 ? `+${addlByRight} units` : '0 — nonconforming'} />
-              {addlVariance != null && <DataRow label="With Variance" value={`+${addlVariance} units`} />}
-              {addlRezone   != null && <DataRow label="Full Rezone" value={`+${addlRezone} units`} />}
-            </Card>
-
-            <Card>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>ZONING ENVELOPE</div>
-              <DataRow label="Max Height"       value={maxHeight      != null ? `${maxHeight} ft` : '—'} />
-              <DataRow label="Max Lot Coverage" value={maxLotCoverage != null ? pct(maxLotCoverage) : '—'} />
-              <DataRow label="Lot Size"         value={lotAcres != null ? `${lotAcres} ac${lotSf ? ` (${num(lotSf)} SF)` : ''}` : '—'} />
-
-              {needsVariance && (
-                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: T.amberBg, border: `1px solid ${T.amber}40` }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: T.amberL, marginBottom: 4, ...mono }}>⚠ VARIANCE REQUIRED</div>
-                  <p style={{ fontSize: 11, color: T.amberL, lineHeight: 1.5, margin: 0, ...sans }}>
-                    {existingUnits != null ? `Existing ${existingUnits} units are legally nonconforming under ${zoning} zoning. ` : ''}
-                    {addlVariance != null ? `Expansion of +${addlVariance} units requires variance approval. Entitlement timeline: ~6–9 months.` : 'Variance approval required before expansion.'}
-                  </p>
-                </div>
-              )}
-            </Card>
-          </div>
-        </div>
-
-        {/* ──────────────── §4 RENOVATION + EXPANSION SCOPE ───────────── */}
-        <div>
-          <SectionHeader n="4" title="Renovation + Expansion Scope" subtitle="Dual-track: interior upgrades on existing + new construction" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {/* Renovation */}
-            <Card style={{ borderLeft: `3px solid ${T.blue}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <div style={{ fontSize: 10, letterSpacing: 2, color: T.blueL, ...mono }}>RENOVATION</div>
-                  {renovUnits != null && existingUnits != null && (
-                    <div style={{ fontSize: 11, color: T.tm, marginTop: 2, ...sans }}>{renovUnits} of {existingUnits} units</div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: T.text, ...sans }}>{fmt(renovBudget)}</div>
-                  {renovPerUnit != null && <div style={{ fontSize: 11, color: T.td, ...mono }}>{fmt(renovPerUnit)}/unit</div>}
-                </div>
-              </div>
-
-              {renovScope.length > 0 ? renovScope.map((s: any, i: number) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${T.border}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: Math.max(4, (s.percentage || 0.1) * 56), height: 5, borderRadius: 3, background: T.blue }} />
-                    <span style={{ fontSize: 12, color: T.text, ...sans }}>{s.item ?? s.name ?? s.category ?? '—'}</span>
-                  </div>
-                  <span style={{ fontSize: 12, color: T.text, ...mono }}>{fmt(s.costPerUnit ?? s.cost)}/unit</span>
-                </div>
-              )) : (
-                <div style={{ fontSize: 12, color: T.td, ...sans }}>Renovation scope not yet defined</div>
-              )}
-
-              {rentDelta != null && existingRent != null && (
-                <div style={{ marginTop: 12, padding: '10px 12px', background: T.blueBg, borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: T.blueL, ...sans }}>Post-reno rent uplift</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: T.blueL, ...mono }}>+{fmt(rentDelta)}/mo (+{pct(rentDelta / existingRent)})</span>
-                </div>
-              )}
-            </Card>
-
-            {/* Expansion */}
-            <Card style={{ borderLeft: `3px solid ${T.violet}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div>
-                  <div style={{ fontSize: 10, letterSpacing: 2, color: T.violL, ...mono }}>EXPANSION</div>
-                  <div style={{ fontSize: 11, color: T.tm, marginTop: 2, ...sans }}>
-                    {expUnits != null ? `+${expUnits} new units` : ''}
-                    {expType !== '—' ? ` · ${expType}` : ''}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: T.text, ...sans }}>{fmt(expCost)}</div>
-                  {expCostPerUnit != null && <div style={{ fontSize: 11, color: T.td, ...mono }}>{fmt(expCostPerUnit)}/unit</div>}
-                </div>
-              </div>
-
-              {expUnits     != null && <DataRow label="New Units"         value={`+${expUnits}`} />}
-              {expSqft      != null && <DataRow label="New SF"            value={`${num(expSqft)} SF`} />}
-              {expType !== '—'      && <DataRow label="Building Type"     value={expType} />}
-              {expParkingAdd!= null && <DataRow label="Added Parking"     value={`+${expParkingAdd} spaces`} />}
-              {expCost != null && expSqft != null && <DataRow label="Cost / SF" value={fmt(Math.round(expCost / expSqft))} />}
-              <DataRow label="Entitlement" value={needsVariance ? 'Variance needed' : 'By-right'} />
-
-              <div style={{ marginTop: 12, padding: '10px 12px', background: T.violBg, borderRadius: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: T.violL, ...sans }}>Total post-expansion</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: T.violL, ...mono }}>
-                    {totalUnits > 0 ? `${totalUnits} units` : '—'}
-                    {existSqft != null && expSqft != null ? ` · ${num(existSqft + expSqft)} SF` : ''}
-                  </span>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-
-        {/* ──────────────────── §5 UNIT MIX PROGRAM ────────────────────── */}
-        <div>
-          <SectionHeader n="5" title="Unit Mix Program" subtitle="Existing mix + expansion additions → blended stabilized portfolio" />
-          <Card>
-            {existMix.length > 0 || expMix.length > 0 ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr 1fr 1fr 1fr' }}>
-                {/* Headers */}
-                {['Type', 'Count', 'Avg SF', 'Current Rent', 'Target Rent', 'Δ Rent', 'Δ %'].map((h, i) => (
-                  <div key={i} style={{ padding: '8px 10px', fontSize: 9, color: T.td, borderBottom: `2px solid ${T.borderL}`, textAlign: i > 0 ? 'right' : 'left', ...mono }}>{h}</div>
-                ))}
-
-                {existMix.length > 0 && (
-                  <div style={{ gridColumn: '1 / -1', padding: '5px 10px', fontSize: 9, letterSpacing: 1.5, color: T.blueL, background: T.bg, ...mono }}>
-                    EXISTING ({existingUnits ?? 0} UNITS)
-                  </div>
-                )}
-                {existMix.map((u: any, i: number) => {
-                  const d = (u.targetRent ?? 0) - (u.currentRent ?? 0);
-                  const cells = [
-                    { v: u.type ?? '—', c: T.text, r: false, f: sans },
-                    { v: String(u.count ?? '—'), c: T.text, r: true, f: mono },
-                    { v: String(u.avgSf ?? '—'), c: T.text, r: true, f: mono },
-                    { v: fmt(u.currentRent), c: T.text, r: true, f: mono },
-                    { v: fmt(u.targetRent), c: T.greenL, r: true, f: mono },
-                    { v: d > 0 ? `+${fmt(d)}` : fmt(d), c: T.greenL, r: true, f: mono },
-                    { v: u.currentRent ? `+${pct(d / u.currentRent)}` : '—', c: T.greenL, r: true, f: mono },
-                  ];
-                  return cells.map((c, j) => (
-                    <div key={`e${i}${j}`} style={{ padding: '6px 10px', fontSize: 11, color: c.c, textAlign: c.r ? 'right' : 'left', borderBottom: `1px solid ${T.border}`, ...c.f }}>{c.v}</div>
-                  ));
-                })}
-
-                {expMix.length > 0 && (
-                  <div style={{ gridColumn: '1 / -1', padding: '5px 10px', fontSize: 9, letterSpacing: 1.5, color: T.violL, background: T.bg, ...mono }}>
-                    EXPANSION (+{expUnits ?? 0} UNITS)
-                  </div>
-                )}
-                {expMix.map((u: any, i: number) => {
-                  const cells = [
-                    { v: u.type ?? '—', c: T.text, r: false, f: sans },
-                    { v: u.count != null ? `+${u.count}` : '—', c: T.violL, r: true, f: mono },
-                    { v: String(u.avgSf ?? '—'), c: T.text, r: true, f: mono },
-                    { v: '—', c: T.td, r: true, f: mono },
-                    { v: fmt(u.targetRent), c: T.violL, r: true, f: mono },
-                    { v: '—', c: T.td, r: true, f: mono },
-                    { v: '—', c: T.td, r: true, f: mono },
-                  ];
-                  return cells.map((c, j) => (
-                    <div key={`x${i}${j}`} style={{ padding: '6px 10px', fontSize: 11, color: c.c, textAlign: c.r ? 'right' : 'left', borderBottom: `1px solid ${T.border}`, ...c.f }}>{c.v}</div>
-                  ));
-                })}
-
-                <div style={{ gridColumn: '1 / -1', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${T.amber}`, background: T.bg }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: T.text, ...sans }}>Stabilized Portfolio: {totalUnits} units</span>
-                  {stabRent != null && <span style={{ fontSize: 12, fontWeight: 700, color: T.amberL, ...mono }}>Blended: {fmt(stabRent)}/mo</span>}
-                </div>
-              </div>
-            ) : (
-              <div style={{ padding: '24px 0', textAlign: 'center', color: T.td, fontSize: 13, ...sans }}>
-                Unit mix not yet defined — add unit types to populate this table
-              </div>
+        {/* JEDI Gauge */}
+        <div style={{ background: BT.bg.panel, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <div style={{ fontSize: 7, color: BT.text.muted, letterSpacing: 1.5, fontFamily: MONO }}>JEDI SCORE</div>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%',
+            border: `3px solid ${sc}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+            boxShadow: `0 0 20px ${sc}33`,
+          }}>
+            <span style={{ fontSize: scoreLoading ? 14 : 28, fontWeight: 800, color: sc, fontFamily: MONO }}>
+              {scoreLoading ? '…' : jediScore || '—'}
+            </span>
+            {!scoreLoading && jediDelta !== 0 && (
+              <span style={{ fontSize: 8, color: jediDelta > 0 ? BT.text.green : BT.text.red, fontWeight: 600, fontFamily: MONO }}>
+                {jediDelta > 0 ? '+' : ''}{jediDelta} 30d
+              </span>
             )}
-          </Card>
-        </div>
-
-        {/* ──────────────── §6 BUDGET + TIMELINE ───────────────────────── */}
-        <div>
-          <SectionHeader n="6" title="Development Budget + Timeline" subtitle="Full cost breakdown and phased execution schedule" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {/* Budget */}
-            <Card>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>TOTAL INVESTMENT</div>
-              {budgetRows.length > 0 && totalInvestment != null ? (
-                <>
-                  <div style={{ display: 'flex', height: 20, borderRadius: 6, overflow: 'hidden', marginBottom: 16 }}>
-                    {budgetRows.map((b: any, i: number) => (
-                      <div key={i} style={{ width: `${(b.amount / totalInvestment) * 100}%`, background: b.color ?? BUDGET_PALETTE[i % BUDGET_PALETTE.length], opacity: 0.8 }} title={`${b.category}: ${fmt(b.amount)}`} />
-                    ))}
-                  </div>
-                  {budgetRows.map((b: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${T.border}` }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 10, height: 10, borderRadius: 3, background: b.color ?? BUDGET_PALETTE[i % BUDGET_PALETTE.length] }} />
-                        <span style={{ fontSize: 12, color: T.text, ...sans }}>{b.category}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: T.text, ...mono }}>{fmt(b.amount)}</span>
-                        <span style={{ fontSize: 10, color: T.td, ...mono }}>{pct(b.amount / totalInvestment)}</span>
-                      </div>
-                    </div>
-                  ))}
-                  <DataRow label="Total Investment" value={fmt(totalInvestment)} bold />
-                </>
-              ) : (
-                <div style={{ color: T.td, fontSize: 13, ...sans }}>Budget breakdown not yet defined</div>
-              )}
-            </Card>
-
-            {/* Timeline */}
-            <Card>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>EXECUTION TIMELINE</div>
-              {phases.length > 0 ? (
-                <>
-                  <div style={{ position: 'relative', height: phases.length * 32 + 10, marginBottom: 12 }}>
-                    {phases.map((p: any, i: number) => {
-                      const totalM = totalMonths ?? 24;
-                      const col = BUDGET_PALETTE[i % BUDGET_PALETTE.length];
-                      return (
-                        <div key={i} onClick={() => setEp(i)} style={{ position: 'absolute', left: `${((p.start ?? 0) / totalM) * 100}%`, width: `${((p.months ?? 1) / totalM) * 100}%`, top: i * 30, height: 24, background: `${col}20`, border: `1px solid ${col}50`, borderRadius: 5, display: 'flex', alignItems: 'center', paddingLeft: 8, cursor: 'pointer' }}>
-                          <span style={{ fontSize: 9, fontWeight: 600, color: col, ...mono, whiteSpace: 'nowrap' }}>{p.label} ({p.months}mo)</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${T.border}`, paddingTop: 8 }}>
-                    <span style={{ fontSize: 9, color: T.td, ...mono }}>Month 0</span>
-                    {totalMonths != null && <span style={{ fontSize: 9, color: T.td, ...mono }}>Stabilized — Month {totalMonths}</span>}
-                  </div>
-                </>
-              ) : (
-                <div style={{ color: T.td, fontSize: 13, ...sans }}>
-                  {renovMonths != null ? (
-                    <>
-                      <DataRow label="Renovation Period" value={`${renovMonths} months`} />
-                      {totalMonths != null && <DataRow label="Total Timeline" value={`${totalMonths} months`} />}
-                    </>
-                  ) : 'Timeline phases not yet defined'}
-                </div>
-              )}
-            </Card>
           </div>
+          <div style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>Redevelopment</div>
+          <Spark data={trend} color={sc} w={100} h={18} />
+          <Bd c={sc}>{verdict}</Bd>
+          <Bd c={BT.text.purple}>REDEVELOPMENT</Bd>
         </div>
 
-        {/* ──────────────────── §7 CAPITAL STRUCTURE ───────────────────── */}
-        <div>
-          <SectionHeader n="7" title="Capital Structure" subtitle="Bridge-to-perm with renovation + expansion draw schedules" />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <Card>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>SOURCES</div>
-              {seniorDebt != null && <DataRow label="Senior Debt (Bridge)" value={fmt(seniorDebt)} />}
-              {ltv        != null && <DataRow label="LTV" value={pct(ltv)} />}
-              {rate       != null && <DataRow label="Interest Rate" value={pct(rate)} />}
-              {loanTerm   !== '—' && <DataRow label="Term" value={loanTerm} />}
-              {lender     !== '—' && <DataRow label="Lender Type" value={lender} />}
-              <div style={{ height: 12 }} />
-              {equityReq  != null && <DataRow label="Sponsor Equity" value={fmt(equityReq)} />}
-              {equitySplit!== '—' && <DataRow label="LP/GP Split" value={equitySplit} />}
-              {prefReturn != null && <DataRow label="Pref Return" value={pct(prefReturn)} />}
-              {promote    !== '—' && <DataRow label="Promote" value={promote} />}
-              {seniorDebt != null && equityReq != null && <DataRow label="Total Capitalization" value={fmt(seniorDebt + equityReq)} bold />}
-              {seniorDebt == null && equityReq == null && (
-                <div style={{ color: T.td, fontSize: 13, ...sans }}>Capital structure not yet configured — run M11</div>
-              )}
-            </Card>
-
-            <Card>
-              <div style={{ fontSize: 10, letterSpacing: 2, color: T.td, marginBottom: 12, ...mono }}>DRAW SCHEDULE</div>
-              {drawSched.length > 0 ? drawSched.map((d: any, i: number) => (
-                <div key={i} style={{ marginBottom: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, color: T.text, ...sans }}>{d.milestone}</span>
-                    <span style={{ fontSize: 11, color: T.text, ...mono }}>{fmt(d.amount)}</span>
-                  </div>
-                  <div style={{ height: 8, background: T.bg, borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ width: `${(d.pctDrawn ?? 0) * 100}%`, height: '100%', background: T.amber, borderRadius: 4 }} />
-                  </div>
-                  <div style={{ fontSize: 9, color: T.td, marginTop: 2, textAlign: 'right', ...mono }}>{pct(d.pctDrawn)} drawn</div>
-                </div>
-              )) : (
-                <div style={{ color: T.td, fontSize: 13, ...sans }}>Draw schedule not yet defined</div>
-              )}
-            </Card>
+        {/* 5 Master Signals */}
+        <div style={{ background: BT.bg.panel, padding: 10 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, marginBottom: 6, fontFamily: MONO, letterSpacing: 0.5 }}>
+            5 MASTER SIGNALS — PLATFORM METRIC SOURCES
           </div>
-        </div>
-
-        {/* ──────────────── §8 VALUE BRIDGE + RETURNS ──────────────────── */}
-        <div>
-          <SectionHeader n="8" title="Value Bridge + Returns" subtitle="Total basis → stabilized value → value creation" />
-
-          <Card style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, flexWrap: 'wrap' }}>
-              {([
-                askPrice    != null ? { label: 'Acquisition', value: askPrice,    color: T.amberL } : null,
-                renovBudget != null ? { op: '+' } : null,
-                renovBudget != null ? { label: 'Renovation',  value: renovBudget, color: T.blueL  } : null,
-                deferred    != null ? { op: '+' } : null,
-                deferred    != null ? { label: 'Deferred',    value: deferred,    color: T.redL   } : null,
-                expCost     != null ? { op: '+' } : null,
-                expCost     != null ? { label: 'Expansion',   value: expCost,     color: T.violL  } : null,
-                softCosts   != null ? { op: '+' } : null,
-                softCosts   != null ? { label: 'Soft + Closing', value: softCosts, color: T.td    } : null,
-                totalInvestment != null ? { op: '=' } : null,
-                totalInvestment != null ? { label: 'Total Basis',  value: totalInvestment, color: T.amberL, bold: true } : null,
-                exitValue   != null ? { op: '→' } : null,
-                exitValue   != null ? { label: 'Exit Value',   value: exitValue,   color: T.greenL, bold: true } : null,
-              ] as any[]).filter(Boolean).map((step: any, i: number) =>
-                step.op ? (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '0 4px', fontSize: 18, color: T.td }}>{step.op}</div>
-                ) : (
-                  <div key={i} style={{ textAlign: 'center', padding: '10px 8px', minWidth: 80 }}>
-                    <div style={{ fontSize: 9, color: T.td, marginBottom: 3, ...mono }}>{step.label}</div>
-                    <div style={{ fontSize: step.bold ? 18 : 14, fontWeight: 700, color: step.color, ...sans }}>{fmt(step.value)}</div>
-                  </div>
-                )
-              )}
-            </div>
-
-            {exitValue != null && totalInvestment != null && (
-              <div style={{ marginTop: 12, background: T.greenBg, border: `1px solid ${T.green}30`, borderRadius: 8, padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: T.greenL, ...sans }}>Value Creation</span>
-                <span style={{ fontSize: 22, fontWeight: 700, color: T.greenL, ...mono }}>
-                  {exitValue - totalInvestment >= 0 ? '+' : ''}{fmt(exitValue - totalInvestment)}
-                </span>
+          {sigList.map((sig: any, i: number) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+              <span style={{ fontSize: 7, color: BT.text.muted, minWidth: 76, fontFamily: MONO }}>{sig.label} ({sig.weight})</span>
+              <div style={{ width: 48, height: 5, background: BT.bg.terminal, borderRadius: 1, flexShrink: 0 }}>
+                <div style={{ height: '100%', width: `${sig.score}%`, background: scoreColor(sig.score), borderRadius: 1 }} />
               </div>
-            )}
-
-            {totalInvestment == null && exitValue == null && (
-              <div style={{ padding: '16px 0', textAlign: 'center', color: T.td, fontSize: 13, ...sans }}>
-                Complete Pro Forma (M09) and Capital Structure (M11) to see the value bridge
+              <span style={{ fontSize: 9, fontWeight: 700, color: scoreColor(sig.score), minWidth: 22, fontFamily: MONO }}>
+                {scoreLoading ? '—' : sig.score || '—'}
+              </span>
+              <div style={{ display: 'flex', gap: 2, flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
+                {sig.tags.map((tag: any, ti: number) => <MetricTag key={ti} label={tag.l} color={tag.c} />)}
               </div>
-            )}
-          </Card>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-            <Card><Metric label="PROJ. IRR" value={irr != null ? `${typeof irr === 'number' ? irr.toFixed(1) : irr}%` : '—'} sub="Levered, 5-yr hold" color={irr != null ? T.greenL : undefined} /></Card>
-            <Card><Metric label="EQUITY MULTIPLE" value={em != null ? `${typeof em === 'number' ? em.toFixed(2) : em}x` : '—'} sub={equityReq != null ? `On ${fmt(equityReq)} equity` : undefined} color={em != null ? T.greenL : undefined} /></Card>
-            <Card><Metric label="RENOVATION ROI" value={renovROI != null ? pct(renovROI) : '—'} sub={noiDelta != null && renovBudget != null ? `${fmt(noiDelta)} NOI uplift` : undefined} color={renovROI != null ? T.greenL : undefined} /></Card>
-            <Card><Metric label="CASH-ON-CASH (Y1)" value={coc != null ? `${typeof coc === 'number' ? coc.toFixed(1) : coc}%` : '—'} sub="Year 1 levered yield" /></Card>
-          </div>
-        </div>
-
-        {/* ──────────────── §9 DUE DILIGENCE + MODULE ACCESS ───────────── */}
-        <div>
-          <SectionHeader n="9" title="Due Diligence + Module Access" subtitle="Jump into any module — status tracked across the deal lifecycle" />
-          <Card>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {ddItems.map((item: any, i: number) => (
-                <div
-                  key={i}
-                  onClick={() => onTabChange?.(item.link)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: T.bg, borderRadius: 8, border: `1px solid ${T.border}`, cursor: onTabChange ? 'pointer' : 'default' }}
-                  onMouseEnter={e => { if (onTabChange) (e.currentTarget as HTMLElement).style.borderColor = T.amber; }}
-                  onMouseLeave={e => { if (onTabChange) (e.currentTarget as HTMLElement).style.borderColor = T.border; }}
-                >
-                  <StatusDot status={item.status ?? 'not-started'} />
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: T.text, ...sans }}>{item.label}</div>
-                    <div style={{ fontSize: 10, color: T.td, ...mono }}>{item.module}</div>
-                  </div>
-                  <span style={{ fontSize: 10, color: T.td, textTransform: 'capitalize', ...sans }}>
-                    {(item.status ?? 'not-started').replace('-', ' ')}
-                  </span>
-                </div>
-              ))}
             </div>
-          </Card>
+          ))}
+          {strategyResults?.strategies && (
+            <div style={{ display: 'flex', gap: 3, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${BT.border.subtle}` }}>
+              {strategyResults.strategies.slice(0, 4).map((s: any, i: number) => {
+                const isWin = s.id === strategyResults.recommendedStrategyId;
+                return (
+                  <div key={i} style={{ flex: 1, textAlign: 'center', padding: '3px 4px', background: BT.bg.terminal, borderTop: isWin ? `2px solid ${BT.text.purple}` : `2px solid ${BT.border.subtle}` }}>
+                    <div style={{ fontSize: 7, color: isWin ? BT.text.purple : BT.text.muted, fontWeight: 700, fontFamily: MONO }}>{s.name?.toUpperCase().slice(0, 6)}</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: isWin ? BT.text.purple : BT.text.secondary, fontFamily: MONO }}>{Math.round(s.confidence)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
+        {/* As-Is Acquisition Details */}
+        <div style={{ background: BT.bg.panel, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '5px 8px', borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5, fontFamily: MONO }}>AS-IS ACQUISITION</div>
+          </div>
+          <DataRow label="ADDRESS"       value={deal?.address?.split(',')[0] || deal?.name || '—'} valueColor={BT.text.primary} />
+          <DataRow label="MARKET"        value={deal?.market || deal?.city || '—'} valueColor={BT.text.secondary} />
+          <DataRow label="PURCHASE PRICE" value={fmt(purchasePrice, '$')} metricColor={BT.met.financial} />
+          <DataRow label="PRICE/UNIT"    value={fmt(ppu, '$')} metricColor={BT.met.financial} />
+          <DataRow label="UNITS"         value={units ? `${units} units` : '—'} />
+          <DataRow label="CURRENT OCC"   value={pct(currentOcc)} valueColor={currentOcc && (currentOcc > 1 ? currentOcc : currentOcc * 100) >= 90 ? BT.text.green : BT.text.orange} />
+          <DataRow label="GOING-IN CAP"  value={goingInCapRate ? `${(goingInCapRate * 100 > 1 ? goingInCapRate : goingInCapRate * 100).toFixed(2)}%` : '—'} metricColor={BT.met.financial} />
+          <DataRow label="STAGE"         value={<StageBd stage={stageVal} />} />
+          <DataRow label="RISK"          value={<RiskDot level={deal?.riskLevel?.toUpperCase() || 'LOW'} />} border={false} />
+        </div>
+      </div>
+
+      {/* ═══ ROW 2: NOI Transformation · Renovation Budget · Capital Structure ═══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BT.border.subtle, borderTop: `1px solid ${BT.border.subtle}` }}>
+
+        {/* NOI Transformation */}
+        <SectionPanel title="NOI TRANSFORMATION" borderColor={BT.text.amber} metrics={[{ l: 'F_NOI', c: BT.met.financial }]}>
+          <DataRow label="CURRENT NOI"   value={fmt(currentNOI, '$')} metricColor={BT.met.financial} />
+          <DataRow label="PROJECTED NOI" value={fmt(projectedNOI, '$')} metricColor={BT.met.financial} />
+          <DataRow label="NOI UPSIDE"    value={fmt(noiUpside, '$')} valueColor={noiUpside && noiUpside > 0 ? BT.text.green : BT.text.red} />
+          <DataRow label="CURRENT RENT"  value={currentRent ? `$${currentRent}/mo` : '—'} />
+          <DataRow label="TARGET RENT"   value={rentUpside ? `$${rentUpside}/mo` : '—'} valueColor={BT.text.green} />
+          <DataRow label="CURRENT OCC"   value={pct(currentOcc)} />
+          <DataRow label="TARGET OCC"    value={pct(targetOcc)} valueColor={BT.text.green} border={false} />
+        </SectionPanel>
+
+        {/* Renovation Budget */}
+        <SectionPanel title="RENOVATION BUDGET" borderColor={BT.text.purple} metrics={[{ l: 'F_CAPEX', c: BT.met.supply }]}>
+          <DataRow label="ACQUISITION"   value={fmt(acquisitionCost, '$')} metricColor={BT.met.financial} />
+          <DataRow label="RENOVATION"    value={fmt(totalRenovCost, '$')} metricColor={BT.met.supply} />
+          <DataRow label="SOFT COSTS"    value={fmt(softCosts, '$')} valueColor={BT.text.orange} />
+          <DataRow label="TOTAL CAPEX"   value={fmt(totalCapex, '$')} metricColor={BT.met.financial} />
+          <DataRow label="TOTAL INVEST"  value={fmt(totalInvestment, '$')} metricColor={BT.met.financial} />
+          <DataRow label="RENO/UNIT"     value={renovCostPerUnit ? `$${Math.round(renovCostPerUnit).toLocaleString()}/unit` : '—'} border={false} />
+        </SectionPanel>
+
+        {/* Capital Structure */}
+        <SectionPanel title="CAPITAL STRUCTURE" borderColor={BT.text.cyan}>
+          <DataRow label="TOTAL INVEST"  value={fmt(totalInvestment, '$')} metricColor={BT.met.financial} />
+          <DataRow label="SENIOR DEBT"   value={fmt(totalDebt, '$')} metricColor={BT.met.financial} />
+          <DataRow label="EQUITY"        value={fmt(totalEquity, '$')} metricColor={BT.met.financial} />
+          <DataRow label="LTV (ACQN)"    value={ltv ? `${ltv}%` : '—'} valueColor={ltv && ltv <= 70 ? BT.text.green : BT.text.orange} />
+          <DataRow label="DSCR"          value={computedReturns?.dscr ? `${Number(computedReturns.dscr).toFixed(2)}x` : '—'} valueColor={computedReturns?.dscr && computedReturns.dscr >= 1.25 ? BT.text.green : BT.text.orange} />
+          <DataRow label="EQUITY REQ"    value={fmt(totalEquity, '$')} border={false} />
+        </SectionPanel>
+      </div>
+
+      {/* ═══ ROW 3: Returns · AI Brief · Activity ═══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BT.border.subtle, borderTop: `1px solid ${BT.border.subtle}` }}>
+
+        {/* Value Bridge + Returns */}
+        <SectionPanel title="VALUE BRIDGE + RETURNS" borderColor={BT.text.green} metrics={[{ l: 'F_IRR', c: BT.met.financial }, { l: 'F_COC', c: BT.met.financial }]}>
+          <DataRow label="VALUE CREATED" value={fmt(valueAdd, '$')} valueColor={valueAdd && valueAdd > 0 ? BT.text.green : BT.text.red} />
+          <DataRow label="LEVERED IRR"   value={irr ? `${Number(irr).toFixed(1)}%` : '—'} metricColor={BT.met.financial} />
+          <DataRow label="EQUITY MULT"   value={em ? `${Number(em).toFixed(2)}x` : '—'} metricColor={BT.met.financial} />
+          <DataRow label="CASH-ON-CASH"  value={coc ? `${Number(coc).toFixed(1)}%` : '—'} metricColor={BT.met.financial} />
+          <DataRow label="YIELD ON COST" value={yoc ? `${Number(yoc).toFixed(2)}%` : '—'} metricColor={BT.met.financial} />
+          <DataRow label="RENO TIMELINE" value={totalMo ? `${totalMo} mo` : constructionMo ? `${constructionMo} mo reno` : '—'} valueColor={BT.text.cyan} border={false} />
+        </SectionPanel>
+
+        {/* AI Intelligence Brief */}
+        <SectionPanel title="AI INTELLIGENCE BRIEF" borderColor={BT.text.cyan}>
+          {[
+            { cat: 'DEMAND',  c: BT.text.green,  msg: sigList[0]?.score ? `Demand ${sigList[0].score}/100. ${sigList[0].score >= 70 ? 'Repositioned asset should capture rent growth from tenant demand.' : 'Demand signals weak — review rent upside assumptions.'}` : 'Demand data loading from platform metrics engine.' },
+            { cat: 'NOI',     c: BT.text.amber,  msg: noiUpside ? `NOI upside of ${fmt(noiUpside, '$')} available through renovation and lease-up to ${pct(targetOcc)} occupancy.` : 'Enter current and projected NOI to calculate transformation opportunity.' },
+            { cat: 'CAPEX',   c: BT.text.purple, msg: totalCapex ? `Total capex of ${fmt(totalCapex, '$')} budgeted. ${renovCostPerUnit ? `$${Math.round(renovCostPerUnit).toLocaleString()}/unit renovation cost.` : 'Enter renovation budget for per-unit cost analysis.'}` : 'Enter renovation budget to calculate per-unit capex.' },
+            { cat: 'ACTION',  c: BT.text.amber,  msg: rec?.name ? `Advance ${rec.name} strategy. NOI transformation of ${fmt(noiUpside ?? 0, '$')} supports repositioning thesis.` : 'Run strategy analysis to generate action recommendation.' },
+          ].map((b, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '3px 0', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <Bd c={b.c}>{b.cat}</Bd>
+              <span style={{ fontSize: 8, color: BT.text.secondary, lineHeight: 1.5, fontFamily: MONO, flex: 1 }}>{b.msg}</span>
+            </div>
+          ))}
+        </SectionPanel>
+
+        {/* Deal Team + Activity */}
+        <SectionPanel title="DEAL TEAM + ACTIVITY" borderColor={BT.text.purple}>
+          {[
+            { role: 'LEAD',  name: deal?.primaryContact || deal?.leadInvestor || 'Unassigned' },
+            { role: 'GC',    name: deal?.generalContractor || deal?.gc || '—' },
+            { role: 'ARCH',  name: deal?.architect || '—' },
+            { role: 'LEGAL', name: deal?.attorney || deal?.legalCounsel || '—' },
+            { role: 'LENDER', name: deal?.lender || deal?.seniorLender || '—' },
+          ].map((m, i, arr) => (
+            <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '4px 8px', borderBottom: i < arr.length - 1 ? `1px solid ${BT.border.subtle}` : 'none' }}>
+              <Bd c={BT.text.purple}>{m.role}</Bd>
+              <span style={{ fontSize: 8, color: m.name === '—' ? BT.text.muted : BT.text.primary, fontFamily: MONO }}>{m.name}</span>
+            </div>
+          ))}
+          <div style={{ padding: '5px 8px', borderTop: `1px solid ${BT.border.subtle}` }}>
+            <div style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>JEDI Score updated — {jediScore || '—'}{jediDelta > 0 ? ` (+${jediDelta})` : ''}</div>
+            <div style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO, marginTop: 2 }}>NOI transformation: {fmt(currentNOI, '$')} → {fmt(projectedNOI, '$')}</div>
+          </div>
+        </SectionPanel>
+      </div>
+
+      {/* ─── Secondary nav ─────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 0, borderTop: `1px solid ${BT.border.medium}`, background: BT.bg.header, flexShrink: 0 }}>
+        {[
+          { id: 'zoning',         label: 'ZONING' },
+          { id: 'debt',           label: 'CAPITAL' },
+          { id: 'proforma',       label: 'PRO FORMA' },
+          { id: 'strategy',       label: 'STRATEGY' },
+          { id: 'due-diligence',  label: 'DILIGENCE' },
+          { id: 'market-intelligence', label: 'MARKET' },
+        ].map((link, i) => (
+          <button
+            key={i}
+            onClick={() => onTabChange?.(link.id)}
+            style={{
+              fontFamily: MONO, fontSize: 7, fontWeight: 600,
+              color: BT.text.muted, background: 'none',
+              border: 'none', borderRight: `1px solid ${BT.border.subtle}`,
+              padding: '5px 10px', cursor: 'pointer', letterSpacing: 0.5,
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = BT.text.purple}
+            onMouseLeave={e => e.currentTarget.style.color = BT.text.muted}
+          >
+            {link.label}
+          </button>
+        ))}
       </div>
     </div>
   );
