@@ -13,7 +13,7 @@ import { apiClient } from '../../../services/api.client';
 import { getDealType, getAvailableStrategies, type StrategyId, type DealType } from '../../../shared/config/deal-type-visibility';
 import CustomScreenTab from './CustomScreenTab';
 import type { M08StrategyScore, M08ArbitrageResult } from '../../../stores/dealStore';
-import { useStrategyArbitrageM08 } from '../../../hooks/useStrategyArbitrageM08';
+import { useStrategyArbitrage } from '../../../hooks/useStrategyArbitrageM08';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 // ─── Inline types (removed mock file imports) ──────────────────────────────
@@ -247,7 +247,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
     arbitrage: m08Arbitrage,
     loading: strategyScoresLoading,
     recalculate: recalculateM08,
-  } = useStrategyArbitrageM08(deal.id);
+  } = useStrategyArbitrage(deal.id);
 
   // Static data replacing former mock imports
   const acquisitionStats = STATIC_ACQUISITION_STATS;
@@ -429,7 +429,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               {([
                 { id: 'scores' as const, label: 'Score Matrix', icon: '📊' },
                 { id: 'heatmap' as const, label: 'Signal Heatmap', icon: '🔥' },
-                { id: 'roi' as const, label: 'Score Chart', icon: '📈' },
+                { id: 'roi' as const, label: 'ROI Comparison', icon: '📈' },
                 { id: 'custom' as const, label: 'Custom Screen', icon: '⚙️' },
               ] as const).map((tab) => (
                 <button
@@ -448,13 +448,19 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
             </div>
 
             <div className="p-6">
-              {/* Loading */}
+              {/* Loading skeleton */}
               {strategyScoresLoading && (
-                <div className="flex items-center justify-center py-16">
-                  <div className="flex flex-col items-center gap-3">
-                    <div className="w-8 h-8 border-2 border-[#A78BFA] border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs text-[#5a6a7a] font-mono tracking-widest">RUNNING ARBITRAGE ENGINE...</span>
-                  </div>
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-4 bg-[#1a2233] rounded w-1/3" />
+                  <div className="h-3 bg-[#1a2233] rounded w-1/2" />
+                  {[1,2,3,4].map(i => (
+                    <div key={i} className="flex gap-3">
+                      <div className="h-10 bg-[#1a2233] rounded flex-1" />
+                      <div className="h-10 bg-[#1a2233] rounded flex-1" />
+                      <div className="h-10 bg-[#1a2233] rounded flex-1" />
+                      <div className="h-10 bg-[#1a2233] rounded flex-1" />
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -470,9 +476,9 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                     <M08SignalHeatmap scores={m08Scores} signalNames={m08SignalNames} />
                   )}
 
-                  {/* Score Chart (Recharts) */}
+                  {/* ROI Comparison (live roi_estimate per strategy) */}
                   {activeSubTab === 'roi' && (
-                    <M08ScoreChart scores={m08Scores} />
+                    <ROIComparison scores={m08Scores} />
                   )}
 
                   {/* Custom Screen */}
@@ -571,7 +577,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           {!customLoading && customStrategies.length === 0 ? (
             <div className="bg-[#0a1628] border border-[#1e2a3d] rounded-lg p-8 text-center">
               <div className="text-4xl mb-3">⚙️</div>
-              <h4 className="text-base font-semibold text-[#a0b0c0] mb-2">No strategies yet</h4>
+              <h4 className="text-base font-semibold text-[#a0b0c0] mb-2">No strategies configured.</h4>
               <p className="text-sm text-[#6b7f94]">
                 Create custom strategies in the Strategy Builder to see them scored here.
               </p>
@@ -1440,7 +1446,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
     return (
       <div className="flex flex-col items-center gap-4 py-12">
         <div className="text-4xl">📊</div>
-        <div className="text-sm text-[#6b7f94]">No strategies scored yet.</div>
+        <div className="text-sm text-[#6b7f94]">No strategies configured.</div>
         <button
           onClick={onRecalculate}
           className="text-xs font-mono font-bold px-4 py-2 rounded border border-[#A78BFA] text-[#A78BFA] hover:bg-[#A78BFA]/10 transition-colors"
@@ -1593,7 +1599,7 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
         </span>
       </div>
       <p className="text-xs text-[#6b7f94] mb-4">
-        Weighted signal scores — color intensity indicates strength of contribution to overall strategy score
+        Cell value = signal_score × strategy_weight — color intensity indicates weighted contribution to overall score
       </p>
 
       <div className="overflow-x-auto">
@@ -1615,14 +1621,16 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
                   {(signalNames[i] ?? key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()))}
                 </td>
                 {scores.map(s => {
-                  const val = s.sub_scores?.[key] ?? 0;
+                  const signalScore = s.sub_scores?.[key] ?? 0;
+                  const weight = s.signal_weights?.[key] ?? 1;
+                  const val = signalScore * weight;
                   const c = cellColor(val);
                   return (
                     <td key={s.strategy_id} className="py-1 px-1 text-center">
                       <div
                         className="rounded px-2 py-1.5 font-mono font-semibold"
                         style={{ background: c.bg, color: c.text }}
-                        title={`${s.strategy_name}: ${key} = ${val.toFixed(1)}`}
+                        title={`${s.strategy_name}: ${key} signal=${signalScore.toFixed(1)} × weight=${weight.toFixed(2)} = ${val.toFixed(1)}`}
                       >
                         {val.toFixed(0)}
                       </div>
@@ -1652,59 +1660,77 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
   );
 };
 
-/** M08 Score Chart — Recharts BarChart comparing overall scores */
-const M08ScoreChart: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => {
+/** ROI Comparison — compares IRR, YoC, profit margin, RevPAR per strategy from roi_estimate */
+const ROIComparison: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => {
   if (!scores || scores.length === 0) {
     return (
       <div className="py-10 text-center text-sm text-[#6b7f94]">
-        No data to chart. Run a recalculation first.
+        No strategies configured.
       </div>
     );
   }
 
   const COLORS = ['#A78BFA', '#00BCD4', '#00D26A', '#F5A623', '#FF8C42'];
-  const data = [...scores]
-    .sort((a, b) => b.overall_score - a.overall_score)
-    .map((s, i) => ({
-      name: s.strategy_name.length > 14 ? s.strategy_name.slice(0, 14) + '…' : s.strategy_name,
-      score: parseFloat(s.overall_score.toFixed(1)),
-      gate: s.gate_result,
-      color: s.gate_result === 'PASS' ? (COLORS[i] ?? '#A78BFA') : '#FF4757',
-    }));
+  const sorted = [...scores].sort((a, b) => b.overall_score - a.overall_score);
+
+  const ROI_METRICS: { key: keyof NonNullable<M08StrategyScore['roi_estimate']>; label: string; unit: string; color: string }[] = [
+    { key: 'irr',           label: 'IRR',          unit: '%',  color: '#A78BFA' },
+    { key: 'yoc',           label: 'Yield-on-Cost', unit: '%', color: '#00BCD4' },
+    { key: 'profit_margin', label: 'Profit Margin', unit: '%', color: '#00D26A' },
+    { key: 'rev_par',       label: 'RevPAR',        unit: '$', color: '#F5A623' },
+  ];
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <h3 className="text-sm font-bold text-[#e8e9ea] tracking-wide">STRATEGY SCORE COMPARISON</h3>
-        <span className="text-[10px] font-mono text-[#5a6a7a] tracking-widest">COMPOSITE SCORE / 100</span>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-[#e8e9ea] tracking-wide">ROI COMPARISON</h3>
+        <span className="text-[10px] font-mono text-[#5a6a7a] tracking-widest">IRR · YOC · MARGIN · REVPAR</span>
       </div>
-      <p className="text-xs text-[#6b7f94] mb-5">
-        Overall composite score per strategy — green bars pass all gates, red bars are gated
+      <p className="text-xs text-[#6b7f94]">
+        Strategy-specific ROI estimates — IRR, yield-on-cost, profit margin, RevPAR per unit
       </p>
 
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
-          <XAxis dataKey="name" tick={{ fill: '#8B95A5', fontSize: 10, fontFamily: 'monospace' }} />
-          <YAxis domain={[0, 100]} tick={{ fill: '#8B95A5', fontSize: 10, fontFamily: 'monospace' }} />
-          <Tooltip
-            contentStyle={{ background: '#0d1f35', border: '1px solid #1e2a3d', borderRadius: 6, color: '#E8ECF1', fontSize: 11 }}
-            formatter={(val: number, _: any, props: any) => [
-              `${val} pts`,
-              `${props.payload.gate === 'PASS' ? '✓ Gate PASS' : '✗ Gate N/A'}`,
-            ]}
-          />
-          <Bar dataKey="score" radius={[4, 4, 0, 0]}>
-            {data.map((entry, i) => (
-              <Cell key={i} fill={entry.color} fillOpacity={entry.gate === 'PASS' ? 0.85 : 0.5} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      {ROI_METRICS.map(metric => {
+        const data = sorted.map((s, i) => {
+          const raw = s.roi_estimate?.[metric.key];
+          const val = raw != null ? raw : (metric.key === 'irr' ? s.overall_score * 0.3 : metric.key === 'yoc' ? s.overall_score * 0.12 : metric.key === 'profit_margin' ? s.overall_score * 0.25 : s.overall_score * 2.4);
+          return {
+            name: s.strategy_name.length > 12 ? s.strategy_name.slice(0, 12) + '…' : s.strategy_name,
+            value: parseFloat(val.toFixed(1)),
+            gate: s.gate_result,
+            color: s.gate_result === 'PASS' ? (COLORS[i] ?? metric.color) : '#FF4757',
+            estimated: raw == null,
+          };
+        });
 
-      <div className="mt-3 flex gap-6 text-[10px] font-mono text-[#5a6a7a]">
-        <span><span className="text-[#A78BFA]">■</span> Gate PASS</span>
-        <span><span className="text-[#FF4757]">■</span> Gated (N/A)</span>
+        return (
+          <div key={metric.key}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-mono font-bold tracking-widest" style={{ color: metric.color }}>{metric.label}</span>
+              <span className="text-[9px] text-[#4a5568]">({metric.unit})</span>
+            </div>
+            <ResponsiveContainer width="100%" height={100}>
+              <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#1a2233" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: '#8B95A5', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+                <YAxis hide />
+                <Tooltip
+                  contentStyle={{ background: '#0d1f35', border: '1px solid #1e2a3d', borderRadius: 4, color: '#E8ECF1', fontSize: 10 }}
+                  formatter={(val: number, _: any, props: any) => [`${val}${metric.unit}${props.payload.estimated ? ' (est.)' : ''}`, metric.label]}
+                />
+                <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+                  {data.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} fillOpacity={entry.gate === 'PASS' ? 0.8 : 0.4} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      })}
+
+      <div className="text-[9px] font-mono text-[#4a5568]">
+        * Values marked (est.) are derived from overall_score until backend returns roi_estimate per strategy
       </div>
     </div>
   );

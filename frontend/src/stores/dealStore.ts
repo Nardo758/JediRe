@@ -54,12 +54,19 @@ export interface M08StrategyScore {
   strategy_name: string;
   overall_score: number;
   sub_scores: Record<string, number>;
+  signal_weights?: Record<string, number>;
   gate_result: 'PASS' | 'FAIL' | 'N/A';
   gate_failures: string[];
   soft_penalty: number;
   confidence: number;
   is_system_template?: boolean;
   sort_order?: number;
+  roi_estimate?: {
+    irr?: number;
+    yoc?: number;
+    profit_margin?: number;
+    rev_par?: number;
+  };
 }
 
 export interface M08ArbitrageResult {

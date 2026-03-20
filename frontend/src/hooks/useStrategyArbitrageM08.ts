@@ -14,7 +14,7 @@ export interface UseStrategyArbitrageM08Result {
  * Auto-recalculates if no scores are present.
  * recalculate() triggers recalc and syncs arbitrage from the response.
  */
-export function useStrategyArbitrageM08(dealId: string): UseStrategyArbitrageM08Result {
+export function useStrategyArbitrage(dealId: string): UseStrategyArbitrageM08Result {
   const strategyScores = useDealStore((s) => s.strategyScores);
   const arbitrageResult = useDealStore((s) => s.arbitrageResult);
   const strategyScoresLoading = useDealStore((s) => s.strategyScoresLoading);
@@ -49,3 +49,5 @@ export function useStrategyArbitrageM08(dealId: string): UseStrategyArbitrageM08
     recalculate,
   };
 }
+
+export const useStrategyArbitrageM08 = useStrategyArbitrage;
