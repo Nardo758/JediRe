@@ -142,7 +142,18 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
           comp.avg_rent || null, comp.occupancy || null,
           comp.lat || null, comp.lng || null,
         ]);
-        comp.in_comp_set = true;
+      }
+      // Re-query to get actual IDs and update in_comp_set + comp_set_id on returned comps
+      const seededRows = await pool.query(
+        `SELECT id, LOWER(comp_property_address) AS addr FROM deal_comp_sets WHERE deal_id = $1 AND status = 'active'`,
+        [dealId]
+      );
+      const idByAddr = new Map<string, string>();
+      for (const r of seededRows.rows) idByAddr.set(r.addr, r.id);
+      for (const comp of result.trade_area) {
+        const key = comp.address.toLowerCase();
+        const id = idByAddr.get(key);
+        if (id) { comp.in_comp_set = true; comp.comp_set_id = id; }
       }
       logger.info('Auto-seeded default comp set', { dealId, count: defaults.length });
     }
