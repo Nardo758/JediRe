@@ -73,7 +73,7 @@ router.get('/trade-area/:id', async (req, res) => {
   try {
     const tradeAreaId = req.params.id;
     
-    const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId as any);
+    const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId);
     
     res.json({
       success: true,
@@ -100,7 +100,7 @@ router.get('/trade-area/:id/risk', async (req, res) => {
     // Get demand data for this trade area/quarter (if available)
     let demandUnits: number | undefined;
     try {
-      const demandForecast = await demandSignalService.getTradeAreaForecast(tradeAreaId as any, quarter, quarter);
+      const demandForecast = await demandSignalService.getTradeAreaForecast(tradeAreaId, quarter, quarter);
       if (demandForecast.length > 0) {
         demandUnits = demandForecast[0].netUnits;
       }
@@ -109,7 +109,7 @@ router.get('/trade-area/:id/risk', async (req, res) => {
       logger.warn('Demand data not available for supply risk calculation', { tradeAreaId, quarter });
     }
     
-    const riskScore = await supplySignalService.calculateSupplyRisk(tradeAreaId as any, quarter, demandUnits);
+    const riskScore = await supplySignalService.calculateSupplyRisk(tradeAreaId, quarter, demandUnits);
     
     res.json({
       success: true,
@@ -248,7 +248,7 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
     const endQuarter = req.query.end_quarter as string;
     
     const timeline = await supplySignalService.getSupplyDeliveryTimeline(
-      tradeAreaId as any,
+      tradeAreaId,
       startQuarter,
       endQuarter
     );
@@ -278,7 +278,7 @@ router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
     // Get demand forecast
     let demandForecast: any = null;
     try {
-      const forecast = await demandSignalService.getTradeAreaForecast(tradeAreaId as any, quarter, quarter);
+      const forecast = await demandSignalService.getTradeAreaForecast(tradeAreaId, quarter, quarter);
       demandForecast = forecast.length > 0 ? forecast[0] : null;
     } catch (err) {
       logger.warn('Demand forecast not available', { tradeAreaId, quarter });
@@ -286,13 +286,13 @@ router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
     
     // Get supply risk
     const supplyRisk = await supplySignalService.calculateSupplyRisk(
-      tradeAreaId as any,
+      tradeAreaId,
       quarter,
       demandForecast?.netUnits
     );
     
     // Get supply pipeline
-    const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId as any);
+    const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId);
     
     // Calculate market dynamics
     const analysis = {

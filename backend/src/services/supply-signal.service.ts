@@ -73,7 +73,7 @@ export interface SupplyEvent {
 }
 
 export interface SupplyPipeline {
-  tradeAreaId: number;
+  tradeAreaId: string | number;
   permittedProjects: number;
   permittedUnits: number;
   permittedWeightedUnits: number;
@@ -90,7 +90,7 @@ export interface SupplyPipeline {
 }
 
 export interface SupplyRiskScore {
-  tradeAreaId: number;
+  tradeAreaId: string | number;
   tradeAreaName?: string;
   quarter: string;
   pipelineUnits: number;
@@ -266,7 +266,7 @@ class SupplySignalService {
   /**
    * Get supply pipeline for trade area
    */
-  async getSupplyPipeline(tradeAreaId: number): Promise<SupplyPipeline> {
+  async getSupplyPipeline(tradeAreaId: string | number): Promise<SupplyPipeline> {
     // Update pipeline first
     await query(`SELECT update_supply_pipeline($1)`, [tradeAreaId]);
     
@@ -303,7 +303,7 @@ class SupplySignalService {
    * Calculate supply risk score for trade area
    */
   async calculateSupplyRisk(
-    tradeAreaId: number,
+    tradeAreaId: string | number,
     quarter: string,
     demandUnits?: number
   ): Promise<SupplyRiskScore> {
@@ -526,7 +526,7 @@ class SupplySignalService {
    * Get supply delivery timeline for trade area
    */
   async getSupplyDeliveryTimeline(
-    tradeAreaId: number,
+    tradeAreaId: string | number,
     startQuarter?: string,
     endQuarter?: string
   ): Promise<SupplyDeliveryTimeline[]> {

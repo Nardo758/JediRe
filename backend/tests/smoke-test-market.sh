@@ -1,9 +1,25 @@
 #!/usr/bin/env bash
 # ============================================================
 # Smoke Test: Phase 4 — Market Intel & Analytics
-# Tests all market intelligence, supply/demand, traffic,
-# competition, and analytics API endpoints.
-# Target: ~200 endpoints covering every mounted route group.
+#
+# Tests all mounted route groups in the Phase 4 scope with
+# per-endpoint pass/skip semantics:
+#
+#   check_strict <label> <method> <url> [curl-args...]
+#     PASS   : 2xx
+#     FAIL   : 4xx / 5xx
+#     Use for collection GETs and always-available endpoints.
+#
+#   check_lenient <label> <method> <url> [curl-args...]
+#     PASS   : 2xx
+#     SKIP   : 404 (data not found for test ID), 400 (validation
+#              error from minimal test payload), 403 (business-logic
+#              restriction such as alerts gating)
+#     FAIL   : 5xx or unexpected 2xx-like format
+#     Use for detail GETs with seed IDs that may have no data,
+#     and POST/PUT/DELETE with minimal test payloads.
+#
+# Unmounted route files are documented in the matrix at the bottom.
 # ============================================================
 
 BASE="http://localhost:4000"
@@ -13,9 +29,7 @@ MARKET_ID="atlanta-ga"
 PROPERTY_ID="00175617-4d11-447e-a274-9c3fb828a69d"
 TRADE_AREA_ID="87db1a79-2f68-4069-b2ef-67566ff666f8"
 SUBMARKET_ID="1"
-MSA_ID="1"
 
-# Generate a fresh token
 TOKEN=$(cd /home/runner/workspace/backend && node -e "
 const jwt = require('jsonwebtoken');
 const secret = process.env.JWT_SECRET || 'your-secret-key-change-this';
@@ -28,41 +42,50 @@ FAIL=0
 SKIP=0
 ERRORS=()
 
-check() {
-  local label="$1"
-  local method="$2"
-  local url="$3"
-  local extra_args=("${@:4}")
+# ---------- helpers ----------
 
-  local response
-  local http_code
-  response=$(curl -s -o /tmp/smoke_body.txt -w "%{http_code}" \
+_do_request() {
+  local method="$1"
+  local url="$2"
+  shift 2
+  curl -s -o /tmp/smoke_body.txt -w "%{http_code}" \
     -X "$method" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
-    "${extra_args[@]}" \
-    "$url")
-  http_code="$response"
-  local body
-  body=$(cat /tmp/smoke_body.txt 2>/dev/null)
+    "$@" "$url"
+}
 
-  if [[ "$http_code" -ge 200 && "$http_code" -lt 400 ]]; then
-    echo "  PASS [$http_code] $label"
-    ((PASS++))
-  elif [[ "$http_code" == "404" ]]; then
-    echo "  SKIP [404] $label — no data (OK)"
-    ((SKIP++))
-  elif [[ "$http_code" == "400" ]]; then
-    echo "  SKIP [400] $label — bad request/no data (OK)"
-    ((SKIP++))
-  elif [[ "$http_code" == "403" ]]; then
-    echo "  SKIP [403] $label — business logic restriction (OK)"
-    ((SKIP++))
+_body() { cat /tmp/smoke_body.txt 2>/dev/null; }
+
+# Fails on ANY non-2xx (collection endpoints, always-available resources)
+check_strict() {
+  local label="$1"; local method="$2"; local url="$3"; shift 3
+  local code; code=$(_do_request "$method" "$url" "$@")
+  if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
+    echo "  PASS [$code] $label"; ((PASS++))
   else
-    echo "  FAIL [$http_code] $label"
-    echo "         $body" | head -c 300
-    ERRORS+=("[$http_code] $label")
-    ((FAIL++))
+    echo "  FAIL [$code] $label"
+    echo "         $(_body)" | head -c 280
+    ERRORS+=("[$code] $label"); ((FAIL++))
+  fi
+}
+
+# Accepts 404/400/403 as SKIP (detail endpoints or test-payload POSTs)
+check_lenient() {
+  local label="$1"; local method="$2"; local url="$3"; shift 3
+  local code; code=$(_do_request "$method" "$url" "$@")
+  if [[ "$code" -ge 200 && "$code" -lt 300 ]]; then
+    echo "  PASS [$code] $label"; ((PASS++))
+  elif [[ "$code" == "404" ]]; then
+    echo "  SKIP [404] $label — no data for test ID (OK)"; ((SKIP++))
+  elif [[ "$code" == "400" ]]; then
+    echo "  SKIP [400] $label — validation/minimal-payload (OK)"; ((SKIP++))
+  elif [[ "$code" == "403" ]]; then
+    echo "  SKIP [403] $label — business-logic restriction (OK)"; ((SKIP++))
+  else
+    echo "  FAIL [$code] $label"
+    echo "         $(_body)" | head -c 280
+    ERRORS+=("[$code] $label"); ((FAIL++))
   fi
 }
 
@@ -75,433 +98,431 @@ echo ""
 # -------------------------------------------------------
 echo "▶ Health"
 # -------------------------------------------------------
-check "Health check" GET "$BASE/health"
+check_strict "Health check" GET "$BASE/health"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Market Intelligence (/api/v1/markets) — GET endpoints"
+echo "▶ Market Intelligence /api/v1/markets — GET collection & stats"
+# Always-available: these return empty objects/arrays, never 404
 # -------------------------------------------------------
-check "Markets: overview"                 GET "$BASE/api/v1/markets/overview"
-check "Markets: available"                GET "$BASE/api/v1/markets/available"
-check "Markets: preferences GET"          GET "$BASE/api/v1/markets/preferences"
-check "Markets: compare"                  GET "$BASE/api/v1/markets/compare?markets=Atlanta"
-check "Markets: properties"               GET "$BASE/api/v1/markets/properties?city=Atlanta&state=GA"
-check "Markets: properties/:id"           GET "$BASE/api/v1/markets/properties/$PROPERTY_ID"
-check "Markets: market-stats/:marketId"   GET "$BASE/api/v1/markets/market-stats/$MARKET_ID"
-check "Markets: submarket-stats/:marketId" GET "$BASE/api/v1/markets/submarket-stats/$MARKET_ID"
-check "Markets: :marketId/summary"        GET "$BASE/api/v1/markets/$MARKET_ID/summary"
-check "Markets: :marketId/alerts"         GET "$BASE/api/v1/markets/$MARKET_ID/alerts"
+check_strict "Markets: overview"                 GET "$BASE/api/v1/markets/overview"
+check_strict "Markets: available"                GET "$BASE/api/v1/markets/available"
+check_strict "Markets: preferences GET"          GET "$BASE/api/v1/markets/preferences"
+check_strict "Markets: compare"                  GET "$BASE/api/v1/markets/compare?markets=Atlanta"
+check_strict "Markets: properties"               GET "$BASE/api/v1/markets/properties?city=Atlanta&state=GA"
+check_strict "Markets: market-stats/:marketId"   GET "$BASE/api/v1/markets/market-stats/$MARKET_ID"
+check_strict "Markets: submarket-stats/:marketId" GET "$BASE/api/v1/markets/submarket-stats/$MARKET_ID"
+check_lenient "Markets: properties/:id"          GET "$BASE/api/v1/markets/properties/$PROPERTY_ID"
+check_lenient "Markets: :marketId/summary"       GET "$BASE/api/v1/markets/$MARKET_ID/summary"
+check_lenient "Markets: :marketId/alerts"        GET "$BASE/api/v1/markets/$MARKET_ID/alerts"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Market Intelligence (/api/v1/markets) — POST/PUT/DELETE endpoints"
+echo "▶ Market Intelligence /api/v1/markets — POST/PUT/DELETE"
 # -------------------------------------------------------
-check "Markets: preferences POST"         POST "$BASE/api/v1/markets/preferences" \
+check_lenient "Markets: preferences POST"         POST "$BASE/api/v1/markets/preferences" \
   -d '{"markets":["atlanta-ga","dallas-tx"]}'
-check "Markets: preferences PUT"          PUT "$BASE/api/v1/markets/preferences/1" \
+check_lenient "Markets: preferences PUT"          PUT "$BASE/api/v1/markets/preferences/1" \
   -d '{"markets":["atlanta-ga"]}'
-check "Markets: preferences DELETE"       DELETE "$BASE/api/v1/markets/preferences/1"
-check "Markets: property-records enrich"  POST "$BASE/api/v1/markets/property-records/$PROPERTY_ID/enrich" \
+check_lenient "Markets: preferences DELETE"       DELETE "$BASE/api/v1/markets/preferences/1"
+check_lenient "Markets: property-records enrich"  POST "$BASE/api/v1/markets/property-records/$PROPERTY_ID/enrich" \
   -d '{}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Market Intelligence Enhanced (/api/v1/markets)"
+echo "▶ Market Intelligence Enhanced /api/v1/markets"
 # -------------------------------------------------------
-check "Enhanced: :marketId/submarkets/detailed" GET "$BASE/api/v1/markets/$MARKET_ID/submarkets/detailed"
-check "Enhanced: compare-data"            GET "$BASE/api/v1/markets/compare-data?markets=Atlanta"
-check "Enhanced: :marketId/owners"        GET "$BASE/api/v1/markets/$MARKET_ID/owners"
-check "Enhanced: owners/:ownerName/portfolio" GET "$BASE/api/v1/markets/owners/Greystar/portfolio"
+check_strict "Enhanced: :marketId/submarkets/detailed" GET "$BASE/api/v1/markets/$MARKET_ID/submarkets/detailed"
+check_strict "Enhanced: compare-data"            GET "$BASE/api/v1/markets/compare-data?markets=Atlanta"
+check_strict "Enhanced: :marketId/owners"        GET "$BASE/api/v1/markets/$MARKET_ID/owners"
+check_strict "Enhanced: owners/:ownerName/portfolio" GET "$BASE/api/v1/markets/owners/Greystar/portfolio"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Market Research (/api/v1/market-research)"
+echo "▶ Market Research /api/v1/market-research"
 # -------------------------------------------------------
-check "Market-research: status"           GET "$BASE/api/v1/market-research/status/$DEAL_ID"
-check "Market-research: report"           GET "$BASE/api/v1/market-research/report/$DEAL_ID"
-check "Market-research: metrics"          GET "$BASE/api/v1/market-research/metrics/$DEAL_ID"
-check "Market-research: intelligence"     GET "$BASE/api/v1/market-research/intelligence/$DEAL_ID"
-check "Market-research: sources"          GET "$BASE/api/v1/market-research/sources/$DEAL_ID"
-check "Market-research: analysis-input"   GET "$BASE/api/v1/market-research/analysis-input/$DEAL_ID"
-check "Market-research: POST generate"    POST "$BASE/api/v1/market-research/generate/$DEAL_ID" \
-  -d '{}'
-check "Market-research: POST batch-generate" POST "$BASE/api/v1/market-research/batch-generate" \
+check_strict "Market-research: status"            GET "$BASE/api/v1/market-research/status/$DEAL_ID"
+check_strict "Market-research: POST batch-generate" POST "$BASE/api/v1/market-research/batch-generate" \
   -d '{"dealIds":["'"$DEAL_ID"'"]}'
+check_lenient "Market-research: report/:dealId"   GET "$BASE/api/v1/market-research/report/$DEAL_ID"
+check_lenient "Market-research: metrics/:dealId"  GET "$BASE/api/v1/market-research/metrics/$DEAL_ID"
+check_lenient "Market-research: intelligence/:dealId" GET "$BASE/api/v1/market-research/intelligence/$DEAL_ID"
+check_lenient "Market-research: sources/:dealId"  GET "$BASE/api/v1/market-research/sources/$DEAL_ID"
+check_lenient "Market-research: analysis-input"   GET "$BASE/api/v1/market-research/analysis-input/$DEAL_ID"
+check_lenient "Market-research: POST generate"    POST "$BASE/api/v1/market-research/generate/$DEAL_ID" \
+  -d '{}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Cycle Intelligence (/api/v1/cycle-intelligence)"
+echo "▶ Cycle Intelligence /api/v1/cycle-intelligence"
 # -------------------------------------------------------
-check "Cycle: test/rate-environment (no auth)" GET "$BASE/api/v1/cycle-intelligence/test/rate-environment"
-check "Cycle: rate-environment"           GET "$BASE/api/v1/cycle-intelligence/rate-environment"
-check "Cycle: rate-history"               GET "$BASE/api/v1/cycle-intelligence/rate-history"
-check "Cycle: leading-indicators"         GET "$BASE/api/v1/cycle-intelligence/leading-indicators"
-check "Cycle: pattern-matches"            GET "$BASE/api/v1/cycle-intelligence/pattern-matches"
-check "Cycle: macro-risk"                 GET "$BASE/api/v1/cycle-intelligence/macro-risk"
-check "Cycle: phase/:marketId"            GET "$BASE/api/v1/cycle-intelligence/phase/$MARKET_ID"
-check "Cycle: divergence/:marketId"       GET "$BASE/api/v1/cycle-intelligence/divergence/$MARKET_ID"
-check "Cycle: predict rent-growth"        GET "$BASE/api/v1/cycle-intelligence/predict/rent-growth/$MARKET_ID"
-check "Cycle: predict value-change"       GET "$BASE/api/v1/cycle-intelligence/predict/value-change/$MARKET_ID"
-check "Cycle: predict cap-rate"           GET "$BASE/api/v1/cycle-intelligence/predict/cap-rate/$MARKET_ID"
-check "Cycle: predict full-chain"         GET "$BASE/api/v1/cycle-intelligence/predict/full-chain/$MARKET_ID"
-check "Cycle: phase-optimal-strategy"     GET "$BASE/api/v1/cycle-intelligence/phase-optimal-strategy/$MARKET_ID"
-check "Cycle: construction-cost-index"    GET "$BASE/api/v1/cycle-intelligence/construction-cost-index/$MARKET_ID"
-check "Cycle: market-metrics-history"     GET "$BASE/api/v1/cycle-intelligence/market-metrics-history/$MARKET_ID"
-check "Cycle: deal-performance-by-phase"  GET "$BASE/api/v1/cycle-intelligence/deal-performance-by-phase/$MARKET_ID"
+check_strict "Cycle: test/rate-environment"       GET "$BASE/api/v1/cycle-intelligence/test/rate-environment"
+check_strict "Cycle: rate-environment"            GET "$BASE/api/v1/cycle-intelligence/rate-environment"
+check_strict "Cycle: rate-history"                GET "$BASE/api/v1/cycle-intelligence/rate-history"
+check_strict "Cycle: leading-indicators"          GET "$BASE/api/v1/cycle-intelligence/leading-indicators"
+check_strict "Cycle: pattern-matches"             GET "$BASE/api/v1/cycle-intelligence/pattern-matches"
+check_strict "Cycle: macro-risk"                  GET "$BASE/api/v1/cycle-intelligence/macro-risk"
+check_strict "Cycle: predict rent-growth"         GET "$BASE/api/v1/cycle-intelligence/predict/rent-growth/$MARKET_ID"
+check_strict "Cycle: predict value-change"        GET "$BASE/api/v1/cycle-intelligence/predict/value-change/$MARKET_ID"
+check_strict "Cycle: predict cap-rate"            GET "$BASE/api/v1/cycle-intelligence/predict/cap-rate/$MARKET_ID"
+check_strict "Cycle: predict full-chain"          GET "$BASE/api/v1/cycle-intelligence/predict/full-chain/$MARKET_ID"
+check_strict "Cycle: construction-cost-index"     GET "$BASE/api/v1/cycle-intelligence/construction-cost-index/$MARKET_ID"
+check_strict "Cycle: market-metrics-history"      GET "$BASE/api/v1/cycle-intelligence/market-metrics-history/$MARKET_ID"
+check_strict "Cycle: deal-performance-by-phase"   GET "$BASE/api/v1/cycle-intelligence/deal-performance-by-phase/$MARKET_ID"
+check_lenient "Cycle: phase/:marketId"            GET "$BASE/api/v1/cycle-intelligence/phase/$MARKET_ID"
+check_lenient "Cycle: divergence/:marketId"       GET "$BASE/api/v1/cycle-intelligence/divergence/$MARKET_ID"
+check_lenient "Cycle: phase-optimal-strategy"     GET "$BASE/api/v1/cycle-intelligence/phase-optimal-strategy/$MARKET_ID"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ F40 Performance (/api/v1/f40)"
+echo "▶ F40 Performance /api/v1/f40"
 # -------------------------------------------------------
-check "F40: market"                       GET "$BASE/api/v1/f40/market?city=Atlanta&state=GA"
-check "F40: rankings"                     GET "$BASE/api/v1/f40/rankings?city=Atlanta&state=GA"
-check "F40: comp-set"                     GET "$BASE/api/v1/f40/comp-set?city=Atlanta&state=GA&submarket=Midtown"
+check_strict "F40: market"                        GET "$BASE/api/v1/f40/market?city=Atlanta&state=GA"
+check_strict "F40: rankings"                      GET "$BASE/api/v1/f40/rankings?city=Atlanta&state=GA"
+check_strict "F40: comp-set"                      GET "$BASE/api/v1/f40/comp-set?city=Atlanta&state=GA&submarket=Midtown"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Opportunities (/api/v1/opportunities)"
+echo "▶ Opportunities /api/v1/opportunities"
 # -------------------------------------------------------
-check "Opportunities: detect"             GET "$BASE/api/v1/opportunities/detect"
-check "Opportunities: rankings"           GET "$BASE/api/v1/opportunities/rankings"
+check_strict "Opportunities: detect"              GET "$BASE/api/v1/opportunities/detect"
+check_strict "Opportunities: rankings"            GET "$BASE/api/v1/opportunities/rankings"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Intelligence Layer (/api/v1/intelligence)"
+echo "▶ Intelligence Layer /api/v1/intelligence"
 # -------------------------------------------------------
-check "Intelligence: stats"               GET "$BASE/api/v1/intelligence/stats"
-check "Intelligence: patterns"            GET "$BASE/api/v1/intelligence/patterns"
-check "Intelligence: docs pending"        GET "$BASE/api/v1/intelligence/documents/pending"
-check "Intelligence: docs flagged"        GET "$BASE/api/v1/intelligence/documents/flagged"
-check "Intelligence: user/stats"          GET "$BASE/api/v1/intelligence/user/stats"
-check "Intelligence: user/preferences"    GET "$BASE/api/v1/intelligence/user/preferences"
+check_strict "Intelligence: stats"                GET "$BASE/api/v1/intelligence/stats"
+check_strict "Intelligence: patterns"             GET "$BASE/api/v1/intelligence/patterns"
+check_strict "Intelligence: docs pending"         GET "$BASE/api/v1/intelligence/documents/pending"
+check_strict "Intelligence: docs flagged"         GET "$BASE/api/v1/intelligence/documents/flagged"
+check_strict "Intelligence: user/stats"           GET "$BASE/api/v1/intelligence/user/stats"
+check_strict "Intelligence: user/preferences"     GET "$BASE/api/v1/intelligence/user/preferences"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Supply Routes (mounted at /api/v1 — actual paths)"
+echo "▶ Supply Routes — actual paths at /api/v1 (supply.routes.ts)"
 # NOTE: supply.routes.ts is mounted at /api/v1 with NO /supply prefix on routes.
-# Routes: /deals/:dealId/supply, /events, /trade-area/:id, /competitive/:dealId, etc.
+# Actual paths: /deals/:dealId/supply, /events, /trade-area/:id, /competitive/:dealId, etc.
 # -------------------------------------------------------
-check "Supply: deals/:dealId/supply (GET)" GET "$BASE/api/v1/deals/$DEAL_ID/supply"
-check "Supply: /events (list)"            GET "$BASE/api/v1/events"
-check "Supply: /trade-area/:id"           GET "$BASE/api/v1/trade-area/$TRADE_AREA_ID"
-check "Supply: /trade-area/:id/risk"      GET "$BASE/api/v1/trade-area/$TRADE_AREA_ID/risk"
-check "Supply: /competitive/:dealId"      GET "$BASE/api/v1/competitive/$DEAL_ID"
-check "Supply: /timeline/:tradeAreaId"    GET "$BASE/api/v1/timeline/$TRADE_AREA_ID"
-check "Supply: /market-dynamics/:tid"     GET "$BASE/api/v1/market-dynamics/$TRADE_AREA_ID"
-check "Supply: /event (POST create)"      POST "$BASE/api/v1/event" \
+check_strict "Supply: /events (list)"             GET "$BASE/api/v1/events"
+check_strict "Supply: /trade-area/:id"            GET "$BASE/api/v1/trade-area/$TRADE_AREA_ID"
+check_strict "Supply: /trade-area/:id/risk"       GET "$BASE/api/v1/trade-area/$TRADE_AREA_ID/risk"
+check_strict "Supply: /competitive/:dealId"       GET "$BASE/api/v1/competitive/$DEAL_ID"
+check_strict "Supply: /timeline/:tradeAreaId"     GET "$BASE/api/v1/timeline/$TRADE_AREA_ID"
+check_strict "Supply: /market-dynamics/:tid"      GET "$BASE/api/v1/market-dynamics/$TRADE_AREA_ID"
+check_lenient "Supply: /deals/:dealId/supply"     GET "$BASE/api/v1/deals/$DEAL_ID/supply"
+check_lenient "Supply: POST /event"               POST "$BASE/api/v1/event" \
   -d '{"projectName":"Test Project","developer":"Test Dev","category":"permit","eventType":"permit","units":100,"eventDate":"2026-01-01","status":"permitted","latitude":33.749,"longitude":-84.388}'
-check "Supply: /event/:id/status (PUT)"   PUT "$BASE/api/v1/event/00000000-0000-0000-0000-000000000001/status" \
+check_lenient "Supply: PUT /event/:id/status"     PUT "$BASE/api/v1/event/00000000-0000-0000-0000-000000000001/status" \
   -d '{"status":"under_construction"}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Inline Data Supply Routes (/api/v1/supply/:market)"
-# NOTE: inline-data.routes.ts also mounted at /api/v1 with path /supply/:market
+echo "▶ Inline Data Routes /api/v1 (inline-data.routes.ts)"
+# These come from inline-data.routes.ts also mounted at /api/v1
+# GET /supply/:market captures market name as param (different from supply.routes.ts)
 # -------------------------------------------------------
-check "Inline: /supply/:market (GET)"     GET "$BASE/api/v1/supply/atlanta-ga"
-check "Inline: /alerts (GET)"             GET "$BASE/api/v1/alerts"
+check_strict "Inline: GET /supply/:market"        GET "$BASE/api/v1/supply/atlanta-ga"
+check_strict "Inline: GET /alerts"                GET "$BASE/api/v1/alerts"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Demand Routes (mounted at /api/v1 — actual paths)"
-# NOTE: demand.routes.ts mounted at /api/v1. Routes: /deals/:dealId/demand,
-# /trade-area/:id (numeric), /submarket/:id (numeric), /events, /calculate,
-# /impact/:dealId, /aggregate/:tradeAreaId.
-# /trade-area/:id and /events are shadowed by supply routes (loaded first).
+echo "▶ Demand Routes — actual paths at /api/v1 (demand.routes.ts)"
+# NOTE: demand.routes.ts mounted at /api/v1. Paths /trade-area/:id and /events
+# are shadowed by supply routes (supply loaded first at line 313 vs demand at 314).
 # -------------------------------------------------------
-check "Demand: /deals/:dealId/demand"     GET "$BASE/api/v1/deals/$DEAL_ID/demand"
-check "Demand: /submarket/:id (numeric)"  GET "$BASE/api/v1/submarket/$SUBMARKET_ID"
-check "Demand: /impact/:dealId"           GET "$BASE/api/v1/impact/$DEAL_ID"
-check "Demand: /calculate (POST)"         POST "$BASE/api/v1/calculate" \
+check_strict "Demand: /submarket/:id"             GET "$BASE/api/v1/submarket/$SUBMARKET_ID"
+check_strict "Demand: /impact/:dealId"            GET "$BASE/api/v1/impact/$DEAL_ID"
+check_lenient "Demand: /deals/:dealId/demand"     GET "$BASE/api/v1/deals/$DEAL_ID/demand"
+check_lenient "Demand: POST /calculate"           POST "$BASE/api/v1/calculate" \
   -d '{"tradeAreaId":1,"quarter":"2026-Q1"}'
-check "Demand: /aggregate/:tid (POST)"    POST "$BASE/api/v1/aggregate/$TRADE_AREA_ID" \
+check_lenient "Demand: POST /aggregate/:tid"      POST "$BASE/api/v1/aggregate/$TRADE_AREA_ID" \
   -d '{}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Comp Query (/api/v1/comps)"
+echo "▶ Comp Query /api/v1/comps"
 # -------------------------------------------------------
-check "Comps: summary"                    GET "$BASE/api/v1/comps/summary"
-check "Comps: property/:id"               GET "$BASE/api/v1/comps/property/$PROPERTY_ID"
-check "Comps: property/:id/rent-comps"    GET "$BASE/api/v1/comps/property/$PROPERTY_ID/rent-comps"
-check "Comps: submarket/:id/stats"        GET "$BASE/api/v1/comps/submarket/$SUBMARKET_ID/stats"
-check "Comps: POST search"                POST "$BASE/api/v1/comps/search" \
+check_strict "Comps: summary"                     GET "$BASE/api/v1/comps/summary"
+check_lenient "Comps: property/:id"               GET "$BASE/api/v1/comps/property/$PROPERTY_ID"
+check_lenient "Comps: property/:id/rent-comps"    GET "$BASE/api/v1/comps/property/$PROPERTY_ID/rent-comps"
+check_lenient "Comps: submarket/:id/stats"        GET "$BASE/api/v1/comps/submarket/$SUBMARKET_ID/stats"
+check_lenient "Comps: POST search"                POST "$BASE/api/v1/comps/search" \
   -d '{"city":"Atlanta","state":"GA","propertyType":"multi_family"}'
-check "Comps: POST search/v2"             POST "$BASE/api/v1/comps/search/v2" \
+check_lenient "Comps: POST search/v2"             POST "$BASE/api/v1/comps/search/v2" \
   -d '{"city":"Atlanta","state":"GA","propertyType":"multi_family"}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Sale Comps M27 (/api/v1/deals/:dealId/comps)"
+echo "▶ Sale Comps M27 /api/v1/deals/:dealId/comps (m27-comps.routes.ts)"
 # -------------------------------------------------------
-check "M27: deals comps list"             GET "$BASE/api/v1/deals/$DEAL_ID/comps"
-check "M27: exit cap rate"                GET "$BASE/api/v1/deals/$DEAL_ID/comps/exit-cap-rate"
-check "M27: comps summary"                GET "$BASE/api/v1/deals/$DEAL_ID/comps/summary"
-check "M27: POST generate comps"          POST "$BASE/api/v1/deals/$DEAL_ID/comps/generate" \
+check_lenient "M27: deals comps list"             GET "$BASE/api/v1/deals/$DEAL_ID/comps"
+check_lenient "M27: exit cap rate"                GET "$BASE/api/v1/deals/$DEAL_ID/comps/exit-cap-rate"
+check_lenient "M27: comps summary"                GET "$BASE/api/v1/deals/$DEAL_ID/comps/summary"
+check_lenient "M27: POST generate comps"          POST "$BASE/api/v1/deals/$DEAL_ID/comps/generate" \
   -d '{"radius":5}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Competition (/api/v1/deals/:dealId — competition.routes.ts)"
+echo "▶ Competition /api/v1/deals/:dealId (competition.routes.ts)"
 # -------------------------------------------------------
-check "Competition: competitors"          GET "$BASE/api/v1/deals/$DEAL_ID/competitors"
-check "Competition: advantage-matrix"     GET "$BASE/api/v1/deals/$DEAL_ID/advantage-matrix"
-check "Competition: waitlist-properties"  GET "$BASE/api/v1/deals/$DEAL_ID/waitlist-properties"
-check "Competition: aging-competitors"    GET "$BASE/api/v1/deals/$DEAL_ID/aging-competitors"
-check "Competition: competition-insights" GET "$BASE/api/v1/deals/$DEAL_ID/competition-insights"
-check "Competition: competition-export"   GET "$BASE/api/v1/deals/$DEAL_ID/competition-export"
-check "Competition: competitive-ranking"  GET "$BASE/api/v1/deals/$DEAL_ID/competitive-ranking"
+check_lenient "Competition: competitors"          GET "$BASE/api/v1/deals/$DEAL_ID/competitors"
+check_lenient "Competition: advantage-matrix"     GET "$BASE/api/v1/deals/$DEAL_ID/advantage-matrix"
+check_lenient "Competition: waitlist-properties"  GET "$BASE/api/v1/deals/$DEAL_ID/waitlist-properties"
+check_lenient "Competition: aging-competitors"    GET "$BASE/api/v1/deals/$DEAL_ID/aging-competitors"
+check_lenient "Competition: competition-insights" GET "$BASE/api/v1/deals/$DEAL_ID/competition-insights"
+check_lenient "Competition: competition-export"   GET "$BASE/api/v1/deals/$DEAL_ID/competition-export"
+check_lenient "Competition: competitive-ranking"  GET "$BASE/api/v1/deals/$DEAL_ID/competitive-ranking"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ JEDI Scoring (/api/v1/jedi)"
+echo "▶ JEDI Scoring /api/v1/jedi"
 # -------------------------------------------------------
-check "JEDI: score/:dealId (GET)"         GET "$BASE/api/v1/jedi/score/$DEAL_ID"
-check "JEDI: history/:dealId"             GET "$BASE/api/v1/jedi/history/$DEAL_ID"
-check "JEDI: impact/:dealId"              GET "$BASE/api/v1/jedi/impact/$DEAL_ID"
-check "JEDI: alerts (GET)"                GET "$BASE/api/v1/jedi/alerts"
-check "JEDI: alerts/deal/:dealId"         GET "$BASE/api/v1/jedi/alerts/deal/$DEAL_ID"
-check "JEDI: alerts/settings (GET)"       GET "$BASE/api/v1/jedi/alerts/settings"
-check "JEDI: score/:dealId/recalculate (POST)" POST "$BASE/api/v1/jedi/score/$DEAL_ID/recalculate" \
+check_lenient "JEDI: score/:dealId"               GET "$BASE/api/v1/jedi/score/$DEAL_ID"
+check_lenient "JEDI: history/:dealId"             GET "$BASE/api/v1/jedi/history/$DEAL_ID"
+check_lenient "JEDI: impact/:dealId"              GET "$BASE/api/v1/jedi/impact/$DEAL_ID"
+check_strict  "JEDI: alerts (list)"               GET "$BASE/api/v1/jedi/alerts"
+check_strict  "JEDI: alerts/settings GET"         GET "$BASE/api/v1/jedi/alerts/settings"
+check_lenient "JEDI: alerts/deal/:dealId"         GET "$BASE/api/v1/jedi/alerts/deal/$DEAL_ID"
+check_lenient "JEDI: POST score recalculate"      POST "$BASE/api/v1/jedi/score/$DEAL_ID/recalculate" \
   -d '{}'
-check "JEDI: alerts/check (POST)"         POST "$BASE/api/v1/jedi/alerts/check" \
+check_lenient "JEDI: POST alerts/check"           POST "$BASE/api/v1/jedi/alerts/check" \
   -d '{}'
-check "JEDI: recalculate-all (POST)"      POST "$BASE/api/v1/jedi/recalculate-all" \
+check_lenient "JEDI: POST recalculate-all"        POST "$BASE/api/v1/jedi/recalculate-all" \
   -d '{}'
-check "JEDI: alerts/:id/read (POST)"      POST "$BASE/api/v1/jedi/alerts/00000000-0000-0000-0000-000000000001/read" \
+check_lenient "JEDI: POST alerts/:id/read"        POST "$BASE/api/v1/jedi/alerts/00000000-0000-0000-0000-000000000001/read" \
   -d '{}'
-check "JEDI: alerts/:id/dismiss (POST)"   POST "$BASE/api/v1/jedi/alerts/00000000-0000-0000-0000-000000000001/dismiss" \
+check_lenient "JEDI: POST alerts/:id/dismiss"     POST "$BASE/api/v1/jedi/alerts/00000000-0000-0000-0000-000000000001/dismiss" \
   -d '{}'
-check "JEDI: alerts/settings (PATCH)"     PATCH "$BASE/api/v1/jedi/alerts/settings" \
+check_lenient "JEDI: PATCH alerts/settings"       PATCH "$BASE/api/v1/jedi/alerts/settings" \
   -d '{"emailEnabled":true}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Traffic Prediction (/api/v1/traffic)"
+echo "▶ Traffic Prediction /api/v1/traffic"
 # -------------------------------------------------------
-check "Traffic: model/performance (GET)"  GET "$BASE/api/v1/traffic/model/performance"
-check "Traffic: calibration/active (GET)" GET "$BASE/api/v1/traffic/calibration/active"
-check "Traffic: validation/errors (GET)"  GET "$BASE/api/v1/traffic/validation/errors"
-check "Traffic: prediction/:id (GET)"     GET "$BASE/api/v1/traffic/prediction/$PROPERTY_ID"
-check "Traffic: intelligence/:id (GET)"   GET "$BASE/api/v1/traffic/intelligence/$PROPERTY_ID"
-check "Traffic: validation/summary/:id"   GET "$BASE/api/v1/traffic/validation/summary/$PROPERTY_ID"
-check "Traffic: predict/:id (POST)"       POST "$BASE/api/v1/traffic/predict/$PROPERTY_ID" \
-  -d '{"propertyType":"multifamily"}'
-check "Traffic: calibration/apply (POST)" POST "$BASE/api/v1/traffic/calibration/apply" \
+check_strict "Traffic: model/performance"         GET "$BASE/api/v1/traffic/model/performance"
+check_strict "Traffic: calibration/active"        GET "$BASE/api/v1/traffic/calibration/active"
+check_strict "Traffic: validation/errors"         GET "$BASE/api/v1/traffic/validation/errors"
+check_lenient "Traffic: prediction/:id"           GET "$BASE/api/v1/traffic/prediction/$PROPERTY_ID"
+check_lenient "Traffic: intelligence/:id"         GET "$BASE/api/v1/traffic/intelligence/$PROPERTY_ID"
+check_lenient "Traffic: validation/summary/:id"   GET "$BASE/api/v1/traffic/validation/summary/$PROPERTY_ID"
+check_lenient "Traffic: POST predict/:id"         POST "$BASE/api/v1/traffic/predict/$PROPERTY_ID" \
+  -d '{"propertyType":"multi_family"}'
+check_lenient "Traffic: POST calibration/apply"   POST "$BASE/api/v1/traffic/calibration/apply" \
   -d '{"calibrationFactor":1.0}'
-check "Traffic: batch-predict (POST)"     POST "$BASE/api/v1/traffic/batch-predict" \
+check_lenient "Traffic: POST batch-predict"       POST "$BASE/api/v1/traffic/batch-predict" \
   -d '{"propertyIds":["'"$PROPERTY_ID"'"]}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Traffic AI (/api/v1/traffic-ai)"
+echo "▶ Traffic AI /api/v1/traffic-ai"
 # -------------------------------------------------------
-check "Traffic-AI: POST generate"         POST "$BASE/api/v1/traffic-ai/generate" \
+check_lenient "Traffic-AI: POST generate"         POST "$BASE/api/v1/traffic-ai/generate" \
   -d '{"dealId":"'"$DEAL_ID"'","analysisType":"full"}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Traffic Data (/api/v1/traffic-data)"
+echo "▶ Traffic Data /api/v1/traffic-data"
 # -------------------------------------------------------
-check "Traffic-data: adt/stations"        GET "$BASE/api/v1/traffic-data/adt/stations"
-check "Traffic-data: realtime"            GET "$BASE/api/v1/traffic-data/realtime"
-check "Traffic-data: context/:dealId"     GET "$BASE/api/v1/traffic-data/context/$DEAL_ID"
+check_strict  "Traffic-data: adt/stations"         GET "$BASE/api/v1/traffic-data/adt/stations"
+check_strict  "Traffic-data: realtime"             GET "$BASE/api/v1/traffic-data/realtime?lat=33.749&lng=-84.388"
+check_lenient "Traffic-data: context/:dealId"     GET "$BASE/api/v1/traffic-data/context/$DEAL_ID"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Traffic Comps (/api/v1/traffic-comps)"
+echo "▶ Traffic Comps /api/v1/traffic-comps"
 # -------------------------------------------------------
-check "Traffic-comps: deal"               GET "$BASE/api/v1/traffic-comps/$DEAL_ID"
-check "Traffic-comps: averages"           GET "$BASE/api/v1/traffic-comps/$DEAL_ID/averages"
-check "Traffic-comps: selections"         GET "$BASE/api/v1/traffic-comps/$DEAL_ID/selections"
-check "Traffic-comps: proxy-candidates"   GET "$BASE/api/v1/traffic-comps/$DEAL_ID/proxy-candidates"
+check_lenient "Traffic-comps: deal"               GET "$BASE/api/v1/traffic-comps/$DEAL_ID"
+check_lenient "Traffic-comps: averages"           GET "$BASE/api/v1/traffic-comps/$DEAL_ID/averages"
+check_lenient "Traffic-comps: selections"         GET "$BASE/api/v1/traffic-comps/$DEAL_ID/selections"
+check_lenient "Traffic-comps: proxy-candidates"   GET "$BASE/api/v1/traffic-comps/$DEAL_ID/proxy-candidates"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Leasing Traffic (/api/v1/leasing-traffic)"
+echo "▶ Leasing Traffic /api/v1/leasing-traffic"
 # -------------------------------------------------------
-check "Leasing: predict/:id"              GET "$BASE/api/v1/leasing-traffic/predict/$PROPERTY_ID"
-check "Leasing: forecast/:id"             GET "$BASE/api/v1/leasing-traffic/forecast/$PROPERTY_ID"
-check "Leasing: optimize-rent/:id"        GET "$BASE/api/v1/leasing-traffic/optimize-rent/$PROPERTY_ID"
-check "Leasing: historical/:id"           GET "$BASE/api/v1/leasing-traffic/historical/$PROPERTY_ID"
-check "Leasing: weekly-report/:id/history" GET "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/history"
-check "Leasing: weekly-report/:id/projection" GET "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/projection"
-check "Leasing: weekly-report/:id/calibration" GET "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/calibration"
-check "Leasing: data-sources/:dealId"     GET "$BASE/api/v1/leasing-traffic/data-sources/$DEAL_ID"
-check "Leasing: trend-patterns/:dealId"   GET "$BASE/api/v1/leasing-traffic/trend-patterns/$DEAL_ID"
-check "Leasing: dot-profiles/summary"     GET "$BASE/api/v1/leasing-traffic/dot-profiles/summary"
-check "Leasing: dot-profiles/temporal-multiplier" GET "$BASE/api/v1/leasing-traffic/dot-profiles/temporal-multiplier"
-check "Leasing: dot-profiles/hourly-distribution" GET "$BASE/api/v1/leasing-traffic/dot-profiles/hourly-distribution"
-check "Leasing: POST lease-up-timeline"   POST "$BASE/api/v1/leasing-traffic/lease-up-timeline" \
+check_strict  "Leasing: dot-profiles/summary"     GET "$BASE/api/v1/leasing-traffic/dot-profiles/summary"
+check_strict  "Leasing: dot-profiles/temporal"    GET "$BASE/api/v1/leasing-traffic/dot-profiles/temporal-multiplier"
+check_strict  "Leasing: dot-profiles/hourly"      GET "$BASE/api/v1/leasing-traffic/dot-profiles/hourly-distribution"
+check_lenient "Leasing: predict/:id"              GET "$BASE/api/v1/leasing-traffic/predict/$PROPERTY_ID"
+check_lenient "Leasing: forecast/:id"             GET "$BASE/api/v1/leasing-traffic/forecast/$PROPERTY_ID"
+check_lenient "Leasing: optimize-rent/:id"        GET "$BASE/api/v1/leasing-traffic/optimize-rent/$PROPERTY_ID"
+check_lenient "Leasing: historical/:id"           GET "$BASE/api/v1/leasing-traffic/historical/$PROPERTY_ID"
+check_lenient "Leasing: weekly-report history"    GET "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/history"
+check_lenient "Leasing: weekly-report projection" GET "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/projection"
+check_lenient "Leasing: weekly-report calibration" GET "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/calibration"
+check_lenient "Leasing: data-sources/:dealId"     GET "$BASE/api/v1/leasing-traffic/data-sources/$DEAL_ID"
+check_lenient "Leasing: trend-patterns/:dealId"   GET "$BASE/api/v1/leasing-traffic/trend-patterns/$DEAL_ID"
+check_lenient "Leasing: POST lease-up-timeline"   POST "$BASE/api/v1/leasing-traffic/lease-up-timeline" \
   -d '{"dealId":"'"$DEAL_ID"'","targetOccupancy":0.95}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Benchmark Timeline (/api/v1/benchmark-timeline)"
+echo "▶ Benchmark Timeline /api/v1/benchmark-timeline"
 # -------------------------------------------------------
-check "Benchmark: benchmarks (GET)"       GET "$BASE/api/v1/benchmark-timeline/benchmarks"
-check "Benchmark: detailed-steps (GET)"   GET "$BASE/api/v1/benchmark-timeline/detailed-steps"
-check "Benchmark: jurisdiction-comparison" GET "$BASE/api/v1/benchmark-timeline/jurisdiction-comparison"
-check "Benchmark: POST simulate"          POST "$BASE/api/v1/benchmark-timeline/simulate" \
+check_strict  "Benchmark: benchmarks"             GET "$BASE/api/v1/benchmark-timeline/benchmarks?county=Fulton&state=GA"
+check_strict  "Benchmark: detailed-steps"         GET "$BASE/api/v1/benchmark-timeline/detailed-steps?county=Fulton&state=GA"
+check_strict  "Benchmark: jurisdiction-comparison" GET "$BASE/api/v1/benchmark-timeline/jurisdiction-comparison?county=Fulton&state=GA"
+check_lenient "Benchmark: POST simulate"          POST "$BASE/api/v1/benchmark-timeline/simulate" \
   -d '{"city":"Atlanta","state":"GA","projectType":"multifamily","units":200}'
-check "Benchmark: POST compare-paths"     POST "$BASE/api/v1/benchmark-timeline/compare-paths" \
+check_lenient "Benchmark: POST compare-paths"     POST "$BASE/api/v1/benchmark-timeline/compare-paths" \
   -d '{"jurisdictions":["Atlanta, GA"]}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Property Analytics (/api/v1/property-analytics)"
+echo "▶ Property Analytics /api/v1/property-analytics"
 # -------------------------------------------------------
-check "Property-analytics: property/:id"  GET "$BASE/api/v1/property-analytics/$PROPERTY_ID"
-check "Property-analytics: score"         GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/score"
-check "Property-analytics: history"       GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/history"
-check "Property-analytics: digital-share" GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/digital-share"
+check_lenient "Property-analytics: property/:id"  GET "$BASE/api/v1/property-analytics/$PROPERTY_ID"
+check_lenient "Property-analytics: score"         GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/score"
+check_lenient "Property-analytics: history"       GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/history"
+check_lenient "Property-analytics: digital-share" GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/digital-share"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Trade Areas (/api/v1/trade-areas)"
+echo "▶ Trade Areas /api/v1/trade-areas"
 # -------------------------------------------------------
-check "Trade-areas: list (GET)"           GET "$BASE/api/v1/trade-areas"
-check "Trade-areas: library (GET)"        GET "$BASE/api/v1/trade-areas/library"
-check "Trade-areas: :id (GET)"            GET "$BASE/api/v1/trade-areas/$TRADE_AREA_ID"
-check "Trade-areas: POST create"          POST "$BASE/api/v1/trade-areas" \
+check_strict  "Trade-areas: list"                 GET "$BASE/api/v1/trade-areas"
+check_strict  "Trade-areas: library"              GET "$BASE/api/v1/trade-areas/library"
+check_lenient "Trade-areas: :id"                  GET "$BASE/api/v1/trade-areas/$TRADE_AREA_ID"
+check_lenient "Trade-areas: POST create"          POST "$BASE/api/v1/trade-areas" \
   -d '{"name":"Test Trade Area","municipality":"Atlanta","state":"GA"}'
-check "Trade-areas: POST generate"        POST "$BASE/api/v1/trade-areas/generate" \
+check_lenient "Trade-areas: POST generate"        POST "$BASE/api/v1/trade-areas/generate" \
   -d '{"dealId":"'"$DEAL_ID"'","radiusMiles":3}'
-check "Trade-areas: POST preview-stats"   POST "$BASE/api/v1/trade-areas/preview-stats" \
+check_lenient "Trade-areas: POST preview-stats"   POST "$BASE/api/v1/trade-areas/preview-stats" \
   -d '{"bounds":{"north":34,"south":33,"east":-84,"west":-85}}'
-check "Trade-areas: POST radius"          POST "$BASE/api/v1/trade-areas/radius" \
+check_lenient "Trade-areas: POST radius"          POST "$BASE/api/v1/trade-areas/radius" \
   -d '{"latitude":33.749,"longitude":-84.388,"radiusMiles":3}'
-check "Trade-areas: PUT :id"              PUT "$BASE/api/v1/trade-areas/$TRADE_AREA_ID" \
+check_lenient "Trade-areas: PUT :id"              PUT "$BASE/api/v1/trade-areas/$TRADE_AREA_ID" \
   -d '{"name":"Updated Trade Area"}'
-check "Trade-areas: DELETE :id"           DELETE "$BASE/api/v1/trade-areas/00000000-0000-0000-0000-000000000001"
+check_lenient "Trade-areas: DELETE :id"           DELETE "$BASE/api/v1/trade-areas/00000000-0000-0000-0000-000000000001"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Deal Market Intelligence (/api/v1/deals)"
+echo "▶ Deal Market Intelligence /api/v1/deals (deal-market-intelligence.routes.ts)"
 # -------------------------------------------------------
-check "Deal: market-intelligence"         GET "$BASE/api/v1/deals/$DEAL_ID/market-intelligence"
+check_lenient "Deal: market-intelligence"         GET "$BASE/api/v1/deals/$DEAL_ID/market-intelligence"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Deal Context (/api/v1/deals — deal-context.routes.ts)"
+echo "▶ Deal Context /api/v1/deals (deal-context.routes.ts)"
 # -------------------------------------------------------
-check "Deal-context: /:dealId/context (GET)"   GET "$BASE/api/v1/deals/$DEAL_ID/context"
-check "Deal-context: /:dealId/context (PATCH)" PATCH "$BASE/api/v1/deals/$DEAL_ID/context" \
-  -d '{"notes":"Updated context"}'
-check "Deal-context: /:dealId/recompute (POST)" POST "$BASE/api/v1/deals/$DEAL_ID/recompute" \
+check_lenient "Deal-ctx: GET /:dealId/context"    GET "$BASE/api/v1/deals/$DEAL_ID/context"
+check_lenient "Deal-ctx: PATCH /:dealId/context"  PATCH "$BASE/api/v1/deals/$DEAL_ID/context" \
+  -d '{"notes":"Updated"}'
+check_lenient "Deal-ctx: POST /:dealId/recompute" POST "$BASE/api/v1/deals/$DEAL_ID/recompute" \
   -d '{}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Deal Assumptions (/api/v1/deals — deal-assumptions.routes.ts)"
+echo "▶ Deal Assumptions /api/v1/deals (deal-assumptions.routes.ts)"
 # -------------------------------------------------------
-check "Deal-assumptions: GET"             GET "$BASE/api/v1/deals/$DEAL_ID/assumptions"
-check "Deal-assumptions: full-context"    GET "$BASE/api/v1/deals/$DEAL_ID/full-context"
-check "Deal-assumptions: PUT"             PUT "$BASE/api/v1/deals/$DEAL_ID/assumptions" \
+check_lenient "Deal-assump: GET assumptions"      GET "$BASE/api/v1/deals/$DEAL_ID/assumptions"
+check_lenient "Deal-assump: GET full-context"     GET "$BASE/api/v1/deals/$DEAL_ID/full-context"
+check_lenient "Deal-assump: PUT assumptions"      PUT "$BASE/api/v1/deals/$DEAL_ID/assumptions" \
   -d '{"rentGrowth":0.03,"capRate":0.05}'
-check "Deal-assumptions: compute-returns" POST "$BASE/api/v1/deals/$DEAL_ID/compute-returns" \
+check_lenient "Deal-assump: POST compute-returns" POST "$BASE/api/v1/deals/$DEAL_ID/compute-returns" \
   -d '{"exitYear":5}'
-check "Deal-assumptions: site-data PUT"   PUT "$BASE/api/v1/deals/$DEAL_ID/site-data" \
+check_lenient "Deal-assump: PUT site-data"        PUT "$BASE/api/v1/deals/$DEAL_ID/site-data" \
   -d '{"lotSize":2.5}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Site Intelligence (/api/v1 — site-intelligence.routes.ts)"
+echo "▶ Site Intelligence /api/v1/deals (site-intelligence.routes.ts)"
 # -------------------------------------------------------
-check "Site-intel: deals/:dealId GET"     GET "$BASE/api/v1/deals/$DEAL_ID/site-intelligence"
-check "Site-intel: deals/:dealId POST"    POST "$BASE/api/v1/deals/$DEAL_ID/site-intelligence" \
+check_lenient "Site-intel: GET"                   GET "$BASE/api/v1/deals/$DEAL_ID/site-intelligence"
+check_lenient "Site-intel: POST"                  POST "$BASE/api/v1/deals/$DEAL_ID/site-intelligence" \
   -d '{"forceRefresh":false}'
-check "Site-intel: deals/:dealId DELETE"  DELETE "$BASE/api/v1/deals/$DEAL_ID/site-intelligence"
+check_lenient "Site-intel: DELETE"                DELETE "$BASE/api/v1/deals/$DEAL_ID/site-intelligence"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Geographic Context (/api/v1 and /api/v1/deals)"
-# NOTE: geographic-context.routes.ts mounted at BOTH /api/v1 and /api/v1/deals.
+echo "▶ Geographic Context /api/v1 and /api/v1/deals (geographic-context.routes.ts)"
+# geographic-context.routes.ts mounted at both /api/v1 and /api/v1/deals
 # Routes: /:id/geographic-context (GET/POST/PUT), /submarkets/lookup, /msas/lookup
 # -------------------------------------------------------
-check "Geo-ctx: /submarkets/lookup"       GET "$BASE/api/v1/submarkets/lookup?lat=33.749&lng=-84.388"
-check "Geo-ctx: /msas/lookup"             GET "$BASE/api/v1/msas/lookup?lat=33.749&lng=-84.388"
-check "Geo-ctx: GET deals geographic-ctx" GET "$BASE/api/v1/deals/$DEAL_ID/geographic-context"
-check "Geo-ctx: POST deals geographic-ctx" POST "$BASE/api/v1/deals/$DEAL_ID/geographic-context" \
+check_strict  "Geo-ctx: /submarkets/lookup"       GET "$BASE/api/v1/submarkets/lookup?lat=33.749&lng=-84.388"
+check_strict  "Geo-ctx: /msas/lookup"             GET "$BASE/api/v1/msas/lookup?lat=33.749&lng=-84.388"
+check_lenient "Geo-ctx: GET deals geo-ctx"        GET "$BASE/api/v1/deals/$DEAL_ID/geographic-context"
+check_lenient "Geo-ctx: POST deals geo-ctx"       POST "$BASE/api/v1/deals/$DEAL_ID/geographic-context" \
   -d '{"forceRefresh":false}'
-check "Geo-ctx: PUT deals geographic-ctx"  PUT "$BASE/api/v1/deals/$DEAL_ID/geographic-context" \
+check_lenient "Geo-ctx: PUT deals geo-ctx"        PUT "$BASE/api/v1/deals/$DEAL_ID/geographic-context" \
   -d '{"notes":"Updated"}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Visibility (/api/v1/visibility)"
+echo "▶ Visibility /api/v1/visibility"
 # -------------------------------------------------------
-check "Visibility: score/:id (GET)"       GET "$BASE/api/v1/visibility/score/$PROPERTY_ID"
-check "Visibility: assessment/:id (GET)"  GET "$BASE/api/v1/visibility/assessment/$PROPERTY_ID"
-check "Visibility: POST assess"           POST "$BASE/api/v1/visibility/assess" \
-  -d '{"propertyId":"'"$PROPERTY_ID"'","address":"123 Main St","lat":33.749,"lng":-84.388}'
-check "Visibility: PUT update/:id"        PUT "$BASE/api/v1/visibility/update/$PROPERTY_ID" \
+check_lenient "Visibility: score/:id"             GET "$BASE/api/v1/visibility/score/$PROPERTY_ID"
+check_lenient "Visibility: assessment/:id"        GET "$BASE/api/v1/visibility/assessment/$PROPERTY_ID"
+check_lenient "Visibility: PUT update/:id"        PUT "$BASE/api/v1/visibility/update/$PROPERTY_ID" \
   -d '{"signageScore":8}'
-check "Visibility: POST preview"          POST "$BASE/api/v1/visibility/preview" \
+check_lenient "Visibility: POST assess"           POST "$BASE/api/v1/visibility/assess" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'","address":"123 Main St","lat":33.749,"lng":-84.388}'
+check_lenient "Visibility: POST preview"          POST "$BASE/api/v1/visibility/preview" \
   -d '{"lat":33.749,"lng":-84.388,"address":"123 Main St Atlanta GA"}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ M26 Tax (/api/v1 — m26-tax.routes.ts)"
+echo "▶ M26 Tax /api/v1/deals/:dealId/tax (m26-tax.routes.ts)"
 # -------------------------------------------------------
-check "M26-tax: GET projection"           GET "$BASE/api/v1/deals/$DEAL_ID/tax/projection"
-check "M26-tax: GET tax summary"          GET "$BASE/api/v1/deals/$DEAL_ID/tax/summary"
-check "M26-tax: POST projection"          POST "$BASE/api/v1/deals/$DEAL_ID/tax/projection" \
+check_lenient "M26-tax: GET projection"           GET "$BASE/api/v1/deals/$DEAL_ID/tax/projection"
+check_lenient "M26-tax: GET summary"              GET "$BASE/api/v1/deals/$DEAL_ID/tax/summary"
+check_lenient "M26-tax: POST projection"          POST "$BASE/api/v1/deals/$DEAL_ID/tax/projection" \
   -d '{"assessedValue":5000000,"millageRate":0.025}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Deal Comp Sets (/api/v1/deals)"
+echo "▶ Deal Comp Sets /api/v1/deals (deal-comp-sets.routes.ts)"
 # -------------------------------------------------------
-check "Comp-sets: GET /:dealId/comp-set"  GET "$BASE/api/v1/deals/$DEAL_ID/comp-set"
-check "Comp-sets: GET discover-tiered"    GET "$BASE/api/v1/deals/$DEAL_ID/comp-set/discover-tiered"
-check "Comp-sets: POST discover"          POST "$BASE/api/v1/deals/$DEAL_ID/comp-set/discover" \
+check_lenient "Comp-sets: GET comp-set"           GET "$BASE/api/v1/deals/$DEAL_ID/comp-set"
+check_lenient "Comp-sets: GET discover-tiered"    GET "$BASE/api/v1/deals/$DEAL_ID/comp-set/discover-tiered"
+check_lenient "Comp-sets: POST discover"          POST "$BASE/api/v1/deals/$DEAL_ID/comp-set/discover" \
   -d '{"radius":5}'
-check "Comp-sets: POST create comp-set"   POST "$BASE/api/v1/deals/$DEAL_ID/comp-set" \
+check_lenient "Comp-sets: POST create"            POST "$BASE/api/v1/deals/$DEAL_ID/comp-set" \
   -d '{"name":"My Comp Set","propertyIds":[]}'
-check "Comp-sets: POST add-to-set"        POST "$BASE/api/v1/deals/$DEAL_ID/comp-set/add-to-set" \
+check_lenient "Comp-sets: POST add-to-set"        POST "$BASE/api/v1/deals/$DEAL_ID/comp-set/add-to-set" \
   -d '{"propertyId":"'"$PROPERTY_ID"'"}'
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Market (basic) (/api/v1/market)"
+echo "▶ Market (basic) /api/v1/market"
 # -------------------------------------------------------
-check "Market: inventory/:city/:state"    GET "$BASE/api/v1/market/inventory/Atlanta/GA"
-check "Market: trends/:city/:state"       GET "$BASE/api/v1/market/trends/Atlanta/GA"
+check_strict  "Market: inventory/:city/:state"    GET "$BASE/api/v1/market/inventory/Atlanta/GA"
+check_strict  "Market: trends/:city/:state"       GET "$BASE/api/v1/market/trends/Atlanta/GA"
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Geography Routes (geography.routes.ts — NOT MOUNTED)"
-# NOTE: geography.routes.ts defines trade-areas, submarkets, msas, geocode, etc.
-# but is NOT imported or mounted in index.replit.ts.
-# These routes are therefore unreachable and intentionally excluded.
-# Individual resources accessible via: /api/v1/trade-areas (trade-areas.routes.ts),
-# /api/v1/submarkets/lookup and /api/v1/msas/lookup (geographic-context.routes.ts)
-# -------------------------------------------------------
-echo "  [INFO] geography.routes.ts is not mounted — routes excluded from test"
+echo "========================================"
+echo "  UNMOUNTED ROUTE FILES — PHASE 4 MATRIX"
+echo "========================================"
+echo ""
+echo "  The following route files exist in backend/src/api/rest/ but are"
+echo "  NOT imported or mounted in index.replit.ts and are therefore"
+echo "  unreachable at runtime. They are excluded from this smoke test."
+echo ""
+echo "  File                            Status        Reason"
+echo "  ──────────────────────────────────────────────────────────────"
+echo "  geography.routes.ts             NOT MOUNTED   Superseded by trade-areas.routes.ts"
+echo "                                                (mounted at /api/v1/trade-areas) and"
+echo "                                                geographic-context.routes.ts for lookups."
+echo "  credibility.routes.ts           NOT MOUNTED   Not imported in index.replit.ts."
+echo "  demand-intelligence.routes.ts   NOT MOUNTED   Not imported in index.replit.ts."
+echo "  apartment-locator.routes.ts     NOT MOUNTED   Not imported in index.replit.ts."
+echo "  leasingTraffic.routes.ts        NOT MOUNTED   Duplicate of leasing-traffic.routes.ts"
+echo "  (camelCase variant)                           (kebab-case); kebab version is mounted."
+echo "  traffic-intelligence.routes.ts  NOT MOUNTED   Not imported in index.replit.ts."
+echo ""
+echo "  To activate any of these: import and mount in index.replit.ts."
+echo ""
 
 # -------------------------------------------------------
-echo ""
-echo "▶ Not-Mounted Route Files (documentation only)"
-# The following route files exist in the codebase but are not mounted:
-# - credibility.routes.ts
-# - demand-intelligence.routes.ts
-# - apartment-locator.routes.ts
-# - leasingTraffic.routes.ts (camelCase — different from leasing-traffic.routes.ts)
-# - traffic-intelligence.routes.ts
-# - geography.routes.ts
-# These are intentionally excluded from this smoke test.
-# -------------------------------------------------------
-echo "  [INFO] 6 unmounted route files excluded (credibility, demand-intelligence,"
-echo "         apartment-locator, leasingTraffic, traffic-intelligence, geography)"
-
-# -------------------------------------------------------
-echo ""
 echo "========================================"
 echo "  RESULTS"
 echo "========================================"
 echo "  PASS: $PASS"
-echo "  SKIP: $SKIP  (404/400/403 — no data or restriction, acceptable)"
+echo "  SKIP: $SKIP  (404=no data, 400=validation/minimal-payload, 403=restriction)"
 echo "  FAIL: $FAIL"
 echo ""
 
@@ -515,5 +536,4 @@ fi
 echo ""
 echo "Completed: $(date)"
 
-# Exit non-zero if there are failures
 [[ $FAIL -eq 0 ]]
