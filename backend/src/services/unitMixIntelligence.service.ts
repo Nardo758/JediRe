@@ -64,14 +64,14 @@ export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: strin
       : { rows: [] };
 
     return mergedProps.map((prop: any) => {
-      const units: Record<string, any> = {};
+      const units: Record<string, CompUnit> = {};
       for (const ut of UNIT_TYPES) {
         const row = unitRows.find((r: any) => r.comp_id === prop.id && r.unit_type === ut);
         units[ut] = row
           ? { mix: Number(row.mix_pct) || 0, sf: Number(row.avg_sf) || 0, rent: Number(row.avg_rent) || 0, vac: Number(row.vacancy_pct) || 0, dom: Number(row.days_on_market) || 0, conc: Number(row.concessions) || 0 }
           : { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
       }
-      return { id: prop.id, name: prop.name, cls: prop.class, built: prop.built_year, total: prop.total_units, sourceUrl: prop.source_url, units };
+      return { id: prop.id, name: prop.name, cls: prop.class as string | null, built: prop.built_year as number | null, total: prop.total_units as number | null, sourceUrl: prop.source_url as string | null, units };
     });
   }
 

@@ -126,7 +126,7 @@ router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: Authent
       [dealId]
     );
     if (existing.rows.length === 0 && result.trade_area.length > 0) {
-      const defaults = result.trade_area.slice(0, 10);
+      const defaults = result.trade_area.slice(0, 8);
       for (const comp of defaults) {
         await pool.query(`
           INSERT INTO deal_comp_sets (
