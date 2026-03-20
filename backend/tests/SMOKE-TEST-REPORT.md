@@ -71,7 +71,7 @@ Known 400 warnings: benchmark-timeline (requires county/state), tax-comp analysi
 
 ## Phase 4 — Market Intel & Analytics (`smoke-test-market.sh`)
 
-**219 endpoints** across market intelligence (standard + enhanced), supply events, demand, traffic prediction, property scoring, comps (M26/M27), cycle intelligence (M28), corporate health, property analytics, traffic data/comps, visibility, unit mix, training/calibration, capsules, maps, layers, m22 archive, audit, map-configs, portfolio, agents, chat, correlations, opportunities, notifications.
+**219 endpoints** across market intelligence (standard + enhanced), supply events, demand, traffic prediction, property scoring, comps (M26/M27), cycle intelligence (M28), corporate health, property analytics, traffic data/comps, visibility, unit mix, training/calibration. (Note: capsules, maps, layers, m22-archive, audit, map-configs, portfolio, agents, chat, correlations, opportunities, notifications are covered in Phase 5 — `smoke-test-misc.sh`.)
 
 | Status | Count | Meaning |
 |--------|-------|---------|

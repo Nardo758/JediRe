@@ -876,7 +876,7 @@ check_lenient "NoteReplies: PATCH /notes/:id/replies/:rid"             PATCH "$B
   -d '{"content":"updated reply"}'
 check_lenient "NoteReplies: DELETE /notes/:id/replies/:rid"            DELETE "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID"
 
-# ── Task Completion (unmounted — task-completion.routes.ts) ─
+# ── Task Completion (mounted at /api/v1/task-completion) ─────
 echo "── task-completion ──"
 check_lenient "TaskComp: POST /task-completion/scan-completions"       POST "$BASE/api/v1/task-completion/scan-completions" \
   -d '{}'
