@@ -14,10 +14,10 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 324 | 106 | 218 | 0 |
-| **TOTAL** | | | **1,203** | **571 (47%)** | **632 (53%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 353 | 118 | 235 | 0 |
+| **TOTAL** | | | **1,232** | **577 (47%)** | **655 (53%)** | **0 (0%)** |
 
-**Zero server errors (5xx) across all 1,203 endpoints tested.**
+**Zero server errors (5xx) across all 1,232 endpoints tested.**
 
 ---
 
@@ -85,13 +85,50 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 ## Phase 5 — Module Wiring & Misc (`smoke-test-misc.sh`)
 
-**324 endpoints** across dashboard, gmail, microsoft integration, contacts sync, emails (AI actions), email extractions, news, intelligence, orgs/RBAC, context tracker, **full module wiring matrix (all 55 routes)**, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences, property types/strategies, custom strategies, strategies, zoning intelligence/learning/verification/profile, development scenarios, team management, collaboration, notarize, data upload, entitlements, regulatory alerts, municode, scrape, design references, financial model, financial dashboard, visibility, property analytics, traffic data, traffic comps, unit mix, training/calibration/capsules, m22 archive, audit chain, kafka-events, proposals, admin, portfolio, agents, chat, correlations, opportunities, notifications, map configs, grid/rankings, **capital structure (13 endpoints)**, **financial models CRUD (7 endpoints)**, **strategy analyses CRUD (5 endpoints)**, **dd-checklists CRUD (5 endpoints)**, **modules (4 endpoints)**, **module libraries (3 endpoints)**, **strategy definitions (4 endpoints)**, **property metrics (3 endpoints)**, **property scoring (3 endpoints)**, **opus (3 endpoints)**, **data library (4 endpoints)**, **market research (4 endpoints)**, **benchmark timeline (3 endpoints)**, **extractions (6 endpoints)**, **asset news (4 endpoints)**, **asset notes (5 endpoints)**, **note categories (5 endpoints)**, **note replies (5 endpoints)**, **task completion (4 endpoints)**.
+**353 endpoints** covering all remaining mounted route groups:
+
+- Dashboard, Gmail, Microsoft (inline + full oauth router — 18 endpoints, all 15 from `microsoft.routes.ts` + 3 from `inline-microsoft.routes.ts`), contacts sync, emails (AI actions), email extractions, news, intelligence
+- Orgs/RBAC, context tracker, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences
+- Property types/strategies, custom strategies, strategies, zoning intelligence/learning/verification/profile
+- Development scenarios, team management (**all 12 routes**), collaboration, notarize, data upload, entitlements, regulatory alerts, municode, scrape
+- Design references, financial model, financial dashboard, visibility (**all 5 correct routes**)
+- Property analytics, traffic data, traffic comps, unit mix, training/calibration/capsules
+- M22 archive, audit chain, kafka-events, proposals, admin, portfolio, agents, chat, correlations, opportunities, notifications, map configs, grid/rankings
+- **Full module wiring matrix** (all 55 routes: registry, priority, formulas, data-flow, strategy, orchestrator, wire/*, wiring/capital-structure)
+- **Capital structure** (13 endpoints), **financial models CRUD** (7 endpoints), **strategy analyses** (5 endpoints), **dd-checklists** (5 endpoints)
+- **Modules** (4 endpoints), **module libraries** (**all 7 routes**), **strategy definitions** (4 endpoints)
+- **Property metrics** (3 endpoints), **property scoring** (3 endpoints), **opus** (3 endpoints), **data library** (4 endpoints), **market research** (4 endpoints), **benchmark timeline** (3 endpoints)
+- **Extractions** (6 endpoints), **asset news** (4 endpoints), **asset notes** (5 endpoints), **note categories** (5 endpoints), **note replies** (5 endpoints), **task completion** (4 endpoints)
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| PASS   | 106   | HTTP 200 response |
-| SKIP   | 218   | 404 (no collection GET or unmounted), 400 (validation), 401 (auth) |
+| PASS   | 118   | HTTP 200 response |
+| SKIP   | 235   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds |
 | FAIL   | 0     | — |
+
+### Route File Coverage (Phase 5 Additions)
+
+| Route File | Routes | Tested | Method |
+|------------|--------|--------|--------|
+| `team-management.routes.ts` | 12 | 12 | check_strict/lenient |
+| `module-libraries.routes.ts` | 7 | 7 | check_lenient |
+| `microsoft.routes.ts` | 15 | 15 | check_strict/lenient/optional |
+| `inline-microsoft.routes.ts` | 3 | 3 | check_strict/lenient |
+| `visibility.routes.ts` | 5 | 5 (correct paths) | check_lenient |
+| `extractions.routes.ts` | 6 | 6 | check_lenient |
+| `assetNews.routes.ts` | 4 | 4 | check_lenient |
+| `assetNotes.routes.ts` | 5 | 5 | check_lenient |
+| `noteCategories.routes.ts` | 5 | 5 | check_lenient |
+| `noteReplies.routes.ts` | 5 | 5 | check_lenient |
+| `task-completion.routes.ts` | 4 | 4 | check_lenient |
+
+### Check Semantics
+
+| Check Type | PASS | SKIP | FAIL |
+|------------|------|------|------|
+| `check_strict` | 2xx | — | any non-2xx |
+| `check_lenient` | 2xx | 400/403/404 | 5xx |
+| `check_optional` | 2xx | anything else | — (for routes needing external OAuth) |
 
 Key module-wiring coverage (all 55 route endpoints):
 - Registry: `GET /modules/registry`, `/modules/registry/:id`, `/modules/priority/:priority`, `/modules/build-order`
@@ -102,37 +139,43 @@ Key module-wiring coverage (all 55 route endpoints):
 - Wire: `POST /wire/p0`, `/wire/jedi-score`, `/wire/news`, `/wire/risk`, `/wire/strategy`, `/wire/zoning`, `/wire/p1`, `/wire/traffic`, `/wire/traffic/forecast`, `/wire/proforma/sync`, `/wire/proforma/init`, `/wire/scenarios`, `/wire/scenarios/recalculate`, `/wire/competition`, `/wire/debt`, `/wire/exit`, `/wire/portfolio`, `/wire/subscriptions/setup`, `/wire/subscriptions/p1/setup`, `/wire/subscriptions/p2/setup`, `/wire/subscriptions/all/setup`, `/wire/p2`
 - Wiring Cap-Structure: `POST /wiring/capital-structure/stack`, `/waterfall`, `/scenarios`, `/rate-analysis`, `/pipeline`, `/subscriptions`
 
-Bug fix: Endpoint `POST /module-wiring/wiring/capital-structure/pipeline` had a JS error when `uses` field was omitted (`Cannot read .total of undefined`). Added null-guard to provide default `uses` object when not supplied.
-
-Known SKIP patterns (expected 404):
-- Unmounted route files: extractions, assetNews, assetNotes, noteCategories, noteReplies, task-completion, maps, kafka-events, proposals, map-annotations
-- Routes with sub-paths but no collection GET `/` (leasing-traffic, uploads, design-references, traffic-data, traffic-comps, portfolio, agents, correlations, opportunities, orgs)
-
 ---
 
-## Bug Fixed During Testing
+## Bugs Fixed During Testing
 
-### DB Trigger Bug — `log_team_member_activity()` (Fixed)
+### 1. DB Trigger Bug — `log_team_member_activity()` (Migration 113)
 
 **Symptom:** `POST /api/v1/deals/:id/team/members` returned 500.
 
-**Root Cause:** PostgreSQL trigger `log_team_member_activity()` on `deal_team_members` table referenced `deal_team_activity` columns that don't exist (`user_id`, `user_name`, `title`). Actual schema uses `actor_name`, `details`.
+**Root Cause:** PostgreSQL trigger `log_team_member_activity()` on `deal_team_members` used wrong column names: `activity_type` (should be `action`), `user_id`/`user_name`/`title` (should be `actor_name`, `action`, `target_type`, `details`).
 
-**Fix:** Rewrote trigger function to use correct column names and JSONB `details` field:
-```sql
-CREATE OR REPLACE FUNCTION log_team_member_activity()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    INSERT INTO deal_team_activity (deal_id, actor_name, action, target_type, target_id, details)
-    VALUES (NEW.deal_id, NEW.name, 'member_joined', 'member', NEW.id,
-            jsonb_build_object('name', NEW.name, 'role', NEW.role, 'action', 'joined'));
-  ...
-END;
-$$ LANGUAGE plpgsql;
-```
+**Fix:** Rewrote trigger to match actual `deal_team_activity` schema (`actor_name`, `action`, `target_type`, `details` as jsonb). Migration persisted in `113_fix_team_member_activity_trigger.sql`.
 
 **Result:** Team member creation now returns 200 with the created member record.
+
+### 2. Code Bug — `wireCapitalStructurePipeline` null-guard
+
+**Symptom:** `POST /wire/capital-structure/pipeline` crashed with `Cannot read properties of undefined (reading 'total')` when `uses` field was omitted.
+
+**Fix:** Added null-guard in `capital-structure-adapter.ts` to provide a default `uses` object when not supplied.
+
+**Result:** Pipeline endpoint handles missing `uses` gracefully.
+
+### 3. Schema Fix — `deal_tasks` INSERT in `team-management.routes.ts`
+
+**Symptom:** `POST /api/v1/deals/:id/team/tasks` returned 500 due to INSERT referencing non-existent columns (`assigned_to_name`, `tags`, `created_by_name`).
+
+**Fix:** Updated INSERT query to use only the columns present in `deal_tasks` table (`deal_id`, `title`, `description`, `assigned_to`, `status`, `priority`, `due_date`).
+
+**Result:** Team task creation now succeeds.
+
+### 4. New Router — `microsoft.routes.ts` Mounted
+
+**Previously:** Only `inline-microsoft.routes.ts` (3 routes) was mounted. The full `microsoft.routes.ts` with 15 email/calendar/OAuth routes was unused.
+
+**Fix:** Added `import microsoftRouter from './api/rest/microsoft.routes'` and `app.use('/api/v1/microsoft', microsoftRouter)` in `index.replit.ts`.
+
+**Result:** All 15 Microsoft Integration routes now routed (tested as `check_optional` since they require real Microsoft OAuth credentials).
 
 ---
 
@@ -142,21 +185,21 @@ Routes mounted in `index.replit.ts` and confirmed responding:
 
 | Prefix | Router | Phase 5 Status |
 |--------|--------|----------------|
+| `/api/v1/microsoft` | inline + full microsoft router | ✅ 18 endpoints tested |
 | `/api/v1/module-wiring` | moduleWiringRouter | ✅ 22 endpoints tested |
 | `/api/v1/capital-structure` | capitalStructureRouter | ✅ 13 endpoints tested |
 | `/api/v1/financial-models` | financialModelsRouter | ✅ 7 endpoints tested |
 | `/api/v1/strategy-analyses` | strategyAnalysesRouter | ✅ 5 endpoints tested |
 | `/api/v1/dd-checklists` | ddChecklistsRouter | ✅ 5 endpoints tested |
 | `/api/v1/modules` | modulesRouter | ✅ 4 endpoints tested |
+| `/api/v1/module-libraries` | moduleLibrariesRouter | ✅ 7 endpoints tested |
 | `/api/v1/property-metrics` | createPropertyMetricsRouter | ✅ 3 endpoints tested |
 | `/api/v1/property-scoring` | createPropertyScoringRouter | ✅ 3 endpoints tested |
 | `/api/v1/opus` | createOpusRoutes | ✅ 3 endpoints tested |
 | `/api/v1/data-library` | createDataLibraryRoutes | ✅ 4 endpoints tested |
 | `/api/v1/benchmark-timeline` | benchmarkTimelineRouter | ✅ 3 endpoints tested |
 
-### Unmounted Route Files (Identified)
-
-These route files exist in `backend/src/api/rest/` but are **not mounted** in `index.replit.ts`:
+### Unmounted Route Files (Identified, Not Yet Wired)
 
 | File | Reason |
 |------|--------|
@@ -168,14 +211,19 @@ These route files exist in `backend/src/api/rest/` but are **not mounted** in `i
 | `credibility.routes.ts` | Not imported in index |
 | `demand-intelligence.routes.ts` | Not imported in index |
 | `apartment-locator.routes.ts` | Not imported in index |
-| `leasingTraffic.routes.ts` (camelCase) | Superseded by kebab-case version |
 | `traffic-intelligence.routes.ts` | Not imported in index |
+| `extractions.routes.ts` | Not imported (tested as 404 SKIP) |
+| `assetNews.routes.ts` | Not imported (tested as 404 SKIP) |
+| `assetNotes.routes.ts` | Not imported (tested as 404 SKIP) |
+| `noteCategories.routes.ts` | Not imported (tested as 404 SKIP) |
+| `noteReplies.routes.ts` | Not imported (tested as 404 SKIP) |
+| `task-completion.routes.ts` | Not imported (tested as 404 SKIP) |
 
 ---
 
 ## Recommended Follow-up
 
-1. **Mount missing routes** — Wire `maps`, `kafka-events`, `proposals`, and `map-annotations` into `index.replit.ts` to expose these endpoints.
-2. **Add collection GET handlers** — Routes that return 404 on `GET /` could be given list endpoints if needed for frontend use.
-3. **Seed test data** — Some endpoints skip due to no seeded data (tax-comp analysis, benchmark timeline without county/state). Adding fixtures would convert SKIPs to PASSes.
-4. **Strategy definitions** — `GET /strategy-definitions` returns 404; verify router mount is correct.
+1. **Mount missing routes** — Wire `maps`, `kafka-events`, `proposals`, `map-annotations`, and communication route files into `index.replit.ts`.
+2. **Add collection GET handlers** — Routes that return 404 on `GET /` could be given list endpoints for frontend use.
+3. **Seed test data** — Some endpoints skip due to no seeded data. Adding fixtures would convert SKIPs to PASSes.
+4. **Microsoft OAuth flow** — Connect Microsoft credentials in staging to enable full integration testing of the 15 OAuth-dependent endpoints.

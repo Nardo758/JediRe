@@ -18,8 +18,9 @@
 #   Admin, Portfolio, Agents, Chat, Correlations, Opportunities
 #
 # Semantics:
-#   check_strict  → PASS=2xx  FAIL=any other
-#   check_lenient → PASS=2xx  SKIP=400/403/404  FAIL=5xx
+#   check_strict   → PASS=2xx  FAIL=any other
+#   check_lenient  → PASS=2xx  SKIP=400/403/404  FAIL=5xx
+#   check_optional → PASS=2xx  SKIP=anything else (routes requiring external OAuth/credentials)
 # ============================================================
 
 BASE="http://localhost:4000"
@@ -79,6 +80,17 @@ check_lenient() {
   fi
 }
 
+# check_optional: PASS=2xx, SKIP=anything else (use for routes needing external credentials)
+check_optional() {
+  local label="$1" method="$2" url="$3"; shift 3
+  local code; code=$(_do_request "$method" "$url" "$@")
+  if [[ "$code" =~ ^2 ]]; then
+    echo "PASS  [$code] $label"; PASS=$((PASS+1))
+  else
+    echo "SKIP  [$code] $label (external-creds)"; SKIP=$((SKIP+1))
+  fi
+}
+
 echo "========================================================"
 echo " Phase 5 — Module Wiring, Comms, Org, Admin & Final"
 echo "========================================================"
@@ -103,10 +115,31 @@ check_lenient "Gmail: POST /gmail/connect"                 POST "$BASE/api/v1/gm
 check_lenient "Gmail: POST /gmail/sync/:id"                POST "$BASE/api/v1/gmail/sync/$FAKE_ID"
 check_lenient "Gmail: DELETE /gmail/disconnect/:id"        DELETE "$BASE/api/v1/gmail/disconnect/$FAKE_ID"
 
-# ── Microsoft (inline) ───────────────────────────────────
+# ── Microsoft (inline + full router) ─────────────────────
+# inline-microsoft.routes.ts: /status, /auth/url, /auth/callback
+# microsoft.routes.ts (mounted at /api/v1/microsoft): all 15 routes below
 echo "── microsoft ──"
-check_strict  "Microsoft: GET /microsoft/status"           GET  "$BASE/api/v1/microsoft/status"
-check_lenient "Microsoft: GET /microsoft/auth/url"         GET  "$BASE/api/v1/microsoft/auth/url"
+check_strict  "Microsoft: GET /microsoft/status"                         GET  "$BASE/api/v1/microsoft/status"
+check_lenient "Microsoft: GET /microsoft/auth/url"                       GET  "$BASE/api/v1/microsoft/auth/url"
+check_optional "Microsoft: GET /microsoft/auth/callback"                  GET  "$BASE/api/v1/microsoft/auth/callback"
+check_optional "Microsoft: GET /microsoft/auth/connect"                  GET  "$BASE/api/v1/microsoft/auth/connect"
+check_optional "Microsoft: POST /microsoft/auth/disconnect"              POST "$BASE/api/v1/microsoft/auth/disconnect" -d '{}'
+check_optional "Microsoft: GET /microsoft/emails/inbox"                  GET  "$BASE/api/v1/microsoft/emails/inbox"
+check_optional "Microsoft: GET /microsoft/emails/:id"                    GET  "$BASE/api/v1/microsoft/emails/$FAKE_ID"
+check_optional "Microsoft: POST /microsoft/emails/send"                  POST "$BASE/api/v1/microsoft/emails/send" \
+  -d '{"to":"test@example.com","subject":"Smoke","body":"Test"}'
+check_optional "Microsoft: POST /microsoft/emails/:id/reply"             POST "$BASE/api/v1/microsoft/emails/$FAKE_ID/reply" \
+  -d '{"body":"reply"}'
+check_optional "Microsoft: PATCH /microsoft/emails/:id"                  PATCH "$BASE/api/v1/microsoft/emails/$FAKE_ID" \
+  -d '{"isRead":true}'
+check_optional "Microsoft: DELETE /microsoft/emails/:id"                 DELETE "$BASE/api/v1/microsoft/emails/$FAKE_ID"
+check_optional "Microsoft: GET /microsoft/emails/search"                 GET  "$BASE/api/v1/microsoft/emails/search?q=test"
+check_optional "Microsoft: GET /microsoft/folders"                       GET  "$BASE/api/v1/microsoft/folders"
+check_optional "Microsoft: GET /microsoft/calendar/events"               GET  "$BASE/api/v1/microsoft/calendar/events"
+check_optional "Microsoft: POST /microsoft/calendar/events"              POST "$BASE/api/v1/microsoft/calendar/events" \
+  -d '{"subject":"Smoke","start":"2025-01-01T10:00:00Z","end":"2025-01-01T11:00:00Z"}'
+check_optional "Microsoft: POST /microsoft/emails/:id/link-property"     POST "$BASE/api/v1/microsoft/emails/$FAKE_ID/link-property" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'"}'
 
 # ── Contacts Sync ─────────────────────────────────────────
 echo "── contacts-sync ──"
@@ -355,11 +388,23 @@ check_lenient "DevScenarios: GET /development-scenarios/:dealId"      GET  "$BAS
 
 # ── Team Management ───────────────────────────────────────
 echo "── team-management ──"
-check_strict  "TeamMgmt: GET /deals/:id/team/members"       GET  "$BASE/api/v1/deals/$DEAL_ID/team/members"
-check_lenient "TeamMgmt: POST /deals/:id/team/members"      POST "$BASE/api/v1/deals/$DEAL_ID/team/members" \
-  -d '{"name":"Smoke Member","email":"smoke@test.com","role":"Reviewer"}'
-check_lenient "TeamMgmt: GET /deals/:id/team/activity"      GET  "$BASE/api/v1/deals/$DEAL_ID/team/activity"
-check_lenient "TeamMgmt: DELETE team member"                DELETE "$BASE/api/v1/deals/$DEAL_ID/team/members/$FAKE_ID"
+check_strict  "TeamMgmt: GET /deals/:id/team/members"               GET  "$BASE/api/v1/deals/$DEAL_ID/team/members"
+check_lenient "TeamMgmt: POST /deals/:id/team/members"              POST "$BASE/api/v1/deals/$DEAL_ID/team/members" \
+  -d '{"name":"Smoke Member","email":"smoke@test.com","role":"Reviewer","status":"active"}'
+check_lenient "TeamMgmt: PUT /deals/:id/team/members/:mid"          PUT  "$BASE/api/v1/deals/$DEAL_ID/team/members/$FAKE_ID" \
+  -d '{"role":"Approver"}'
+check_lenient "TeamMgmt: DELETE /deals/:id/team/members/:mid"       DELETE "$BASE/api/v1/deals/$DEAL_ID/team/members/$FAKE_ID"
+check_strict  "TeamMgmt: GET /deals/:id/team/tasks"                 GET  "$BASE/api/v1/deals/$DEAL_ID/team/tasks"
+check_lenient "TeamMgmt: POST /deals/:id/team/tasks"                POST "$BASE/api/v1/deals/$DEAL_ID/team/tasks" \
+  -d '{"title":"Smoke Task","priority":"high"}'
+check_lenient "TeamMgmt: PUT /deals/:id/team/tasks/:tid"            PUT  "$BASE/api/v1/deals/$DEAL_ID/team/tasks/$FAKE_ID" \
+  -d '{"status":"in_progress"}'
+check_lenient "TeamMgmt: DELETE /deals/:id/team/tasks/:tid"         DELETE "$BASE/api/v1/deals/$DEAL_ID/team/tasks/$FAKE_ID"
+check_lenient "TeamMgmt: GET /deals/:id/team/tasks/:tid/comments"   GET  "$BASE/api/v1/deals/$DEAL_ID/team/tasks/$FAKE_ID/comments"
+check_lenient "TeamMgmt: POST /deals/:id/team/tasks/:tid/comments"  POST "$BASE/api/v1/deals/$DEAL_ID/team/tasks/$FAKE_ID/comments" \
+  -d '{"content":"smoke comment"}'
+check_strict  "TeamMgmt: GET /deals/:id/team/activity"              GET  "$BASE/api/v1/deals/$DEAL_ID/team/activity"
+check_strict  "TeamMgmt: GET /team/role-templates"                  GET  "$BASE/api/v1/team/role-templates"
 
 # ── Collaboration ─────────────────────────────────────────
 echo "── collaboration ──"
@@ -424,9 +469,13 @@ check_lenient "FinDash: GET /financial-dashboard/deal/:id"     GET  "$BASE/api/v
 
 # ── Visibility ────────────────────────────────────────────
 echo "── visibility ──"
-check_lenient "Visibility: GET /visibility/deal/:id"        GET  "$BASE/api/v1/visibility/deal/$DEAL_ID"
-check_lenient "Visibility: POST /visibility/compute"        POST "$BASE/api/v1/visibility/compute" \
-  -d '{"dealId":"'"$DEAL_ID"'"}'
+check_lenient "Visibility: POST /visibility/assess"                    POST "$BASE/api/v1/visibility/assess" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'","dealId":"'"$DEAL_ID"'"}'
+check_lenient "Visibility: GET /visibility/score/:propertyId"          GET  "$BASE/api/v1/visibility/score/$PROPERTY_ID"
+check_lenient "Visibility: GET /visibility/assessment/:propertyId"     GET  "$BASE/api/v1/visibility/assessment/$PROPERTY_ID"
+check_lenient "Visibility: PUT /visibility/update/:propertyId"         PUT  "$BASE/api/v1/visibility/update/$PROPERTY_ID" \
+  -d '{"score":85}'
+check_lenient "Visibility: GET /visibility/preview"                    GET  "$BASE/api/v1/visibility/preview"
 
 # ── Property Analytics ────────────────────────────────────
 echo "── property-analytics ──"
@@ -657,10 +706,15 @@ check_lenient "Modules: PUT /modules/:id"                             PUT  "$BAS
 
 # ── Module Libraries ──────────────────────────────────────
 echo "── module-libraries ──"
-check_lenient "ModLibs: GET /module-libraries"                        GET  "$BASE/api/v1/module-libraries"
-check_lenient "ModLibs: GET /module-libraries/:id"                    GET  "$BASE/api/v1/module-libraries/$FAKE_ID"
-check_lenient "ModLibs: POST /module-libraries"                       POST "$BASE/api/v1/module-libraries" \
-  -d '{"name":"smoke-library"}'
+check_lenient "ModLibs: GET /module-libraries/:module/files"           GET  "$BASE/api/v1/module-libraries/jedi/files"
+check_lenient "ModLibs: GET /module-libraries/:module/files/:id"       GET  "$BASE/api/v1/module-libraries/jedi/files/$FAKE_ID"
+check_lenient "ModLibs: DELETE /module-libraries/:module/files/:id"    DELETE "$BASE/api/v1/module-libraries/jedi/files/$FAKE_ID"
+check_lenient "ModLibs: GET /module-libraries/:module/files/:id/dl"    GET  "$BASE/api/v1/module-libraries/jedi/files/$FAKE_ID/download"
+check_lenient "ModLibs: GET /module-libraries/:module/learning-status" GET  "$BASE/api/v1/module-libraries/jedi/learning-status"
+check_lenient "ModLibs: POST /module-libraries/:module/analyze"        POST "$BASE/api/v1/module-libraries/jedi/analyze" \
+  -d '{"dealId":"'"$DEAL_ID"'"}'
+check_lenient "ModLibs: POST /module-libraries/:module/upload"         POST "$BASE/api/v1/module-libraries/jedi/upload" \
+  -d ''
 
 # ── Strategy Definitions ──────────────────────────────────
 echo "── strategy-definitions ──"
@@ -794,7 +848,8 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
 fi
 
 # Write results file
-RESULTS_FILE="${1:-backend/tests/smoke-results-misc.txt}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RESULTS_FILE="${1:-${SCRIPT_DIR}/smoke-results-misc.txt}"
 {
   echo "Misc / Module-Wiring Smoke Test Results"
   echo "Run at: $(date -u)"

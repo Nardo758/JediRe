@@ -37,6 +37,7 @@ import tasksRouter from './api/rest/inline-tasks.routes';
 import inboxRouter from './api/rest/inline-inbox.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
+import microsoftRouter from './api/rest/microsoft.routes';
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
@@ -238,6 +239,7 @@ const microsoftConfig = {
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
+app.use('/api/v1/microsoft', microsoftRouter);
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 app.use('/api/v1/admin/rent-scraper', rentScraperAdminRouter);
