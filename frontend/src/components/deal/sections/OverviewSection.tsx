@@ -1508,6 +1508,49 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   );
 };
 
+
+// ─── Redevelopment Overview shared primitives ──────────────────────────────────
+
+const RSection: React.FC<{ number: string; title: string; subtitle?: string; color?: string }> = ({ number, title, subtitle, color }) => (
+  <div style={{ marginBottom: 14 }}>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 2 }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: color || BT.amberL, letterSpacing: 2, ...bMono }}>§{number}</span>
+      <span style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>{title}</span>
+    </div>
+    {subtitle && <p style={{ fontSize: 11, color: BT.td, marginLeft: 28, ...bSans }}>{subtitle}</p>}
+  </div>
+);
+
+const RCard: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style: s }) => (
+  <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, padding: 16, ...s }}>
+    {children}
+  </div>
+);
+
+const RMetric: React.FC<{ label: string; value: string; sub?: string; color?: string; small?: boolean }> = ({ label, value, sub, color, small }) => (
+  <div style={{ padding: small ? '6px 0' : '8px 0' }}>
+    <div style={{ fontSize: 9, letterSpacing: 1.5, color: BT.td, marginBottom: 3, ...bMono }}>{label}</div>
+    <div style={{ fontSize: small ? 15 : 20, fontWeight: 700, color: color || BT.text, ...bMono }}>{value}</div>
+    {sub && <div style={{ fontSize: 10, color: BT.td, marginTop: 2, ...bSans }}>{sub}</div>}
+  </div>
+);
+
+const RDataRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({ label, value, bold }) => (
+  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderBottom: `1px solid ${BT.border}` }}>
+    <span style={{ fontSize: 11, color: BT.ts, fontWeight: bold ? 700 : 400, ...bSans }}>{label}</span>
+    <span style={{ fontSize: 11, color: bold ? BT.amberL : BT.tm, fontWeight: bold ? 700 : 500, ...bMono }}>{value}</span>
+  </div>
+);
+
+const RBadge: React.FC<{ label: string; color: string; bg: string }> = ({ label, color, bg }) => (
+  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.5, padding: '3px 10px', borderRadius: 4, background: bg, color, border: `1px solid ${color}40`, ...bMono, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{label}</span>
+);
+
+const RStatusDot: React.FC<{ status: string }> = ({ status }) => {
+  const c = status === 'complete' ? BT.green : status === 'in-progress' ? BT.amber : BT.td;
+  return <span style={{ width: 8, height: 8, borderRadius: '50%', background: c, display: 'inline-block', flexShrink: 0 }} />;
+};
+
 interface RedevelopmentOverviewProps {
   deal: any;
   navigateToTab: (tab: string) => void;
@@ -1521,311 +1564,580 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
   const existingUnits = deal.units || deal.existingUnits || 0;
   const targetUnits = deal.targetUnits || existingUnits;
   const expansionUnits = Math.max(0, targetUnits - existingUnits);
+  const totalUnits = existingUnits + expansionUnits;
 
-  const currentNoi = financial?.currentNoi || deal.noi || 0;
+  const existingNoi = financial?.currentNoi || deal.noi || 0;
   const stabilizedNoi = financial?.noi || financial?.stabilizedNoi || computedReturns?.stabilizedNoi || 0;
-  const noiDelta = stabilizedNoi - currentNoi;
+  const noiDelta = stabilizedNoi - existingNoi;
 
+  const existingOccupancy = deal.existingOccupancy || deal.occupancy || 0.84;
+  const stabilizedOccupancy = deal.stabilizedOccupancy || 0.95;
+  const existingRentPerUnit = deal.existingRentPerUnit || deal.avgRent || 0;
+  const stabilizedRentPerUnit = deal.stabilizedRentPerUnit || deal.targetRent || 0;
+  const rentDelta = stabilizedRentPerUnit - existingRentPerUnit;
+  const existingCapRate = askPrice > 0 && existingNoi > 0 ? existingNoi / askPrice : (deal.existingCapRate || 0);
+  const existingExpenseRatio = deal.existingExpenseRatio || 0.52;
+
+  const deferred = deal.deferred || 0;
   const renovationBudget = financial?.renovationBudget || deal.renovationBudget || 0;
+  const renovPerUnit = existingUnits > 0 && renovationBudget > 0 ? Math.round(renovationBudget / existingUnits) : 0;
   const expansionCost = financial?.expansionCost || deal.expansionCost || 0;
+  const expansionCostPerUnit = expansionUnits > 0 && expansionCost > 0 ? Math.round(expansionCost / expansionUnits) : 0;
+  const expansionSqft = deal.expansionSqft || expansionUnits * 900;
+  const expansionType = deal.expansionType || 'Garden Walk-Up';
   const softCosts = financial?.softCosts || 0;
-  const totalInvestment = financial?.totalDevelopmentCost || (askPrice + renovationBudget + expansionCost + softCosts) || 0;
+  const totalInvestment = financial?.totalDevelopmentCost
+    || deal.totalInvestment
+    || (askPrice + renovationBudget + deferred + expansionCost + softCosts)
+    || 0;
 
-  const irr = financial?.irr || computedReturns?.irrLevered
-    ? `${((financial?.irr || computedReturns?.irrLevered * 100) as number).toFixed(1)}%`
-    : '—';
-  const equityMultiple = financial?.equityMultiple || computedReturns?.equityMultiple
-    ? `${(financial?.equityMultiple || computedReturns?.equityMultiple).toFixed(2)}x`
-    : '—';
-
-  const seniorDebt = capitalStructure?.seniorDebt || (totalInvestment * 0.65) || 0;
-  const equityRequired = capitalStructure?.equity || (totalInvestment * 0.35) || 0;
+  const seniorDebt = capitalStructure?.seniorDebt || (totalInvestment * 0.644) || 0;
+  const equityRequired = capitalStructure?.equity || capitalStructure?.equityRequired || (totalInvestment * 0.356) || 0;
   const ltv = totalInvestment > 0 ? seniorDebt / totalInvestment : 0;
+  const bridgeRate = capitalStructure?.rate || deal.rate || 0.0675;
+  const bridgeTerm = capitalStructure?.term || deal.term || '3+1+1 Bridge';
+  const equitySplit = capitalStructure?.equitySplit || deal.equitySplit || '90/10 LP/GP';
+  const prefReturn = capitalStructure?.prefReturn || deal.prefReturn || 0.08;
+  const promote = capitalStructure?.promote || deal.promote || '70/30 above pref';
+  const lenderType = capitalStructure?.lender || deal.lenderType || 'Bridge (Recourse → Non-recourse at stabilization)';
 
-  const exitCapRate = financial?.exitCapRate || 0.055;
-  const exitValue = stabilizedNoi > 0 ? stabilizedNoi / exitCapRate : 0;
+  const exitCapRate = financial?.exitCapRate || deal.exitCapRate || 0.055;
+  const exitValue = stabilizedNoi > 0 ? stabilizedNoi / exitCapRate : (deal.exitValue || 0);
   const valueCreation = exitValue > 0 && totalInvestment > 0 ? exitValue - totalInvestment : 0;
   const renovROI = (renovationBudget + expansionCost) > 0 && noiDelta > 0
-    ? (noiDelta / exitCapRate) / (renovationBudget + expansionCost)
-    : 0;
+    ? (noiDelta / exitCapRate) / (renovationBudget + expansionCost) : 0;
+
+  const irrRaw: number | undefined = financial?.irr ?? (computedReturns?.irrLevered != null ? computedReturns.irrLevered * 100 : undefined);
+  const irrStr = irrRaw != null ? `${irrRaw.toFixed(1)}%` : deal.irr ? `${deal.irr}%` : '—';
+  const emRaw: number | undefined = financial?.equityMultiple ?? computedReturns?.equityMultiple;
+  const emStr = emRaw != null ? `${emRaw.toFixed(2)}x` : deal.equityMultiple ? `${deal.equityMultiple}x` : '—';
+  const cashOnCash: number | null = deal.cashOnCash || financial?.cashOnCash || null;
 
   const ppu = existingUnits > 0 && askPrice > 0 ? Math.round(askPrice / existingUnits) : 0;
-  const currentCapRate = askPrice > 0 && currentNoi > 0 ? currentNoi / askPrice : 0;
+  const pricePerSf = (deal.existingSqft || 0) > 0 && askPrice > 0 ? Math.round(askPrice / deal.existingSqft) : 0;
 
-  const renovBudgetPerUnit = existingUnits > 0 && renovationBudget > 0 ? Math.round(renovationBudget / existingUnits) : 0;
+  const lotSizeAcres: number = deal.lotSizeAcres || 0;
+  const lotSizeSf: number = deal.lotSizeSf || Math.round(lotSizeAcres * 43560);
+  const zoning: string = deal.zoning || deal.zoningCode || '—';
+  const zoningDesc: string = deal.zoningDesc || deal.zoningDescription || '';
+  const maxDensity: number = deal.maxDensity || 0;
+  const additionalByRight: number = deal.additionalByRight ?? 0;
+  const additionalWithVariance: number = deal.additionalWithVariance || expansionUnits || 0;
+  const additionalIfRezoned: number = deal.additionalIfRezoned || expansionUnits || 0;
+  const expansionRequiresVariance: boolean = deal.expansionRequiresVariance ?? (expansionUnits > 0);
 
-  const ddItems: { l: string; done: boolean }[] = deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0
-    ? deal.stateData.ddItems
-    : [
-      { l: 'Phase I Environmental Assessment', done: false },
-      { l: 'Property Condition Report (PCR)', done: false },
-      { l: 'Existing Lease Audit', done: false },
-      { l: 'Renovation Scope + GMP Contractor', done: false },
-      { l: 'Zoning Confirmation (Expansion)', done: false },
-      { l: 'Rent Comparables Analysis', done: false },
-      { l: 'Bridge Lender Term Sheet', done: false },
-      { l: 'Title + Survey', done: false },
-    ];
-
-  const phases = [
-    { phase: 'Acquisition / Close', dur: 2, status: 'active' as const },
-    { phase: 'Renovation Phase 1', dur: 7, status: 'pending' as const },
-    { phase: 'Expansion Construction', dur: 12, status: 'pending' as const },
-    { phase: 'Renovation Phase 2', dur: 5, status: 'pending' as const },
-    { phase: 'Lease-Up / Stabilization', dur: 6, status: 'pending' as const },
+  const renovScope: { item: string; costPerUnit: number; percentage: number }[] = deal.renovScope || [
+    { item: 'Kitchen & Bath', costPerUnit: Math.round(renovPerUnit * 0.42), percentage: 0.42 },
+    { item: 'Flooring (LVP)', costPerUnit: Math.round(renovPerUnit * 0.12), percentage: 0.12 },
+    { item: 'HVAC Replacement', costPerUnit: Math.round(renovPerUnit * 0.16), percentage: 0.16 },
+    { item: 'Exterior / Common', costPerUnit: Math.round(renovPerUnit * 0.125), percentage: 0.125 },
+    { item: 'Appliances', costPerUnit: Math.round(renovPerUnit * 0.088), percentage: 0.088 },
+    { item: 'Fixtures & Paint', costPerUnit: Math.round(renovPerUnit * 0.088), percentage: 0.088 },
   ];
-  let cursor = 0;
-  const timeline = phases.map(p => { const s = cursor; cursor += p.dur; return { ...p, start: s }; });
-  const TOTAL_MO = cursor || 1;
 
-  const budgetRows = [
-    { l: 'Acquisition', v: askPrice, c: BT.amber },
-    { l: 'Renovation', v: renovationBudget, c: BT.blue },
-    { l: 'Expansion', v: expansionCost, c: BT.violL },
-    { l: 'Soft + Closing', v: softCosts || (totalInvestment - askPrice - renovationBudget - expansionCost), c: BT.td },
-  ].filter(r => r.v > 0);
+  const existingMix: { type: string; count: number; avgSf: number; currentRent: number; targetRent: number }[] = deal.existingMix || [];
+  const expansionMix: { type: string; count: number; avgSf: number; targetRent: number }[] = deal.expansionMix || [];
+
+  const budgetBreakdown: { category: string; amount: number; color: string }[] = deal.budgetBreakdown || [
+    { category: 'Acquisition', amount: askPrice, color: BT.amber },
+    { category: 'Interior Renovations', amount: renovationBudget, color: BT.blue },
+    { category: 'Deferred Maintenance', amount: deferred, color: BT.redL },
+    { category: `Expansion (${expansionUnits} units)`, amount: expansionCost, color: BT.violL },
+    { category: 'Soft Costs & Fees', amount: softCosts || Math.round(totalInvestment * 0.05), color: BT.td },
+  ].filter(b => b.amount > 0);
+
+  const phases: { label: string; months: number; start: number }[] = deal.phases || [
+    { label: 'Close + Mobilize', months: 2, start: 0 },
+    { label: 'Phase 1 Reno', months: 7, start: 2 },
+    { label: 'Expansion Build', months: 12, start: 4 },
+    { label: 'Phase 2 Reno', months: 7, start: 9 },
+    { label: 'Lease-Up', months: 6, start: 16 },
+  ];
+  const totalTimelineMonths: number = deal.totalTimelineMonths || 22;
+
+  const drawSchedule: { milestone: string; amount: number; pctDrawn: number }[] = deal.drawSchedule || [
+    { milestone: 'Closing', amount: askPrice, pctDrawn: seniorDebt > 0 ? Math.min(askPrice / seniorDebt, 1) : 0.51 },
+    { milestone: 'Reno Phase 1', amount: Math.round(renovationBudget * 0.45), pctDrawn: 0.65 },
+    { milestone: 'Expansion Start', amount: Math.round(expansionCost * 0.4), pctDrawn: 0.79 },
+    { milestone: 'Reno Phase 2', amount: Math.round(renovationBudget * 0.55), pctDrawn: 0.87 },
+    { milestone: 'Expansion Complete', amount: Math.round(expansionCost * 0.6), pctDrawn: 1.0 },
+  ].filter(d => d.amount > 0);
+
+  const moduleItems = [
+    { module: 'M02', label: 'Property & Zoning', status: 'complete', link: 'zoning' },
+    { module: 'M05', label: 'Market Intelligence', status: 'in-progress', link: 'market-intelligence' },
+    { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic-intelligence' },
+    { module: 'M09', label: 'Pro Forma', status: 'in-progress', link: 'proforma' },
+    { module: 'M11', label: 'Capital Structure', status: 'not-started', link: 'capital' },
+    { module: 'M13', label: 'Risk Management', status: 'not-started', link: 'risk-management' },
+    { module: 'M15', label: 'Competition', status: 'in-progress', link: 'competition' },
+    { module: 'M08', label: 'Strategy', status: 'not-started', link: 'strategy' },
+    { module: 'M17', label: 'Execution', status: 'not-started', link: 'execution' },
+  ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* §1 — Acquisition Summary */}
-      <SectionHead title="Acquisition Summary" right={`${existingUnits} existing units · Redevelopment`} accent={BT.amberL} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
-        <KVCard label="Ask Price" value={askPrice > 0 ? `$${(askPrice / 1_000_000).toFixed(1)}M` : '—'} note={ppu > 0 ? `$${ppu.toLocaleString()}/unit` : undefined} />
-        <KVCard label="Existing Units" value={existingUnits > 0 ? `${existingUnits}u` : '—'} note={expansionUnits > 0 ? `+${expansionUnits}u planned` : 'No expansion'} />
-        <KVCard label="Current NOI" value={currentNoi > 0 ? `$${(currentNoi / 1_000_000).toFixed(2)}M` : '—'} note={currentCapRate > 0 ? `${(currentCapRate * 100).toFixed(1)}% in-place cap` : undefined} />
-        <KVCard label="Stabilized NOI" value={stabilizedNoi > 0 ? `$${(stabilizedNoi / 1_000_000).toFixed(2)}M` : '—'} note={noiDelta > 0 ? `+$${(noiDelta / 1_000).toFixed(0)}K uplift` : undefined} valueColor="text-emerald-500" />
-        <KVCard label="Total Investment" value={totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—'} note={existingUnits > 0 && totalInvestment > 0 ? `$${Math.round(totalInvestment / Math.max(targetUnits, existingUnits)).toLocaleString()}/unit (stab.)` : undefined} />
-        <KVCard label="Exit Value" value={exitValue > 0 ? `$${(exitValue / 1_000_000).toFixed(1)}M` : '—'} note={exitValue > 0 && totalInvestment > 0 ? `${((exitValue / totalInvestment - 1) * 100).toFixed(0)}% value creation` : undefined} valueColor="text-emerald-500" />
-      </div>
-
-      {/* §2 — NOI Bridge */}
-      <SectionHead title="NOI Bridge — Renovation Upside" right="Renovation ROI Analysis" accent={BT.greenL} />
-      <div style={{ background: BT.bgCard, padding: '14px 16px', border: `1px solid ${BT.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 0, flexWrap: 'wrap', marginBottom: 14 }}>
-          {[
-            { label: 'In-Place NOI', value: currentNoi, color: BT.td },
-            { op: '+' },
-            { label: 'Renovation Uplift', value: noiDelta > 0 ? noiDelta : null, color: BT.greenL },
-            { op: '=' },
-            { label: 'Stabilized NOI', value: stabilizedNoi, color: BT.amberL, bold: true },
-            { op: '÷' },
-            { label: 'Exit Cap Rate', value: null, raw: exitCapRate > 0 ? `${(exitCapRate * 100).toFixed(2)}%` : '—', color: BT.tm },
-            { op: '=' },
-            { label: 'Exit Value', value: exitValue, color: BT.greenL, bold: true },
-          ].map((step, i) => {
-            if ('op' in step) {
-              return <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '0 8px', fontSize: 18, color: BT.td }}>{step.op}</div>;
-            }
-            const displayVal = step.raw ?? (step.value != null && step.value > 0 ? `$${(step.value / 1_000_000).toFixed(2)}M` : '—');
-            return (
-              <div key={i} style={{ textAlign: 'center', padding: '8px 10px', minWidth: 90 }}>
-                <div style={{ fontSize: 8, color: BT.td, marginBottom: 3, letterSpacing: 1, textTransform: 'uppercase', ...bMono }}>{step.label}</div>
-                <div style={{ fontSize: step.bold ? 16 : 13, fontWeight: 700, color: step.color, ...bMono }}>{displayVal}</div>
-              </div>
-            );
-          })}
+      {/* ═══ HEADER ═══ */}
+      <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `1px solid ${BT.border}` }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, color: BT.text, ...bSans }}>{deal.name || deal.projectName || 'Redevelopment Deal'}</span>
+              <RBadge label="REDEVELOPMENT" color={BT.violL} bg={BT.violBg} />
+              {deal.propertyClass && <RBadge label={deal.propertyClass} color={BT.amberL} bg={BT.amberBg} />}
+            </div>
+            <div style={{ fontSize: 11, color: BT.tm, ...bSans }}>{deal.address || '—'}</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 9, color: BT.td, ...bMono }}>ASK PRICE</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: BT.amberL, ...bMono }}>{askPrice > 0 ? `$${(askPrice / 1_000_000).toFixed(1)}M` : '—'}</div>
+            {ppu > 0 && <div style={{ fontSize: 10, color: BT.td, ...bMono }}>${ppu.toLocaleString()}/unit{pricePerSf > 0 ? ` · $${pricePerSf}/SF` : ''}</div>}
+          </div>
         </div>
-        {valueCreation > 0 && (
-          <div style={{ background: BT.greenBg, border: `1px solid ${BT.green}30`, borderRadius: 6, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: BT.greenL, ...bSans }}>Value Creation</span>
-            <span style={{ fontSize: 18, fontWeight: 700, color: BT.greenL, ...bMono }}>+${(valueCreation / 1_000_000).toFixed(1)}M</span>
-          </div>
-        )}
-        {renovROI > 0 && (
-          <div style={{ marginTop: 8, display: 'flex', gap: 16, fontSize: 9, color: BT.td, ...bMono }}>
-            <span>Renovation ROI: <strong style={{ color: BT.greenL }}>{(renovROI * 100).toFixed(0)}%</strong></span>
-            {renovBudgetPerUnit > 0 && <span>Reno $/Unit: <strong style={{ color: BT.amber }}>${renovBudgetPerUnit.toLocaleString()}</strong></span>}
-            {exitCapRate > 0 && <span>Exit Cap: <strong style={{ color: BT.tm }}>{(exitCapRate * 100).toFixed(2)}%</strong></span>}
-          </div>
-        )}
-      </div>
-
-      {/* §3 — Renovation Plan */}
-      <SectionHead title="Renovation + Expansion Plan" right="Scope of Work Summary" accent={BT.amber} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 12, ...bMono }}>RENOVATION SCOPE</div>
+        <div style={{ padding: '8px 20px', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', borderBottom: `1px solid ${BT.border}` }}>
           {[
-            { l: 'Unit Interiors', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.55 / 1_000).toLocaleString()}K` : '—', note: 'Kitchens, baths, flooring, fixtures' },
-            { l: 'Common Areas', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.20 / 1_000).toLocaleString()}K` : '—', note: 'Lobby, corridors, amenities' },
-            { l: 'Exterior + Landscaping', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.15 / 1_000).toLocaleString()}K` : '—', note: 'Curb appeal, signage' },
-            { l: 'MEP / Infrastructure', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.10 / 1_000).toLocaleString()}K` : '—', note: 'HVAC, plumbing, electrical' },
-          ].map((r, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
-              <div>
-                <div style={{ fontSize: 11, color: BT.ts, ...bSans }}>{r.l}</div>
-                <div style={{ fontSize: 9, color: BT.td, marginTop: 1, ...bSans }}>{r.note}</div>
-              </div>
-              <span style={{ fontSize: 11, fontWeight: 700, color: BT.amber, ...bMono, flexShrink: 0, marginLeft: 12 }}>{r.v}</span>
+            { l: 'PARCEL ID', v: deal.parcelId || '—' },
+            { l: 'LOT SIZE', v: lotSizeAcres > 0 ? `${lotSizeAcres} ac` : lotSizeSf > 0 ? `${(lotSizeSf / 43560).toFixed(1)} ac` : '—' },
+            { l: 'ZONING', v: zoning },
+            { l: 'YEAR BUILT', v: String(deal.yearBuilt || '—') },
+            { l: 'BUILDINGS', v: deal.buildings ? `${deal.buildings} bldgs · ${deal.stories || '—'}-story` : deal.stories ? `${deal.stories}-story` : '—' },
+            { l: 'PARKING', v: deal.parking?.spaces ? `${deal.parking.spaces} spaces (${deal.parking.ratio || '—'}/unit)` : '—' },
+          ].map((f, i) => (
+            <div key={i} style={{ padding: '6px 8px' }}>
+              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1, ...bMono }}>{f.l}</div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: BT.text, marginTop: 2, ...bSans }}>{f.v}</div>
             </div>
           ))}
-          {renovationBudget > 0 && (
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 4 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL RENOVATION</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: BT.amber, ...bMono }}>${(renovationBudget / 1_000_000).toFixed(1)}M</span>
-            </div>
-          )}
         </div>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 12, ...bMono }}>EXPANSION SCOPE</div>
-          {expansionUnits > 0 ? (
-            <>
-              {[
-                { l: 'New Units', v: `+${expansionUnits} units`, note: 'New construction or conversion' },
-                { l: 'Expansion Budget', v: expansionCost > 0 ? `$${(expansionCost / 1_000_000).toFixed(1)}M` : '—', note: `$${expansionCost > 0 && expansionUnits > 0 ? Math.round(expansionCost / expansionUnits).toLocaleString() : '—'}/unit` },
-                { l: 'Stabilized Portfolio', v: `${targetUnits} units`, note: `${existingUnits} renovated + ${expansionUnits} new` },
-              ].map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: BT.ts, ...bSans }}>{r.l}</div>
-                    <div style={{ fontSize: 9, color: BT.td, marginTop: 1, ...bSans }}>{r.note}</div>
-                  </div>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: BT.violL, ...bMono, flexShrink: 0, marginLeft: 12 }}>{r.v}</span>
-                </div>
-              ))}
-            </>
-          ) : (
-            <div style={{ textAlign: 'center', padding: '16px 0' }}>
-              <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>Renovation only — no expansion planned</p>
-              <p style={{ fontSize: 9, color: BT.td, ...bSans }}>All {existingUnits} existing units will be renovated</p>
-            </div>
-          )}
+        <div style={{ padding: '6px 20px', display: 'flex', gap: 20, background: BT.bg }}>
+          {deal.assessedValue > 0 && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>Assessed: <span style={{ color: BT.text }}>${(deal.assessedValue / 1_000_000).toFixed(1)}M</span></span>}
+          {deal.lastSalePrice > 0 && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>Last Sale: <span style={{ color: BT.text }}>${(deal.lastSalePrice / 1_000_000).toFixed(1)}M{deal.lastSaleDate ? ` (${new Date(deal.lastSaleDate).getFullYear()})` : ''}</span></span>}
+          {zoningDesc && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>Zoning: <span style={{ color: BT.text }}>{zoningDesc}</span></span>}
         </div>
       </div>
 
-      {/* §4 — Development Budget + Timeline */}
-      <SectionHead title="Budget Breakdown + Execution Timeline" right="M09 ProForma · M08 Strategy" accent={BT.amber} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 12, ...bMono }}>TOTAL INVESTMENT</div>
-          {budgetRows.length > 0 ? (
-            <>
-              <div style={{ display: 'flex', height: 20, borderRadius: 4, overflow: 'hidden', marginBottom: 14 }}>
-                {budgetRows.map((b, i) => {
-                  const w = totalInvestment > 0 ? (b.v / totalInvestment) * 100 : 25;
-                  return <div key={i} style={{ width: `${w}%`, background: b.c, opacity: 0.7 }} title={`${b.l}: $${(b.v / 1_000_000).toFixed(1)}M`} />;
-                })}
-              </div>
-              {budgetRows.map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 2, background: r.c, opacity: 0.8 }} />
-                    <span style={{ fontSize: 11, color: BT.ts, ...bSans }}>{r.l}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bMono }}>${(r.v / 1_000_000).toFixed(1)}M</span>
-                    <span style={{ fontSize: 9, color: BT.td, ...bMono }}>{totalInvestment > 0 ? `${((r.v / totalInvestment) * 100).toFixed(0)}%` : ''}</span>
-                  </div>
+      {/* ═══ §1 — ACQUISITION + AS-IS METRICS ═══ */}
+      <div>
+        <RSection number="1" title="Acquisition + As-Is Metrics" subtitle="What you're buying today — current operations baseline" />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 10 }}>
+          <RCard><RMetric label="GOING-IN CAP RATE" value={existingCapRate > 0 ? `${(existingCapRate * 100).toFixed(2)}%` : '—'} sub="Based on trailing 12mo NOI" /></RCard>
+          <RCard><RMetric label="CURRENT NOI" value={existingNoi > 0 ? `$${(existingNoi / 1_000).toFixed(0)}K` : '—'} sub={`Expense ratio: ${(existingExpenseRatio * 100).toFixed(0)}%`} /></RCard>
+          <RCard><RMetric label="OCCUPANCY" value={existingOccupancy > 0 ? `${(existingOccupancy * 100).toFixed(0)}%` : '—'} sub="Physical occupancy" color={existingOccupancy > 0 && existingOccupancy < 0.9 ? BT.amberL : BT.text} /></RCard>
+          <RCard><RMetric label="AVG RENT / UNIT" value={existingRentPerUnit > 0 ? `$${existingRentPerUnit.toLocaleString()}/mo` : '—'} sub="All unit types blended" /></RCard>
+        </div>
+        <RCard>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 24 }}>
+              {[
+                { l: 'Roof Age', v: deal.roofAge ? `${deal.roofAge} yrs` : '—', warn: (deal.roofAge || 0) > 10 },
+                { l: 'HVAC Age', v: deal.hvacAge ? `${deal.hvacAge} yrs` : '—', warn: (deal.hvacAge || 0) > 10 },
+                { l: 'Plumbing', v: deal.plumbingCondition || '—', warn: deal.plumbingCondition === 'Poor' },
+                { l: 'Electrical', v: deal.electricalCondition || '—', warn: false },
+              ].map((c, i) => (
+                <div key={i}>
+                  <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1, ...bMono }}>{c.l}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: c.warn ? BT.amberL : BT.text, ...bSans }}>{c.v}</div>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, marginTop: 4 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL INVESTMENT</span>
-                <span style={{ fontSize: 16, fontWeight: 700, color: BT.amber, ...bMono }}>${(totalInvestment / 1_000_000).toFixed(1)}M</span>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1, ...bMono }}>DEFERRED MAINTENANCE</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: deferred > 0 ? BT.redL : BT.td, ...bMono }}>{deferred > 0 ? `$${(deferred / 1_000).toFixed(0)}K` : '—'}</div>
+            </div>
+          </div>
+        </RCard>
+      </div>
+
+      {/* ═══ §2 — NOI TRANSFORMATION ═══ */}
+      <div>
+        <RSection number="2" title="NOI Transformation" subtitle="The value story — from as-is to stabilized" color={BT.greenL} />
+        <RCard style={{ background: `linear-gradient(135deg, ${BT.bgCard} 0%, ${BT.greenBg}50 100%)`, border: `1px solid ${BT.green}25` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', alignItems: 'center' }}>
+            <div style={{ textAlign: 'center', padding: 16 }}>
+              <div style={{ fontSize: 9, color: BT.td, marginBottom: 4, ...bMono }}>AS-IS NOI</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: BT.text, ...bMono }}>{existingNoi > 0 ? `$${(existingNoi / 1_000).toFixed(0)}K` : '—'}</div>
+              <div style={{ fontSize: 10, color: BT.tm, marginTop: 4, ...bSans }}>
+                {existingUnits > 0 ? `${existingUnits} units` : ''}{existingOccupancy > 0 ? ` · ${(existingOccupancy * 100).toFixed(0)}% occ` : ''}{existingRentPerUnit > 0 ? ` · $${existingRentPerUnit.toLocaleString()}/mo` : ''}
               </div>
-            </>
+            </div>
+            <div style={{ fontSize: 22, color: BT.td, padding: '0 6px' }}>→</div>
+            <div style={{ textAlign: 'center', padding: 16, background: BT.greenBg, borderRadius: 8 }}>
+              <div style={{ fontSize: 9, color: BT.greenL, marginBottom: 4, ...bMono }}>STABILIZED NOI</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: BT.greenL, ...bMono }}>{stabilizedNoi > 0 ? `$${(stabilizedNoi / 1_000_000).toFixed(2)}M` : '—'}</div>
+              <div style={{ fontSize: 10, color: BT.tm, marginTop: 4, ...bSans }}>
+                {totalUnits > 0 ? `${totalUnits} units` : ''}{` · ${(stabilizedOccupancy * 100).toFixed(0)}% occ`}{stabilizedRentPerUnit > 0 ? ` · $${stabilizedRentPerUnit.toLocaleString()}/mo` : ''}
+              </div>
+            </div>
+            <div style={{ fontSize: 22, color: BT.td, padding: '0 6px' }}>=</div>
+            <div style={{ textAlign: 'center', padding: 16, background: BT.amberBg, borderRadius: 8 }}>
+              <div style={{ fontSize: 9, color: BT.amberL, marginBottom: 4, ...bMono }}>NOI UPLIFT</div>
+              <div style={{ fontSize: 28, fontWeight: 700, color: BT.amberL, ...bMono }}>{noiDelta > 0 ? `+$${(noiDelta / 1_000).toFixed(0)}K` : '—'}</div>
+              <div style={{ fontSize: 10, color: BT.tm, marginTop: 4, ...bSans }}>
+                {existingNoi > 0 && noiDelta > 0 ? `+${((noiDelta / existingNoi) * 100).toFixed(0)}% increase` : ''}{rentDelta > 0 ? ` · +$${rentDelta.toLocaleString()}/unit lift` : ''}
+              </div>
+            </div>
+          </div>
+        </RCard>
+      </div>
+
+      {/* ═══ §3 — SITE + ZONING CAPACITY ═══ */}
+      <div>
+        <RSection number="3" title="Site + Zoning Capacity" subtitle="What the zoning allows vs what exists — expansion feasibility" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <RCard>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 10, ...bMono }}>DENSITY ANALYSIS</div>
+            {(existingUnits > 0 || additionalIfRezoned > 0) && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, color: BT.tm, ...bSans }}>Existing: {existingUnits} units</span>
+                  <span style={{ fontSize: 10, color: BT.tm, ...bSans }}>Max (if rezoned): {existingUnits + additionalIfRezoned} units</span>
+                </div>
+                <div style={{ height: 20, background: BT.bgPanel, borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                  {(existingUnits + additionalIfRezoned) > 0 && (
+                    <>
+                      <div style={{ width: `${(existingUnits / (existingUnits + additionalIfRezoned)) * 100}%`, height: '100%', background: BT.blue, borderRadius: '4px 0 0 4px' }} />
+                      {additionalWithVariance > 0 && (
+                        <div style={{
+                          position: 'absolute', top: 0,
+                          left: `${(existingUnits / (existingUnits + additionalIfRezoned)) * 100}%`,
+                          width: `${(additionalWithVariance / (existingUnits + additionalIfRezoned)) * 100}%`,
+                          height: '100%', background: `${BT.violL}60`,
+                        }} />
+                      )}
+                    </>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 14, marginTop: 5 }}>
+                  <span style={{ fontSize: 9, color: BT.blueL, ...bMono }}>● Existing ({existingUnits})</span>
+                  {additionalWithVariance > 0 && <span style={{ fontSize: 9, color: BT.violL, ...bMono }}>● Expansion ({additionalWithVariance} w/ variance)</span>}
+                  {(additionalIfRezoned - additionalWithVariance) > 0 && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>○ Remaining ({additionalIfRezoned - additionalWithVariance} if rezoned)</span>}
+                </div>
+              </div>
+            )}
+            <RDataRow label="Current Zoning" value={zoningDesc ? `${zoning} — ${zoningDesc}` : zoning} />
+            {maxDensity > 0 && <RDataRow label="Max Density (current)" value={`${maxDensity} DU/acre`} />}
+            <RDataRow label="By-Right Additional" value={additionalByRight > 0 ? `+${additionalByRight} units` : '0 — existing may be legally nonconforming'} />
+            {additionalWithVariance > 0 && <RDataRow label="With Variance" value={`+${additionalWithVariance} units`} />}
+            {additionalIfRezoned > 0 && <RDataRow label="Full Rezone Potential" value={`+${additionalIfRezoned} units`} />}
+          </RCard>
+          <RCard>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 10, ...bMono }}>ZONING ENVELOPE</div>
+            {[
+              { l: 'Max Height', v: deal.maxHeight ? `${deal.maxHeight} ft` : '—' },
+              { l: 'Max Lot Coverage', v: deal.maxLotCoverage ? `${(deal.maxLotCoverage * 100).toFixed(0)}%` : '—' },
+              { l: 'Lot Size', v: lotSizeAcres > 0 ? `${lotSizeAcres} acres${lotSizeSf > 0 ? ` (${lotSizeSf.toLocaleString()} SF)` : ''}` : '—' },
+              { l: 'Existing Coverage', v: deal.existingCoverage || '~42%' },
+              { l: 'Available for Expansion', v: lotSizeSf > 0 ? `~${Math.round(lotSizeSf * 0.18).toLocaleString()} SF` : '—' },
+            ].map((r, i) => <RDataRow key={i} label={r.l} value={r.v} />)}
+            {expansionRequiresVariance && (
+              <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 6, background: BT.amberBg, border: `1px solid ${BT.amber}40` }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, marginBottom: 3, ...bMono }}>⚠ VARIANCE REQUIRED</div>
+                <p style={{ fontSize: 10, color: BT.amberL, lineHeight: 1.5, ...bSans }}>
+                  Expansion of {expansionUnits > 0 ? expansionUnits : 'planned'} units requires a variance or rezoning. Entitlement timeline: ~6–9 months.
+                </p>
+              </div>
+            )}
+          </RCard>
+        </div>
+      </div>
+
+      {/* ═══ §4 — RENOVATION + EXPANSION SCOPE ═══ */}
+      <div>
+        <RSection number="4" title="Renovation + Expansion Scope" subtitle="Dual-track: interior upgrades on existing + new construction" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <RCard style={{ borderLeft: `3px solid ${BT.blue}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: 2, color: BT.blueL, ...bMono }}>RENOVATION</div>
+                <div style={{ fontSize: 10, color: BT.tm, marginTop: 2, ...bSans }}>{existingUnits} units · full interior</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: BT.text, ...bMono }}>{renovationBudget > 0 ? `$${(renovationBudget / 1_000_000).toFixed(1)}M` : '—'}</div>
+                {renovPerUnit > 0 && <div style={{ fontSize: 10, color: BT.td, ...bMono }}>${renovPerUnit.toLocaleString()}/unit</div>}
+              </div>
+            </div>
+            {renovScope.filter(s => s.costPerUnit > 0).map((s, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${BT.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: Math.round(s.percentage * 60), minWidth: 4, height: 5, borderRadius: 2, background: BT.blue, opacity: 0.7 }} />
+                  <span style={{ fontSize: 11, color: BT.ts, ...bSans }}>{s.item}</span>
+                </div>
+                <span style={{ fontSize: 11, color: BT.tm, ...bMono }}>{s.costPerUnit > 0 ? `$${s.costPerUnit.toLocaleString()}/unit` : '—'}</span>
+              </div>
+            ))}
+            {rentDelta > 0 && (
+              <div style={{ marginTop: 10, padding: '8px 10px', background: BT.blueBg, borderRadius: 6, display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, color: BT.blueL, ...bSans }}>Rent uplift after renovation</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: BT.blueL, ...bMono }}>+${rentDelta.toLocaleString()}/mo (+{existingRentPerUnit > 0 ? `${((rentDelta / existingRentPerUnit) * 100).toFixed(0)}%` : '—'})</span>
+              </div>
+            )}
+          </RCard>
+          <RCard style={{ borderLeft: `3px solid ${BT.violL}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 9, letterSpacing: 2, color: BT.violL, ...bMono }}>EXPANSION</div>
+                <div style={{ fontSize: 10, color: BT.tm, marginTop: 2, ...bSans }}>+{expansionUnits} new units · {expansionType}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: BT.text, ...bMono }}>{expansionCost > 0 ? `$${(expansionCost / 1_000_000).toFixed(1)}M` : '—'}</div>
+                {expansionCostPerUnit > 0 && <div style={{ fontSize: 10, color: BT.td, ...bMono }}>${expansionCostPerUnit.toLocaleString()}/unit</div>}
+              </div>
+            </div>
+            <RDataRow label="New Units" value={expansionUnits > 0 ? `+${expansionUnits}` : '—'} />
+            {expansionSqft > 0 && <RDataRow label="New SF" value={`${expansionSqft.toLocaleString()} SF`} />}
+            <RDataRow label="Building Type" value={expansionType} />
+            {deal.expansionParkingAdd > 0 && <RDataRow label="Additional Parking" value={`+${deal.expansionParkingAdd} spaces`} />}
+            {expansionCost > 0 && expansionSqft > 0 && <RDataRow label="Cost / SF" value={`$${Math.round(expansionCost / expansionSqft).toLocaleString()}`} />}
+            <RDataRow label="Entitlement Status" value={expansionRequiresVariance ? 'Variance needed' : 'By-right'} />
+            <div style={{ marginTop: 10, padding: '8px 10px', background: BT.violBg, borderRadius: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 10, color: BT.violL, ...bSans }}>Total post-expansion</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: BT.violL, ...bMono }}>{totalUnits} units{expansionSqft > 0 && deal.existingSqft > 0 ? ` · ${(deal.existingSqft + expansionSqft).toLocaleString()} SF` : ''}</span>
+              </div>
+            </div>
+          </RCard>
+        </div>
+      </div>
+
+      {/* ═══ §5 — UNIT MIX PROGRAM ═══ */}
+      <div>
+        <RSection number="5" title="Unit Mix Program" subtitle="Existing mix + expansion additions → blended stabilized portfolio" />
+        <RCard>
+          {(existingMix.length > 0 || expansionMix.length > 0) ? (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', ...bMono }}>
+                <thead>
+                  <tr style={{ background: BT.bgPanel, borderBottom: `2px solid ${BT.border}` }}>
+                    {['Type', 'Count', 'Avg SF', 'Current Rent', 'Target Rent', 'Δ Rent', 'Δ %'].map((h, i) => (
+                      <th key={i} style={{ padding: '7px 10px', textAlign: i > 0 ? 'right' : 'left', fontSize: 8, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {existingMix.length > 0 && (
+                    <tr><td colSpan={7} style={{ padding: '5px 10px', fontSize: 8, letterSpacing: 2, color: BT.blueL, background: BT.bg, ...bMono }}>EXISTING ({existingUnits} UNITS)</td></tr>
+                  )}
+                  {existingMix.map((u, i) => {
+                    const delta = u.targetRent - u.currentRent;
+                    return (
+                      <tr key={`e${i}`} style={{ borderBottom: `1px solid ${BT.border}`, background: i % 2 === 0 ? BT.bgCard : BT.bgPanel }}>
+                        <td style={{ padding: '6px 10px', color: BT.ts, ...bSans }}>{u.type}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{u.count}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{u.avgSf}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>${u.currentRent.toLocaleString()}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.greenL, fontWeight: 600 }}>${u.targetRent.toLocaleString()}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.greenL }}>+${delta.toLocaleString()}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.greenL }}>+{u.currentRent > 0 ? `${((delta / u.currentRent) * 100).toFixed(0)}%` : '—'}</td>
+                      </tr>
+                    );
+                  })}
+                  {expansionMix.length > 0 && (
+                    <tr><td colSpan={7} style={{ padding: '5px 10px', fontSize: 8, letterSpacing: 2, color: BT.violL, background: BT.bg, ...bMono }}>EXPANSION (+{expansionUnits} UNITS)</td></tr>
+                  )}
+                  {expansionMix.map((u, i) => (
+                    <tr key={`x${i}`} style={{ borderBottom: `1px solid ${BT.border}`, background: i % 2 === 0 ? BT.bgCard : BT.bgPanel }}>
+                      <td style={{ padding: '6px 10px', color: BT.ts, ...bSans }}>{u.type}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.violL }}>+{u.count}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{u.avgSf}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.td }}>—</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.violL, fontWeight: 600 }}>${u.targetRent.toLocaleString()}</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.td }}>—</td>
+                      <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.td }}>—</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: BT.bgPanel, borderTop: `2px solid ${BT.amber}40` }}>
+                    <td colSpan={7} style={{ padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: BT.ts, ...bSans }}>Stabilized Portfolio: {totalUnits} units</span>
+                        {stabilizedRentPerUnit > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: BT.amberL, ...bMono }}>Blended avg: ${stabilizedRentPerUnit.toLocaleString()}/mo</span>}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <p style={{ fontSize: 10, color: BT.ts, ...bSans }}>Budget data not available</p>
+              <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>No unit mix data configured</p>
+              <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Add existing and expansion unit mix data to your deal to populate this table.</p>
               <button onClick={() => navigateToTab('proforma')} style={{ fontSize: 9, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>Build ProForma →</button>
             </div>
           )}
-        </div>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 14, ...bMono }}>EXECUTION TIMELINE</div>
-          {timeline.map((ph, i) => {
-            const left = (ph.start / TOTAL_MO) * 100;
-            const width = (ph.dur / TOTAL_MO) * 100;
-            const colors = [BT.amber, BT.blue, BT.violL, BT.cyanL, BT.greenL];
-            const c = colors[i % colors.length];
-            const textColor = ph.status === 'active' ? c : BT.td;
-            return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
-                <span style={{ fontSize: 9, color: BT.ts, width: 110, textAlign: 'right', flexShrink: 0, ...bSans }}>{ph.phase}</span>
-                <div style={{ flex: 1, height: 16, background: BT.bgPanel, position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', height: '100%', background: c, opacity: 0.2, left: `${left}%`, width: `${width}%` }} />
-                  <div style={{ position: 'absolute', height: '100%', borderLeft: `2px solid ${c}`, display: 'flex', alignItems: 'center', paddingLeft: 4, left: `${left}%`, width: `${width}%` }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: c, ...bMono }}>{ph.dur}mo</span>
-                  </div>
-                </div>
-                <span style={{ fontSize: 8, width: 36, textAlign: 'right', color: textColor, ...bMono }}>{ph.status === 'active' ? 'NOW' : ''}</span>
+        </RCard>
+      </div>
+
+      {/* ═══ §6 — DEVELOPMENT BUDGET + TIMELINE ═══ */}
+      <div>
+        <RSection number="6" title="Development Budget + Timeline" subtitle="Full cost breakdown and phased execution schedule" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <RCard>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 10, ...bMono }}>TOTAL INVESTMENT</div>
+            {budgetBreakdown.length > 0 && (
+              <div style={{ display: 'flex', height: 20, borderRadius: 4, overflow: 'hidden', marginBottom: 14 }}>
+                {budgetBreakdown.map((b, i) => (
+                  <div key={i} style={{ width: `${totalInvestment > 0 ? (b.amount / totalInvestment) * 100 : 0}%`, background: b.color, opacity: 0.75 }}
+                    title={`${b.category}: $${(b.amount / 1_000_000).toFixed(1)}M`} />
+                ))}
               </div>
-            );
-          })}
-          <div style={{ display: 'flex', marginTop: 8, borderTop: `1px solid ${BT.border}`, paddingTop: 6, paddingLeft: 118, paddingRight: 36 }}>
-            {[0, 6, 12, 18, 24, 30].filter(m => m <= TOTAL_MO + 4).map(m => (
-              <div key={m} style={{ flex: 1, fontSize: 8, color: BT.td, ...bMono }}>M{m}</div>
+            )}
+            {budgetBreakdown.map((b, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: `1px solid ${BT.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: b.color }} />
+                  <span style={{ fontSize: 11, color: BT.ts, ...bSans }}>{b.category}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bMono }}>${(b.amount / 1_000_000).toFixed(1)}M</span>
+                  {totalInvestment > 0 && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>{((b.amount / totalInvestment) * 100).toFixed(0)}%</span>}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 4 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL INVESTMENT</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: BT.amber, ...bMono }}>{totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—'}</span>
+            </div>
+          </RCard>
+          <RCard>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 12, ...bMono }}>EXECUTION TIMELINE</div>
+            <div style={{ position: 'relative', height: phases.length * 30 + 8, marginBottom: 10 }}>
+              {phases.map((p, i) => {
+                const totalM = totalTimelineMonths + 2;
+                const colors = [BT.amber, BT.blue, BT.violL, BT.blue, BT.greenL];
+                const c = colors[i % colors.length];
+                return (
+                  <div key={i} style={{
+                    position: 'absolute', left: `${(p.start / totalM) * 100}%`,
+                    width: `${(p.months / totalM) * 100}%`, top: i * 28, height: 22,
+                    background: `${c}20`, border: `1px solid ${c}50`, borderRadius: 4,
+                    display: 'flex', alignItems: 'center', paddingLeft: 6,
+                  }}>
+                    <span style={{ fontSize: 9, fontWeight: 600, color: c, ...bMono, whiteSpace: 'nowrap' }}>{p.label} ({p.months}mo)</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: `1px solid ${BT.border}`, paddingTop: 6 }}>
+              <span style={{ fontSize: 9, color: BT.td, ...bMono }}>Month 0</span>
+              <span style={{ fontSize: 9, color: BT.td, ...bMono }}>Stabilized — Month {totalTimelineMonths + 2}</span>
+            </div>
+          </RCard>
+        </div>
+      </div>
+
+      {/* ═══ §7 — CAPITAL STRUCTURE ═══ */}
+      <div>
+        <RSection number="7" title="Capital Structure" subtitle="Bridge-to-perm with renovation and expansion draw schedules" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <RCard>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 10, ...bMono }}>SOURCES</div>
+            <RDataRow label="Senior Debt (Bridge)" value={seniorDebt > 0 ? `$${(seniorDebt / 1_000_000).toFixed(1)}M` : '—'} />
+            <RDataRow label="LTV" value={ltv > 0 ? `${(ltv * 100).toFixed(1)}%` : '—'} />
+            <RDataRow label="Rate" value={bridgeRate > 0 ? `${(bridgeRate * 100).toFixed(2)}%` : '—'} />
+            <RDataRow label="Term" value={bridgeTerm} />
+            <RDataRow label="Lender Type" value={lenderType} />
+            <div style={{ height: 12 }} />
+            <RDataRow label="Sponsor Equity" value={equityRequired > 0 ? `$${(equityRequired / 1_000_000).toFixed(1)}M` : '—'} />
+            <RDataRow label="LP/GP Split" value={equitySplit} />
+            <RDataRow label="Pref Return" value={prefReturn > 0 ? `${(prefReturn * 100).toFixed(0)}%` : '—'} />
+            <RDataRow label="Promote" value={promote} />
+            <RDataRow label="Total Capitalization" value={totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—'} bold />
+          </RCard>
+          <RCard>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 10, ...bMono }}>DRAW SCHEDULE</div>
+            {drawSchedule.length > 0 ? drawSchedule.map((d, i) => (
+              <div key={i} style={{ marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, color: BT.ts, ...bSans }}>{d.milestone}</span>
+                  <span style={{ fontSize: 10, color: BT.tm, ...bMono }}>{d.amount > 0 ? `$${(d.amount / 1_000_000).toFixed(1)}M` : '—'}</span>
+                </div>
+                <div style={{ height: 7, background: BT.bgPanel, borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(d.pctDrawn * 100, 100)}%`, height: '100%', background: BT.amber, borderRadius: 3, transition: 'width 0.5s' }} />
+                </div>
+                <div style={{ fontSize: 8, color: BT.td, marginTop: 2, textAlign: 'right', ...bMono }}>{(d.pctDrawn * 100).toFixed(0)}% drawn</div>
+              </div>
+            )) : (
+              <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                <p style={{ fontSize: 10, color: BT.ts, ...bSans }}>Configure capital stack to see draw schedule</p>
+                <button onClick={() => navigateToTab('capital')} style={{ fontSize: 9, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, marginTop: 6, ...bSans }}>Configure Capital Stack →</button>
+              </div>
+            )}
+          </RCard>
+        </div>
+      </div>
+
+      {/* ═══ §8 — VALUE BRIDGE + RETURNS ═══ */}
+      <div>
+        <RSection number="8" title="Value Bridge + Returns" subtitle="Total basis → stabilized value → value creation" />
+        <RCard style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 0, flexWrap: 'wrap' }}>
+            {([
+              { label: 'Acquisition', value: askPrice, color: BT.amber },
+              { op: '+' },
+              { label: 'Renovation', value: renovationBudget, color: BT.blue },
+              { op: '+' },
+              { label: 'Deferred Maint', value: deferred, color: BT.redL },
+              { op: '+' },
+              { label: 'Expansion', value: expansionCost, color: BT.violL },
+              { op: '+' },
+              { label: 'Soft + Closing', value: Math.max(0, totalInvestment - askPrice - renovationBudget - deferred - expansionCost), color: BT.td },
+              { op: '=' },
+              { label: 'Total Basis', value: totalInvestment, color: BT.amberL, bold: true },
+              { op: '→' },
+              { label: 'Stabilized Value', value: exitValue, color: BT.greenL, bold: true },
+            ] as Array<{ op: string } | { label: string; value: number; color: string; bold?: boolean }>).map((step, i) => {
+              if ('op' in step) return <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '0 4px', fontSize: 14, color: BT.td }}>{step.op}</div>;
+              const displayV = step.value > 0 ? `$${(step.value / 1_000_000).toFixed(1)}M` : '—';
+              return (
+                <div key={i} style={{ textAlign: 'center', padding: '8px 6px', minWidth: 66 }}>
+                  <div style={{ fontSize: 8, color: BT.td, marginBottom: 2, ...bMono }}>{step.label}</div>
+                  <div style={{ fontSize: step.bold ? 15 : 12, fontWeight: 700, color: step.color, ...bMono }}>{displayV}</div>
+                </div>
+              );
+            })}
+          </div>
+          {valueCreation > 0 && (
+            <div style={{ marginTop: 10, background: BT.greenBg, border: `1px solid ${BT.green}30`, borderRadius: 6, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: BT.greenL, ...bSans }}>Value Creation</span>
+              <span style={{ fontSize: 20, fontWeight: 700, color: BT.greenL, ...bMono }}>+${(valueCreation / 1_000_000).toFixed(1)}M</span>
+            </div>
+          )}
+        </RCard>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+          <RCard><RMetric label="PROJ. IRR" value={irrStr} sub="Levered, 5-year hold" color={BT.greenL} /></RCard>
+          <RCard><RMetric label="EQUITY MULTIPLE" value={emStr} sub={equityRequired > 0 ? `On $${(equityRequired / 1_000_000).toFixed(1)}M equity` : undefined} color={BT.greenL} /></RCard>
+          <RCard><RMetric label="RENOVATION ROI" value={renovROI > 0 ? `${(renovROI * 100).toFixed(0)}%` : '—'} sub={noiDelta > 0 && (renovationBudget + expansionCost) > 0 ? `$${(noiDelta / 1_000).toFixed(0)}K uplift / $${((renovationBudget + expansionCost) / 1_000_000).toFixed(1)}M spent` : undefined} color={renovROI > 1 ? BT.greenL : BT.amber} /></RCard>
+          <RCard><RMetric label="CASH-ON-CASH (Y1)" value={cashOnCash != null ? `${cashOnCash}%` : '—'} sub="Year 1 levered yield" /></RCard>
+        </div>
+      </div>
+
+      {/* ═══ §9 — DUE DILIGENCE + MODULE ACCESS ═══ */}
+      <div>
+        <RSection number="9" title="Due Diligence + Module Access" subtitle="Jump into any module — status tracked across the deal lifecycle" />
+        <RCard>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+            {moduleItems.map((item, i) => (
+              <button
+                key={i}
+                onClick={() => navigateToTab(item.link)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                  background: BT.bg, borderRadius: 6, border: `1px solid ${BT.border}`,
+                  cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.borderColor = BT.amber)}
+                onMouseLeave={e => (e.currentTarget.style.borderColor = BT.border)}
+              >
+                <RStatusDot status={item.status} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: BT.text, ...bSans }}>{item.label}</div>
+                  <div style={{ fontSize: 9, color: BT.td, ...bMono }}>{item.module}</div>
+                </div>
+                <span style={{ fontSize: 9, color: BT.td, textTransform: 'capitalize', flexShrink: 0, ...bSans }}>{item.status.replace('-', ' ')}</span>
+              </button>
             ))}
           </div>
-          <div style={{ fontSize: 9, color: BT.td, marginTop: 8, ...bMono }}>
-            Total execution: <strong style={{ color: BT.amber }}>~{TOTAL_MO} months</strong> to stabilization
-          </div>
-        </div>
-      </div>
-
-      {/* §5 — Capital Structure */}
-      <SectionHead title="Capital Structure" right="M11 Capital Stack" accent={BT.violL} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
-        {[
-          { l: 'Senior Debt (Bridge)', v: seniorDebt > 0 ? `$${(seniorDebt / 1_000_000).toFixed(1)}M` : '—', c: BT.amber },
-          { l: 'LTV', v: ltv > 0 ? `${(ltv * 100).toFixed(0)}%` : '—', c: BT.amber },
-          { l: 'Sponsor Equity', v: equityRequired > 0 ? `$${(equityRequired / 1_000_000).toFixed(1)}M` : '—', c: BT.violL },
-          { l: 'Total Capitalization', v: totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—', c: BT.ts },
-        ].map((m, i) => (
-          <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
-            <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ background: BT.bgCard, padding: '10px 16px', borderTop: `1px solid ${BT.border}`, display: 'flex', gap: 24, alignItems: 'center' }}>
-        <button onClick={() => navigateToTab('capital')} style={{ fontSize: 10, color: BT.violL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
-          Configure Capital Stack →
-        </button>
-        <span style={{ fontSize: 9, color: BT.td, ...bSans }}>Bridge-to-perm with renovation draw schedule</span>
-      </div>
-
-      {/* §6 — Returns */}
-      <SectionHead title="Returns Summary" right="Levered Returns · 5-Year Hold" accent={BT.greenL} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
-        {[
-          { l: 'Proj. IRR', v: irr, c: BT.greenL, sub: 'Levered, 5-yr hold' },
-          { l: 'Equity Multiple', v: equityMultiple, c: BT.greenL, sub: equityRequired > 0 ? `On $${(equityRequired / 1_000_000).toFixed(1)}M equity` : undefined },
-          { l: 'Renovation ROI', v: renovROI > 0 ? `${(renovROI * 100).toFixed(0)}%` : '—', c: renovROI > 1 ? BT.greenL : BT.amber, sub: 'Value add / cost' },
-          { l: 'Exit Value', v: exitValue > 0 ? `$${(exitValue / 1_000_000).toFixed(1)}M` : '—', c: BT.amberL, sub: exitCapRate > 0 ? `${(exitCapRate * 100).toFixed(2)}% cap` : undefined },
-        ].map((m, i) => (
-          <div key={i} style={{ background: BT.bgCard, padding: '12px 14px' }}>
-            <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>{m.l}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
-            {m.sub && <div style={{ fontSize: 9, color: BT.td, marginTop: 4, ...bMono }}>{m.sub}</div>}
-          </div>
-        ))}
-      </div>
-
-      {/* §7 — Site Diligence */}
-      <SectionHead title="Due Diligence Tracker" right="M13 Risk · M17 Execution" accent={BT.amber} />
-      <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, padding: '4px 0' }}>
-        {(() => {
-          const done = ddItems.filter(d => d.done).length;
-          const total = ddItems.length;
-          return (
-            <div style={{ padding: '8px 14px 12px', borderBottom: `1px solid ${BT.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 9, color: BT.td, letterSpacing: 1, ...bMono }}>COMPLETION</span>
-                <span style={{ fontSize: 9, fontWeight: 700, color: done === total ? BT.greenL : BT.amber, ...bMono }}>{done}/{total} items</span>
-              </div>
-              <div style={{ height: 3, background: BT.bgPanel, borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${total > 0 ? (done / total) * 100 : 0}%`, background: done === total ? BT.green : BT.amber, borderRadius: 2, transition: 'all 0.3s' }} />
-              </div>
-            </div>
-          );
-        })()}
-        {ddItems.map((item, i) => <DDItem key={i} label={item.l} done={item.done} />)}
-        <div style={{ padding: '8px 14px' }}>
-          <button onClick={() => navigateToTab('risk-management')} style={{ fontSize: 9, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
-            Open Due Diligence Dashboard →
-          </button>
-        </div>
+        </RCard>
       </div>
 
     </div>
