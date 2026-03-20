@@ -1,5 +1,12 @@
 # JEDI RE — MASTER RUNBOOK FOR CLAUDE CODE SESSIONS
+## SESSION INSTRUCTIONS
 
+Before doing ANYTHING, read these files in order:
+1. `CLAUDE.md` (this file — architectural context)
+2. `JEDI_RE_MASTER_RUNBOOK.md` (session-by-session task plan)
+3. `FEATURE_EXPANSION.md` (feature map)
+
+Find the next unchecked `[ ]` block in the MASTER_RUNBOOK. That is your task for this session. Do not skip ahead. When done, mark completed items with `[x]`.
 > **Purpose:** Systematic, session-by-session plan to audit, wire, fix, and enhance every layer of the JEDI RE platform.  
 > **How to use:** Drop this file + `CLAUDE.md` + `FEATURE_EXPANSION.md` at repo root. Each Claude Code session picks up the next unchecked block. Mark `[x]` as you go.  
 > **Estimated total sessions:** 30–40 scoped sessions across 8 phases.
