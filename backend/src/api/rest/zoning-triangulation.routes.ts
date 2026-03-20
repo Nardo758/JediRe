@@ -185,7 +185,8 @@ router.post('/zoning/outcome', async (req: Request, res: Response) => {
     res.json({ success: true, data: { outcomeId } });
   } catch (error: any) {
     console.error('Outcome recording error:', error);
-    res.status(500).json({ error: error.message });
+    const isNotFound = error.message && error.message.includes('not found');
+    res.status(isNotFound ? 404 : 500).json({ error: error.message });
   }
 });
 
