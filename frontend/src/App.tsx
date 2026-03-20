@@ -66,6 +66,18 @@ import { useParams } from 'react-router-dom';
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
  * Maps old module names to tab equivalents for backward compatibility
  */
+const RedirectDealToDetail: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  if (!id) return <Navigate to="/deals" replace />;
+  return <Navigate to={`/deals/${id}/detail?tab=map`} replace />;
+};
+
+const RedirectDealIdToDetail: React.FC = () => {
+  const { dealId } = useParams<{ dealId: string }>();
+  if (!dealId) return <Navigate to="/deals" replace />;
+  return <Navigate to={`/deals/${dealId}/detail`} replace />;
+};
+
 const RedirectDealViewToTab: React.FC = () => {
   const { id, module } = useParams<{ id: string; module: string }>();
   if (!id || !module) return <Navigate to="/deals" replace />;
@@ -188,11 +200,11 @@ function AppContent() {
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
-          <Route path="/deals/:dealId/view" element={<Navigate to="/deals/:dealId/detail" replace />} />
-          <Route path="/deals/:dealId/enhanced" element={<Navigate to="/deals/:dealId/detail" replace />} />
+          <Route path="/deals/:dealId/view" element={<RedirectDealIdToDetail />} />
+          <Route path="/deals/:dealId/enhanced" element={<RedirectDealIdToDetail />} />
           <Route path="/deals/:dealId/flywheel" element={<DealFlywheelDashboard />} />
           {/* Legacy deal view routes — redirect to canonical DealDetailPage */}
-          <Route path="/deals/:id" element={<Navigate to="/deals/:id/detail?tab=map" replace />} />
+          <Route path="/deals/:id" element={<RedirectDealToDetail />} />
           <Route path="/deals/:id/:module" element={
             <RedirectDealViewToTab />
           } />
