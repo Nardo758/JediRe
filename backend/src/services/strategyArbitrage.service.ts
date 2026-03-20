@@ -112,11 +112,8 @@ export function evaluateGates(gates: StrategyGate[], dealSignals: Record<string,
 
     if (failed) {
       if (gate.hard) {
-        if (gate.operator === 'in') {
-          isNA = true;
-        } else {
-          failures.push(`${gate.metric} exceeds threshold ${gate.threshold}`);
-        }
+        isNA = true;
+        failures.push(`hard: ${gate.metric} failed`);
       } else {
         softPenalties += 5;
         failures.push(`soft: ${gate.metric}`);
@@ -125,7 +122,6 @@ export function evaluateGates(gates: StrategyGate[], dealSignals: Record<string,
   }
 
   if (isNA) return { result: 'N/A', failures, softPenalties };
-  if (failures.some(f => !f.startsWith('soft:'))) return { result: 'FAIL', failures, softPenalties };
   return { result: 'PASS', failures, softPenalties };
 }
 
@@ -173,7 +169,16 @@ export function calculateStrategyScore(
 
   const rawScore = totalWeight > 0 ? weightedSum / totalWeight : 50;
   const penalizedScore = Math.max(0, rawScore - gateResult.softPenalties);
-  const confidence = Math.min(100, rawScore * 0.8 + 20);
+
+  // F23: data coverage — ratio of positive-weight signals with real (non-fallback) data
+  const positiveWeightSignals = Object.entries(weights).filter(([, w]) => Number(w) > 0);
+  const coveredSignals = positiveWeightSignals.filter(([k]) =>
+    dealSignals[k] !== undefined && dealSignals[k] !== null && dealSignals[k] !== 0.5
+  ).length;
+  const dataCoverage = positiveWeightSignals.length > 0 ? coveredSignals / positiveWeightSignals.length : 0;
+  // F24: confidence = data_coverage × (1 − soft_penalty_fraction), expressed 0–100
+  const softPenaltyFraction = Math.min(1, gateResult.softPenalties / 100);
+  const confidence = Math.min(100, Math.max(0, dataCoverage * 100 * (1 - softPenaltyFraction)));
 
   return {
     strategy_id: strategy.id,

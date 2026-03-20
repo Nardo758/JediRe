@@ -23,7 +23,7 @@ function validateWeights(weights: Record<string, number>): boolean {
   const positiveSum = Object.values(weights)
     .filter(v => v > 0)
     .reduce((a, b) => a + b, 0);
-  return Math.abs(positiveSum - 1.0) < 0.05;
+  return Math.abs(positiveSum - 1.0) < 0.01;
 }
 
 function normalizeWeights(weights: Record<string, number>): Record<string, number> {
@@ -32,9 +32,21 @@ function normalizeWeights(weights: Record<string, number>): Record<string, numbe
   if (positiveSum === 0) return weights;
   const normalized: Record<string, number> = {};
   for (const [k, v] of entries) {
-    normalized[k] = v > 0 ? v / positiveSum : v;
+    normalized[k] = v > 0 ? parseFloat((v / positiveSum).toFixed(4)) : v;
   }
   return normalized;
+}
+
+async function getUserOrgId(userId: string): Promise<string | null> {
+  try {
+    const result = await query(
+      `SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1`,
+      [userId]
+    );
+    return result.rows[0]?.org_id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 router.get('/templates', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -82,9 +94,14 @@ router.post('/score-deal/:dealId', requireAuth, async (req: AuthenticatedRequest
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
     const result = await query(
-      `SELECT * FROM strategies WHERE is_active = true ORDER BY is_system_template DESC, sort_order`,
-      []
+      `SELECT * FROM strategies
+       WHERE is_active = true
+         AND (is_system_template = true OR created_by = $1 OR ($2::uuid IS NOT NULL AND org_id = $2))
+       ORDER BY is_system_template DESC, sort_order`,
+      [userId, orgId]
     );
     res.json({ success: true, strategies: result.rows });
   } catch (error: any) {
@@ -95,17 +112,19 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
 
 router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const userId = req.user!.userId;
     const { name, description, signal_weights, property_gates, risk_gates, execution_profile } = req.body;
     if (!name) return res.status(400).json({ success: false, error: 'name is required' });
 
     const weights = signal_weights || {};
     if (Object.keys(weights).length > 0 && !validateWeights(weights)) {
-      return res.status(400).json({ success: false, error: 'signal_weights must sum to 1.0 (±0.05)' });
+      return res.status(400).json({ success: false, error: 'signal_weights positive values must sum to 1.0 (±0.01)' });
     }
 
+    const orgId = await getUserOrgId(userId);
     const result = await query(
-      `INSERT INTO strategies (name, description, signal_weights, property_gates, risk_gates, execution_profile, is_system_template, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies))
+      `INSERT INTO strategies (name, description, signal_weights, property_gates, risk_gates, execution_profile, is_system_template, sort_order, created_by, org_id)
+       VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies), $7, $8)
        RETURNING *`,
       [
         name, description || null,
@@ -113,6 +132,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
         JSON.stringify(property_gates || []),
         JSON.stringify(risk_gates || []),
         JSON.stringify(execution_profile || {}),
+        userId, orgId,
       ]
     );
     res.status(201).json({ success: true, strategy: result.rows[0] });
@@ -125,7 +145,14 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+    const result = await query(
+      `SELECT * FROM strategies
+       WHERE id = $1
+         AND (is_system_template = true OR created_by = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+      [id, userId, orgId]
+    );
     if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
     res.json({ success: true, strategy: result.rows[0] });
   } catch (error: any) {
@@ -137,7 +164,12 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response)
 router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const existing = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+    const existing = await query(
+      `SELECT * FROM strategies WHERE id = $1 AND (is_system_template = true OR created_by = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+      [id, userId, orgId]
+    );
     if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
     if (existing.rows[0].is_system_template) {
       return res.status(403).json({ success: false, error: 'Cannot modify system templates' });
@@ -145,7 +177,7 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response)
 
     const { name, description, signal_weights, property_gates, risk_gates, execution_profile } = req.body;
     if (signal_weights && !validateWeights(signal_weights)) {
-      return res.status(400).json({ success: false, error: 'signal_weights must sum to 1.0 (±0.05)' });
+      return res.status(400).json({ success: false, error: 'signal_weights positive values must sum to 1.0 (±0.01)' });
     }
 
     const result = await query(
@@ -178,7 +210,12 @@ router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response)
 router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const existing = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+    const existing = await query(
+      `SELECT * FROM strategies WHERE id = $1 AND (is_system_template = true OR created_by = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+      [id, userId, orgId]
+    );
     if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
     if (existing.rows[0].is_system_template) {
       return res.status(403).json({ success: false, error: 'Cannot delete system templates' });
@@ -194,14 +231,19 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respon
 router.post('/:id/clone', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const source = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+    const source = await query(
+      `SELECT * FROM strategies WHERE id = $1 AND (is_system_template = true OR created_by = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+      [id, userId, orgId]
+    );
     if (source.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
     const s = source.rows[0];
 
     const normalizedWeights = normalizeWeights(s.signal_weights || {});
     const result = await query(
-      `INSERT INTO strategies (name, description, signal_weights, property_gates, risk_gates, execution_profile, is_system_template, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies))
+      `INSERT INTO strategies (name, description, signal_weights, property_gates, risk_gates, execution_profile, is_system_template, sort_order, created_by, org_id)
+       VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies), $7, $8)
        RETURNING *`,
       [
         `${s.name} (Copy)`, s.description,
@@ -209,6 +251,7 @@ router.post('/:id/clone', requireAuth, async (req: AuthenticatedRequest, res: Re
         JSON.stringify(s.property_gates || []),
         JSON.stringify(s.risk_gates || []),
         JSON.stringify(s.execution_profile || {}),
+        userId, orgId,
       ]
     );
     res.status(201).json({ success: true, strategy: result.rows[0] });
