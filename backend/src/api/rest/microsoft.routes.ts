@@ -447,7 +447,7 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
     
     // Get email from local database or sync from Microsoft
     let emailRecord = await query(
-      'SELECT id FROM emails WHERE microsoft_message_id = $1 AND user_id = $2',
+      'SELECT id FROM emails WHERE external_id = $1 AND user_id = $2',
       [emailId, userId]
     );
     
@@ -457,19 +457,19 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
       const email = await graphService.getEmail(emailId);
       
       const msAccount = await query(
-        'SELECT id FROM microsoft_accounts WHERE user_id = $1',
+        'SELECT id FROM email_accounts WHERE user_id = $1 LIMIT 1',
         [userId]
       );
       
       await query(
         `INSERT INTO emails (
-          user_id, microsoft_account_id, microsoft_message_id, subject,
-          from_name, from_email, received_at, body_preview, has_attachments,
-          is_read, linked_property_id
+          user_id, email_account_id, external_id, subject,
+          from_name, from_address, received_at, body_preview, has_attachments,
+          is_read, property_id
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           userId,
-          msAccount.rows[0].id,
+          msAccount.rows[0]?.id ?? null,
           email.id,
           email.subject,
           email.from.name,
@@ -483,24 +483,16 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
       );
       
       emailRecord = await query(
-        'SELECT id FROM emails WHERE microsoft_message_id = $1 AND user_id = $2',
+        'SELECT id FROM emails WHERE external_id = $1 AND user_id = $2',
         [emailId, userId]
       );
     } else {
-      // Update existing email
+      // Update existing email with linked property
       await query(
-        'UPDATE emails SET linked_property_id = $1 WHERE id = $2',
+        'UPDATE emails SET property_id = $1 WHERE id = $2',
         [propertyId, emailRecord.rows[0].id]
       );
     }
-    
-    // Create link record
-    await query(
-      `INSERT INTO property_email_links (property_id, email_id, linked_by, link_type, notes)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (property_id, email_id) DO UPDATE SET notes = $5`,
-      [propertyId, emailRecord.rows[0].id, userId, 'manual', notes]
-    );
     
     logger.info('Email linked to property', { userId, emailId, propertyId });
     

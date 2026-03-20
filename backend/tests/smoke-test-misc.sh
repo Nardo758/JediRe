@@ -80,12 +80,15 @@ check_lenient() {
   fi
 }
 
-# check_optional: PASS=2xx, SKIP=anything else (use for routes needing external credentials)
+# check_optional: PASS=2xx, SKIP=4xx/302, FAIL=5xx (routes needing external credentials)
 check_optional() {
   local label="$1" method="$2" url="$3"; shift 3
   local code; code=$(_do_request "$method" "$url" "$@")
   if [[ "$code" =~ ^2 ]]; then
     echo "PASS  [$code] $label"; PASS=$((PASS+1))
+  elif [[ "$code" =~ ^5 ]]; then
+    echo "FAIL  [$code] $label  body=$(_body | head -c 120)"; FAIL=$((FAIL+1))
+    ERRORS+=("FAIL [$code] $label")
   else
     echo "SKIP  [$code] $label (external-creds)"; SKIP=$((SKIP+1))
   fi
@@ -784,28 +787,33 @@ check_lenient "Extractions: POST /extractions/bulk-approve"            POST "$BA
 check_lenient "Extractions: POST /extractions/bulk-reject"             POST "$BASE/api/v1/extractions/bulk-reject" \
   -d '{"ids":[]}'
 
-# ── Asset News (unmounted — assetNews.routes.ts) ──────────
+# ── Asset News (unmounted — assetNews.routes.ts, 5 routes) ───
 echo "── asset-news ──"
-check_lenient "AssetNews: GET /assets/:id/news"                        GET  "$BASE/api/v1/assets/$FAKE_ID/news"
-check_lenient "AssetNews: POST /assets/:id/news"                       POST "$BASE/api/v1/assets/$FAKE_ID/news" \
-  -d '{"newsEventId":"'"$FAKE_ID"'"}'
-check_lenient "AssetNews: PATCH /assets/:id/news/:nid"                 PATCH "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID" \
+check_lenient "AssetNews: GET /:assetId/news"                          GET  "$BASE/api/v1/assets/$FAKE_ID/news"
+check_lenient "AssetNews: POST /:assetId/news/:newsId/link"            POST "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID/link" \
+  -d '{"relevanceScore":0.9}'
+check_lenient "AssetNews: PATCH /:assetId/news/:newsId/link"           PATCH "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID/link" \
   -d '{"relevanceScore":0.8}'
-check_lenient "AssetNews: DELETE /assets/:id/news/:nid"                DELETE "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID"
+check_lenient "AssetNews: DELETE /:assetId/news/:newsId/link"          DELETE "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID/link"
+check_lenient "AssetNews: POST /news/:newsId/auto-link"                POST "$BASE/api/v1/news/$FAKE_ID/auto-link" -d '{}'
 
-# ── Asset Notes (unmounted — assetNotes.routes.ts) ────────
+# ── Asset Notes (unmounted — assetNotes.routes.ts, 7 routes) ─
 echo "── asset-notes ──"
-check_lenient "AssetNotes: GET /assets/:id/notes"                      GET  "$BASE/api/v1/assets/$FAKE_ID/notes"
-check_lenient "AssetNotes: GET /assets/:id/notes/:nid"                 GET  "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID"
-check_lenient "AssetNotes: POST /assets/:id/notes"                     POST "$BASE/api/v1/assets/$FAKE_ID/notes" \
+check_lenient "AssetNotes: GET /:assetId/notes"                        GET  "$BASE/api/v1/assets/$FAKE_ID/notes"
+check_lenient "AssetNotes: GET /:assetId/notes/:noteId"                GET  "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID"
+check_lenient "AssetNotes: POST /:assetId/notes"                       POST "$BASE/api/v1/assets/$FAKE_ID/notes" \
   -d '{"content":"smoke note","latitude":33.749,"longitude":-84.388}'
-check_lenient "AssetNotes: PATCH /assets/:id/notes/:nid"               PATCH "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID" \
+check_lenient "AssetNotes: PATCH /:assetId/notes/:noteId"              PATCH "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID" \
   -d '{"content":"updated"}'
-check_lenient "AssetNotes: DELETE /assets/:id/notes/:nid"              DELETE "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID"
+check_lenient "AssetNotes: DELETE /:assetId/notes/:noteId"             DELETE "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID"
+check_lenient "AssetNotes: POST /:assetId/notes/:noteId/attachments"   POST "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/attachments" \
+  -d '{}'
+check_lenient "AssetNotes: DELETE /:assetId/notes/:noteId/attachments" DELETE "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/attachments"
 
-# ── Note Categories (unmounted — noteCategories.routes.ts) ─
+# ── Note Categories (unmounted — noteCategories.routes.ts, 6 routes) ─
 echo "── note-categories ──"
 check_lenient "NoteCategories: GET /note-categories"                   GET  "$BASE/api/v1/note-categories"
+check_lenient "NoteCategories: GET /note-categories/stats/usage"       GET  "$BASE/api/v1/note-categories/stats/usage"
 check_lenient "NoteCategories: GET /note-categories/:id"               GET  "$BASE/api/v1/note-categories/$FAKE_ID"
 check_lenient "NoteCategories: POST /note-categories"                  POST "$BASE/api/v1/note-categories" \
   -d '{"name":"Smoke Category","color":"#ff0000"}'

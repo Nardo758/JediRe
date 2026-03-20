@@ -14,10 +14,10 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 353 | 118 | 235 | 0 |
-| **TOTAL** | | | **1,232** | **577 (47%)** | **655 (53%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 357 | 118 | 239 | 0 |
+| **TOTAL** | | | **1,236** | **577 (47%)** | **659 (53%)** | **0 (0%)** |
 
-**Zero server errors (5xx) across all 1,232 endpoints tested.**
+**Zero server errors (5xx) across all 1,236 endpoints tested.**
 
 ---
 
@@ -112,13 +112,13 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 |------------|--------|--------|--------|
 | `team-management.routes.ts` | 12 | 12 | check_strict/lenient |
 | `module-libraries.routes.ts` | 7 | 7 | check_lenient |
-| `microsoft.routes.ts` | 15 | 15 | check_strict/lenient/optional |
+| `microsoft.routes.ts` | 15 | 15 | check_optional (5xx=FAIL, 4xx=SKIP) |
 | `inline-microsoft.routes.ts` | 3 | 3 | check_strict/lenient |
 | `visibility.routes.ts` | 5 | 5 (correct paths) | check_lenient |
 | `extractions.routes.ts` | 6 | 6 | check_lenient |
-| `assetNews.routes.ts` | 4 | 4 | check_lenient |
-| `assetNotes.routes.ts` | 5 | 5 | check_lenient |
-| `noteCategories.routes.ts` | 5 | 5 | check_lenient |
+| `assetNews.routes.ts` | 5 | 5 | check_lenient |
+| `assetNotes.routes.ts` | 7 | 7 | check_lenient |
+| `noteCategories.routes.ts` | 6 | 6 (incl. /stats/usage) | check_lenient |
 | `noteReplies.routes.ts` | 5 | 5 | check_lenient |
 | `task-completion.routes.ts` | 4 | 4 | check_lenient |
 
