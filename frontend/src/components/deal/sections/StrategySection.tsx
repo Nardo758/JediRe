@@ -420,7 +420,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
         <>
           {/* M08 Arbitrage Banner */}
           {m08Arbitrage?.arbitrage_detected && (
-            <M08ArbitrageBanner arbitrage={m08Arbitrage} />
+            <M08ArbitrageBanner arbitrage={m08Arbitrage} scores={m08Scores} />
           )}
 
           {/* Strategy Analysis Sub-tabs */}
@@ -1382,48 +1382,69 @@ const ExitScenariosSection: React.FC<ExitScenariosSectionProps> = ({ scenarios }
 // ─── M08 Live Components ────────────────────────────────────────────────────
 
 /** M08 Arbitrage Banner — shows when backend detects a strategy gap */
-const M08ArbitrageBanner: React.FC<{ arbitrage: M08ArbitrageResult }> = ({ arbitrage }) => (
-  <div className="border-2 border-[#F5A623] rounded-xl p-5 mx-4 mb-3"
-    style={{ background: 'linear-gradient(135deg, #1a1000 0%, #0f1a00 100%)' }}>
-    <div className="flex items-start gap-4">
-      <div className="text-3xl flex-shrink-0">⚡</div>
-      <div className="flex-1">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-bold text-[#F5A623] tracking-widest font-mono">STRATEGY ARBITRAGE DETECTED</span>
-          <span className="text-xs font-mono bg-[#F5A623]/20 text-[#F5A623] px-2 py-0.5 rounded border border-[#F5A623]/30">
-            +{arbitrage.delta.toFixed(1)}pt gap
-          </span>
-          <span className="text-[9px] font-mono text-[#8B95A5] tracking-widest">F24 CONFIDENCE SIGNAL</span>
+const M08ArbitrageBanner: React.FC<{ arbitrage: M08ArbitrageResult; scores?: M08StrategyScore[] }> = ({ arbitrage, scores }) => {
+  const winnerScore = scores?.find(s => s.strategy_id === arbitrage.winning_strategy_id);
+  const runnerScore = scores?.find(s => s.strategy_id === arbitrage.runner_up_strategy_id);
+
+  const roiCallout = (() => {
+    if (!winnerScore?.roi_estimate && !runnerScore?.roi_estimate) return null;
+    const wIrr  = winnerScore?.roi_estimate?.irr;
+    const rIrr  = runnerScore?.roi_estimate?.irr;
+    const wYoc  = winnerScore?.roi_estimate?.yoc;
+    const rYoc  = runnerScore?.roi_estimate?.yoc;
+    const parts: string[] = [];
+    if (wIrr != null && rIrr != null && Math.abs(wIrr - rIrr) > 0.1)
+      parts.push(`IRR delta +${(wIrr - rIrr).toFixed(1)}%`);
+    if (wYoc != null && rYoc != null && Math.abs(wYoc - rYoc) > 0.1)
+      parts.push(`YoC delta +${(wYoc - rYoc).toFixed(1)}%`);
+    return parts.length ? parts.join(' · ') : null;
+  })();
+
+  return (
+    <div className="border-2 border-[#F5A623] rounded-xl p-5 mx-4 mb-3"
+      style={{ background: 'linear-gradient(135deg, #1a1000 0%, #0f1a00 100%)' }}>
+      <div className="flex items-start gap-4">
+        <div className="text-3xl flex-shrink-0">⚡</div>
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-bold text-[#F5A623] tracking-widest font-mono">STRATEGY ARBITRAGE DETECTED</span>
+            <span className="text-xs font-mono bg-[#F5A623]/20 text-[#F5A623] px-2 py-0.5 rounded border border-[#F5A623]/30">
+              +{arbitrage.delta.toFixed(1)}pt gap
+            </span>
+            <span className="text-[9px] font-mono text-[#8B95A5] tracking-widest">F24 CONFIDENCE SIGNAL</span>
+          </div>
+          <p className="text-sm text-[#E8ECF1] mb-2">
+            <span className="font-semibold text-[#A78BFA]">{arbitrage.winning_strategy_name ?? 'Recommended'}</span>
+            {' '}outscores{' '}
+            <span className="font-semibold text-[#8B95A5]">{arbitrage.runner_up_strategy_name ?? 'Current'}</span>
+            {' '}by <span className="font-bold text-[#F5A623]">{arbitrage.delta.toFixed(1)} points</span>.
+            {' '}Most investors would default to the lower-scoring strategy — the platform sees the arbitrage.
+          </p>
+          <div className="text-[10px] font-mono border-t border-[#F5A623]/20 pt-2 mt-1">
+            {roiCallout
+              ? <span className="text-[#F5A623]">MISSED ROI: {roiCallout} — switching strategies captures this delta</span>
+              : <span className="text-[#5a6a7a]">ROI DELTA: run pro forma inputs to quantify IRR/yield impact of this arbitrage</span>
+            }
+          </div>
         </div>
-        <p className="text-sm text-[#E8ECF1] mb-2">
-          <span className="font-semibold text-[#A78BFA]">{arbitrage.winning_strategy_name ?? 'Recommended'}</span>
-          {' '}outscores{' '}
-          <span className="font-semibold text-[#8B95A5]">{arbitrage.runner_up_strategy_name ?? 'Current'}</span>
-          {' '}by <span className="font-bold text-[#F5A623]">{arbitrage.delta.toFixed(1)} points</span>.
-          {' '}Most investors would default to the lower-scoring strategy — the platform sees the arbitrage.
-        </p>
-        <div className="text-[10px] font-mono text-[#5a6a7a] border-t border-[#F5A623]/20 pt-2 mt-1">
-          ROI ESTIMATE: requires pro forma inputs (see Pro Forma module for IRR/yield projections)
-        </div>
-      </div>
-      {/* Side-by-side winner vs runner-up scores */}
-      <div className="flex-shrink-0 flex gap-4 text-right">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-lg font-bold font-mono text-[#A78BFA]">{arbitrage.winning_score.toFixed(1)}</span>
-          <span className="text-[9px] text-[#5a6a7a] font-mono">
-            {arbitrage.winning_strategy_name?.split(' ')[0] ?? 'WINNER'}
-          </span>
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-lg font-bold font-mono text-[#8B95A5]">{arbitrage.runner_up_score?.toFixed(1) ?? '—'}</span>
-          <span className="text-[9px] text-[#5a6a7a] font-mono">
-            {arbitrage.runner_up_strategy_name?.split(' ')[0] ?? 'RUNNER-UP'}
-          </span>
+        <div className="flex-shrink-0 flex gap-4 text-right">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-lg font-bold font-mono text-[#A78BFA]">{arbitrage.winning_score.toFixed(1)}</span>
+            <span className="text-[9px] text-[#5a6a7a] font-mono">
+              {arbitrage.winning_strategy_name?.split(' ')[0] ?? 'WINNER'}
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-lg font-bold font-mono text-[#8B95A5]">{arbitrage.runner_up_score?.toFixed(1) ?? '—'}</span>
+            <span className="text-[9px] text-[#5a6a7a] font-mono">
+              {arbitrage.runner_up_strategy_name?.split(' ')[0] ?? 'RUNNER-UP'}
+            </span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /** M08 Score Matrix — live N-column strategy grid */
 const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () => void }> = ({ scores, onRecalculate }) => {
@@ -1660,7 +1681,20 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
   );
 };
 
-/** ROI Comparison — compares IRR, YoC, profit margin, RevPAR per strategy from roi_estimate */
+/** Infer the primary ROI metric key for a strategy based on its type or name keywords */
+function roiKeyForStrategy(s: M08StrategyScore): { key: keyof NonNullable<M08StrategyScore['roi_estimate']>; label: string; unit: string } {
+  const t = (s.strategy_type ?? '').toLowerCase();
+  const n = s.strategy_name.toLowerCase();
+  if (t === 'str' || n.includes('str') || n.includes('short-term') || n.includes('airbnb') || n.includes('vacation'))
+    return { key: 'rev_par', label: 'RevPAR', unit: '$' };
+  if (t === 'flip' || n.includes('flip') || n.includes('fix') || n.includes('value-add'))
+    return { key: 'profit_margin', label: 'Profit Margin', unit: '%' };
+  if (t === 'bts' || n.includes('bts') || n.includes('build-to') || n.includes('ground-up') || n.includes('development'))
+    return { key: 'yoc', label: 'Yield-on-Cost', unit: '%' };
+  return { key: 'irr', label: 'IRR', unit: '%' };
+}
+
+/** ROI Comparison — one strategy-type-specific metric per strategy, null shown as placeholder bar */
 const ROIComparison: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => {
   if (!scores || scores.length === 0) {
     return (
@@ -1673,65 +1707,92 @@ const ROIComparison: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => 
   const COLORS = ['#A78BFA', '#00BCD4', '#00D26A', '#F5A623', '#FF8C42'];
   const sorted = [...scores].sort((a, b) => b.overall_score - a.overall_score);
 
-  const ROI_METRICS: { key: keyof NonNullable<M08StrategyScore['roi_estimate']>; label: string; unit: string; color: string }[] = [
-    { key: 'irr',           label: 'IRR',          unit: '%',  color: '#A78BFA' },
-    { key: 'yoc',           label: 'Yield-on-Cost', unit: '%', color: '#00BCD4' },
-    { key: 'profit_margin', label: 'Profit Margin', unit: '%', color: '#00D26A' },
-    { key: 'rev_par',       label: 'RevPAR',        unit: '$', color: '#F5A623' },
-  ];
+  const chartData = sorted.map((s, i) => {
+    const { key, label, unit } = roiKeyForStrategy(s);
+    const raw = s.roi_estimate?.[key];
+    return {
+      name: s.strategy_name.length > 12 ? s.strategy_name.slice(0, 12) + '…' : s.strategy_name,
+      value: raw ?? 0,
+      hasData: raw != null,
+      label,
+      unit,
+      gate: s.gate_result,
+      color: s.gate_result === 'PASS' ? (COLORS[i] ?? '#A78BFA') : '#FF4757',
+    };
+  });
+
+  const hasAnyData = chartData.some(d => d.hasData);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-[#e8e9ea] tracking-wide">ROI COMPARISON</h3>
-        <span className="text-[10px] font-mono text-[#5a6a7a] tracking-widest">IRR · YOC · MARGIN · REVPAR</span>
+        <span className="text-[10px] font-mono text-[#5a6a7a] tracking-widest">PRIMARY METRIC PER STRATEGY TYPE</span>
       </div>
       <p className="text-xs text-[#6b7f94]">
-        Strategy-specific ROI estimates — IRR, yield-on-cost, profit margin, RevPAR per unit
+        Each strategy is evaluated on its type-appropriate metric: Rental→IRR · BTS→Yield-on-Cost · Flip→Profit Margin · STR→RevPAR
       </p>
 
-      {ROI_METRICS.map(metric => {
-        const data = sorted.map((s, i) => {
-          const raw = s.roi_estimate?.[metric.key];
-          const val = raw != null ? raw : (metric.key === 'irr' ? s.overall_score * 0.3 : metric.key === 'yoc' ? s.overall_score * 0.12 : metric.key === 'profit_margin' ? s.overall_score * 0.25 : s.overall_score * 2.4);
-          return {
-            name: s.strategy_name.length > 12 ? s.strategy_name.slice(0, 12) + '…' : s.strategy_name,
-            value: parseFloat(val.toFixed(1)),
-            gate: s.gate_result,
-            color: s.gate_result === 'PASS' ? (COLORS[i] ?? metric.color) : '#FF4757',
-            estimated: raw == null,
-          };
-        });
+      {!hasAnyData ? (
+        <div className="flex flex-col items-center gap-3 py-10">
+          <div className="text-3xl opacity-30">📊</div>
+          <div className="text-xs text-[#5a6a7a] font-mono">ROI ESTIMATES PENDING</div>
+          <div className="text-[10px] text-[#4a5568]">Run a recalculation or add pro forma inputs to populate ROI metrics</div>
+        </div>
+      ) : (
+        <>
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" vertical={false} />
+              <XAxis
+                dataKey="name"
+                tick={{ fill: '#8B95A5', fontSize: 9, fontFamily: 'monospace' }}
+                axisLine={false}
+                tickLine={false}
+                angle={-20}
+                textAnchor="end"
+              />
+              <YAxis tick={{ fill: '#8B95A5', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: '#0d1f35', border: '1px solid #1e2a3d', borderRadius: 6, color: '#E8ECF1', fontSize: 10 }}
+                formatter={(val: number, _: any, props: any) => {
+                  const d = props.payload;
+                  return d.hasData
+                    ? [`${val.toFixed(1)}${d.unit}`, d.label]
+                    : ['— (no data)', d.label];
+                }}
+              />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                {chartData.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={entry.color}
+                    fillOpacity={entry.hasData ? (entry.gate === 'PASS' ? 0.85 : 0.4) : 0.12}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
 
-        return (
-          <div key={metric.key}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-mono font-bold tracking-widest" style={{ color: metric.color }}>{metric.label}</span>
-              <span className="text-[9px] text-[#4a5568]">({metric.unit})</span>
-            </div>
-            <ResponsiveContainer width="100%" height={100}>
-              <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 2" stroke="#1a2233" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: '#8B95A5', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
-                <YAxis hide />
-                <Tooltip
-                  contentStyle={{ background: '#0d1f35', border: '1px solid #1e2a3d', borderRadius: 4, color: '#E8ECF1', fontSize: 10 }}
-                  formatter={(val: number, _: any, props: any) => [`${val}${metric.unit}${props.payload.estimated ? ' (est.)' : ''}`, metric.label]}
-                />
-                <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                  {data.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} fillOpacity={entry.gate === 'PASS' ? 0.8 : 0.4} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(chartData.length, 4)}, 1fr)` }}>
+            {chartData.map((d, i) => (
+              <div key={i} className="bg-[#0a1628] border border-[#1e2a3d] rounded-lg p-3 text-center">
+                <div className="text-[9px] font-mono text-[#5a6a7a] mb-1 truncate">{d.name}</div>
+                <div className="text-base font-bold font-mono" style={{ color: d.color }}>
+                  {d.hasData ? `${d.value.toFixed(1)}${d.unit}` : '—'}
+                </div>
+                <div className="text-[8px] font-mono text-[#4a5568] mt-0.5">{d.label}</div>
+              </div>
+            ))}
           </div>
-        );
-      })}
 
-      <div className="text-[9px] font-mono text-[#4a5568]">
-        * Values marked (est.) are derived from overall_score until backend returns roi_estimate per strategy
-      </div>
+          <div className="flex gap-4 text-[9px] font-mono text-[#4a5568]">
+            <span><span className="text-[#A78BFA]">■</span> Gate PASS</span>
+            <span><span className="text-[#FF4757]">■</span> Gated (N/A)</span>
+            <span><span className="opacity-20">■</span> No ROI data</span>
+          </div>
+        </>
+      )}
     </div>
   );
 };

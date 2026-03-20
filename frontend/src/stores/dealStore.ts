@@ -52,6 +52,7 @@ import {
 export interface M08StrategyScore {
   strategy_id: string;
   strategy_name: string;
+  strategy_type?: 'rental' | 'bts' | 'flip' | 'str' | string;
   overall_score: number;
   sub_scores: Record<string, number>;
   signal_weights?: Record<string, number>;
