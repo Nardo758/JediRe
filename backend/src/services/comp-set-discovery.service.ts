@@ -343,6 +343,61 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
   submarketComps.sort((a, b) => b.match_score - a.match_score);
   msaComps.sort((a, b) => b.match_score - a.match_score);
 
+  // ── Enrich: pull real avg_rent + occupancy from comp_properties/comp_unit_types ──
+  const allTierComps = [...tradeArea, ...submarketComps, ...msaComps];
+  if (allTierComps.length > 0) {
+    const addrKeys = allTierComps.map(c => c.address.toLowerCase());
+
+    // Weighted avg_rent and occupancy (100 - vacancy_pct) per address via comp_unit_types
+    const [enrichRows, storedRows] = await Promise.all([
+      pool.query<{ addr_key: string; avg_rent: string; occupancy: string }>(`
+        SELECT
+          LOWER(cp.address) AS addr_key,
+          SUM(cut.avg_rent * cut.mix_pct) / NULLIF(SUM(cut.mix_pct), 0) AS avg_rent,
+          100 - AVG(cut.vacancy_pct) AS occupancy
+        FROM comp_properties cp
+        JOIN comp_unit_types cut ON cut.comp_id = cp.id
+        WHERE LOWER(cp.address) = ANY($1)
+          AND cut.avg_rent IS NOT NULL
+        GROUP BY LOWER(cp.address)
+      `, [addrKeys]),
+      pool.query<{ addr_key: string; avg_rent: string; occupancy: string }>(`
+        SELECT
+          LOWER(comp_property_address) AS addr_key,
+          avg_rent,
+          occupancy
+        FROM deal_comp_sets
+        WHERE deal_id = $1
+          AND (avg_rent IS NOT NULL OR occupancy IS NOT NULL)
+      `, [dealId]),
+    ]);
+
+    const enrichMap = new Map<string, { avg_rent: number | null; occupancy: number | null }>();
+    for (const r of enrichRows.rows) {
+      enrichMap.set(r.addr_key, {
+        avg_rent: r.avg_rent != null ? Math.round(Number(r.avg_rent)) : null,
+        occupancy: r.occupancy != null ? Math.round(Number(r.occupancy) * 10) / 10 : null,
+      });
+    }
+    for (const r of storedRows.rows) {
+      if (!enrichMap.has(r.addr_key)) {
+        enrichMap.set(r.addr_key, {
+          avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
+          occupancy: r.occupancy != null ? Number(r.occupancy) : null,
+        });
+      }
+    }
+
+    for (const comp of allTierComps) {
+      const key = comp.address.toLowerCase();
+      const enrich = enrichMap.get(key);
+      if (enrich) {
+        comp.avg_rent = enrich.avg_rent;
+        comp.occupancy = enrich.occupancy;
+      }
+    }
+  }
+
   return {
     trade_area: tradeArea,
     submarket: submarketComps,

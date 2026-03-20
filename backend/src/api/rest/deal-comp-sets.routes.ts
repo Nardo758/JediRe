@@ -114,10 +114,38 @@ router.post('/:dealId/comp-set', requireAuth, async (req: AuthenticatedRequest, 
 
 router.get('/:dealId/comp-set/discover-tiered', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const pool = getPool();
     const { dealId } = req.params;
     const radiusMiles = Math.min(Math.max(parseFloat(req.query.radiusMiles as string) || 3, 0.5), 50);
 
     const result = await discoverTieredComps(dealId, radiusMiles);
+
+    // Auto-seed defaults: if no active comps exist yet, insert top 10 trade-area comps
+    const existing = await pool.query(
+      `SELECT id FROM deal_comp_sets WHERE deal_id = $1 AND status = 'active' LIMIT 1`,
+      [dealId]
+    );
+    if (existing.rows.length === 0 && result.trade_area.length > 0) {
+      const defaults = result.trade_area.slice(0, 10);
+      for (const comp of defaults) {
+        await pool.query(`
+          INSERT INTO deal_comp_sets (
+            deal_id, comp_property_address, comp_name, source, status,
+            units, year_built, stories, class_code,
+            distance_miles, match_score, geographic_tier, avg_rent, occupancy, lat, lng
+          ) VALUES ($1, $2, $3, 'auto', 'active', $4, $5, $6, $7, $8, $9, 'trade_area', $10, $11, $12, $13)
+          ON CONFLICT (deal_id, comp_property_address) DO NOTHING
+        `, [
+          dealId, comp.address, comp.name,
+          comp.units || null, comp.year_built || null, comp.stories || null, comp.class_code || null,
+          comp.distance_miles || null, comp.match_score || null,
+          comp.avg_rent || null, comp.occupancy || null,
+          comp.lat || null, comp.lng || null,
+        ]);
+        comp.in_comp_set = true;
+      }
+      logger.info('Auto-seeded default comp set', { dealId, count: defaults.length });
+    }
 
     res.json({
       success: true,
