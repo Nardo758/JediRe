@@ -450,7 +450,8 @@ export const useDealStore = create<DealStore>()(
       set({ strategyScoresLoading: true });
       try {
         const res = await apiClient.get(`/api/v1/deals/${dealId}/strategy-scores`);
-        const scores: M08StrategyScore[] = res.data?.data ?? res.data ?? [];
+        // Backend returns { success, scores: M08StrategyScore[] }
+        const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
         set({ strategyScores: scores, strategyScoresLoading: false });
       } catch (err) {
         console.error('[dealStore] fetchStrategyScores failed:', err);
@@ -462,7 +463,8 @@ export const useDealStore = create<DealStore>()(
       set({ strategyScoresLoading: true });
       try {
         const res = await apiClient.post(`/api/v1/deals/${dealId}/strategy-scores/recalculate`);
-        const scores: M08StrategyScore[] = res.data?.data ?? res.data ?? [];
+        // Backend returns { success, scores: M08StrategyScore[], freshlyCalculated }
+        const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
         set({ strategyScores: scores, strategyScoresLoading: false });
       } catch (err) {
         console.error('[dealStore] recalculateStrategyScores failed:', err);
@@ -473,7 +475,8 @@ export const useDealStore = create<DealStore>()(
     fetchArbitrage: async (dealId: string) => {
       try {
         const res = await apiClient.get(`/api/v1/deals/${dealId}/arbitrage`);
-        const result: M08ArbitrageResult = res.data?.data ?? res.data ?? null;
+        // Backend returns { success, arbitrage: M08ArbitrageResult }
+        const result: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
         set({ arbitrageResult: result });
       } catch (err) {
         console.error('[dealStore] fetchArbitrage failed:', err);

@@ -12,8 +12,8 @@ import type { StrategyType } from '../../../contexts/DealModuleContext';
 import { apiClient } from '../../../services/api.client';
 import { getDealType, getAvailableStrategies, type StrategyId, type DealType } from '../../../shared/config/deal-type-visibility';
 import CustomScreenTab from './CustomScreenTab';
-import { useStrategyArbitrage, useDealStore } from '../../../stores/dealStore';
 import type { M08StrategyScore, M08ArbitrageResult } from '../../../stores/dealStore';
+import { useStrategyArbitrageM08 } from '../../../hooks/useStrategyArbitrageM08';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 // ─── Inline types (removed mock file imports) ──────────────────────────────
@@ -241,15 +241,13 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   // Sub-tab state
   const [activeSubTab, setActiveSubTab] = useState<'scores' | 'heatmap' | 'roi' | 'custom'>('scores');
 
-  // M08 store slices
+  // M08 live data via dedicated hook (handles fetch + auto-recalculate on mount)
   const {
-    strategyScores: m08Scores,
-    arbitrageResult: m08Arbitrage,
-    strategyScoresLoading,
-    fetchStrategyScores,
-    recalculateStrategyScores,
-    fetchArbitrage,
-  } = useStrategyArbitrage();
+    scores: m08Scores,
+    arbitrage: m08Arbitrage,
+    loading: strategyScoresLoading,
+    recalculate: recalculateM08,
+  } = useStrategyArbitrageM08(deal.id);
 
   // Static data replacing former mock imports
   const acquisitionStats = STATIC_ACQUISITION_STATS;
@@ -264,19 +262,6 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const performanceRiskFactors = STATIC_RISKS;
   const performanceOptimizations = STATIC_OPTIMIZATIONS;
   const exitScenarios = STATIC_EXIT_SCENARIOS;
-
-  // M08: fetch strategy scores + arbitrage on mount; recalculate if no scores yet
-  useEffect(() => {
-    const dealId = deal.id;
-    if (!dealId) return;
-    fetchStrategyScores(dealId).then(() => {
-      const scores = useDealStore.getState().strategyScores;
-      if (!scores || scores.length === 0) {
-        recalculateStrategyScores(dealId);
-      }
-    });
-    fetchArbitrage(dealId);
-  }, [deal.id]);
 
   // Fetch custom strategies when custom tab is opened
   useEffect(() => {
@@ -477,7 +462,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                 <>
                   {/* Score Matrix */}
                   {activeSubTab === 'scores' && (
-                    <M08ScoreMatrix scores={m08Scores} onRecalculate={() => recalculateStrategyScores(deal.id)} />
+                    <M08ScoreMatrix scores={m08Scores} onRecalculate={recalculateM08} />
                   )}
 
                   {/* Signal Heatmap */}
@@ -1422,13 +1407,18 @@ const M08ArbitrageBanner: React.FC<{ arbitrage: M08ArbitrageResult }> = ({ arbit
 
 /** M08 Score Matrix — live N-column strategy grid */
 const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () => void }> = ({ scores, onRecalculate }) => {
-  const sorted = [...scores].sort((a, b) => b.overall_score - a.overall_score);
-  const winner = sorted[0];
+  const [gatedExpanded, setGatedExpanded] = useState(false);
+
+  const allSorted = [...scores].sort((a, b) => b.overall_score - a.overall_score);
+  // Main matrix: only strategies that passed (or failed) gates — not N/A (gated/excluded)
+  const passedScores = allSorted.filter(s => s.gate_result !== 'N/A');
+  const gatedScores = allSorted.filter(s => s.gate_result === 'N/A');
+  const winner = passedScores[0];
 
   const scoreColor = (s: number) =>
     s >= 75 ? '#00D26A' : s >= 50 ? '#F5A623' : '#FF4757';
 
-  const STRATEGY_COLORS: Record<string, string> = {
+  const STRATEGY_COLORS: Record<number, string> = {
     0: '#A78BFA', 1: '#00BCD4', 2: '#00D26A', 3: '#F5A623', 4: '#FF8C42',
   };
 
@@ -1465,82 +1455,96 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
         Each strategy scored against JEDI market intelligence signals with strategy-specific weights
       </p>
 
-      <div className={`grid gap-4 ${scores.length <= 2 ? 'grid-cols-2' : scores.length === 3 ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
-        {sorted.map((s, idx) => {
-          const color = STRATEGY_COLORS[idx] ?? '#8B95A5';
-          const isWinner = winner && s.strategy_id === winner.strategy_id;
-          const isGated = s.gate_result === 'N/A';
-          return (
-            <div
-              key={s.strategy_id}
-              className="rounded-xl p-4 relative"
-              style={{
-                background: '#0a1628',
-                border: `2px solid ${isWinner ? color : '#1e2a3d'}`,
-              }}
-            >
-              {isWinner && (
-                <div className="absolute -top-2 left-3 text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider"
-                  style={{ background: '#F5A623' }}>
-                  RECOMMENDED
-                </div>
-              )}
-              {isGated && (
-                <div className="absolute -top-2 right-3 bg-[#FF4757] text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider">
-                  GATED
-                </div>
-              )}
-              <div className="text-3xl font-bold mb-1 font-mono" style={{ color: scoreColor(s.overall_score) }}>
-                {s.overall_score.toFixed(0)}
-              </div>
-              <div className="text-xs font-semibold text-[#E8ECF1] mb-2 leading-tight">{s.strategy_name}</div>
-
-              {/* Gate badge */}
-              <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold mb-3 border ${
-                s.gate_result === 'PASS'
-                  ? 'bg-emerald-900/20 text-emerald-300 border-emerald-400/30'
-                  : 'bg-red-900/20 text-red-400 border-red-400/30'
-              }`}>
-                <span>{s.gate_result === 'PASS' ? '✓' : '✗'}</span>
-                <span>GATE: {s.gate_result}</span>
-              </div>
-
-              {/* Sub-scores bar */}
-              <div className="space-y-1 mt-1">
-                {Object.entries(s.sub_scores ?? {}).slice(0, 3).map(([key, val]) => (
-                  <div key={key} className="flex items-center gap-1.5">
-                    <div className="text-[9px] text-[#5a6a7a] w-16 truncate">{key.replace(/_/g, ' ')}</div>
-                    <div className="flex-1 bg-[#1e2a3d] rounded-full h-1">
-                      <div className="h-1 rounded-full" style={{ width: `${Math.min(val, 100)}%`, background: color }} />
-                    </div>
-                    <div className="text-[9px] font-mono text-[#8B95A5] w-7 text-right">{val.toFixed(0)}</div>
+      {/* Main matrix — passed/failed strategies only (N/A gated excluded) */}
+      {passedScores.length > 0 ? (
+        <div className={`grid gap-4 ${passedScores.length <= 2 ? 'grid-cols-2' : passedScores.length === 3 ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
+          {passedScores.map((s, idx) => {
+            const color = STRATEGY_COLORS[idx] ?? '#8B95A5';
+            const isWinner = winner && s.strategy_id === winner.strategy_id;
+            return (
+              <div
+                key={s.strategy_id}
+                className="rounded-xl p-4 relative"
+                style={{
+                  background: '#0a1628',
+                  border: `2px solid ${isWinner ? color : '#1e2a3d'}`,
+                }}
+              >
+                {isWinner && (
+                  <div className="absolute -top-2 left-3 text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider"
+                    style={{ background: '#F5A623' }}>
+                    RECOMMENDED
                   </div>
-                ))}
-              </div>
-
-              {/* Confidence */}
-              {s.confidence !== undefined && (
-                <div className="mt-2 text-[9px] text-[#5a6a7a] font-mono">
-                  CONF: <span className="text-[#8B95A5]">{s.confidence.toFixed(0)}%</span>
+                )}
+                <div className="text-3xl font-bold mb-1 font-mono" style={{ color: scoreColor(s.overall_score) }}>
+                  {s.overall_score.toFixed(0)}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                <div className="text-xs font-semibold text-[#E8ECF1] mb-2 leading-tight">{s.strategy_name}</div>
 
-      {/* Gate failures section */}
-      {scores.some(s => s.gate_result === 'N/A' && s.gate_failures?.length > 0) && (
-        <div className="mt-4 bg-red-900/10 border border-red-900/30 rounded-lg p-3">
-          <div className="text-xs font-bold text-red-400 mb-2 font-mono tracking-widest">GATED STRATEGIES</div>
-          {scores.filter(s => s.gate_result === 'N/A').map(s => (
-            <div key={s.strategy_id} className="text-xs text-[#8B95A5] mb-1">
-              <span className="text-red-400 font-semibold">{s.strategy_name}</span>
-              {s.gate_failures?.length > 0 && (
-                <span className="text-[#5a6a7a]"> — failed: {s.gate_failures.join(', ')}</span>
-              )}
+                {/* Gate badge */}
+                <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold mb-3 border ${
+                  s.gate_result === 'PASS'
+                    ? 'bg-emerald-900/20 text-emerald-300 border-emerald-400/30'
+                    : 'bg-red-900/20 text-red-400 border-red-400/30'
+                }`}>
+                  <span>{s.gate_result === 'PASS' ? '✓' : '✗'}</span>
+                  <span>GATE: {s.gate_result}</span>
+                </div>
+
+                {/* Sub-scores bar */}
+                <div className="space-y-1 mt-1">
+                  {Object.entries(s.sub_scores ?? {}).slice(0, 3).map(([key, val]) => (
+                    <div key={key} className="flex items-center gap-1.5">
+                      <div className="text-[9px] text-[#5a6a7a] w-16 truncate">{key.replace(/_/g, ' ')}</div>
+                      <div className="flex-1 bg-[#1e2a3d] rounded-full h-1">
+                        <div className="h-1 rounded-full" style={{ width: `${Math.min(val, 100)}%`, background: color }} />
+                      </div>
+                      <div className="text-[9px] font-mono text-[#8B95A5] w-7 text-right">{val.toFixed(0)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Confidence */}
+                {s.confidence !== undefined && (
+                  <div className="mt-2 text-[9px] text-[#5a6a7a] font-mono">
+                    CONF: <span className="text-[#8B95A5]">{s.confidence.toFixed(0)}%</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-xs text-[#6b7f94] text-center py-6 border border-[#1e2a3d] rounded-lg">
+          No strategies passed gate checks — see Gated Strategies below.
+        </div>
+      )}
+
+      {/* Gated strategies — collapsed section below main matrix */}
+      {gatedScores.length > 0 && (
+        <div className="mt-4 border border-red-900/30 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setGatedExpanded(v => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-red-900/10 hover:bg-red-900/20 transition-colors"
+          >
+            <span className="text-xs font-bold text-red-400 font-mono tracking-widest">
+              GATED STRATEGIES ({gatedScores.length})
+            </span>
+            <span className="text-[10px] text-[#5a6a7a]">{gatedExpanded ? '▲ HIDE' : '▼ SHOW'}</span>
+          </button>
+          {gatedExpanded && (
+            <div className="p-3 space-y-1">
+              {gatedScores.map(s => (
+                <div key={s.strategy_id} className="text-xs text-[#8B95A5]">
+                  <span className="text-red-400 font-semibold">{s.strategy_name}</span>
+                  {s.gate_failures?.length > 0 && (
+                    <span className="text-[#5a6a7a]"> — failed: {s.gate_failures.join(', ')}</span>
+                  )}
+                  <span className="ml-2 font-mono text-[#5a6a7a]">score: {s.overall_score.toFixed(0)}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
     </div>
