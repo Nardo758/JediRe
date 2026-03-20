@@ -1287,14 +1287,34 @@ export function EmailPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
                   {[
                     { label: "Link to Deal", icon: "\uD83D\uDD17", color: T.accent.blue, action: handleLinkToDeal },
-                    { label: "Create Task", icon: "\u2713", color: T.accent.cyan, action: () => {} },
-                    { label: "Extract Data", icon: "\uD83D\uDCCA", color: T.accent.purple, action: () => {} },
-                    { label: "AI Summary", icon: "\u2728", color: T.accent.amber, action: () => {} },
+                    { label: "Create Task", icon: "\u2713", color: T.accent.cyan, action: () => handleExecuteAction() },
+                    { label: "Extract Data", icon: "\uD83D\uDCCA", color: T.accent.purple, action: async () => {
+                      if (!selectedEmail) return;
+                      setIntelLoading(true);
+                      try { const r = await inboxService.getEmailIntel(selectedEmail.id); if (r.success) setEmailIntel(r.data); } catch {}
+                      setIntelLoading(false);
+                      setSidePanel('actions');
+                    }},
+                    { label: "AI Summary", icon: "\u2728", color: T.accent.amber, action: async () => {
+                      if (!selectedEmail) return;
+                      setIntelLoading(true);
+                      try { const r = await inboxService.getEmailIntel(selectedEmail.id); if (r.success) setEmailIntel(r.data); } catch {}
+                      setIntelLoading(false);
+                      setSidePanel('tasks');
+                    }},
                     { label: "Draft Response", icon: "\u270D\uFE0F", color: T.accent.green,
                       action: () => { setComposeMode('reply'); } },
-                    { label: "Set Follow-up", icon: "\u23F0", color: T.accent.red, action: () => {} },
-                    { label: "Add to Deal Bible", icon: "\uD83D\uDCD8", color: T.accent.blue, action: () => {} },
-                    { label: "Log Activity", icon: "\uD83D\uDCDD", color: T.accent.cyan, action: () => {} },
+                    { label: "Set Follow-up", icon: "\u23F0", color: T.accent.red, action: () => {
+                      if (selectedEmail) handleToggleFlag(selectedEmail.id, selectedEmail.is_flagged);
+                    }},
+                    { label: "Add to Deal Bible", icon: "\uD83D\uDCD8", color: T.accent.blue, action: () => {
+                      if (selectedEmail?.deal_id) { window.location.href = `/dashboard/deals/${selectedEmail.deal_id}`; } else { handleLinkToDeal(); }
+                    }},
+                    { label: "Log Activity", icon: "\uD83D\uDCDD", color: T.accent.cyan, action: async () => {
+                      if (!selectedEmail) return;
+                      const emailBody = selectedDetail?.body_text || selectedDetail?.body_preview || '';
+                      try { await inboxService.quickTaskFromEmail(selectedEmail.id, emailBody, selectedEmail.deal_id || undefined, 'Log activity from email communication', 'normal'); } catch {}
+                    }},
                   ].map((act, i) => (
                     <button key={i} onClick={act.action} style={{
                       display: "flex", flexDirection: "column" as const, alignItems: "flex-start",
@@ -1393,8 +1413,8 @@ export function EmailPage() {
                       <div style={{ padding: "8px 10px", background: T.bg.tertiary, borderRadius: 6 }}>
                         <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.text.tertiary, marginBottom: 3 }}>JEDI SCORE</div>
                         <div style={{ fontSize: 18, fontFamily: FONTS.mono, fontWeight: 700,
-                          color: dealDetails.triage_score >= 80 ? T.accent.green : dealDetails.triage_score >= 50 ? T.accent.amber : T.accent.red }}>
-                          {dealDetails.triage_score ?? '—'}
+                          color: dealDetails.triage_score == null && dealDetails.jedi_score == null ? T.text.tertiary : (dealDetails.triage_score ?? dealDetails.jedi_score) >= 80 ? T.accent.green : (dealDetails.triage_score ?? dealDetails.jedi_score) >= 50 ? T.accent.amber : T.accent.red }}>
+                          {dealDetails.triage_score ?? dealDetails.jedi_score ?? '—'}
                         </div>
                       </div>
                       <div style={{ padding: "8px 10px", background: T.bg.tertiary, borderRadius: 6 }}>
