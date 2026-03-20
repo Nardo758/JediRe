@@ -88,6 +88,7 @@ import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
+import { createUnitMixRoutes } from './unitMix.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -334,6 +335,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Design Assistant routes (LLM-powered design modifications)
   app.use(`${API_PREFIX}/design-assistant`, designAssistantRoutes);
+
+  // Unit Mix Intelligence routes (Unit type composition analysis + comp set discovery)
+  const { getPool: getUnitMixPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/unit-mix`, createUnitMixRoutes(getUnitMixPool()));
 
   // M28 Cycle Intelligence routes (Investment cycle timing analysis)
   app.use(`${API_PREFIX}/cycle-intelligence`, m28CycleIntelligenceRoutes);
