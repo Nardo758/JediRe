@@ -191,10 +191,14 @@ export const api = {
       apiClient.get(`/api/v1/traffic-data/context/${propertyId}`),
     getTrafficData: (dealId: string) => apiClient.get(`/api/v1/traffic-data/${dealId}`),
     getTrafficComps: (dealId: string) => apiClient.get(`/api/v1/traffic-comps/${dealId}`),
+    getCompTrafficAverages: (dealId: string) =>
+      apiClient.get(`/api/v1/traffic-comps/${dealId}/averages`),
     compareTraffic: (dealIds: string[]) =>
       apiClient.post(`/api/v1/traffic-comps/compare`, { deal_ids: dealIds }),
     getTrafficForecast: (dealId: string, months?: number) =>
       apiClient.get(`/api/v1/traffic-comps/${dealId}/forecast`, { params: { months } }),
+    getCompTrafficBaseline: (dealId: string) =>
+      apiClient.get(`/api/v1/traffic-comps/${dealId}/baseline`),
   },
 
   // Market Correlations
