@@ -96,6 +96,28 @@ export const api = {
     latest: (dealId: string) => apiClient.get(`/api/v1/deals/${dealId}/analysis/latest`),
   },
 
+  // Corporate Health (M33)
+  corporateHealth: {
+    getSubmarket: (submarketId: number) =>
+      apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`),
+    getCompany: (ticker: string) =>
+      apiClient.get(`/api/v1/corporate-health/company/${ticker}`),
+    getDealOverlay: (dealId: string) =>
+      apiClient.get(`/api/v1/corporate-health/deal/${dealId}`),
+    getSectorRotation: () =>
+      apiClient.get('/api/v1/corporate-health/sector-rotation'),
+    getAlerts: () =>
+      apiClient.get('/api/v1/corporate-health/alerts'),
+    getPortfolio: () =>
+      apiClient.get('/api/v1/corporate-health/portfolio'),
+    refreshTicker: (ticker: string) =>
+      apiClient.post(`/api/v1/corporate-health/refresh/${ticker}`),
+    getConcentration: (submarketId: number) =>
+      apiClient.get(`/api/v1/corporate-health/concentration/${submarketId}`),
+    analyzeTranscript: (ticker: string, transcript: string, fiscalQuarter?: string) =>
+      apiClient.post(`/api/v1/corporate-health/transcript/${ticker}`, { transcript, fiscalQuarter }),
+  },
+
   // JEDI Score Engine (M01)
   jedi: {
     getScore: (dealId: string) => apiClient.get(`/api/v1/jedi/score/${dealId}`),
@@ -103,7 +125,7 @@ export const api = {
       apiClient.post(`/api/v1/jedi/score/${dealId}/recalculate`, options),
     getScoreHistory: (dealId: string) => apiClient.get(`/api/v1/jedi/history/${dealId}`),
     getScoreImpact: (dealId: string) => apiClient.get(`/api/v1/jedi/impact/${dealId}`),
-    getAlerts: (params?: any) => apiClient.get(`/api/v1/jedi/alerts`, { params }),
+    getJediAlerts: (params?: any) => apiClient.get(`/api/v1/jedi/alerts`, { params }),
     getAlertsByDeal: (dealId: string) => apiClient.get(`/api/v1/jedi/alerts/deal/${dealId}`),
     markAlertRead: (alertId: string) => apiClient.post(`/api/v1/jedi/alerts/${alertId}/read`),
     dismissAlert: (alertId: string) => apiClient.post(`/api/v1/jedi/alerts/${alertId}/dismiss`),
@@ -333,5 +355,7 @@ export const api = {
       apiClient.get(`/api/v1/module-libraries/${moduleId}`),
   },
 };
+
+export const corporateHealthAPI = api.corporateHealth;
 
 export default apiClient;
