@@ -806,12 +806,12 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>MODULE ACCESS</div>
           {[
             { key: 'F2', label: 'PROPERTY & ZONING', hint: 'Parcels · Entitlement · Setbacks', tab: 'zoning' },
-            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market' },
+            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market-intelligence' },
             { key: 'F4', label: 'SUPPLY PIPELINE', hint: 'Pipeline · Threat level · Capacity', tab: 'supply' },
             { key: 'F6', label: 'STRATEGY & DESIGN', hint: '4-strategy arbitrage · 3D massing', tab: 'strategy' },
             { key: 'F8', label: 'PRO FORMA', hint: '3-layer NOI model · Sensitivity', tab: 'proforma' },
-            { key: 'F9', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'capital' },
-            { key: 'F10', label: 'RISK & DUE DILIGENCE', hint: 'Monte Carlo · Insurance · DD checklist', tab: 'risk' },
+            { key: 'F9', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'debt' },
+            { key: 'F10', label: 'RISK & DUE DILIGENCE', hint: 'Monte Carlo · Insurance · DD checklist', tab: 'risk-management' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } satisfies React.CSSProperties}>
