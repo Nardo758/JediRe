@@ -301,6 +301,22 @@ export const api = {
     getTradeAreaMetrics: (id: string) => apiClient.get(`/api/v1/trade-areas/${id}/metrics`),
   },
 
+  // Comp Discovery & Management (M15)
+  compDiscovery: {
+    discoverTieredComps: (dealId: string, radiusMiles?: number) =>
+      apiClient.get(`/api/v1/deals/${dealId}/comp-set/discover-tiered`, { params: { radiusMiles } }),
+    getCompSet: (dealId: string) =>
+      apiClient.get(`/api/v1/deals/${dealId}/comp-set`),
+    discoverComps: (dealId: string, options?: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set/discover`, options),
+    addCompToSet: (dealId: string, comp: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set/add-to-set`, comp),
+    addCompPropertyToSet: (dealId: string, data: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set`, data),
+    removeCompFromSet: (dealId: string, compAddress: string) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set/remove`, { comp_property_address: compAddress }),
+  },
+
   // Module Management
   modules: {
     listModules: (params?: any) => apiClient.get(`/api/v1/modules`, { params }),

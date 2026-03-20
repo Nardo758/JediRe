@@ -89,6 +89,7 @@ import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
+import dealCompSetsRoutes from './deal-comp-sets.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -266,6 +267,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Competition Analysis routes (Development deal competitive analysis)
   app.use(`${API_PREFIX}/deals`, competitionRoutes);
+
+  // Deal Comp Sets routes (Tiered comp discovery & management)
+  app.use(`${API_PREFIX}/deals`, dealCompSetsRoutes);
 
   // Deal Market Intelligence routes
   app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
