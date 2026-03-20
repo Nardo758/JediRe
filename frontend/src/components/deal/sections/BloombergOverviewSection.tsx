@@ -1,94 +1,129 @@
-/**
- * Bloomberg Terminal v0.34 — F1 OVERVIEW (M01)
- * 5-row rich layout: JEDI gauge · 5 Signals · Deal Details
- *                    Alerts · 3-Layer Assumptions · AI Brief
- *                    Key Financials · Deal Team · Activity
- */
-
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import {
-  dealAnalysisService,
-  type AnalysisStatus,
-  type StrategyResults,
-} from '@/services/dealAnalysis.service';
+import { dealAnalysisService, AnalysisStatus, StrategyResults } from '@/services/dealAnalysis.service';
 import { apiClient } from '@/services/api.client';
-import type { JEDIScoreData, SignalScore, StrategyVerdictData, RiskAlertData } from '@/data/enhancedOverviewMockData';
 import {
-  BT, BT_CSS, Spark, Bd, StageBd, RiskDot, MetricTag,
-  PanelHeader, SectionPanel, DataRow, MiniBar,
+  type JEDIScoreData,
+  type SignalScore,
+} from '@/data/enhancedOverviewMockData';
+import { mono as bMono } from '../bloomberg-tokens';
+import {
+  Spark, Bd, MetricTag, SectionPanel, DataRow, PanelHeader,
+  BT_CSS, AlertBanner, BT as BTV,
 } from '../bloomberg-ui';
 
-// ─── CSS injection ───────────────────────────────────────────
-const OVERVIEW_CSS = `
-  ${BT_CSS}
-  @keyframes ov-fade { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
-`;
-let cssMounted = false;
-function mountCss() {
-  if (cssMounted || typeof document === 'undefined') return;
-  cssMounted = true;
-  const el = document.createElement('style');
-  el.textContent = OVERVIEW_CSS;
-  document.head.appendChild(el);
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const MONO: React.CSSProperties = { ...bMono };
+
+function scoreColor(s: number) {
+  return s >= 80 ? BTV.text.green : s >= 65 ? BTV.text.amber : BTV.text.red;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────
-const MONO = BT.font.mono;
-
-function fmt(v: number | null | undefined, prefix = '', suffix = '', decimals = 0): string {
-  if (v == null || isNaN(v)) return '—';
-  return `${prefix}${v.toFixed(decimals)}${suffix}`;
-}
-
-function scoreColor(v: number) {
-  return v >= 80 ? BT.text.green : v >= 60 ? BT.text.amber : BT.text.red;
-}
-
-function scoreVerdict(v: number) {
-  if (v >= 85) return 'STRONG OPPORTUNITY';
-  if (v >= 70) return 'OPPORTUNITY';
-  if (v >= 55) return 'MONITOR';
+function scoreToVerdict(score: number): string {
+  if (score >= 85) return 'STRONG BUY';
+  if (score >= 70) return 'OPPORTUNITY';
+  if (score >= 55) return 'HOLD / MONITOR';
   return 'CAUTION';
 }
 
-function buildSignals(breakdown: any): Array<{ id: string; label: string; weight: string; score: number; tags: Array<{l:string;c:string}> }> {
-  const DEFS = [
-    { id: 'demand',   label: 'DEMAND',   weight: '30%', tags: [{l:'Economic',c:BT.met.economic},{l:'Dig Traffic',c:BT.met.digTraffic},{l:'Physical',c:BT.met.physTraffic},{l:'Comp Traffic',c:BT.met.compTraffic}] },
-    { id: 'supply',   label: 'SUPPLY',   weight: '25%', tags: [{l:'Supply',c:BT.met.supply},{l:'Occupancy',c:BT.met.occupancy},{l:'Financial',c:BT.met.financial}] },
-    { id: 'momentum', label: 'MOMENTUM', weight: '20%', tags: [{l:'Financial',c:BT.met.financial},{l:'Comp Traffic',c:BT.met.compTraffic},{l:'Occupancy',c:BT.met.occupancy},{l:'Physical',c:BT.met.physTraffic}] },
-    { id: 'position', label: 'POSITION', weight: '15%', tags: [{l:'Comp Traffic',c:BT.met.compTraffic},{l:'Dig Traffic',c:BT.met.digTraffic},{l:'Financial',c:BT.met.financial},{l:'Physical',c:BT.met.physTraffic}] },
-    { id: 'risk',     label: 'RISK',     weight: '10%', tags: [{l:'Occupancy',c:BT.met.occupancy},{l:'Financial',c:BT.met.financial},{l:'Quality',c:BT.met.quality},{l:'Economic',c:BT.met.economic}] },
+function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
+  const defs = [
+    { id: 'demand',   name: 'DEMAND',   weight: 30, moduleLink: 'demand' },
+    { id: 'supply',   name: 'SUPPLY',   weight: 25, moduleLink: 'supply' },
+    { id: 'momentum', name: 'MOMENTUM', weight: 20, moduleLink: 'market-intelligence' },
+    { id: 'position', name: 'POSITION', weight: 15, moduleLink: 'market-intelligence' },
+    { id: 'risk',     name: 'RISK',     weight: 10, moduleLink: 'risk-management' },
   ];
-  return DEFS.map(d => ({
-    ...d,
-    score: Math.round(breakdown?.[d.id]?.score ?? 50),
-  }));
+  return defs.map(def => {
+    const d = breakdown?.[def.id];
+    const score = Math.round(d?.score ?? 50);
+    const w = Math.round((d?.weight != null ? d.weight * 100 : def.weight));
+    return {
+      ...def,
+      weight: w || def.weight,
+      score,
+      weighted: Math.round(score * ((w || def.weight) / 100) * 10) / 10,
+      trend: 'flat' as const,
+      trendDelta: 0,
+      color: '',
+      bgColor: '',
+      description: d?.note || `${def.name} signal: ${score}/100`,
+    };
+  });
 }
 
-// ─── Props ───────────────────────────────────────────────────
-interface Props {
-  deal: any;
-  dealId?: string;
-  onTabChange?: (tab: string) => void;
-  geographicContext?: any;
+const SIGNAL_SOURCES: Record<string, Array<{ l: string; c: string }>> = {
+  DEMAND:   [{ l: 'Jobs Growth', c: BTV.met.economic }, { l: 'Pop Inflow', c: BTV.met.economic }, { l: 'Digital Search', c: BTV.met.digTraffic }],
+  SUPPLY:   [{ l: 'Pipeline %', c: BTV.met.supply }, { l: 'Permits', c: BTV.met.supply }, { l: 'Mo Supply', c: BTV.met.occupancy }],
+  MOMENTUM: [{ l: 'Rent Growth', c: BTV.met.financial }, { l: 'Absorption', c: BTV.met.occupancy }, { l: 'Traffic Surge', c: BTV.met.physTraffic }],
+  POSITION: [{ l: 'TPI Score', c: BTV.met.compTraffic }, { l: 'Dig Share', c: BTV.met.digTraffic }, { l: 'Rent Prem', c: BTV.met.financial }],
+  RISK:     [{ l: 'Occupancy', c: BTV.met.occupancy }, { l: 'Concentration', c: BTV.met.financial }, { l: 'Sentiment', c: BTV.met.quality }],
+};
+
+function fmtAgo(ts: string | number): string {
+  if (!ts) return '—';
+  const d = typeof ts === 'number' ? new Date(ts) : new Date(ts);
+  if (isNaN(d.getTime())) return String(ts);
+  const diff = Date.now() - d.getTime();
+  const h = Math.floor(diff / 3600000);
+  if (h < 1) return '<1h';
+  if (h < 24) return `${h}h`;
+  const days = Math.floor(h / 24);
+  if (days < 30) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
 }
 
-// ─── Main Component ──────────────────────────────────────────
-const BloombergOverviewSection: React.FC<Props> = ({ deal, onTabChange, geographicContext }) => {
-  mountCss();
+function dollar(v: number | null | undefined): string {
+  if (v == null || isNaN(v as number)) return '$--';
+  const a = Math.abs(v);
+  if (a >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `$${Math.round(v / 1e3)}K`;
+  return `$${v.toLocaleString()}`;
+}
 
-  const { capitalStructure, assumptions, computedReturns } = useDealModule();
 
-  const [jediScore, setJediScore]           = useState<JEDIScoreData | null>(null);
-  const [signals, setSignals]               = useState<ReturnType<typeof buildSignals>>([]);
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+const Skel: React.FC<{ w?: number | string; h?: number }> = ({ w = '100%', h = 10 }) => (
+  <div style={{
+    width: w, height: h,
+    background: `${BTV.border.medium}50`,
+    borderRadius: 2,
+    animation: 'bt-pulse 1.5s infinite',
+  }} />
+);
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface BloombergOverviewSectionProps {
+  deal: Record<string, unknown>;
+  onTabChange?: (tabId: string) => void;
+  geographicContext?: Record<string, unknown>;
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> = ({
+  deal,
+  onTabChange,
+  geographicContext,
+}) => {
+  const {
+    capitalStructure, financial, market,
+    assumptions, computedReturns,
+  } = useDealModule();
+
+  const [jediScoreData, setJediScoreData] = useState<JEDIScoreData | null>(null);
+  const [signals, setSignals] = useState<SignalScore[]>([]);
+  const [capitalStackData, setCapitalStackData] = useState<any>(null);
   const [strategyResults, setStrategyResults] = useState<StrategyResults | null>(null);
-  const [strategyVerdict, setStrategyVerdict] = useState<StrategyVerdictData | null>(null);
-  const [riskAlert, setRiskAlert]           = useState<RiskAlertData | null>(null);
-  const [capitalStack, setCapitalStack]     = useState<any>(null);
-  const [scoreLoading, setScoreLoading]     = useState(true);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [scoreLoading, setScoreLoading] = useState(true);
 
-  // ─── Load JEDI score ──────────────────────────────────────
+  // Load JEDI Score
   const loadJediScore = useCallback(async () => {
     if (!deal?.id) return;
     setScoreLoading(true);
@@ -96,406 +131,608 @@ const BloombergOverviewSection: React.FC<Props> = ({ deal, onTabChange, geograph
       const res = await apiClient.get(`/api/v1/jedi/score/${deal.id}`);
       const s = res.data?.data?.score;
       if (s) {
-        const total = Math.round(s.totalScore ?? s.total_score ?? 0);
-        const delta = Math.round(s.scoreDelta ?? s.score_delta ?? 0);
-        setJediScore({ score: total, delta30d: delta, confidence: 85, verdict: scoreVerdict(total), verdictColor: '' } as any);
+        const total = s.totalScore ?? s.total_score ?? 0;
+        const delta = s.scoreDelta ?? s.score_delta ?? 0;
+        setJediScoreData({
+          score: Math.round(total),
+          delta30d: Math.round(delta),
+          verdict: scoreToVerdict(total),
+          verdictColor: '',
+          confidence: 85,
+          confidenceLabel: total >= 70 ? 'High' : 'Medium',
+          dataCompleteness: 85,
+          lastUpdated: 'Just now',
+        });
         if (res.data?.data?.breakdown) {
-          setSignals(buildSignals(res.data.data.breakdown));
+          setSignals(buildSignalsFromBreakdown(res.data.data.breakdown));
+        } else {
+          setSignals(buildSignalsFromBreakdown(null));
         }
+      } else {
+        setJediScoreData(null);
+        setSignals(buildSignalsFromBreakdown(null));
       }
-    } catch (e) {
-      console.warn('JEDI score load failed', e);
+    } catch {
+      setJediScoreData(null);
+      setSignals(buildSignalsFromBreakdown(null));
     } finally {
       setScoreLoading(false);
     }
   }, [deal?.id]);
 
-  // ─── Load capital stack ───────────────────────────────────
+  // Load Capital Stack
   const loadCapitalStack = useCallback(async () => {
     if (!deal?.id) return;
+    const strategy = deal.strategyType || deal.strategy || 'value_add';
     const totalCost = deal.purchasePrice || deal.budget || 0;
+    const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
     if (!totalCost) return;
     try {
       const res = await apiClient.post('/api/v1/capital-structure/stack', {
-        dealId: deal.id,
-        strategy: deal.strategyType || deal.strategy || 'value_add',
+        dealId: deal.id, strategy,
         layers: [
           { type: 'senior_debt', amount: totalCost * 0.65 },
-          { type: 'equity',      amount: totalCost * 0.35 },
+          { type: 'equity', amount: totalCost * 0.35 },
         ],
-        uses: { acquisition: totalCost },
-        noi: deal.noi || 0,
+        uses: { acquisition: totalCost }, noi,
       });
-      setCapitalStack(res.data?.data || res.data?.stack ? (res.data.data || res.data) : null);
-    } catch (e) {
-      console.warn('Capital stack load failed', e);
-    }
-  }, [deal?.id]);
+      if (res.data?.data || res.data?.stack || res.data?.layers) {
+        setCapitalStackData(res.data?.data ?? res.data);
+      }
+    } catch { /* silent */ }
+  }, [deal?.id, deal?.strategyType, deal?.strategy, deal?.purchasePrice, deal?.budget, deal?.noi, deal?.strategyDefaults]);
 
-  // ─── Load strategy analysis ───────────────────────────────
-  const loadAnalysis = useCallback(async () => {
+  // Restore full strategy analysis lifecycle (trigger + poll if no cached result)
+  const loadStrategy = useCallback(async (): Promise<(() => void) | undefined> => {
     if (!deal?.id) return;
     try {
       const existing = await dealAnalysisService.getLatestAnalysis(deal.id);
-      if (existing) setStrategyResults(existing);
-    } catch (e) {
-      console.warn('Strategy analysis load failed', e);
-    }
+      if (existing) {
+        setStrategyResults(existing);
+        return;
+      }
+      // No cached result — trigger analysis then poll
+      await dealAnalysisService.triggerAnalysis(deal.id);
+      const stopPolling = dealAnalysisService.pollAnalysisStatus(
+        deal.id,
+        (_status: AnalysisStatus) => { /* status updates not displayed here */ },
+        (results: StrategyResults) => setStrategyResults(results),
+        3000,
+      );
+      return stopPolling;
+    } catch { /* silent */ }
+  }, [deal?.id]);
+
+  // Load Team
+  const loadTeam = useCallback(async () => {
+    if (!deal?.id) return;
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${deal.id}/team`);
+      const members = res.data?.data || res.data?.members || res.data || [];
+      if (Array.isArray(members)) setTeamMembers(members);
+    } catch { /* silent */ }
+  }, [deal?.id]);
+
+  // Load Activity
+  const loadActivity = useCallback(async () => {
+    if (!deal?.id) return;
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${deal.id}/activity`);
+      const items = res.data?.data || res.data?.activities || res.data || [];
+      if (Array.isArray(items)) setActivity(items.slice(0, 6));
+    } catch { /* silent */ }
   }, [deal?.id]);
 
   useEffect(() => {
+    if (!deal?.id) return;
+    let stopPolling: (() => void) | undefined;
     loadJediScore();
     loadCapitalStack();
-    loadAnalysis();
+    loadTeam();
+    loadActivity();
+    (async () => { stopPolling = await loadStrategy(); })();
+    return () => { stopPolling?.(); };
   }, [deal?.id]);
 
-  // ─── Derive strategy verdict ──────────────────────────────
-  useEffect(() => {
-    if (!strategyResults?.strategies?.length) return;
-    const strategies = strategyResults.strategies;
+  // ─── Derived values ─────────────────────────────────────────────────────────
+
+  const score = jediScoreData?.score ?? 0;
+  const sc = jediScoreData ? scoreColor(score) : BTV.text.secondary;
+
+  const price = deal?.purchasePrice ? dollar(deal.purchasePrice)
+    : deal?.budget ? dollar(deal.budget) : '$--';
+
+  const units = deal?.units || deal?.targetUnits || 0;
+  const ppuNum = units > 0 && deal?.purchasePrice ? Math.round(deal.purchasePrice / units) : null;
+  const ppuStr = ppuNum != null ? `$${ppuNum.toLocaleString()}` : '$--';
+
+  const irrNum: number | null = computedReturns?.irr ?? financial?.irr ?? null;
+  const irrStr = irrNum != null ? `${(irrNum * 100).toFixed(1)}%` : '—';
+
+  const emNum: number | null = computedReturns?.equityMultiple ?? financial?.equityMultiple ?? null;
+  const emStr = emNum != null ? `${emNum.toFixed(2)}x` : '—';
+
+  const acreage = deal?.acreage || deal?.lotAcres || deal?.siteAcres || null;
+
+  // Arbitrage banner
+  const arbitrageGap = (() => {
+    if (!strategyResults?.strategies?.length) return 0;
     const recId = strategyResults.recommendedStrategyId;
-    const rec = strategies.find(s => s.id === recId) || strategies[0];
-    const sorted = [...strategies].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
-    const second = sorted.find(s => s.id !== rec.id);
-    const gap = second ? Math.round(rec.confidence - second.confidence) : 0;
-    setStrategyVerdict({
-      recommended: rec.id,
-      recommendedLabel: rec.name,
-      score: Math.round(rec.confidence),
-      secondBest: second?.id || '',
-      secondBestLabel: second?.name || '',
-      secondBestScore: second ? Math.round(second.confidence) : 0,
-      arbitrageGap: gap,
-      isArbitrage: gap >= 10,
-      roiEstimate: rec.projectedROI ? `${rec.projectedROI.toFixed(1)}%` : '—',
-      roiLabel: 'Projected ROI',
-      insight: rec.description || `${rec.name} scores highest at ${Math.round(rec.confidence)}/100.`,
-    } as any);
-  }, [strategyResults]);
+    const strats = strategyResults.strategies;
+    const rec = strats.find((s: any) => s.id === recId) || strats[0];
+    const sorted = [...strats].sort((a: any, b: any) => (b.confidence || 0) - (a.confidence || 0));
+    const second = sorted.find((s: any) => s.id !== rec?.id);
+    return second ? Math.round((rec?.confidence || 0) - (second?.confidence || 0)) : 0;
+  })();
+  const recStrategyLabel = (() => {
+    if (!strategyResults?.strategies?.length) return null;
+    const recId = strategyResults.recommendedStrategyId;
+    return strategyResults.strategies.find((s: any) => s.id === recId)?.name || null;
+  })();
+  const altStrategyLabel = (() => {
+    if (!strategyResults?.strategies?.length) return null;
+    const recId = strategyResults.recommendedStrategyId;
+    const sorted = [...strategyResults.strategies].sort((a: any, b: any) => (b.confidence || 0) - (a.confidence || 0));
+    return sorted.find((s: any) => s.id !== recId)?.name || null;
+  })();
 
-  // ─── Derive risk alert ────────────────────────────────────
-  useEffect(() => {
-    if (!signals.length) return;
-    const worst = [...signals].sort((a, b) => a.score - b.score)[0];
-    if (worst.score < 70) {
-      setRiskAlert({
-        show: true,
-        category: worst.label,
-        score: worst.score,
-        maxScore: 100,
-        severity: worst.score < 40 ? 'high' : 'medium',
-        detail: `${worst.label} signal at ${worst.score}/100`,
-        mitigationAvailable: worst.score >= 40,
-        mitigationText: `${worst.label} signal requires monitoring.`,
-      } as any);
+  // COLLISION banner: broker vs platform IRR/vacancy divergence
+  const brokerIRR: number | null = deal?.deal_data?.broker_irr ?? deal?.brokerIrr ?? null;
+  const platformIRR: number | null = irrNum;
+  const brokerVacancy: number | null = deal?.strategyDefaults?.assumptions?.vacancy ?? deal?.vacancy ?? null;
+  const platformVacancy: number | null = market?.occupancy != null ? 100 - market.occupancy : null;
+  const irrDivergence = brokerIRR != null && platformIRR != null
+    ? Math.abs(brokerIRR - platformIRR * 100)
+    : null;
+  const vacancyDivergence = brokerVacancy != null && platformVacancy != null
+    ? Math.abs(brokerVacancy - platformVacancy)
+    : null;
+  const showCollision = (irrDivergence != null && irrDivergence > 3) ||
+    (vacancyDivergence != null && vacancyDivergence > 2);
+  const collisionMsg = (() => {
+    const parts = [];
+    if (irrDivergence != null && irrDivergence > 3) {
+      parts.push(`Broker IRR ${brokerIRR?.toFixed(1)}% vs platform ${((platformIRR ?? 0) * 100).toFixed(1)}% (${irrDivergence.toFixed(0)}bps gap)`);
     }
-  }, [signals]);
+    if (vacancyDivergence != null && vacancyDivergence > 2) {
+      parts.push(`Vacancy divergence ${vacancyDivergence.toFixed(1)}pp — verify broker underwriting`);
+    }
+    return parts.join('. ') || 'Broker and platform assumptions diverge materially.';
+  })();
 
-  // ─── Derived values ───────────────────────────────────────
-  const score     = jediScore?.score ?? 0;
-  const delta     = jediScore?.delta30d ?? 0;
-  const sc        = scoreLoading ? BT.text.secondary : scoreColor(score);
-  const verdict   = scoreLoading ? 'LOADING...' : scoreVerdict(score);
-  const ppu       = deal?.purchasePrice && deal?.units
-    ? `$${Math.round(deal.purchasePrice / deal.units / 1000)}K`
-    : deal?.pricePerUnit ? `$${Math.round(deal.pricePerUnit / 1000)}K` : '—';
-  const stageVal  = (deal?.stage || deal?.dealStage || '').toUpperCase() || 'PROSPECT';
-  const riskLevel = (deal?.riskLevel || deal?.risk || 'LOW').toUpperCase();
-  const strategyLabel = deal?.strategyType || deal?.strategy || deal?.investmentStrategy || '—';
+  // Row 3 — Assumptions table: Rent/unit, Vacancy, OpEx ratio, Cap Rate, Exit Year, IRR
+  // Rent/unit = $/unit/month (not rent growth %)
+  const rentUnitBroker: string = (() => {
+    const v = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions
+      ? ((deal.strategyDefaults as Record<string, unknown>).assumptions as Record<string, unknown>)?.rentPerUnit
+      : null;
+    if (v != null) return `$${Number(v).toLocaleString()}`;
+    const rentPsf = deal?.rentPerSf as number | null;
+    if (rentPsf != null && units > 0) return `$${Math.round(rentPsf * 900)}/mo`;
+    return '—';
+  })();
+  const rentUnitPlatform: string = market?.avgRent != null
+    ? `$${Math.round(market.avgRent as number).toLocaleString()}/mo`
+    : assumptions?.rentPerUnit != null
+      ? `$${Math.round(assumptions.rentPerUnit as number).toLocaleString()}/mo`
+      : '—';
 
-  // Key financial values
-  const totalCost = deal?.purchasePrice || deal?.budget || 0;
-  const noi       = deal?.noi || computedReturns?.noi || 0;
-  const ltc       = 75;
-  const debtAmt   = totalCost * (ltc / 100);
-  const dscr      = capitalStack?.dscr ?? (noi > 0 ? (noi / (debtAmt * 0.07)).toFixed(2) : null);
-  const equityReq = totalCost * 0.35;
-  const irr       = computedReturns?.irr ?? deal?.irr ?? null;
-  const capRate   = deal?.capRate ?? geographicContext?.submarket?.avgCapRate ?? null;
+  const vacancyBroker = brokerVacancy != null ? `${brokerVacancy.toFixed(1)}%` : '—';
+  const vacancyPlatform = platformVacancy != null ? `${platformVacancy.toFixed(1)}%` : '—';
 
-  // 3-Layer assumption rows
-  const assumpRows = [
-    { label: 'RENT/UNIT/MO',  broker: deal?.assumptions?.brokerRent     ?? '—', platform: assumptions?.rentPerUnit ? `$${assumptions.rentPerUnit}` : '—', you: deal?.targetRent ? `$${deal.targetRent}` : '—' },
-    { label: 'VACANCY',       broker: deal?.assumptions?.brokerVacancy   ?? '—', platform: assumptions?.vacancyRate ? `${(assumptions.vacancyRate*100).toFixed(1)}%` : '—', you: '—' },
-    { label: 'OPEX RATIO',    broker: deal?.assumptions?.brokerOpex      ?? '—', platform: assumptions?.opexRatio   ? `${(assumptions.opexRatio*100).toFixed(0)}%` : '—', you: '—' },
-    { label: 'CAP RATE',      broker: deal?.assumptions?.brokerCapRate   ?? '—', platform: capRate ? `${(capRate*100).toFixed(2)}%` : '—', you: '—' },
-    { label: 'IRR TARGET',    broker: deal?.assumptions?.brokerIRR       ?? '—', platform: irr ? `${Number(irr).toFixed(1)}%` : '—', you: deal?.targetIRR ? `${deal.targetIRR}%` : '—' },
+  const opexBroker = (() => {
+    const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
+    if (assumptions_?.opexRatio != null) return `${assumptions_.opexRatio}%`;
+    const dData = deal?.deal_data as Record<string, unknown> | null;
+    if (dData?.opex_ratio != null) return `${dData.opex_ratio}%`;
+    return '—';
+  })();
+  const opexPlatform = assumptions?.opexRatio != null
+    ? `${assumptions.opexRatio}%`
+    : financial?.noi != null && deal?.purchasePrice ? '38%' : '—';
+
+  const capRateBroker = deal?.capRate != null ? `${deal.capRate}%` : '—';
+  const capRatePlatform = assumptions?.capRate != null ? `${assumptions.capRate}%`
+    : (() => {
+        const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
+        return assumptions_?.capRate != null ? `${assumptions_.capRate}%` : '—';
+      })();
+
+  const exitYearBroker = (() => {
+    const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
+    return assumptions_?.holdPeriod != null ? `${assumptions_.holdPeriod}yr` : '—';
+  })();
+  const exitYearPlatform = assumptions?.holdPeriod != null ? `${assumptions.holdPeriod}yr` : '—';
+
+  const irrBroker = brokerIRR != null ? `${brokerIRR.toFixed(1)}%` : '—';
+  const irrUser = irrNum != null ? irrStr : '—';
+
+  const rentFlag = rentUnitBroker !== '—' && rentUnitPlatform !== '—' &&
+    Math.abs(parseFloat(rentUnitBroker.replace(/[^0-9.]/g, '')) - parseFloat(rentUnitPlatform.replace(/[^0-9.]/g, ''))) > 50;
+  const vacFlag = vacancyBroker !== '—' && vacancyPlatform !== '—' &&
+    Math.abs(parseFloat(vacancyBroker) - parseFloat(vacancyPlatform)) > 2;
+  const opexFlag = opexBroker !== '—' && opexPlatform !== '—' &&
+    Math.abs(parseFloat(opexBroker) - parseFloat(opexPlatform)) > 3;
+  const capFlag = capRateBroker !== '—' && capRatePlatform !== '—' &&
+    Math.abs(parseFloat(capRateBroker) - parseFloat(capRatePlatform)) > 0.3;
+
+  const assumptionRows = [
+    { a: 'RENT/UNIT', b: rentUnitBroker, p: rentUnitPlatform, u: '—', flag: rentFlag, mc: BTV.met.financial },
+    { a: 'VACANCY', b: vacancyBroker, p: vacancyPlatform, u: '—', flag: vacFlag, mc: BTV.met.occupancy },
+    { a: 'OPEX RATIO', b: opexBroker, p: opexPlatform, u: '—', flag: opexFlag, mc: BTV.met.financial },
+    { a: 'CAP RATE', b: capRateBroker, p: capRatePlatform, u: '—', flag: capFlag, mc: BTV.met.financial },
+    { a: 'EXIT YEAR', b: exitYearBroker, p: exitYearPlatform, u: '—', flag: false },
+    { a: 'IRR', b: irrBroker, p: irrStr, u: irrUser, flag: irrDivergence != null && irrDivergence > 3, mc: BTV.met.financial },
   ];
 
-  const trendData: number[] = [72, 74, 73, 76, 78, 77, 79, 80, score || 82];
+  // Capital / Financials
+  const stackLayers = capitalStackData?.stack || capitalStackData?.layers || capitalStackData?.data?.stack || [];
+  const seniorLayer = stackLayers.find?.((l: any) => l.type === 'senior_debt' || l.name?.toLowerCase().includes('senior'));
+  const equityLayer = stackLayers.find?.((l: any) => l.type === 'equity' || l.name?.toLowerCase().includes('equity'));
+
+  const goingInCap = deal?.capRate ? `${deal.capRate}%`
+    : capitalStackData?.goingInCapRate ? `${capitalStackData.goingInCapRate.toFixed(2)}%` : '$--'.replace('$', '') || '—';
+  const stabilizedNOI = financial?.noi ? dollar(financial.noi)
+    : computedReturns?.noi ? dollar(computedReturns.noi) : '$--';
+  const debtServiceNum = capitalStructure?.debtService ?? (seniorLayer?.amount ? seniorLayer.amount * 0.065 : null);
+  const debtServiceStr = debtServiceNum != null ? dollar(debtServiceNum) : '$--';
+  const dscrVal = capitalStructure?.dscr ? `${capitalStructure.dscr.toFixed(2)}x` : '—';
+  const ltcVal = capitalStructure?.ltc ? `${capitalStructure.ltc}%`
+    : seniorLayer?.amount && deal?.purchasePrice
+    ? `${Math.round((seniorLayer.amount / deal.purchasePrice) * 100)}%` : '—';
+  const equityReqNum = equityLayer?.amount ?? capitalStructure?.totalEquity ?? (deal?.purchasePrice ? deal.purchasePrice * 0.35 : null);
+  const equityReqStr = equityReqNum != null ? dollar(equityReqNum) : '$--';
+
+  // AI Brief
+  const aiBriefs = (() => {
+    const rec = strategyResults?.strategies?.find?.((s: any) => s.id === strategyResults?.recommendedStrategyId)
+      || strategyResults?.strategies?.[0];
+    const demandSig = signals.find(s => s.id === 'demand');
+    const supplySig = signals.find(s => s.id === 'supply');
+    const riskSig   = signals.find(s => s.id === 'risk');
+    return [
+      { cat: 'DEMAND', msg: demandSig?.description || 'Run market analysis to generate demand intelligence.', c: BTV.text.green },
+      { cat: 'SUPPLY', msg: supplySig?.description || 'Supply pipeline data will appear after market scan.', c: BTV.text.amber },
+      { cat: 'RISK',   msg: riskSig ? `${riskSig.name} signal at ${riskSig.score}/100. ${showCollision ? collisionMsg : 'No critical divergence detected.'}` : 'Risk signals will populate after analysis.', c: riskSig && riskSig.score < 50 ? BTV.text.red : BTV.text.orange },
+      { cat: 'ACTION', msg: rec ? `${rec.name} strategy scores highest (${Math.round(rec.confidence)}/100). ${rec.description || 'Accelerate diligence.'}` : 'Start analysis for recommended action.', c: BTV.text.amber },
+    ];
+  })();
+
+  // Team
+  const teamToShow: any[] = teamMembers.length > 0
+    ? teamMembers
+    : (deal?.team || deal?.teamMembers || []);
+
+  // Strategy quick scores
+  const strategyQuickScores = strategyResults?.strategies?.length
+    ? strategyResults.strategies.slice(0, 4).map((s: any) => ({
+        l: (s.name || s.id || '').slice(0, 6).toUpperCase(),
+        v: Math.round(s.confidence || 0),
+        win: s.id === strategyResults.recommendedStrategyId,
+      }))
+    : null;
+
+  const trendData = [72, 74, 73, 76, 78, 77, 79, 80, score > 0 ? score : 82];
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', animation: 'ov-fade 0.15s', background: BT.bg.terminal }}>
+    <div style={{
+      background: BTV.bg.terminal,
+      display: 'flex', flexDirection: 'column',
+      animation: 'bt-fade 0.15s',
+    }}>
+      <style>{BT_CSS}</style>
 
-      {/* Module header */}
+      {/* ── Module PanelHeader (amber = Overview) ── */}
       <PanelHeader
-        title="OVERVIEW"
-        subtitle="M01 · Deal Command Center"
-        borderColor={BT.text.amber}
-        metrics={[
-          { l: 'JEDI', c: BT.text.amber },
-          { l: 'F_IRR', c: BT.met.financial },
-          { l: 'F_NOI', c: BT.met.financial },
-          { l: 'S_PIPE', c: BT.met.supply },
-        ]}
-        right={<StageBd stage={stageVal} />}
+        title="F1 — OVERVIEW"
+        subtitle="M01 · Deal Intelligence"
+        borderColor={BTV.text.amber}
+        right={
+          <span style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>
+            {deal?.name || deal?.address?.split(',')[0] || 'Deal'}
+          </span>
+        }
       />
 
-      {/* ═══ ROW 1: JEDI Score · Signals · Deal Details ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 195px', gap: 1, background: BT.border.subtle }}>
+      {/* ── Row 1: JEDI Score | 5 Signals | Deal Details ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 190px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
 
-        {/* JEDI Score Gauge */}
-        <div style={{ background: BT.bg.panel, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div style={{ fontSize: 7, color: BT.text.muted, letterSpacing: 1.5, fontFamily: MONO }}>JEDI SCORE</div>
-          <div style={{
-            width: 80, height: 80, borderRadius: '50%',
-            border: `3px solid ${sc}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-            boxShadow: `0 0 20px ${sc}33`,
-          }}>
-            <span style={{ fontSize: scoreLoading ? 14 : 28, fontWeight: 800, color: sc, fontFamily: MONO }}>
-              {scoreLoading ? '…' : score || '—'}
-            </span>
-            {!scoreLoading && delta !== 0 && (
-              <span style={{ fontSize: 8, color: delta > 0 ? BT.text.green : BT.text.red, fontWeight: 600, fontFamily: MONO }}>
-                {delta > 0 ? '+' : ''}{delta} 30d
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 7, color: BT.text.muted, fontFamily: MONO }}>Confidence: 85%</div>
-          <Spark data={trendData} color={sc} w={100} h={18} />
-          <Bd c={sc}>{verdict}</Bd>
+        {/* Col A — JEDI Score Gauge */}
+        <div style={{ background: BTV.bg.panel, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+          <div style={{ fontSize: 8, color: BTV.text.muted, letterSpacing: 1.5, ...MONO }}>JEDI SCORE</div>
+          {scoreLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0' }}>
+              <Skel w={80} h={80} />
+              <Skel w={80} h={10} />
+            </div>
+          ) : (
+            <>
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%',
+                border: `3px solid ${sc}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+                boxShadow: `0 0 20px ${sc}33`,
+              }}>
+                <span style={{ fontSize: 28, fontWeight: 800, color: sc, ...MONO }}>
+                  {jediScoreData ? score : '--'}
+                </span>
+                {jediScoreData?.delta30d != null && (
+                  <span style={{ fontSize: 8, color: jediScoreData.delta30d >= 0 ? BTV.text.green : BTV.text.red, fontWeight: 600, ...MONO }}>
+                    {jediScoreData.delta30d >= 0 ? '+' : ''}{jediScoreData.delta30d} 30d
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>Confidence: {jediScoreData?.confidence ?? '--'}%</div>
+              <Spark data={trendData} color={sc} w={100} h={20} />
+              <Bd c={sc}>{jediScoreData ? jediScoreData.verdict : 'PENDING'}</Bd>
+            </>
+          )}
         </div>
 
-        {/* 5 Master Signals */}
-        <div style={{ background: BT.bg.panel, padding: 10 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, marginBottom: 6, fontFamily: MONO, letterSpacing: 0.5 }}>
+        {/* Col B — 5 Master Signals with Platform Metric Sources */}
+        <div style={{ background: BTV.bg.panel, padding: 10 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BTV.text.white, marginBottom: 6, ...MONO }}>
             5 MASTER SIGNALS — PLATFORM METRIC SOURCES
           </div>
-          {(signals.length ? signals : [
-            { id: 'demand', label: 'DEMAND', weight: '30%', score: 0, tags: [{l:'Economic',c:BT.met.economic},{l:'Dig Traffic',c:BT.met.digTraffic}] },
-            { id: 'supply', label: 'SUPPLY', weight: '25%', score: 0, tags: [{l:'Supply',c:BT.met.supply},{l:'Occupancy',c:BT.met.occupancy}] },
-            { id: 'momentum', label: 'MOMENTUM', weight: '20%', score: 0, tags: [{l:'Financial',c:BT.met.financial},{l:'Comp Traffic',c:BT.met.compTraffic}] },
-            { id: 'position', label: 'POSITION', weight: '15%', score: 0, tags: [{l:'Comp Traffic',c:BT.met.compTraffic},{l:'Dig Traffic',c:BT.met.digTraffic}] },
-            { id: 'risk',   label: 'RISK', weight: '10%', score: 0, tags: [{l:'Occupancy',c:BT.met.occupancy},{l:'Financial',c:BT.met.financial}] },
-          ]).map((sig, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
-              <span style={{ fontSize: 7, color: BT.text.muted, minWidth: 72, fontFamily: MONO }}>{sig.label} ({sig.weight})</span>
-              <div style={{ width: 48, height: 5, background: BT.bg.terminal, borderRadius: 1, flexShrink: 0 }}>
-                <div style={{ height: '100%', width: `${sig.score}%`, background: scoreColor(sig.score), borderRadius: 1 }} />
-              </div>
-              <span style={{ fontSize: 9, fontWeight: 700, color: scoreColor(sig.score), minWidth: 22, fontFamily: MONO }}>
-                {scoreLoading ? '—' : sig.score || '—'}
-              </span>
-              <div style={{ display: 'flex', gap: 2, flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
-                {sig.tags.map((tag, ti) => <MetricTag key={ti} label={tag.l} color={tag.c} />)}
-              </div>
+          {scoreLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {[0,1,2,3,4].map(i => <Skel key={i} w="100%" h={12} />)}
             </div>
-          ))}
-
-          {/* Strategy Quick Scores */}
-          {strategyResults?.strategies && (
-            <div style={{ display: 'flex', gap: 3, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${BT.border.subtle}` }}>
-              {strategyResults.strategies.slice(0, 4).map((s: any, i: number) => {
-                const isWin = s.id === strategyResults.recommendedStrategyId;
+          ) : (
+            <>
+              {signals.map((s) => {
+                const c = s.score >= 80 ? BTV.text.green : s.score >= 60 ? BTV.text.amber : BTV.text.red;
+                const sources = SIGNAL_SOURCES[s.name] || [];
                 return (
-                  <div key={i} style={{
-                    flex: 1, textAlign: 'center', padding: '3px 4px',
-                    background: BT.bg.terminal,
-                    borderTop: isWin ? `2px solid ${BT.text.amber}` : `2px solid ${BT.border.subtle}`,
-                  }}>
-                    <div style={{ fontSize: 7, color: isWin ? BT.text.amber : BT.text.muted, fontWeight: 700, fontFamily: MONO }}>{s.name?.toUpperCase().slice(0, 6)}</div>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: isWin ? BT.text.amber : BT.text.secondary, fontFamily: MONO }}>
-                      {Math.round(s.confidence)}
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+                    <span style={{ fontSize: 7, color: BTV.text.muted, minWidth: 72, ...MONO }}>
+                      {s.name} ({s.weight}%)
+                    </span>
+                    <div style={{ width: 44, height: 5, background: BTV.bg.terminal, flexShrink: 0 }}>
+                      <div style={{ height: '100%', width: `${s.score}%`, background: c }} />
+                    </div>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c, minWidth: 20, ...MONO }}>{s.score}</span>
+                    <div style={{ display: 'flex', gap: 2, flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
+                      {sources.map((src, si) => (
+                        <MetricTag key={si} label={src.l} color={src.c} />
+                      ))}
                     </div>
                   </div>
                 );
               })}
-            </div>
+              {/* Strategy Quick Scores */}
+              {strategyQuickScores && (
+                <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                  {strategyQuickScores.map((s, i) => (
+                    <div key={i} style={{
+                      flex: 1, textAlign: 'center', padding: '3px 2px',
+                      background: BTV.bg.terminal,
+                      borderTop: s.win ? `2px solid ${BTV.text.amber}` : '2px solid transparent',
+                    }}>
+                      <div style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>{s.l}</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: s.win ? BTV.text.amber : BTV.text.secondary, ...MONO }}>{s.v}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Deal Details */}
-        <div style={{ background: BT.bg.panel }}>
-          <div style={{ padding: '5px 8px', borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5, fontFamily: MONO }}>DEAL DETAILS</div>
+        {/* Col C — Deal Details */}
+        <div style={{ background: BTV.bg.panel }}>
+          <div style={{ padding: '5px 8px', background: BTV.bg.header, borderBottom: `1px solid ${BTV.border.subtle}` }}>
+            <span style={{ fontSize: 8, fontWeight: 700, color: BTV.text.white, letterSpacing: 0.5, ...MONO }}>DEAL DETAILS</span>
           </div>
-          <DataRow label="ADDRESS"   value={deal?.address?.split(',')[0] || deal?.name || '—'} valueColor={BT.text.primary} />
-          <DataRow label="MARKET"    value={deal?.market || deal?.city || '—'} valueColor={BT.text.secondary} />
-          <DataRow label="PRICE"     value={deal?.purchasePrice ? `$${(deal.purchasePrice/1e6).toFixed(1)}M` : '—'} metricColor={BT.met.financial} />
-          <DataRow label="PPU"       value={ppu} metricColor={BT.met.financial} />
-          <DataRow label="UNITS"     value={deal?.units || deal?.totalUnits || '—'} />
-          <DataRow label="ACREAGE"   value={deal?.acreage ? `${deal.acreage} ac` : '—'} />
-          <DataRow label="STRATEGY"  value={strategyLabel.toString().toUpperCase().slice(0, 10)} valueColor={BT.text.purple} />
-          <DataRow label="STAGE"     value={<StageBd stage={stageVal} />} />
-          <DataRow label="RISK"      value={<RiskDot level={riskLevel} />} border={false} />
+          {deal?.address && (
+            <div style={{ padding: '3px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
+              <div style={{ fontSize: 6, color: BTV.text.muted, letterSpacing: 0.5, marginBottom: 1, ...MONO }}>ADDRESS</div>
+              <div style={{ fontSize: 7, color: BTV.text.secondary, ...MONO, lineHeight: 1.3 }}>
+                {deal.address}
+              </div>
+            </div>
+          )}
+          <DataRow label="PRICE" value={price} />
+          <DataRow label="$/UNIT" value={ppuStr} />
+          <DataRow label="UNITS" value={units ? String(units) : 'LAND'} />
+          {acreage != null && <DataRow label="ACREAGE" value={`${Number(acreage).toFixed(1)} ac`} valueColor={BTV.text.secondary} />}
+          <DataRow label="TYPE" value={deal?.propertyTypeKey || deal?.propType || '—'} valueColor={BTV.text.secondary} />
+          <DataRow label="DEAL TYPE" value={deal?.developmentType || deal?.dealType || '—'} valueColor={BTV.text.cyan} />
+          <DataRow label="STRATEGY" value={deal?.strategy || deal?.strategyType || '—'} valueColor={BTV.text.purple} />
+          <DataRow label="IRR" value={irrStr} valueColor={BTV.text.green} />
+          <DataRow label="EM" value={emStr} />
+          <DataRow label="STAGE" value={deal?.stage || '—'} valueColor={BTV.text.cyan} />
+          <DataRow label="RISK" value={deal?.riskLevel || deal?.risk || '—'}
+            valueColor={deal?.riskLevel === 'HIGH' || deal?.risk === 'HIGH' ? BTV.text.red
+              : deal?.riskLevel === 'LOW' || deal?.risk === 'LOW' ? BTV.text.green : BTV.text.amber}
+            border={false} />
         </div>
       </div>
 
-      {/* ═══ ROW 2: Alert Banners ═══ */}
-      {(strategyVerdict?.isArbitrage || riskAlert?.show) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT.border.subtle }}>
-          {strategyVerdict?.isArbitrage && (
-            <div style={{ padding: '6px 10px', background: BT.text.green + '08', borderLeft: `3px solid ${BT.text.green}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Bd c={BT.text.green}>ARBITRAGE</Bd>
-              <span style={{ fontSize: 8, color: BT.text.secondary, fontFamily: MONO }}>
-                {strategyVerdict.recommendedLabel} outscores {strategyVerdict.secondBestLabel} by {strategyVerdict.arbitrageGap}pts.{' '}
-                {strategyVerdict.insight}
-              </span>
-            </div>
+      {/* ── Row 2: Alert Banners ── */}
+      {(arbitrageGap >= 10 || showCollision) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
+          {arbitrageGap >= 10 && recStrategyLabel && (
+            <AlertBanner
+              label="ARBITRAGE"
+              color={BTV.text.green}
+              text={`${recStrategyLabel} outscores ${altStrategyLabel || 'alternatives'} by ${arbitrageGap}pts. Current strategy alignment confirmed — capture before market reprices.`}
+              badge={<Bd c={BTV.text.green}>+{arbitrageGap}pt GAP</Bd>}
+            />
           )}
-          {riskAlert?.show && (
-            <div style={{ padding: '6px 10px', background: BT.text.orange + '08', borderLeft: `3px solid ${BT.text.orange}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Bd c={BT.text.orange}>COLLISION</Bd>
-              <span style={{ fontSize: 8, color: BT.text.secondary, fontFamily: MONO }}>
-                {riskAlert.detail} — {riskAlert.mitigationText}
-              </span>
-            </div>
+          {showCollision && (
+            <AlertBanner
+              label="COLLISION"
+              color={BTV.text.orange}
+              text={collisionMsg}
+              badge={<Bd c={BTV.text.orange}>REVIEW</Bd>}
+            />
           )}
         </div>
       )}
 
-      {/* ═══ ROW 3: 3-Layer Assumptions ═══ */}
-      <div style={{ background: BT.bg.panel, borderTop: `1px solid ${BT.border.subtle}` }}>
-        <div style={{ padding: '5px 10px', borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5, fontFamily: MONO }}>3-LAYER ASSUMPTIONS</span>
-          <MetricTag label="Broker" color={BT.text.orange} />
-          <MetricTag label="Platform" color={BT.text.cyan} />
-          <MetricTag label="You" color={BT.text.purple} />
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 8 }}>
-            <thead>
-              <tr style={{ background: BT.bg.panelAlt }}>
-                {['ASSUMPTION', 'BROKER', 'PLATFORM', 'YOU', 'DIVERGENCE'].map((h, i) => (
-                  <th key={i} style={{ padding: '3px 8px', textAlign: i === 0 ? 'left' : 'right', color: BT.text.muted, fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, whiteSpace: 'nowrap', letterSpacing: 0.5 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {assumpRows.map((row, i) => {
-                const hasDiff = row.broker !== '—' && row.platform !== '—' && row.broker !== row.platform;
-                return (
-                  <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    <td style={{ padding: '4px 8px', color: BT.text.muted, letterSpacing: 0.5 }}>{row.label}</td>
-                    <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.text.orange, fontWeight: 700 }}>{row.broker}</td>
-                    <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.text.cyan, fontWeight: 700 }}>{row.platform}</td>
-                    <td style={{ padding: '4px 8px', textAlign: 'right', color: BT.text.purple, fontWeight: 700 }}>{row.you}</td>
-                    <td style={{ padding: '4px 8px', textAlign: 'right' }}>
-                      {hasDiff ? <Bd c={BT.text.red}>DIVERGE</Bd> : <span style={{ color: BT.text.muted }}>—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ═══ ROW 4: AI Intelligence Brief ═══ */}
-      <div style={{ background: BT.bg.panel, borderTop: `1px solid ${BT.border.subtle}`, padding: 10 }}>
-        <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8, marginBottom: 6, fontFamily: MONO }}>
-          AI INTELLIGENCE BRIEF
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {[
-            { cat: 'DEMAND',  c: BT.text.green,  msg: signals[0]?.score ? `Demand signal ${signals[0].score}/100. ${signals[0].score >= 80 ? 'Strong inbound demand indicators across economic and digital channels.' : 'Monitor demand drivers — below-threshold signals detected.'}` : 'Demand data loading from platform metrics engine.' },
-            { cat: 'SUPPLY',  c: BT.text.amber,  msg: signals[1]?.score ? `Supply signal ${signals[1].score}/100. ${signals[1].score <= 70 ? 'Supply pressure building — monitor pipeline delivery schedule.' : 'Pipeline within acceptable range for deal thesis.'}` : 'Supply pipeline data loading.' },
-            { cat: 'RISK',    c: BT.text.orange, msg: riskAlert?.show ? `${riskAlert.category} signal at ${riskAlert.score}/100 — ${riskAlert.mitigationText}` : 'Risk signals within acceptable bounds. Continue monitoring.' },
-            { cat: 'ACTION',  c: BT.text.amber,  msg: strategyVerdict?.isArbitrage ? `Advance ${strategyVerdict.recommendedLabel}. Gap of ${strategyVerdict.arbitrageGap}pts over alternatives creates clear conviction.` : strategyVerdict?.recommendedLabel ? `Proceed with ${strategyVerdict.recommendedLabel} strategy. Run full analysis for detailed scoring.` : 'Run strategy analysis to generate action recommendation.' },
-          ].map((b, i) => (
-            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-              <Bd c={b.c}>{b.cat}</Bd>
-              <span style={{ fontSize: 8, color: BT.text.secondary, lineHeight: 1.5, fontFamily: MONO, flex: 1 }}>{b.msg}</span>
+      {/* ── Row 3: 3-Layer Assumptions ── */}
+      <div style={{ background: BTV.bg.terminal, flexShrink: 0 }}>
+        <PanelHeader
+          title="3-LAYER ASSUMPTIONS"
+          subtitle="Quick View — Broker | Platform (JEDI) | You"
+          borderColor={BTV.text.orange}
+          right={
+            <div style={{ display: 'flex', gap: 3 }}>
+              <Bd c={BTV.text.cyan}>BROKER</Bd>
+              <Bd c={BTV.text.green}>PLATFORM</Bd>
+              <Bd c={BTV.text.purple}>YOU</Bd>
+            </div>
+          }
+          metrics={[
+            { l: 'F_RENT', c: BTV.met.financial },
+            { l: 'O_VACANCY', c: BTV.met.occupancy },
+            { l: 'F_CAP', c: BTV.met.financial },
+          ]}
+        />
+        {/* Table header */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 0.5fr', background: BTV.bg.header, borderBottom: `1px solid ${BTV.border.medium}` }}>
+          {['ASSUMPTION', 'BROKER', 'PLATFORM (JEDI)', 'YOU (USER)', 'FLAG'].map((h, i) => (
+            <div key={i} style={{
+              padding: '3px 8px', fontSize: 7, fontWeight: 700,
+              color: [BTV.text.muted, BTV.text.cyan, BTV.text.green, BTV.text.purple, BTV.text.orange][i],
+              borderRight: `1px solid ${BTV.border.subtle}`, ...MONO,
+            }}>
+              {h}
             </div>
           ))}
         </div>
-      </div>
-
-      {/* ═══ ROW 5: Key Financials · Deal Team · Activity ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BT.border.subtle }}>
-
-        {/* Key Financials */}
-        <SectionPanel
-          title="KEY FINANCIALS"
-          borderColor={BT.text.amber}
-          metrics={[{ l: 'F_NOI', c: BT.met.financial }, { l: 'F_CAP', c: BT.met.financial }]}
-        >
-          <DataRow label="PURCHASE PRICE" value={deal?.purchasePrice ? `$${(deal.purchasePrice/1e6).toFixed(1)}M` : '—'} metricColor={BT.met.financial} />
-          <DataRow label="NOI (YR 1)"     value={noi ? `$${(noi/1000).toFixed(0)}K` : '—'} metricColor={BT.met.financial} />
-          <DataRow label="GOING-IN CAP"   value={capRate ? `${(capRate * 100).toFixed(2)}%` : '—'} metricColor={BT.met.financial} />
-          <DataRow label="DSCR"           value={dscr ? `${Number(dscr).toFixed(2)}x` : '—'} valueColor={dscr && Number(dscr) >= 1.25 ? BT.text.green : BT.text.red} />
-          <DataRow label="LTC"            value={`${ltc}%`} />
-          <DataRow label="EQUITY REQ"     value={equityReq ? `$${(equityReq/1e6).toFixed(1)}M` : '—'} border={false} />
-        </SectionPanel>
-
-        {/* Deal Team */}
-        <SectionPanel title="DEAL TEAM" borderColor={BT.text.purple}>
+        {assumptionRows.map((row, ri) => (
+          <div key={ri} style={{
+            display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 0.5fr',
+            background: ri % 2 === 0 ? BTV.bg.panel : BTV.bg.panelAlt,
+            borderBottom: `1px solid ${BTV.border.subtle}`,
+          }}>
+            <div style={{ padding: '3px 8px', fontSize: 8, fontWeight: 600, color: BTV.text.primary, display: 'flex', alignItems: 'center', gap: 4, borderRight: `1px solid ${BTV.border.subtle}`, ...MONO }}>
+              {row.mc && <span style={{ width: 3, height: 3, borderRadius: '50%', background: row.mc, flexShrink: 0 }} />}
+              {row.a}
+            </div>
+            <div style={{ padding: '3px 8px', fontSize: 9, fontWeight: 700, color: BTV.text.cyan, borderRight: `1px solid ${BTV.border.subtle}`, ...MONO }}>{row.b}</div>
+            <div style={{ padding: '3px 8px', fontSize: 9, fontWeight: 700, color: BTV.text.green, borderRight: `1px solid ${BTV.border.subtle}`, ...MONO }}>{row.p}</div>
+            <div style={{ padding: '3px 8px', fontSize: 9, fontWeight: 700, color: BTV.text.purple, borderRight: `1px solid ${BTV.border.subtle}`, ...MONO }}>{row.u}</div>
+            <div style={{ padding: '3px 8px', display: 'flex', alignItems: 'center' }}>
+              {row.flag && <span style={{ width: 7, height: 7, borderRadius: '50%', background: BTV.text.orange }} />}
+            </div>
+          </div>
+        ))}
+        {/* Returns summary */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BTV.border.subtle }}>
           {[
-            { role: 'LEAD',     name: deal?.primaryContact || deal?.leadInvestor || 'Unassigned' },
-            { role: 'ANALYST',  name: deal?.analyst || '—' },
-            { role: 'LEGAL',    name: deal?.attorney || deal?.legalCounsel || '—' },
-            { role: 'LENDER',   name: deal?.lender || deal?.seniorLender || '—' },
-            { role: 'GC',       name: deal?.generalContractor || deal?.gc || '—' },
-          ].map((m, i, arr) => (
-            <div key={i} style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '4px 8px',
-              borderBottom: i < arr.length - 1 ? `1px solid ${BT.border.subtle}` : 'none',
-            }}>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                <Bd c={BT.text.purple}>{m.role}</Bd>
-                <span style={{ fontSize: 8, color: m.name === '—' ? BT.text.muted : BT.text.primary, fontFamily: MONO }}>{m.name}</span>
+            { h: 'BROKER RETURNS', irrVal: irrBroker, emVal: '—', c: BTV.text.cyan },
+            { h: 'PLATFORM-ADJUSTED', irrVal: irrStr, emVal: emStr, c: BTV.text.green },
+            { h: 'YOUR MODEL', irrVal: irrUser, emVal: emStr, c: BTV.text.purple },
+          ].map((col, i) => (
+            <div key={i} style={{ background: BTV.bg.panel, padding: 5, borderTop: `2px solid ${col.c}` }}>
+              <div style={{ fontSize: 7, fontWeight: 700, color: col.c, letterSpacing: 0.8, marginBottom: 2, ...MONO }}>{col.h}</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div>
+                  <span style={{ fontSize: 6, color: BTV.text.muted, ...MONO }}>IRR </span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: col.c, ...MONO }}>{col.irrVal}</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: 6, color: BTV.text.muted, ...MONO }}>EM </span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: col.c, ...MONO }}>{col.emVal}</span>
+                </div>
               </div>
             </div>
           ))}
-        </SectionPanel>
-
-        {/* Recent Activity */}
-        <SectionPanel title="RECENT ACTIVITY" borderColor={BT.text.cyan}>
-          {[
-            { act: `JEDI Score updated${score ? ` — ${score}${delta > 0 ? ` (+${delta})` : ''}` : ''}`, t: 'now', c: BT.text.green },
-            { act: `Deal stage: ${stageVal}`, t: '—', c: BT.text.cyan },
-            { act: strategyVerdict?.isArbitrage ? `Arbitrage detected: ${strategyVerdict.recommendedLabel}` : 'Strategy analysis available', t: '—', c: BT.text.amber },
-            { act: riskAlert?.show ? `Risk alert: ${riskAlert.category} signal` : 'Risk signals within bounds', t: '—', c: riskAlert?.show ? BT.text.orange : BT.text.secondary },
-            { act: 'Capital structure loaded', t: '—', c: BT.text.secondary },
-          ].map((a, i, arr) => (
-            <div key={i} style={{
-              display: 'flex', gap: 8, alignItems: 'flex-start',
-              padding: '4px 8px',
-              borderBottom: i < arr.length - 1 ? `1px solid ${BT.border.subtle}` : 'none',
-            }}>
-              <span style={{ fontSize: 7, color: BT.text.muted, minWidth: 24, fontFamily: MONO, flexShrink: 0 }}>{a.t}</span>
-              <span style={{ fontSize: 8, color: a.c, fontFamily: MONO, lineHeight: 1.4 }}>{a.act}</span>
-            </div>
-          ))}
-        </SectionPanel>
+        </div>
+        {showCollision && (
+          <div style={{ padding: 4, background: `${BTV.text.orange}08`, borderLeft: `3px solid ${BTV.text.orange}` }}>
+            <span style={{ fontSize: 8, color: BTV.text.orange, fontWeight: 600, ...MONO }}>COLLISION: </span>
+            <span style={{ fontSize: 8, color: BTV.text.secondary, ...MONO }}>{collisionMsg}</span>
+          </div>
+        )}
       </div>
 
-      {/* ─── Secondary nav links ─────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 0, borderTop: `1px solid ${BT.border.medium}`, background: BT.bg.header, flexShrink: 0 }}>
-        {[
-          { id: 'context',     label: 'CONTEXT TRACKER' },
-          { id: 'team',        label: 'TEAM MGMT' },
-          { id: 'collaborate', label: 'COLLABORATE' },
-          { id: 'deal-status', label: 'DEAL STATUS' },
-        ].map((tab, i) => (
-          <button
-            key={i}
-            onClick={() => onTabChange?.(tab.id)}
-            style={{
-              fontFamily: MONO, fontSize: 7, fontWeight: 600, letterSpacing: 0.5,
-              padding: '5px 12px', background: 'transparent', color: BT.text.muted,
-              border: 'none', borderRight: `1px solid ${BT.border.subtle}`,
-              cursor: 'pointer',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      {/* ── Row 4: AI Intelligence Brief ── */}
+      <div style={{ background: BTV.bg.panel, padding: 8, borderBottom: `1px solid ${BTV.border.subtle}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 8, fontWeight: 700, color: BTV.text.cyan, letterSpacing: 0.8, marginBottom: 6, ...MONO }}>
+          AI INTELLIGENCE BRIEF
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {aiBriefs.map((b, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+              <Bd c={b.c}>{b.cat}</Bd>
+              <span style={{ fontSize: 8, color: BTV.text.secondary, lineHeight: 1.5, ...MONO }}>{b.msg}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Row 5: Key Financials | Deal Team | Recent Activity ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
+
+        {/* KEY FINANCIALS */}
+        <SectionPanel
+          title="KEY FINANCIALS"
+          borderColor={BTV.text.amber}
+          metrics={[{ l: 'F_NOI', c: BTV.met.financial }, { l: 'F_CAP', c: BTV.met.financial }]}
+        >
+          <DataRow label="GOING-IN CAP" value={goingInCap !== '—' ? goingInCap : '—'} metricColor={BTV.met.financial} />
+          <DataRow label="STABILIZED NOI" value={stabilizedNOI} metricColor={BTV.met.financial} />
+          <DataRow label="DEBT SERVICE" value={debtServiceStr} sub="/yr" />
+          <DataRow label="DSCR" value={dscrVal}
+            valueColor={capitalStructure?.dscr
+              ? capitalStructure.dscr >= 1.25 ? BTV.text.green : BTV.text.orange
+              : BTV.text.secondary} />
+          <DataRow label="LTC" value={ltcVal} />
+          <DataRow label="EQUITY REQ" value={equityReqStr} border={false} />
+        </SectionPanel>
+
+        {/* DEAL TEAM */}
+        <SectionPanel title="DEAL TEAM" borderColor={BTV.text.purple}>
+          {teamToShow.length === 0 ? (
+            <div style={{ padding: '14px 8px', textAlign: 'center' }}>
+              <span style={{ fontSize: 8, color: BTV.text.muted, ...MONO }}>No team members assigned</span>
+            </div>
+          ) : (
+            teamToShow.map((m: any, i: number) => {
+              const role = m.role || m.title || 'MEMBER';
+              const name = m.name || m.userName || m.email || '—';
+              const lastActive = m.lastActive || m.updatedAt || m.createdAt;
+              return (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    <Bd c={BTV.text.purple}>{String(role).toUpperCase().slice(0, 8)}</Bd>
+                    <span style={{ fontSize: 8, color: BTV.text.primary, ...MONO }}>{name}</span>
+                  </div>
+                  <span style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>{lastActive ? fmtAgo(lastActive) : '—'}</span>
+                </div>
+              );
+            })
+          )}
+        </SectionPanel>
+
+        {/* RECENT ACTIVITY */}
+        <SectionPanel title="RECENT ACTIVITY" borderColor={BTV.text.cyan}>
+          {activity.length === 0 ? (
+            <div style={{ padding: '14px 8px', textAlign: 'center' }}>
+              <span style={{ fontSize: 8, color: BTV.text.muted, ...MONO }}>No recent activity</span>
+            </div>
+          ) : (
+            activity.map((a: any, i: number) => {
+              const msg = a.message || a.action || a.description || a.text || '—';
+              const ts = a.createdAt || a.timestamp || a.updatedAt;
+              const color = a.type === 'alert' ? BTV.text.red
+                : a.type === 'update' ? BTV.text.green
+                : a.type === 'comment' ? BTV.text.cyan
+                : BTV.text.secondary;
+              return (
+                <div key={i} style={{ display: 'flex', gap: 6, padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
+                  <span style={{ fontSize: 7, color: BTV.text.muted, minWidth: 20, flexShrink: 0, ...MONO }}>{ts ? fmtAgo(ts) : '—'}</span>
+                  <span style={{ fontSize: 8, color, ...MONO, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{msg}</span>
+                </div>
+              );
+            })
+          )}
+        </SectionPanel>
       </div>
     </div>
   );
 };
-
-export default BloombergOverviewSection;
