@@ -8,25 +8,56 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query, getPool } from '../../database/connection';
-import { scoreAndPersist, detectArbitrage } from '../../services/strategyArbitrage.service';
+import { scoreAndPersist, detectArbitrage, ScoreContext } from '../../services/strategyArbitrage.service';
 import { logger } from '../../utils/logger';
 
 const router = Router({ mergeParams: true });
 
+async function getUserOrgId(userId: string): Promise<string | null> {
+  try {
+    const result = await query(
+      `SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1`,
+      [userId]
+    );
+    return result.rows[0]?.org_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function checkDealAccess(dealId: string, userId: string, orgId: string | null): Promise<boolean> {
+  const result = await query(
+    `SELECT id FROM deals
+     WHERE id = $1
+       AND (user_id = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+    [dealId, userId, orgId]
+  );
+  return result.rows.length > 0;
+}
+
 router.get('/:dealId/strategy-scores', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+
+    if (!(await checkDealAccess(dealId, userId, orgId))) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const ctx: ScoreContext = { userId, orgId };
     const result = await query(
       `SELECT ss.*, s.name as strategy_name, s.is_system_template, s.sort_order
        FROM strategy_scores ss
        JOIN strategies s ON s.id = ss.strategy_id
        WHERE ss.deal_id = $1
+         AND (s.is_system_template = true OR s.created_by = $2 OR ($3::uuid IS NOT NULL AND s.org_id = $3))
        ORDER BY ss.overall_score DESC NULLS LAST`,
-      [dealId]
+      [dealId, userId, orgId]
     );
 
     if (result.rows.length === 0) {
-      const scores = await scoreAndPersist(dealId);
+      const scores = await scoreAndPersist(dealId, ctx);
       return res.json({ success: true, scores, freshlyCalculated: true });
     }
 
@@ -40,7 +71,15 @@ router.get('/:dealId/strategy-scores', requireAuth, async (req: AuthenticatedReq
 router.post('/:dealId/strategy-scores/recalculate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const scores = await scoreAndPersist(dealId);
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+
+    if (!(await checkDealAccess(dealId, userId, orgId))) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const ctx: ScoreContext = { userId, orgId };
+    const scores = await scoreAndPersist(dealId, ctx);
     const arbitrage = detectArbitrage(scores);
     res.json({ success: true, scores, arbitrage });
   } catch (error: any) {
@@ -52,6 +91,13 @@ router.post('/:dealId/strategy-scores/recalculate', requireAuth, async (req: Aut
 router.get('/:dealId/arbitrage', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+
+    if (!(await checkDealAccess(dealId, userId, orgId))) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
     const result = await query(
       `SELECT sa.*,
          sw.name as winning_strategy_name,
@@ -64,7 +110,8 @@ router.get('/:dealId/arbitrage', requireAuth, async (req: AuthenticatedRequest, 
     );
 
     if (result.rows.length === 0) {
-      const scores = await scoreAndPersist(dealId);
+      const ctx: ScoreContext = { userId, orgId };
+      const scores = await scoreAndPersist(dealId, ctx);
       const arbitrage = detectArbitrage(scores);
       return res.json({ success: true, arbitrage, freshlyCalculated: true });
     }

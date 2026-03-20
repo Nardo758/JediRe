@@ -89,6 +89,34 @@ function extractDealSignals(deal: any): Record<string, number> {
   };
 }
 
+function evalGateCondition(gate: StrategyGate, rawValue: any): boolean {
+  const operator = gate.operator || 'threshold';
+
+  if (operator === 'in') {
+    if (!Array.isArray(gate.value)) return false;
+    return !gate.value.includes(rawValue);
+  }
+  if (operator === 'nin') {
+    if (!Array.isArray(gate.value)) return false;
+    return gate.value.includes(rawValue);
+  }
+
+  // Numeric comparisons
+  const num = typeof rawValue === 'number' ? rawValue : Number(rawValue) || 0;
+  const threshold = gate.threshold ?? (typeof gate.value === 'number' ? gate.value : 0);
+
+  switch (operator) {
+    case 'lt':       return !(num < threshold);
+    case 'lte':      return !(num <= threshold);
+    case 'gt':       return !(num > threshold);
+    case 'gte':      return !(num >= threshold);
+    case 'eq':       return num !== threshold;
+    case 'neq':      return num === threshold;
+    case 'threshold':
+    default:         return num >= threshold; // value must be below threshold to PASS
+  }
+}
+
 export function evaluateGates(gates: StrategyGate[], dealSignals: Record<string, any>): GateEvalResult {
   const failures: string[] = [];
   let softPenalties = 0;
@@ -96,24 +124,12 @@ export function evaluateGates(gates: StrategyGate[], dealSignals: Record<string,
 
   for (const gate of gates) {
     const value = dealSignals[gate.metric];
-    let failed = false;
-
-    if (gate.operator === 'in') {
-      if (!Array.isArray(gate.value)) continue;
-      if (!gate.value.includes(value)) {
-        failed = true;
-      }
-    } else if (gate.threshold !== undefined) {
-      const numVal = typeof value === 'number' ? value : 0;
-      if (numVal >= gate.threshold) {
-        failed = true;
-      }
-    }
+    const failed = evalGateCondition(gate, value);
 
     if (failed) {
       if (gate.hard) {
         isNA = true;
-        failures.push(`hard: ${gate.metric} failed`);
+        failures.push(`hard: ${gate.metric} failed (operator=${gate.operator || 'threshold'}, value=${value})`);
       } else {
         softPenalties += 5;
         failures.push(`soft: ${gate.metric}`);
@@ -130,7 +146,20 @@ export function calculateStrategyScore(
   strategy: any
 ): StrategyScore {
   const dealSignals = extractDealSignals(deal);
-  const weights: Record<string, number> = strategy.signal_weights || {};
+
+  // Product-type override: strategy.execution_profile.product_type_overrides
+  // maps product_type → { signal: multiplier } and is applied to base weights
+  const execProfile = strategy.execution_profile || {};
+  const productTypeOverrides: Record<string, Record<string, number>> = execProfile.product_type_overrides || {};
+  const dealProductType: string = deal.project_type || (deal.deal_data || {}).product_type || '';
+  const overrideMultipliers: Record<string, number> = productTypeOverrides[dealProductType] || {};
+
+  const baseWeights: Record<string, number> = strategy.signal_weights || {};
+  const weights: Record<string, number> = {};
+  for (const [k, v] of Object.entries(baseWeights)) {
+    weights[k] = v * (overrideMultipliers[k] ?? 1);
+  }
+
   const propertyGates: StrategyGate[] = strategy.property_gates || [];
   const riskGates: StrategyGate[] = strategy.risk_gates || [];
 
@@ -227,33 +256,50 @@ export function detectArbitrage(scores: StrategyScore[]): ArbitrageResult {
   };
 }
 
-export async function scoreAndPersist(dealId: string): Promise<StrategyScore[]> {
+export interface ScoreContext {
+  userId: string;
+  orgId: string | null;
+}
+
+export async function scoreAndPersist(dealId: string, ctx?: ScoreContext): Promise<StrategyScore[]> {
   try {
     const pool = getPool();
 
-    const [dealRes, strategiesRes] = await Promise.all([
-      pool.query(
-        `SELECT d.*,
-                ds.irr_pct, ds.coc_year_5, ds.npv,
-                dmd.demand_score           AS platform_demand_score,
-                dmd.rent_growth_trailing_12mo AS platform_rent_growth,
-                dmd.rent_growth_forecast_12mo AS platform_rent_growth_forecast,
-                dmd.submarket_occupancy    AS platform_occupancy,
-                dmd.pipeline_units         AS platform_pipeline_units,
-                mrm.demand_strength_score  AS platform_demand_strength,
-                mrm.supply_balance_score   AS platform_supply_balance,
-                mrm.overall_opportunity_score AS platform_opportunity_score
-         FROM deals d
-         LEFT JOIN deal_scenarios ds ON ds.deal_id = d.id
-         LEFT JOIN deal_market_data dmd ON dmd.deal_id = d.id
-         LEFT JOIN market_research_metrics mrm ON mrm.deal_id = d.id
-         WHERE d.id = $1 LIMIT 1`,
-        [dealId]
-      ),
-      pool.query(
-        `SELECT * FROM strategies WHERE is_active = true ORDER BY sort_order`,
-      ),
-    ]);
+    const dealRes = await pool.query(
+      `SELECT d.*,
+              ds.irr_pct, ds.coc_year_5, ds.npv,
+              dmd.demand_score           AS platform_demand_score,
+              dmd.rent_growth_trailing_12mo AS platform_rent_growth,
+              dmd.rent_growth_forecast_12mo AS platform_rent_growth_forecast,
+              dmd.submarket_occupancy    AS platform_occupancy,
+              dmd.pipeline_units         AS platform_pipeline_units,
+              mrm.demand_strength_score  AS platform_demand_strength,
+              mrm.supply_balance_score   AS platform_supply_balance,
+              mrm.overall_opportunity_score AS platform_opportunity_score
+       FROM deals d
+       LEFT JOIN deal_scenarios ds ON ds.deal_id = d.id
+       LEFT JOIN deal_market_data dmd ON dmd.deal_id = d.id
+       LEFT JOIN market_research_metrics mrm ON mrm.deal_id = d.id
+       WHERE d.id = $1 LIMIT 1`,
+      [dealId]
+    );
+
+    // Scope strategies: system templates always visible; custom strategies scoped to caller's org/user
+    let strategiesRes;
+    if (ctx?.userId) {
+      strategiesRes = await pool.query(
+        `SELECT * FROM strategies
+         WHERE is_active = true
+           AND (is_system_template = true OR created_by = $1 OR ($2::uuid IS NOT NULL AND org_id = $2))
+         ORDER BY sort_order`,
+        [ctx.userId, ctx.orgId]
+      );
+    } else {
+      // Fallback: system templates only (safe default for internal/background calls)
+      strategiesRes = await pool.query(
+        `SELECT * FROM strategies WHERE is_active = true AND is_system_template = true ORDER BY sort_order`
+      );
+    }
 
     if (dealRes.rows.length === 0) throw new Error('Deal not found');
     const deal = dealRes.rows[0];
