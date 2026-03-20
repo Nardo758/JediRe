@@ -78,17 +78,17 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
   };
 
   const getVerdictColor = (verdict: string) => {
-    if (verdict.includes('strong')) return 'text-green-600 bg-green-50';
-    if (verdict.includes('opportunity')) return 'text-blue-600 bg-blue-50';
-    if (verdict.includes('caution')) return 'text-yellow-600 bg-yellow-50';
-    return 'text-gray-600 bg-gray-50';
+    if (verdict.includes('strong')) return 'text-green-600 bg-[#022c22]';
+    if (verdict.includes('opportunity')) return 'text-blue-600 bg-[#0d1e3d]';
+    if (verdict.includes('caution')) return 'text-yellow-600 bg-[#1a1200]';
+    return 'text-[#9EA8B4] bg-[#0F1319]';
   };
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-600';
     if (score >= 60) return 'text-blue-600';
     if (score >= 40) return 'text-yellow-600';
-    return 'text-red-600';
+    return 'text-red-400';
   };
 
   if (isLoading) {
@@ -96,7 +96,7 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading analysis...</p>
+          <p className="text-[#9EA8B4]">Loading analysis...</p>
         </div>
       </div>
     );
@@ -109,10 +109,10 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
           <div className="flex items-center justify-center py-12">
             <div className="text-center max-w-md">
               <div className="text-6xl mb-4">📊</div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
+              <h3 className="text-xl font-bold text-[#E8E6E1] mb-2">
                 No Analysis Yet
               </h3>
-              <p className="text-gray-600 mb-6">
+              <p className="text-[#9EA8B4] mb-6">
                 Run a JEDI Score analysis to get insights on this deal's potential,
                 market conditions, and strategic recommendations.
               </p>
@@ -142,34 +142,34 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Strategy Analysis</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 className="text-2xl font-bold text-[#E8E6E1]">Strategy Analysis</h2>
+            <p className="text-sm text-[#9EA8B4] mt-1">
               Last updated: {new Date(analysis.createdAt).toLocaleString()}
             </p>
           </div>
           <button
             onClick={triggerAnalysis}
             disabled={isAnalyzing}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition text-sm"
+            className="px-4 py-2 border border-[#253347] rounded-lg hover:bg-[#0F1319] disabled:opacity-50 transition text-sm"
           >
             {isAnalyzing ? 'Analyzing...' : 'Refresh Analysis'}
           </button>
         </div>
 
         {/* JEDI Score Card */}
-        <div className="bg-white rounded-xl shadow-lg p-8 border-2 border-blue-200">
+        <div className="bg-[#0F1319] rounded-xl shadow-lg p-8 border-2 border-blue-900/50">
           <div className="text-center">
-            <div className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2">
+            <div className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wider mb-2">
               JEDI Score
             </div>
             <div className={`text-7xl font-bold ${getScoreColor(score)} mb-2`}>
               {score}
             </div>
-            <div className="text-gray-600 mb-4">out of 100</div>
+            <div className="text-[#9EA8B4] mb-4">out of 100</div>
             <div className={`inline-block px-4 py-2 rounded-full font-semibold ${getVerdictColor(verdict)}`}>
               {verdict.replace(/_/g, ' ').toUpperCase()}
             </div>
-            <div className="mt-4 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-[#9EA8B4]">
               Confidence: {confidence.toFixed(0)}%
             </div>
           </div>
@@ -177,24 +177,24 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Signal Breakdown */}
         {outputData.signals && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Market Signals</h3>
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Market Signals</h3>
             <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Growth Rate</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="text-center p-4 bg-[#0F1319] rounded-lg">
+                <div className="text-sm text-[#9EA8B4] mb-1">Growth Rate</div>
+                <div className="text-2xl font-bold text-[#E8E6E1]">
                   {outputData.signals.growthRate?.toFixed(1)}%
                 </div>
               </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Trend</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="text-center p-4 bg-[#0F1319] rounded-lg">
+                <div className="text-sm text-[#9EA8B4] mb-1">Trend</div>
+                <div className="text-2xl font-bold text-[#E8E6E1]">
                   {outputData.signals.verdict || 'N/A'}
                 </div>
               </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Signal Strength</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="text-center p-4 bg-[#0F1319] rounded-lg">
+                <div className="text-sm text-[#9EA8B4] mb-1">Signal Strength</div>
+                <div className="text-2xl font-bold text-[#E8E6E1]">
                   {(outputData.signals.confidence * 100).toFixed(0)}%
                 </div>
               </div>
@@ -204,30 +204,30 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Capacity Analysis */}
         {outputData.capacity && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Development Capacity</h3>
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Development Capacity</h3>
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <div className="text-sm text-gray-600 mb-1">Maximum Units</div>
-                <div className="text-3xl font-bold text-gray-900">
+                <div className="text-sm text-[#9EA8B4] mb-1">Maximum Units</div>
+                <div className="text-3xl font-bold text-[#E8E6E1]">
                   {outputData.capacity.maxUnits || 'N/A'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 mb-1">Construction Cost</div>
-                <div className="text-3xl font-bold text-gray-900">
+                <div className="text-sm text-[#9EA8B4] mb-1">Construction Cost</div>
+                <div className="text-3xl font-bold text-[#E8E6E1]">
                   ${((outputData.capacity.constructionCost || 0) / 1000000).toFixed(1)}M
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 mb-1">Potential</div>
+                <div className="text-sm text-[#9EA8B4] mb-1">Potential</div>
                 <div className="text-xl font-semibold text-blue-600">
                   {outputData.capacity.potential || 'Unknown'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 mb-1">Cost per Unit</div>
-                <div className="text-xl font-semibold text-gray-900">
+                <div className="text-sm text-[#9EA8B4] mb-1">Cost per Unit</div>
+                <div className="text-xl font-semibold text-[#E8E6E1]">
                   ${((outputData.capacity.constructionCost || 0) / (outputData.capacity.maxUnits || 1)).toLocaleString()}
                 </div>
               </div>
@@ -237,17 +237,17 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Recommendations */}
         {outputData.recommendations && outputData.recommendations.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
               Strategic Recommendations
             </h3>
             <ul className="space-y-3">
               {outputData.recommendations.map((rec, index) => (
                 <li key={index} className="flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-semibold">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0d1e3d] text-blue-600 flex items-center justify-center text-sm font-semibold">
                     {index + 1}
                   </span>
-                  <span className="text-gray-700">{rec}</span>
+                  <span className="text-[#9EA8B4]">{rec}</span>
                 </li>
               ))}
             </ul>
@@ -255,9 +255,9 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
         )}
 
         {/* Key Insights */}
-        <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
-          <h3 className="text-lg font-bold text-blue-900 mb-3">Key Insights</h3>
-          <ul className="space-y-2 text-blue-800">
+        <div className="bg-[#0d1e3d] rounded-lg p-6 border border-blue-900/50">
+          <h3 className="text-lg font-bold text-blue-300 mb-3">Key Insights</h3>
+          <ul className="space-y-2 text-blue-300">
             {score >= 80 && (
               <li className="flex items-start gap-2">
                 <span className="text-green-500">+</span>

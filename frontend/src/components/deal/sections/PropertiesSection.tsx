@@ -39,7 +39,7 @@ export const PropertiesSection: React.FC<PropertiesSectionProps> = ({ deal }) =>
       icon="🏢"
       wireframe={wireframe}
     >
-      <div className="space-y-3 text-sm text-gray-600">
+      <div className="space-y-3 text-sm text-[#9EA8B4]">
         <strong>Features to Include:</strong>
         <ul className="list-disc list-inside space-y-1">
           <li>Property list with key details</li>

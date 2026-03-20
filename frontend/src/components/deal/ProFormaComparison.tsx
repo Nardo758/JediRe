@@ -210,12 +210,12 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
     
     const threshold = assumptionType === 'absorption' ? 0.5 : 0.1;
     
-    if (Math.abs(value) < threshold) return 'text-gray-600'; // Neutral
+    if (Math.abs(value) < threshold) return 'text-[#9EA8B4]'; // Neutral
     
     if (assumptionType === 'vacancy' || assumptionType === 'opexGrowth') {
-      return value < 0 ? 'text-green-600' : 'text-red-600';
+      return value < 0 ? 'text-green-600' : 'text-red-400';
     } else {
-      return value > 0 ? 'text-green-600' : 'text-red-600';
+      return value > 0 ? 'text-green-600' : 'text-red-400';
     }
   };
 
@@ -248,7 +248,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading pro forma comparison...</p>
+          <p className="mt-4 text-[#9EA8B4]">Loading pro forma comparison...</p>
         </div>
       </div>
     );
@@ -256,11 +256,11 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">{error}</p>
+      <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-4">
+        <p className="text-red-300">{error}</p>
         <button
           onClick={fetchComparison}
-          className="mt-2 text-sm text-red-600 hover:text-red-700 underline"
+          className="mt-2 text-sm text-red-400 hover:text-red-400 underline"
         >
           Retry
         </button>
@@ -270,7 +270,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
 
   if (!comparison) {
     return (
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+      <div className="bg-[#1a1200] border border-yellow-200 rounded-lg p-4">
         <p className="text-yellow-800">No pro forma data available for this deal.</p>
       </div>
     );
@@ -287,11 +287,11 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">{comparison.dealName}</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 className="text-2xl font-bold text-[#E8E6E1]">{comparison.dealName}</h2>
+            <p className="text-sm text-[#9EA8B4] mt-1">
               Strategy: <span className="font-medium">{comparison.strategy}</span>
               {comparison.baseline.lastRecalculation && (
                 <span className="ml-4">
@@ -312,22 +312,22 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
               <button className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
                 Export ▾
               </button>
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <div className="absolute right-0 mt-2 w-48 bg-[#0F1319] border border-[#1e2a3d] rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
                 <button
                   onClick={() => handleExport('json')}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-50"
+                  className="block w-full text-left px-4 py-2 hover:bg-[#0F1319]"
                 >
                   Export as JSON
                 </button>
                 <button
                   onClick={() => handleExport('csv')}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-50"
+                  className="block w-full text-left px-4 py-2 hover:bg-[#0F1319]"
                 >
                   Export as CSV
                 </button>
                 <button
                   onClick={() => handleExport('markdown')}
-                  className="block w-full text-left px-4 py-2 hover:bg-gray-50"
+                  className="block w-full text-left px-4 py-2 hover:bg-[#0F1319]"
                 >
                   Export as Markdown
                 </button>
@@ -345,7 +345,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
               onChange={(e) => setShowBaseline(e.target.checked)}
               className="mr-2"
             />
-            <span className="text-sm text-gray-700">Show Baseline</span>
+            <span className="text-sm text-[#9EA8B4]">Show Baseline</span>
           </label>
           <label className="flex items-center">
             <input
@@ -354,41 +354,41 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
               onChange={(e) => setShowAdjusted(e.target.checked)}
               className="mr-2"
             />
-            <span className="text-sm text-gray-700">Show News-Adjusted</span>
+            <span className="text-sm text-[#9EA8B4]">Show News-Adjusted</span>
           </label>
         </div>
       </div>
 
       {/* Assumptions Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+          <thead className="bg-[#0F1319]">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-left text-xs font-medium text-[#6B7585] uppercase tracking-wider">
                 Assumption
               </th>
               {showBaseline && (
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-[#6B7585] uppercase tracking-wider">
                   Baseline
                 </th>
               )}
               {showAdjusted && (
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-[#6B7585] uppercase tracking-wider">
                   News-Adjusted
                 </th>
               )}
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-[#6B7585] uppercase tracking-wider">
                 Effective
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-[#6B7585] uppercase tracking-wider">
                 Change
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="px-6 py-3 text-right text-xs font-medium text-[#6B7585] uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-[#0F1319] divide-y divide-gray-200">
             {assumptions.map(({ key, data }) => {
               const difference = comparison.differences[key as keyof typeof comparison.differences];
               const changeColor = getChangeColor(difference, key);
@@ -398,37 +398,37 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
               return (
                 <tr
                   key={key}
-                  className={`hover:bg-gray-50 cursor-pointer ${
-                    selectedAssumption === key ? 'bg-blue-50' : ''
+                  className={`hover:bg-[#0F1319] cursor-pointer ${
+                    selectedAssumption === key ? 'bg-[#0d1e3d]' : ''
                   }`}
                   onClick={() => setSelectedAssumption(selectedAssumption === key ? null : key)}
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <span className="text-sm font-medium text-gray-900">
+                      <span className="text-sm font-medium text-[#E8E6E1]">
                         {formatAssumptionName(key)}
                       </span>
                       {hasOverride && (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#1a0d3d] text-purple-800">
                           Override
                         </span>
                       )}
                     </div>
                     {hasOverride && data.overrideReason && (
-                      <p className="text-xs text-gray-500 mt-1">{data.overrideReason}</p>
+                      <p className="text-xs text-[#6B7585] mt-1">{data.overrideReason}</p>
                     )}
                   </td>
                   {showBaseline && (
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-[#E8E6E1]">
                       {formatValue(data.baseline, key)}
                     </td>
                   )}
                   {showAdjusted && (
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm text-[#E8E6E1]">
                       {formatValue(data.current, key)}
                     </td>
                   )}
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-[#E8E6E1]">
                     {formatValue(data.effective, key)}
                   </td>
                   <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-medium ${changeColor}`}>
@@ -444,7 +444,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
                         e.stopPropagation();
                         openOverrideModal(key, data.effective);
                       }}
-                      className="text-blue-600 hover:text-blue-700 font-medium"
+                      className="text-blue-600 hover:text-blue-400 font-medium"
                     >
                       Override
                     </button>
@@ -458,26 +458,26 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
 
       {/* News Events Affecting Assumptions */}
       {selectedAssumption && (
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
             News Events Affecting {formatAssumptionName(selectedAssumption)}
           </h3>
           <div className="space-y-3">
             {comparison.recentAdjustments
               .filter(adj => adj.assumptionType === selectedAssumption)
               .map(adj => (
-                <div key={adj.id} className="border border-gray-200 rounded-lg p-4">
+                <div key={adj.id} className="border border-[#1e2a3d] rounded-lg p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-900">
+                      <p className="text-sm font-medium text-[#E8E6E1]">
                         {adj.newsHeadline || 'Manual Adjustment'}
                       </p>
                       {adj.eventCategory && (
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-[#6B7585] mt-1">
                           {adj.eventCategory} • {adj.eventType}
                         </p>
                       )}
-                      <p className="text-xs text-gray-600 mt-2">
+                      <p className="text-xs text-[#9EA8B4] mt-2">
                         Method: <span className="font-mono">{adj.calculationMethod}</span>
                       </p>
                     </div>
@@ -485,7 +485,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
                       <p className={`text-sm font-bold ${getChangeColor(adj.adjustmentDelta, selectedAssumption)}`}>
                         {adj.adjustmentDelta > 0 ? '+' : ''}{formatValue(Math.abs(adj.adjustmentDelta), selectedAssumption)}
                       </p>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-[#6B7585] mt-1">
                         Confidence: {adj.confidenceScore}%
                       </p>
                       <p className="text-xs text-gray-400 mt-1">
@@ -495,10 +495,10 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
                   </div>
                   {adj.calculationInputs && (
                     <details className="mt-3">
-                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                      <summary className="text-xs text-[#6B7585] cursor-pointer hover:text-[#9EA8B4]">
                         View Calculation Details
                       </summary>
-                      <pre className="text-xs bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
+                      <pre className="text-xs bg-[#0F1319] p-2 rounded mt-2 overflow-x-auto">
                         {JSON.stringify(adj.calculationInputs, null, 2)}
                       </pre>
                     </details>
@@ -506,7 +506,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
                 </div>
               ))}
             {comparison.recentAdjustments.filter(adj => adj.assumptionType === selectedAssumption).length === 0 && (
-              <p className="text-sm text-gray-500 italic">No adjustments for this assumption yet.</p>
+              <p className="text-sm text-[#6B7585] italic">No adjustments for this assumption yet.</p>
             )}
           </div>
         </div>
@@ -515,13 +515,13 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
       {/* Override Modal */}
       {overrideModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="bg-[#0F1319] rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
               Override {formatAssumptionName(overrideModal.assumptionType)}
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-1">
                   New Value
                 </label>
                 <input
@@ -529,19 +529,19 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
                   step="0.01"
                   value={overrideValue}
                   onChange={(e) => setOverrideValue(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-[#253347] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder={overrideModal.currentValue.toString()}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-1">
                   Reason for Override
                 </label>
                 <textarea
                   value={overrideReason}
                   onChange={(e) => setOverrideReason(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-[#253347] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Explain why you're overriding this assumption..."
                 />
               </div>
@@ -552,7 +552,7 @@ export const ProFormaComparison: React.FC<Props> = ({ dealId }) => {
                     setOverrideValue('');
                     setOverrideReason('');
                   }}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  className="px-4 py-2 text-[#9EA8B4] bg-[#131920] rounded-lg hover:bg-[#1e2a3d]"
                 >
                   Cancel
                 </button>

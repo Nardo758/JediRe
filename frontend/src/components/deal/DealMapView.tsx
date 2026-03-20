@@ -199,7 +199,7 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
       <div ref={mapContainer} className="absolute inset-0" />
       
       {/* Legend */}
-      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 z-10">
+      <div className="absolute top-4 left-4 bg-[#0F1319] rounded-lg shadow-lg p-4 z-10">
         <h3 className="font-semibold text-sm mb-2">Legend</h3>
         <div className="space-y-1 text-xs">
           <div className="flex items-center gap-2">
@@ -224,11 +224,11 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
 
       {/* Selected property popup */}
       {selectedProperty && (
-        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-xl p-4 z-10 max-w-md">
+        <div className="absolute bottom-4 left-4 right-4 bg-[#0F1319] rounded-lg shadow-xl p-4 z-10 max-w-md">
           <div className="flex items-start justify-between mb-2">
             <div>
               <h3 className="font-semibold text-lg">{selectedProperty.address}</h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[#9EA8B4]">
                 {selectedProperty.beds && `${selectedProperty.beds} bed`}
                 {selectedProperty.baths && ` • ${selectedProperty.baths} bath`}
                 {selectedProperty.sqft && ` • ${selectedProperty.sqft} sqft`}
@@ -236,27 +236,27 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
             </div>
             <button
               onClick={() => setSelectedProperty(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-gray-400 hover:text-[#9EA8B4]"
             >
               ✕
             </button>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-2xl font-bold text-gray-900">
+              <span className="text-2xl font-bold text-[#E8E6E1]">
                 ${selectedProperty.rent?.toLocaleString()}
               </span>
-              <span className="text-sm text-gray-600">/mo</span>
+              <span className="text-sm text-[#9EA8B4]">/mo</span>
             </div>
             {selectedProperty.building_class && (
-              <span className="px-3 py-1 bg-gray-100 rounded-full text-sm font-medium">
+              <span className="px-3 py-1 bg-[#131920] rounded-full text-sm font-medium">
                 Class {selectedProperty.building_class}
               </span>
             )}
           </div>
           {selectedProperty.comparableScore && (
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <div className="text-xs text-gray-600">Comparable Score</div>
+            <div className="mt-2 pt-2 border-t border-[#1e2a3d]">
+              <div className="text-xs text-[#9EA8B4]">Comparable Score</div>
               <div className="text-sm font-semibold text-blue-600">
                 {(selectedProperty.comparableScore * 100).toFixed(0)}%
               </div>

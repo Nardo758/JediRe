@@ -187,7 +187,7 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ deal }) => {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading team data...</p>
+            <p className="text-[#9EA8B4]">Loading team data...</p>
           </div>
         </div>
       </div>
@@ -198,9 +198,9 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ deal }) => {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading team data</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading team data</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -212,8 +212,8 @@ export const TeamSection: React.FC<TeamSectionProps> = ({ deal }) => {
       {/* Mode Indicator */}
       <div className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
         isPipeline 
-          ? 'bg-blue-100 text-blue-700' 
-          : 'bg-green-100 text-green-700'
+          ? 'bg-[#0d1e3d] text-blue-400' 
+          : 'bg-[#022c22] text-green-400'
       }`}>
         {isPipeline ? '🎯 Acquisition Team' : '🏢 Property Team'}
       </div>
@@ -258,22 +258,22 @@ interface TeamStatsGridProps {
 const TeamStatsGrid: React.FC<TeamStatsGridProps> = ({ stats }) => {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Team Overview</h3>
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Team Overview</h3>
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {stats.map((stat, index) => (
           <div 
             key={index}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm">{stat.label}</span>
+              <span className="text-[#6B7585] text-sm">{stat.label}</span>
               <span className="text-2xl">{stat.icon}</span>
             </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">
+            <div className="text-2xl font-bold text-[#E8E6E1] mb-1">
               {stat.value}
             </div>
             {stat.subtext && (
-              <div className="text-xs text-gray-500">{stat.subtext}</div>
+              <div className="text-xs text-[#6B7585]">{stat.subtext}</div>
             )}
           </div>
         ))}
@@ -305,20 +305,20 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           <span>👥</span> Team Directory
           <span className="text-gray-400 font-normal">({members.length})</span>
         </h3>
         <div className="flex items-center gap-2">
-          <div className="flex bg-white border border-gray-200 rounded-md overflow-hidden">
+          <div className="flex bg-[#0F1319] border border-[#1e2a3d] rounded-md overflow-hidden">
             <button
               onClick={() => setViewMode('grid')}
               className={`px-3 py-1 text-xs font-medium transition-colors ${
                 viewMode === 'grid' 
                   ? 'bg-blue-500 text-white' 
-                  : 'text-gray-600 hover:bg-gray-50'
+                  : 'text-[#9EA8B4] hover:bg-[#0F1319]'
               }`}
             >
               Grid
@@ -328,13 +328,13 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
               className={`px-3 py-1 text-xs font-medium transition-colors ${
                 viewMode === 'list' 
                   ? 'bg-blue-500 text-white' 
-                  : 'text-gray-600 hover:bg-gray-50'
+                  : 'text-[#9EA8B4] hover:bg-[#0F1319]'
               }`}
             >
               List
             </button>
           </div>
-          <button className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors">
+          <button className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-400 hover:bg-[#0d1e3d] rounded transition-colors">
             + Add Member
           </button>
         </div>
@@ -346,7 +346,7 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
             {members.map(member => (
               <div
                 key={member.id}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
+                className="border border-[#1e2a3d] rounded-lg p-4 hover:shadow-md transition-all cursor-pointer"
                 onClick={() => setSelectedMember(member)}
               >
                 <div className="flex items-start gap-3">
@@ -360,10 +360,10 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-gray-900 truncate">
+                    <div className="text-sm font-semibold text-[#E8E6E1] truncate">
                       {member.name}
                     </div>
-                    <div className="text-xs text-gray-500 truncate">
+                    <div className="text-xs text-[#6B7585] truncate">
                       {member.role}
                     </div>
                     <div className="text-xs text-gray-400 mt-1 truncate">
@@ -372,14 +372,14 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
                     <div className="flex items-center gap-3 mt-2">
                       <a 
                         href={`mailto:${member.email}`} 
-                        className="text-blue-600 hover:text-blue-700 text-xs"
+                        className="text-blue-600 hover:text-blue-400 text-xs"
                         onClick={(e) => e.stopPropagation()}
                       >
                         📧
                       </a>
                       <a 
                         href={`tel:${member.phone}`} 
-                        className="text-blue-600 hover:text-blue-700 text-xs"
+                        className="text-blue-600 hover:text-blue-400 text-xs"
                         onClick={(e) => e.stopPropagation()}
                       >
                         📞
@@ -395,7 +395,7 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
             {members.map(member => (
               <div
                 key={member.id}
-                className="flex items-center gap-4 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                className="flex items-center gap-4 p-3 border border-[#1e2a3d] rounded-lg hover:bg-[#0F1319] cursor-pointer transition-colors"
                 onClick={() => setSelectedMember(member)}
               >
                 <div className="relative">
@@ -408,12 +408,12 @@ const TeamMembersCard: React.FC<TeamMembersCardProps> = ({ members, mode }) => {
                 </div>
                 <div className="flex-1 grid grid-cols-4 gap-4">
                   <div>
-                    <div className="text-sm font-semibold text-gray-900">{member.name}</div>
-                    <div className="text-xs text-gray-500">{member.role}</div>
+                    <div className="text-sm font-semibold text-[#E8E6E1]">{member.name}</div>
+                    <div className="text-xs text-[#6B7585]">{member.role}</div>
                   </div>
-                  <div className="text-xs text-gray-600">{member.department}</div>
-                  <div className="text-xs text-gray-600">{member.email}</div>
-                  <div className="text-xs text-gray-600">{member.phone}</div>
+                  <div className="text-xs text-[#9EA8B4]">{member.department}</div>
+                  <div className="text-xs text-[#9EA8B4]">{member.email}</div>
+                  <div className="text-xs text-[#9EA8B4]">{member.phone}</div>
                 </div>
               </div>
             ))}
@@ -449,12 +449,12 @@ const MemberDetailModal: React.FC<MemberDetailModalProps> = ({ member, onClose }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Team Member Details</h3>
+      <div className="bg-[#0F1319] rounded-lg shadow-xl max-w-md w-full">
+        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Team Member Details</h3>
           <button 
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="text-gray-400 hover:text-[#9EA8B4] transition-colors"
           >
             ✕
           </button>
@@ -471,39 +471,39 @@ const MemberDetailModal: React.FC<MemberDetailModalProps> = ({ member, onClose }
               />
             </div>
             <div>
-              <h4 className="text-lg font-semibold text-gray-900">{member.name}</h4>
-              <p className="text-sm text-gray-600">{member.role}</p>
-              <p className="text-xs text-gray-500 mt-1">{member.department}</p>
+              <h4 className="text-lg font-semibold text-[#E8E6E1]">{member.name}</h4>
+              <p className="text-sm text-[#9EA8B4]">{member.role}</p>
+              <p className="text-xs text-[#6B7585] mt-1">{member.department}</p>
             </div>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Email</label>
-              <a href={`mailto:${member.email}`} className="block text-sm text-blue-600 hover:text-blue-700">
+              <label className="text-xs font-semibold text-[#6B7585] uppercase">Email</label>
+              <a href={`mailto:${member.email}`} className="block text-sm text-blue-600 hover:text-blue-400">
                 {member.email}
               </a>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">Phone</label>
-              <a href={`tel:${member.phone}`} className="block text-sm text-blue-600 hover:text-blue-700">
+              <label className="text-xs font-semibold text-[#6B7585] uppercase">Phone</label>
+              <a href={`tel:${member.phone}`} className="block text-sm text-blue-600 hover:text-blue-400">
                 {member.phone}
               </a>
             </div>
             {member.contactPreference && (
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase">Preferred Contact</label>
-                <p className="text-sm text-gray-700 capitalize">{member.contactPreference}</p>
+                <label className="text-xs font-semibold text-[#6B7585] uppercase">Preferred Contact</label>
+                <p className="text-sm text-[#9EA8B4] capitalize">{member.contactPreference}</p>
               </div>
             )}
           </div>
 
           {member.responsibilities && member.responsibilities.length > 0 && (
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase mb-2 block">Responsibilities</label>
+              <label className="text-xs font-semibold text-[#6B7585] uppercase mb-2 block">Responsibilities</label>
               <ul className="space-y-1">
                 {member.responsibilities.map((resp, index) => (
-                  <li key={index} className="text-sm text-gray-700 flex items-start gap-2">
+                  <li key={index} className="text-sm text-[#9EA8B4] flex items-start gap-2">
                     <span className="text-blue-500 mt-1">•</span>
                     <span>{resp}</span>
                   </li>
@@ -513,13 +513,13 @@ const MemberDetailModal: React.FC<MemberDetailModalProps> = ({ member, onClose }
           )}
         </div>
 
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex gap-2">
+        <div className="px-6 py-4 bg-[#0F1319] border-t border-[#1e2a3d] flex gap-2">
           <button className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium">
             Send Message
           </button>
           <button 
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
+            className="px-4 py-2 border border-[#253347] text-[#9EA8B4] rounded-md hover:bg-[#0F1319] transition-colors text-sm font-medium"
           >
             Close
           </button>
@@ -554,15 +554,15 @@ const CommunicationsCard: React.FC<CommunicationsCardProps> = ({ communications,
       message: 'text-orange-500',
       document: 'text-indigo-500'
     };
-    return colors[type as keyof typeof colors] || 'text-gray-500';
+    return colors[type as keyof typeof colors] || 'text-[#6B7585]';
   };
 
   const getPriorityBadge = (priority?: string) => {
     if (!priority) return null;
     const colors = {
-      high: 'bg-red-100 text-red-700',
+      high: 'bg-[#1c0a0a] text-red-400',
       medium: 'bg-yellow-100 text-yellow-700',
-      low: 'bg-green-100 text-green-700'
+      low: 'bg-[#022c22] text-green-400'
     };
     return (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[priority as keyof typeof colors]}`}>
@@ -572,12 +572,12 @@ const CommunicationsCard: React.FC<CommunicationsCardProps> = ({ communications,
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           <span>💬</span> Recent Communications
         </h3>
-        <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+        <button className="text-xs text-blue-600 hover:text-blue-400 font-medium">
           View All
         </button>
       </div>
@@ -586,7 +586,7 @@ const CommunicationsCard: React.FC<CommunicationsCardProps> = ({ communications,
         {communications.map(comm => (
           <div 
             key={comm.id} 
-            className="p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+            className="p-4 hover:bg-[#0F1319] cursor-pointer transition-colors"
           >
             <div className="flex gap-3">
               <div className={`flex-shrink-0 mt-1 text-xl ${getTypeColor(comm.type)}`}>
@@ -594,7 +594,7 @@ const CommunicationsCard: React.FC<CommunicationsCardProps> = ({ communications,
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
-                  <h4 className="text-sm font-semibold text-gray-900">{comm.subject}</h4>
+                  <h4 className="text-sm font-semibold text-[#E8E6E1]">{comm.subject}</h4>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {getPriorityBadge(comm.priority)}
                     {comm.hasAttachment && (
@@ -602,9 +602,9 @@ const CommunicationsCard: React.FC<CommunicationsCardProps> = ({ communications,
                     )}
                   </div>
                 </div>
-                <p className="text-xs text-gray-600 mb-2">{comm.summary}</p>
+                <p className="text-xs text-[#9EA8B4] mb-2">{comm.summary}</p>
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[#6B7585]">
                     {comm.participants.join(', ')}
                   </div>
                   <div className="text-xs text-gray-400">
@@ -631,9 +631,9 @@ const DecisionsCard: React.FC<DecisionsCardProps> = ({ decisions, mode }) => {
 
   const getImpactBadge = (impact: string) => {
     const colors = {
-      high: 'bg-red-100 text-red-700',
+      high: 'bg-[#1c0a0a] text-red-400',
       medium: 'bg-yellow-100 text-yellow-700',
-      low: 'bg-green-100 text-green-700'
+      low: 'bg-[#022c22] text-green-400'
     };
     return (
       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[impact as keyof typeof colors]}`}>
@@ -643,9 +643,9 @@ const DecisionsCard: React.FC<DecisionsCardProps> = ({ decisions, mode }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d]">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           <span>✅</span> Key Decisions
         </h3>
       </div>
@@ -654,17 +654,17 @@ const DecisionsCard: React.FC<DecisionsCardProps> = ({ decisions, mode }) => {
         {displayDecisions.map(decision => (
           <div 
             key={decision.id} 
-            className="pb-4 border-b border-gray-100 last:border-0 last:pb-0"
+            className="pb-4 border-b border-[#1e2a3d] last:border-0 last:pb-0"
           >
             <div className="flex items-start justify-between gap-2 mb-2">
-              <h4 className="text-sm font-semibold text-gray-900">{decision.title}</h4>
+              <h4 className="text-sm font-semibold text-[#E8E6E1]">{decision.title}</h4>
               {getImpactBadge(decision.impact)}
             </div>
-            <p className="text-sm text-gray-700 mb-2 font-medium">
+            <p className="text-sm text-[#9EA8B4] mb-2 font-medium">
               "{decision.decision}"
             </p>
-            <p className="text-xs text-gray-600 mb-2">{decision.context}</p>
-            <div className="flex items-center justify-between text-xs text-gray-500">
+            <p className="text-xs text-[#9EA8B4] mb-2">{decision.context}</p>
+            <div className="flex items-center justify-between text-xs text-[#6B7585]">
               <span>By {decision.madeBy}</span>
               <span>{decision.date}</span>
             </div>
@@ -674,7 +674,7 @@ const DecisionsCard: React.FC<DecisionsCardProps> = ({ decisions, mode }) => {
         {decisions.length > 3 && (
           <button
             onClick={() => setShowAll(!showAll)}
-            className="w-full text-xs text-blue-600 hover:text-blue-700 font-medium text-center py-2"
+            className="w-full text-xs text-blue-600 hover:text-blue-400 font-medium text-center py-2"
           >
             {showAll ? 'Show Less' : `Show ${decisions.length - 3} More`}
           </button>
@@ -698,10 +698,10 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, mode }) 
 
   const getStatusBadge = (status: string) => {
     const badges = {
-      open: { color: 'bg-gray-100 text-gray-700', icon: '⚪' },
-      'in-progress': { color: 'bg-blue-100 text-blue-700', icon: '🔵' },
-      completed: { color: 'bg-green-100 text-green-700', icon: '✅' },
-      overdue: { color: 'bg-red-100 text-red-700', icon: '🔴' }
+      open: { color: 'bg-[#131920] text-[#9EA8B4]', icon: '⚪' },
+      'in-progress': { color: 'bg-[#0d1e3d] text-blue-400', icon: '🔵' },
+      completed: { color: 'bg-[#022c22] text-green-400', icon: '✅' },
+      overdue: { color: 'bg-[#1c0a0a] text-red-400', icon: '🔴' }
     };
     const badge = badges[status as keyof typeof badges] || badges.open;
     return (
@@ -722,15 +722,15 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, mode }) 
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           <span>📋</span> Action Items
           <span className="text-gray-400 font-normal">({openItems.length} open)</span>
         </h3>
         <button
           onClick={() => setShowCompleted(!showCompleted)}
-          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+          className="text-xs text-blue-600 hover:text-blue-400 font-medium"
         >
           {showCompleted ? 'Hide Completed' : 'Show Completed'}
         </button>
@@ -740,25 +740,25 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, mode }) 
         {displayItems.map(item => (
           <div 
             key={item.id} 
-            className="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-all"
+            className="border border-[#1e2a3d] rounded-lg p-3 hover:shadow-md transition-all"
           >
             <div className="flex items-start gap-2 mb-2">
               <span className="text-lg flex-shrink-0">{getPriorityIcon(item.priority)}</span>
               <div className="flex-1 min-w-0">
-                <h4 className="text-sm font-semibold text-gray-900 mb-1">{item.title}</h4>
+                <h4 className="text-sm font-semibold text-[#E8E6E1] mb-1">{item.title}</h4>
                 {item.description && (
-                  <p className="text-xs text-gray-600 mb-2">{item.description}</p>
+                  <p className="text-xs text-[#9EA8B4] mb-2">{item.description}</p>
                 )}
                 <div className="flex items-center gap-2 mb-2">
                   {getStatusBadge(item.status)}
-                  <span className="text-xs text-gray-500">{item.category}</span>
+                  <span className="text-xs text-[#6B7585]">{item.category}</span>
                 </div>
-                <div className="flex items-center justify-between text-xs text-gray-500">
+                <div className="flex items-center justify-between text-xs text-[#6B7585]">
                   <div>
                     <span className="font-medium">Assigned to:</span> {item.assignedTo}
                   </div>
                   <div className={`font-medium ${
-                    item.status === 'overdue' ? 'text-red-600' : 'text-gray-600'
+                    item.status === 'overdue' ? 'text-red-400' : 'text-[#9EA8B4]'
                   }`}>
                     Due: {item.dueDate}
                   </div>
@@ -786,8 +786,8 @@ interface VendorsCardProps {
 const VendorsCard: React.FC<VendorsCardProps> = ({ vendors }) => {
   const getStatusBadge = (status: string) => {
     const badges = {
-      active: { color: 'bg-green-100 text-green-700', icon: '✓' },
-      inactive: { color: 'bg-gray-100 text-gray-700', icon: '○' },
+      active: { color: 'bg-[#022c22] text-green-400', icon: '✓' },
+      inactive: { color: 'bg-[#131920] text-[#9EA8B4]', icon: '○' },
       pending: { color: 'bg-yellow-100 text-yellow-700', icon: '⏳' }
     };
     const badge = badges[status as keyof typeof badges] || badges.pending;
@@ -807,12 +807,12 @@ const VendorsCard: React.FC<VendorsCardProps> = ({ vendors }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           <span>🏢</span> Vendors & Contractors
         </h3>
-        <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+        <button className="text-xs text-blue-600 hover:text-blue-400 font-medium">
           + Add Vendor
         </button>
       </div>
@@ -821,17 +821,17 @@ const VendorsCard: React.FC<VendorsCardProps> = ({ vendors }) => {
         {vendors.map(vendor => (
           <div 
             key={vendor.id} 
-            className="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-all"
+            className="border border-[#1e2a3d] rounded-lg p-3 hover:shadow-md transition-all"
           >
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="flex-1">
-                <h4 className="text-sm font-semibold text-gray-900">{vendor.name}</h4>
-                <p className="text-xs text-gray-500">{vendor.category}</p>
+                <h4 className="text-sm font-semibold text-[#E8E6E1]">{vendor.name}</h4>
+                <p className="text-xs text-[#6B7585]">{vendor.category}</p>
               </div>
               {getStatusBadge(vendor.status)}
             </div>
             
-            <div className="space-y-1 mb-2 text-xs text-gray-600">
+            <div className="space-y-1 mb-2 text-xs text-[#9EA8B4]">
               <div className="flex items-center gap-2">
                 <span className="font-medium">Contact:</span> {vendor.contact}
               </div>
@@ -844,7 +844,7 @@ const VendorsCard: React.FC<VendorsCardProps> = ({ vendors }) => {
             </div>
 
             {vendor.contract && (
-              <div className="bg-gray-50 rounded p-2 text-xs text-gray-600">
+              <div className="bg-[#0F1319] rounded p-2 text-xs text-[#9EA8B4]">
                 <div className="flex justify-between">
                   <span>Contract Value:</span>
                   <span className="font-medium">{formatCurrency(vendor.contract.value)}</span>
@@ -859,7 +859,7 @@ const VendorsCard: React.FC<VendorsCardProps> = ({ vendors }) => {
             {vendor.rating && (
               <div className="flex items-center gap-1 mt-2 text-xs">
                 <span className="text-yellow-500">{'⭐'.repeat(Math.floor(vendor.rating))}</span>
-                <span className="text-gray-500">({vendor.rating}/5)</span>
+                <span className="text-[#6B7585]">({vendor.rating}/5)</span>
               </div>
             )}
 
@@ -904,9 +904,9 @@ const EscalationsCard: React.FC<EscalationsCardProps> = ({ escalations }) => {
 
   const getStatusBadge = (status: string) => {
     const badges = {
-      open: { color: 'bg-red-100 text-red-700', text: 'Open' },
+      open: { color: 'bg-[#1c0a0a] text-red-400', text: 'Open' },
       'in-progress': { color: 'bg-yellow-100 text-yellow-700', text: 'In Progress' },
-      resolved: { color: 'bg-green-100 text-green-700', text: 'Resolved' }
+      resolved: { color: 'bg-[#022c22] text-green-400', text: 'Resolved' }
     };
     const badge = badges[status as keyof typeof badges] || badges.open;
     return (
@@ -917,15 +917,15 @@ const EscalationsCard: React.FC<EscalationsCardProps> = ({ escalations }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           <span>🚨</span> Escalations
           <span className="text-gray-400 font-normal">({openEscalations.length} open)</span>
         </h3>
         <button
           onClick={() => setShowResolved(!showResolved)}
-          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+          className="text-xs text-blue-600 hover:text-blue-400 font-medium"
         >
           {showResolved ? 'Hide Resolved' : 'Show Resolved'}
         </button>
@@ -935,25 +935,25 @@ const EscalationsCard: React.FC<EscalationsCardProps> = ({ escalations }) => {
         {displayEscalations.map(escalation => (
           <div 
             key={escalation.id} 
-            className="border-2 border-gray-200 rounded-lg p-3 hover:shadow-md transition-all"
+            className="border-2 border-[#1e2a3d] rounded-lg p-3 hover:shadow-md transition-all"
           >
             <div className="flex items-start gap-2 mb-2">
               {getSeverityBadge(escalation.severity)}
               <div className="flex-1">
-                <h4 className="text-sm font-semibold text-gray-900 mb-1">{escalation.title}</h4>
+                <h4 className="text-sm font-semibold text-[#E8E6E1] mb-1">{escalation.title}</h4>
                 {getStatusBadge(escalation.status)}
               </div>
             </div>
             
-            <p className="text-xs text-gray-700 mb-2">{escalation.description}</p>
+            <p className="text-xs text-[#9EA8B4] mb-2">{escalation.description}</p>
             
             {escalation.resolution && escalation.status === 'resolved' && (
-              <div className="bg-green-50 border border-green-200 rounded p-2 mb-2 text-xs text-gray-700">
-                <strong className="text-green-700">Resolution:</strong> {escalation.resolution}
+              <div className="bg-[#022c22] border border-green-800/50 rounded p-2 mb-2 text-xs text-[#9EA8B4]">
+                <strong className="text-green-400">Resolution:</strong> {escalation.resolution}
               </div>
             )}
             
-            <div className="flex items-center justify-between text-xs text-gray-500">
+            <div className="flex items-center justify-between text-xs text-[#6B7585]">
               <div>
                 <span className="font-medium">Reported by:</span> {escalation.reportedBy}
               </div>
@@ -961,7 +961,7 @@ const EscalationsCard: React.FC<EscalationsCardProps> = ({ escalations }) => {
                 {escalation.reportedDate}
               </div>
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-[#6B7585] mt-1">
               <span className="font-medium">Assigned to:</span> {escalation.assignedTo}
             </div>
           </div>

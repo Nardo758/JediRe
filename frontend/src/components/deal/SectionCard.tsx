@@ -76,11 +76,11 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   const isEmpty = !children || (React.Children.count(children) === 0);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+    <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
       {/* Header */}
       <button
         onClick={toggleExpanded}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-[#0F1319] transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
         aria-expanded={isExpanded}
         aria-controls={`section-${id}-content`}
       >
@@ -88,12 +88,12 @@ export const SectionCard: React.FC<SectionCardProps> = ({
           <span className="text-2xl" role="img" aria-hidden="true">
             {icon}
           </span>
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-lg font-semibold text-[#E8E6E1]">{title}</h2>
         </div>
         
         {/* Expand/Collapse Arrow */}
         <svg
-          className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${
+          className={`w-5 h-5 text-[#6B7585] transition-transform duration-200 ${
             isExpanded ? 'transform rotate-180' : ''
           }`}
           fill="none"
@@ -123,7 +123,7 @@ export const SectionCard: React.FC<SectionCardProps> = ({
           {isEmpty && showEmptyState ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="text-4xl mb-3 opacity-30">📭</div>
-              <p className="text-sm text-gray-500">{emptyStateMessage}</p>
+              <p className="text-sm text-[#6B7585]">{emptyStateMessage}</p>
             </div>
           ) : (
             children

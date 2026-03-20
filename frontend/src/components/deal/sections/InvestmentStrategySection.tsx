@@ -145,7 +145,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading investment strategy data...</p>
+            <p className="text-[#9EA8B4]">Loading investment strategy data...</p>
           </div>
         </div>
       </div>
@@ -156,9 +156,9 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
   if (error && !strategyData) {
     return (
       <div className="space-y-6 p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading investment strategy data</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading investment strategy data</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -172,8 +172,8 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
         <div className="flex items-center gap-3">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-[#0d1e3d] text-blue-400' 
+              : 'bg-[#022c22] text-green-400'
           }`}>
             {isPipeline ? '🎯 Investment Planning' : '📊 Investment Execution'}
           </div>
@@ -183,12 +183,12 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             </span>
           )}
           {!isLiveData && (
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-300">
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#1a1200] text-amber-400 border border-amber-300">
               SAMPLE DATA
             </span>
           )}
           {isOwned && overview.acquisitionDate && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-[#6B7585]">
               Acquired: {new Date(overview.acquisitionDate).toLocaleDateString()}
             </div>
           )}
@@ -205,14 +205,14 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
       />
 
       {/* Sub-Section Navigation */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-2">
         <div className="flex gap-2">
           <button
             onClick={() => setActiveSubSection('acquisition')}
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'acquisition'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'
             }`}
           >
             <div className="text-lg mb-1">🎯</div>
@@ -223,7 +223,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'value-creation'
                 ? 'bg-green-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'
             }`}
           >
             <div className="text-lg mb-1">🚀</div>
@@ -234,7 +234,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'exit'
                 ? 'bg-purple-600 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'
             }`}
           >
             <div className="text-lg mb-1">🏆</div>
@@ -308,26 +308,26 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
       {stats.map((stat, index) => (
         <div
           key={index}
-          className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition"
+          className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-4 hover:shadow-md transition"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">{stat.icon}</span>
             {stat.trend && (
               <span className={`text-xs font-semibold px-2 py-1 rounded ${
                 stat.trend.direction === 'up' 
-                  ? 'bg-green-100 text-green-700'
+                  ? 'bg-[#022c22] text-green-400'
                   : stat.trend.direction === 'down'
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-gray-100 text-gray-700'
+                  ? 'bg-[#1c0a0a] text-red-400'
+                  : 'bg-[#131920] text-[#9EA8B4]'
               }`}>
                 {stat.trend.value}
               </span>
             )}
           </div>
-          <div className="text-sm text-gray-600 mb-1">{stat.label}</div>
-          <div className="text-2xl font-bold text-gray-900">{formatValue(stat)}</div>
+          <div className="text-sm text-[#9EA8B4] mb-1">{stat.label}</div>
+          <div className="text-2xl font-bold text-[#E8E6E1]">{formatValue(stat)}</div>
           {stat.subtext && (
-            <div className="text-xs text-gray-500 mt-1">{stat.subtext}</div>
+            <div className="text-xs text-[#6B7585] mt-1">{stat.subtext}</div>
           )}
         </div>
       ))}
@@ -366,16 +366,16 @@ const InvestmentTimelineVisualization: React.FC<InvestmentTimelineVisualizationP
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">
+    <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
         🗺️ Investment Lifecycle Timeline
       </h3>
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-[#9EA8B4] mb-6">
         Track progress from acquisition through value creation to exit
       </p>
 
       {/* Visual Timeline Bar */}
-      <div className="mb-8 relative h-16 bg-gray-100 rounded-lg overflow-hidden">
+      <div className="mb-8 relative h-16 bg-[#131920] rounded-lg overflow-hidden">
         {timeline.map((phase, idx) => {
           const widthPercent = 100 / timeline.length;
           const leftPercent = idx * widthPercent;
@@ -405,28 +405,28 @@ const InvestmentTimelineVisualization: React.FC<InvestmentTimelineVisualizationP
             key={idx}
             className={`rounded-lg border-2 p-4 ${
               phase.status === 'active' 
-                ? 'border-blue-400 bg-blue-50'
+                ? 'border-blue-400 bg-[#0d1e3d]'
                 : phase.status === 'completed'
-                ? 'border-green-400 bg-green-50'
-                : 'border-gray-200 bg-white'
+                ? 'border-green-400 bg-[#022c22]'
+                : 'border-[#1e2a3d] bg-[#0F1319]'
             }`}
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-2xl">{getPhaseIcon(phase.phase, phase.status)}</span>
               <span className={`text-xs font-semibold px-2 py-1 rounded ${
                 phase.status === 'active' 
-                  ? 'bg-blue-100 text-blue-700'
+                  ? 'bg-[#0d1e3d] text-blue-400'
                   : phase.status === 'completed'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-600'
+                  ? 'bg-[#022c22] text-green-400'
+                  : 'bg-[#131920] text-[#9EA8B4]'
               }`}>
                 {phase.status.toUpperCase()}
               </span>
             </div>
             
-            <h4 className="font-bold text-gray-900 mb-2">{phase.phase}</h4>
+            <h4 className="font-bold text-[#E8E6E1] mb-2">{phase.phase}</h4>
             
-            <div className="text-xs text-gray-600 mb-3">
+            <div className="text-xs text-[#9EA8B4] mb-3">
               {new Date(phase.startDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
               {' → '}
               {new Date(phase.endDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
@@ -435,10 +435,10 @@ const InvestmentTimelineVisualization: React.FC<InvestmentTimelineVisualizationP
             {/* Progress Bar */}
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-gray-600">Progress</span>
-                <span className="text-xs font-semibold text-gray-900">{phase.progress}%</span>
+                <span className="text-xs text-[#9EA8B4]">Progress</span>
+                <span className="text-xs font-semibold text-[#E8E6E1]">{phase.progress}%</span>
               </div>
-              <div className="w-full bg-white rounded-full h-2">
+              <div className="w-full bg-[#0F1319] rounded-full h-2">
                 <div
                   className={`h-2 rounded-full transition-all duration-300 ${getPhaseColor(phase.status)}`}
                   style={{ width: `${phase.progress}%` }}
@@ -448,10 +448,10 @@ const InvestmentTimelineVisualization: React.FC<InvestmentTimelineVisualizationP
             
             {/* Key Milestones */}
             <div>
-              <div className="text-xs font-semibold text-gray-700 mb-2">Key Milestones:</div>
+              <div className="text-xs font-semibold text-[#9EA8B4] mb-2">Key Milestones:</div>
               <ul className="space-y-1">
                 {phase.keyMilestones.map((milestone, mIdx) => (
-                  <li key={mIdx} className="text-xs text-gray-600 flex items-start">
+                  <li key={mIdx} className="text-xs text-[#9EA8B4] flex items-start">
                     <span className="mr-1">•</span>
                     <span>{milestone}</span>
                   </li>
@@ -478,37 +478,37 @@ const AcquisitionStrategySubSection: React.FC<AcquisitionStrategySubSectionProps
     <div className="space-y-6">
       
       {/* Strategy Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
           🎯 {isPipeline ? 'Acquisition Strategy' : 'Acquisition Thesis (Executed)'}
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="text-sm text-gray-600 mb-1">Strategy Type</div>
-            <div className="text-xl font-bold text-blue-700">{strategy.strategyType}</div>
+          <div className="p-4 bg-[#0d1e3d] rounded-lg border border-blue-900/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Strategy Type</div>
+            <div className="text-xl font-bold text-blue-400">{strategy.strategyType}</div>
           </div>
-          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-sm text-gray-600 mb-1">Target IRR</div>
-            <div className="text-xl font-bold text-green-700">{strategy.targetIRR}%</div>
+          <div className="p-4 bg-[#022c22] rounded-lg border border-green-800/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Target IRR</div>
+            <div className="text-xl font-bold text-green-400">{strategy.targetIRR}%</div>
           </div>
-          <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-            <div className="text-sm text-gray-600 mb-1">Time to Stabilize</div>
-            <div className="text-xl font-bold text-purple-700">{strategy.timeToStabilize}</div>
+          <div className="p-4 bg-[#1a0d3d] rounded-lg border border-purple-800/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Time to Stabilize</div>
+            <div className="text-xl font-bold text-purple-400">{strategy.timeToStabilize}</div>
           </div>
         </div>
         
         <div className="mb-6">
-          <h4 className="font-semibold text-gray-900 mb-2">Investment Thesis</h4>
-          <p className="text-sm text-gray-700 leading-relaxed">{strategy.investmentThesis}</p>
+          <h4 className="font-semibold text-[#E8E6E1] mb-2">Investment Thesis</h4>
+          <p className="text-sm text-[#9EA8B4] leading-relaxed">{strategy.investmentThesis}</p>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <h4 className="font-semibold text-gray-900 mb-3">🚀 Key Value Drivers</h4>
+            <h4 className="font-semibold text-[#E8E6E1] mb-3">🚀 Key Value Drivers</h4>
             <ul className="space-y-2">
               {strategy.keyValueDrivers.map((driver: string, idx: number) => (
-                <li key={idx} className="text-sm text-gray-700 flex items-start">
+                <li key={idx} className="text-sm text-[#9EA8B4] flex items-start">
                   <span className="text-green-600 mr-2">✓</span>
                   <span>{driver}</span>
                 </li>
@@ -517,10 +517,10 @@ const AcquisitionStrategySubSection: React.FC<AcquisitionStrategySubSectionProps
           </div>
           
           <div>
-            <h4 className="font-semibold text-gray-900 mb-3">💪 Competitive Advantages</h4>
+            <h4 className="font-semibold text-[#E8E6E1] mb-3">💪 Competitive Advantages</h4>
             <ul className="space-y-2">
               {strategy.competitiveAdvantage.map((advantage: string, idx: number) => (
-                <li key={idx} className="text-sm text-gray-700 flex items-start">
+                <li key={idx} className="text-sm text-[#9EA8B4] flex items-start">
                   <span className="text-blue-600 mr-2">★</span>
                   <span>{advantage}</span>
                 </li>
@@ -531,16 +531,16 @@ const AcquisitionStrategySubSection: React.FC<AcquisitionStrategySubSectionProps
       </div>
 
       {/* Capital Deployment */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
           💰 Capital Deployment Plan
         </h3>
         
         <div className="space-y-4">
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between p-4 bg-[#0F1319] rounded-lg">
             <div>
-              <div className="text-sm text-gray-600">Total Capex Budget</div>
-              <div className="text-2xl font-bold text-gray-900">
+              <div className="text-sm text-[#9EA8B4]">Total Capex Budget</div>
+              <div className="text-2xl font-bold text-[#E8E6E1]">
                 ${(strategy.capexBudget / 1000000).toFixed(2)}M
               </div>
             </div>
@@ -548,20 +548,20 @@ const AcquisitionStrategySubSection: React.FC<AcquisitionStrategySubSectionProps
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="p-4 border border-gray-200 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Unit Renovations</div>
-              <div className="text-lg font-bold text-gray-900">$2.1M</div>
-              <div className="text-xs text-gray-500 mt-1">65% of budget</div>
+            <div className="p-4 border border-[#1e2a3d] rounded-lg">
+              <div className="text-sm text-[#9EA8B4] mb-1">Unit Renovations</div>
+              <div className="text-lg font-bold text-[#E8E6E1]">$2.1M</div>
+              <div className="text-xs text-[#6B7585] mt-1">65% of budget</div>
             </div>
-            <div className="p-4 border border-gray-200 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Common Areas</div>
-              <div className="text-lg font-bold text-gray-900">$750K</div>
-              <div className="text-xs text-gray-500 mt-1">23% of budget</div>
+            <div className="p-4 border border-[#1e2a3d] rounded-lg">
+              <div className="text-sm text-[#9EA8B4] mb-1">Common Areas</div>
+              <div className="text-lg font-bold text-[#E8E6E1]">$750K</div>
+              <div className="text-xs text-[#6B7585] mt-1">23% of budget</div>
             </div>
-            <div className="p-4 border border-gray-200 rounded-lg">
-              <div className="text-sm text-gray-600 mb-1">Contingency</div>
-              <div className="text-lg font-bold text-gray-900">$400K</div>
-              <div className="text-xs text-gray-500 mt-1">12% reserve</div>
+            <div className="p-4 border border-[#1e2a3d] rounded-lg">
+              <div className="text-sm text-[#9EA8B4] mb-1">Contingency</div>
+              <div className="text-lg font-bold text-[#E8E6E1]">$400K</div>
+              <div className="text-xs text-[#6B7585] mt-1">12% reserve</div>
             </div>
           </div>
         </div>
@@ -591,20 +591,20 @@ const ValueCreationPlanSubSection: React.FC<ValueCreationPlanSubSectionProps> = 
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-50 border-green-200';
-      case 'in-progress': return 'bg-blue-50 border-blue-200';
-      case 'planned': return 'bg-gray-50 border-gray-200';
-      default: return 'bg-gray-50 border-gray-200';
+      case 'completed': return 'bg-[#022c22] border-green-800/50';
+      case 'in-progress': return 'bg-[#0d1e3d] border-blue-900/50';
+      case 'planned': return 'bg-[#0F1319] border-[#1e2a3d]';
+      default: return 'bg-[#0F1319] border-[#1e2a3d]';
     }
   };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'Revenue': return 'bg-green-100 text-green-700';
-      case 'Operations': return 'bg-blue-100 text-blue-700';
-      case 'Capex': return 'bg-purple-100 text-purple-700';
-      case 'Positioning': return 'bg-orange-100 text-orange-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'Revenue': return 'bg-[#022c22] text-green-400';
+      case 'Operations': return 'bg-[#0d1e3d] text-blue-400';
+      case 'Capex': return 'bg-[#1a0d3d] text-purple-400';
+      case 'Positioning': return 'bg-[#1a0d00] text-orange-700';
+      default: return 'bg-[#131920] text-[#9EA8B4]';
     }
   };
 
@@ -618,43 +618,43 @@ const ValueCreationPlanSubSection: React.FC<ValueCreationPlanSubSectionProps> = 
     <div className="space-y-6">
       
       {/* Progress Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
           🚀 {isPipeline ? 'Planned Value Creation' : 'Value Creation Progress'}
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-sm text-gray-600 mb-1">Total NOI Lift</div>
-            <div className="text-xl font-bold text-green-700">
+          <div className="p-4 bg-[#022c22] rounded-lg border border-green-800/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Total NOI Lift</div>
+            <div className="text-xl font-bold text-green-400">
               +${(plan.totalProjectedLift / 1000000).toFixed(2)}M
             </div>
-            <div className="text-xs text-gray-500 mt-1">Annual projection</div>
+            <div className="text-xs text-[#6B7585] mt-1">Annual projection</div>
           </div>
-          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-sm text-gray-600 mb-1">Completed</div>
-            <div className="text-xl font-bold text-green-700">{totalCompleted}</div>
-            <div className="text-xs text-gray-500 mt-1">Initiatives</div>
+          <div className="p-4 bg-[#022c22] rounded-lg border border-green-800/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Completed</div>
+            <div className="text-xl font-bold text-green-400">{totalCompleted}</div>
+            <div className="text-xs text-[#6B7585] mt-1">Initiatives</div>
           </div>
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="text-sm text-gray-600 mb-1">In Progress</div>
-            <div className="text-xl font-bold text-blue-700">{totalInProgress}</div>
-            <div className="text-xs text-gray-500 mt-1">Initiatives</div>
+          <div className="p-4 bg-[#0d1e3d] rounded-lg border border-blue-900/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">In Progress</div>
+            <div className="text-xl font-bold text-blue-400">{totalInProgress}</div>
+            <div className="text-xs text-[#6B7585] mt-1">Initiatives</div>
           </div>
-          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-            <div className="text-sm text-gray-600 mb-1">Planned</div>
-            <div className="text-xl font-bold text-gray-700">{totalPlanned}</div>
-            <div className="text-xs text-gray-500 mt-1">Initiatives</div>
+          <div className="p-4 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+            <div className="text-sm text-[#9EA8B4] mb-1">Planned</div>
+            <div className="text-xl font-bold text-[#9EA8B4]">{totalPlanned}</div>
+            <div className="text-xs text-[#6B7585] mt-1">Initiatives</div>
           </div>
         </div>
 
         {/* Overall Progress */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-gray-700">Overall Implementation Progress</span>
-            <span className="text-sm font-semibold text-gray-900">{completionPercent.toFixed(0)}%</span>
+            <span className="text-sm font-semibold text-[#9EA8B4]">Overall Implementation Progress</span>
+            <span className="text-sm font-semibold text-[#E8E6E1]">{completionPercent.toFixed(0)}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-3">
+          <div className="w-full bg-[#1e2a3d] rounded-full h-3">
             <div
               className="bg-green-500 h-3 rounded-full transition-all duration-300"
               style={{ width: `${completionPercent}%` }}
@@ -664,8 +664,8 @@ const ValueCreationPlanSubSection: React.FC<ValueCreationPlanSubSectionProps> = 
       </div>
 
       {/* Initiatives List */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
           📋 Value Creation Initiatives
         </h3>
         
@@ -683,10 +683,10 @@ const ValueCreationPlanSubSection: React.FC<ValueCreationPlanSubSectionProps> = 
                       <span className={`text-xs font-semibold px-2 py-1 rounded ${getCategoryColor(initiative.category)}`}>
                         {initiative.category}
                       </span>
-                      <span className="font-semibold text-gray-900">{initiative.action}</span>
+                      <span className="font-semibold text-[#E8E6E1]">{initiative.action}</span>
                     </div>
-                    <div className="text-sm text-gray-700 mb-2">{initiative.impact}</div>
-                    <div className="flex items-center gap-4 text-xs text-gray-600">
+                    <div className="text-sm text-[#9EA8B4] mb-2">{initiative.impact}</div>
+                    <div className="flex items-center gap-4 text-xs text-[#9EA8B4]">
                       <span>📅 {initiative.timeline}</span>
                       {initiative.annualImpact && (
                         <span className="font-semibold text-green-600">
@@ -721,10 +721,10 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
 }) => {
   const getProbabilityBadge = (level: string) => {
     switch (level) {
-      case 'high': return 'bg-green-100 text-green-700';
+      case 'high': return 'bg-[#022c22] text-green-400';
       case 'medium': return 'bg-yellow-100 text-yellow-700';
-      case 'low': return 'bg-gray-100 text-gray-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'low': return 'bg-[#131920] text-[#9EA8B4]';
+      default: return 'bg-[#131920] text-[#9EA8B4]';
     }
   };
 
@@ -738,35 +738,35 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
     <div className="space-y-6">
       
       {/* Exit Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
           🏆 Exit Strategy Overview
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-            <div className="text-sm text-gray-600 mb-1">Target Exit Date</div>
-            <div className="text-lg font-bold text-purple-700">
+          <div className="p-4 bg-[#1a0d3d] rounded-lg border border-purple-800/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Target Exit Date</div>
+            <div className="text-lg font-bold text-purple-400">
               {new Date(exitStrategy.targetTiming).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
             </div>
           </div>
-          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="text-sm text-gray-600 mb-1">Market Readiness</div>
-            <div className="text-2xl font-bold text-blue-700">{exitStrategy.marketReadiness}%</div>
+          <div className="p-4 bg-[#0d1e3d] rounded-lg border border-blue-900/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Market Readiness</div>
+            <div className="text-2xl font-bold text-blue-400">{exitStrategy.marketReadiness}%</div>
           </div>
-          <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-            <div className="text-sm text-gray-600 mb-1">Exit Readiness</div>
-            <div className="text-2xl font-bold text-green-700">{averageReadiness.toFixed(0)}%</div>
+          <div className="p-4 bg-[#022c22] rounded-lg border border-green-800/50">
+            <div className="text-sm text-[#9EA8B4] mb-1">Exit Readiness</div>
+            <div className="text-2xl font-bold text-green-400">{averageReadiness.toFixed(0)}%</div>
           </div>
         </div>
 
         <div>
-          <h4 className="font-semibold text-gray-900 mb-3">Exit Vehicles</h4>
+          <h4 className="font-semibold text-[#E8E6E1] mb-3">Exit Vehicles</h4>
           <div className="flex flex-wrap gap-2">
             {exitStrategy.exitVehicles.map((vehicle: string, idx: number) => (
               <span
                 key={idx}
-                className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium"
+                className="px-3 py-1 bg-[#131920] text-[#9EA8B4] rounded-full text-sm font-medium"
               >
                 {vehicle}
               </span>
@@ -776,11 +776,11 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
       </div>
 
       {/* Exit Scenarios */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
+      <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+        <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
           🎯 Exit Scenarios
         </h3>
-        <p className="text-sm text-gray-600 mb-6">
+        <p className="text-sm text-[#9EA8B4] mb-6">
           Compare different exit strategies and timing options
         </p>
         
@@ -791,41 +791,41 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
               onClick={() => onSelectScenario(scenario.id)}
               className={`rounded-lg border-2 p-5 cursor-pointer transition ${
                 selectedScenario === scenario.id
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-blue-400 bg-[#0d1e3d]'
+                  : 'border-[#1e2a3d] bg-[#0F1319] hover:border-[#253347]'
               }`}
             >
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="font-bold text-gray-900 text-lg mb-1">{scenario.name}</h4>
+                  <h4 className="font-bold text-[#E8E6E1] text-lg mb-1">{scenario.name}</h4>
                   <span className={`text-xs font-semibold px-2 py-1 rounded ${getProbabilityBadge(scenario.probability)}`}>
                     {scenario.probability.toUpperCase()} PROBABILITY
                   </span>
                 </div>
               </div>
               
-              <p className="text-sm text-gray-700 mb-4">{scenario.description}</p>
+              <p className="text-sm text-[#9EA8B4] mb-4">{scenario.description}</p>
               
               <div className="space-y-2 text-sm mb-4">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Timing:</span>
-                  <span className="font-semibold text-gray-900">{scenario.timing}</span>
+                  <span className="text-[#9EA8B4]">Timing:</span>
+                  <span className="font-semibold text-[#E8E6E1]">{scenario.timing}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Exit Cap:</span>
-                  <span className="font-semibold text-gray-900">{scenario.exitCap}%</span>
+                  <span className="text-[#9EA8B4]">Exit Cap:</span>
+                  <span className="font-semibold text-[#E8E6E1]">{scenario.exitCap}%</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Proj. NOI:</span>
-                  <span className="font-semibold text-gray-900">
+                  <span className="text-[#9EA8B4]">Proj. NOI:</span>
+                  <span className="font-semibold text-[#E8E6E1]">
                     ${(scenario.projectedNOI / 1000000).toFixed(2)}M
                   </span>
                 </div>
                 
                 {scenario.type === 'sale' && scenario.salePrice && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Sale Price:</span>
-                    <span className="font-semibold text-gray-900">
+                    <span className="text-[#9EA8B4]">Sale Price:</span>
+                    <span className="font-semibold text-[#E8E6E1]">
                       ${(scenario.salePrice / 1000000).toFixed(1)}M
                     </span>
                   </div>
@@ -833,7 +833,7 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
                 
                 {scenario.type === 'refinance' && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Cash Out:</span>
+                    <span className="text-[#9EA8B4]">Cash Out:</span>
                     <span className="font-semibold text-green-600">
                       ${(scenario.cashOut! / 1000000).toFixed(1)}M
                     </span>
@@ -841,15 +841,15 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
                 )}
               </div>
               
-              <div className="pt-3 border-t border-gray-300 space-y-2">
+              <div className="pt-3 border-t border-[#253347] space-y-2">
                 {scenario.equityMultiple && (
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Equity Multiple:</span>
+                    <span className="text-sm text-[#9EA8B4]">Equity Multiple:</span>
                     <span className="text-xl font-bold text-green-600">{scenario.equityMultiple}x</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">IRR:</span>
+                  <span className="text-sm text-[#9EA8B4]">IRR:</span>
                   <span className="text-xl font-bold text-green-600">{scenario.irr}%</span>
                 </div>
               </div>
@@ -860,8 +860,8 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
 
       {/* Exit Readiness Preparation (Performance Mode) */}
       {!isPipeline && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">
+        <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
             📊 Exit Preparation Status
           </h3>
           
@@ -869,10 +869,10 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
             {Object.entries(exitStrategy.preparationStatus).map(([key, value]: [string, any]) => (
               <div key={key}>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-gray-700 capitalize">{key}</span>
-                  <span className="text-sm font-semibold text-gray-900">{value}%</span>
+                  <span className="text-sm font-semibold text-[#9EA8B4] capitalize">{key}</span>
+                  <span className="text-sm font-semibold text-[#E8E6E1]">{value}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
+                <div className="w-full bg-[#1e2a3d] rounded-full h-2">
                   <div
                     className={`h-2 rounded-full transition-all duration-300 ${
                       value >= 80 ? 'bg-green-500' : value >= 60 ? 'bg-blue-500' : 'bg-yellow-500'
@@ -888,50 +888,50 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
 
       {/* Broker Recommendations (Performance Mode) */}
       {!isPipeline && exitStrategy.recommendedBrokers && exitStrategy.recommendedBrokers.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">
+        <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
             🏆 Recommended Brokers
           </h3>
-          <p className="text-sm text-gray-600 mb-6">
+          <p className="text-sm text-[#9EA8B4] mb-6">
             Top brokers for multifamily exit based on track record and market expertise
           </p>
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {exitStrategy.recommendedBrokers.map((broker: BrokerRecommendation) => (
-              <div key={broker.id} className="rounded-lg border-2 border-gray-200 p-4 hover:border-blue-300 transition">
+              <div key={broker.id} className="rounded-lg border-2 border-[#1e2a3d] p-4 hover:border-blue-700 transition">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <h4 className="font-bold text-gray-900">{broker.brokerName}</h4>
-                    <div className="text-sm text-gray-600">{broker.firm}</div>
-                    <div className="text-xs text-gray-500 mt-1">{broker.specialty}</div>
+                    <h4 className="font-bold text-[#E8E6E1]">{broker.brokerName}</h4>
+                    <div className="text-sm text-[#9EA8B4]">{broker.firm}</div>
+                    <div className="text-xs text-[#6B7585] mt-1">{broker.specialty}</div>
                   </div>
                   <div className="text-right">
                     <div className="text-xl">{'⭐'.repeat(Math.floor(broker.rating))}</div>
-                    <div className="text-xs text-gray-600">{broker.rating.toFixed(1)}/5.0</div>
+                    <div className="text-xs text-[#9EA8B4]">{broker.rating.toFixed(1)}/5.0</div>
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-gray-50 rounded">
+                <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-[#0F1319] rounded">
                   <div className="text-center">
-                    <div className="text-sm font-bold text-gray-900">{broker.recentSales}</div>
-                    <div className="text-xs text-gray-600">Sales</div>
+                    <div className="text-sm font-bold text-[#E8E6E1]">{broker.recentSales}</div>
+                    <div className="text-xs text-[#9EA8B4]">Sales</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-sm font-bold text-gray-900">{broker.avgDaysOnMarket}</div>
-                    <div className="text-xs text-gray-600">Days</div>
+                    <div className="text-sm font-bold text-[#E8E6E1]">{broker.avgDaysOnMarket}</div>
+                    <div className="text-xs text-[#9EA8B4]">Days</div>
                   </div>
                   <div className="text-center">
                     <div className="text-sm font-bold text-green-600">+{broker.avgPricePremium}%</div>
-                    <div className="text-xs text-gray-600">Premium</div>
+                    <div className="text-xs text-[#9EA8B4]">Premium</div>
                   </div>
                 </div>
                 
                 <div className="space-y-2">
                   <div>
-                    <div className="text-xs font-semibold text-green-700 mb-1">✓ Strengths:</div>
+                    <div className="text-xs font-semibold text-green-400 mb-1">✓ Strengths:</div>
                     <ul className="space-y-1">
                       {broker.pros.slice(0, 2).map((pro, idx) => (
-                        <li key={idx} className="text-xs text-gray-600 flex items-start">
+                        <li key={idx} className="text-xs text-[#9EA8B4] flex items-start">
                           <span className="mr-1">•</span>
                           <span>{pro}</span>
                         </li>
@@ -956,10 +956,10 @@ interface RiskAssessmentSectionProps {
 const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) => {
   const getRiskColor = (level: string) => {
     switch (level) {
-      case 'low': return 'bg-green-100 text-green-700 border-green-300';
+      case 'low': return 'bg-[#022c22] text-green-400 border-green-700';
       case 'medium': return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-      case 'high': return 'bg-red-100 text-red-700 border-red-300';
-      default: return 'bg-gray-100 text-gray-700 border-gray-300';
+      case 'high': return 'bg-[#1c0a0a] text-red-400 border-red-700';
+      default: return 'bg-[#131920] text-[#9EA8B4] border-[#253347]';
     }
   };
 
@@ -973,11 +973,11 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) 
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">
+    <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
         ⚠️ Risk Assessment
       </h3>
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-[#9EA8B4] mb-6">
         Key risks and mitigation strategies across the investment lifecycle
       </p>
 
@@ -990,7 +990,7 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) 
             <div className="flex items-start gap-3 mb-3">
               <span className="text-2xl">{getRiskIcon(risk.level)}</span>
               <div>
-                <h4 className="font-bold text-gray-900">{risk.category}</h4>
+                <h4 className="font-bold text-[#E8E6E1]">{risk.category}</h4>
                 <span className={`text-xs font-semibold px-2 py-1 rounded mt-1 inline-block ${getRiskColor(risk.level)}`}>
                   {risk.level.toUpperCase()} RISK
                 </span>
@@ -999,20 +999,20 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) 
             
             <div className="space-y-2 text-sm">
               <div>
-                <span className="font-semibold text-gray-700">Risk:</span>
-                <p className="text-gray-600 mt-1">{risk.description}</p>
+                <span className="font-semibold text-[#9EA8B4]">Risk:</span>
+                <p className="text-[#9EA8B4] mt-1">{risk.description}</p>
               </div>
               <div>
-                <span className="font-semibold text-gray-700">Mitigation:</span>
-                <p className="text-gray-600 mt-1">{risk.mitigation}</p>
+                <span className="font-semibold text-[#9EA8B4]">Mitigation:</span>
+                <p className="text-[#9EA8B4] mt-1">{risk.mitigation}</p>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <div className="text-sm text-gray-700">
+      <div className="mt-6 p-4 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+        <div className="text-sm text-[#9EA8B4]">
           <span className="font-semibold">Overall Risk Profile:</span>
           {' '}Moderate risk profile with comprehensive mitigation strategies in place. Regular monitoring and proactive management recommended throughout the investment lifecycle.
         </div>

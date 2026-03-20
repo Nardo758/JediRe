@@ -69,14 +69,14 @@ export const PropertiesSectionEnhanced: React.FC<PropertiesSectionEnhancedProps>
     <div className="properties-section-enhanced">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Properties</h2>
-        <p className="text-gray-600 mt-1">
+        <h2 className="text-2xl font-bold text-[#E8E6E1]">Properties</h2>
+        <p className="text-[#9EA8B4] mt-1">
           Detailed property information with interactive 3D visualization
         </p>
       </div>
 
       {/* Tab Navigation */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-[#1e2a3d] mb-6">
         <nav className="flex gap-4">
           {tabs.map((tab) => (
             <button
@@ -85,7 +85,7 @@ export const PropertiesSectionEnhanced: React.FC<PropertiesSectionEnhancedProps>
               className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
                 activeTab === tab.id
                   ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  : 'border-transparent text-[#6B7585] hover:text-[#9EA8B4] hover:border-[#253347]'
               }`}
             >
               <span className="mr-2">{tab.icon}</span>
@@ -100,12 +100,12 @@ export const PropertiesSectionEnhanced: React.FC<PropertiesSectionEnhancedProps>
         {activeTab === '3d-view' && (
           <div>
             <div className="mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Interactive 3D Building Model</h3>
-              <p className="text-sm text-gray-600 mt-1">
+              <h3 className="text-lg font-semibold text-[#E8E6E1]">Interactive 3D Building Model</h3>
+              <p className="text-sm text-[#9EA8B4] mt-1">
                 Click on units to see details. Use mouse to rotate, zoom, and pan.
               </p>
             </div>
-            <Suspense fallback={<div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg border"><div className="text-gray-500">Loading 3D view...</div></div>}>
+            <Suspense fallback={<div className="flex items-center justify-center h-64 bg-[#0F1319] rounded-lg border"><div className="text-[#6B7585]">Loading 3D view...</div></div>}>
               <BuildingDiagram3D
                 buildingData={mockBuildingData}
                 onUnitClick={handleUnitClick}
@@ -114,49 +114,49 @@ export const PropertiesSectionEnhanced: React.FC<PropertiesSectionEnhancedProps>
             
             {/* Statistics */}
             <div className="grid grid-cols-4 gap-4 mt-6">
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="bg-[#0F1319] p-4 rounded-lg border border-[#1e2a3d]">
+                <div className="text-2xl font-bold text-[#E8E6E1]">
                   {mockBuildingData.units.length}
                 </div>
-                <div className="text-sm text-gray-600">Total Units</div>
+                <div className="text-sm text-[#9EA8B4]">Total Units</div>
               </div>
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="bg-[#0F1319] p-4 rounded-lg border border-[#1e2a3d]">
                 <div className="text-2xl font-bold text-green-600">
                   {mockBuildingData.units.filter(u => u.status === 'occupied').length}
                 </div>
-                <div className="text-sm text-gray-600">Occupied</div>
+                <div className="text-sm text-[#9EA8B4]">Occupied</div>
               </div>
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
-                <div className="text-2xl font-bold text-red-600">
+              <div className="bg-[#0F1319] p-4 rounded-lg border border-[#1e2a3d]">
+                <div className="text-2xl font-bold text-red-400">
                   {mockBuildingData.units.filter(u => u.status === 'vacant').length}
                 </div>
-                <div className="text-sm text-gray-600">Vacant</div>
+                <div className="text-sm text-[#9EA8B4]">Vacant</div>
               </div>
-              <div className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="bg-[#0F1319] p-4 rounded-lg border border-[#1e2a3d]">
                 <div className="text-2xl font-bold text-yellow-600">
                   {mockBuildingData.units.filter(u => u.status === 'notice').length}
                 </div>
-                <div className="text-sm text-gray-600">Notice Given</div>
+                <div className="text-sm text-[#9EA8B4]">Notice Given</div>
               </div>
             </div>
           </div>
         )}
 
         {activeTab === 'list' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-gray-600">Property list view - To be implemented</p>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <p className="text-[#9EA8B4]">Property list view - To be implemented</p>
           </div>
         )}
 
         {activeTab === 'unit-mix' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-gray-600">Unit mix breakdown - To be implemented</p>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <p className="text-[#9EA8B4]">Unit mix breakdown - To be implemented</p>
           </div>
         )}
 
         {activeTab === 'rent-roll' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <p className="text-gray-600">Rent roll details - To be implemented</p>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <p className="text-[#9EA8B4]">Rent roll details - To be implemented</p>
           </div>
         )}
       </div>

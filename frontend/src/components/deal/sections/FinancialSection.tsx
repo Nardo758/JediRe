@@ -91,7 +91,7 @@ export const FinancialSection: React.FC<FinancialSectionProps> = ({ projectId })
           <CheckCircle className="w-5 h-5 text-green-600" />
           <div className="banner-text">
             <h4 className="font-medium">Design Data Imported</h4>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-[#9EA8B4]">
               Financial model populated with data from Design Dashboard
             </p>
           </div>

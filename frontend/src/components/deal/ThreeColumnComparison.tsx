@@ -47,7 +47,7 @@ export const ThreeColumnComparison: React.FC<ThreeColumnComparisonProps> = ({
     
     if (Math.abs(delta) < 0.1) {
       return (
-        <div className="flex items-center gap-1 text-gray-500 text-sm">
+        <div className="flex items-center gap-1 text-[#6B7585] text-sm">
           <Minus className="w-3 h-3" />
           <span>Match</span>
         </div>
@@ -71,20 +71,20 @@ export const ThreeColumnComparison: React.FC<ThreeColumnComparisonProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] overflow-hidden">
       {/* Header */}
-      <div className="grid grid-cols-4 bg-gray-50 border-b border-gray-200">
-        <div className="p-4 font-semibold text-gray-900">Metric</div>
+      <div className="grid grid-cols-4 bg-[#0F1319] border-b border-[#1e2a3d]">
+        <div className="p-4 font-semibold text-[#E8E6E1]">Metric</div>
         <div className="p-4 text-center">
-          <div className="font-semibold text-blue-900">Broker Claims</div>
+          <div className="font-semibold text-blue-300">Broker Claims</div>
           <div className="text-xs text-blue-600">Layer 1: Deal Data</div>
         </div>
         <div className="p-4 text-center">
-          <div className="font-semibold text-purple-900">Market Reality</div>
+          <div className="font-semibold text-purple-300">Market Reality</div>
           <div className="text-xs text-purple-600">Layer 2: Platform Intel</div>
         </div>
         <div className="p-4 text-center">
-          <div className="font-semibold text-green-900">Your Model</div>
+          <div className="font-semibold text-green-300">Your Model</div>
           <div className="text-xs text-green-600">Layer 3: Your Assumptions</div>
         </div>
       </div>
@@ -93,26 +93,26 @@ export const ThreeColumnComparison: React.FC<ThreeColumnComparisonProps> = ({
       {rows.map((row, idx) => (
         <div 
           key={idx} 
-          className={`grid grid-cols-4 border-b border-gray-100 hover:bg-gray-50 ${
-            idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+          className={`grid grid-cols-4 border-b border-[#1e2a3d] hover:bg-[#0F1319] ${
+            idx % 2 === 0 ? 'bg-[#0F1319]' : 'bg-[#0F1319]/50'
           }`}
         >
           {/* Label */}
-          <div className="p-4 font-medium text-gray-700">
+          <div className="p-4 font-medium text-[#9EA8B4]">
             {row.label}
           </div>
 
           {/* Broker Claims (Blue - Original) */}
-          <div className="p-4 text-center bg-blue-50/30">
-            <div className="text-lg font-semibold text-blue-900">
+          <div className="p-4 text-center bg-[#0d1e3d]/30">
+            <div className="text-lg font-semibold text-blue-300">
               {formatValue(row.broker, row.format)}
             </div>
             <div className="text-xs text-blue-600 mt-1">Original claim</div>
           </div>
 
           {/* Market Reality (Purple - Comparison) */}
-          <div className="p-4 text-center bg-purple-50/30">
-            <div className="text-lg font-semibold text-purple-900">
+          <div className="p-4 text-center bg-[#1a0d3d]/30">
+            <div className="text-lg font-semibold text-purple-300">
               {formatValue(row.market, row.format)}
             </div>
             <div className="mt-1">
@@ -121,19 +121,19 @@ export const ThreeColumnComparison: React.FC<ThreeColumnComparisonProps> = ({
           </div>
 
           {/* Your Model (Green - User's Choice) */}
-          <div className="p-4 text-center bg-green-50/30">
+          <div className="p-4 text-center bg-[#022c22]/30">
             {row.editable && onUserEdit ? (
               <button 
                 onClick={() => onUserEdit(row.label, row.user || row.broker)}
                 className="group flex items-center justify-center gap-2 w-full"
               >
-                <div className="text-lg font-semibold text-green-900">
+                <div className="text-lg font-semibold text-green-300">
                   {row.user ? formatValue(row.user, row.format) : formatValue(row.broker, row.format)}
                 </div>
                 <Edit2 className="w-4 h-4 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
             ) : (
-              <div className="text-lg font-semibold text-green-900">
+              <div className="text-lg font-semibold text-green-300">
                 {row.user ? formatValue(row.user, row.format) : formatValue(row.broker, row.format)}
               </div>
             )}
@@ -145,18 +145,18 @@ export const ThreeColumnComparison: React.FC<ThreeColumnComparisonProps> = ({
       ))}
 
       {/* Legend */}
-      <div className="bg-gray-50 p-4 text-xs text-gray-600">
+      <div className="bg-[#0F1319] p-4 text-xs text-[#9EA8B4]">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-blue-100 border border-blue-200 rounded"></div>
+            <div className="w-3 h-3 bg-[#0d1e3d] border border-blue-900/50 rounded"></div>
             <span>Original deal data (preserved)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-purple-100 border border-purple-200 rounded"></div>
+            <div className="w-3 h-3 bg-[#1a0d3d] border border-purple-800/50 rounded"></div>
             <span>Market comparison (reference only)</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-green-100 border border-green-200 rounded"></div>
+            <div className="w-3 h-3 bg-[#022c22] border border-green-800/50 rounded"></div>
             <span>Your final assumptions (used in pro forma)</span>
           </div>
         </div>

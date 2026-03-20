@@ -15,17 +15,17 @@ const momentIcons: Record<KeyMomentType['momentType'], string> = {
 };
 
 const momentColors: Record<KeyMomentType['momentType'], string> = {
-  milestone: 'bg-blue-50 border-blue-300',
-  decision: 'bg-purple-50 border-purple-300',
-  risk: 'bg-red-50 border-red-300',
-  achievement: 'bg-green-50 border-green-300',
+  milestone: 'bg-[#0d1e3d] border-blue-700',
+  decision: 'bg-[#1a0d3d] border-purple-300',
+  risk: 'bg-[#1c0a0a] border-red-700',
+  achievement: 'bg-[#022c22] border-green-700',
 };
 
 const importanceColors: Record<KeyMomentType['importance'], string> = {
-  low: 'text-gray-600',
+  low: 'text-[#9EA8B4]',
   medium: 'text-blue-600',
   high: 'text-orange-600',
-  critical: 'text-red-600',
+  critical: 'text-red-400',
 };
 
 export const KeyMoment: React.FC<KeyMomentProps> = ({ moment, onClick }) => {
@@ -43,8 +43,8 @@ export const KeyMoment: React.FC<KeyMomentProps> = ({ moment, onClick }) => {
         <div className="flex items-center gap-2">
           <span className="text-2xl">{momentIcons[moment.momentType]}</span>
           <div>
-            <h3 className="font-semibold text-gray-900">{moment.title}</h3>
-            <p className="text-xs text-gray-500">
+            <h3 className="font-semibold text-[#E8E6E1]">{moment.title}</h3>
+            <p className="text-xs text-[#6B7585]">
               {format(new Date(moment.date), 'MMM d, yyyy')}
             </p>
           </div>
@@ -60,16 +60,16 @@ export const KeyMoment: React.FC<KeyMomentProps> = ({ moment, onClick }) => {
       </div>
 
       {/* Description */}
-      <p className="text-gray-700 text-sm">{moment.description}</p>
+      <p className="text-[#9EA8B4] text-sm">{moment.description}</p>
 
       {/* Metadata */}
       {moment.metadata && Object.keys(moment.metadata).length > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-200">
+        <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
           <div className="flex flex-wrap gap-2">
             {Object.entries(moment.metadata).map(([key, value]) => (
               <span
                 key={key}
-                className="bg-white px-2 py-1 rounded text-xs text-gray-600"
+                className="bg-[#0F1319] px-2 py-1 rounded text-xs text-[#9EA8B4]"
               >
                 <span className="font-medium capitalize">{key.replace(/_/g, ' ')}:</span>{' '}
                 {typeof value === 'object' ? JSON.stringify(value) : String(value)}

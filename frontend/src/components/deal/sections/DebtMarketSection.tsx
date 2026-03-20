@@ -51,8 +51,8 @@ export const DebtMarketSection: React.FC<DebtMarketSectionProps> = ({ deal }) =>
       `}
     >
       <div className="space-y-4">
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <h4 className="font-semibold text-purple-900 mb-2">Features to Include:</h4>
+        <div className="bg-[#1a0d3d] border border-purple-800/50 rounded-lg p-4">
+          <h4 className="font-semibold text-purple-300 mb-2">Features to Include:</h4>
           <ul className="text-sm text-purple-800 space-y-1">
             <li>• Real-time interest rate tracking (Fed, Treasury, SOFR, Prime)</li>
             <li>• Lending environment indicators (LTV, DSCR, spreads)</li>

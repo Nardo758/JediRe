@@ -183,23 +183,23 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center animate-fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+      <div className="bg-[#0F1319] rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
+        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
           <div className="flex items-center gap-3">
             <div className="text-3xl">🎯</div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">
+              <h2 className="text-xl font-bold text-[#E8E6E1]">
                 Recommended Modules for This Deal
               </h2>
-              <p className="text-sm text-gray-600 mt-0.5">
+              <p className="text-sm text-[#9EA8B4] mt-0.5">
                 Based on your {dealType} {dealStrategy} deal
               </p>
             </div>
           </div>
           <button
             onClick={handleSkip}
-            className="text-gray-400 hover:text-gray-600 text-2xl font-light transition-colors"
+            className="text-gray-400 hover:text-[#9EA8B4] text-2xl font-light transition-colors"
             aria-label="Close"
           >
             ×
@@ -209,8 +209,8 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="mb-4 p-4 bg-[#1c0a0a] border border-red-800/50 rounded-lg">
+              <p className="text-sm text-red-300">{error}</p>
             </div>
           )}
 
@@ -221,8 +221,8 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                 key={suggestion.moduleSlug}
                 className={`p-4 border-2 rounded-lg transition-all cursor-pointer ${
                   selectedModules.has(suggestion.moduleSlug)
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-blue-300'
+                    ? 'border-blue-500 bg-[#0d1e3d]'
+                    : 'border-[#1e2a3d] bg-[#0F1319] hover:border-blue-700'
                 }`}
                 onClick={() => toggleModule(suggestion.moduleSlug)}
               >
@@ -233,7 +233,7 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                       className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                         selectedModules.has(suggestion.moduleSlug)
                           ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 bg-white'
+                          : 'border-[#253347] bg-[#0F1319]'
                       }`}
                     >
                       {selectedModules.has(suggestion.moduleSlug) && (
@@ -258,9 +258,9 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-2xl">{suggestion.icon}</span>
-                      <h3 className="font-semibold text-gray-900">{suggestion.name}</h3>
+                      <h3 className="font-semibold text-[#E8E6E1]">{suggestion.name}</h3>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{suggestion.description}</p>
+                    <p className="text-sm text-[#9EA8B4] mb-2">{suggestion.description}</p>
                     {suggestion.bundleInfo && (
                       <p className="text-xs text-blue-600 font-medium">{suggestion.bundleInfo}</p>
                     )}
@@ -268,7 +268,7 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
 
                   {/* Badge */}
                   <div className="flex-shrink-0">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-[#022c22] text-green-400 rounded-full text-xs font-semibold">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path
                           fillRule="evenodd"
@@ -286,8 +286,8 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
             {/* Paid Modules (Not in Subscription) */}
             {paidSuggestions.length > 0 && (
               <>
-                <div className="pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <div className="pt-4 border-t border-[#1e2a3d]">
+                  <h3 className="text-sm font-semibold text-[#6B7585] uppercase tracking-wide mb-3">
                     Premium Add-Ons
                   </h3>
                 </div>
@@ -295,7 +295,7 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                 {paidSuggestions.map((suggestion) => (
                   <div
                     key={suggestion.moduleSlug}
-                    className="p-4 border-2 border-gray-200 rounded-lg bg-gray-50"
+                    className="p-4 border-2 border-[#1e2a3d] rounded-lg bg-[#0F1319]"
                   >
                     <div className="flex items-start gap-4">
                       {/* Icon */}
@@ -306,19 +306,19 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-gray-700">{suggestion.name}</h3>
+                          <h3 className="font-semibold text-[#9EA8B4]">{suggestion.name}</h3>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{suggestion.description}</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm text-[#9EA8B4] mb-2">{suggestion.description}</p>
+                        <p className="text-xs text-[#6B7585]">
                           Not in your plan. Add for ${suggestion.price}/mo?
                         </p>
                       </div>
 
                       {/* Price & CTA */}
                       <div className="flex-shrink-0 text-right">
-                        <div className="text-lg font-bold text-gray-900 mb-2">
+                        <div className="text-lg font-bold text-[#E8E6E1] mb-2">
                           ${suggestion.price}
-                          <span className="text-sm font-normal text-gray-500">/mo</span>
+                          <span className="text-sm font-normal text-[#6B7585]">/mo</span>
                         </div>
                         <button
                           onClick={() => handleAddModule(suggestion.moduleSlug)}
@@ -336,7 +336,7 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 bg-[#0F1319] border-t border-[#1e2a3d] flex items-center justify-between">
           <Button
             variant="ghost"
             onClick={handleSkip}

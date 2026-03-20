@@ -205,19 +205,19 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="h-8 w-64 bg-gray-200 rounded-full animate-pulse" />
-          <div className="h-8 w-48 bg-gray-200 rounded-lg animate-pulse" />
+          <div className="h-8 w-64 bg-[#1e2a3d] rounded-full animate-pulse" />
+          <div className="h-8 w-48 bg-[#1e2a3d] rounded-lg animate-pulse" />
         </div>
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <div className="h-4 w-40 bg-gray-200 rounded animate-pulse mb-4" />
-          <div className="h-4 bg-gray-100 rounded-full mb-6 animate-pulse" />
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+          <div className="h-4 w-40 bg-[#1e2a3d] rounded animate-pulse mb-4" />
+          <div className="h-4 bg-[#131920] rounded-full mb-6 animate-pulse" />
           <div className="grid grid-cols-5 gap-4">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-20 bg-gray-100 rounded-lg animate-pulse" />
+              <div key={i} className="h-20 bg-[#131920] rounded-lg animate-pulse" />
             ))}
           </div>
         </div>
-        <div className="h-32 bg-gray-100 rounded-lg animate-pulse" />
+        <div className="h-32 bg-[#131920] rounded-lg animate-pulse" />
       </div>
     );
   }
@@ -230,8 +230,8 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
         <div className="flex items-center gap-3">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-[#0d1e3d] text-blue-400' 
+              : 'bg-[#022c22] text-green-400'
           }`}>
             {isPipeline ? '📋 Acquisition Project Plan' : '🏢 Operations Management'}
           </div>
@@ -246,12 +246,12 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
             </span>
           )}
           {isPipeline && overview.daysToClosing && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-[#6B7585]">
               {overview.daysToClosing} days to closing • Target: {overview.targetDate}
             </div>
           )}
           {isOwned && overview.daysSinceAcquisition && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-[#6B7585]">
               Day {overview.daysSinceAcquisition} since acquisition
             </div>
           )}
@@ -259,13 +259,13 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
         
         {/* View Toggle */}
         <div className="flex items-center gap-3">
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex bg-[#131920] rounded-lg p-1">
             <button
               onClick={() => setSelectedView('checklist')}
               className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                 selectedView === 'checklist'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[#0F1319] text-[#E8E6E1] shadow-sm'
+                  : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
               }`}
             >
               ✅ Checklist
@@ -274,8 +274,8 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
               onClick={() => setSelectedView('timeline')}
               className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                 selectedView === 'timeline'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[#0F1319] text-[#E8E6E1] shadow-sm'
+                  : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
               }`}
             >
               📊 Timeline
@@ -284,8 +284,8 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
               onClick={() => setSelectedView('dependencies')}
               className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                 selectedView === 'dependencies'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[#0F1319] text-[#E8E6E1] shadow-sm'
+                  : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
               }`}
             >
               🔗 Dependencies
@@ -306,7 +306,7 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
 
       {/* Filter Bar */}
       <div className="flex items-center gap-4 flex-wrap">
-        <span className="text-sm font-medium text-gray-700">Filter:</span>
+        <span className="text-sm font-medium text-[#9EA8B4]">Filter:</span>
         <div className="flex gap-2">
           {['all', 'legal', 'financial', 'physical', 'environmental'].map(cat => (
             <button
@@ -315,7 +315,7 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 selectedCategory === cat
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-600 border border-gray-300 hover:border-gray-400'
+                  : 'bg-[#0F1319] text-[#9EA8B4] border border-[#253347] hover:border-gray-400'
               }`}
             >
               {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -331,7 +331,7 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
               onChange={(e) => setShowCriticalOnly(e.target.checked)}
               className="rounded"
             />
-            <span className="text-xs text-gray-600">Critical Path Only</span>
+            <span className="text-xs text-[#9EA8B4]">Critical Path Only</span>
           </label>
           <label className="flex items-center gap-2">
             <input
@@ -340,9 +340,9 @@ export const ProjectManagementSection: React.FC<ProjectManagementSectionProps> =
               onChange={(e) => setShowBlockersOnly(e.target.checked)}
               className="rounded"
             />
-            <span className="text-xs text-gray-600">Blockers Only</span>
+            <span className="text-xs text-[#9EA8B4]">Blockers Only</span>
           </label>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-[#6B7585]">
             {filteredTasks.length} of {tasks.length} tasks
           </div>
         </div>
@@ -374,18 +374,18 @@ interface OverviewDashboardProps {
 
 const OverviewDashboard: React.FC<OverviewDashboardProps> = ({ overview, isPipeline }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Project Overview</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Project Overview</h3>
       
       {/* Progress Bar */}
       <div className="mb-6">
-        <div className="flex justify-between text-sm text-gray-600 mb-2">
+        <div className="flex justify-between text-sm text-[#9EA8B4] mb-2">
           <span className="font-medium">Overall Progress</span>
           <span className="font-semibold">
             {overview.completedTasks} of {overview.totalTasks} tasks complete ({overview.completionPercentage}%)
           </span>
         </div>
-        <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-4 bg-[#131920] rounded-full overflow-hidden">
           <div 
             className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all"
             style={{ width: `${overview.completionPercentage}%` }}
@@ -442,11 +442,11 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ label, value, icon, color, alert }) => {
   const colorClasses = {
-    green: 'bg-green-50 border-green-200',
-    blue: 'bg-blue-50 border-blue-200',
-    red: 'bg-red-50 border-red-200',
-    orange: 'bg-orange-50 border-orange-200',
-    gray: 'bg-gray-50 border-gray-200'
+    green: 'bg-[#022c22] border-green-800/50',
+    blue: 'bg-[#0d1e3d] border-blue-900/50',
+    red: 'bg-[#1c0a0a] border-red-800/50',
+    orange: 'bg-[#1a0d00] border-orange-200',
+    gray: 'bg-[#0F1319] border-[#1e2a3d]'
   };
 
   return (
@@ -455,7 +455,7 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, icon, color, alert })
         <span className="text-xl">{icon}</span>
         <span className="text-2xl font-bold">{value || 0}</span>
       </div>
-      <div className="text-xs font-medium text-gray-700">{label}</div>
+      <div className="text-xs font-medium text-[#9EA8B4]">{label}</div>
     </div>
   );
 };
@@ -478,25 +478,25 @@ const CategoryProgressBar: React.FC<CategoryProgressBarProps> = ({ categories })
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Category Progress</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Category Progress</h3>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {categories.map((cat) => (
           <div key={cat.category}>
-            <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+            <div className="flex items-center justify-between text-xs text-[#9EA8B4] mb-2">
               <span className="font-medium flex items-center gap-2">
                 <span>{getCategoryIcon(cat.category)}</span>
                 {cat.label}
               </span>
               <span className="font-semibold">{cat.completed}/{cat.total}</span>
             </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-[#131920] rounded-full overflow-hidden">
               <div 
                 className={`h-full ${cat.color} rounded-full transition-all`}
                 style={{ width: `${cat.percentage}%` }}
               />
             </div>
-            <div className="text-xs text-gray-500 mt-1 text-right">{cat.percentage}%</div>
+            <div className="text-xs text-[#6B7585] mt-1 text-right">{cat.percentage}%</div>
           </div>
         ))}
       </div>
@@ -577,22 +577,22 @@ const TaskGroup: React.FC<TaskGroupProps> = ({ title, tasks, defaultExpanded, al
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   return (
-    <div className={`bg-white border rounded-lg overflow-hidden ${
-      alertColor === 'red' ? 'border-red-300' : 
+    <div className={`bg-[#0F1319] border rounded-lg overflow-hidden ${
+      alertColor === 'red' ? 'border-red-700' : 
       alertColor === 'yellow' ? 'border-yellow-300' : 
-      'border-gray-200'
+      'border-[#1e2a3d]'
     }`}>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors ${
-          alertColor === 'red' ? 'bg-red-50' : 
-          alertColor === 'yellow' ? 'bg-yellow-50' : 
-          'bg-gray-50'
+        className={`w-full px-4 py-3 flex items-center justify-between hover:bg-[#0F1319] transition-colors ${
+          alertColor === 'red' ? 'bg-[#1c0a0a]' : 
+          alertColor === 'yellow' ? 'bg-[#1a1200]' : 
+          'bg-[#0F1319]'
         }`}
       >
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           {title}
-          <span className="px-2 py-0.5 bg-white rounded text-xs font-normal text-gray-600 border border-gray-300">
+          <span className="px-2 py-0.5 bg-[#0F1319] rounded text-xs font-normal text-[#9EA8B4] border border-[#253347]">
             {tasks.length}
           </span>
         </h3>
@@ -602,7 +602,7 @@ const TaskGroup: React.FC<TaskGroupProps> = ({ title, tasks, defaultExpanded, al
       </button>
       
       {isExpanded && (
-        <div className="p-4 space-y-3 border-t border-gray-200">
+        <div className="p-4 space-y-3 border-t border-[#1e2a3d]">
           {tasks.map(task => (
             <TaskCard key={task.id} task={task} />
           ))}
@@ -633,14 +633,14 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
         </div>;
       case 'in-progress':
         return <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
-          <div className="w-2 h-2 rounded-full bg-white"></div>
+          <div className="w-2 h-2 rounded-full bg-[#0F1319]"></div>
         </div>;
       case 'blocked':
         return <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
           <span className="text-white text-xs font-bold">!</span>
         </div>;
       default:
-        return <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>;
+        return <div className="w-5 h-5 rounded-full border-2 border-[#253347]"></div>;
     }
   };
 
@@ -656,18 +656,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
 
   if (compact) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all">
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-[#1e2a3d] hover:border-[#253347] hover:shadow-sm transition-all">
         {getStatusIcon()}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium text-gray-900 truncate">{task.title}</span>
+            <span className="text-sm font-medium text-[#E8E6E1] truncate">{task.title}</span>
             {task.isCriticalPath && (
-              <span className="px-1.5 py-0.5 text-xs font-semibold text-orange-700 bg-orange-100 rounded">
+              <span className="px-1.5 py-0.5 text-xs font-semibold text-orange-700 bg-[#1a0d00] rounded">
                 Critical
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex items-center gap-3 text-xs text-[#6B7585]">
             <span>📅 {task.dueDate}</span>
             <span>👤 {task.assignee}</span>
           </div>
@@ -677,8 +677,8 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
   }
 
   return (
-    <div className={`p-4 rounded-lg border hover:border-gray-300 hover:shadow-md transition-all ${
-      task.redFlag?.status === 'open' ? 'border-red-200 bg-red-50/30' : 'border-gray-200'
+    <div className={`p-4 rounded-lg border hover:border-[#253347] hover:shadow-md transition-all ${
+      task.redFlag?.status === 'open' ? 'border-red-800/50 bg-[#1c0a0a]/30' : 'border-[#1e2a3d]'
     }`}>
       <div className="flex items-start gap-3">
         {getStatusIcon()}
@@ -689,30 +689,30 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-xs">{getCategoryIcon(task.category)}</span>
-                <h4 className="text-sm font-semibold text-gray-900">{task.title}</h4>
+                <h4 className="text-sm font-semibold text-[#E8E6E1]">{task.title}</h4>
                 {task.isCriticalPath && (
-                  <span className="px-1.5 py-0.5 text-xs font-semibold text-orange-700 bg-orange-100 rounded">
+                  <span className="px-1.5 py-0.5 text-xs font-semibold text-orange-700 bg-[#1a0d00] rounded">
                     Critical Path
                   </span>
                 )}
                 {task.type === 'milestone' && (
-                  <span className="px-1.5 py-0.5 text-xs font-semibold text-purple-700 bg-purple-100 rounded">
+                  <span className="px-1.5 py-0.5 text-xs font-semibold text-purple-400 bg-[#1a0d3d] rounded">
                     Milestone
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-600">{task.description}</p>
+              <p className="text-xs text-[#9EA8B4]">{task.description}</p>
             </div>
           </div>
 
           {/* Progress Bar */}
           {task.progress !== undefined && task.progress > 0 && task.progress < 100 && (
             <div className="mb-3">
-              <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <div className="flex justify-between text-xs text-[#9EA8B4] mb-1">
                 <span>Progress</span>
                 <span className="font-medium">{task.progress}%</span>
               </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-2 bg-[#1e2a3d] rounded-full overflow-hidden">
                 <div 
                   className={`h-full rounded-full transition-all ${
                     task.progress >= 80 ? 'bg-green-500' :
@@ -726,11 +726,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
           )}
 
           {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500 mb-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#6B7585] mb-2">
             <span className="capitalize">{task.category}</span>
             <span>👤 {task.assignee}</span>
             <span className={`font-medium ${
-              task.status === 'overdue' || task.status === 'blocked' ? 'text-red-600' : ''
+              task.status === 'overdue' || task.status === 'blocked' ? 'text-red-400' : ''
             }`}>
               📅 Due: {task.dueDate}
             </span>
@@ -744,18 +744,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
 
           {/* Red Flag Alert */}
           {task.redFlag && task.redFlag.status === 'open' && (
-            <div className="mb-3 px-3 py-2 bg-red-100 border border-red-300 rounded text-xs">
-              <div className="flex items-center gap-2 text-red-800 font-medium mb-1">
+            <div className="mb-3 px-3 py-2 bg-[#1c0a0a] border border-red-700 rounded text-xs">
+              <div className="flex items-center gap-2 text-red-300 font-medium mb-1">
                 <span>🚩</span>
                 <span className="uppercase">{task.redFlag.severity} Severity Red Flag</span>
               </div>
-              <p className="text-red-700">{task.redFlag.description}</p>
+              <p className="text-red-400">{task.redFlag.description}</p>
             </div>
           )}
 
           {/* Notes */}
           {task.notes && (
-            <div className="mb-2 text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded">
+            <div className="mb-2 text-xs text-[#9EA8B4] bg-[#0F1319] px-3 py-2 rounded">
               <span className="font-medium">Note:</span> {task.notes}
             </div>
           )}
@@ -765,7 +765,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
             <>
               <button
                 onClick={() => setExpanded(!expanded)}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                className="text-xs text-blue-600 hover:text-blue-400 font-medium"
               >
                 {expanded ? '↑ Hide Documents' : `↓ Show ${task.documents.length} Document(s)`}
               </button>
@@ -773,10 +773,10 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, compact = false }) => {
               {expanded && (
                 <div className="mt-2 space-y-1">
                   {task.documents.map((doc, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700">
+                    <div key={idx} className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-400">
                       <span>📄</span>
                       <a href={doc.url} className="hover:underline">{doc.name}</a>
-                      <span className="text-gray-500">• {doc.uploadedAt}</span>
+                      <span className="text-[#6B7585]">• {doc.uploadedAt}</span>
                     </div>
                   ))}
                 </div>
@@ -833,12 +833,12 @@ const TimelineView: React.FC<TimelineViewProps> = ({ tasks, isPipeline }) => {
     });
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Gantt Timeline</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Gantt Timeline</h3>
       
       {/* Timeline Header */}
-      <div className="relative h-12 mb-6 border-b-2 border-gray-300">
-        <div className="absolute inset-0 flex justify-between text-xs text-gray-500">
+      <div className="relative h-12 mb-6 border-b-2 border-[#253347]">
+        <div className="absolute inset-0 flex justify-between text-xs text-[#6B7585]">
           <span>{minDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
           <span>{maxDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
         </div>
@@ -871,7 +871,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({ tasks, isPipeline }) => {
             'bg-gray-400';
 
           return (
-            <div key={task.id} className="relative h-12 bg-gray-50 rounded border border-gray-200">
+            <div key={task.id} className="relative h-12 bg-[#0F1319] rounded border border-[#1e2a3d]">
               
               {/* Task Bar */}
               <div 
@@ -901,7 +901,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({ tasks, isPipeline }) => {
                 {/* Progress Fill */}
                 {task.progress !== undefined && task.progress > 0 && task.progress < 100 && (
                   <div 
-                    className="absolute inset-0 bg-white/30 rounded-l"
+                    className="absolute inset-0 bg-[#0F1319]/30 rounded-l"
                     style={{ width: `${task.progress}%` }}
                   />
                 )}
@@ -910,13 +910,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({ tasks, isPipeline }) => {
               {/* Task Label */}
               <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
                 {task.isCriticalPath && <span className="text-xs">🎯</span>}
-                <span className="text-xs font-medium text-gray-700 truncate max-w-[150px]">
+                <span className="text-xs font-medium text-[#9EA8B4] truncate max-w-[150px]">
                   {task.title}
                 </span>
               </div>
 
               {/* Date on right */}
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-[#6B7585]">
                 {new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               </div>
             </div>
@@ -940,8 +940,8 @@ const DependenciesView: React.FC<DependenciesViewProps> = ({ tasks, overview, is
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       
       {/* Critical Path Items */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-orange-50 border-b border-orange-200">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-[#1a0d00] border-b border-orange-200">
           <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">
             <span>🎯</span>
             Critical Path ({overview.criticalPathTasks.length})
@@ -949,7 +949,7 @@ const DependenciesView: React.FC<DependenciesViewProps> = ({ tasks, overview, is
         </div>
         <div className="p-4">
           {overview.criticalPathTasks.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-[#6B7585]">
               <div className="text-3xl mb-2">🎉</div>
               <p className="text-sm">All critical path items complete!</p>
             </div>
@@ -964,16 +964,16 @@ const DependenciesView: React.FC<DependenciesViewProps> = ({ tasks, overview, is
       </div>
 
       {/* Blockers */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-red-50 border-b border-red-200">
-          <h3 className="text-sm font-semibold text-red-800 flex items-center gap-2">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-[#1c0a0a] border-b border-red-800/50">
+          <h3 className="text-sm font-semibold text-red-300 flex items-center gap-2">
             <span>🚫</span>
             Blockers & Red Flags ({overview.blockers.length})
           </h3>
         </div>
         <div className="p-4">
           {overview.blockers.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-[#6B7585]">
               <div className="text-3xl mb-2">✅</div>
               <p className="text-sm">No blockers or red flags!</p>
             </div>
@@ -988,9 +988,9 @@ const DependenciesView: React.FC<DependenciesViewProps> = ({ tasks, overview, is
       </div>
 
       {/* Recent Completions */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-green-50 border-b border-green-200">
-          <h3 className="text-sm font-semibold text-green-800 flex items-center gap-2">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-[#022c22] border-b border-green-800/50">
+          <h3 className="text-sm font-semibold text-green-300 flex items-center gap-2">
             <span>✅</span>
             Recent Completions ({overview.recentCompletions.length})
           </h3>
@@ -1005,9 +1005,9 @@ const DependenciesView: React.FC<DependenciesViewProps> = ({ tasks, overview, is
       </div>
 
       {/* Upcoming Deadlines */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-          <h3 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-[#0d1e3d] border-b border-blue-900/50">
+          <h3 className="text-sm font-semibold text-blue-300 flex items-center gap-2">
             <span>📅</span>
             Upcoming Deadlines ({overview.upcomingDeadlines.length})
           </h3>

@@ -187,7 +187,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
       case 'issue':
         return <AlertTriangle className="w-5 h-5 text-orange-600" />;
       case 'blocked':
-        return <XCircle className="w-5 h-5 text-red-600" />;
+        return <XCircle className="w-5 h-5 text-red-400" />;
       default:
         return <Clock className="w-5 h-5 text-[#4a5568]" />;
     }
@@ -208,7 +208,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center max-w-md">
-          <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-[#E8E6E1] mb-2">Error Loading Data</h2>
           <p className="text-[#6B7585] mb-4">{error}</p>
           <button
@@ -456,7 +456,7 @@ export const DueDiligencePage: React.FC<DueDiligencePageProps> = ({ deal: propDe
 
             {/* Critical Path Indicator */}
             {dueDiligence?.criticalPathItem && (
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mt-6">
+              <div className="bg-[#1a0d00] border border-orange-200 rounded-lg p-4 mt-6">
                 <div className="flex items-start space-x-3">
                   <AlertTriangle className="w-5 h-5 text-orange-600 mt-0.5" />
                   <div>

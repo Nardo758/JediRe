@@ -82,21 +82,21 @@ export const TimelineIntegrationTest: React.FC = () => {
   console.log('✅ Mock data imported successfully');
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
+    <div className="p-6 bg-[#0F1319] min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Test Header */}
-        <div className="bg-white rounded-lg border-2 border-green-500 p-6">
-          <h1 className="text-2xl font-bold text-green-700 mb-2">
+        <div className="bg-[#0F1319] rounded-lg border-2 border-green-500 p-6">
+          <h1 className="text-2xl font-bold text-green-400 mb-2">
             ✅ Timeline Section - Integration Test
           </h1>
-          <p className="text-gray-600">
+          <p className="text-[#9EA8B4]">
             All components, types, and data imported successfully!
           </p>
         </div>
 
         {/* Type Validation Results */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
           <h2 className="text-lg font-semibold mb-4">Type Validation Results</h2>
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
@@ -127,22 +127,22 @@ export const TimelineIntegrationTest: React.FC = () => {
         </div>
 
         {/* Mock Data Stats */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
           <h2 className="text-lg font-semibold mb-4">Mock Data Statistics</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="font-semibold text-blue-900">Acquisition Stats</div>
-              <div className="text-2xl font-bold text-blue-700">{acquisitionTimelineStats.length}</div>
+            <div className="p-4 bg-[#0d1e3d] rounded-lg">
+              <div className="font-semibold text-blue-300">Acquisition Stats</div>
+              <div className="text-2xl font-bold text-blue-400">{acquisitionTimelineStats.length}</div>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="font-semibold text-green-900">Performance Stats</div>
-              <div className="text-2xl font-bold text-green-700">{performanceTimelineStats.length}</div>
+            <div className="p-4 bg-[#022c22] rounded-lg">
+              <div className="font-semibold text-green-300">Performance Stats</div>
+              <div className="text-2xl font-bold text-green-400">{performanceTimelineStats.length}</div>
             </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <div className="font-semibold text-purple-900">Acquisition Milestones</div>
-              <div className="text-2xl font-bold text-purple-700">{acquisitionMilestones.length}</div>
+            <div className="p-4 bg-[#1a0d3d] rounded-lg">
+              <div className="font-semibold text-purple-300">Acquisition Milestones</div>
+              <div className="text-2xl font-bold text-purple-400">{acquisitionMilestones.length}</div>
             </div>
-            <div className="p-4 bg-orange-50 rounded-lg">
+            <div className="p-4 bg-[#1a0d00] rounded-lg">
               <div className="font-semibold text-orange-900">Performance Milestones</div>
               <div className="text-2xl font-bold text-orange-700">{performanceMilestones.length}</div>
             </div>
@@ -150,20 +150,20 @@ export const TimelineIntegrationTest: React.FC = () => {
               <div className="font-semibold text-pink-900">Acquisition Deadlines</div>
               <div className="text-2xl font-bold text-pink-700">{acquisitionDeadlines.length}</div>
             </div>
-            <div className="p-4 bg-indigo-50 rounded-lg">
+            <div className="p-4 bg-[#0d1020] rounded-lg">
               <div className="font-semibold text-indigo-900">Performance Deadlines</div>
-              <div className="text-2xl font-bold text-indigo-700">{performanceDeadlines.length}</div>
+              <div className="text-2xl font-bold text-indigo-400">{performanceDeadlines.length}</div>
             </div>
           </div>
         </div>
 
         {/* Component Render Test - Acquisition Mode */}
         <div className="space-y-4">
-          <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-4">
-            <h2 className="text-lg font-semibold text-blue-900 mb-2">
+          <div className="bg-[#0d1e3d] border-2 border-blue-700 rounded-lg p-4">
+            <h2 className="text-lg font-semibold text-blue-300 mb-2">
               🎯 Acquisition Mode Test
             </h2>
-            <p className="text-sm text-blue-700 mb-4">
+            <p className="text-sm text-blue-400 mb-4">
               Testing with pipeline deal (status: 'pipeline')
             </p>
           </div>
@@ -172,11 +172,11 @@ export const TimelineIntegrationTest: React.FC = () => {
 
         {/* Component Render Test - Performance Mode */}
         <div className="space-y-4">
-          <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4">
-            <h2 className="text-lg font-semibold text-green-900 mb-2">
+          <div className="bg-[#022c22] border-2 border-green-700 rounded-lg p-4">
+            <h2 className="text-lg font-semibold text-green-300 mb-2">
               🏢 Performance Mode Test
             </h2>
-            <p className="text-sm text-green-700 mb-4">
+            <p className="text-sm text-green-400 mb-4">
               Testing with owned deal (status: 'owned')
             </p>
           </div>
@@ -184,12 +184,12 @@ export const TimelineIntegrationTest: React.FC = () => {
         </div>
 
         {/* Test Complete */}
-        <div className="bg-green-100 border-2 border-green-500 rounded-lg p-6 text-center">
+        <div className="bg-[#022c22] border-2 border-green-500 rounded-lg p-6 text-center">
           <div className="text-4xl mb-2">🎉</div>
-          <h2 className="text-xl font-bold text-green-800 mb-2">
+          <h2 className="text-xl font-bold text-green-300 mb-2">
             Integration Test Complete!
           </h2>
-          <p className="text-green-700">
+          <p className="text-green-400">
             Timeline Section is ready for production use.
           </p>
         </div>

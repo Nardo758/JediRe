@@ -301,12 +301,12 @@ function HandoffTab({ data }: { data: TrafficProFormaData }) {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-bold text-stone-900">M07 Traffic Engine \u2192 M09 ProForma Translation Layer</h3>
+        <h3 className="text-sm font-bold text-[#E8E6E1]">M07 Traffic Engine \u2192 M09 ProForma Translation Layer</h3>
         <p className="text-xs text-stone-500 mt-1">4 numbers flow from traffic predictions into financial assumptions. No human intervention required.</p>
       </div>
 
       {/* Service spec box */}
-      <div className="bg-stone-50 border border-cyan-200 rounded-lg p-4 font-mono text-xs">
+      <div className="bg-[#0F1319] border border-cyan-200 rounded-lg p-4 font-mono text-xs">
         <div className="text-[10px] text-cyan-700 font-bold tracking-wider mb-2">trafficToProFormaService.ts</div>
         <div className="text-stone-600 space-y-0.5">
           <div><span className="text-stone-400">// Called when:</span> traffic predictions update OR user uploads new actuals</div>
@@ -317,7 +317,7 @@ function HandoffTab({ data }: { data: TrafficProFormaData }) {
 
       {/* The 4 pipes */}
       {pipes.map((p, i) => (
-        <div key={i} className={`bg-white border rounded-lg p-4 ${p.confidence ? 'border-stone-200' : 'border-stone-100'}`}>
+        <div key={i} className={`bg-[#0F1319] border rounded-lg p-4 ${p.confidence ? 'border-[#1e2a3d]' : 'border-stone-100'}`}>
           <div className="flex items-center gap-3 mb-2">
             <div className="flex-1">
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">{p.fromModule}</div>
@@ -326,7 +326,7 @@ function HandoffTab({ data }: { data: TrafficProFormaData }) {
             <ArrowRight size={16} className={`text-${p.color}-400`} />
             <div className="flex-1">
               <div className="text-[10px] text-stone-400 uppercase tracking-wider">{p.toModule}</div>
-              <div className="text-xs font-semibold text-stone-800">{p.to}</div>
+              <div className="text-xs font-semibold text-[#E8E6E1]">{p.to}</div>
             </div>
             {p.confidence && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-md px-2 py-0.5">
@@ -334,7 +334,7 @@ function HandoffTab({ data }: { data: TrafficProFormaData }) {
               </div>
             )}
           </div>
-          <div className="text-[10px] font-mono text-stone-400 bg-stone-50 rounded px-2 py-1 mb-2">{p.translation}</div>
+          <div className="text-[10px] font-mono text-stone-400 bg-[#0F1319] rounded px-2 py-1 mb-2">{p.translation}</div>
           <div className="text-xs text-stone-700 mb-1">Current: <span className={`text-${p.color}-600 font-semibold`}>{p.value}</span></div>
           <div className="text-xs text-stone-500">{p.impact}</div>
         </div>
@@ -383,7 +383,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
           <button key={l.id} onClick={() => setActiveLayer(l.id)} className={`flex-1 text-left px-3 py-2 rounded-lg border transition-colors ${
             activeLayer === l.id
               ? `bg-${l.color}-50 border-${l.color}-300 text-${l.color}-800`
-              : 'bg-white border-stone-200 text-stone-500 hover:bg-stone-50'
+              : 'bg-[#0F1319] border-[#1e2a3d] text-stone-500 hover:bg-[#0F1319]'
           }`}>
             <div className="text-xs font-semibold">{l.label}</div>
             <div className="text-[9px] text-stone-400 mt-0.5">{l.desc}</div>
@@ -393,7 +393,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
 
       {/* Active layer indicator */}
       {activeLayer === 'platform' && (
-        <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-3 py-2 flex justify-between items-center">
+        <div className="bg-[#021e24] border border-cyan-200 rounded-lg px-3 py-2 flex justify-between items-center">
           <div>
             <span className="text-xs text-cyan-700 font-semibold">Traffic Engine feeding assumptions</span>
             <span className="text-[10px] text-stone-400 ml-2">
@@ -414,17 +414,17 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
         const isExpanded = expandedId === a.id;
 
         return (
-          <div key={a.id} className={`bg-white border rounded-lg overflow-hidden ${
-            hasDelta && activeLayer === 'platform' ? 'border-cyan-200' : 'border-stone-200'
+          <div key={a.id} className={`bg-[#0F1319] border rounded-lg overflow-hidden ${
+            hasDelta && activeLayer === 'platform' ? 'border-cyan-200' : 'border-[#1e2a3d]'
           }`}>
             {/* Header row */}
             <div
               onClick={() => setExpandedId(isExpanded ? null : a.id)}
-              className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-stone-50 transition-colors"
+              className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-[#0F1319] transition-colors"
             >
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-stone-800">{a.label}</span>
+                  <span className="text-xs font-semibold text-[#E8E6E1]">{a.label}</span>
                   {hasDelta && activeLayer === 'platform' && (
                     <span className="text-[9px] bg-cyan-100 text-cyan-700 px-1.5 py-0.5 rounded font-bold">M07</span>
                   )}
@@ -433,7 +433,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
               </div>
               {/* Y1 value + delta */}
               <div className="text-right min-w-[80px]">
-                <div className="text-base font-bold text-stone-900 font-mono">
+                <div className="text-base font-bold text-[#E8E6E1] font-mono">
                   {src.values[0] !== null ? src.values[0] : '\u2014'}{a.unit}
                 </div>
                 {deltaY1 !== null && deltaY1 !== 0 && activeLayer === 'platform' && (
@@ -447,7 +447,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
               {/* Confidence */}
               <div className="text-right min-w-[40px]">
                 <div className={`text-[10px] font-bold ${
-                  src.conf > 80 ? 'text-emerald-600' : src.conf > 60 ? 'text-amber-600' : 'text-stone-400'
+                  src.conf > 80 ? 'text-emerald-600' : src.conf > 60 ? 'text-amber-400' : 'text-stone-400'
                 }`}>{src.conf}%</div>
                 <div className="text-[8px] text-stone-400">conf</div>
               </div>
@@ -483,7 +483,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
                   </div>
                 </div>
                 {/* Insight */}
-                <div className="bg-stone-50 rounded-lg px-3 py-2 mt-3 text-xs text-stone-600 leading-relaxed">
+                <div className="bg-[#0F1319] rounded-lg px-3 py-2 mt-3 text-xs text-stone-600 leading-relaxed">
                   {a.insight}
                 </div>
                 {/* Confidence decay bar */}
@@ -577,10 +577,10 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
       const t = traffic[yi] as Record<string, any>;
       const val = t[row.key!];
       const confColor = row.isConf
-        ? (val > 80 ? 'text-emerald-600' : val > 60 ? 'text-amber-600' : 'text-red-500')
+        ? (val > 80 ? 'text-emerald-600' : val > 60 ? 'text-amber-400' : 'text-red-500')
         : 'text-cyan-600';
       return (
-        <td key={`t-${row.key}-${yi}`} className={`py-0.5 px-1 text-right text-[10px] font-mono ${confColor} ${row.feedsFinancial ? 'font-bold bg-cyan-50/40' : ''}`}>
+        <td key={`t-${row.key}-${yi}`} className={`py-0.5 px-1 text-right text-[10px] font-mono ${confColor} ${row.feedsFinancial ? 'font-bold bg-[#021e24]/40' : ''}`}>
           {row.prefix || ''}{(row.dec ?? 0) > 0 ? val.toFixed(row.dec) : val}{row.suffix || ''}
         </td>
       );
@@ -589,7 +589,7 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
     if (row.type === 'derived') {
       const val = row.compute!(yi);
       return (
-        <td key={`d-${row.label}-${yi}`} className="py-0.5 px-1 text-right text-[10px] font-mono text-amber-600 font-semibold bg-amber-50/30">
+        <td key={`d-${row.label}-${yi}`} className="py-0.5 px-1 text-right text-[10px] font-mono text-amber-400 font-semibold bg-[#1a1200]/30">
           {val}{row.suffix || ''}
         </td>
       );
@@ -601,9 +601,9 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
       const val = yr[row.key!];
       const baseVal = baseYr?.[row.key!];
       const isDiff = layer === 'platform' && row.highlight && val !== baseVal;
-      const textColor = row.accent ? 'text-emerald-700' : row.negative ? 'text-red-400' : row.bold ? 'text-stone-900' : 'text-stone-500';
+      const textColor = row.accent ? 'text-emerald-700' : row.negative ? 'text-red-400' : row.bold ? 'text-[#E8E6E1]' : 'text-stone-500';
       return (
-        <td key={`f-${row.key}-${yi}`} className={`py-0.5 px-1 text-right text-[10px] font-mono ${textColor} ${row.bold ? 'font-bold' : ''} ${isDiff ? 'bg-cyan-50/40' : row.highlight ? 'bg-cyan-50/20' : ''}`}>
+        <td key={`f-${row.key}-${yi}`} className={`py-0.5 px-1 text-right text-[10px] font-mono ${textColor} ${row.bold ? 'font-bold' : ''} ${isDiff ? 'bg-[#021e24]/40' : row.highlight ? 'bg-[#021e24]/20' : ''}`}>
           {row.fmt ? fmt$(val) : row.prefix ? `${row.prefix}${typeof val === 'number' ? val.toLocaleString() : val}` : `${val}${row.suffix || ''}`}
         </td>
       );
@@ -616,7 +616,7 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
     <div className="space-y-3">
       <div className="flex justify-between items-center">
         <div>
-          <h3 className="text-sm font-bold text-stone-900">10-Year Income Statement</h3>
+          <h3 className="text-sm font-bold text-[#E8E6E1]">10-Year Income Statement</h3>
           <p className="text-xs text-stone-500">{data.property.units} units · {fmt$(data.property.acquisitionPrice)} · Traffic assumptions visible</p>
         </div>
         <div className="flex gap-1">
@@ -626,20 +626,20 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
           ]).map(l => (
             <button key={l.id} onClick={() => setLayer(l.id)} className={`px-3 py-1 rounded text-[10px] font-medium border transition-colors ${
               layer === l.id
-                ? l.id === 'platform' ? 'bg-cyan-50 border-cyan-300 text-cyan-700' : 'bg-stone-100 border-stone-300 text-stone-700'
-                : 'bg-white border-stone-200 text-stone-400 hover:bg-stone-50'
+                ? l.id === 'platform' ? 'bg-[#021e24] border-cyan-300 text-cyan-700' : 'bg-[#131920] border-stone-300 text-stone-700'
+                : 'bg-[#0F1319] border-[#1e2a3d] text-stone-400 hover:bg-[#0F1319]'
             }`}>{l.label}</button>
           ))}
         </div>
       </div>
 
       {/* Combined grid */}
-      <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-[10px]">
             <thead>
-              <tr className="bg-stone-50 border-b border-stone-200">
-                <th className="text-left py-1.5 px-2 text-[9px] text-stone-400 font-mono tracking-wider sticky left-0 bg-stone-50 z-10 min-w-[140px]">Metric</th>
+              <tr className="bg-[#0F1319] border-b border-[#1e2a3d]">
+                <th className="text-left py-1.5 px-2 text-[9px] text-stone-400 font-mono tracking-wider sticky left-0 bg-[#0F1319] z-10 min-w-[140px]">Metric</th>
                 {Array.from({ length: 10 }, (_, i) => (
                   <th key={i} className="text-right py-1.5 px-1 text-cyan-600 font-semibold min-w-[66px]">Y{i + 1}</th>
                 ))}
@@ -648,10 +648,10 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
             <tbody>
               {allRows.map((row, ri) => {
                 if (row.type === 'section') {
-                  const sectionColor = row.color === 'cyan' ? 'text-cyan-700 bg-cyan-50/50 border-cyan-100'
-                    : row.color === 'amber' ? 'text-amber-700 bg-amber-50/50 border-amber-100'
+                  const sectionColor = row.color === 'cyan' ? 'text-cyan-700 bg-[#021e24]/50 border-cyan-100'
+                    : row.color === 'amber' ? 'text-amber-400 bg-[#1a1200]/50 border-amber-100'
                     : row.color === 'emerald' ? 'text-emerald-700 bg-emerald-50/50 border-emerald-100'
-                    : 'text-red-700 bg-red-50/50 border-red-100';
+                    : 'text-red-400 bg-[#1c0a0a]/50 border-red-100';
                   return (
                     <tr key={`sec-${ri}`}>
                       <td colSpan={11} className={`py-1.5 px-2 text-[9px] font-bold uppercase tracking-wider ${sectionColor} ${ri > 0 ? 'border-t-2' : ''} border-b`}>
@@ -663,11 +663,11 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
 
                 const isTraffic = row.type === 'traffic';
                 const isDerived = row.type === 'derived';
-                const labelColor = isTraffic ? 'text-cyan-600' : isDerived ? 'text-amber-600' : row.accent ? 'text-emerald-700' : row.sub ? 'text-stone-400' : 'text-stone-700';
+                const labelColor = isTraffic ? 'text-cyan-600' : isDerived ? 'text-amber-400' : row.accent ? 'text-emerald-700' : row.sub ? 'text-stone-400' : 'text-stone-700';
 
                 return (
                   <tr key={`row-${ri}`} className="border-b border-stone-50">
-                    <td className={`py-0.5 px-2 ${row.bold ? 'font-bold' : isDerived ? 'font-semibold' : ''} ${labelColor} ${isTraffic && row.feedsFinancial ? 'bg-cyan-50/40' : isDerived ? 'bg-amber-50/30' : row.highlight ? 'bg-cyan-50/20' : ''} sticky left-0 z-10 bg-white whitespace-nowrap`}>
+                    <td className={`py-0.5 px-2 ${row.bold ? 'font-bold' : isDerived ? 'font-semibold' : ''} ${labelColor} ${isTraffic && row.feedsFinancial ? 'bg-[#021e24]/40' : isDerived ? 'bg-[#1a1200]/30' : row.highlight ? 'bg-[#021e24]/20' : ''} sticky left-0 z-10 bg-[#0F1319] whitespace-nowrap`}>
                       {row.label}
                       {isTraffic && !row.isConf && <span className="text-[7px] text-cyan-400 ml-1">M07</span>}
                       {row.highlight && layer === 'platform' && <span className="text-[7px] text-cyan-400 ml-1">M07</span>}
@@ -686,7 +686,7 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
       <div className="flex items-center gap-2 px-1 text-[9px]">
         <span className="text-cyan-600">● M07 Traffic Predictions</span>
         <span className="text-stone-300">\u2192</span>
-        <span className="text-amber-600">● Translated Assumptions</span>
+        <span className="text-amber-400">● Translated Assumptions</span>
         <span className="text-stone-300">\u2192</span>
         <span className="text-stone-700">● Financial Outcomes</span>
         <span className="text-stone-400 ml-auto">Highlighted cells change when switching Baseline / Platform</span>
@@ -699,7 +699,7 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
           const b = data.incomeStatement.baseline[yi];
           const delta = p.noi - b.noi;
           return (
-            <div key={yi} className={`bg-white border rounded-lg p-3 ${delta > 0 ? 'border-emerald-200' : 'border-stone-200'}`}>
+            <div key={yi} className={`bg-[#0F1319] border rounded-lg p-3 ${delta > 0 ? 'border-emerald-200' : 'border-[#1e2a3d]'}`}>
               <div className="text-[10px] text-cyan-600 font-semibold">Year {yi + 1} NOI</div>
               <div className="flex justify-between items-baseline mt-1">
                 <span className="text-base font-bold text-emerald-700 font-mono">{fmt$(p.noi)}</span>
@@ -733,12 +733,12 @@ function ReturnsTab({ data }: { data: TrafficProFormaData }) {
   return (
     <div className="space-y-3">
       <div>
-        <h3 className="text-sm font-bold text-stone-900">Returns: Platform-Adjusted vs Baseline</h3>
+        <h3 className="text-sm font-bold text-[#E8E6E1]">Returns: Platform-Adjusted vs Baseline</h3>
         <p className="text-xs text-stone-500 mt-1">What traffic intelligence adds to your underwriting</p>
       </div>
 
       {metrics.map((m, i) => (
-        <div key={i} className="bg-white border border-stone-200 rounded-lg p-4">
+        <div key={i} className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
           <div className="text-[10px] text-stone-400 uppercase tracking-wider font-mono mb-2">{m.label}</div>
           <div className="flex items-baseline gap-4">
             <div>
@@ -759,10 +759,10 @@ function ReturnsTab({ data }: { data: TrafficProFormaData }) {
       ))}
 
       {/* Caveat */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <div className="bg-[#1a1200] border border-amber-800/50 rounded-lg p-3">
         <div className="flex items-center gap-2 mb-1">
-          <AlertTriangle size={14} className="text-amber-600" />
-          <span className="text-xs text-amber-800 font-semibold">Platform assumptions are predictions, not guarantees</span>
+          <AlertTriangle size={14} className="text-amber-400" />
+          <span className="text-xs text-amber-300 font-semibold">Platform assumptions are predictions, not guarantees</span>
         </div>
         <p className="text-[10px] text-stone-600 leading-relaxed">
           Confidence decays from {data.handoff.modelConfidence}% (Y1) to {data.handoff.occupancyTrajectory[9]?.confidence}% (Y10).
@@ -882,12 +882,12 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
           <div className="text-base font-bold mt-1">{deal?.name || 'Property'}</div>
         </div>
 
-        <div className="bg-white border-2 border-dashed border-stone-300 rounded-xl p-8 text-center space-y-4">
-          <div className="mx-auto w-12 h-12 bg-stone-100 rounded-full flex items-center justify-center">
+        <div className="bg-[#0F1319] border-2 border-dashed border-stone-300 rounded-xl p-8 text-center space-y-4">
+          <div className="mx-auto w-12 h-12 bg-[#131920] rounded-full flex items-center justify-center">
             <BarChart3 size={24} className="text-stone-400" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-stone-800">No Pro Forma Data</h3>
+            <h3 className="text-sm font-bold text-[#E8E6E1]">No Pro Forma Data</h3>
             <p className="text-xs text-stone-500 mt-1">
               Initialize a pro forma with a strategy to start generating financial projections, or view demo data.
             </p>
@@ -899,7 +899,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
               <select
                 value={selectedStrategy}
                 onChange={(e) => setSelectedStrategy(e.target.value)}
-                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm text-stone-800 bg-white"
+                className="w-full border border-stone-300 rounded-lg px-3 py-2 text-sm text-[#E8E6E1] bg-[#0F1319]"
               >
                 <option value="rental">Rental (Stabilized)</option>
                 <option value="build_to_sell">Build to Sell</option>
@@ -922,7 +922,7 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
             </div>
             <button
               onClick={handleLoadDemo}
-              className="w-full flex items-center justify-center gap-2 border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+              className="w-full flex items-center justify-center gap-2 border border-amber-300 bg-[#1a1200] hover:bg-[#1a1200] text-amber-300 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
             >
               <Beaker size={14} />
               View Demo Data
@@ -943,15 +943,15 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
   return (
     <div className="space-y-4">
       {dataSource === 'demo' && (
-        <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-2.5 flex items-center justify-between">
+        <div className="bg-[#1a1200] border border-amber-300 rounded-lg px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Beaker size={14} className="text-amber-600" />
-            <span className="text-xs font-semibold text-amber-800">[DEMO DATA]</span>
-            <span className="text-xs text-amber-700">Showing sample projections. Initialize a pro forma for real data.</span>
+            <Beaker size={14} className="text-amber-400" />
+            <span className="text-xs font-semibold text-amber-300">[DEMO DATA]</span>
+            <span className="text-xs text-amber-400">Showing sample projections. Initialize a pro forma for real data.</span>
           </div>
           <button
             onClick={() => { setData(null); setDataSource('none'); }}
-            className="text-xs text-amber-700 underline hover:text-amber-900 font-medium"
+            className="text-xs text-amber-400 underline hover:text-amber-300 font-medium"
           >
             Initialize Real Data
           </button>
@@ -1002,14 +1002,14 @@ export const ProFormaWithTrafficSection: React.FC<ProFormaWithTrafficSectionProp
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-stone-200 pb-0.5 overflow-x-auto">
+      <div className="flex gap-1 border-b border-[#1e2a3d] pb-0.5 overflow-x-auto">
         {TABS.map(t => {
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-2 rounded-t text-xs font-medium whitespace-nowrap transition-colors ${
               tab === t.id
                 ? 'bg-emerald-50 text-emerald-700 border border-b-0 border-emerald-200'
-                : 'text-stone-500 hover:text-stone-700 hover:bg-stone-50'
+                : 'text-stone-500 hover:text-stone-700 hover:bg-[#0F1319]'
             }`}>
               <Icon size={13} />
               {t.label}

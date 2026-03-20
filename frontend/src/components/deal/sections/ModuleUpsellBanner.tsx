@@ -24,7 +24,7 @@ export const ModuleUpsellBanner: React.FC<ModuleUpsellBannerProps> = ({
   onLearnMore
 }) => {
   return (
-    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 p-6 mb-6">
+    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-900/50 p-6 mb-6">
       <div className="flex items-start justify-between gap-6">
         {/* Left side - Content */}
         <div className="flex-1">
@@ -33,10 +33,10 @@ export const ModuleUpsellBanner: React.FC<ModuleUpsellBannerProps> = ({
               <span className="text-white text-xl">✨</span>
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900">
+              <h3 className="text-lg font-bold text-[#E8E6E1]">
                 Unlock {moduleName}
               </h3>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[#9EA8B4]">
                 Get access to professional-grade financial modeling tools
               </p>
             </div>
@@ -47,19 +47,19 @@ export const ModuleUpsellBanner: React.FC<ModuleUpsellBannerProps> = ({
             {benefits.map((benefit, index) => (
               <div key={index} className="flex items-start gap-2">
                 <span className="text-green-600 mt-0.5">✓</span>
-                <span className="text-sm text-gray-700">{benefit}</span>
+                <span className="text-sm text-[#9EA8B4]">{benefit}</span>
               </div>
             ))}
           </div>
 
           {/* Bundle offer */}
           {bundleInfo && (
-            <div className="ml-13 bg-white/60 rounded-lg p-3 border border-blue-200">
+            <div className="ml-13 bg-[#0F1319]/60 rounded-lg p-3 border border-blue-900/50">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-blue-900">
+                <span className="text-sm font-semibold text-blue-300">
                   💎 Save {bundleInfo.savings} with {bundleInfo.name}
                 </span>
-                <span className="text-xs text-gray-600">
+                <span className="text-xs text-[#9EA8B4]">
                   ({bundleInfo.price}/mo)
                 </span>
               </div>
@@ -73,7 +73,7 @@ export const ModuleUpsellBanner: React.FC<ModuleUpsellBannerProps> = ({
             <div className="text-3xl font-bold text-blue-600 mb-1">
               {price}
             </div>
-            <div className="text-sm text-gray-600">per month</div>
+            <div className="text-sm text-[#9EA8B4]">per month</div>
           </div>
 
           {/* Action buttons */}
@@ -99,7 +99,7 @@ export const ModuleUpsellBanner: React.FC<ModuleUpsellBannerProps> = ({
             {onLearnMore && (
               <button
                 onClick={onLearnMore}
-                className="w-full px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-white transition text-sm"
+                className="w-full px-6 py-2 border border-[#253347] text-[#9EA8B4] rounded-lg hover:bg-[#0F1319] transition text-sm"
               >
                 Learn More
               </button>

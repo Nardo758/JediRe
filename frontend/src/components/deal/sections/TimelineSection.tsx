@@ -152,7 +152,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
         <div className="flex items-center justify-center py-16">
           <div className="flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm text-gray-600">Loading timeline data...</span>
+            <span className="text-sm text-[#9EA8B4]">Loading timeline data...</span>
           </div>
         </div>
       </div>
@@ -167,8 +167,8 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-3">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-[#0d1e3d] text-blue-400' 
+              : 'bg-[#022c22] text-green-400'
           }`}>
             {isPipeline ? '🎯 Acquisition Timeline' : '🏢 Performance Timeline'}
           </div>
@@ -185,7 +185,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
             </div>
           )}
           {isOwned && (
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-[#6B7585]">
               Acquired: {new Date(deal.actualCloseDate || deal.createdAt).toLocaleDateString()}
             </div>
           )}
@@ -193,13 +193,13 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
         
         {/* View Toggle & Actions */}
         <div className="flex items-center gap-3">
-          <div className="flex bg-gray-100 rounded-lg p-1">
+          <div className="flex bg-[#131920] rounded-lg p-1">
             <button
               onClick={() => setSelectedView('timeline')}
               className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                 selectedView === 'timeline'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[#0F1319] text-[#E8E6E1] shadow-sm'
+                  : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
               }`}
             >
               📊 Timeline View
@@ -208,15 +208,15 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
               onClick={() => setSelectedView('list')}
               className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
                 selectedView === 'list'
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[#0F1319] text-[#E8E6E1] shadow-sm'
+                  : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
               }`}
             >
               📋 List View
             </button>
           </div>
           
-          <button className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button className="px-3 py-1.5 text-xs font-medium text-[#9EA8B4] bg-[#0F1319] border border-[#253347] rounded-lg hover:bg-[#0F1319] transition-colors">
             📥 Export
           </button>
           <button className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
@@ -230,7 +230,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
 
       {/* Filter Bar */}
       <div className="flex items-center gap-4">
-        <span className="text-sm font-medium text-gray-700">Filter:</span>
+        <span className="text-sm font-medium text-[#9EA8B4]">Filter:</span>
         <div className="flex gap-2">
           {['all', 'critical', 'upcoming'].map(filter => (
             <button
@@ -238,15 +238,15 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({ deal }) => {
               onClick={() => setFilterStatus(filter as any)}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                 filterStatus === filter
-                  ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                  : 'bg-white text-gray-600 border border-gray-300 hover:border-gray-400'
+                  ? 'bg-[#0d1e3d] text-blue-400 border border-blue-700'
+                  : 'bg-[#0F1319] text-[#9EA8B4] border border-[#253347] hover:border-gray-400'
               }`}
             >
               {filter.charAt(0).toUpperCase() + filter.slice(1)}
             </button>
           ))}
         </div>
-        <div className="ml-auto text-xs text-gray-500">
+        <div className="ml-auto text-xs text-[#6B7585]">
           Showing {filteredMilestones.length} of {milestones.length} milestones
         </div>
       </div>
@@ -295,14 +295,14 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
   const getStatusColor = (status?: string) => {
     switch (status) {
       case 'success':
-        return 'bg-green-50 border-green-200';
+        return 'bg-[#022c22] border-green-800/50';
       case 'warning':
-        return 'bg-yellow-50 border-yellow-200';
+        return 'bg-[#1a1200] border-yellow-200';
       case 'danger':
-        return 'bg-red-50 border-red-200';
+        return 'bg-[#1c0a0a] border-red-800/50';
       case 'info':
       default:
-        return 'bg-blue-50 border-blue-200';
+        return 'bg-[#0d1e3d] border-blue-900/50';
     }
   };
 
@@ -314,15 +314,15 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
           className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${getStatusColor(stat.status)}`}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-gray-600 text-xs font-medium">{stat.label}</span>
+            <span className="text-[#9EA8B4] text-xs font-medium">{stat.label}</span>
             <span className="text-2xl">{stat.icon}</span>
           </div>
-          <div className="text-2xl font-bold text-gray-900 mb-1">
+          <div className="text-2xl font-bold text-[#E8E6E1] mb-1">
             {formatValue(stat)}
-            {stat.format === 'days' && <span className="text-sm font-normal text-gray-500 ml-1">days</span>}
+            {stat.format === 'days' && <span className="text-sm font-normal text-[#6B7585] ml-1">days</span>}
           </div>
           {stat.subtext && (
-            <div className="text-xs text-gray-500">{stat.subtext}</div>
+            <div className="text-xs text-[#6B7585]">{stat.subtext}</div>
           )}
         </div>
       ))}
@@ -359,19 +359,19 @@ const TimelineView: React.FC<TimelineViewProps> = ({ milestones, groupedMileston
     <div className="space-y-6">
       
       {/* Progress Overview */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Progress Overview</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Progress Overview</h3>
         <div className="space-y-4">
           
           {/* Overall Progress Bar */}
           <div>
-            <div className="flex justify-between text-xs text-gray-600 mb-2">
+            <div className="flex justify-between text-xs text-[#9EA8B4] mb-2">
               <span>Overall Progress</span>
               <span className="font-semibold">
                 {groupedMilestones.completed.length} / {milestones.length} Complete
               </span>
             </div>
-            <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-4 bg-[#131920] rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all"
                 style={{ 
@@ -382,7 +382,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({ milestones, groupedMileston
           </div>
 
           {/* Status Breakdown */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-gray-200">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-4 border-t border-[#1e2a3d]">
             <StatusBadge 
               label="Completed" 
               count={groupedMilestones.completed.length}
@@ -418,9 +418,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({ milestones, groupedMileston
       </div>
 
       {/* Gantt-Style Timeline */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d]">
+          <h3 className="text-sm font-semibold text-[#9EA8B4]">
             {isPipeline ? 'Deal Timeline - Path to Close' : 'Operational Timeline'}
           </h3>
         </div>
@@ -435,8 +435,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({ milestones, groupedMileston
 
       {/* Critical Path Items */}
       {groupedMilestones.inProgress.length > 0 || groupedMilestones.upcoming.filter(m => m.category === 'critical').length > 0 ? (
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+          <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4 flex items-center gap-2">
             <span>🎯</span> Critical Path Items
           </h3>
           <div className="space-y-3">
@@ -462,11 +462,11 @@ interface StatusBadgeProps {
 
 const StatusBadge: React.FC<StatusBadgeProps> = ({ label, count, color, icon }) => {
   const colorClasses = {
-    green: 'bg-green-50 text-green-700 border-green-200',
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    gray: 'bg-gray-50 text-gray-700 border-gray-200',
-    yellow: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-    red: 'bg-red-50 text-red-700 border-red-200'
+    green: 'bg-[#022c22] text-green-400 border-green-800/50',
+    blue: 'bg-[#0d1e3d] text-blue-400 border-blue-900/50',
+    gray: 'bg-[#0F1319] text-[#9EA8B4] border-[#1e2a3d]',
+    yellow: 'bg-[#1a1200] text-yellow-700 border-yellow-200',
+    red: 'bg-[#1c0a0a] text-red-400 border-red-800/50'
   };
 
   return (
@@ -514,9 +514,9 @@ const GanttTimeline: React.FC<GanttTimelineProps> = ({ milestones, dateRange, to
   return (
     <div className="space-y-1">
       {/* Timeline Header */}
-      <div className="relative h-12 mb-6 border-b-2 border-gray-300">
+      <div className="relative h-12 mb-6 border-b-2 border-[#253347]">
         {/* Month markers */}
-        <div className="absolute inset-0 flex justify-between text-xs text-gray-500">
+        <div className="absolute inset-0 flex justify-between text-xs text-[#6B7585]">
           <span>{minDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
           <span>{maxDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
         </div>
@@ -542,7 +542,7 @@ const GanttTimeline: React.FC<GanttTimelineProps> = ({ milestones, dateRange, to
           return (
             <div key={milestone.id} className="relative">
               {/* Background line */}
-              <div className="h-12 bg-gray-50 rounded border border-gray-200 relative">
+              <div className="h-12 bg-[#0F1319] rounded border border-[#1e2a3d] relative">
                 
                 {/* Milestone marker */}
                 <div 
@@ -550,7 +550,7 @@ const GanttTimeline: React.FC<GanttTimelineProps> = ({ milestones, dateRange, to
                   style={{ left: `${position}%` }}
                 >
                   <div className="relative group">
-                    <div className={`w-4 h-4 rounded-full ${getMilestoneColor(milestone)} ring-4 ring-white border-2 border-gray-200 cursor-pointer hover:scale-125 transition-transform`} />
+                    <div className={`w-4 h-4 rounded-full ${getMilestoneColor(milestone)} ring-4 ring-white border-2 border-[#1e2a3d] cursor-pointer hover:scale-125 transition-transform`} />
                     
                     {/* Tooltip */}
                     <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
@@ -570,7 +570,7 @@ const GanttTimeline: React.FC<GanttTimelineProps> = ({ milestones, dateRange, to
                 {/* Milestone label */}
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${getMilestoneColor(milestone)}`} />
-                  <span className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
+                  <span className="text-xs font-medium text-[#9EA8B4] truncate max-w-[200px]">
                     {milestone.title}
                   </span>
                   {milestone.category === 'critical' && (
@@ -579,7 +579,7 @@ const GanttTimeline: React.FC<GanttTimelineProps> = ({ milestones, dateRange, to
                 </div>
 
                 {/* Date on right */}
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-500">
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-[#6B7585]">
                   {new Date(milestone.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </div>
               </div>
@@ -662,14 +662,14 @@ const MilestoneGroup: React.FC<MilestoneGroupProps> = ({ title, milestones, defa
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between hover:bg-gray-100 transition-colors"
+        className="w-full px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between hover:bg-[#131920] transition-colors"
       >
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
           {title}
-          <span className="px-2 py-0.5 bg-white rounded text-xs font-normal text-gray-600 border border-gray-300">
+          <span className="px-2 py-0.5 bg-[#0F1319] rounded text-xs font-normal text-[#9EA8B4] border border-[#253347]">
             {milestones.length}
           </span>
         </h3>
@@ -700,15 +700,15 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-700 border-green-300';
+        return 'bg-[#022c22] text-green-400 border-green-700';
       case 'in-progress':
-        return 'bg-blue-100 text-blue-700 border-blue-300';
+        return 'bg-[#0d1e3d] text-blue-400 border-blue-700';
       case 'overdue':
-        return 'bg-red-100 text-red-700 border-red-300';
+        return 'bg-[#1c0a0a] text-red-400 border-red-700';
       case 'at-risk':
         return 'bg-yellow-100 text-yellow-700 border-yellow-300';
       default:
-        return 'bg-gray-100 text-gray-700 border-gray-300';
+        return 'bg-[#131920] text-[#9EA8B4] border-[#253347]';
     }
   };
 
@@ -744,18 +744,18 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
 
   if (compact) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition-all">
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-[#1e2a3d] hover:border-[#253347] hover:shadow-sm transition-all">
         <span className="text-xl">{getCategoryIcon(milestone.category)}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium text-gray-900 truncate">
+            <span className="text-sm font-medium text-[#E8E6E1] truncate">
               {milestone.title}
             </span>
             <span className={`px-2 py-0.5 rounded text-xs font-medium border ${getStatusColor(milestone.status)}`}>
               {getStatusLabel(milestone.status)}
             </span>
           </div>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex items-center gap-3 text-xs text-[#6B7585]">
             <span>📅 {new Date(milestone.date).toLocaleDateString()}</span>
             {milestone.daysUntil !== undefined && milestone.daysUntil > 0 && (
               <span>⏰ {milestone.daysUntil} days</span>
@@ -768,14 +768,14 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
   }
 
   return (
-    <div className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all">
+    <div className="p-4 rounded-lg border border-[#1e2a3d] hover:border-[#253347] hover:shadow-md transition-all">
       <div className="flex items-start gap-3">
         <span className="text-2xl mt-1">{getCategoryIcon(milestone.category)}</span>
         
         <div className="flex-1 min-w-0">
           {/* Header */}
           <div className="flex items-start justify-between gap-2 mb-2">
-            <h4 className="text-sm font-semibold text-gray-900">{milestone.title}</h4>
+            <h4 className="text-sm font-semibold text-[#E8E6E1]">{milestone.title}</h4>
             <span className={`px-2 py-1 rounded text-xs font-medium border whitespace-nowrap ${getStatusColor(milestone.status)}`}>
               {getStatusLabel(milestone.status)}
             </span>
@@ -783,11 +783,11 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
 
           {/* Description */}
           {milestone.description && (
-            <p className="text-xs text-gray-600 mb-3">{milestone.description}</p>
+            <p className="text-xs text-[#9EA8B4] mb-3">{milestone.description}</p>
           )}
 
           {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#6B7585]">
             <div className="flex items-center gap-1">
               <span>📅</span>
               <span>{new Date(milestone.date).toLocaleDateString('en-US', { 
@@ -799,9 +799,9 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
             
             {milestone.daysUntil !== undefined && (
               <div className={`flex items-center gap-1 font-medium ${
-                milestone.daysUntil <= 7 ? 'text-red-600' : 
+                milestone.daysUntil <= 7 ? 'text-red-400' : 
                 milestone.daysUntil <= 14 ? 'text-yellow-600' : 
-                'text-gray-600'
+                'text-[#9EA8B4]'
               }`}>
                 <span>⏰</span>
                 <span>
@@ -829,8 +829,8 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
 
           {/* Notes */}
           {milestone.notes && (
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <div className="text-xs text-gray-600">
+            <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
+              <div className="text-xs text-[#9EA8B4]">
                 <span className="font-medium">Note:</span> {milestone.notes}
               </div>
             </div>
@@ -838,8 +838,8 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
 
           {/* Dependencies */}
           {milestone.dependencies && milestone.dependencies.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <div className="text-xs text-gray-600">
+            <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
+              <div className="text-xs text-[#9EA8B4]">
                 <span className="font-medium">Dependencies:</span> {milestone.dependencies.join(', ')}
               </div>
             </div>
@@ -861,45 +861,45 @@ const UpcomingDeadlinesCard: React.FC<UpcomingDeadlinesCardProps> = ({ deadlines
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'critical':
-        return 'bg-red-50 border-red-200 text-red-700';
+        return 'bg-[#1c0a0a] border-red-800/50 text-red-400';
       case 'high':
-        return 'bg-orange-50 border-orange-200 text-orange-700';
+        return 'bg-[#1a0d00] border-orange-200 text-orange-700';
       case 'medium':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-700';
+        return 'bg-[#1a1200] border-yellow-200 text-yellow-700';
       case 'low':
-        return 'bg-gray-50 border-gray-200 text-gray-700';
+        return 'bg-[#0F1319] border-[#1e2a3d] text-[#9EA8B4]';
       default:
-        return 'bg-gray-50 border-gray-200 text-gray-700';
+        return 'bg-[#0F1319] border-[#1e2a3d] text-[#9EA8B4]';
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'due-soon':
-        return 'text-red-600 font-semibold';
+        return 'text-red-400 font-semibold';
       case 'upcoming':
         return 'text-blue-600';
       case 'overdue':
-        return 'text-red-700 font-bold';
+        return 'text-red-400 font-bold';
       default:
-        return 'text-gray-600';
+        return 'text-[#9EA8B4]';
     }
   };
 
   const sortedDeadlines = [...deadlines].sort((a, b) => a.daysUntil - b.daysUntil);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-700">⏰ Upcoming Deadlines (Next 90 Days)</h3>
-        <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#9EA8B4]">⏰ Upcoming Deadlines (Next 90 Days)</h3>
+        <button className="text-xs text-blue-600 hover:text-blue-400 font-medium">
           View All Deadlines
         </button>
       </div>
       
       <div className="p-4">
         {sortedDeadlines.length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
+          <div className="text-center py-8 text-[#6B7585]">
             <div className="text-4xl mb-2">🎉</div>
             <div className="text-sm">No upcoming deadlines!</div>
           </div>
@@ -912,7 +912,7 @@ const UpcomingDeadlinesCard: React.FC<UpcomingDeadlinesCardProps> = ({ deadlines
               >
                 <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-1">{deadline.title}</h4>
+                    <h4 className="text-sm font-semibold text-[#E8E6E1] mb-1">{deadline.title}</h4>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                       <span className={getStatusColor(deadline.status)}>
                         📅 {deadline.daysUntil === 0 ? 'Due Today' :
@@ -920,11 +920,11 @@ const UpcomingDeadlinesCard: React.FC<UpcomingDeadlinesCardProps> = ({ deadlines
                             deadline.daysUntil < 0 ? `${Math.abs(deadline.daysUntil)} days overdue` :
                             `Due in ${deadline.daysUntil} days`}
                       </span>
-                      <span className="text-gray-600">• {deadline.category}</span>
-                      <span className="text-gray-600">• 👤 {deadline.owner}</span>
+                      <span className="text-[#9EA8B4]">• {deadline.category}</span>
+                      <span className="text-[#9EA8B4]">• 👤 {deadline.owner}</span>
                     </div>
                   </div>
-                  <span className="px-2 py-1 bg-white border border-gray-300 rounded text-xs font-medium uppercase whitespace-nowrap">
+                  <span className="px-2 py-1 bg-[#0F1319] border border-[#253347] rounded text-xs font-medium uppercase whitespace-nowrap">
                     {deadline.priority}
                   </span>
                 </div>
@@ -932,11 +932,11 @@ const UpcomingDeadlinesCard: React.FC<UpcomingDeadlinesCardProps> = ({ deadlines
                 {/* Progress Bar */}
                 {deadline.completionPercent !== undefined && (
                   <div>
-                    <div className="flex justify-between text-xs text-gray-600 mb-1">
+                    <div className="flex justify-between text-xs text-[#9EA8B4] mb-1">
                       <span>Progress</span>
                       <span className="font-medium">{deadline.completionPercent}%</span>
                     </div>
-                    <div className="h-2 bg-white rounded-full overflow-hidden border border-gray-200">
+                    <div className="h-2 bg-[#0F1319] rounded-full overflow-hidden border border-[#1e2a3d]">
                       <div 
                         className={`h-full rounded-full transition-all ${
                           deadline.completionPercent >= 80 ? 'bg-green-500' :

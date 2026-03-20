@@ -129,9 +129,9 @@ export const FullDealPageExample: React.FC<{ dealId: string }> = ({ dealId }) =>
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
       
       {/* Deal Header */}
-      <div className="bg-white rounded-lg shadow p-6">
+      <div className="bg-[#0F1319] rounded-lg shadow p-6">
         <h1 className="text-3xl font-bold">{deal.name}</h1>
-        <p className="text-gray-600">{deal.address}</p>
+        <p className="text-[#9EA8B4]">{deal.address}</p>
       </div>
 
       {/* Overview Section */}
@@ -142,7 +142,7 @@ export const FullDealPageExample: React.FC<{ dealId: string }> = ({ dealId }) =>
         defaultExpanded={true}
       >
         {/* OverviewSection component */}
-        <div className="p-4 text-gray-600">Overview content...</div>
+        <div className="p-4 text-[#9EA8B4]">Overview content...</div>
       </DealSection>
 
       {/* Financial Section */}
@@ -153,7 +153,7 @@ export const FullDealPageExample: React.FC<{ dealId: string }> = ({ dealId }) =>
         defaultExpanded={true}
       >
         {/* FinancialSection component */}
-        <div className="p-4 text-gray-600">Financial content...</div>
+        <div className="p-4 text-[#9EA8B4]">Financial content...</div>
       </DealSection>
 
       {/* Documents Section - Our New Component! */}
@@ -174,7 +174,7 @@ export const FullDealPageExample: React.FC<{ dealId: string }> = ({ dealId }) =>
         defaultExpanded={false}
       >
         {/* DueDiligenceSection component */}
-        <div className="p-4 text-gray-600">Due diligence content...</div>
+        <div className="p-4 text-[#9EA8B4]">Due diligence content...</div>
       </DealSection>
 
       {/* Team Section */}
@@ -185,7 +185,7 @@ export const FullDealPageExample: React.FC<{ dealId: string }> = ({ dealId }) =>
         defaultExpanded={false}
       >
         {/* TeamSection component */}
-        <div className="p-4 text-gray-600">Team content...</div>
+        <div className="p-4 text-[#9EA8B4]">Team content...</div>
       </DealSection>
 
     </div>
@@ -207,15 +207,15 @@ export const CustomStyledExample: React.FC = () => {
   } as Deal;
 
   return (
-    <div className="bg-gray-50 min-h-screen py-8">
+    <div className="bg-[#0F1319] min-h-screen py-8">
       <div className="max-w-7xl mx-auto px-4">
         
         {/* Custom Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-4xl font-bold text-[#E8E6E1] mb-2">
             {deal.name}
           </h1>
-          <p className="text-lg text-gray-600">Document Center</p>
+          <p className="text-lg text-[#9EA8B4]">Document Center</p>
         </div>
 
         {/* Documents Section with Custom Styling */}
@@ -224,8 +224,8 @@ export const CustomStyledExample: React.FC = () => {
         </div>
 
         {/* Additional Context Below */}
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
+        <div className="mt-6 p-4 bg-[#0d1e3d] border border-blue-900/50 rounded-lg">
+          <p className="text-sm text-blue-300">
             💡 <strong>Tip:</strong> Upload all due diligence documents before the 
             site visit on March 1st.
           </p>
@@ -258,7 +258,7 @@ export const ConditionalFeaturesExample: React.FC = () => {
       
       {/* Contextual Banner */}
       {isPipeline && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-[#1a1200] border border-yellow-200 rounded-lg p-4">
           <p className="text-sm text-yellow-800">
             ⚠️ <strong>Due Diligence Active:</strong> Please ensure all required 
             documents are uploaded before the contingency period ends.
@@ -267,8 +267,8 @@ export const ConditionalFeaturesExample: React.FC = () => {
       )}
 
       {isOwned && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <p className="text-sm text-green-800">
+        <div className="bg-[#022c22] border border-green-800/50 rounded-lg p-4">
+          <p className="text-sm text-green-300">
             ✅ <strong>Asset Owned:</strong> Access operational documents, leases, 
             and maintenance records.
           </p>
@@ -318,7 +318,7 @@ export const WithLoadingStateExample: React.FC<{ dealId: string }> = ({ dealId }
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="animate-spin text-4xl mb-4">⚙️</div>
-          <p className="text-gray-600">Loading documents...</p>
+          <p className="text-[#9EA8B4]">Loading documents...</p>
         </div>
       </div>
     );
@@ -326,9 +326,9 @@ export const WithLoadingStateExample: React.FC<{ dealId: string }> = ({ dealId }
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+      <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
         <div className="text-4xl mb-4">❌</div>
-        <p className="text-red-800 font-semibold">{error}</p>
+        <p className="text-red-300 font-semibold">{error}</p>
       </div>
     );
   }

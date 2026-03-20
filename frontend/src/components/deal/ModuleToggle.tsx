@@ -12,14 +12,14 @@ export const ModuleToggle: React.FC<ModuleToggleProps> = ({
   isPremium = false
 }) => {
   return (
-    <div className="flex items-center justify-center gap-0 bg-gray-100 rounded-lg p-1 w-fit">
+    <div className="flex items-center justify-center gap-0 bg-[#131920] rounded-lg p-1 w-fit">
       {/* Basic Toggle */}
       <button
         onClick={() => onModeChange('basic')}
         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
           mode === 'basic'
-            ? 'bg-white text-gray-900 shadow-sm'
-            : 'text-gray-600 hover:text-gray-900'
+            ? 'bg-[#0F1319] text-[#E8E6E1] shadow-sm'
+            : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
         }`}
       >
         <span className="flex items-center gap-2">
@@ -34,7 +34,7 @@ export const ModuleToggle: React.FC<ModuleToggleProps> = ({
         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
           mode === 'enhanced'
             ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-sm'
-            : 'text-gray-600 hover:text-gray-900'
+            : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
         }`}
         disabled={!isPremium}
       >

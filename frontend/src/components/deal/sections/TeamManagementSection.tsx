@@ -51,10 +51,10 @@ interface Comment {
 type ActiveView = 'members' | 'tasks';
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: 'bg-gray-100 text-gray-600 border-gray-200',
-  medium: 'bg-blue-50 text-blue-700 border-blue-200',
-  high: 'bg-orange-50 text-orange-700 border-orange-200',
-  urgent: 'bg-red-50 text-red-700 border-red-200',
+  low: 'bg-[#131920] text-[#9EA8B4] border-[#1e2a3d]',
+  medium: 'bg-[#0d1e3d] text-blue-400 border-blue-900/50',
+  high: 'bg-[#1a0d00] text-orange-700 border-orange-200',
+  urgent: 'bg-[#1c0a0a] text-red-400 border-red-800/50',
 };
 
 const STATUS_ICONS: Record<string, React.ReactNode> = {
@@ -202,7 +202,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-        <span className="ml-3 text-gray-500">Loading team data...</span>
+        <span className="ml-3 text-[#6B7585]">Loading team data...</span>
       </div>
     );
   }
@@ -214,21 +214,21 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
     <div className="space-y-6 p-1">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-[#E8E6E1] flex items-center gap-2">
             <Users size={22} className="text-blue-500" />
             Team & Collaboration
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-[#6B7585] mt-1">
             {members.length} members | {activeTasks} active tasks | {completedTasks} completed
           </p>
         </div>
       </div>
 
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+      <div className="flex gap-1 bg-[#131920] rounded-lg p-1">
         <button
           onClick={() => setActiveView('members')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'members' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200'
+            activeView === 'members' ? 'bg-blue-600 text-white' : 'text-[#6B7585] hover:text-[#E8E6E1] hover:bg-[#1e2a3d]'
           }`}
         >
           <UserPlus size={16} />
@@ -237,7 +237,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
         <button
           onClick={() => setActiveView('tasks')}
           className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeView === 'tasks' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200'
+            activeView === 'tasks' ? 'bg-blue-600 text-white' : 'text-[#6B7585] hover:text-[#E8E6E1] hover:bg-[#1e2a3d]'
           }`}
         >
           <ClipboardList size={16} />
@@ -250,7 +250,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setShowImportContacts(true)}
-              className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors"
+              className="flex items-center gap-2 px-3 py-2 border border-[#253347] text-[#9EA8B4] hover:bg-[#0F1319] rounded-lg text-sm font-medium transition-colors"
             >
               <Download size={16} />
               Import from Email
@@ -265,27 +265,27 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
           </div>
 
           {showAddMember && (
-            <div className="bg-white rounded-xl border border-blue-200 p-4 space-y-3 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-900">New Team Member</h3>
+            <div className="bg-[#0F1319] rounded-xl border border-blue-900/50 p-4 space-y-3 shadow-sm">
+              <h3 className="text-sm font-semibold text-[#E8E6E1]">New Team Member</h3>
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
                   placeholder="Full Name *"
                   value={newMember.name}
                   onChange={(e) => setNewMember(p => ({ ...p, name: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <input
                   type="email"
                   placeholder="Email"
                   value={newMember.email}
                   onChange={(e) => setNewMember(p => ({ ...p, email: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <select
                   value={newMember.role}
                   onChange={(e) => setNewMember(p => ({ ...p, role: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
@@ -294,18 +294,18 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                   placeholder="Title"
                   value={newMember.title}
                   onChange={(e) => setNewMember(p => ({ ...p, title: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <input
                   type="text"
                   placeholder="Company"
                   value={newMember.company}
                   onChange={(e) => setNewMember(p => ({ ...p, company: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm col-span-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-sm col-span-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowAddMember(false)} className="px-3 py-1.5 text-gray-500 hover:text-gray-900 text-sm">Cancel</button>
+                <button onClick={() => setShowAddMember(false)} className="px-3 py-1.5 text-[#6B7585] hover:text-[#E8E6E1] text-sm">Cancel</button>
                 <button onClick={addMember} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">Add</button>
               </div>
             </div>
@@ -319,14 +319,14 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
               </div>
             ) : (
               members.map(member => (
-                <div key={member.id} className="flex items-center justify-between bg-white rounded-xl border border-gray-200 p-4 hover:shadow-sm transition-shadow">
+                <div key={member.id} className="flex items-center justify-between bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4 hover:shadow-sm transition-shadow">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-sm">
                       {member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-sm font-medium text-[#E8E6E1]">{member.name}</p>
+                      <p className="text-xs text-[#6B7585]">
                         {member.role}{member.title ? ` · ${member.title}` : ''}{member.company ? ` @ ${member.company}` : ''}
                       </p>
                       {member.email && <p className="text-xs text-gray-400">{member.email}</p>}
@@ -334,7 +334,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-0.5 rounded-full text-xs ${
-                      member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                      member.status === 'active' ? 'bg-[#022c22] text-green-400' : 'bg-[#131920] text-[#6B7585]'
                     }`}>
                       {member.status}
                     </span>
@@ -365,27 +365,27 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
           </div>
 
           {showAddTask && (
-            <div className="bg-white rounded-xl border border-blue-200 p-4 space-y-3 shadow-sm">
-              <h3 className="text-sm font-semibold text-gray-900">New Task</h3>
+            <div className="bg-[#0F1319] rounded-xl border border-blue-900/50 p-4 space-y-3 shadow-sm">
+              <h3 className="text-sm font-semibold text-[#E8E6E1]">New Task</h3>
               <input
                 type="text"
                 placeholder="Task title *"
                 value={newTask.title}
                 onChange={(e) => setNewTask(p => ({ ...p, title: e.target.value }))}
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <textarea
                 placeholder="Description"
                 value={newTask.description}
                 onChange={(e) => setNewTask(p => ({ ...p, description: e.target.value }))}
                 rows={2}
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <div className="grid grid-cols-3 gap-3">
                 <select
                   value={newTask.priority}
                   onChange={(e) => setNewTask(p => ({ ...p, priority: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -398,7 +398,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                     const member = members.find(m => m.name === e.target.value);
                     setNewTask(p => ({ ...p, assigned_to: member?.id || '', assigned_to_name: e.target.value }));
                   }}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">Unassigned</option>
                   {members.map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
@@ -407,11 +407,11 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                   type="date"
                   value={newTask.due_date}
                   onChange={(e) => setNewTask(p => ({ ...p, due_date: e.target.value }))}
-                  className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowAddTask(false)} className="px-3 py-1.5 text-gray-500 hover:text-gray-900 text-sm">Cancel</button>
+                <button onClick={() => setShowAddTask(false)} className="px-3 py-1.5 text-[#6B7585] hover:text-[#E8E6E1] text-sm">Cancel</button>
                 <button onClick={addTask} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm">Create</button>
               </div>
             </div>
@@ -425,20 +425,20 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
               </div>
             ) : (
               tasks.map(task => (
-                <div key={task.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-sm transition-shadow">
+                <div key={task.id} className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] overflow-hidden hover:shadow-sm transition-shadow">
                   <div className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3 flex-1">
-                      <button onClick={() => toggleTaskExpand(task.id)} className="text-gray-400 hover:text-gray-700">
+                      <button onClick={() => toggleTaskExpand(task.id)} className="text-gray-400 hover:text-[#9EA8B4]">
                         {expandedTask === task.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </button>
                       {STATUS_ICONS[task.status] || STATUS_ICONS.pending}
                       <div className="flex-1">
-                        <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-gray-400 line-through' : 'text-[#E8E6E1]'}`}>
                           {task.title}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
                           {task.assigned_to_name && (
-                            <span className="text-xs text-gray-500">{task.assigned_to_name}</span>
+                            <span className="text-xs text-[#6B7585]">{task.assigned_to_name}</span>
                           )}
                           {task.due_date && (
                             <span className="text-xs text-gray-400">{new Date(task.due_date).toLocaleDateString()}</span>
@@ -453,7 +453,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                       <select
                         value={task.status}
                         onChange={(e) => updateTaskStatus(task.id, e.target.value)}
-                        className="px-2 py-1 bg-white border border-gray-300 rounded text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="px-2 py-1 bg-[#0F1319] border border-[#253347] rounded text-xs text-[#9EA8B4] focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="pending">Pending</option>
                         <option value="in_progress">In Progress</option>
@@ -467,22 +467,22 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                   </div>
 
                   {expandedTask === task.id && (
-                    <div className="border-t border-gray-200 p-4 bg-gray-50">
+                    <div className="border-t border-[#1e2a3d] p-4 bg-[#0F1319]">
                       {task.description && (
-                        <p className="text-sm text-gray-600 mb-3">{task.description}</p>
+                        <p className="text-sm text-[#9EA8B4] mb-3">{task.description}</p>
                       )}
                       <div className="space-y-2">
-                        <h4 className="text-xs font-semibold text-gray-500 flex items-center gap-1">
+                        <h4 className="text-xs font-semibold text-[#6B7585] flex items-center gap-1">
                           <MessageSquare size={12} />
                           Comments ({taskComments[task.id]?.length || 0})
                         </h4>
                         {(taskComments[task.id] || []).map(comment => (
-                          <div key={comment.id} className="p-2 bg-white border border-gray-200 rounded-lg">
+                          <div key={comment.id} className="p-2 bg-[#0F1319] border border-[#1e2a3d] rounded-lg">
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-xs font-medium text-blue-600">{comment.author_name}</span>
                               <span className="text-xs text-gray-400">{new Date(comment.created_at).toLocaleString()}</span>
                             </div>
-                            <p className="text-xs text-gray-600">{comment.content}</p>
+                            <p className="text-xs text-[#9EA8B4]">{comment.content}</p>
                           </div>
                         ))}
                         <div className="flex gap-2">
@@ -492,7 +492,7 @@ export function TeamManagementSection({ deal, dealId: propDealId }: TeamManageme
                             value={expandedTask === task.id ? newComment : ''}
                             onChange={(e) => setNewComment(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && addComment(task.id)}
-                            className="flex-1 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="flex-1 px-3 py-1.5 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] placeholder-gray-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           />
                           <button
                             onClick={() => addComment(task.id)}

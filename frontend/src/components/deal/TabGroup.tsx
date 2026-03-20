@@ -64,8 +64,8 @@ export const TabGroup: React.FC<TabGroupProps> = ({
           alwaysExpanded ? 'cursor-default pl-2' : 'cursor-pointer'
         } ${
           hasActiveTab
-            ? 'text-slate-900 bg-slate-100'
-            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+            ? 'text-[#E8E6E1] bg-[#131920]'
+            : 'text-slate-500 hover:bg-[#131920] hover:text-slate-700'
         }`}
         aria-expanded={isExpanded}
       >
@@ -92,7 +92,7 @@ export const TabGroup: React.FC<TabGroupProps> = ({
               className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 mb-0.5 transition-colors ${
                 activeTab === tab.id
                   ? 'bg-blue-500 text-white font-medium hover:bg-blue-600'
-                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                  : 'text-slate-500 hover:bg-[#0F1319] hover:text-slate-700'
               }`}
               aria-current={activeTab === tab.id ? 'page' : undefined}
             >

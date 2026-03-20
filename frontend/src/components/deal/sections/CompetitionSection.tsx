@@ -273,7 +273,7 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading competition data...</p>
+            <p className="text-[#9EA8B4]">Loading competition data...</p>
           </div>
         </div>
       </div>
@@ -284,9 +284,9 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading competition data</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading competition data</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -300,12 +300,12 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
         <div className="flex items-center gap-3">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-[#0d1e3d] text-blue-400' 
+              : 'bg-[#022c22] text-green-400'
           }`}>
             {isPipeline ? '🎯 Acquisition Mode' : '🏆 Performance Mode'}
           </div>
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-[#9EA8B4]">
             {isPipeline ? 'Market & Comparable Analysis' : 'Competitive Position & Threats'}
           </span>
         </div>
@@ -386,24 +386,24 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
       {stats.map((stat, index) => (
-        <div key={index} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+        <div key={index} className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4 hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-2">
             <span className="text-2xl">{stat.icon}</span>
             {stat.trend && (
               <span className={`text-xs font-medium ${
                 stat.trend.direction === 'up' ? 'text-green-600' :
-                stat.trend.direction === 'down' ? 'text-red-600' : 'text-gray-600'
+                stat.trend.direction === 'down' ? 'text-red-400' : 'text-[#9EA8B4]'
               }`}>
                 {stat.trend.value}
               </span>
             )}
           </div>
-          <div className="text-2xl font-bold text-gray-900 mb-1">
+          <div className="text-2xl font-bold text-[#E8E6E1] mb-1">
             {formatValue(stat)}
           </div>
-          <div className="text-sm text-gray-600">{stat.label}</div>
+          <div className="text-sm text-[#9EA8B4]">{stat.label}</div>
           {stat.subtext && (
-            <div className="text-xs text-gray-500 mt-1">{stat.subtext}</div>
+            <div className="text-xs text-[#6B7585] mt-1">{stat.subtext}</div>
           )}
         </div>
       ))}
@@ -427,18 +427,18 @@ const ComparablesHeader: React.FC<ComparablesHeaderProps> = ({
   count
 }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Comparable Properties</h3>
-          <p className="text-sm text-gray-600">{count} properties found</p>
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Comparable Properties</h3>
+          <p className="text-sm text-[#9EA8B4]">{count} properties found</p>
         </div>
         <div className="flex gap-2">
           {/* Sort Dropdown */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="px-3 py-1.5 text-sm border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="distance">Sort by Distance</option>
             <option value="similarity">Sort by Similarity</option>
@@ -449,7 +449,7 @@ const ComparablesHeader: React.FC<ComparablesHeaderProps> = ({
           <select
             value={filterClass}
             onChange={(e) => setFilterClass(e.target.value as any)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="px-3 py-1.5 text-sm border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
             <option value="all">All Classes</option>
             <option value="A">Class A</option>
@@ -484,7 +484,7 @@ interface CompCardProps {
 
 const CompCard: React.FC<CompCardProps> = ({ comp, mode }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex gap-4">
         {/* Photo Placeholder */}
         <div className="w-24 h-24 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
@@ -495,14 +495,14 @@ const CompCard: React.FC<CompCardProps> = ({ comp, mode }) => {
         <div className="flex-1">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h4 className="font-semibold text-gray-900">{comp.name}</h4>
-              <p className="text-sm text-gray-600">{comp.address}</p>
+              <h4 className="font-semibold text-[#E8E6E1]">{comp.name}</h4>
+              <p className="text-sm text-[#9EA8B4]">{comp.address}</p>
             </div>
             <div className="flex items-center gap-2">
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                comp.class === 'A' ? 'bg-green-100 text-green-700' :
-                comp.class === 'B' ? 'bg-blue-100 text-blue-700' :
-                'bg-gray-100 text-gray-700'
+                comp.class === 'A' ? 'bg-[#022c22] text-green-400' :
+                comp.class === 'B' ? 'bg-[#0d1e3d] text-blue-400' :
+                'bg-[#131920] text-[#9EA8B4]'
               }`}>
                 Class {comp.class}
               </span>
@@ -550,12 +550,12 @@ const CompCard: React.FC<CompCardProps> = ({ comp, mode }) => {
           {/* Amenities */}
           <div className="flex flex-wrap gap-1">
             {comp.amenities.slice(0, 4).map((amenity, idx) => (
-              <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+              <span key={idx} className="px-2 py-0.5 bg-[#131920] text-[#9EA8B4] text-xs rounded">
                 {amenity}
               </span>
             ))}
             {comp.amenities.length > 4 && (
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+              <span className="px-2 py-0.5 bg-[#131920] text-[#9EA8B4] text-xs rounded">
                 +{comp.amenities.length - 4} more
               </span>
             )}
@@ -575,8 +575,8 @@ interface MetricItemProps {
 const MetricItem: React.FC<MetricItemProps> = ({ label, value, highlight }) => {
   return (
     <div>
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className={`text-sm font-semibold ${highlight ? 'text-blue-600' : 'text-gray-900'}`}>
+      <div className="text-xs text-[#6B7585]">{label}</div>
+      <div className={`text-sm font-semibold ${highlight ? 'text-blue-600' : 'text-[#E8E6E1]'}`}>
         {value}
       </div>
     </div>
@@ -592,9 +592,9 @@ const SimilarityBadge: React.FC<SimilarityBadgeProps> = ({ score }) => {
   
   return (
     <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-      color === 'green' ? 'bg-green-100 text-green-700' :
-      color === 'blue' ? 'bg-blue-100 text-blue-700' :
-      'bg-gray-100 text-gray-700'
+      color === 'green' ? 'bg-[#022c22] text-green-400' :
+      color === 'blue' ? 'bg-[#0d1e3d] text-blue-400' :
+      'bg-[#131920] text-[#9EA8B4]'
     }`}>
       <span>🎯</span>
       <span>{score}%</span>
@@ -609,16 +609,16 @@ interface CompetitionMapCardProps {
 
 const CompetitionMapCard: React.FC<CompetitionMapCardProps> = ({ deal, comparables }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="font-semibold text-gray-900 mb-3">Competition Map</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+      <h3 className="font-semibold text-[#E8E6E1] mb-3">Competition Map</h3>
       <div className="bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg aspect-square flex items-center justify-center">
-        <div className="text-center text-gray-500">
+        <div className="text-center text-[#6B7585]">
           <div className="text-4xl mb-2">🗺️</div>
           <div className="text-sm">Interactive Map View</div>
           <div className="text-xs mt-1">{comparables.length} comparables within radius</div>
         </div>
       </div>
-      <div className="mt-3 text-xs text-gray-600">
+      <div className="mt-3 text-xs text-[#9EA8B4]">
         <div className="flex items-center gap-2 mb-1">
           <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
           <span>Subject Property</span>
@@ -639,18 +639,18 @@ interface MarketPositioningCardProps {
 
 const MarketPositioningCard: React.FC<MarketPositioningCardProps> = ({ positioning, mode }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="font-semibold text-gray-900 mb-3">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+      <h3 className="font-semibold text-[#E8E6E1] mb-3">
         {mode === 'acquisition' ? 'Market Position' : 'Competitive Ranking'}
       </h3>
       <div className="space-y-3">
         {positioning.map((item, idx) => (
           <div key={idx}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-sm text-gray-700">{item.label}</span>
-              <span className="text-sm font-semibold text-gray-900">{item.value}%</span>
+              <span className="text-sm text-[#9EA8B4]">{item.label}</span>
+              <span className="text-sm font-semibold text-[#E8E6E1]">{item.value}%</span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-[#1e2a3d] rounded-full h-2">
               <div
                 className={`h-2 rounded-full ${
                   item.color === 'green' ? 'bg-green-500' :
@@ -660,7 +660,7 @@ const MarketPositioningCard: React.FC<MarketPositioningCardProps> = ({ positioni
                 style={{ width: `${item.value}%` }}
               ></div>
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-[#6B7585] mt-1">
               {item.percentile}th percentile
             </div>
           </div>
@@ -676,17 +676,17 @@ interface CompetitiveThreatsCardProps {
 
 const CompetitiveThreatsCard: React.FC<CompetitiveThreatsCardProps> = ({ threats }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="font-semibold text-gray-900 mb-3">Competitive Threats</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+      <h3 className="font-semibold text-[#E8E6E1] mb-3">Competitive Threats</h3>
       <div className="space-y-3">
         {threats.map((threat) => (
-          <div key={threat.id} className="pb-3 border-b border-gray-100 last:border-0 last:pb-0">
+          <div key={threat.id} className="pb-3 border-b border-[#1e2a3d] last:border-0 last:pb-0">
             <div className="flex items-start justify-between mb-1">
-              <span className="text-sm font-medium text-gray-900">{threat.property}</span>
+              <span className="text-sm font-medium text-[#E8E6E1]">{threat.property}</span>
               <ThreatBadge level={threat.threatLevel} />
             </div>
-            <p className="text-xs text-gray-600 mb-1">{threat.reason}</p>
-            <p className="text-xs text-gray-500">Impact: {threat.impact}</p>
+            <p className="text-xs text-[#9EA8B4] mb-1">{threat.reason}</p>
+            <p className="text-xs text-[#6B7585]">Impact: {threat.impact}</p>
             <p className="text-xs text-gray-400 mt-1">{threat.distance} mi away</p>
           </div>
         ))}
@@ -701,9 +701,9 @@ interface ThreatBadgeProps {
 
 const ThreatBadge: React.FC<ThreatBadgeProps> = ({ level }) => {
   const colors = {
-    high: 'bg-red-100 text-red-700',
+    high: 'bg-[#1c0a0a] text-red-400',
     medium: 'bg-yellow-100 text-yellow-700',
-    low: 'bg-green-100 text-green-700'
+    low: 'bg-[#022c22] text-green-400'
   };
 
   const icons = {
@@ -742,10 +742,10 @@ const formatRelativeTime = (dateStr: string): string => {
 const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, loading, error }) => {
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-stone-200 p-6">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
         <div className="animate-pulse space-y-4">
           <div className="h-5 bg-stone-200 rounded w-48"></div>
-          <div className="h-32 bg-stone-100 rounded"></div>
+          <div className="h-32 bg-[#131920] rounded"></div>
         </div>
       </div>
     );
@@ -753,10 +753,10 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg border border-stone-200 p-6">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
         <div className="text-center py-4">
           <div className="text-2xl mb-2">⚠️</div>
-          <h3 className="text-sm font-semibold text-stone-900 mb-1">Unable to load ranking</h3>
+          <h3 className="text-sm font-semibold text-[#E8E6E1] mb-1">Unable to load ranking</h3>
           <p className="text-xs text-stone-500">Could not retrieve competitive ranking data. Try refreshing the page.</p>
         </div>
       </div>
@@ -765,14 +765,14 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
 
   if (!data || !data.summary.hasProgram) {
     return (
-      <div className="bg-white rounded-lg border border-stone-200 p-6 hover:border-stone-300 transition-colors">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6 hover:border-stone-300 transition-colors">
         <div className="text-center py-6">
           <div className="text-3xl mb-3">📊</div>
-          <h3 className="text-sm font-semibold text-stone-900 mb-1">Program vs. Competition</h3>
+          <h3 className="text-sm font-semibold text-[#E8E6E1] mb-1">Program vs. Competition</h3>
           <p className="text-xs text-stone-500 mb-4 max-w-md mx-auto">
             Set up your Unit Mix Program to see how your property would rank against nearby competition on rent, size, and value.
           </p>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 text-stone-600 rounded text-xs font-medium">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#131920] text-stone-600 rounded text-xs font-medium">
             Go to Unit Mix Intelligence to create your Program
           </div>
         </div>
@@ -781,14 +781,14 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
   }
 
   const { rankings, summary } = data;
-  const premiumColor = (summary.rentPremiumPct || 0) >= 0 ? 'text-emerald-600' : 'text-red-600';
+  const premiumColor = (summary.rentPremiumPct || 0) >= 0 ? 'text-emerald-600' : 'text-red-400';
   const premiumSign = (summary.rentPremiumPct || 0) >= 0 ? '+' : '';
 
   return (
-    <div className="bg-white rounded-lg border border-stone-200 p-6 hover:border-stone-300 transition-colors">
+    <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6 hover:border-stone-300 transition-colors">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-stone-900">Your Program vs. Competition</h3>
+          <h3 className="text-sm font-semibold text-[#E8E6E1]">Your Program vs. Competition</h3>
           <p className="text-xs text-stone-500 mt-0.5">
             Ranked by weighted average rent across {summary.totalProperties} propert{summary.totalProperties === 1 ? 'y' : 'ies'}
             {(() => {
@@ -803,7 +803,7 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
           {summary.subjectRank && summary.totalProperties > 1 && (
             <div className="text-right">
               <div className="text-[10px] font-mono text-stone-400 tracking-wider uppercase">Rank</div>
-              <div className="text-xl font-bold text-stone-900">
+              <div className="text-xl font-bold text-[#E8E6E1]">
                 #{summary.subjectRank}
                 <span className="text-xs font-normal text-stone-400 ml-0.5">/ {summary.totalProperties}</span>
               </div>
@@ -812,7 +812,7 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
           {summary.percentile !== undefined && summary.totalProperties > 1 && (
             <div className="text-right">
               <div className="text-[10px] font-mono text-stone-400 tracking-wider uppercase">Percentile</div>
-              <div className="text-xl font-bold text-stone-900">{summary.percentile}th</div>
+              <div className="text-xl font-bold text-[#E8E6E1]">{summary.percentile}th</div>
             </div>
           )}
           {summary.rentPremiumPct !== undefined && summary.marketAvgRent > 0 && (
@@ -829,7 +829,7 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-stone-200">
+            <tr className="border-b border-[#1e2a3d]">
               <th className="text-left py-2 pr-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase w-10">#</th>
               <th className="text-left py-2 pr-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Property</th>
               <th className="text-right py-2 px-3 text-[10px] font-mono text-stone-400 tracking-wider uppercase">Units</th>
@@ -846,8 +846,8 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
                 key={entry.id}
                 className={`border-b border-stone-100 last:border-0 transition-colors ${
                   entry.isSubject
-                    ? 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                    : 'hover:bg-stone-50'
+                    ? 'bg-[#0d1e3d] border-blue-900/50 hover:bg-[#0d1e3d]'
+                    : 'hover:bg-[#0F1319]'
                 }`}
               >
                 <td className="py-2.5 pr-3">
@@ -864,7 +864,7 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
                 <td className="py-2.5 pr-3">
                   <div className="flex items-center gap-2">
                     <div>
-                      <div className={`font-medium ${entry.isSubject ? 'text-blue-900' : 'text-stone-900'}`}>
+                      <div className={`font-medium ${entry.isSubject ? 'text-blue-300' : 'text-[#E8E6E1]'}`}>
                         {entry.isSubject ? (
                           <span className="flex items-center gap-1.5">
                             {entry.name}
@@ -879,28 +879,28 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
                     </div>
                   </div>
                 </td>
-                <td className={`py-2.5 px-3 text-right font-medium ${entry.isSubject ? 'text-blue-900' : 'text-stone-700'}`}>
+                <td className={`py-2.5 px-3 text-right font-medium ${entry.isSubject ? 'text-blue-300' : 'text-stone-700'}`}>
                   {entry.units?.toLocaleString() || '—'}
                 </td>
-                <td className={`py-2.5 px-3 text-right font-semibold ${entry.isSubject ? 'text-blue-900' : 'text-stone-900'}`}>
+                <td className={`py-2.5 px-3 text-right font-semibold ${entry.isSubject ? 'text-blue-300' : 'text-[#E8E6E1]'}`}>
                   ${entry.avgRent?.toLocaleString() || '—'}
                 </td>
-                <td className={`py-2.5 px-3 text-right ${entry.isSubject ? 'text-blue-800' : 'text-stone-600'}`}>
+                <td className={`py-2.5 px-3 text-right ${entry.isSubject ? 'text-blue-300' : 'text-stone-600'}`}>
                   {entry.avgSf?.toLocaleString() || '—'}
                 </td>
-                <td className={`py-2.5 px-3 text-right ${entry.isSubject ? 'text-blue-800' : 'text-stone-600'}`}>
+                <td className={`py-2.5 px-3 text-right ${entry.isSubject ? 'text-blue-300' : 'text-stone-600'}`}>
                   ${entry.rentPerSf?.toFixed(2) || '—'}
                 </td>
                 <td className="py-2.5 px-3 text-right">
                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                     entry.class === 'A' ? 'bg-emerald-100 text-emerald-700' :
-                    entry.class === 'B' ? 'bg-blue-100 text-blue-700' :
-                    'bg-stone-100 text-stone-600'
+                    entry.class === 'B' ? 'bg-[#0d1e3d] text-blue-400' :
+                    'bg-[#131920] text-stone-600'
                   }`}>
                     {entry.class}
                   </span>
                 </td>
-                <td className={`py-2.5 pl-3 text-right ${entry.isSubject ? 'text-blue-800' : 'text-stone-500'}`}>
+                <td className={`py-2.5 pl-3 text-right ${entry.isSubject ? 'text-blue-300' : 'text-stone-500'}`}>
                   {entry.isSubject ? '—' : (entry.distance != null ? `${entry.distance} mi` : '—')}
                 </td>
               </tr>
@@ -909,7 +909,7 @@ const CompetitiveRankingCard: React.FC<CompetitiveRankingCardProps> = ({ data, l
         </table>
       </div>
 
-      <div className="mt-4 pt-3 border-t border-stone-200 flex items-center gap-6 text-xs">
+      <div className="mt-4 pt-3 border-t border-[#1e2a3d] flex items-center gap-6 text-xs">
         {summary.subjectAvgRent && (
           <div>
             <span className="text-stone-400 font-mono tracking-wider uppercase">Your Rent</span>
@@ -957,30 +957,30 @@ interface MarketShareCardProps {
 
 const MarketShareCard: React.FC<MarketShareCardProps> = ({ data }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="font-semibold text-gray-900 mb-4">Market Share Analysis</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+      <h3 className="font-semibold text-[#E8E6E1] mb-4">Market Share Analysis</h3>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pie Chart Placeholder */}
         <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-6 flex items-center justify-center">
           <div className="text-center">
             <div className="text-5xl mb-2">📊</div>
-            <div className="text-sm font-medium text-gray-700">Market Share Distribution</div>
-            <div className="text-xs text-gray-500 mt-1">Total: 3,050 units in submarket</div>
+            <div className="text-sm font-medium text-[#9EA8B4]">Market Share Distribution</div>
+            <div className="text-xs text-[#6B7585] mt-1">Total: 3,050 units in submarket</div>
           </div>
         </div>
 
         {/* Data Table */}
         <div className="space-y-2">
           {data.map((item, idx) => (
-            <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+            <div key={idx} className="flex items-center justify-between py-2 border-b border-[#1e2a3d] last:border-0">
               <div className="flex-1">
-                <div className="text-sm font-medium text-gray-900">{item.property}</div>
-                <div className="text-xs text-gray-500">{item.units} units</div>
+                <div className="text-sm font-medium text-[#E8E6E1]">{item.property}</div>
+                <div className="text-xs text-[#6B7585]">{item.units} units</div>
               </div>
               <div className="text-right">
-                <div className="text-sm font-semibold text-gray-900">{item.share}%</div>
-                <div className="text-xs text-gray-500">{item.occupancy}% occ</div>
+                <div className="text-sm font-semibold text-[#E8E6E1]">{item.share}%</div>
+                <div className="text-xs text-[#6B7585]">{item.occupancy}% occ</div>
               </div>
             </div>
           ))}

@@ -207,7 +207,7 @@ export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading due diligence data...</p>
+            <p className="text-[#9EA8B4]">Loading due diligence data...</p>
           </div>
         </div>
       </div>
@@ -218,9 +218,9 @@ export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading due diligence data</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading due diligence data</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -233,13 +233,13 @@ export const DueDiligenceSection: React.FC<DueDiligenceSectionProps> = ({ deal }
       <div className="flex items-center gap-3">
         <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
           isPipeline 
-            ? 'bg-blue-100 text-blue-700' 
-            : 'bg-green-100 text-green-700'
+            ? 'bg-[#0d1e3d] text-blue-400' 
+            : 'bg-[#022c22] text-green-400'
         }`}>
           {isPipeline ? '✅ Acquisition DD Mode' : '📋 Performance Compliance Mode'}
         </div>
         {isPipeline && (
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-[#6B7585]">
             DD Period: Day 18 of 60 • Contingency Expires: Mar 15, 2024
           </div>
         )}
@@ -287,23 +287,23 @@ interface QuickStatsGridProps {
 const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h3>
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Quick Stats</h3>
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {stats.map((stat, index) => (
           <div 
             key={index}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm">{stat.label}</span>
+              <span className="text-[#6B7585] text-sm">{stat.label}</span>
               <span className="text-2xl">{stat.icon}</span>
             </div>
             <div className={`text-2xl font-bold mb-1 ${
-              stat.color === 'red' ? 'text-red-600' :
+              stat.color === 'red' ? 'text-red-400' :
               stat.color === 'yellow' ? 'text-yellow-600' :
               stat.color === 'orange' ? 'text-orange-600' :
               stat.color === 'blue' ? 'text-blue-600' :
-              'text-gray-900'
+              'text-[#E8E6E1]'
             }`}>
               {stat.value}
             </div>
@@ -312,8 +312,8 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
                 stat.trend.direction === 'up' 
                   ? 'text-green-600' 
                   : stat.trend.direction === 'down'
-                    ? 'text-red-600'
-                    : 'text-gray-600'
+                    ? 'text-red-400'
+                    : 'text-[#9EA8B4]'
               }`}>
                 <span>{stat.trend.direction === 'up' ? '↗' : stat.trend.direction === 'down' ? '↘' : '→'}</span>
                 <span>{stat.trend.value}</span>
@@ -339,25 +339,25 @@ interface CategoryProgressSectionProps {
 
 const CategoryProgressSection: React.FC<CategoryProgressSectionProps> = ({ categories }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-gray-700 mb-4">Category Progress</h3>
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Category Progress</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {categories.map((cat) => (
           <div key={cat.category}>
-            <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+            <div className="flex items-center justify-between text-xs text-[#9EA8B4] mb-2">
               <span className="font-medium flex items-center gap-2">
                 <span>{getCategoryIcon(cat.category)}</span>
                 {cat.label}
               </span>
               <span className="font-semibold">{cat.completed}/{cat.total}</span>
             </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-2 bg-[#131920] rounded-full overflow-hidden">
               <div 
                 className={`h-full ${cat.color} rounded-full transition-all`}
                 style={{ width: `${cat.percentage}%` }}
               />
             </div>
-            <div className="text-xs text-gray-500 mt-1 text-right">{cat.percentage}%</div>
+            <div className="text-xs text-[#6B7585] mt-1 text-right">{cat.percentage}%</div>
           </div>
         ))}
       </div>
@@ -383,15 +383,15 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({
   mode
 }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
       
       {/* Header with Filters */}
-      <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+      <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d]">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">
+          <h3 className="text-sm font-semibold text-[#9EA8B4]">
             {mode === 'acquisition' ? 'DD Checklist' : 'Compliance Checklist'}
           </h3>
-          <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+          <button className="text-xs text-blue-600 hover:text-blue-400 font-medium">
             + Add Item
           </button>
         </div>
@@ -406,7 +406,7 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
                   selectedCategory === cat
                     ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    : 'bg-[#0F1319] text-[#9EA8B4] hover:bg-[#131920] border border-[#1e2a3d]'
                 }`}
               >
                 {cat === 'all' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -421,7 +421,7 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({
               onChange={(e) => setShowCriticalOnly(e.target.checked)}
               className="rounded"
             />
-            <span className="text-xs text-gray-600">Critical Path Only</span>
+            <span className="text-xs text-[#9EA8B4]">Critical Path Only</span>
           </label>
         </div>
       </div>
@@ -429,7 +429,7 @@ const ChecklistSection: React.FC<ChecklistSectionProps> = ({
       {/* Checklist Items */}
       <div className="divide-y divide-gray-200 max-h-[800px] overflow-y-auto">
         {checklist.length === 0 ? (
-          <div className="px-4 py-8 text-center text-gray-500">
+          <div className="px-4 py-8 text-center text-[#6B7585]">
             <div className="text-3xl mb-2">📋</div>
             <p className="text-sm">No items match the current filters</p>
           </div>
@@ -449,8 +449,8 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({ item }) => {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className={`px-4 py-3 hover:bg-gray-50 transition-colors ${
-      item.redFlag ? 'bg-red-50/30' : ''
+    <div className={`px-4 py-3 hover:bg-[#0F1319] transition-colors ${
+      item.redFlag ? 'bg-[#1c0a0a]/30' : ''
     }`}>
       <div className="flex items-start gap-3">
         
@@ -464,14 +464,14 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({ item }) => {
             </div>
           ) : item.status === 'in-progress' ? (
             <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-white"></div>
+              <div className="w-2 h-2 rounded-full bg-[#0F1319]"></div>
             </div>
           ) : item.status === 'blocked' ? (
             <div className="w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
               <span className="text-white text-xs font-bold">!</span>
             </div>
           ) : (
-            <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
+            <div className="w-5 h-5 rounded-full border-2 border-[#253347]"></div>
           )}
         </div>
 
@@ -480,28 +480,28 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({ item }) => {
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
-                <h4 className="text-sm font-medium text-gray-900">{item.title}</h4>
+                <h4 className="text-sm font-medium text-[#E8E6E1]">{item.title}</h4>
                 {item.isCriticalPath && (
-                  <span className="px-1.5 py-0.5 text-xs font-semibold text-orange-700 bg-orange-100 rounded">
+                  <span className="px-1.5 py-0.5 text-xs font-semibold text-orange-700 bg-[#1a0d00] rounded">
                     Critical
                   </span>
                 )}
                 {item.redFlag && (
-                  <span className="px-1.5 py-0.5 text-xs font-semibold text-red-700 bg-red-100 rounded flex items-center gap-1">
+                  <span className="px-1.5 py-0.5 text-xs font-semibold text-red-400 bg-[#1c0a0a] rounded flex items-center gap-1">
                     🚩 Red Flag
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-600 mb-2">{item.description}</p>
+              <p className="text-xs text-[#9EA8B4] mb-2">{item.description}</p>
               
               {/* Metadata */}
-              <div className="flex items-center gap-4 text-xs text-gray-500">
+              <div className="flex items-center gap-4 text-xs text-[#6B7585]">
                 <span className="flex items-center gap-1">
                   <span>{getCategoryIcon(item.category)}</span>
                   <span className="capitalize">{item.category}</span>
                 </span>
                 <span>👤 {item.assignee}</span>
-                <span className={`${isOverdue(item.dueDate, item.status) ? 'text-red-600 font-medium' : ''}`}>
+                <span className={`${isOverdue(item.dueDate, item.status) ? 'text-red-400 font-medium' : ''}`}>
                   📅 {item.status === 'complete' ? `Done ${item.completedDate}` : `Due ${item.dueDate}`}
                 </span>
                 {item.documents.length > 0 && (
@@ -511,12 +511,12 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({ item }) => {
 
               {/* Red Flag Alert */}
               {item.redFlag && (
-                <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-xs">
-                  <div className="flex items-center gap-2 text-red-700 font-medium mb-1">
+                <div className="mt-2 px-3 py-2 bg-[#1c0a0a] border border-red-800/50 rounded text-xs">
+                  <div className="flex items-center gap-2 text-red-400 font-medium mb-1">
                     <span className="text-sm">🚩</span>
                     <span className="uppercase text-xs">{item.redFlag.severity} Severity</span>
                   </div>
-                  <p className="text-red-700">{item.redFlag.description}</p>
+                  <p className="text-red-400">{item.redFlag.description}</p>
                 </div>
               )}
 
@@ -524,7 +524,7 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({ item }) => {
               {(item.notes || item.documents.length > 0) && (
                 <button
                   onClick={() => setExpanded(!expanded)}
-                  className="mt-2 text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="mt-2 text-xs text-blue-600 hover:text-blue-400 font-medium"
                 >
                   {expanded ? '↑ Hide Details' : '↓ Show Details'}
                 </button>
@@ -533,18 +533,18 @@ const ChecklistItem: React.FC<ChecklistItemProps> = ({ item }) => {
               {expanded && (
                 <div className="mt-3 space-y-2">
                   {item.notes && (
-                    <div className="text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded">
+                    <div className="text-xs text-[#9EA8B4] bg-[#0F1319] px-3 py-2 rounded">
                       <span className="font-medium">Notes:</span> {item.notes}
                     </div>
                   )}
                   {item.documents.length > 0 && (
                     <div className="space-y-1">
-                      <div className="text-xs font-medium text-gray-700">Documents:</div>
+                      <div className="text-xs font-medium text-[#9EA8B4]">Documents:</div>
                       {item.documents.map((doc, idx) => (
-                        <div key={idx} className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-700">
+                        <div key={idx} className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-400">
                           <span>📄</span>
                           <a href={doc.url} className="hover:underline">{doc.name}</a>
-                          <span className="text-gray-500">• {doc.uploadedAt}</span>
+                          <span className="text-[#6B7585]">• {doc.uploadedAt}</span>
                         </div>
                       ))}
                     </div>
@@ -576,23 +576,23 @@ interface RedFlagsPanelProps {
 
 const RedFlagsPanel: React.FC<RedFlagsPanelProps> = ({ redFlags, mode }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-red-50 border-b border-red-200">
-        <h3 className="text-sm font-semibold text-red-800 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-[#1c0a0a] border-b border-red-800/50">
+        <h3 className="text-sm font-semibold text-red-300 flex items-center gap-2">
           <span>🚩</span>
           Red Flags ({redFlags.length})
         </h3>
       </div>
       <div className="p-4">
         {redFlags.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
+          <div className="text-center py-4 text-[#6B7585]">
             <div className="text-2xl mb-2">✅</div>
             <p className="text-xs">No active red flags</p>
           </div>
         ) : (
           <div className="space-y-3">
             {redFlags.map((item) => (
-              <div key={item.id} className="border border-red-200 rounded-lg p-3 bg-red-50/50">
+              <div key={item.id} className="border border-red-800/50 rounded-lg p-3 bg-[#1c0a0a]/50">
                 <div className="flex items-start gap-2">
                   <span className={`px-1.5 py-0.5 text-xs font-bold rounded ${
                     item.redFlag?.severity === 'high' ? 'bg-red-600 text-white' :
@@ -602,9 +602,9 @@ const RedFlagsPanel: React.FC<RedFlagsPanelProps> = ({ redFlags, mode }) => {
                     {item.redFlag?.severity?.toUpperCase()}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <h4 className="text-xs font-medium text-gray-900 mb-1">{item.title}</h4>
-                    <p className="text-xs text-gray-700">{item.redFlag?.description}</p>
-                    <div className="mt-2 text-xs text-gray-500">
+                    <h4 className="text-xs font-medium text-[#E8E6E1] mb-1">{item.title}</h4>
+                    <p className="text-xs text-[#9EA8B4]">{item.redFlag?.description}</p>
+                    <div className="mt-2 text-xs text-[#6B7585]">
                       <span className="capitalize">{item.category}</span> • {item.assignee}
                     </div>
                   </div>
@@ -625,8 +625,8 @@ interface CriticalItemsPanelProps {
 
 const CriticalItemsPanel: React.FC<CriticalItemsPanelProps> = ({ criticalItems, mode }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-orange-50 border-b border-orange-200">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-[#1a0d00] border-b border-orange-200">
         <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">
           <span>⚡</span>
           Critical Path Items ({criticalItems.length})
@@ -634,24 +634,24 @@ const CriticalItemsPanel: React.FC<CriticalItemsPanelProps> = ({ criticalItems, 
       </div>
       <div className="p-4">
         {criticalItems.length === 0 ? (
-          <div className="text-center py-4 text-gray-500">
+          <div className="text-center py-4 text-[#6B7585]">
             <div className="text-2xl mb-2">🎉</div>
             <p className="text-xs">All critical items complete!</p>
           </div>
         ) : (
           <div className="space-y-2">
             {criticalItems.slice(0, 8).map((item) => (
-              <div key={item.id} className="border border-gray-200 rounded p-2 hover:bg-gray-50 transition-colors">
+              <div key={item.id} className="border border-[#1e2a3d] rounded p-2 hover:bg-[#0F1319] transition-colors">
                 <div className="flex items-center gap-2 mb-1">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
                     item.status === 'in-progress' ? 'bg-blue-500' :
                     item.status === 'blocked' ? 'bg-red-500' :
                     'bg-gray-300'
                   }`} />
-                  <h4 className="text-xs font-medium text-gray-900 flex-1">{item.title}</h4>
+                  <h4 className="text-xs font-medium text-[#E8E6E1] flex-1">{item.title}</h4>
                 </div>
-                <div className="text-xs text-gray-500 ml-4">
-                  <span className={`${isOverdue(item.dueDate, item.status) ? 'text-red-600 font-medium' : ''}`}>
+                <div className="text-xs text-[#6B7585] ml-4">
+                  <span className={`${isOverdue(item.dueDate, item.status) ? 'text-red-400 font-medium' : ''}`}>
                     Due {item.dueDate}
                   </span>
                 </div>
@@ -674,9 +674,9 @@ const InspectionsPanel: React.FC<InspectionsPanelProps> = ({ inspections, mode }
   const total = inspections.length;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-        <h3 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+      <div className="px-4 py-3 bg-[#0d1e3d] border-b border-blue-900/50">
+        <h3 className="text-sm font-semibold text-blue-300 flex items-center gap-2">
           <span>🔍</span>
           {mode === 'acquisition' ? 'Inspections' : 'Audits'} ({completed}/{total})
         </h3>
@@ -684,13 +684,13 @@ const InspectionsPanel: React.FC<InspectionsPanelProps> = ({ inspections, mode }
       <div className="p-4">
         <div className="space-y-3">
           {inspections.map((inspection) => (
-            <div key={inspection.id} className="border border-gray-200 rounded-lg p-3">
+            <div key={inspection.id} className="border border-[#1e2a3d] rounded-lg p-3">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-medium text-gray-900">{inspection.type}</h4>
+                <h4 className="text-xs font-medium text-[#E8E6E1]">{inspection.type}</h4>
                 <span className={`px-2 py-0.5 text-xs font-medium rounded ${
-                  inspection.status === 'completed' ? 'bg-green-100 text-green-700' :
-                  inspection.status === 'in-progress' ? 'bg-blue-100 text-blue-700' :
-                  'bg-gray-100 text-gray-700'
+                  inspection.status === 'completed' ? 'bg-[#022c22] text-green-400' :
+                  inspection.status === 'in-progress' ? 'bg-[#0d1e3d] text-blue-400' :
+                  'bg-[#131920] text-[#9EA8B4]'
                 }`}>
                   {inspection.status === 'completed' ? 'Done' :
                    inspection.status === 'in-progress' ? 'In Progress' :
@@ -698,22 +698,22 @@ const InspectionsPanel: React.FC<InspectionsPanelProps> = ({ inspections, mode }
                 </span>
               </div>
               
-              <div className="text-xs text-gray-600 space-y-1">
+              <div className="text-xs text-[#9EA8B4] space-y-1">
                 <div>📅 {inspection.status === 'completed' ? inspection.completedDate : inspection.scheduledDate}</div>
                 <div>👤 {inspection.inspector}</div>
                 <div>💰 ${inspection.cost.toLocaleString()}</div>
               </div>
 
               {inspection.findings && inspection.findings.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-gray-200">
-                  <div className="text-xs font-medium text-gray-700 mb-1">Findings:</div>
-                  <ul className="text-xs text-gray-600 space-y-0.5">
+                <div className="mt-2 pt-2 border-t border-[#1e2a3d]">
+                  <div className="text-xs font-medium text-[#9EA8B4] mb-1">Findings:</div>
+                  <ul className="text-xs text-[#9EA8B4] space-y-0.5">
                     {inspection.findings.slice(0, 2).map((finding, idx) => (
                       <li key={idx}>• {finding}</li>
                     ))}
                   </ul>
                   {inspection.reportUrl && (
-                    <a href={inspection.reportUrl} className="text-xs text-blue-600 hover:text-blue-700 mt-1 inline-block">
+                    <a href={inspection.reportUrl} className="text-xs text-blue-600 hover:text-blue-400 mt-1 inline-block">
                       View Full Report →
                     </a>
                   )}
@@ -751,12 +751,12 @@ const getCategoryIcon = (category: string): string => {
 
 const getStatusBadgeClass = (status: string): string => {
   const classes = {
-    complete: 'bg-green-100 text-green-700',
-    'in-progress': 'bg-blue-100 text-blue-700',
-    blocked: 'bg-red-100 text-red-700',
-    pending: 'bg-gray-100 text-gray-700'
+    complete: 'bg-[#022c22] text-green-400',
+    'in-progress': 'bg-[#0d1e3d] text-blue-400',
+    blocked: 'bg-[#1c0a0a] text-red-400',
+    pending: 'bg-[#131920] text-[#9EA8B4]'
   };
-  return classes[status as keyof typeof classes] || 'bg-gray-100 text-gray-700';
+  return classes[status as keyof typeof classes] || 'bg-[#131920] text-[#9EA8B4]';
 };
 
 const isOverdue = (dueDate: string, status: string): boolean => {

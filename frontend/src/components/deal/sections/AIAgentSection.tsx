@@ -225,7 +225,7 @@ export const AIAgentSection: React.FC<AIAgentSectionProps> = ({
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Preparing deal analysis...</p>
+          <p className="text-[#9EA8B4]">Preparing deal analysis...</p>
         </div>
       </div>
     );
@@ -234,18 +234,18 @@ export const AIAgentSection: React.FC<AIAgentSectionProps> = ({
   return (
     <div className="space-y-4">
       {/* Info Banner */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-[#0d1e3d] border border-blue-900/50 rounded-lg p-4">
         <div className="flex items-start gap-3">
           <div className="text-2xl">ℹ️</div>
           <div className="flex-1">
-            <h4 className="font-semibold text-blue-900 mb-1">
+            <h4 className="font-semibold text-blue-300 mb-1">
               AI-Powered Analysis by Opus (Claude 3)
             </h4>
-            <p className="text-sm text-blue-800">
+            <p className="text-sm text-blue-300">
               This AI agent analyzes your deal across all tabs and provides recommendations, 
               risk assessment, and conversational insights. Ask it anything!
             </p>
-            <div className="mt-2 flex items-center gap-2 text-xs text-blue-700">
+            <div className="mt-2 flex items-center gap-2 text-xs text-blue-400">
               <span className={`px-2 py-1 rounded ${useMockData ? 'bg-green-200' : 'bg-orange-200'}`}>
                 {useMockData ? '🟢 Mock Mode (Free)' : '🔴 Live API (Costs apply)'}
               </span>
@@ -266,21 +266,21 @@ export const AIAgentSection: React.FC<AIAgentSectionProps> = ({
 
       {/* Additional Info Footer */}
       {analysisResult && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div>
-              <span className="text-gray-600">Analysis Date:</span>
-              <p className="font-medium text-gray-900">
+              <span className="text-[#9EA8B4]">Analysis Date:</span>
+              <p className="font-medium text-[#E8E6E1]">
                 {new Date(analysisResult.analysisDate).toLocaleDateString()}
               </p>
             </div>
             <div>
-              <span className="text-gray-600">Model Version:</span>
-              <p className="font-medium text-gray-900">{analysisResult.modelVersion}</p>
+              <span className="text-[#9EA8B4]">Model Version:</span>
+              <p className="font-medium text-[#E8E6E1]">{analysisResult.modelVersion}</p>
             </div>
             <div>
-              <span className="text-gray-600">Processing Time:</span>
-              <p className="font-medium text-gray-900">
+              <span className="text-[#9EA8B4]">Processing Time:</span>
+              <p className="font-medium text-[#E8E6E1]">
                 {analysisResult.processingTime 
                   ? `${(analysisResult.processingTime / 1000).toFixed(1)}s`
                   : 'N/A'}

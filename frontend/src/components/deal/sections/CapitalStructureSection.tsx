@@ -321,7 +321,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
     <div className="flex items-center justify-center py-12">
       <div className="flex items-center gap-3">
         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-sm text-gray-500">Loading live data...</span>
+        <span className="text-sm text-[#6B7585]">Loading live data...</span>
       </div>
     </div>
   );
@@ -441,8 +441,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border-2 ${
               isActive
-                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                ? 'border-blue-500 bg-[#0d1e3d] text-blue-400 shadow-sm'
+                : 'border-[#1e2a3d] bg-[#0F1319] text-[#9EA8B4] hover:border-[#253347]'
             }`}
           >
             {t.label}
@@ -462,25 +462,25 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       <div className="space-y-6">
         {/* Sources = Uses Balance Bar */}
         <div className={`flex items-center justify-between p-4 rounded-lg border-2 ${
-          balance.balanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'
+          balance.balanced ? 'border-green-700 bg-[#022c22]' : 'border-red-700 bg-[#1c0a0a]'
         }`}>
           <div className="flex items-center gap-3">
-            <span className={`text-2xl ${balance.balanced ? 'text-green-600' : 'text-red-600'}`}>
+            <span className={`text-2xl ${balance.balanced ? 'text-green-600' : 'text-red-400'}`}>
               {balance.balanced ? '=' : '!'}
             </span>
             <div>
-              <div className="text-sm font-semibold text-gray-900">
+              <div className="text-sm font-semibold text-[#E8E6E1]">
                 Sources {fmtM(totalSources)} {balance.balanced ? '=' : '≠'} Uses {fmtM(stack.uses.total)}
               </div>
               {!balance.balanced && (
-                <div className="text-xs text-red-600 mt-1">
+                <div className="text-xs text-red-400 mt-1">
                   {balance.imbalance > 0 ? `${fmtM(balance.imbalance)} excess sources` : `${fmtM(Math.abs(balance.imbalance))} funding gap`}
                 </div>
               )}
             </div>
           </div>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-            balance.balanced ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
+            balance.balanced ? 'bg-green-200 text-green-300' : 'bg-red-200 text-red-300'
           }`}>
             {balance.balanced ? 'BALANCED' : 'IMBALANCED'}
           </span>
@@ -488,9 +488,9 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Visual Stack Bar */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Capital Stack</h4>
-            <div className="flex rounded-lg overflow-hidden h-12 border border-gray-300">
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-4">Capital Stack</h4>
+            <div className="flex rounded-lg overflow-hidden h-12 border border-[#253347]">
               {layers.map((layer) => {
                 const widthPct = (layer.amount / totalHeight) * 100;
                 return (
@@ -516,11 +516,11 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                 <div key={layer.id} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
                     <div className={`w-3 h-3 rounded ${layer.color}`} />
-                    <span className="text-gray-700">{layer.name}</span>
+                    <span className="text-[#9EA8B4]">{layer.name}</span>
                   </div>
                   <div className="flex items-center gap-4">
-                    <span className="text-gray-500">{fmtPct(layer.rate)}</span>
-                    <span className="font-semibold text-gray-900">{fmtM(layer.amount)}</span>
+                    <span className="text-[#6B7585]">{fmtPct(layer.rate)}</span>
+                    <span className="font-semibold text-[#E8E6E1]">{fmtM(layer.amount)}</span>
                   </div>
                 </div>
               ))}
@@ -528,21 +528,21 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
           </div>
 
           {/* Stack Metrics */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Key Metrics</h4>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-4">Key Metrics</h4>
             <div className="grid grid-cols-2 gap-4">
               {[
                 { label: 'LTV', value: fmtPct(stack.metrics.ltv), color: stack.metrics.ltv > 75 ? 'text-orange-600' : 'text-green-600' },
-                { label: 'LTC', value: fmtPct(stack.metrics.ltc), color: 'text-gray-900' },
-                { label: 'DSCR', value: `${stack.metrics.dscr.toFixed(2)}x`, color: stack.metrics.dscr < 1.25 ? 'text-red-600' : 'text-green-600' },
-                { label: 'Debt Yield', value: fmtPct(stack.metrics.debtYield), color: 'text-gray-900' },
+                { label: 'LTC', value: fmtPct(stack.metrics.ltc), color: 'text-[#E8E6E1]' },
+                { label: 'DSCR', value: `${stack.metrics.dscr.toFixed(2)}x`, color: stack.metrics.dscr < 1.25 ? 'text-red-400' : 'text-green-600' },
+                { label: 'Debt Yield', value: fmtPct(stack.metrics.debtYield), color: 'text-[#E8E6E1]' },
                 { label: 'Total Debt', value: fmtM(stack.metrics.totalDebt), color: 'text-blue-600' },
                 { label: 'Total Equity', value: fmtM(stack.metrics.totalEquity), color: 'text-green-600' },
-                { label: 'WACC', value: fmtPct(stack.metrics.weightedAvgCostOfCapital), color: 'text-gray-900' },
+                { label: 'WACC', value: fmtPct(stack.metrics.weightedAvgCostOfCapital), color: 'text-[#E8E6E1]' },
                 { label: 'Cash-on-Cash', value: fmtPct(stack.metrics.cocReturn), color: 'text-purple-600' },
               ].map((m) => (
-                <div key={m.label} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="text-xs text-gray-500 uppercase">{m.label}</div>
+                <div key={m.label} className="p-3 bg-[#0F1319] rounded-lg">
+                  <div className="text-xs text-[#6B7585] uppercase">{m.label}</div>
                   <div className={`text-xl font-bold mt-1 ${m.color}`}>{m.value}</div>
                 </div>
               ))}
@@ -551,8 +551,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         </div>
 
         {/* Uses Breakdown */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Uses of Capital</h4>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+          <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-4">Uses of Capital</h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
               { label: 'Acquisition Price', value: stack.uses.acquisitionPrice },
@@ -562,15 +562,15 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               { label: 'Reserves', value: stack.uses.reserves },
               { label: 'Developer Fee', value: stack.uses.developerFee },
             ].map((u) => (
-              <div key={u.label} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-sm text-gray-600">{u.label}</span>
-                <span className="text-sm font-semibold text-gray-900">{fmtM(u.value)}</span>
+              <div key={u.label} className="flex items-center justify-between p-3 bg-[#0F1319] rounded-lg">
+                <span className="text-sm text-[#9EA8B4]">{u.label}</span>
+                <span className="text-sm font-semibold text-[#E8E6E1]">{fmtM(u.value)}</span>
               </div>
             ))}
           </div>
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
-            <span className="text-sm font-semibold text-gray-900">Total Uses</span>
-            <span className="text-lg font-bold text-gray-900">{fmtM(stack.uses.total)}</span>
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#1e2a3d]">
+            <span className="text-sm font-semibold text-[#E8E6E1]">Total Uses</span>
+            <span className="text-lg font-bold text-[#E8E6E1]">{fmtM(stack.uses.total)}</span>
           </div>
         </div>
 
@@ -587,32 +587,32 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const renderDebtSelector = () => (
     <div className="space-y-6">
       {/* Strategy template info */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200 p-6">
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-900/50 p-6">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">{template.label} Capital Template</h3>
-            <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">{template.label} Capital Template</h3>
+            <p className="text-sm text-[#9EA8B4] mt-1">{template.description}</p>
           </div>
           <div className="text-right">
-            <div className="text-xs text-gray-500 uppercase">Key Metric</div>
-            <div className="text-sm font-semibold text-blue-700">{template.keyMetric}</div>
+            <div className="text-xs text-[#6B7585] uppercase">Key Metric</div>
+            <div className="text-sm font-semibold text-blue-400">{template.keyMetric}</div>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           <div>
-            <div className="text-xs text-gray-500">Primary Debt</div>
+            <div className="text-xs text-[#6B7585]">Primary Debt</div>
             <div className="text-sm font-semibold">{template.defaultStack.seniorDebt.productType.replace('_', ' ')}</div>
           </div>
           <div>
-            <div className="text-xs text-gray-500">Rate Range</div>
+            <div className="text-xs text-[#6B7585]">Rate Range</div>
             <div className="text-sm font-semibold">{template.defaultStack.seniorDebt.rateRange.min}–{template.defaultStack.seniorDebt.rateRange.max}%</div>
           </div>
           <div>
-            <div className="text-xs text-gray-500">Hold Period</div>
+            <div className="text-xs text-[#6B7585]">Hold Period</div>
             <div className="text-sm font-semibold">{template.holdPeriod}</div>
           </div>
           <div>
-            <div className="text-xs text-gray-500">Exit</div>
+            <div className="text-xs text-[#6B7585]">Exit</div>
             <div className="text-sm font-semibold">{template.exitStrategy}</div>
           </div>
         </div>
@@ -620,13 +620,13 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
       {/* Mismatch warnings */}
       {activeWarnings.map((w, i) => (
-        <div key={i} className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+        <div key={i} className="p-4 bg-[#1c0a0a] border-2 border-red-800/50 rounded-lg">
           <div className="flex items-start gap-3">
             <span className="text-red-500 text-lg font-bold">!</span>
             <div>
-              <div className="text-sm font-semibold text-red-800">Strategy Mismatch: {w.debtProduct}</div>
-              <div className="text-sm text-red-700 mt-1">{w.issue}</div>
-              <div className="text-sm text-red-600 mt-2 font-medium">Suggestion: {w.suggestion}</div>
+              <div className="text-sm font-semibold text-red-300">Strategy Mismatch: {w.debtProduct}</div>
+              <div className="text-sm text-red-400 mt-1">{w.issue}</div>
+              <div className="text-sm text-red-400 mt-2 font-medium">Suggestion: {w.suggestion}</div>
             </div>
           </div>
         </div>
@@ -634,37 +634,37 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
       {/* Recommended products */}
       <div>
-        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+        <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">
           Recommended for {template.label} ({filteredProducts.length} products)
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredProducts.map((product) => (
-            <div key={product.id} className="bg-white rounded-lg border-2 border-blue-200 p-5 hover:shadow-md transition-shadow">
+            <div key={product.id} className="bg-[#0F1319] rounded-lg border-2 border-blue-900/50 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="font-semibold text-gray-900">{product.name}</div>
-                  <div className="text-xs text-gray-500">{product.lender}</div>
+                  <div className="font-semibold text-[#E8E6E1]">{product.name}</div>
+                  <div className="text-xs text-[#6B7585]">{product.lender}</div>
                 </div>
-                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#0d1e3d] text-blue-400">
                   {product.rateType === 'fixed' ? 'Fixed' : 'Floating'}
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-3 mt-4">
                 <div>
-                  <div className="text-xs text-gray-500">Rate</div>
+                  <div className="text-xs text-[#6B7585]">Rate</div>
                   <div className="text-sm font-semibold">{product.rateRange.min}–{product.rateRange.max}%</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">Max LTV</div>
+                  <div className="text-xs text-[#6B7585]">Max LTV</div>
                   <div className="text-sm font-semibold">{product.ltvMax}%</div>
                 </div>
                 <div>
-                  <div className="text-xs text-gray-500">Term</div>
+                  <div className="text-xs text-[#6B7585]">Term</div>
                   <div className="text-sm font-semibold">{product.term.min}–{product.term.max}mo</div>
                 </div>
               </div>
-              <div className="mt-3 p-3 bg-green-50 rounded text-xs text-green-800">{product.keyBenefit}</div>
-              <div className="mt-2 p-3 bg-red-50 rounded text-xs text-red-700">{product.keyRisk}</div>
+              <div className="mt-3 p-3 bg-[#022c22] rounded text-xs text-green-300">{product.keyBenefit}</div>
+              <div className="mt-2 p-3 bg-[#1c0a0a] rounded text-xs text-red-400">{product.keyRisk}</div>
             </div>
           ))}
         </div>
@@ -678,8 +678,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-50">
             {otherProducts.map((product) => (
-              <div key={product.id} className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-                <div className="font-semibold text-gray-600">{product.name}</div>
+              <div key={product.id} className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+                <div className="font-semibold text-[#9EA8B4]">{product.name}</div>
                 <div className="text-xs text-gray-400">{product.lender} — {product.rateRange.min}–{product.rateRange.max}%</div>
               </div>
             ))}
@@ -696,20 +696,20 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const renderRateEnvironment = () => (
     <div className="space-y-6">
       {/* Current rates */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-900/50 p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Current Rate Environment</h3>
-          <span className="text-xs text-gray-500">Updated: {currentRates.lastUpdated}</span>
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Current Rate Environment</h3>
+          <span className="text-xs text-[#6B7585]">Updated: {currentRates.lastUpdated}</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: 'Fed Funds', value: fmtPct(currentRates.fedFunds), color: 'text-blue-600' },
             { label: '10Y Treasury', value: fmtPct(currentRates.treasury10Y), color: 'text-purple-600' },
-            { label: 'SOFR', value: fmtPct(currentRates.sofr), color: 'text-indigo-600' },
+            { label: 'SOFR', value: fmtPct(currentRates.sofr), color: 'text-indigo-400' },
             { label: 'Prime', value: fmtPct(currentRates.prime), color: 'text-green-600' },
           ].map((r) => (
-            <div key={r.label} className="bg-white rounded-lg p-4 border border-gray-200">
-              <div className="text-xs text-gray-500 uppercase">{r.label}</div>
+            <div key={r.label} className="bg-[#0F1319] rounded-lg p-4 border border-[#1e2a3d]">
+              <div className="text-xs text-[#6B7585] uppercase">{r.label}</div>
               <div className={`text-2xl font-bold mt-1 ${r.color}`}>{r.value}</div>
             </div>
           ))}
@@ -718,45 +718,45 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
       {/* Cycle Phase + Sentiment */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Cycle Position</h4>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+          <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">Cycle Position</h4>
           <div className="flex items-center gap-4">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold ${
-              currentRates.cyclePhase === 'easing' ? 'bg-green-100 text-green-700' :
-              currentRates.cyclePhase === 'tightening' ? 'bg-red-100 text-red-700' :
-              currentRates.cyclePhase === 'peak' ? 'bg-orange-100 text-orange-700' :
-              'bg-blue-100 text-blue-700'
+              currentRates.cyclePhase === 'easing' ? 'bg-[#022c22] text-green-400' :
+              currentRates.cyclePhase === 'tightening' ? 'bg-[#1c0a0a] text-red-400' :
+              currentRates.cyclePhase === 'peak' ? 'bg-[#1a0d00] text-orange-700' :
+              'bg-[#0d1e3d] text-blue-400'
             }`}>
               {currentRates.cyclePhase === 'easing' ? '↓' : currentRates.cyclePhase === 'tightening' ? '↑' : '→'}
             </div>
             <div>
-              <div className="text-lg font-semibold text-gray-900 capitalize">{currentRates.cyclePhase}</div>
-              <div className="text-sm text-gray-600">Fed {currentRates.fedDirection} — Next meeting: {currentRates.nextFedMeeting}</div>
-              <div className="text-sm text-gray-600 mt-1">{currentRates.cutProbability6mo}% probability of cut within 6mo</div>
+              <div className="text-lg font-semibold text-[#E8E6E1] capitalize">{currentRates.cyclePhase}</div>
+              <div className="text-sm text-[#9EA8B4]">Fed {currentRates.fedDirection} — Next meeting: {currentRates.nextFedMeeting}</div>
+              <div className="text-sm text-[#9EA8B4] mt-1">{currentRates.cutProbability6mo}% probability of cut within 6mo</div>
             </div>
           </div>
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg text-sm text-gray-700">
+          <div className="mt-4 p-3 bg-[#0F1319] rounded-lg text-sm text-[#9EA8B4]">
             {currentRates.marketSentiment}
           </div>
         </div>
 
         {/* Lock vs Float */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Lock vs Float Analysis</h4>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+          <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">Lock vs Float Analysis</h4>
           <div className="grid grid-cols-2 gap-4">
-            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'lock' ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}>
-              <div className="text-xs text-gray-500 uppercase">Lock Now</div>
-              <div className="text-xl font-bold text-gray-900 mt-1">{fmtPct(lockVsFloatAnalysis.lockNow.rate)}</div>
-              <div className="text-sm text-gray-600 mt-1">NPV: {fmtM(lockVsFloatAnalysis.lockNow.npv)}</div>
+            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'lock' ? 'border-blue-400 bg-[#0d1e3d]' : 'border-[#1e2a3d]'}`}>
+              <div className="text-xs text-[#6B7585] uppercase">Lock Now</div>
+              <div className="text-xl font-bold text-[#E8E6E1] mt-1">{fmtPct(lockVsFloatAnalysis.lockNow.rate)}</div>
+              <div className="text-sm text-[#9EA8B4] mt-1">NPV: {fmtM(lockVsFloatAnalysis.lockNow.npv)}</div>
             </div>
-            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'float' ? 'border-green-400 bg-green-50' : 'border-gray-200'}`}>
-              <div className="text-xs text-gray-500 uppercase">Float & Wait</div>
-              <div className="text-xl font-bold text-gray-900 mt-1">{fmtPct(lockVsFloatAnalysis.floatAndWait.expectedRate)}</div>
-              <div className="text-sm text-gray-600 mt-1">NPV: {fmtM(lockVsFloatAnalysis.floatAndWait.npv)}</div>
+            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'float' ? 'border-green-400 bg-[#022c22]' : 'border-[#1e2a3d]'}`}>
+              <div className="text-xs text-[#6B7585] uppercase">Float & Wait</div>
+              <div className="text-xl font-bold text-[#E8E6E1] mt-1">{fmtPct(lockVsFloatAnalysis.floatAndWait.expectedRate)}</div>
+              <div className="text-sm text-[#9EA8B4] mt-1">NPV: {fmtM(lockVsFloatAnalysis.floatAndWait.npv)}</div>
             </div>
           </div>
           <div className={`mt-4 p-3 rounded-lg text-sm ${
-            lockVsFloatAnalysis.recommendation === 'float' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-blue-50 text-blue-800 border border-blue-200'
+            lockVsFloatAnalysis.recommendation === 'float' ? 'bg-[#022c22] text-green-300 border border-green-800/50' : 'bg-[#0d1e3d] text-blue-300 border border-blue-900/50'
           }`}>
             <span className="font-semibold">Recommendation: {lockVsFloatAnalysis.recommendation === 'float' ? 'Float' : 'Lock'}</span>
             <span className="ml-1">— {lockVsFloatAnalysis.rationale.slice(0, 120)}...</span>
@@ -765,18 +765,18 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       </div>
 
       {/* Spread Analysis */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Spread Analysis vs 5-Year Average</h4>
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+        <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">Spread Analysis vs 5-Year Average</h4>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {spreadAnalysis.map((s) => (
-            <div key={s.productType} className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-xs text-gray-500 uppercase">{s.productType}</div>
-              <div className="text-xl font-bold text-gray-900 mt-1">{s.currentSpread} bps</div>
-              <div className="text-xs text-gray-500 mt-1">5yr avg: {s.fiveYearAvg} bps</div>
+            <div key={s.productType} className="p-4 bg-[#0F1319] rounded-lg">
+              <div className="text-xs text-[#6B7585] uppercase">{s.productType}</div>
+              <div className="text-xl font-bold text-[#E8E6E1] mt-1">{s.currentSpread} bps</div>
+              <div className="text-xs text-[#6B7585] mt-1">5yr avg: {s.fiveYearAvg} bps</div>
               <div className={`mt-2 px-2 py-1 rounded text-xs font-semibold inline-block ${
-                s.position === 'tight' ? 'bg-green-100 text-green-700' :
-                s.position === 'wide' ? 'bg-red-100 text-red-700' :
-                'bg-gray-100 text-gray-700'
+                s.position === 'tight' ? 'bg-[#022c22] text-green-400' :
+                s.position === 'wide' ? 'bg-[#1c0a0a] text-red-400' :
+                'bg-[#131920] text-[#9EA8B4]'
               }`}>
                 {s.position.toUpperCase()} ({s.percentile}th pctl)
               </div>
@@ -786,17 +786,17 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       </div>
 
       {/* Rate Forecast */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Rate Forecast</h4>
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+        <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">Rate Forecast</h4>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50">
+            <thead className="bg-[#0F1319]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Horizon</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">10Y Treasury</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">SOFR</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Confidence</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Rate Impact ($33.75M loan)</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#9EA8B4] uppercase">Horizon</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">10Y Treasury</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">SOFR</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">Confidence</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">Rate Impact ($33.75M loan)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -804,13 +804,13 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                 const rateDelta = (currentRates.treasury10Y - f.treasury10Y) * 100;
                 const impact = calcRateSensitivity(33750000, rateDelta, f.months / 12);
                 return (
-                  <tr key={f.months} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{f.months}mo</td>
-                    <td className="px-4 py-3 text-sm text-right text-gray-700">{fmtPct(f.treasury10Y)}</td>
-                    <td className="px-4 py-3 text-sm text-right text-gray-700">{fmtPct(f.sofr)}</td>
+                  <tr key={f.months} className="hover:bg-[#0F1319]">
+                    <td className="px-4 py-3 text-sm font-medium text-[#E8E6E1]">{f.months}mo</td>
+                    <td className="px-4 py-3 text-sm text-right text-[#9EA8B4]">{fmtPct(f.treasury10Y)}</td>
+                    <td className="px-4 py-3 text-sm text-right text-[#9EA8B4]">{fmtPct(f.sofr)}</td>
                     <td className="px-4 py-3 text-sm text-right">
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        f.confidence >= 60 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        f.confidence >= 60 ? 'bg-[#022c22] text-green-400' : 'bg-yellow-100 text-yellow-700'
                       }`}>
                         {f.confidence}%
                       </span>
@@ -839,45 +839,45 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       <div className="space-y-6">
         {/* Structure overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Equity Structure</h4>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">Equity Structure</h4>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">LP Capital ({wf.lpPercentage}%)</span>
+                <span className="text-sm text-[#9EA8B4]">LP Capital ({wf.lpPercentage}%)</span>
                 <span className="text-sm font-semibold">{fmtM(wf.lpCapital)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">GP Co-Invest ({wf.gpPercentage}%)</span>
+                <span className="text-sm text-[#9EA8B4]">GP Co-Invest ({wf.gpPercentage}%)</span>
                 <span className="text-sm font-semibold">{fmtM(wf.gpCapital)}</span>
               </div>
               <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-sm font-semibold text-gray-900">Total Equity</span>
-                <span className="text-sm font-bold text-gray-900">{fmtM(wf.totalEquity)}</span>
+                <span className="text-sm font-semibold text-[#E8E6E1]">Total Equity</span>
+                <span className="text-sm font-bold text-[#E8E6E1]">{fmtM(wf.totalEquity)}</span>
               </div>
-              <div className="mt-2 p-3 bg-blue-50 rounded text-xs text-blue-800">
+              <div className="mt-2 p-3 bg-[#0d1e3d] rounded text-xs text-blue-300">
                 Preferred Return: {wf.preferredReturn}% annual
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">LP Returns</h4>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">LP Returns</h4>
             <div className="text-3xl font-bold text-green-600">{fmtPct(result.lpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{result.lpEquityMultiple.toFixed(2)}x Multiple</div>
-            <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.lpTotalReturn)}</div>
+            <div className="text-lg font-semibold text-[#9EA8B4] mt-1">{result.lpEquityMultiple.toFixed(2)}x Multiple</div>
+            <div className="text-sm text-[#9EA8B4] mt-2">Total: {fmtM(result.lpTotalReturn)}</div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">GP Returns</h4>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+            <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">GP Returns</h4>
             <div className="text-3xl font-bold text-purple-600">{fmtPct(result.gpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{(result.gpEffectiveShare * 100).toFixed(0)}% Effective Share</div>
-            <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.gpTotalReturn)}</div>
+            <div className="text-lg font-semibold text-[#9EA8B4] mt-1">{(result.gpEffectiveShare * 100).toFixed(0)}% Effective Share</div>
+            <div className="text-sm text-[#9EA8B4] mt-2">Total: {fmtM(result.gpTotalReturn)}</div>
           </div>
         </div>
 
         {/* Waterfall visualization */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Distribution Waterfall</h4>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+          <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-4">Distribution Waterfall</h4>
           <div className="space-y-4">
             {result.distributions.map((dist, i) => {
               const total = result.totalDistributed;
@@ -886,10 +886,10 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               return (
                 <div key={dist.tierId}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-900">{dist.tierName}</span>
-                    <span className="text-sm text-gray-600">{fmtM(dist.totalDistribution)}</span>
+                    <span className="text-sm font-medium text-[#E8E6E1]">{dist.tierName}</span>
+                    <span className="text-sm text-[#9EA8B4]">{fmtM(dist.totalDistribution)}</span>
                   </div>
-                  <div className="flex rounded-lg overflow-hidden h-8 bg-gray-100">
+                  <div className="flex rounded-lg overflow-hidden h-8 bg-[#131920]">
                     {lpWidth > 0 && (
                       <div className="bg-green-500 flex items-center justify-center" style={{ width: `${lpWidth}%` }}>
                         {lpWidth > 8 && <span className="text-white text-xs font-semibold">LP {fmtM(dist.lpDistribution)}</span>}
@@ -907,8 +907,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
           </div>
 
           {/* Insight */}
-          <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <div className="text-sm text-purple-900">
+          <div className="mt-6 p-4 bg-[#1a0d3d] border border-purple-800/50 rounded-lg">
+            <div className="text-sm text-purple-300">
               <span className="font-semibold">At projected {fmtPct(result.distributions[result.distributions.length - 1].irr)} IRR:</span>{' '}
               GP earns {(result.gpEffectiveShare * 100).toFixed(0)}% effective share on {wf.gpPercentage}% equity contribution.
               LP still nets {fmtPct(result.lpIRR)} IRR and {result.lpEquityMultiple.toFixed(2)}x multiple.
@@ -917,27 +917,27 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         </div>
 
         {/* Tier details */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Promote Structure</h4>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+          <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-3">Promote Structure</h4>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50">
+              <thead className="bg-[#0F1319]">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tier</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">IRR Hurdle</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">LP Split</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">GP Split</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#9EA8B4] uppercase">Tier</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">IRR Hurdle</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">LP Split</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">GP Split</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#9EA8B4] uppercase">Description</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {wf.tiers.map((tier) => (
                   <tr key={tier.id}>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{tier.name}</td>
-                    <td className="px-4 py-3 text-sm text-right text-gray-700">{fmtPct(tier.hurdleRate * 100)}</td>
+                    <td className="px-4 py-3 text-sm font-medium text-[#E8E6E1]">{tier.name}</td>
+                    <td className="px-4 py-3 text-sm text-right text-[#9EA8B4]">{fmtPct(tier.hurdleRate * 100)}</td>
                     <td className="px-4 py-3 text-sm text-right text-green-600 font-semibold">{(tier.lpSplit * 100).toFixed(0)}%</td>
                     <td className="px-4 py-3 text-sm text-right text-purple-600 font-semibold">{(tier.gpSplit * 100).toFixed(0)}%</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{tier.description}</td>
+                    <td className="px-4 py-3 text-xs text-[#6B7585]">{tier.description}</td>
                   </tr>
                 ))}
               </tbody>
@@ -955,18 +955,18 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const renderScenarios = () => (
     <div className="space-y-6">
       {/* Side-by-side comparison */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Capital Structure Scenarios</h3>
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] overflow-hidden">
+        <div className="px-6 py-4 bg-[#0F1319] border-b border-[#1e2a3d]">
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Capital Structure Scenarios</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-[#0F1319] border-b border-[#1e2a3d]">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Metric</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-[#9EA8B4] uppercase">Metric</th>
                 {scenarioComparison.scenarios.map((s) => (
                   <th key={s.id} className={`px-4 py-3 text-center text-xs font-semibold uppercase ${
-                    s.isActive ? 'text-blue-700 bg-blue-50' : 'text-gray-600'
+                    s.isActive ? 'text-blue-400 bg-[#0d1e3d]' : 'text-[#9EA8B4]'
                   }`}>
                     {s.name}
                     {s.isActive && <div className="text-[10px] mt-1 text-blue-500">ACTIVE</div>}
@@ -984,16 +984,16 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               {renderScenarioRow('Equity Required', (s: CapitalScenario) => fmtM(s.stack.metrics.equityRequired))}
               {renderScenarioRow('Refi Risk', (s: CapitalScenario) => (
                 <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                  s.risks.refinanceRisk === 'low' ? 'bg-green-100 text-green-700' :
+                  s.risks.refinanceRisk === 'low' ? 'bg-[#022c22] text-green-400' :
                   s.risks.refinanceRisk === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
+                  'bg-[#1c0a0a] text-red-400'
                 }`}>{s.risks.refinanceRisk}</span>
               ))}
               {renderScenarioRow('Rate Risk', (s: CapitalScenario) => (
                 <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                  s.risks.interestRateRisk === 'low' ? 'bg-green-100 text-green-700' :
+                  s.risks.interestRateRisk === 'low' ? 'bg-[#022c22] text-green-400' :
                   s.risks.interestRateRisk === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
+                  'bg-[#1c0a0a] text-red-400'
                 }`}>{s.risks.interestRateRisk}</span>
               ))}
             </tbody>
@@ -1002,21 +1002,21 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       </div>
 
       {/* Recommendation */}
-      <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
-        <div className="text-sm font-semibold text-blue-900 mb-1">Recommendation</div>
-        <div className="text-sm text-blue-800">{scenarioComparison.recommendation}</div>
+      <div className="p-6 bg-[#0d1e3d] border-2 border-blue-900/50 rounded-lg">
+        <div className="text-sm font-semibold text-blue-300 mb-1">Recommendation</div>
+        <div className="text-sm text-blue-300">{scenarioComparison.recommendation}</div>
         <div className="mt-3 grid grid-cols-3 gap-4">
           <div className="text-center">
             <div className="text-xs text-blue-600">IRR Spread</div>
-            <div className="text-lg font-bold text-blue-900">{fmtPct(scenarioComparison.delta.irr)}</div>
+            <div className="text-lg font-bold text-blue-300">{fmtPct(scenarioComparison.delta.irr)}</div>
           </div>
           <div className="text-center">
             <div className="text-xs text-blue-600">Multiple Spread</div>
-            <div className="text-lg font-bold text-blue-900">{scenarioComparison.delta.equityMultiple.toFixed(2)}x</div>
+            <div className="text-lg font-bold text-blue-300">{scenarioComparison.delta.equityMultiple.toFixed(2)}x</div>
           </div>
           <div className="text-center">
             <div className="text-xs text-blue-600">DSCR Spread</div>
-            <div className="text-lg font-bold text-blue-900">{scenarioComparison.delta.dscr.toFixed(2)}x</div>
+            <div className="text-lg font-bold text-blue-300">{scenarioComparison.delta.dscr.toFixed(2)}x</div>
           </div>
         </div>
       </div>
@@ -1024,12 +1024,12 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   );
 
   const renderScenarioRow = (label: string, getter: (s: CapitalScenario) => React.ReactNode, bestKey?: string) => (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-3 text-sm font-medium text-gray-900">{label}</td>
+    <tr className="hover:bg-[#0F1319]">
+      <td className="px-4 py-3 text-sm font-medium text-[#E8E6E1]">{label}</td>
       {scenarioComparison.scenarios.map((s) => (
         <td key={s.id} className={`px-4 py-3 text-sm text-center ${
-          s.isActive ? 'bg-blue-50 font-semibold' : ''
-        } ${bestKey && s.id === (scenarioComparison as any)[bestKey] ? 'text-green-600 font-bold' : 'text-gray-700'}`}>
+          s.isActive ? 'bg-[#0d1e3d] font-semibold' : ''
+        } ${bestKey && s.id === (scenarioComparison as any)[bestKey] ? 'text-green-600 font-bold' : 'text-[#9EA8B4]'}`}>
           {getter(s)}
         </td>
       ))}
@@ -1042,8 +1042,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
   const renderTimeline = () => (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Financing Timeline</h4>
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+        <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-4">Financing Timeline</h4>
 
         {/* Horizontal timeline */}
         <div className="relative">
@@ -1056,26 +1056,26 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                     ? 'bg-blue-500 border-blue-600'
                     : event.isPast
                     ? 'bg-gray-400 border-gray-500'
-                    : 'bg-white border-gray-300'
+                    : 'bg-[#0F1319] border-[#253347]'
                 }`} />
-                <div className={`p-4 rounded-lg border ${event.isKeyEvent ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white'}`}>
+                <div className={`p-4 rounded-lg border ${event.isKeyEvent ? 'border-blue-900/50 bg-[#0d1e3d]' : 'border-[#1e2a3d] bg-[#0F1319]'}`}>
                   <div className="flex items-start justify-between">
                     <div>
-                      <div className="text-sm font-semibold text-gray-900">{event.title}</div>
-                      <div className="text-xs text-gray-500 mt-0.5">{event.date}</div>
-                      <div className="text-sm text-gray-600 mt-1">{event.description}</div>
+                      <div className="text-sm font-semibold text-[#E8E6E1]">{event.title}</div>
+                      <div className="text-xs text-[#6B7585] mt-0.5">{event.date}</div>
+                      <div className="text-sm text-[#9EA8B4] mt-1">{event.description}</div>
                     </div>
                     {event.amount && (
-                      <span className="text-sm font-semibold text-gray-900">{fmtM(event.amount)}</span>
+                      <span className="text-sm font-semibold text-[#E8E6E1]">{fmtM(event.amount)}</span>
                     )}
                   </div>
                   <span className={`mt-2 inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                    event.type === 'origination' ? 'bg-blue-100 text-blue-700' :
-                    event.type === 'draw' ? 'bg-green-100 text-green-700' :
-                    event.type === 'refinance' ? 'bg-purple-100 text-purple-700' :
-                    event.type === 'maturity' ? 'bg-red-100 text-red-700' :
+                    event.type === 'origination' ? 'bg-[#0d1e3d] text-blue-400' :
+                    event.type === 'draw' ? 'bg-[#022c22] text-green-400' :
+                    event.type === 'refinance' ? 'bg-[#1a0d3d] text-purple-400' :
+                    event.type === 'maturity' ? 'bg-[#1c0a0a] text-red-400' :
                     event.type === 'milestone' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-gray-100 text-gray-700'
+                    'bg-[#131920] text-[#9EA8B4]'
                   }`}>
                     {event.type.replace('_', ' ')}
                   </span>
@@ -1088,22 +1088,22 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-xs text-gray-500 uppercase">Interest Reserve</div>
-          <div className="text-xl font-bold text-gray-900 mt-1">{fmtM(debtTimeline.interestReserve)}</div>
-          <div className="text-xs text-gray-500 mt-1">Budgeted for carry period</div>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+          <div className="text-xs text-[#6B7585] uppercase">Interest Reserve</div>
+          <div className="text-xl font-bold text-[#E8E6E1] mt-1">{fmtM(debtTimeline.interestReserve)}</div>
+          <div className="text-xs text-[#6B7585] mt-1">Budgeted for carry period</div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-xs text-gray-500 uppercase">Key Events</div>
-          <div className="text-xl font-bold text-gray-900 mt-1">{debtTimeline.events.filter((e) => e.isKeyEvent).length}</div>
-          <div className="text-xs text-gray-500 mt-1">Major financing milestones</div>
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+          <div className="text-xs text-[#6B7585] uppercase">Key Events</div>
+          <div className="text-xl font-bold text-[#E8E6E1] mt-1">{debtTimeline.events.filter((e) => e.isKeyEvent).length}</div>
+          <div className="text-xs text-[#6B7585] mt-1">Major financing milestones</div>
         </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="text-xs text-gray-500 uppercase">Total Draws Planned</div>
-          <div className="text-xl font-bold text-gray-900 mt-1">
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+          <div className="text-xs text-[#6B7585] uppercase">Total Draws Planned</div>
+          <div className="text-xl font-bold text-[#E8E6E1] mt-1">
             {fmtM(debtTimeline.events.filter((e) => e.type === 'draw').reduce((s, e) => s + (e.amount || 0), 0))}
           </div>
-          <div className="text-xs text-gray-500 mt-1">Across {debtTimeline.events.filter((e) => e.type === 'draw').length} draws</div>
+          <div className="text-xs text-[#6B7585] mt-1">Across {debtTimeline.events.filter((e) => e.type === 'draw').length} draws</div>
         </div>
       </div>
     </div>
@@ -1115,8 +1115,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
   const renderIntegration = () => (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Cross-Module Data Flow</h4>
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
+        <h4 className="text-sm font-semibold text-[#9EA8B4] uppercase tracking-wide mb-4">Cross-Module Data Flow</h4>
         <div className="space-y-4">
           {[
             { from: 'M08 Strategy', to: 'M11 Capital Structure', direction: 'incoming', description: 'Strategy selection loads capital template', event: 'strategy.selected', status: 'active' },
@@ -1126,20 +1126,20 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             { from: 'M11 Capital Structure', to: 'M01 Overview', direction: 'outgoing', description: 'Return metrics for deal summary', event: 'capital.returns.updated', status: 'planned' },
             { from: 'M11 Capital Structure', to: 'M12 Exit', direction: 'outgoing', description: 'Debt payoff and refi proceeds for exit analysis', event: 'capital.stack.updated', status: 'planned' },
           ].map((flow, i) => (
-            <div key={i} className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+            <div key={i} className="flex items-center gap-4 p-4 bg-[#0F1319] rounded-lg">
               <div className={`w-2 h-2 rounded-full ${flow.status === 'active' ? 'bg-green-500' : 'bg-yellow-400'}`} />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-900">{flow.from}</span>
+                  <span className="text-sm font-semibold text-[#E8E6E1]">{flow.from}</span>
                   <span className="text-gray-400">{flow.direction === 'incoming' ? '→' : '←'}</span>
-                  <span className="text-sm font-semibold text-gray-900">{flow.to}</span>
+                  <span className="text-sm font-semibold text-[#E8E6E1]">{flow.to}</span>
                 </div>
-                <div className="text-xs text-gray-600 mt-0.5">{flow.description}</div>
+                <div className="text-xs text-[#9EA8B4] mt-0.5">{flow.description}</div>
               </div>
               <div className="flex items-center gap-2">
-                <code className="text-xs bg-gray-200 px-2 py-0.5 rounded">{flow.event}</code>
+                <code className="text-xs bg-[#1e2a3d] px-2 py-0.5 rounded">{flow.event}</code>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                  flow.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  flow.status === 'active' ? 'bg-[#022c22] text-green-400' : 'bg-yellow-100 text-yellow-700'
                 }`}>
                   {flow.status}
                 </span>
@@ -1149,7 +1149,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         </div>
       </div>
 
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+      <div className="p-4 bg-[#0d1e3d] border border-blue-900/50 rounded-lg text-sm text-blue-300">
         Phase 1 uses mock data. Phase 2 backend services will power real calculations. Phase 3 will wire live cross-module events via the Event Bus.
       </div>
     </div>
@@ -1163,18 +1163,18 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
     <div className="space-y-3">
       {insights.map((insight, i) => (
         <div key={i} className={`p-4 rounded-lg border ${
-          insight.severity === 'success' ? 'border-green-200 bg-green-50' :
-          insight.severity === 'warning' ? 'border-yellow-200 bg-yellow-50' :
-          insight.severity === 'danger' ? 'border-red-200 bg-red-50' :
-          'border-blue-200 bg-blue-50'
+          insight.severity === 'success' ? 'border-green-800/50 bg-[#022c22]' :
+          insight.severity === 'warning' ? 'border-yellow-200 bg-[#1a1200]' :
+          insight.severity === 'danger' ? 'border-red-800/50 bg-[#1c0a0a]' :
+          'border-blue-900/50 bg-[#0d1e3d]'
         }`}>
           <div className="flex items-start justify-between">
             <div>
-              <div className="text-sm font-semibold text-gray-900">{insight.metric}: {insight.value}</div>
-              <div className="text-sm text-gray-700 mt-1">{insight.insight}</div>
+              <div className="text-sm font-semibold text-[#E8E6E1]">{insight.metric}: {insight.value}</div>
+              <div className="text-sm text-[#9EA8B4] mt-1">{insight.insight}</div>
             </div>
             {insight.action && (
-              <button className="text-xs text-blue-600 font-semibold hover:text-blue-700 whitespace-nowrap ml-4">
+              <button className="text-xs text-blue-600 font-semibold hover:text-blue-400 whitespace-nowrap ml-4">
                 {insight.action.label}
               </button>
             )}
@@ -1195,18 +1195,18 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         <div className="flex items-center gap-3">
           {renderStrategySelector()}
           {isAnyLive && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-300 animate-pulse">
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-[#022c22] text-green-400 border border-green-700 animate-pulse">
               LIVE DATA
             </span>
           )}
         </div>
-        <div className="text-xs text-gray-500">
-          Template: <span className="font-semibold text-gray-700">{template.label}</span> — {template.holdPeriod}
+        <div className="text-xs text-[#6B7585]">
+          Template: <span className="font-semibold text-[#9EA8B4]">{template.label}</span> — {template.holdPeriod}
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto">
+      <div className="flex gap-1 border-b border-[#1e2a3d] overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -1214,7 +1214,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
+                : 'text-[#6B7585] hover:text-[#9EA8B4]'
             }`}
           >
             <span className="mr-1.5">{tab.icon}</span>

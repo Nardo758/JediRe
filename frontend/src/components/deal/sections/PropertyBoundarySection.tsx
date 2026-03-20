@@ -733,11 +733,11 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       {!embedded && (
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-[#E8E6E1] flex items-center gap-2">
               <MapPin className="text-blue-600" size={24} />
               Property Boundary & Site Plan
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-[#6B7585] mt-1">
               Define site boundary - becomes source of truth for zoning and 3D design
             </p>
           </div>
@@ -745,7 +745,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           {hasBoundary && (
             <div className="flex items-center gap-2 text-sm">
               <CheckCircle className="text-green-600" size={16} />
-              <span className="text-green-700 font-medium">Boundary Defined</span>
+              <span className="text-green-400 font-medium">Boundary Defined</span>
             </div>
           )}
         </div>
@@ -753,22 +753,22 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
       {/* Error message */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="text-red-400 flex-shrink-0" size={20} />
           <div>
-            <p className="text-red-800 font-medium">Error</p>
-            <p className="text-red-600 text-sm">{error}</p>
+            <p className="text-red-300 font-medium">Error</p>
+            <p className="text-red-400 text-sm">{error}</p>
           </div>
         </div>
       )}
 
       {geocodingAddress && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-[#0d1e3d] border border-blue-900/50 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Loader2 className="text-blue-600 flex-shrink-0 animate-spin" size={20} />
             <div>
-              <p className="text-blue-800 font-medium">Locating Site</p>
-              <p className="text-blue-700 text-sm">
+              <p className="text-blue-300 font-medium">Locating Site</p>
+              <p className="text-blue-400 text-sm">
                 Mapping the deal address and detecting municipality...
               </p>
             </div>
@@ -777,7 +777,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       )}
 
       {!hasBoundary && !geocodingAddress && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="bg-[#1a1200] border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-yellow-600 flex-shrink-0" size={20} />
             <div>
@@ -796,7 +796,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         {/* Map Container */}
         <div className="lg:col-span-2 space-y-3">
           {/* Drawing Tools */}
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-3">
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={startDrawing}
@@ -838,12 +838,12 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           {/* Map */}
           <div 
             ref={mapContainerRef}
-            className="w-full h-[500px] rounded-lg border border-gray-300 shadow-sm"
+            className="w-full h-[500px] rounded-lg border border-[#253347] shadow-sm"
           />
 
           {/* Layer Toggles */}
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
-            <p className="text-sm font-medium text-gray-700 mb-2">Map Layers</p>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-3">
+            <p className="text-sm font-medium text-[#9EA8B4] mb-2">Map Layers</p>
             <div className="flex flex-wrap gap-2">
               {Object.entries(layers).map(([key, visible]) => (
                 <button
@@ -851,8 +851,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   onClick={() => toggleLayer(key as keyof typeof layers)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                     visible
-                      ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                      : 'bg-gray-100 text-gray-600 border border-gray-200'
+                      ? 'bg-[#0d1e3d] text-blue-400 border border-blue-700'
+                      : 'bg-[#131920] text-[#9EA8B4] border border-[#1e2a3d]'
                   }`}
                 >
                   {visible ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -864,14 +864,14 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
           {/* Zoning Code Details */}
           {hasBoundary && (
-            <div className="mt-4 bg-white rounded-lg border border-gray-200 p-4">
+            <div className="mt-4 bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-gray-700">Zoning Code Details</h3>
+                <h3 className="text-sm font-semibold text-[#9EA8B4]">Zoning Code Details</h3>
                 {dataSource && (
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                     dataSource === 'database' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-purple-100 text-purple-800'
+                      ? 'bg-[#022c22] text-green-300' 
+                      : 'bg-[#1a0d3d] text-purple-800'
                   }`}>
                     {dataSource === 'database' ? (
                       <><CheckCircle size={10} /> Verified</>
@@ -887,16 +887,16 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               ) : zoningDetail ? (
                 <div className="space-y-4">
                   {/* Current Code Header */}
-                  <div className="bg-blue-50 rounded-lg p-3">
+                  <div className="bg-[#0d1e3d] rounded-lg p-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-lg font-bold text-blue-900">
+                      <span className="text-lg font-bold text-blue-300">
                         {zoningDetail.zoning_code || zoningDetail.district_code}
                       </span>
-                      <span className="text-xs bg-blue-200 text-blue-800 px-2 py-0.5 rounded-full">
+                      <span className="text-xs bg-blue-200 text-blue-300 px-2 py-0.5 rounded-full">
                         {zoningDetail.category || 'Zoning District'}
                       </span>
                     </div>
-                    <p className="text-sm text-blue-800">{zoningDetail.description || zoningDetail.district_name}</p>
+                    <p className="text-sm text-blue-300">{zoningDetail.description || zoningDetail.district_name}</p>
                     <p className="text-xs text-blue-600 mt-1">
                       {zoningDetail.municipality_name || zoningDetail.municipality}, {zoningDetail.municipality_state || zoningDetail.state}
                     </p>
@@ -904,53 +904,53 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
                   {/* Development Standards */}
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Development Standards</p>
+                    <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-2">Development Standards</p>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-500">Max Density</p>
-                        <p className="font-semibold text-gray-900">
+                      <div className="bg-[#0F1319] rounded p-2">
+                        <p className="text-xs text-[#6B7585]">Max Density</p>
+                        <p className="font-semibold text-[#E8E6E1]">
                           {zoningDetail.max_density_per_acre || zoningDetail.max_units_per_acre || '--'} units/acre
                         </p>
                       </div>
-                      <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-500">
+                      <div className="bg-[#0F1319] rounded p-2">
+                        <p className="text-xs text-[#6B7585]">
                           {zoningDetail.residential_far ? 'FAR (Split)' : 'Max FAR'}
                         </p>
                         {zoningDetail.residential_far || zoningDetail.nonresidential_far ? (
                           <div>
-                            <p className="font-semibold text-gray-900 text-sm">
+                            <p className="font-semibold text-[#E8E6E1] text-sm">
                               {zoningDetail.residential_far} res / {zoningDetail.nonresidential_far} nonres
                             </p>
                             <p className="text-[10px] text-gray-400">({zoningDetail.max_far} combined)</p>
                           </div>
                         ) : (
-                          <p className="font-semibold text-gray-900">{zoningDetail.max_far || '--'}</p>
+                          <p className="font-semibold text-[#E8E6E1]">{zoningDetail.max_far || '--'}</p>
                         )}
                       </div>
-                      <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-500">Max Height</p>
-                        <p className="font-semibold text-gray-900">
+                      <div className="bg-[#0F1319] rounded p-2">
+                        <p className="text-xs text-[#6B7585]">Max Height</p>
+                        <p className="font-semibold text-[#E8E6E1]">
                           {zoningDetail.max_building_height_ft || zoningDetail.max_height_feet || '--'} ft
                         </p>
                       </div>
-                      <div className="bg-gray-50 rounded p-2">
-                        <p className="text-xs text-gray-500">Max Stories</p>
-                        <p className="font-semibold text-gray-900">{zoningDetail.max_stories || '--'}</p>
+                      <div className="bg-[#0F1319] rounded p-2">
+                        <p className="text-xs text-[#6B7585]">Max Stories</p>
+                        <p className="font-semibold text-[#E8E6E1]">{zoningDetail.max_stories || '--'}</p>
                       </div>
                       {(zoningDetail.max_lot_coverage != null || zoningDetail.max_lot_coverage_percent != null) && (() => {
                         const raw = parseFloat(zoningDetail.max_lot_coverage || zoningDetail.max_lot_coverage_percent);
                         const pct = raw <= 1 ? raw * 100 : raw;
                         return (
-                          <div className="bg-gray-50 rounded p-2">
-                            <p className="text-xs text-gray-500">Lot Coverage</p>
-                            <p className="font-semibold text-gray-900">{pct.toFixed(0)}%</p>
+                          <div className="bg-[#0F1319] rounded p-2">
+                            <p className="text-xs text-[#6B7585]">Lot Coverage</p>
+                            <p className="font-semibold text-[#E8E6E1]">{pct.toFixed(0)}%</p>
                           </div>
                         );
                       })()}
                       {zoningDetail.min_parking_per_unit != null && (
-                        <div className="bg-gray-50 rounded p-2">
-                          <p className="text-xs text-gray-500">Parking Ratio</p>
-                          <p className="font-semibold text-gray-900">{zoningDetail.min_parking_per_unit} per unit</p>
+                        <div className="bg-[#0F1319] rounded p-2">
+                          <p className="text-xs text-[#6B7585]">Parking Ratio</p>
+                          <p className="font-semibold text-[#E8E6E1]">{zoningDetail.min_parking_per_unit} per unit</p>
                         </div>
                       )}
                     </div>
@@ -959,18 +959,18 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   {/* Setback Requirements from Zoning */}
                   {(zoningDetail.min_front_setback_ft != null || zoningDetail.setback_front_ft != null) && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Required Setbacks</p>
+                      <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-2">Required Setbacks</p>
                       <div className="grid grid-cols-3 gap-2 text-sm">
-                        <div className="bg-gray-50 rounded p-2 text-center">
-                          <p className="text-xs text-gray-500">Front</p>
+                        <div className="bg-[#0F1319] rounded p-2 text-center">
+                          <p className="text-xs text-[#6B7585]">Front</p>
                           <p className="font-semibold">{zoningDetail.min_front_setback_ft ?? zoningDetail.setback_front_ft ?? '--'} ft</p>
                         </div>
-                        <div className="bg-gray-50 rounded p-2 text-center">
-                          <p className="text-xs text-gray-500">Side</p>
+                        <div className="bg-[#0F1319] rounded p-2 text-center">
+                          <p className="text-xs text-[#6B7585]">Side</p>
                           <p className="font-semibold">{zoningDetail.min_side_setback_ft ?? zoningDetail.setback_side_ft ?? '--'} ft</p>
                         </div>
-                        <div className="bg-gray-50 rounded p-2 text-center">
-                          <p className="text-xs text-gray-500">Rear</p>
+                        <div className="bg-[#0F1319] rounded p-2 text-center">
+                          <p className="text-xs text-[#6B7585]">Rear</p>
                           <p className="font-semibold">{zoningDetail.min_rear_setback_ft ?? zoningDetail.setback_rear_ft ?? '--'} ft</p>
                         </div>
                       </div>
@@ -980,10 +980,10 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   {/* Permitted Uses By Right */}
                   {zoningDetail.permitted_uses && zoningDetail.permitted_uses.length > 0 && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Permitted Uses (By Right)</p>
+                      <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-2">Permitted Uses (By Right)</p>
                       <div className="flex flex-wrap gap-1.5">
                         {zoningDetail.permitted_uses.map((use: string, i: number) => (
-                          <span key={i} className="inline-block px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full border border-green-200">
+                          <span key={i} className="inline-block px-2 py-0.5 bg-[#022c22] text-green-400 text-xs rounded-full border border-green-800/50">
                             {use.replace(/_/g, ' ')}
                           </span>
                         ))}
@@ -994,10 +994,10 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   {/* Conditional Uses */}
                   {zoningDetail.conditional_uses && zoningDetail.conditional_uses.length > 0 && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Conditional Uses</p>
+                      <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-2">Conditional Uses</p>
                       <div className="flex flex-wrap gap-1.5">
                         {zoningDetail.conditional_uses.map((use: string, i: number) => (
-                          <span key={i} className="inline-block px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full border border-yellow-200">
+                          <span key={i} className="inline-block px-2 py-0.5 bg-[#1a1200] text-yellow-700 text-xs rounded-full border border-yellow-200">
                             {use.replace(/_/g, ' ')}
                           </span>
                         ))}
@@ -1023,7 +1023,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 </div>
               ) : zoningInfo && zoningInfo.code !== '--' ? (
                 <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-[#9EA8B4]">
                     <p><span className="font-medium">{zoningInfo.code}</span> - {zoningInfo.description}</p>
                     <p className="text-xs text-gray-400 mt-1">Detailed zoning data not in municipal database</p>
                   </div>
@@ -1071,9 +1071,9 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         {/* Metrics Panel */}
         <div className="space-y-3">
           {/* Site Confirmation */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
             {hasBoundary ? (
-              <div className="flex items-center gap-2 text-green-700 mb-3">
+              <div className="flex items-center gap-2 text-green-400 mb-3">
                 <CheckCircle size={16} />
                 <h3 className="text-sm font-semibold">Site Confirmed</h3>
               </div>
@@ -1085,27 +1085,27 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             )}
 
             {/* Property Info */}
-            <div className="mb-3 pb-3 border-b border-gray-100">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Property Address</p>
-              <p className="text-sm font-medium text-gray-900">
+            <div className="mb-3 pb-3 border-b border-[#1e2a3d]">
+              <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-1">Property Address</p>
+              <p className="text-sm font-medium text-[#E8E6E1]">
                 {deal?.address || deal?.propertyAddress || deal?.property_address || detectedLocation?.address || 'Not specified'}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-[#9EA8B4]">
                 {[detectedLocation?.city || deal?.city || deal?.municipality, detectedLocation?.state || deal?.state].filter(Boolean).join(', ') || '--'}
               </p>
             </div>
 
             {/* Municipality & Zoning */}
-            <div className="mb-3 pb-3 border-b border-gray-100">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Municipality</p>
+            <div className="mb-3 pb-3 border-b border-[#1e2a3d]">
+              <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-1">Municipality</p>
               {detectedLocation ? (
                 <div className="mb-2">
-                  <p className="text-sm font-medium text-gray-900">{detectedLocation.city}, {detectedLocation.state}</p>
+                  <p className="text-sm font-medium text-[#E8E6E1]">{detectedLocation.city}, {detectedLocation.state}</p>
                   {detectedLocation.county && (
-                    <p className="text-xs text-gray-500">{detectedLocation.county}</p>
+                    <p className="text-xs text-[#6B7585]">{detectedLocation.county}</p>
                   )}
                   {detectedLocation.hasZoningData ? (
-                    <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#022c22] text-green-300">
                       <CheckCircle size={10} className="mr-1" /> Zoning Data Available
                     </span>
                   ) : (
@@ -1118,13 +1118,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 <p className="text-sm text-gray-400 mb-2">{hasBoundary ? 'Detecting...' : 'Draw boundary to detect'}</p>
               )}
 
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 mt-2">Zoning Designation</p>
+              <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-1 mt-2">Zoning Designation</p>
               {zoningLoading ? (
                 <p className="text-sm text-gray-400 italic">Looking up zoning...</p>
               ) : zoningInfo ? (
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{zoningInfo.code}</p>
-                  <p className="text-sm text-gray-600">{zoningInfo.description}</p>
+                  <p className="text-sm font-medium text-[#E8E6E1]">{zoningInfo.code}</p>
+                  <p className="text-sm text-[#9EA8B4]">{zoningInfo.description}</p>
                   {parcelSource && (
                     <p className="text-xs text-gray-400 mt-1">
                       {parcelSource.planningUrl ? (
@@ -1143,31 +1143,31 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             </div>
 
             {/* Site Metrics */}
-            <div className="mb-3 pb-3 border-b border-gray-100">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Site Metrics</p>
+            <div className="mb-3 pb-3 border-b border-[#1e2a3d]">
+              <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-2">Site Metrics</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Parcel Area:</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-[#9EA8B4]">Parcel Area:</span>
+                  <span className="font-medium text-[#E8E6E1]">
                     {formatNumber(boundary.parcelArea)} acres
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Square Feet:</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-[#9EA8B4]">Square Feet:</span>
+                  <span className="font-medium text-[#E8E6E1]">
                     {formatNumber(boundary.parcelAreaSF, 0)} SF
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Perimeter:</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-[#9EA8B4]">Perimeter:</span>
+                  <span className="font-medium text-[#E8E6E1]">
                     {formatNumber(boundary.perimeter, 0)} feet
                   </span>
                 </div>
                 {boundary.centroid && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Centroid:</span>
-                    <span className="font-medium text-gray-900 text-xs">
+                    <span className="text-[#9EA8B4]">Centroid:</span>
+                    <span className="font-medium text-[#E8E6E1] text-xs">
                       {boundary.centroid[1]?.toFixed(5)}, {boundary.centroid[0]?.toFixed(5)}
                     </span>
                   </div>
@@ -1177,23 +1177,23 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
             {/* Buildable Summary */}
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Buildable Area</p>
+              <p className="text-xs text-[#6B7585] uppercase tracking-wide mb-2">Buildable Area</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">After Setbacks:</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-[#9EA8B4]">After Setbacks:</span>
+                  <span className="font-medium text-[#E8E6E1]">
                     {formatNumber(boundary.buildableArea)} acres
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Square Feet:</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-[#9EA8B4]">Square Feet:</span>
+                  <span className="font-medium text-[#E8E6E1]">
                     {formatNumber(boundary.buildableAreaSF, 0)} SF
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Utilization:</span>
-                  <span className="font-medium text-gray-900">
+                  <span className="text-[#9EA8B4]">Utilization:</span>
+                  <span className="font-medium text-[#E8E6E1]">
                     {formatNumber((boundary.buildablePercentage || 0) * 100, 0)}%
                   </span>
                 </div>
@@ -1205,13 +1205,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   return (
                     <>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Lot Coverage:</span>
-                        <span className="font-medium text-gray-900">{coveragePct.toFixed(0)}%</span>
+                        <span className="text-[#9EA8B4]">Lot Coverage:</span>
+                        <span className="font-medium text-[#E8E6E1]">{coveragePct.toFixed(0)}%</span>
                       </div>
                       {maxFootprint != null && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Max Footprint:</span>
-                          <span className="font-medium text-gray-900">{maxFootprint.toLocaleString()} SF</span>
+                          <span className="text-[#9EA8B4]">Max Footprint:</span>
+                          <span className="font-medium text-[#E8E6E1]">{maxFootprint.toLocaleString()} SF</span>
                         </div>
                       )}
                     </>
@@ -1219,7 +1219,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 })()}
               </div>
               {hasBoundary && boundary.buildablePercentage && boundary.buildablePercentage < 0.7 && (
-                <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
+                <div className="mt-2 p-2 bg-[#1a1200] rounded text-xs text-yellow-800">
                   <AlertCircle size={14} className="inline mr-1" />
                   Low buildable area due to large setbacks
                 </div>
@@ -1228,16 +1228,16 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           </div>
 
           {/* Setbacks */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Applied Setbacks</h3>
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+            <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Applied Setbacks</h3>
             {zoningDetail && (zoningDetail.min_front_setback_ft != null || zoningDetail.setback_front_ft != null) && (
-              <p className="text-xs text-gray-500 mb-2">From {zoningDetail.zoning_code || zoningDetail.district_code} zoning code</p>
+              <p className="text-xs text-[#6B7585] mb-2">From {zoningDetail.zoning_code || zoningDetail.district_code} zoning code</p>
             )}
             <div className="space-y-2">
               {Object.entries(boundary.setbacks).map(([key, value]) => (
-                <div key={key} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
-                  <span className="text-sm text-gray-600 capitalize">{key} Setback</span>
-                  <span className="text-sm font-semibold text-gray-900">{value} ft</span>
+                <div key={key} className="flex justify-between items-center py-1.5 border-b border-[#1e2a3d] last:border-0">
+                  <span className="text-sm text-[#9EA8B4] capitalize">{key} Setback</span>
+                  <span className="text-sm font-semibold text-[#E8E6E1]">{value} ft</span>
                 </div>
               ))}
             </div>
@@ -1245,9 +1245,9 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
           {/* Next Steps */}
           {hasBoundary && (
-            <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-              <h3 className="text-sm font-semibold text-blue-900 mb-2">Next Steps</h3>
-              <ul className="space-y-1 text-sm text-blue-800">
+            <div className="bg-[#0d1e3d] rounded-lg border border-blue-900/50 p-4">
+              <h3 className="text-sm font-semibold text-blue-300 mb-2">Next Steps</h3>
+              <ul className="space-y-1 text-sm text-blue-300">
                 <li>✓ Boundary defined</li>
                 <li>→ View Site Intelligence</li>
                 <li>→ Analyze Zoning Capacity</li>

@@ -180,7 +180,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading notes...</p>
+            <p className="text-[#9EA8B4]">Loading notes...</p>
           </div>
         </div>
       </div>
@@ -191,9 +191,9 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading notes</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading notes</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -206,12 +206,12 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
       <div className="flex items-center gap-3">
         <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
           isPipeline 
-            ? 'bg-blue-100 text-blue-700' 
-            : 'bg-green-100 text-green-700'
+            ? 'bg-[#0d1e3d] text-blue-400' 
+            : 'bg-[#022c22] text-green-400'
         }`}>
           {isPipeline ? '📝 Acquisition Notes' : '🏢 Property Activity Log'}
         </div>
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-[#6B7585]">
           {isPipeline ? 'Deal notes, observations, and follow-ups' : 'Property updates, maintenance, and tenant issues'}
         </div>
       </div>
@@ -220,7 +220,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
       <QuickStatsGrid stats={stats} />
 
       {/* Search, Filter & Actions Bar */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
         <div className="flex flex-col lg:flex-row gap-3">
           
           {/* Search */}
@@ -234,12 +234,12 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
                 placeholder="Search notes, tags, content..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-[#253347] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#9EA8B4]"
                 >
                   ✕
                 </button>
@@ -251,7 +251,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border border-[#253347] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="all">All Categories</option>
             {categories.map(cat => (
@@ -267,7 +267,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               showPinnedOnly
                 ? 'bg-yellow-100 text-yellow-700 border border-yellow-300'
-                : 'bg-gray-50 text-gray-700 border border-gray-300 hover:bg-gray-100'
+                : 'bg-[#0F1319] text-[#9EA8B4] border border-[#253347] hover:bg-[#131920]'
             }`}
           >
             📌 Pinned {showPinnedOnly && '✓'}
@@ -284,13 +284,13 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
         </div>
 
         {/* Category Quick Filters */}
-        <div className="flex gap-2 mt-3 pt-3 border-t border-gray-200">
+        <div className="flex gap-2 mt-3 pt-3 border-t border-[#1e2a3d]">
           <button
             onClick={() => setSelectedCategory('all')}
             className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
               selectedCategory === 'all'
                 ? 'bg-gray-800 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'
             }`}
           >
             All ({notes.length})
@@ -302,7 +302,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 selectedCategory === cat.id
                   ? `bg-${cat.color}-600 text-white`
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'
               }`}
             >
               {cat.icon} {cat.label} ({cat.count})
@@ -323,10 +323,10 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
       {/* Notes Feed */}
       <div className="space-y-4">
         {filteredNotes.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
+          <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-12 text-center">
             <div className="text-5xl mb-4">📭</div>
-            <p className="text-gray-600 font-medium mb-2">No notes found</p>
-            <p className="text-sm text-gray-500">
+            <p className="text-[#9EA8B4] font-medium mb-2">No notes found</p>
+            <p className="text-sm text-[#6B7585]">
               {searchQuery || selectedCategory !== 'all'
                 ? 'Try adjusting your filters or search query'
                 : 'Click "Add Note" to create your first note'
@@ -342,21 +342,21 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
 
       {/* Results Summary */}
       {filteredNotes.length > 0 && (
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-sm text-[#6B7585]">
           Showing {filteredNotes.length} of {notes.length} notes
         </div>
       )}
 
       {/* Cross-Tab Navigation */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3">Related Sections</h4>
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-900/50 rounded-lg p-4">
+        <h4 className="text-sm font-semibold text-[#9EA8B4] mb-3">Related Sections</h4>
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => {
               const element = document.getElementById('section-map-view');
               element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
-            className="px-4 py-2 text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 border border-blue-200 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-blue-600 bg-[#0F1319] hover:bg-[#0d1e3d] border border-blue-900/50 rounded-lg transition-colors"
           >
             🗺️ View on Map
           </button>
@@ -365,7 +365,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
               const element = document.getElementById('section-ai-agent');
               element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
-            className="px-4 py-2 text-sm font-medium text-purple-600 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-purple-600 bg-[#0F1319] hover:bg-[#1a0d3d] border border-purple-800/50 rounded-lg transition-colors"
           >
             🤖 Ask AI Agent
           </button>
@@ -374,7 +374,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
               const element = document.getElementById('section-context-tracker');
               element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
-            className="px-4 py-2 text-sm font-medium text-indigo-600 bg-white hover:bg-indigo-50 border border-indigo-200 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-indigo-400 bg-[#0F1319] hover:bg-[#0d1020] border border-indigo-200 rounded-lg transition-colors"
           >
             🧭 View Context
           </button>
@@ -383,7 +383,7 @@ export const NotesSection: React.FC<NotesSectionProps> = ({ deal }) => {
               const element = document.getElementById('section-documents');
               element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }}
-            className="px-4 py-2 text-sm font-medium text-green-600 bg-white hover:bg-green-50 border border-green-200 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-green-600 bg-[#0F1319] hover:bg-[#022c22] border border-green-800/50 rounded-lg transition-colors"
           >
             📄 View Documents
           </button>
@@ -403,18 +403,18 @@ interface QuickStatsGridProps {
 const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Quick Stats</h3>
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Quick Stats</h3>
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {stats.map((stat, index) => (
           <div 
             key={index}
-            className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm">{stat.label}</span>
+              <span className="text-[#6B7585] text-sm">{stat.label}</span>
               <span className="text-2xl">{stat.icon}</span>
             </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">
+            <div className="text-2xl font-bold text-[#E8E6E1] mb-1">
               {stat.value}
             </div>
             {stat.trend && (
@@ -422,8 +422,8 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats }) => {
                 stat.trend.direction === 'up' 
                   ? 'text-green-600' 
                   : stat.trend.direction === 'down'
-                    ? 'text-red-600'
-                    : 'text-gray-600'
+                    ? 'text-red-400'
+                    : 'text-[#9EA8B4]'
               }`}>
                 <span>{stat.trend.direction === 'up' ? '↗' : stat.trend.direction === 'down' ? '↘' : '→'}</span>
                 <span>{stat.trend.value}</span>
@@ -495,8 +495,8 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
     : note.content.substring(0, 280) + '...';
 
   return (
-    <div className={`bg-white border rounded-lg p-5 hover:shadow-md transition-all ${
-      isPinned ? 'border-yellow-300 bg-yellow-50' : 'border-gray-200'
+    <div className={`bg-[#0F1319] border rounded-lg p-5 hover:shadow-md transition-all ${
+      isPinned ? 'border-yellow-300 bg-[#1a1200]' : 'border-[#1e2a3d]'
     }`}>
       
       {/* Header */}
@@ -514,7 +514,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
           
           {/* Title Row */}
           <div className="flex items-start justify-between gap-3 mb-2">
-            <h3 className="text-base font-semibold text-gray-900 flex-1">
+            <h3 className="text-base font-semibold text-[#E8E6E1] flex-1">
               {getTypeIcon(note.type)} {note.title}
             </h3>
             
@@ -533,8 +533,8 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
           </div>
 
           {/* Meta Info */}
-          <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
-            <span className="font-medium text-gray-700">{note.author}</span>
+          <div className="flex items-center gap-3 text-xs text-[#6B7585] mb-3">
+            <span className="font-medium text-[#9EA8B4]">{note.author}</span>
             <span>•</span>
             <span>{note.createdAt}</span>
             {note.updatedAt && (
@@ -564,13 +564,13 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
 
       {/* Content */}
       <div className="mb-3">
-        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+        <p className="text-sm text-[#9EA8B4] whitespace-pre-line leading-relaxed">
           {displayContent}
         </p>
         {shouldTruncate && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium mt-2"
+            className="text-sm text-blue-600 hover:text-blue-400 font-medium mt-2"
           >
             {isExpanded ? '← Show less' : 'Read more →'}
           </button>
@@ -583,7 +583,7 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
           {note.tags.map((tag, index) => (
             <span
               key={index}
-              className="px-2 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 cursor-pointer"
+              className="px-2 py-1 rounded-md text-xs font-medium bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d] cursor-pointer"
             >
               #{tag}
             </span>
@@ -593,12 +593,12 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
 
       {/* Mentions */}
       {note.mentions && note.mentions.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-gray-200">
-          <span className="text-xs text-gray-500">Mentioned:</span>
+        <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-[#1e2a3d]">
+          <span className="text-xs text-[#6B7585]">Mentioned:</span>
           {note.mentions.map((mention, index) => (
             <span
               key={index}
-              className="px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700"
+              className="px-2 py-1 rounded-md text-xs font-medium bg-[#0d1e3d] text-blue-400"
             >
               @{mention}
             </span>
@@ -608,19 +608,19 @@ const NoteCard: React.FC<NoteCardProps> = ({ note, mode }) => {
 
       {/* Actions */}
       <div className="flex items-center gap-4">
-        <button className="text-sm text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1">
+        <button className="text-sm text-[#9EA8B4] hover:text-blue-600 font-medium flex items-center gap-1">
           <span>✏️</span>
           <span>Edit</span>
         </button>
-        <button className="text-sm text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1">
+        <button className="text-sm text-[#9EA8B4] hover:text-blue-600 font-medium flex items-center gap-1">
           <span>💬</span>
           <span>Reply</span>
         </button>
-        <button className="text-sm text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1">
+        <button className="text-sm text-[#9EA8B4] hover:text-blue-600 font-medium flex items-center gap-1">
           <span>🔗</span>
           <span>Share</span>
         </button>
-        <button className="text-sm text-gray-600 hover:text-red-600 font-medium flex items-center gap-1">
+        <button className="text-sm text-[#9EA8B4] hover:text-red-400 font-medium flex items-center gap-1">
           <span>🗑️</span>
           <span>Delete</span>
         </button>
@@ -654,16 +654,16 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
   };
 
   return (
-    <div className="bg-white border-2 border-blue-400 rounded-lg p-6 shadow-lg">
+    <div className="bg-[#0F1319] border-2 border-blue-400 rounded-lg p-6 shadow-lg">
       
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold text-[#E8E6E1]">
           ✍️ Add New Note
         </h3>
         <button
           onClick={onClose}
-          className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+          className="text-gray-400 hover:text-[#9EA8B4] text-2xl leading-none"
         >
           ×
         </button>
@@ -673,7 +673,7 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
         
         {/* Title */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
             Title *
           </label>
           <input
@@ -682,39 +682,39 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             placeholder="Enter note title..."
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-[#253347] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 
         {/* Content - Rich Text Area */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
             Content *
           </label>
           
           {/* Rich Text Toolbar */}
-          <div className="flex items-center gap-1 mb-2 p-2 bg-gray-50 border border-gray-300 rounded-t-lg">
-            <button type="button" className="px-2 py-1 text-sm font-bold hover:bg-gray-200 rounded" title="Bold">
+          <div className="flex items-center gap-1 mb-2 p-2 bg-[#0F1319] border border-[#253347] rounded-t-lg">
+            <button type="button" className="px-2 py-1 text-sm font-bold hover:bg-[#1e2a3d] rounded" title="Bold">
               B
             </button>
-            <button type="button" className="px-2 py-1 text-sm italic hover:bg-gray-200 rounded" title="Italic">
+            <button type="button" className="px-2 py-1 text-sm italic hover:bg-[#1e2a3d] rounded" title="Italic">
               I
             </button>
-            <button type="button" className="px-2 py-1 text-sm underline hover:bg-gray-200 rounded" title="Underline">
+            <button type="button" className="px-2 py-1 text-sm underline hover:bg-[#1e2a3d] rounded" title="Underline">
               U
             </button>
             <div className="w-px h-6 bg-gray-300 mx-1" />
-            <button type="button" className="px-2 py-1 text-sm hover:bg-gray-200 rounded" title="Bullet List">
+            <button type="button" className="px-2 py-1 text-sm hover:bg-[#1e2a3d] rounded" title="Bullet List">
               • List
             </button>
-            <button type="button" className="px-2 py-1 text-sm hover:bg-gray-200 rounded" title="Numbered List">
+            <button type="button" className="px-2 py-1 text-sm hover:bg-[#1e2a3d] rounded" title="Numbered List">
               1. List
             </button>
             <div className="w-px h-6 bg-gray-300 mx-1" />
-            <button type="button" className="px-2 py-1 text-sm hover:bg-gray-200 rounded" title="Add Link">
+            <button type="button" className="px-2 py-1 text-sm hover:bg-[#1e2a3d] rounded" title="Add Link">
               🔗
             </button>
-            <button type="button" className="px-2 py-1 text-sm hover:bg-gray-200 rounded" title="Add Attachment">
+            <button type="button" className="px-2 py-1 text-sm hover:bg-[#1e2a3d] rounded" title="Add Attachment">
               📎
             </button>
           </div>
@@ -725,9 +725,9 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
             onChange={(e) => setFormData({ ...formData, content: e.target.value })}
             placeholder="Enter note content... (Markdown supported)"
             rows={8}
-            className="w-full px-4 py-3 border border-gray-300 rounded-b-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            className="w-full px-4 py-3 border border-[#253347] rounded-b-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-[#6B7585] mt-1">
             Supports markdown formatting, @mentions, and #tags
           </p>
         </div>
@@ -737,14 +737,14 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
           
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
               Category *
             </label>
             <select
               required
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-[#253347] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>
@@ -756,13 +756,13 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
 
           {/* Priority */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
               Priority
             </label>
             <select
               value={formData.priority}
               onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-[#253347] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
               <option value="high">🔴 High Priority</option>
               <option value="medium">🟡 Medium Priority</option>
@@ -774,7 +774,7 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
 
         {/* Tags */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
             Tags
           </label>
           <input
@@ -782,7 +782,7 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
             value={formData.tags}
             onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
             placeholder="Enter tags separated by commas (e.g., financing, urgent, follow-up)"
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full px-4 py-2 border border-[#253347] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
 
@@ -793,19 +793,19 @@ const AddNoteForm: React.FC<AddNoteFormProps> = ({ mode, categories, onClose }) 
             id="pin-note"
             checked={formData.isPinned}
             onChange={(e) => setFormData({ ...formData, isPinned: e.target.checked })}
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+            className="w-4 h-4 text-blue-600 border-[#253347] rounded focus:ring-blue-500"
           />
-          <label htmlFor="pin-note" className="text-sm text-gray-700">
+          <label htmlFor="pin-note" className="text-sm text-[#9EA8B4]">
             📌 Pin this note to the top
           </label>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#1e2a3d]">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-[#9EA8B4] bg-[#131920] rounded-lg hover:bg-[#1e2a3d] transition-colors"
           >
             Cancel
           </button>

@@ -111,19 +111,19 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">Module Suggestion Modal Demo</h1>
-      <p className="text-gray-600 mb-8">
+      <p className="text-[#9EA8B4] mb-8">
         Test different user subscription scenarios and deal types.
       </p>
 
       {/* Scenario Selector */}
-      <div className="mb-6 p-4 bg-white rounded-lg border border-gray-200">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="mb-6 p-4 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+        <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
           Select Test Scenario:
         </label>
         <select
           value={scenario}
           onChange={(e) => setScenario(e.target.value as any)}
-          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="w-full px-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500"
         >
           <option value="flipperMultifamilyValueAdd">
             Flipper Bundle - Multifamily Value-Add
@@ -144,9 +144,9 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
       </div>
 
       {/* Scenario Details */}
-      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="font-semibold text-blue-900 mb-2">Scenario Details:</h3>
-        <div className="text-sm text-blue-800 space-y-1">
+      <div className="mb-6 p-4 bg-[#0d1e3d] border border-blue-900/50 rounded-lg">
+        <h3 className="font-semibold text-blue-300 mb-2">Scenario Details:</h3>
+        <div className="text-sm text-blue-300 space-y-1">
           <p>
             <strong>Deal Type:</strong> {currentScenario.dealType}
           </p>
@@ -166,9 +166,9 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
       </div>
 
       {/* Expected Results */}
-      <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-        <h3 className="font-semibold text-green-900 mb-2">Expected Results:</h3>
-        <div className="text-sm text-green-800 space-y-2">
+      <div className="mb-6 p-4 bg-[#022c22] border border-green-800/50 rounded-lg">
+        <h3 className="font-semibold text-green-300 mb-2">Expected Results:</h3>
+        <div className="text-sm text-green-300 space-y-2">
           <div>
             <strong>Included Modules ({currentScenario.expectedIncluded.length}):</strong>
             <ul className="list-disc list-inside ml-2 mt-1">
@@ -176,7 +176,7 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
                 <li key={m}>{m}</li>
               ))}
               {currentScenario.expectedIncluded.length === 0 && (
-                <li className="text-gray-500">None</li>
+                <li className="text-[#6B7585]">None</li>
               )}
             </ul>
           </div>
@@ -187,7 +187,7 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
                 <li key={m}>{m}</li>
               ))}
               {currentScenario.expectedPaid.length === 0 && (
-                <li className="text-gray-500">None</li>
+                <li className="text-[#6B7585]">None</li>
               )}
             </ul>
           </div>
@@ -214,7 +214,7 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
           });
           alert('All dismissed states cleared!');
         }}
-        className="w-full mt-2 px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+        className="w-full mt-2 px-6 py-2 bg-[#1e2a3d] text-[#9EA8B4] rounded-lg hover:bg-gray-300 transition-colors font-medium"
       >
         Reset All Dismissed States
       </button>
@@ -231,7 +231,7 @@ export const ModuleSuggestionModalDemo: React.FC = () => {
       />
 
       {/* Testing Notes */}
-      <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+      <div className="mt-8 p-4 bg-[#1a1200] border border-yellow-200 rounded-lg">
         <h3 className="font-semibold text-yellow-900 mb-2">Testing Notes:</h3>
         <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
           <li>Click "Show Module Suggestions" to trigger the modal</li>

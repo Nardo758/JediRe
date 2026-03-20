@@ -87,7 +87,7 @@ export function DynamicModeExample() {
             className={`px-4 py-2 rounded font-medium ${
               dealStatus === 'pipeline'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700'
+                : 'bg-[#1e2a3d] text-[#9EA8B4]'
             }`}
           >
             Acquisition Mode
@@ -97,7 +97,7 @@ export function DynamicModeExample() {
             className={`px-4 py-2 rounded font-medium ${
               dealStatus === 'owned'
                 ? 'bg-green-600 text-white'
-                : 'bg-gray-200 text-gray-700'
+                : 'bg-[#1e2a3d] text-[#9EA8B4]'
             }`}
           >
             Performance Mode
@@ -115,23 +115,23 @@ export function DealPageIntegration({ deal }: { deal: Deal }) {
     <div className="max-w-7xl mx-auto px-4 py-8">
       {/* Deal Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">{deal.name}</h1>
-        <p className="text-gray-600">{deal.address}</p>
+        <h1 className="text-3xl font-bold text-[#E8E6E1]">{deal.name}</h1>
+        <p className="text-[#9EA8B4]">{deal.address}</p>
       </div>
 
       {/* Tab Navigation (simplified) */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-[#1e2a3d] mb-6">
         <nav className="flex gap-8">
-          <button className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+          <button className="px-3 py-2 text-sm font-medium text-[#6B7585] hover:text-[#9EA8B4]">
             Overview
           </button>
           <button className="px-3 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">
             Market
           </button>
-          <button className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+          <button className="px-3 py-2 text-sm font-medium text-[#6B7585] hover:text-[#9EA8B4]">
             Financials
           </button>
-          <button className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+          <button className="px-3 py-2 text-sm font-medium text-[#6B7585] hover:text-[#9EA8B4]">
             Team
           </button>
         </nav>

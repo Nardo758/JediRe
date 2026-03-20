@@ -101,11 +101,11 @@ const mockRecommendations: Recommendation[] = [
 ];
 
 const categoryConfig: Record<Category, { icon: React.ReactNode; label: string; color: string }> = {
-  design: { icon: <Building2 size={14} />, label: 'Design', color: 'bg-purple-100 text-purple-700' },
-  financial: { icon: <DollarSign size={14} />, label: 'Financial', color: 'bg-green-100 text-green-700' },
-  market: { icon: <TrendingUp size={14} />, label: 'Market', color: 'bg-blue-100 text-blue-700' },
-  timing: { icon: <Clock size={14} />, label: 'Timing', color: 'bg-orange-100 text-orange-700' },
-  acquisition: { icon: <Zap size={14} />, label: 'Acquisition', color: 'bg-red-100 text-red-700' },
+  design: { icon: <Building2 size={14} />, label: 'Design', color: 'bg-[#1a0d3d] text-purple-400' },
+  financial: { icon: <DollarSign size={14} />, label: 'Financial', color: 'bg-[#022c22] text-green-400' },
+  market: { icon: <TrendingUp size={14} />, label: 'Market', color: 'bg-[#0d1e3d] text-blue-400' },
+  timing: { icon: <Clock size={14} />, label: 'Timing', color: 'bg-[#1a0d00] text-orange-700' },
+  acquisition: { icon: <Zap size={14} />, label: 'Acquisition', color: 'bg-[#1c0a0a] text-red-400' },
 };
 
 export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> = ({ deal }) => {
@@ -182,7 +182,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">AI Recommendations</h2>
+            <h2 className="text-lg font-semibold text-[#E8E6E1]">AI Recommendations</h2>
             {loading && <Loader2 size={16} className="animate-spin text-blue-500" />}
             {isLive && !loading && (
               <span className="flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -200,7 +200,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors capitalize ${
                 filter === f
                   ? 'bg-blue-500 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  : 'bg-[#131920] text-slate-600 hover:bg-slate-200'
               }`}
             >
               {f === 'all' ? 'All' : f}
@@ -210,19 +210,19 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-slate-900">{stats.total}</div>
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4">
+          <div className="text-2xl font-bold text-[#E8E6E1]">{stats.total}</div>
           <div className="text-xs text-slate-500 mt-1">Total Recommendations</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="text-2xl font-bold text-red-600">{stats.actionRequired}</div>
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4">
+          <div className="text-2xl font-bold text-red-400">{stats.actionRequired}</div>
           <div className="text-xs text-slate-500 mt-1">Action Required</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4">
           <div className="text-2xl font-bold text-green-600">{stats.applied}</div>
           <div className="text-xs text-slate-500 mt-1">Applied</div>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4">
           <div className="text-2xl font-bold text-blue-600">{stats.successRate}%</div>
           <div className="text-xs text-slate-500 mt-1">Success Rate</div>
         </div>
@@ -234,19 +234,19 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
           return (
             <div
               key={rec.id}
-              className={`bg-white rounded-xl border p-5 transition-all ${
+              className={`bg-[#0F1319] rounded-xl border p-5 transition-all ${
                 rec.priority === 'high' && rec.status === 'new'
-                  ? 'border-red-200 shadow-sm'
+                  ? 'border-red-800/50 shadow-sm'
                   : rec.status === 'applied'
-                    ? 'border-green-200 bg-green-50/30'
-                    : 'border-slate-200'
+                    ? 'border-green-800/50 bg-[#022c22]/30'
+                    : 'border-[#1e2a3d]'
               }`}
             >
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     {rec.priority === 'high' && rec.status === 'new' && (
-                      <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                      <span className="flex items-center gap-1 text-xs font-medium text-red-400 bg-[#1c0a0a] px-2 py-0.5 rounded-full">
                         <AlertTriangle size={12} /> Action Required
                       </span>
                     )}
@@ -255,7 +255,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
                     </span>
                     <span className="text-xs text-slate-400">{rec.timestamp}</span>
                   </div>
-                  <h3 className="text-sm font-semibold text-slate-900 mb-1">{rec.title}</h3>
+                  <h3 className="text-sm font-semibold text-[#E8E6E1] mb-1">{rec.title}</h3>
                   <p className="text-sm text-slate-600 mb-3">{rec.description}</p>
                   <div className="flex items-center gap-4">
                     <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
@@ -295,7 +295,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
                       className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1 ${
                         action.includes('Apply') || action.includes('Draft') || action.includes('Accelerate')
                           ? 'bg-blue-500 text-white hover:bg-blue-600'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          : 'bg-[#131920] text-slate-700 hover:bg-slate-200'
                       }`}
                     >
                       {action} <ChevronRight size={12} />
@@ -308,7 +308,7 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
         })}
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Lightbulb size={16} className="text-yellow-500" />
@@ -317,11 +317,11 @@ export const AIRecommendationsSection: React.FC<AIRecommendationsSectionProps> =
         </div>
         <div className="grid grid-cols-3 gap-4 mt-3">
           <div className="text-center">
-            <div className="text-lg font-bold text-slate-900">47</div>
+            <div className="text-lg font-bold text-[#E8E6E1]">47</div>
             <div className="text-xs text-slate-500">Recommendations Made</div>
           </div>
           <div className="text-center">
-            <div className="text-lg font-bold text-slate-900">38</div>
+            <div className="text-lg font-bold text-[#E8E6E1]">38</div>
             <div className="text-xs text-slate-500">Acted Upon</div>
           </div>
           <div className="text-center">

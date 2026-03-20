@@ -1,3 +1,4 @@
+import { T as BT } from '../../deal/bloomberg-tokens';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
@@ -103,18 +104,19 @@ function getLimitingLabel(factor: string | null): string {
 }
 
 function getSourceBadge(source: string) {
-  const styles: Record<string, string> = {
-    auto: 'bg-green-50 text-green-700 border-green-200',
-    user_modified: 'bg-purple-50 text-purple-700 border-purple-200',
-    conditional: 'bg-amber-50 text-amber-700 border-amber-200',
+  const styleMap: Record<string, React.CSSProperties> = {
+    auto:          { background: BT.greenBg, color: BT.greenL, border: `1px solid ${BT.green}50` },
+    user_modified: { background: BT.violBg,  color: BT.violL,  border: `1px solid ${BT.violet}50` },
+    conditional:   { background: BT.amberBg, color: BT.amberL, border: `1px solid ${BT.amber}50` },
   };
   const labels: Record<string, string> = {
     auto: 'Base District',
     user_modified: 'User Override',
     conditional: 'Conditional',
   };
+  const style = styleMap[source] || styleMap.auto;
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${styles[source] || styles.auto}`}>
+    <span className="text-[10px] px-2 py-0.5 rounded-full" style={style}>
       {labels[source] || source}
     </span>
   );
@@ -566,31 +568,31 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
+        <div className="rounded-lg border p-5" style={{ background: BT.bgCard, borderColor: BT.border }}>
           <div className="flex items-center gap-3 mb-4">
-            <div className="h-5 w-40 bg-gray-200 rounded animate-pulse" />
-            <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
+            <div className="h-5 w-40 rounded animate-pulse" style={{ background: BT.border }} />
+            <div className="h-4 w-24 rounded animate-pulse" style={{ background: BT.bgPanel }} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="space-y-2">
-                <div className="h-3 w-20 bg-gray-100 rounded animate-pulse" />
-                <div className="h-5 w-28 bg-gray-200 rounded animate-pulse" />
+                <div className="h-3 w-20 rounded animate-pulse" style={{ background: BT.bgPanel }} />
+                <div className="h-5 w-28 rounded animate-pulse" style={{ background: BT.border }} />
               </div>
             ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+        <div className="rounded-lg border overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
+          <div className="px-5 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Comparison</h3>
-                <p className="text-xs text-gray-500 mt-0.5">AI-analyzed development capacity across entitlement paths</p>
+                <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>Entitlement Comparison</h3>
+                <p className="text-xs mt-0.5" style={{ color: BT.td }}>AI-analyzed development capacity across entitlement paths</p>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500" />
-                <span className="text-[10px] text-gray-400">Loading profile...</span>
+                <span className="text-[10px]" style={{ color: BT.td }}>Loading profile...</span>
               </div>
             </div>
           </div>
@@ -598,13 +600,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-200 bg-gray-50/50">
+                  <tr className="border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
                     <th className="text-left px-4 py-2.5 w-[18%]" />
                     {[1, 2, 3, 4].map(i => (
                       <th key={i} className="text-center px-3 py-2.5" style={{ width: '20%' }}>
                         <div className="flex flex-col items-center gap-1">
-                          <div className="h-4 w-20 bg-gray-200 rounded animate-pulse" />
-                          <div className="h-3 w-28 bg-gray-100 rounded animate-pulse" />
+                          <div className="h-4 w-20 rounded animate-pulse" style={{ background: BT.border }} />
+                          <div className="h-3 w-28 rounded animate-pulse" style={{ background: BT.bgPanel }} />
                         </div>
                       </th>
                     ))}
@@ -612,29 +614,29 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 </thead>
                 <tbody>
                   {['Zoning Code', 'Density', 'FAR', 'Max Units', 'GBA', 'Stories', 'Parking', 'Binding Constraint'].map((label, idx) => (
-                    <tr key={label} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                      <td className="px-4 py-2.5 text-xs font-medium text-gray-400">{label}</td>
+                    <tr key={label} className={`border-b border-[#1e2a3d] ${idx % 2 === 0 ? 'bg-[#0F1319]' : 'bg-[#131920]/30'}`}>
+                      <td className="px-4 py-2.5 text-xs font-medium" style={{ color: BT.td }}>{label}</td>
                       {[1, 2, 3, 4].map(i => (
                         <td key={i} className="px-3 py-2.5 text-center">
-                          <div className="h-4 w-16 bg-gray-100 rounded animate-pulse mx-auto" />
+                          <div className="h-4 w-16 rounded animate-pulse mx-auto" style={{ background: BT.bgPanel }} />
                         </td>
                       ))}
                     </tr>
                   ))}
                   <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
-                    <td className="px-4 py-3 text-xs font-bold text-gray-400">Select Path</td>
+                    <td className="px-4 py-3 text-xs font-bold" style={{ color: BT.td }}>Select Path</td>
                     {[1, 2, 3, 4].map(i => (
                       <td key={i} className="px-3 py-3 text-center">
-                        <div className="h-7 w-16 bg-gray-200 rounded-lg animate-pulse mx-auto" />
+                        <div className="h-7 w-16 rounded-lg animate-pulse mx-auto" style={{ background: BT.border }} />
                       </td>
                     ))}
                   </tr>
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
+            <div className="flex items-center justify-center py-4 border-t gap-2" style={{ borderColor: BT.border }}>
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
-              <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
+              <span className="text-xs" style={{ color: BT.td }}>Computing entitlement paths across zoning constraints...</span>
             </div>
           </div>
         </div>
@@ -644,12 +646,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   if (error) {
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+      <div className="border border-amber-800/50 rounded-lg p-6 text-center" style={{ background: BT.amberBg }}>
         <svg className="mx-auto h-10 w-10 mb-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
         </svg>
-        <p className="text-sm text-amber-800">{error}</p>
-        <button onClick={() => { setError(null); loadData(); }} className="mt-3 text-xs text-blue-600 hover:text-blue-800 underline">
+        <p className="text-sm text-amber-300">{error}</p>
+        <button onClick={() => { setError(null); loadData(); }} className="mt-3 text-xs text-blue-400 hover:text-blue-300 underline">
           Try again
         </button>
       </div>
@@ -658,12 +660,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   if (!profileExists) {
     return (
-      <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-        <svg className="mx-auto h-12 w-12 mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <div className="border rounded-lg p-8 text-center" style={{ background: BT.bgPanel, borderColor: BT.border }}>
+        <svg className="mx-auto h-12 w-12 mb-4" style={{ color: BT.tm }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
         </svg>
-        <p className="text-sm text-gray-600 mb-2">No zoning profile found for this deal.</p>
-        <p className="text-xs text-gray-500 mb-4">Save a property boundary and confirm zoning in the previous tabs, then the profile will auto-generate.</p>
+        <p className="text-sm mb-2" style={{ color: BT.tm }}>No zoning profile found for this deal.</p>
+        <p className="text-xs mb-4" style={{ color: BT.td }}>Save a property boundary and confirm zoning in the previous tabs, then the profile will auto-generate.</p>
         <button
           onClick={handleResolveProfile}
           disabled={resolving}
@@ -713,9 +715,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   return (
     <div className="space-y-5">
-      <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+      <div className="rounded-lg border px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" style={{ background: BT.bgCard, borderColor: BT.border }}>
         <div className="flex items-center gap-2">
-          <span className="text-gray-500 font-medium">Zoning:</span>
+          <span className="font-medium" style={{ color: BT.td }}>Zoning:</span>
           {editingZoningCode ? (
             <>
               <input
@@ -733,7 +735,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               <button
                 onClick={handleSaveZoningCode}
                 disabled={!newZoningCode.trim() || resolving}
-                className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                className="text-green-400 hover:text-green-300 disabled:opacity-40"
                 title="Save"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -742,7 +744,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
               </button>
               <button
                 onClick={() => { setEditingZoningCode(false); setNewZoningCode(''); }}
-                className="text-gray-400 hover:text-gray-600"
+                className="" style={{ color: BT.td }}
                 title="Cancel"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -752,12 +754,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </>
           ) : (
             <>
-              <span className="text-gray-900 font-semibold">{profile.base_district_code || '--'}</span>
-              {profile.municipality && <span className="text-gray-400">({profile.municipality})</span>}
+              <span className="font-semibold" style={{ color: BT.text }}>{profile.base_district_code || '--'}</span>
+              {profile.municipality && <span style={{ color: BT.td }}>({profile.municipality})</span>}
               {municodeUrl && <MunicodeLink url={municodeUrl} />}
               <button
                 onClick={() => { setEditingZoningCode(true); setNewZoningCode(profile.base_district_code || ''); }}
-                className="text-blue-500 hover:text-blue-700"
+                className="text-blue-500 hover:text-blue-400"
                 title="Change zoning code"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -767,20 +769,20 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </>
           )}
         </div>
-        <div className="w-px h-5 bg-gray-200" />
+        <div className="w-px h-5" style={{ background: BT.border }} />
         <div className="flex items-center gap-2">
-          <span className="text-gray-500 font-medium">Lot:</span>
-          <span className="text-gray-900">{formatNumber(parseFloat(String(profile.lot_area_sf)))} SF</span>
-          {lotAreaAcres != null && <span className="text-gray-400">({lotAreaAcres.toFixed(2)} ac)</span>}
+          <span className="font-medium" style={{ color: BT.td }}>Lot:</span>
+          <span style={{ color: BT.text }}>{formatNumber(parseFloat(String(profile.lot_area_sf)))} SF</span>
+          {lotAreaAcres != null && <span style={{ color: BT.td }}>({lotAreaAcres.toFixed(2)} ac)</span>}
         </div>
-        <div className="w-px h-5 bg-gray-200" />
+        <div className="w-px h-5" style={{ background: BT.border }} />
         <div className="flex items-center gap-2">
-          <span className="text-gray-500 font-medium">Asset Type:</span>
+          <span className="font-medium" style={{ color: BT.td }}>Asset Type:</span>
           {changingAssetType ? (
             <select
               value={dealInfo?.project_type || 'multifamily'}
               onChange={(e) => handleChangeAssetType(e.target.value)}
-              className="text-xs border border-gray-300 rounded px-2 py-1"
+              className="text-xs border rounded px-2 py-1" style={{ borderColor: BT.borderL }}
             >
               {PROJECT_TYPE_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label} — {opt.hint}</option>
@@ -788,8 +790,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </select>
           ) : (
             <>
-              <span className="text-gray-900 font-semibold capitalize">{PROJECT_TYPE_OPTIONS.find(o => o.value === dealInfo?.project_type)?.label || (dealInfo?.project_type || 'multifamily').replace('_', '-')}</span>
-              <button onClick={() => setChangingAssetType(true)} className="text-blue-500 hover:text-blue-700" title="Change asset type">
+              <span className="font-semibold capitalize" style={{ color: BT.text }}>{PROJECT_TYPE_OPTIONS.find(o => o.value === dealInfo?.project_type)?.label || (dealInfo?.project_type || 'multifamily').replace('_', '-')}</span>
+              <button onClick={() => setChangingAssetType(true)} className="text-blue-500 hover:text-blue-400" title="Change asset type">
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
@@ -797,9 +799,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
             </>
           )}
         </div>
-        <div className="w-px h-5 bg-gray-200" />
+        <div className="w-px h-5" style={{ background: BT.border }} />
         {getSourceBadge(profile.constraint_source)}
-        <button onClick={handleResolveProfile} disabled={resolving} className="ml-auto text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1" title="Re-resolve from base data">
+        <button onClick={handleResolveProfile} disabled={resolving} className="ml-auto text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1" title="Re-resolve from base data">
           <svg className={`h-3.5 w-3.5 ${resolving ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
@@ -808,14 +810,14 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
       </div>
 
       {hasResolutionErrors && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
+        <div className="border border-amber-800/50 rounded-lg px-4 py-3 flex items-start gap-3" style={{ background: BT.amberBg }}>
           <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
           </svg>
           <div>
-            <p className="text-sm font-medium text-amber-800">Resolution Warnings</p>
+            <p className="text-sm font-medium text-amber-300">Resolution Warnings</p>
             {profile.resolution_errors.map((err: any, i: number) => (
-              <p key={i} className="text-xs text-amber-700 mt-0.5">{err.step}: {err.message}</p>
+              <p key={i} className="text-xs text-amber-400 mt-0.5">{err.step}: {err.message}</p>
             ))}
           </div>
         </div>
@@ -837,17 +839,17 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const colWidth = cols.length > 0 ? `${Math.floor(82 / cols.length)}%` : '27%';
 
         return (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+          <div className="rounded-lg border overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
+            <div className="px-5 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Entitlement Comparison</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">AI-analyzed development capacity across entitlement paths</p>
+                  <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>Entitlement Comparison</h3>
+                  <p className="text-xs mt-0.5" style={{ color: BT.td }}>AI-analyzed development capacity across entitlement paths</p>
                 </div>
                 {(loadingRecs || loading) && !comparison && (
                   <div className="flex items-center gap-1.5">
                     <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-blue-500" />
-                    <span className="text-[10px] text-gray-400">{loadingRecs ? 'Analyzing paths...' : 'Loading profile...'}</span>
+                    <span className="text-[10px]" style={{ color: BT.td }}>{loadingRecs ? 'Analyzing paths...' : 'Loading profile...'}</span>
                   </div>
                 )}
               </div>
@@ -858,13 +860,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50/50">
+                      <tr className="border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
                         <th className="text-left px-4 py-2.5 w-[18%]" />
                         {[1, 2, 3, 4].map(i => (
                           <th key={i} className="text-center px-3 py-2.5" style={{ width: '20%' }}>
                             <div className="flex flex-col items-center gap-1">
-                              <div className={`h-4 w-20 bg-gray-200 rounded ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
-                              <div className={`h-3 w-28 bg-gray-100 rounded ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
+                              <div className={`h-4 w-20 bg-[#1e2a3d] rounded ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
+                              <div className={`h-3 w-28 bg-[#131920] rounded ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
                             </div>
                           </th>
                         ))}
@@ -872,20 +874,20 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                     </thead>
                     <tbody>
                       {['Zoning Code', 'Density', 'FAR', 'Max Units', 'GBA', 'Stories', 'Parking', 'Binding Constraint'].map((label, idx) => (
-                        <tr key={label} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}>
-                          <td className="px-4 py-2.5 text-xs font-medium text-gray-400">{label}</td>
+                        <tr key={label} className={`border-b border-[#1e2a3d] ${idx % 2 === 0 ? 'bg-[#0F1319]' : 'bg-[#131920]/30'}`}>
+                          <td className="px-4 py-2.5 text-xs font-medium" style={{ color: BT.td }}>{label}</td>
                           {[1, 2, 3, 4].map(i => (
                             <td key={i} className="px-3 py-2.5 text-center">
-                              <div className={`h-4 w-16 bg-gray-100 rounded mx-auto ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
+                              <div className={`h-4 w-16 bg-[#131920] rounded mx-auto ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
                             </td>
                           ))}
                         </tr>
                       ))}
                       <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
-                        <td className="px-4 py-3 text-xs font-bold text-gray-400">Select Path</td>
+                        <td className="px-4 py-3 text-xs font-bold" style={{ color: BT.td }}>Select Path</td>
                         {[1, 2, 3, 4].map(i => (
                           <td key={i} className="px-3 py-3 text-center">
-                            <div className={`h-7 w-16 bg-gray-200 rounded-lg mx-auto ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
+                            <div className={`h-7 w-16 bg-[#1e2a3d] rounded-lg mx-auto ${(loadingRecs || loading) ? 'animate-pulse' : ''}`} />
                           </td>
                         ))}
                       </tr>
@@ -893,13 +895,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </table>
                 </div>
                 {(loadingRecs || loading) ? (
-                  <div className="flex items-center justify-center py-4 border-t border-gray-100 gap-2">
+                  <div className="flex items-center justify-center py-4 border-t gap-2" style={{ borderColor: BT.border }}>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500" />
-                    <span className="text-xs text-gray-500">Computing entitlement paths across zoning constraints...</span>
+                    <span className="text-xs" style={{ color: BT.td }}>Computing entitlement paths across zoning constraints...</span>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-center py-4 border-t border-gray-100">
-                    <span className="text-xs text-gray-400">Entitlement paths will appear once zoning analysis completes.</span>
+                  <div className="flex items-center justify-center py-4 border-t" style={{ borderColor: BT.border }}>
+                    <span className="text-xs" style={{ color: BT.td }}>Entitlement paths will appear once zoning analysis completes.</span>
                   </div>
                 )}
               </div>
@@ -908,28 +910,28 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-200 bg-gray-50/50">
-                        <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[18%]" />
+                      <tr className="border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
+                        <th className="text-left px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[18%]" style={{ color: BT.td }} />
                         {cols.map((col: any) => (
                           <th key={col.key} className="text-center px-3 py-2.5" style={{ width: colWidth }}>
                             <div className="flex items-center justify-center gap-2">
-                              <span className="text-xs font-bold text-gray-900">{col.label}</span>
+                              <span className="text-xs font-bold" style={{ color: BT.text }}>{col.label}</span>
                               {col.risk && (
                                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
-                                  col.risk === 'Low' ? 'bg-green-50 text-green-700 border border-green-200' :
-                                  col.risk === 'Medium' ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-                                  'bg-red-50 text-red-700 border border-red-200'
+                                  col.risk === 'Low' ? 'bg-[#022c22] text-green-400 border border-green-800/50' :
+                                  col.risk === 'Medium' ? 'bg-[#1a1200] text-amber-400 border border-amber-800/50' :
+                                  'bg-[#1c0a0a] text-red-400 border border-red-800/50'
                                 }`}>{col.risk}</span>
                               )}
                             </div>
                             {col.isDesignOverlay && (
                               <div className="flex items-center justify-center mt-0.5">
-                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-purple-50 text-purple-700 border border-purple-200">Design Overlay</span>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-medium text-purple-400 border border-purple-800/50" style={{ background: BT.violBg }}>Design Overlay</span>
                               </div>
                             )}
                             <div className="flex items-center justify-center gap-2 mt-0.5">
                               {col.successRate && (
-                                <span className="text-[10px] text-gray-400">{col.successRate} success · {col.timeline}</span>
+                                <span className="text-[10px]" style={{ color: BT.td }}>{col.successRate} success · {col.timeline}</span>
                               )}
                               {col.municodeUrl && (
                                 <a
@@ -937,7 +939,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   title={`View ${col.zoningCode} ordinance source`}
-                                  className="text-[10px] text-blue-500 hover:text-blue-700 flex items-center gap-0.5"
+                                  className="text-[10px] text-blue-500 hover:text-blue-400 flex items-center gap-0.5"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -952,8 +954,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                       </tr>
                     </thead>
                     <tbody>
-                      <tr className="border-b border-gray-100 bg-blue-50/30">
-                        <td className="px-4 py-2 text-xs font-medium text-gray-600">Avg Unit Size</td>
+                      <tr className="border-b" style={{ borderColor: BT.border, background: BT.blueBg }}>
+                        <td className="px-4 py-2 text-xs font-medium" style={{ color: BT.tm }}>Avg Unit Size</td>
                         <td colSpan={cols.length} className="px-3 py-2">
                           <div className="flex items-center gap-1.5">
                             <input
@@ -963,31 +965,31 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                               step="50"
                               value={avgUnitSize}
                               onChange={(e) => setAvgUnitSize(Math.max(400, Math.min(2000, parseInt(e.target.value) || 900)))}
-                              className="w-16 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                              className="w-16 text-xs text-center border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400" style={{ borderColor: BT.borderL, background: BT.bgCard }}
                             />
-                            <span className="text-xs text-gray-500">SF</span>
+                            <span className="text-xs" style={{ color: BT.td }}>SF</span>
                             {avgUnitSize !== 900 && (
-                              <button onClick={() => setAvgUnitSize(900)} className="text-[10px] text-blue-500 hover:text-blue-700 ml-1">reset</button>
+                              <button onClick={() => setAvgUnitSize(900)} className="text-[10px] text-blue-500 hover:text-blue-400 ml-1">reset</button>
                             )}
                           </div>
                         </td>
                       </tr>
-                      <tr className="border-b border-gray-100 bg-blue-50/30">
-                        <td className="px-4 py-2 text-xs font-medium text-gray-600">Controls</td>
+                      <tr className="border-b" style={{ borderColor: BT.border, background: BT.blueBg }}>
+                        <td className="px-4 py-2 text-xs font-medium" style={{ color: BT.tm }}>Controls</td>
                         {cols.map((col: any) => (
                           <td key={col.key} className="px-3 py-2 text-center">
                             {col.key === 'variance' ? (
                               <div className="flex items-center justify-center gap-1">
-                                <span className="text-xs text-gray-500">+</span>
+                                <span className="text-xs" style={{ color: BT.td }}>+</span>
                                 <input
                                   type="number"
                                   min="0"
                                   max="100"
                                   value={variancePct}
                                   onChange={(e) => setVariancePct(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
-                                  className="w-14 text-xs text-center border border-gray-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                                  className="w-14 text-xs text-center border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400" style={{ borderColor: BT.borderL, background: BT.bgCard }}
                                 />
-                                <span className="text-xs text-gray-500">%</span>
+                                <span className="text-xs" style={{ color: BT.td }}>%</span>
                               </div>
                             ) : col.key === 'rezone' ? (
                               <div>
@@ -995,7 +997,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                   <select
                                     value={rezoneTargetCode}
                                     onChange={(e) => setRezoneTargetCode(e.target.value)}
-                                    className="w-full text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white appearance-none pr-6"
+                                    className="w-full text-xs border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400 appearance-none pr-6" style={{ borderColor: BT.borderL, background: BT.bgCard }}
                                   >
                                     <option value="">{rezone?.zoningCode ? `${rezone.zoningCode} (auto)` : 'Select code...'}</option>
                                     {mrcCodes.map((c: string) => (
@@ -1003,7 +1005,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                     ))}
                                     <option value="__custom__">Custom code...</option>
                                   </select>
-                                  <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none" style={{ color: BT.td }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                   </svg>
                                 </div>
@@ -1021,24 +1023,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 )}
                               </div>
                             ) : (
-                              <span className="text-xs text-gray-400">--</span>
+                              <span className="text-xs" style={{ color: BT.td }}>--</span>
                             )}
                           </td>
                         ))}
                       </tr>
                       {dynRows.map((row: any) => (
-                        <tr key={row.key} className="border-b border-gray-50 hover:bg-gray-50/50">
-                          <td className="px-4 py-2 text-xs font-medium text-gray-600">{row.label}</td>
+                        <tr key={row.key} className="border-b" style={{ borderColor: BT.border }}>
+                          <td className="px-4 py-2 text-xs font-medium" style={{ color: BT.tm }}>{row.label}</td>
                           {cols.map((col: any) => {
                             const cellVal = cells[col.key]?.[row.key] || '--';
                             const displayVal = row.key === 'bindingConstraint' && cellVal !== '--' ? getLimitingLabel(cellVal) : cellVal;
                             const deltaUnits = parseInt(cells[col.key]?.deltaUnits || '0');
                             const showDelta = col.key !== 'byRight' && row.key === 'maxUnits' && deltaUnits !== 0;
                             return (
-                              <td key={col.key} className={`px-3 py-2 text-center text-xs ${col.key === 'byRight' ? 'text-gray-900 font-medium' : 'text-gray-800'}`}>
+                              <td key={col.key} className={`px-3 py-2 text-center text-xs ${col.key === 'byRight' ? 'text-[#E8E6E1] font-medium' : 'text-[#C8C4BE]'}`}>
                                 {displayVal}
                                 {showDelta && (
-                                  <span className={`ml-1 text-[10px] ${deltaUnits > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  <span className={`ml-1 text-[10px] ${deltaUnits > 0 ? 'text-green-400' : 'text-red-400'}`}>
                                     {deltaUnits > 0 ? '+' : ''}{deltaUnits}%
                                   </span>
                                 )}
@@ -1048,24 +1050,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                         </tr>
                       ))}
                       {cols.some((col: any) => col.aiInsight) && (
-                        <tr className="border-t-2 border-blue-100 bg-blue-50/30">
+                        <tr className="border-t-2 border-blue-900" style={{ background: BT.blueBg }}>
                           <td className="px-4 py-3 align-top">
-                            <div className="text-xs font-semibold text-blue-700 tracking-wide">Agent Insights</div>
+                            <div className="text-xs font-semibold text-blue-400 tracking-wide">Agent Insights</div>
                             <div className="text-[10px] text-blue-400 mt-0.5 font-normal">ordinance + comps</div>
                           </td>
                           {cols.map((col: any) => (
                             <td key={col.key} className="px-3 py-3 text-left align-top">
                               {col.aiInsight ? (
-                                <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">{col.aiInsight}</p>
+                                <p className="text-xs leading-relaxed whitespace-pre-line" style={{ color: BT.tm }}>{col.aiInsight}</p>
                               ) : (
-                                <span className="text-xs text-gray-400">--</span>
+                                <span className="text-xs" style={{ color: BT.td }}>--</span>
                               )}
                             </td>
                           ))}
                         </tr>
                       )}
                       <tr className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50">
-                        <td className="px-4 py-3 text-xs font-bold text-gray-700">Select Path</td>
+                        <td className="px-4 py-3 text-xs font-bold" style={{ color: BT.tm }}>Select Path</td>
                         {cols.map((col: any, colIdx: number) => {
                           const isSelected = selectedColKey === col.key;
                           const pathId = colKeyToPathId(col.key);
@@ -1091,8 +1093,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                   isPersisted
                                     ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-300'
                                     : isSelected
-                                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                                    : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-50 hover:border-blue-400'
+                                    ? 'bg-[#0d1e3d] text-blue-400 border border-blue-700'
+                                    : 'bg-[#0F1319] text-blue-400 border border-blue-700 hover:bg-[#0d1e3d] hover:border-blue-600'
                                 } ${activatingScenario ? 'opacity-50 cursor-not-allowed' : ''}`}
                               >
                                 {activatingScenario && isSelected ? (
@@ -1119,34 +1121,34 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   </table>
                 </div>
                 {comparison?.aiSummary && (
-                  <div className="px-5 py-3 border-t border-gray-100 bg-blue-50/30">
+                  <div className="px-5 py-3 border-t" style={{ borderColor: BT.border, background: BT.blueBg }}>
                     <div className="flex items-start gap-2">
                       <span className="text-blue-500 mt-0.5 flex-shrink-0">
                         <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </span>
-                      <p className="text-[11px] text-gray-700 leading-relaxed">{comparison.aiSummary}</p>
+                      <p className="text-[11px] leading-relaxed" style={{ color: BT.tm }}>{comparison.aiSummary}</p>
                     </div>
                   </div>
                 )}
                 {development_path && (
-                  <div className="px-5 py-3 border-t border-blue-200 bg-blue-50">
+                  <div className="px-5 py-3 border-t border-blue-900/50" style={{ background: BT.blueBg }}>
                     <div className="flex items-center gap-3">
-                      <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-5 h-5 text-blue-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <div className="flex-1">
-                        <span className="text-xs font-bold text-blue-900">
+                        <span className="text-xs font-bold text-blue-300">
                           Path: {development_path.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                         </span>
-                        <span className="text-[10px] text-blue-600 ml-3">
+                        <span className="text-[10px] text-blue-400 ml-3">
                           Envelope sent to 3D Design, Strategy, ProForma, and Risk modules
                         </span>
                       </div>
                       <button
                         onClick={() => { selectDevelopmentPath(null, null); setSelectedColKey(null); }}
-                        className="text-[10px] text-blue-500 hover:text-blue-700 underline"
+                        className="text-[10px] text-blue-500 hover:text-blue-400 underline"
                       >
                         Clear
                       </button>
@@ -1161,30 +1163,30 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
 
 
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+      <div className="rounded-lg border overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
+        <div className="px-5 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Zoning Constraint Matrix</h3>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>Zoning Constraint Matrix</h3>
+              <p className="text-xs mt-0.5" style={{ color: BT.td }}>
                 All constraints in one view. Click the pencil icon to override values.
                 {profile.density_method === 'far_derived' && (
-                  <span className="ml-2 text-blue-600 font-medium">Density: FAR-derived (no cap)</span>
+                  <span className="ml-2 text-blue-400 font-medium">Density: FAR-derived (no cap)</span>
                 )}
               </p>
             </div>
             {enrichment?.limitingFactor && (
-              <span className="text-[10px] bg-red-50 text-red-600 px-2 py-1 rounded border border-red-200 font-medium flex-shrink-0">
+              <span className="text-[10px] text-red-400 px-2 py-1 rounded border border-red-800/50 font-medium flex-shrink-0" style={{ background: BT.redBg }}>
                 Controlling: {getLimitingLabel(enrichment.limitingFactor)}
               </span>
             )}
           </div>
           {isConditionalVariant && (
-            <div className="mt-2 bg-amber-50 border border-amber-200 rounded px-3 py-2 flex items-center gap-2">
+            <div className="mt-2 border border-amber-800/50 rounded px-3 py-2 flex items-center gap-2" style={{ background: BT.amberBg }}>
               <svg className="h-4 w-4 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
-              <p className="text-[11px] text-amber-800">
+              <p className="text-[11px] text-amber-300">
                 <span className="font-medium">Conditional Variant ({profile.base_district_code}):</span>{' '}
                 The "-C" suffix indicates a conditional ordinance. Standards inherited from base district. Review before finalizing.
               </p>
@@ -1194,13 +1196,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-gray-50/50">
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Constraint</th>
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Zoned Value</th>
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Citation</th>
-                <th className="text-right px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[15%]">Capacity</th>
-                <th className="text-left px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[35%]">Formula</th>
-                <th className="text-center px-4 py-2.5 text-gray-500 font-medium text-[10px] uppercase tracking-wider w-[10%]">Controlling</th>
+              <tr className="border-b" style={{ borderColor: BT.border, background: BT.bgPanel }}>
+                <th className="text-left px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[15%]" style={{ color: BT.td }}>Constraint</th>
+                <th className="text-left px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[15%]" style={{ color: BT.td }}>Zoned Value</th>
+                <th className="text-left px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[10%]" style={{ color: BT.td }}>Citation</th>
+                <th className="text-right px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[15%]" style={{ color: BT.td }}>Capacity</th>
+                <th className="text-left px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[35%]" style={{ color: BT.td }}>Formula</th>
+                <th className="text-center px-4 py-2.5 font-medium text-[10px] uppercase tracking-wider w-[10%]" style={{ color: BT.td }}>Controlling</th>
               </tr>
             </thead>
             <tbody>
@@ -1248,12 +1250,12 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   return (
                     <tr
                       key={row.field}
-                      className={`border-b border-gray-50 group hover:bg-gray-50/50 ${isControlling ? 'bg-red-50/40' : ''}`}
+                      className={`border-b border-[#1e2a3d] group hover:bg-[#131920]/50 ${isControlling ? 'bg-[#1c0a0a]/40' : ''}`}
                     >
                       <td className={`px-4 py-2.5 ${isControlling ? 'border-l-3 border-l-red-400' : ''}`}>
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-xs font-medium ${isControlling ? 'text-red-800' : 'text-gray-700'}`}>{row.label}</span>
-                          {isOverridden && <span className="text-[9px] text-purple-500 bg-purple-50 px-1 rounded">override</span>}
+                          <span className={`text-xs font-medium ${isControlling ? 'text-red-300' : 'text-[#9EA8B4]'}`}>{row.label}</span>
+                          {isOverridden && <span className="text-[9px] text-purple-500 px-1 rounded" style={{ background: BT.violBg }}>override</span>}
                         </div>
                       </td>
                       <td className="px-4 py-2.5">
@@ -1264,24 +1266,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                                 type="number"
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
-                                className="w-20 text-sm border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                className="w-20 text-sm border border-blue-700 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
                                 autoFocus
                               />
-                              <button onClick={() => handleSaveOverride(row.field)} className="text-green-600 hover:text-green-800">
+                              <button onClick={() => handleSaveOverride(row.field)} className="text-green-400 hover:text-green-300">
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                               </button>
-                              <button onClick={() => setEditingConstraint(null)} className="text-gray-400 hover:text-gray-600">
+                              <button onClick={() => setEditingConstraint(null)} className="" style={{ color: BT.td }}>
                                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                               </button>
                             </div>
                           ) : (
                             <>
-                              <span className={`text-sm font-semibold ${isOverridden ? 'text-purple-700' : isControlling ? 'text-red-800' : row.field === 'applied_far' ? 'text-blue-700' : 'text-gray-900'}`}>
+                              <span className={`text-sm font-semibold ${isOverridden ? 'text-purple-400' : isControlling ? 'text-red-300' : row.field === 'applied_far' ? 'text-blue-400' : 'text-[#E8E6E1]'}`}>
                                 {displayValue}
                               </span>
                               <button
                                 onClick={() => { setEditingConstraint(row.field); setEditValue(String(row.value ?? '')); }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity hover:text-blue-400" style={{ color: BT.td }}
                                 title="Override this constraint"
                               >
                                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1299,47 +1301,47 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                               e.stopPropagation();
                               if (source.sourceUrl) window.open(source.sourceUrl, '_blank', 'noopener,noreferrer');
                             }}
-                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer transition-colors"
+                            className="inline-flex items-center gap-0.5 text-[10px] font-medium text-violet-400 hover:text-violet-300 hover:underline cursor-pointer transition-colors"
                             title={source.sectionTitle ? `${source.sectionNumber} — ${source.sectionTitle}` : source.sectionNumber || ''}
                           >
                             §{source.sectionNumber}
                           </button>
                         ) : (
-                          <span className="text-[10px] text-gray-300">--</span>
+                          <span className="text-[10px]" style={{ color: BT.tm }}>--</span>
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {capacity != null ? (
-                          <span className={`text-xs font-semibold ${isControlling ? 'text-red-700' : 'text-gray-900'}`}>
+                          <span className={`text-xs font-semibold ${isControlling ? 'text-red-400' : 'text-[#E8E6E1]'}`}>
                             {formatNumber(capacity)} units
                           </span>
                         ) : (
-                          <span className="text-[10px] text-gray-300">--</span>
+                          <span className="text-[10px]" style={{ color: BT.tm }}>--</span>
                         )}
                       </td>
                       <td className="px-4 py-2.5">
                         {matchingCalc ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-500 font-mono truncate">{matchingCalc.formula}</span>
+                            <span className="text-[11px] font-mono truncate" style={{ color: BT.td }}>{matchingCalc.formula}</span>
                             {matchingCalc.sectionNumber && (
                               <button
                                 onClick={() => {
                                   if (matchingCalc.sourceUrl) window.open(matchingCalc.sourceUrl, '_blank', 'noopener,noreferrer');
                                 }}
-                                className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer flex-shrink-0"
+                                className="text-[10px] font-medium text-violet-400 hover:text-violet-300 hover:underline cursor-pointer flex-shrink-0"
                               >
                                 §{matchingCalc.sectionNumber}
                               </button>
                             )}
                           </div>
                         ) : (
-                          <span className="text-[10px] text-gray-300">--</span>
+                          <span className="text-[10px]" style={{ color: BT.tm }}>--</span>
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         {isControlling && (
-                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100">
-                            <svg className="h-3 w-3 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full" style={{ background: BT.redBg }}>
+                            <svg className="h-3 w-3 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                             </svg>
                           </span>
@@ -1349,21 +1351,21 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
                   );
                 });
               })()}
-              <tr className="bg-gray-50/50">
+              <tr style={{ background: BT.bgPanel }}>
                 <td className="px-4 py-2.5">
-                  <span className="text-xs font-medium text-gray-700">Setbacks</span>
+                  <span className="text-xs font-medium" style={{ color: BT.tm }}>Setbacks</span>
                 </td>
                 <td className="px-4 py-2.5" colSpan={4}>
                   <div className="flex items-center gap-4 flex-wrap">
-                    <span className="text-xs text-gray-600">Front: <span className="font-semibold text-gray-900">{profile.setback_front_ft ?? '--'} ft</span></span>
-                    <span className="text-xs text-gray-600">Side: <span className="font-semibold text-gray-900">{profile.setback_side_ft ?? '--'} ft</span></span>
-                    <span className="text-xs text-gray-600">Rear: <span className="font-semibold text-gray-900">{profile.setback_rear_ft ?? '--'} ft</span></span>
+                    <span className="text-xs" style={{ color: BT.tm }}>Front: <span className="font-semibold" style={{ color: BT.text }}>{profile.setback_front_ft ?? '--'} ft</span></span>
+                    <span className="text-xs" style={{ color: BT.tm }}>Side: <span className="font-semibold" style={{ color: BT.text }}>{profile.setback_side_ft ?? '--'} ft</span></span>
+                    <span className="text-xs" style={{ color: BT.tm }}>Rear: <span className="font-semibold" style={{ color: BT.text }}>{profile.setback_rear_ft ?? '--'} ft</span></span>
                     {enrichment?.sources?.frontSetback?.sectionNumber && (
                       <button
                         onClick={() => {
                           if (enrichment.sources.frontSetback.sourceUrl) window.open(enrichment.sources.frontSetback.sourceUrl, '_blank', 'noopener,noreferrer');
                         }}
-                        className="text-[10px] font-medium text-violet-600 hover:text-violet-800 hover:underline cursor-pointer"
+                        className="text-[10px] font-medium text-violet-400 hover:text-violet-300 hover:underline cursor-pointer"
                       >
                         §{enrichment.sources.frontSetback.sectionNumber}
                       </button>
@@ -1376,8 +1378,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </table>
         </div>
         {hasHeightBuffer && (
-          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50">
-            <p className="text-xs text-blue-800">
+          <div className="border-t px-5 py-2.5" style={{ borderColor: BT.border, background: BT.blueBg }}>
+            <p className="text-xs text-blue-300">
               <span className="font-medium">Height Buffer Rule:</span>{' '}
               {profile.max_height_ft} ft within {profile.height_buffer_ft} ft of residential districts;{' '}
               {profile.height_beyond_buffer_ft} ft beyond
@@ -1385,8 +1387,8 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
         {enrichment?.insights?.controllingFactor && (
-          <div className="border-t border-gray-100 px-5 py-2.5 bg-blue-50/50">
-            <p className="text-xs text-blue-800">{enrichment.insights.controllingFactor}</p>
+          <div className="border-t px-5 py-2.5" style={{ borderColor: BT.border, background: BT.blueBg }}>
+            <p className="text-xs text-blue-300">{enrichment.insights.controllingFactor}</p>
           </div>
         )}
       </div>

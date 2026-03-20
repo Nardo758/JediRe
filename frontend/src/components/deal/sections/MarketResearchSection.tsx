@@ -64,7 +64,7 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
   if (moduleLoading) {
     return (
       <div className="animate-pulse space-y-4">
-        <div className="h-32 bg-gray-200 rounded-lg"></div>
+        <div className="h-32 bg-[#1e2a3d] rounded-lg"></div>
       </div>
     );
   }
@@ -93,7 +93,7 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-          <p className="text-sm text-gray-600">Loading market research...</p>
+          <p className="text-sm text-[#9EA8B4]">Loading market research...</p>
         </div>
       </div>
     );
@@ -101,15 +101,15 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+      <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6">
         <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
           <div>
-            <h3 className="font-semibold text-red-900">Failed to load market data</h3>
-            <p className="text-sm text-red-700 mt-1">{error}</p>
+            <h3 className="font-semibold text-red-300">Failed to load market data</h3>
+            <p className="text-sm text-red-400 mt-1">{error}</p>
             <button
               onClick={loadMarketReport}
-              className="mt-3 text-sm font-medium text-red-600 hover:text-red-700"
+              className="mt-3 text-sm font-medium text-red-400 hover:text-red-400"
             >
               Try again →
             </button>
@@ -123,8 +123,8 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
     return (
       <div className="text-center py-12">
         <Building2 className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-        <h3 className="font-semibold text-gray-900 mb-2">No Market Data Available</h3>
-        <p className="text-sm text-gray-600 mb-4">
+        <h3 className="font-semibold text-[#E8E6E1] mb-2">No Market Data Available</h3>
+        <p className="text-sm text-[#9EA8B4] mb-4">
           Market research requires deal location data.
         </p>
         <button
@@ -140,40 +140,40 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
   return (
     <div className="space-y-6">
       {/* Market Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-200">
-        <h3 className="text-xl font-bold text-gray-900 mb-2">{report.submarket_name}</h3>
-        <p className="text-sm text-gray-600">Market intelligence summary for this deal's location</p>
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6 border border-blue-900/50">
+        <h3 className="text-xl font-bold text-[#E8E6E1] mb-2">{report.submarket_name}</h3>
+        <p className="text-sm text-[#9EA8B4]">Market intelligence summary for this deal's location</p>
       </div>
 
       {/* Supply Analysis */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
         <div className="flex items-center gap-3 mb-4">
           <Building2 className="w-6 h-6 text-blue-600" />
-          <h4 className="text-lg font-semibold text-gray-900">Supply Analysis</h4>
+          <h4 className="text-lg font-semibold text-[#E8E6E1]">Supply Analysis</h4>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           <div>
-            <div className="text-sm text-gray-600 mb-1">Existing Units</div>
-            <div className="text-2xl font-bold text-gray-900">
+            <div className="text-sm text-[#9EA8B4] mb-1">Existing Units</div>
+            <div className="text-2xl font-bold text-[#E8E6E1]">
               {report.supply_analysis.existing_total_units.toLocaleString()}
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Pipeline</div>
+            <div className="text-sm text-[#9EA8B4] mb-1">Pipeline</div>
             <div className="text-2xl font-bold text-orange-600">
               {report.supply_analysis.near_term_pipeline_total.toLocaleString()}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-[#6B7585] mt-1">
               {report.supply_analysis.pipeline_ratio.toFixed(1)}% of existing
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Future Buildable</div>
+            <div className="text-sm text-[#9EA8B4] mb-1">Future Buildable</div>
             <div className="text-2xl font-bold text-purple-600">
               {report.supply_analysis.realistic_buildable_units.toLocaleString()}
             </div>
-            <div className="text-xs text-gray-500 mt-1">
+            <div className="text-xs text-[#6B7585] mt-1">
               ~{report.supply_analysis.estimated_years_to_buildout.toFixed(1)} years
             </div>
           </div>
@@ -181,33 +181,33 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
       </div>
 
       {/* Demand Indicators */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
         <div className="flex items-center gap-3 mb-4">
           <TrendingUp className="w-6 h-6 text-green-600" />
-          <h4 className="text-lg font-semibold text-gray-900">Demand Indicators</h4>
+          <h4 className="text-lg font-semibold text-[#E8E6E1]">Demand Indicators</h4>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <div className="text-sm text-gray-600 mb-1">Occupancy</div>
+            <div className="text-sm text-[#9EA8B4] mb-1">Occupancy</div>
             <div className="text-2xl font-bold text-green-600">
               {report.demand_indicators.current_occupancy.toFixed(1)}%
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Rent Growth</div>
+            <div className="text-sm text-[#9EA8B4] mb-1">Rent Growth</div>
             <div className="text-2xl font-bold text-blue-600">
               +{report.demand_indicators.rent_annual_growth.toFixed(1)}%
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Units/1K People</div>
-            <div className="text-2xl font-bold text-gray-900">
+            <div className="text-sm text-[#9EA8B4] mb-1">Units/1K People</div>
+            <div className="text-2xl font-bold text-[#E8E6E1]">
               {report.demand_indicators.units_per_1000_people.toFixed(0)}
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Rent/Income</div>
+            <div className="text-sm text-[#9EA8B4] mb-1">Rent/Income</div>
             <div className="text-2xl font-bold text-purple-600">
               {(report.demand_indicators.rent_to_income_ratio * 100).toFixed(0)}%
             </div>
@@ -216,28 +216,28 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
       </div>
 
       {/* Employment Impact */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
         <div className="flex items-center gap-3 mb-4">
-          <Briefcase className="w-6 h-6 text-indigo-600" />
-          <h4 className="text-lg font-semibold text-gray-900">Employment Impact</h4>
+          <Briefcase className="w-6 h-6 text-indigo-400" />
+          <h4 className="text-lg font-semibold text-[#E8E6E1]">Employment Impact</h4>
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <div className="text-sm text-gray-600 mb-1">New Jobs (News)</div>
-            <div className="text-2xl font-bold text-indigo-600">
+            <div className="text-sm text-[#9EA8B4] mb-1">New Jobs (News)</div>
+            <div className="text-2xl font-bold text-indigo-400">
               +{report.employment_impact.total_jobs_from_news.toLocaleString()}
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Housing Demand</div>
+            <div className="text-sm text-[#9EA8B4] mb-1">Housing Demand</div>
             <div className="text-2xl font-bold text-green-600">
               {report.employment_impact.units_demand_from_news.toLocaleString()}
             </div>
           </div>
           <div>
-            <div className="text-sm text-gray-600 mb-1">Jobs-to-Units</div>
-            <div className="text-2xl font-bold text-gray-900">
+            <div className="text-sm text-[#9EA8B4] mb-1">Jobs-to-Units</div>
+            <div className="text-2xl font-bold text-[#E8E6E1]">
               {report.employment_impact.jobs_to_units_ratio.toFixed(2)}
             </div>
           </div>
@@ -245,17 +245,17 @@ export function MarketResearchSection({ deal }: MarketResearchSectionProps) {
       </div>
 
       {/* Link to Full Research */}
-      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+      <div className="bg-[#0F1319] rounded-lg p-4 border border-[#1e2a3d]">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="font-medium text-gray-900">View Full Market Research</h4>
-            <p className="text-sm text-gray-600 mt-1">
+            <h4 className="font-medium text-[#E8E6E1]">View Full Market Research</h4>
+            <p className="text-sm text-[#9EA8B4] mt-1">
               Explore comprehensive market analysis across all your markets
             </p>
           </div>
           <button
             onClick={() => window.location.href = '/market-data'}
-            className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm font-medium"
+            className="px-4 py-2 bg-[#0F1319] border border-[#253347] rounded-lg hover:bg-[#0F1319] flex items-center gap-2 text-sm font-medium"
           >
             View Research
             <ArrowRight className="w-4 h-4" />

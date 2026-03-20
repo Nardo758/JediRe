@@ -177,7 +177,7 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">Deal Status & Lifecycle</h2>
+          <h2 className="text-lg font-semibold text-[#E8E6E1]">Deal Status & Lifecycle</h2>
           <p className="text-sm text-slate-500">Project progress tracking and health monitoring</p>
         </div>
         <div className="flex items-center gap-2">
@@ -185,7 +185,7 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wide ${
               dataSource === 'live'
                 ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300'
-                : 'bg-amber-100 text-amber-700 ring-1 ring-amber-300'
+                : 'bg-[#1a1200] text-amber-400 ring-1 ring-amber-300'
             }`}>
               {dataSource === 'live' ? (
                 <><Database size={10} /> LIVE DATA</>
@@ -194,21 +194,21 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
               )}
             </span>
           )}
-          <button className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
+          <button className="px-3 py-1.5 text-xs font-medium bg-[#131920] text-slate-700 rounded-lg hover:bg-slate-200">
             Export Report
           </button>
-          <button className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">
+          <button className="px-3 py-1.5 text-xs font-medium bg-[#131920] text-slate-700 rounded-lg hover:bg-slate-200">
             Share Status
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-900">Project Lifecycle</h3>
+          <h3 className="text-sm font-semibold text-[#E8E6E1]">Project Lifecycle</h3>
           <span className="text-sm text-slate-600">Overall: <strong>{overallProgress}%</strong></span>
         </div>
-        <div className="w-full bg-slate-100 rounded-full h-2.5 mb-6">
+        <div className="w-full bg-[#131920] rounded-full h-2.5 mb-6">
           <div className="bg-blue-500 h-2.5 rounded-full transition-all" style={{ width: `${overallProgress}%` }} />
         </div>
         <div className="flex items-center justify-between gap-2">
@@ -217,13 +217,13 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
               <button
                 onClick={() => setExpandedPhase(expandedPhase === phase.id ? null : phase.id)}
                 className={`flex flex-col items-center gap-2 px-3 py-2 rounded-lg transition-all flex-1 ${
-                  expandedPhase === phase.id ? 'bg-blue-50 ring-1 ring-blue-200' : 'hover:bg-slate-50'
+                  expandedPhase === phase.id ? 'bg-[#0d1e3d] ring-1 ring-blue-200' : 'hover:bg-[#0F1319]'
                 }`}
               >
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                  phase.status === 'complete' ? 'bg-green-100 text-green-600' :
-                  phase.status === 'active' ? 'bg-blue-100 text-blue-600' :
-                  'bg-slate-100 text-slate-400'
+                  phase.status === 'complete' ? 'bg-[#022c22] text-green-600' :
+                  phase.status === 'active' ? 'bg-[#0d1e3d] text-blue-600' :
+                  'bg-[#131920] text-slate-400'
                 }`}>
                   {phase.status === 'complete' ? <CheckCircle size={20} /> :
                    phase.status === 'active' ? `${phase.progress}%` :
@@ -248,7 +248,7 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
 
       <div className="grid grid-cols-4 gap-4">
         {healthIndicators.map(indicator => (
-          <div key={indicator.label} className="bg-white rounded-xl border border-slate-200 p-4">
+          <div key={indicator.label} className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-4">
             <div className="flex items-center gap-2 mb-1">
               {getStatusIcon(indicator.status)}
               <span className="text-sm font-medium text-slate-700">{indicator.label}</span>
@@ -264,13 +264,13 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
       </div>
 
       {expandedPhase === 'construction' && (
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <h3 className="text-sm font-semibold text-slate-900 mb-4">Construction Phase Details</h3>
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+          <h3 className="text-sm font-semibold text-[#E8E6E1] mb-4">Construction Phase Details</h3>
           <div className="space-y-3">
             {constructionPhases.map(phase => (
               <div key={phase.name} className="flex items-center gap-4">
                 <span className="text-sm text-slate-700 w-40 flex-shrink-0">{phase.name}</span>
-                <div className="flex-1 bg-slate-100 rounded-full h-2">
+                <div className="flex-1 bg-[#131920] rounded-full h-2">
                   <div
                     className={`h-2 rounded-full transition-all ${
                       phase.progress === 100 ? 'bg-green-500' :
@@ -294,8 +294,8 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-slate-200 p-6">
-        <h3 className="text-sm font-semibold text-slate-900 mb-4">Recent Milestones</h3>
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+        <h3 className="text-sm font-semibold text-[#E8E6E1] mb-4">Recent Milestones</h3>
         <div className="space-y-3">
           {recentMilestones.map((milestone, i) => (
             <div key={i} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
@@ -306,8 +306,8 @@ export const DealStatusSection: React.FC<DealStatusSectionProps> = ({ deal }) =>
               }`} />
               <span className="text-sm text-slate-700">{milestone.event}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full ml-auto ${
-                milestone.type === 'construction' ? 'bg-blue-50 text-blue-600' :
-                milestone.type === 'financial' ? 'bg-green-50 text-green-600' : 'bg-purple-50 text-purple-600'
+                milestone.type === 'construction' ? 'bg-[#0d1e3d] text-blue-600' :
+                milestone.type === 'financial' ? 'bg-[#022c22] text-green-600' : 'bg-[#1a0d3d] text-purple-600'
               }`}>
                 {milestone.type}
               </span>

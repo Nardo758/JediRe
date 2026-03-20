@@ -1054,7 +1054,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
         <KVCard label="Max Units (Zoned)" value={maxUnits > 0 ? `${maxUnits}u` : '—'} valueColor="text-cyan-600" note={`${lotSize}`} compact />
         <KVCard label="FAR" value={farValue} note={maxUnits > 0 && activeScenario?.parkingRequired ? `Parking: ${(activeScenario.parkingRequired / maxUnits).toFixed(1)} / unit` : undefined} compact />
-        <KVCard label="Entitlement ETA" value={entitlementBenchmarks?.p50 ? `${entitlementBenchmarks.p50}-${entitlementBenchmarks.p75 || entitlementBenchmarks.p50 + 2} mo` : '—'} valueColor="text-amber-600" note={entitlementBenchmarks?.p50 ? `Based on ${entitlementBenchmarks.municipality || 'local'} benchmarks` : 'No benchmark data'} compact />
+        <KVCard label="Entitlement ETA" value={entitlementBenchmarks?.p50 ? `${entitlementBenchmarks.p50}-${entitlementBenchmarks.p75 || entitlementBenchmarks.p50 + 2} mo` : '—'} valueColor="text-amber-400" note={entitlementBenchmarks?.p50 ? `Based on ${entitlementBenchmarks.municipality || 'local'} benchmarks` : 'No benchmark data'} compact />
         <KVCard label="Target IRR (BTS)" value={buildingConfig.btsIrr} valueColor="text-emerald-600" note={`${buildingConfig.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
         <KVCard label="TDC / Unit" value={buildingConfig.tdcUnit} note={`${buildingConfig.units} planned units`} compact />
         <KVCard label="Zoning" value={zoningProfile?.baseDistrictCode || '—'} valueColor="text-stone-700" compact />
@@ -1103,7 +1103,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         right={
           <button
             onClick={() => navigateToTab('strategy')}
-            className="text-[10px] text-violet-600 hover:text-violet-700 font-medium"
+            className="text-[10px] text-violet-600 hover:text-violet-400 font-medium"
           >
             Edit in 3D Design →
           </button>

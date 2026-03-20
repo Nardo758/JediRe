@@ -90,17 +90,17 @@ export const TimelineTabExample: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0F1319]">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-[#0F1319] border-b border-[#1e2a3d]">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">{deal.name}</h1>
-          <p className="text-sm text-gray-500">{deal.propertyAddress}</p>
+          <h1 className="text-2xl font-bold text-[#E8E6E1] mb-1">{deal.name}</h1>
+          <p className="text-sm text-[#6B7585]">{deal.propertyAddress}</p>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-[#0F1319] border-b border-[#1e2a3d]">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex gap-1">
             {tabs.map(tab => (
@@ -109,8 +109,8 @@ export const TimelineTabExample: React.FC = () => {
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
                   activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600 bg-blue-50'
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'border-blue-600 text-blue-600 bg-[#0d1e3d]'
+                    : 'border-transparent text-[#9EA8B4] hover:text-[#E8E6E1] hover:bg-[#0F1319]'
                 }`}
               >
                 <span className="mr-2">{tab.icon}</span>
@@ -124,9 +124,9 @@ export const TimelineTabExample: React.FC = () => {
       {/* Tab Content */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         {activeTab === 'overview' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
             <h2 className="text-lg font-semibold mb-4">Overview Content</h2>
-            <p className="text-gray-600">Overview section content here...</p>
+            <p className="text-[#9EA8B4]">Overview section content here...</p>
           </div>
         )}
         
@@ -135,16 +135,16 @@ export const TimelineTabExample: React.FC = () => {
         )}
         
         {activeTab === 'financial' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
             <h2 className="text-lg font-semibold mb-4">Financial Content</h2>
-            <p className="text-gray-600">Financial section content here...</p>
+            <p className="text-[#9EA8B4]">Financial section content here...</p>
           </div>
         )}
         
         {activeTab === 'market' && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-6">
             <h2 className="text-lg font-semibold mb-4">Market Content</h2>
-            <p className="text-gray-600">Market section content here...</p>
+            <p className="text-[#9EA8B4]">Market section content here...</p>
           </div>
         )}
       </div>
@@ -185,13 +185,13 @@ export const TimelineWithActionsExample: React.FC = () => {
       {/* Custom Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{deal.name} - Timeline</h1>
-          <p className="text-sm text-gray-500 mt-1">Track milestones and critical deadlines</p>
+          <h1 className="text-2xl font-bold text-[#E8E6E1]">{deal.name} - Timeline</h1>
+          <p className="text-sm text-[#6B7585] mt-1">Track milestones and critical deadlines</p>
         </div>
         <div className="flex gap-3">
           <button
             onClick={handleExport}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-[#9EA8B4] bg-[#0F1319] border border-[#253347] rounded-lg hover:bg-[#0F1319] transition-colors"
           >
             📥 Export Timeline
           </button>
@@ -251,18 +251,18 @@ export const DualTimelineExample: React.FC = () => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Acquisition Mode */}
         <div>
-          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h2 className="text-lg font-semibold text-blue-900">🎯 Acquisition Mode</h2>
-            <p className="text-sm text-blue-700 mt-1">Pre-close deal tracking</p>
+          <div className="mb-4 p-4 bg-[#0d1e3d] border border-blue-900/50 rounded-lg">
+            <h2 className="text-lg font-semibold text-blue-300">🎯 Acquisition Mode</h2>
+            <p className="text-sm text-blue-400 mt-1">Pre-close deal tracking</p>
           </div>
           <TimelineSection deal={acquisitionDeal} />
         </div>
 
         {/* Performance Mode */}
         <div>
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h2 className="text-lg font-semibold text-green-900">🏢 Performance Mode</h2>
-            <p className="text-sm text-green-700 mt-1">Post-close asset management</p>
+          <div className="mb-4 p-4 bg-[#022c22] border border-green-800/50 rounded-lg">
+            <h2 className="text-lg font-semibold text-green-300">🏢 Performance Mode</h2>
+            <p className="text-sm text-green-400 mt-1">Post-close asset management</p>
           </div>
           <TimelineSection deal={performanceDeal} />
         </div>
@@ -290,7 +290,7 @@ export const DealSectionTimelineExample: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0F1319]">
       {/* Deal Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-6 py-8">
@@ -307,7 +307,7 @@ export const DealSectionTimelineExample: React.FC = () => {
                 <span>🏢 {deal.propertyCount} properties</span>
               </div>
             </div>
-            <div className="px-4 py-2 bg-white bg-opacity-20 rounded-lg">
+            <div className="px-4 py-2 bg-[#0F1319] bg-opacity-20 rounded-lg">
               <div className="text-xs uppercase font-semibold">Status</div>
               <div className="text-lg font-bold capitalize">{deal.status}</div>
             </div>

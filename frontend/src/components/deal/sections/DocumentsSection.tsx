@@ -44,8 +44,8 @@ export function DocumentsSection({ deal }: DocumentsSectionProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <FileText className="w-5 h-5 text-blue-600" />
-          <h3 className="text-lg font-semibold text-gray-900">Documents</h3>
-          <span className="px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded-full">
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Documents</h3>
+          <span className="px-2 py-0.5 text-xs font-medium bg-[#131920] text-[#9EA8B4] rounded-full">
             {documents.length}
           </span>
         </div>
@@ -63,14 +63,14 @@ export function DocumentsSection({ deal }: DocumentsSectionProps) {
             placeholder="Search documents..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2 text-sm border border-[#1e2a3d] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
         <div className="relative">
           <select
             value={selectedCategory}
             onChange={(e) => setSelectedCategory(e.target.value)}
-            className="appearance-none pl-3 pr-8 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white cursor-pointer"
+            className="appearance-none pl-3 pr-8 py-2 text-sm border border-[#1e2a3d] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[#0F1319] cursor-pointer"
           >
             {DOCUMENT_CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>{cat}</option>
@@ -81,45 +81,45 @@ export function DocumentsSection({ deal }: DocumentsSectionProps) {
       </div>
 
       {filteredDocs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-200 rounded-lg">
+        <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-[#1e2a3d] rounded-lg">
           <FolderOpen className="w-12 h-12 text-gray-300 mb-3" />
-          <p className="text-sm font-medium text-gray-500">No documents yet</p>
+          <p className="text-sm font-medium text-[#6B7585]">No documents yet</p>
           <p className="text-xs text-gray-400 mt-1">
             Upload documents related to this deal
           </p>
-          <button className="mt-4 flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors">
+          <button className="mt-4 flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 border border-blue-900/50 rounded-lg hover:bg-[#0d1e3d] transition-colors">
             <Plus className="w-4 h-4" />
             Add First Document
           </button>
         </div>
       ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="border border-[#1e2a3d] rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Uploaded</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              <tr className="bg-[#0F1319] border-b border-[#1e2a3d]">
+                <th className="text-left px-4 py-3 text-xs font-medium text-[#6B7585] uppercase tracking-wider">Name</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[#6B7585] uppercase tracking-wider">Category</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[#6B7585] uppercase tracking-wider">Size</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-[#6B7585] uppercase tracking-wider">Uploaded</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-[#6B7585] uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredDocs.map((doc) => (
-                <tr key={doc.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={doc.id} className="hover:bg-[#0F1319] transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <File className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-900">{doc.name}</span>
+                      <span className="text-sm font-medium text-[#E8E6E1]">{doc.name}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-600 rounded">
+                    <span className="px-2 py-1 text-xs font-medium bg-[#131920] text-[#9EA8B4] rounded">
                       {doc.category}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{doc.size}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
+                  <td className="px-4 py-3 text-sm text-[#6B7585]">{doc.size}</td>
+                  <td className="px-4 py-3 text-sm text-[#6B7585]">
                     {doc.uploadedAt.toLocaleDateString()}
                   </td>
                   <td className="px-4 py-3">
@@ -130,7 +130,7 @@ export function DocumentsSection({ deal }: DocumentsSectionProps) {
                       <button className="p-1 text-gray-400 hover:text-green-600 transition-colors">
                         <Download className="w-4 h-4" />
                       </button>
-                      <button className="p-1 text-gray-400 hover:text-red-600 transition-colors">
+                      <button className="p-1 text-gray-400 hover:text-red-400 transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>

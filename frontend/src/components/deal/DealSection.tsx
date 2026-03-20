@@ -33,18 +33,18 @@ export const DealSection: React.FC<DealSectionProps> = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md">
+    <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d] overflow-hidden transition-all duration-200 hover:shadow-md">
       {/* Header - Always visible, clickable */}
       <button
         onClick={toggleExpanded}
-        className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-[#0F1319] transition-colors"
       >
         <div className="flex items-center gap-3">
           {/* Icon */}
           <div className="text-2xl">{icon}</div>
           
           {/* Title */}
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-lg font-semibold text-[#E8E6E1]">{title}</h2>
           
           {/* Badges */}
           <div className="flex items-center gap-2">
@@ -76,7 +76,7 @@ export const DealSection: React.FC<DealSectionProps> = ({
         }`}
         style={{ overflow: isExpanded ? 'visible' : 'hidden' }}
       >
-        <div className="px-6 py-4 border-t border-gray-100">
+        <div className="px-6 py-4 border-t border-[#1e2a3d]">
           {children}
         </div>
       </div>

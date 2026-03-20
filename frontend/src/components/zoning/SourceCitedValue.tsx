@@ -43,12 +43,12 @@ export default function SourceCitedValue({
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex items-baseline gap-1.5 flex-wrap">
-        <span className="text-xs text-gray-500">{label}</span>
+        <span className="text-xs text-[#6B7585]">{label}</span>
         {hasSource && (
           <button
             onClick={handleSourceClick}
             className={`inline-flex items-center gap-0.5 text-[10px] font-medium ${
-              isMunicode ? 'text-violet-600 hover:text-violet-800' : 'text-indigo-600 hover:text-indigo-800'
+              isMunicode ? 'text-violet-600 hover:text-violet-800' : 'text-indigo-400 hover:text-indigo-800'
             } hover:underline cursor-pointer transition-colors`}
             title={sectionTitle ? `${sectionNumber} — ${sectionTitle}` : sectionNumber}
           >
@@ -60,7 +60,7 @@ export default function SourceCitedValue({
       </div>
 
       <div className="flex items-baseline gap-1">
-        <span className="text-sm font-semibold text-gray-900">
+        <span className="text-sm font-semibold text-[#E8E6E1]">
           {displayValue}
         </span>
         {unit && (

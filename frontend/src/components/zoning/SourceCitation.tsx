@@ -21,19 +21,19 @@ function isMunicodeUrl(url?: string): boolean {
 }
 
 const SOURCE_CONFIG: Record<SourceType, { icon: React.ElementType; emoji: string; label: string; bg: string; text: string; border: string }> = {
-  code: { icon: FileText, emoji: '', label: 'Code', bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200' },
-  gis: { icon: Map, emoji: '', label: 'GIS', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-  calculated: { icon: BarChart3, emoji: '', label: 'Calculated', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-  record: { icon: FolderOpen, emoji: '', label: 'Record', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  code: { icon: FileText, emoji: '', label: 'Code', bg: 'bg-[#0d1020]', text: 'text-indigo-400', border: 'border-indigo-800/50' },
+  gis: { icon: Map, emoji: '', label: 'GIS', bg: 'bg-[#022c22]', text: 'text-emerald-400', border: 'border-emerald-800/50' },
+  calculated: { icon: BarChart3, emoji: '', label: 'Calculated', bg: 'bg-[#1a1200]', text: 'text-amber-400', border: 'border-amber-800/50' },
+  record: { icon: FolderOpen, emoji: '', label: 'Record', bg: 'bg-[#0d1e3d]', text: 'text-blue-400', border: 'border-blue-900/50' },
 };
 
 export default function SourceCitation({ section, url, sourceType, lastVerified, fullText, crossReferences, onOpenPanel }: SourceCitationProps) {
   const isMunicode = isMunicodeUrl(url);
   const config = SOURCE_CONFIG[sourceType];
   const Icon = isMunicode ? BookOpen : config.icon;
-  const bgClass = isMunicode ? 'bg-violet-50' : config.bg;
-  const textClass = isMunicode ? 'text-violet-700' : config.text;
-  const borderClass = isMunicode ? 'border-violet-200' : config.border;
+  const bgClass = isMunicode ? 'bg-[#1a0d3d]' : config.bg;
+  const textClass = isMunicode ? 'text-violet-400' : config.text;
+  const borderClass = isMunicode ? 'border-violet-800/50' : config.border;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -60,7 +60,7 @@ export default function SourceCitation({ section, url, sourceType, lastVerified,
 export function ViewSourceBadge({ section, url, sourceType, lastVerified, fullText, crossReferences, onOpenPanel }: SourceCitationProps) {
   const isMunicode = isMunicodeUrl(url);
   const config = SOURCE_CONFIG[sourceType];
-  const textClass = isMunicode ? 'text-violet-700' : config.text;
+  const textClass = isMunicode ? 'text-violet-400' : config.text;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -89,7 +89,7 @@ export function MunicodeLink({ url, label }: { url: string; label?: string }) {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-violet-700 bg-violet-50 border border-violet-200 rounded-md hover:bg-violet-100 transition-colors"
+      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-violet-400 bg-[#1a0d3d] border border-violet-800/50 rounded-md hover:bg-[#241355] transition-colors"
     >
       <BookOpen className="w-3 h-3" />
       <span>{label || 'View on Municode'}</span>

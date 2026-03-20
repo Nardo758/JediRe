@@ -78,15 +78,15 @@ const ComplianceIcon: React.FC<{ status: 'compliant' | 'warning' | 'violation' }
     case 'warning':
       return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
     case 'violation':
-      return <XCircle className="w-5 h-5 text-red-600" />;
+      return <XCircle className="w-5 h-5 text-red-400" />;
   }
 };
 
 const ComplianceStatusBadge: React.FC<{ status: 'compliant' | 'warning' | 'violation' }> = ({ status }) => {
   const styles = {
-    compliant: 'bg-green-100 text-green-800 border-green-200',
+    compliant: 'bg-[#022c22] text-green-300 border-green-800/50',
     warning: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    violation: 'bg-red-100 text-red-800 border-red-200',
+    violation: 'bg-[#1c0a0a] text-red-300 border-red-800/50',
   };
   
   const labels = {
@@ -163,30 +163,30 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
         <div className="max-w-6xl mx-auto space-y-6">
           {/* Header */}
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Development Analysis</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 className="text-2xl font-bold text-[#E8E6E1]">Development Analysis</h2>
+            <p className="text-sm text-[#9EA8B4] mt-1">
               Zoning capacity and compliance analysis for {deal.name}
             </p>
           </div>
 
           {/* Loading State */}
           {loading && (
-            <div className="bg-white rounded-lg shadow p-12">
+            <div className="bg-[#0F1319] rounded-lg shadow p-12">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Analyzing zoning capacity...</p>
+                <p className="text-[#9EA8B4]">Analyzing zoning capacity...</p>
               </div>
             </div>
           )}
 
           {/* Error State */}
           {error && !loading && (
-            <div className="bg-red-50 rounded-lg border border-red-200 p-6">
+            <div className="bg-[#1c0a0a] rounded-lg border border-red-800/50 p-6">
               <div className="flex items-start gap-3">
-                <XCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                <XCircle className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h3 className="font-semibold text-red-900 mb-1">Failed to Load Analysis</h3>
-                  <p className="text-sm text-red-700">{error}</p>
+                  <h3 className="font-semibold text-red-300 mb-1">Failed to Load Analysis</h3>
+                  <p className="text-sm text-red-400">{error}</p>
                   <button
                     onClick={loadCapacityAnalysis}
                     className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium"
@@ -200,11 +200,11 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
 
           {/* Empty State - No Parcel Data */}
           {!loading && !error && !capacityData && (
-            <div className="bg-gray-50 rounded-lg border border-gray-200 p-12">
+            <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-12">
               <div className="text-center">
                 <Building2 className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Parcel Data Available</h3>
-                <p className="text-sm text-gray-600 mb-4">
+                <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">No Parcel Data Available</h3>
+                <p className="text-sm text-[#9EA8B4] mb-4">
                   Add property address and parcel information to generate capacity analysis
                 </p>
                 <button
@@ -221,18 +221,18 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
           {!loading && !error && capacityData && (
             <>
               {/* Zoning District Header */}
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-[#0F1319] rounded-lg shadow p-6">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-3 mb-2">
-                      <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <div className="w-12 h-12 bg-[#0d1e3d] rounded-lg flex items-center justify-center">
                         <Building2 className="w-6 h-6 text-blue-600" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-bold text-gray-900">
+                        <h3 className="text-lg font-bold text-[#E8E6E1]">
                           {capacityData.districtCode} - {capacityData.districtName}
                         </h3>
-                        <p className="text-sm text-gray-600">Zoning District</p>
+                        <p className="text-sm text-[#9EA8B4]">Zoning District</p>
                       </div>
                     </div>
                   </div>
@@ -243,84 +243,84 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
               {/* Key Metrics Grid */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* Maximum Units */}
-                <div className="bg-white rounded-lg shadow p-6">
+                <div className="bg-[#0F1319] rounded-lg shadow p-6">
                   <div className="flex items-center gap-2 mb-2">
                     <Home className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-medium text-gray-600">Maximum Units</span>
+                    <span className="text-sm font-medium text-[#9EA8B4]">Maximum Units</span>
                   </div>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-3xl font-bold text-[#E8E6E1] mb-1">
                     {formatNumber(capacityData.maxUnits)}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[#6B7585]">
                     {capacityData.maxUnitsByRight ? 'By-right' : 'With approval'}
                   </div>
                 </div>
 
                 {/* Height Limit */}
-                <div className="bg-white rounded-lg shadow p-6">
+                <div className="bg-[#0F1319] rounded-lg shadow p-6">
                   <div className="flex items-center gap-2 mb-2">
                     <Ruler className="w-5 h-5 text-purple-600" />
-                    <span className="text-sm font-medium text-gray-600">Height Limit</span>
+                    <span className="text-sm font-medium text-[#9EA8B4]">Height Limit</span>
                   </div>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-3xl font-bold text-[#E8E6E1] mb-1">
                     {capacityData.maxHeightFt}'
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[#6B7585]">
                     {capacityData.maxStories} {capacityData.maxStories === 1 ? 'story' : 'stories'}
                   </div>
                 </div>
 
                 {/* Lot Coverage */}
-                <div className="bg-white rounded-lg shadow p-6">
+                <div className="bg-[#0F1319] rounded-lg shadow p-6">
                   <div className="flex items-center gap-2 mb-2">
                     <Building2 className="w-5 h-5 text-green-600" />
-                    <span className="text-sm font-medium text-gray-600">Lot Coverage</span>
+                    <span className="text-sm font-medium text-[#9EA8B4]">Lot Coverage</span>
                   </div>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-3xl font-bold text-[#E8E6E1] mb-1">
                     {capacityData.lotCoveragePercent}%
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[#6B7585]">
                     {formatNumber(capacityData.availableCoverageSqft)} sqft available
                   </div>
                 </div>
 
                 {/* Parking Required */}
-                <div className="bg-white rounded-lg shadow p-6">
+                <div className="bg-[#0F1319] rounded-lg shadow p-6">
                   <div className="flex items-center gap-2 mb-2">
                     <Car className="w-5 h-5 text-orange-600" />
-                    <span className="text-sm font-medium text-gray-600">Parking Required</span>
+                    <span className="text-sm font-medium text-[#9EA8B4]">Parking Required</span>
                   </div>
-                  <div className="text-3xl font-bold text-gray-900 mb-1">
+                  <div className="text-3xl font-bold text-[#E8E6E1] mb-1">
                     {formatNumber(capacityData.parkingRequired)}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[#6B7585]">
                     {capacityData.parkingRatio} per unit
                   </div>
                 </div>
               </div>
 
               {/* Setback Requirements */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <Ruler className="w-5 h-5 text-gray-700" />
+              <div className="bg-[#0F1319] rounded-lg shadow p-6">
+                <h3 className="text-lg font-bold text-[#E8E6E1] mb-4 flex items-center gap-2">
+                  <Ruler className="w-5 h-5 text-[#9EA8B4]" />
                   Setback Requirements
                 </h3>
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Front Setback</div>
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-center p-4 bg-[#0F1319] rounded-lg">
+                    <div className="text-sm text-[#9EA8B4] mb-1">Front Setback</div>
+                    <div className="text-2xl font-bold text-[#E8E6E1]">
                       {capacityData.setbacks.frontFt || capacityData.setbacks.front || 0}'
                     </div>
                   </div>
-                  <div className="text-center p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Side Setback</div>
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-center p-4 bg-[#0F1319] rounded-lg">
+                    <div className="text-sm text-[#9EA8B4] mb-1">Side Setback</div>
+                    <div className="text-2xl font-bold text-[#E8E6E1]">
                       {capacityData.setbacks.sideFt || capacityData.setbacks.side || 0}'
                     </div>
                   </div>
-                  <div className="text-center p-4 bg-gray-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Rear Setback</div>
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-center p-4 bg-[#0F1319] rounded-lg">
+                    <div className="text-sm text-[#9EA8B4] mb-1">Rear Setback</div>
+                    <div className="text-2xl font-bold text-[#E8E6E1]">
                       {capacityData.setbacks.rearFt || capacityData.setbacks.rear || 0}'
                     </div>
                   </div>
@@ -328,27 +328,27 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
               </div>
 
               {/* Compliance Checks */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Compliance Checks</h3>
+              <div className="bg-[#0F1319] rounded-lg shadow p-6">
+                <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Compliance Checks</h3>
                 <div className="space-y-3">
                   {capacityData.complianceChecks.map((check, index) => (
                     <div
                       key={index}
                       className={`p-4 rounded-lg border-2 ${
                         check.status === 'compliant'
-                          ? 'bg-green-50 border-green-200'
+                          ? 'bg-[#022c22] border-green-800/50'
                           : check.status === 'warning'
-                          ? 'bg-yellow-50 border-yellow-200'
-                          : 'bg-red-50 border-red-200'
+                          ? 'bg-[#1a1200] border-yellow-200'
+                          : 'bg-[#1c0a0a] border-red-800/50'
                       }`}
                     >
                       <div className="flex items-start gap-3">
                         <ComplianceIcon status={check.status} />
                         <div className="flex-1">
-                          <div className="font-semibold text-gray-900 mb-1">{check.item}</div>
-                          <p className="text-sm text-gray-700">{check.message}</p>
+                          <div className="font-semibold text-[#E8E6E1] mb-1">{check.item}</div>
+                          <p className="text-sm text-[#9EA8B4]">{check.message}</p>
                           {check.details && (
-                            <p className="text-xs text-gray-600 mt-2">{check.details}</p>
+                            <p className="text-xs text-[#9EA8B4] mt-2">{check.details}</p>
                           )}
                         </div>
                       </div>
@@ -359,11 +359,11 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
 
               {/* Recommendations */}
               {capacityData.recommendations.length > 0 && (
-                <div className="bg-blue-50 rounded-lg border border-blue-200 p-6">
-                  <h3 className="text-lg font-bold text-blue-900 mb-4">Recommendations</h3>
+                <div className="bg-[#0d1e3d] rounded-lg border border-blue-900/50 p-6">
+                  <h3 className="text-lg font-bold text-blue-300 mb-4">Recommendations</h3>
                   <ul className="space-y-2">
                     {capacityData.recommendations.map((rec, index) => (
-                      <li key={index} className="flex items-start gap-2 text-sm text-blue-900">
+                      <li key={index} className="flex items-start gap-2 text-sm text-blue-300">
                         <span className="text-blue-600 mt-0.5">•</span>
                         <span>{rec}</span>
                       </li>
@@ -374,16 +374,16 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
 
               {/* Zoning Code References */}
               {capacityData.zoningReferences.length > 0 && (
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-gray-700" />
+                <div className="bg-[#0F1319] rounded-lg shadow p-6">
+                  <h3 className="text-lg font-bold text-[#E8E6E1] mb-4 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-[#9EA8B4]" />
                     Zoning Code References
                   </h3>
                   <div className="space-y-2">
                     {capacityData.zoningReferences.map((ref, index) => (
                       <div
                         key={index}
-                        className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                        className="p-3 bg-[#0F1319] rounded-lg hover:bg-[#131920] transition"
                       >
                         {ref.url ? (
                           <a
@@ -394,14 +394,14 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
                           >
                             <div>
                               <span className="font-semibold text-blue-600">{ref.section}</span>
-                              <span className="text-gray-600 ml-2">— {ref.title}</span>
+                              <span className="text-[#9EA8B4] ml-2">— {ref.title}</span>
                             </div>
                             <span className="text-blue-600">→</span>
                           </a>
                         ) : (
                           <div className="text-sm">
-                            <span className="font-semibold text-gray-900">{ref.section}</span>
-                            <span className="text-gray-600 ml-2">— {ref.title}</span>
+                            <span className="font-semibold text-[#E8E6E1]">{ref.section}</span>
+                            <span className="text-[#9EA8B4] ml-2">— {ref.title}</span>
                           </div>
                         )}
                       </div>
@@ -411,8 +411,8 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
               )}
 
               {/* Action Buttons */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-4">Next Steps</h3>
+              <div className="bg-[#0F1319] rounded-lg shadow p-6">
+                <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Next Steps</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <button
                     onClick={handleViewFullReport}
@@ -450,8 +450,8 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Development Analysis</h2>
-          <p className="text-sm text-gray-600 mt-1">
+          <h2 className="text-2xl font-bold text-[#E8E6E1]">Development Analysis</h2>
+          <p className="text-sm text-[#9EA8B4] mt-1">
             Basic zoning information for {deal.name}
           </p>
         </div>
@@ -480,42 +480,42 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
         />
 
         {/* Basic Zoning Info */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <div className="bg-[#0F1319] rounded-lg shadow p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4 flex items-center gap-2">
             <Building2 className="w-5 h-5 text-blue-600" />
             Zoning District
           </h3>
           
           <div className="space-y-4">
             {/* District Name */}
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-sm text-gray-600 mb-1">Current Zoning</div>
-              <div className="text-xl font-bold text-blue-900">
+            <div className="p-4 bg-[#0d1e3d] rounded-lg border border-blue-900/50">
+              <div className="text-sm text-[#9EA8B4] mb-1">Current Zoning</div>
+              <div className="text-xl font-bold text-blue-300">
                 R-4 - Residential Medium Density
               </div>
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-[#9EA8B4] mt-2">
                 Example zoning district. Add property address to get actual zoning data.
               </p>
             </div>
 
             {/* Basic Metrics (Manual) */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Maximum Units</div>
-                <div className="text-lg font-semibold text-gray-900">
+              <div className="p-4 bg-[#0F1319] rounded-lg">
+                <div className="text-sm text-[#9EA8B4] mb-1">Maximum Units</div>
+                <div className="text-lg font-semibold text-[#E8E6E1]">
                   Check local codes manually
                 </div>
               </div>
-              <div className="p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Height Limit</div>
-                <div className="text-lg font-semibold text-gray-900">
+              <div className="p-4 bg-[#0F1319] rounded-lg">
+                <div className="text-sm text-[#9EA8B4] mb-1">Height Limit</div>
+                <div className="text-lg font-semibold text-[#E8E6E1]">
                   Check local codes manually
                 </div>
               </div>
             </div>
 
             {/* Manual Lookup Message */}
-            <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+            <div className="p-4 bg-[#1a1200] rounded-lg border border-yellow-200">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -539,11 +539,11 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
         </div>
 
         {/* Info Box */}
-        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-          <h4 className="font-semibold text-gray-900 mb-2">
+        <div className="bg-[#0F1319] rounded-lg p-6 border border-[#1e2a3d]">
+          <h4 className="font-semibold text-[#E8E6E1] mb-2">
             📚 Understanding Development Constraints
           </h4>
-          <ul className="space-y-2 text-sm text-gray-700">
+          <ul className="space-y-2 text-sm text-[#9EA8B4]">
             <li><strong>Zoning District:</strong> Determines the allowed land uses and development standards</li>
             <li><strong>Density:</strong> Maximum number of dwelling units allowed per acre or lot</li>
             <li><strong>Height Limit:</strong> Maximum building height in feet or number of stories</li>
@@ -551,8 +551,8 @@ export const DevelopmentSection: React.FC<DevelopmentSectionProps> = ({
             <li><strong>Lot Coverage:</strong> Percentage of lot that can be covered by buildings</li>
             <li><strong>Parking:</strong> Required number of parking spaces per dwelling unit</li>
           </ul>
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-xs text-blue-900">
+          <div className="mt-4 p-3 bg-[#0d1e3d] rounded-lg border border-blue-900/50">
+            <p className="text-xs text-blue-300">
               💡 <span className="font-semibold">Tip:</span> Upgrade to Zoning Interpreter to automatically analyze capacity and generate compliance reports.
             </p>
           </div>

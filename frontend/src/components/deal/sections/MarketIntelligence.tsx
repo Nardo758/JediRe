@@ -293,7 +293,7 @@ export const MarketIntelligence: React.FC = () => {
           <div className="text-[10px] font-mono text-amber-500 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
           <div className="text-lg font-semibold">Is this submarket getting stronger or weaker — and how fast?</div>
         </div>
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-12 text-center">
           <div className="animate-pulse">
             <div className="h-4 bg-stone-200 rounded w-48 mx-auto mb-3"></div>
             <div className="text-xs text-stone-400">Loading market intelligence from Apartment Locator AI...</div>
@@ -310,12 +310,12 @@ export const MarketIntelligence: React.FC = () => {
           <div className="text-[10px] font-mono text-amber-500 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
           <div className="text-lg font-semibold">Is this submarket getting stronger or weaker — and how fast?</div>
         </div>
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <div className="text-red-800 font-medium mb-2">Failed to load market data</div>
-          <div className="text-xs text-red-600 mb-3">{error}</div>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-xl p-6 text-center">
+          <div className="text-red-300 font-medium mb-2">Failed to load market data</div>
+          <div className="text-xs text-red-400 mb-3">{error}</div>
           <button
             onClick={loadMarketData}
-            className="text-xs bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded transition-colors"
+            className="text-xs bg-[#1c0a0a] hover:bg-red-200 text-red-300 px-3 py-1.5 rounded transition-colors"
           >
             Retry
           </button>
@@ -342,9 +342,9 @@ export const MarketIntelligence: React.FC = () => {
         <div className="text-lg font-semibold">Is this submarket getting stronger or weaker — and how fast?</div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Market Vitals</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1]">Market Vitals</h3>
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
             <span className="text-[10px] text-stone-400">{totalProps} properties | {totalUnits.toLocaleString()} units tracked</span>
@@ -353,9 +353,9 @@ export const MarketIntelligence: React.FC = () => {
 
         <div className="grid grid-cols-5 gap-4">
           {marketVitals.map(vital => (
-            <div key={vital.id} className="border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
+            <div key={vital.id} className="border border-[#1e2a3d] rounded-lg p-3 hover:border-stone-300 transition-colors">
               <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{vital.label}</div>
-              <div className="text-xl font-bold text-stone-900">{vital.value}</div>
+              <div className="text-xl font-bold text-[#E8E6E1]">{vital.value}</div>
               <div className="flex items-center gap-1 mt-1">
                 <span className={`text-[10px] font-medium ${
                   vital.trendDirection === 'up' ? 'text-emerald-600' :
@@ -384,8 +384,8 @@ export const MarketIntelligence: React.FC = () => {
           ))}
         </div>
 
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs text-amber-800 leading-relaxed">
+        <div className="mt-4 bg-[#1a1200] border border-amber-800/50 rounded-lg p-3">
+          <p className="text-xs text-amber-300 leading-relaxed">
             Tracking {submarkets.length} submarkets with {totalProps} properties and {totalUnits.toLocaleString()} total units.
             {' '}Momentum signal: <span className="font-bold">{momentumLabel}</span>.
             {submarkets.length > 0 && (
@@ -396,12 +396,12 @@ export const MarketIntelligence: React.FC = () => {
       </div>
 
       {submarkets.length > 0 && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
-          <h3 className="text-lg font-bold text-stone-900 mb-4">Submarket Comparison</h3>
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Submarket Comparison</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b-2 border-stone-200 text-[10px] font-mono text-stone-400">
+                <tr className="border-b-2 border-[#1e2a3d] text-[10px] font-mono text-stone-400">
                   <th className="text-left py-2 px-2">Submarket</th>
                   <th className="text-right py-2 px-2">Properties</th>
                   <th className="text-right py-2 px-2">Units</th>
@@ -414,11 +414,11 @@ export const MarketIntelligence: React.FC = () => {
               </thead>
               <tbody>
                 {submarkets.map((sm, idx) => (
-                  <tr key={idx} className="border-b border-stone-100 hover:bg-stone-50">
-                    <td className="py-2 px-2 font-medium text-stone-900">{sm.name}</td>
+                  <tr key={idx} className="border-b border-stone-100 hover:bg-[#0F1319]">
+                    <td className="py-2 px-2 font-medium text-[#E8E6E1]">{sm.name}</td>
                     <td className="text-right py-2 px-2 text-stone-600">{sm.properties_count}</td>
                     <td className="text-right py-2 px-2 text-stone-600">{sm.total_units.toLocaleString()}</td>
-                    <td className="text-right py-2 px-2 font-mono text-stone-900">${sm.avg_rent.toLocaleString()}</td>
+                    <td className="text-right py-2 px-2 font-mono text-[#E8E6E1]">${sm.avg_rent.toLocaleString()}</td>
                     <td className="text-right py-2 px-2 text-stone-600">{(sm.vacancy_rate * 100).toFixed(1)}%</td>
                     <td className={`text-right py-2 px-2 font-mono font-semibold ${
                       sm.rent_growth_30d > 0 ? 'text-emerald-600' : sm.rent_growth_30d < 0 ? 'text-red-500' : 'text-stone-500'
@@ -429,8 +429,8 @@ export const MarketIntelligence: React.FC = () => {
                     <td className="text-right py-2 px-2">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${
                         sm.market_pressure === 'seller_market' ? 'bg-emerald-100 text-emerald-700' :
-                        sm.market_pressure === 'buyer_market' ? 'bg-red-100 text-red-700' :
-                        'bg-stone-100 text-stone-600'
+                        sm.market_pressure === 'buyer_market' ? 'bg-[#1c0a0a] text-red-400' :
+                        'bg-[#131920] text-stone-600'
                       }`}>
                         {sm.market_pressure.replace('_', ' ')}
                       </span>
@@ -444,14 +444,14 @@ export const MarketIntelligence: React.FC = () => {
       )}
 
       {rentComps.length > 0 && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
           <div className="flex items-center justify-between mb-1">
-            <h3 className="text-lg font-bold text-stone-900">
+            <h3 className="text-lg font-bold text-[#E8E6E1]">
               {rentComps[0]?.name?.includes('Submarket') ? 'Submarket Rent Analysis' : 'Rent Comp Analysis'}
             </h3>
             {avgCompRent > 0 && (
               <div className="text-xs text-stone-500">
-                Market avg: <span className="font-bold text-amber-700">${Math.round(avgCompRent).toLocaleString()}</span>/mo
+                Market avg: <span className="font-bold text-amber-400">${Math.round(avgCompRent).toLocaleString()}</span>/mo
               </div>
             )}
           </div>
@@ -464,7 +464,7 @@ export const MarketIntelligence: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b-2 border-stone-200 text-[10px] font-mono text-stone-400">
+                <tr className="border-b-2 border-[#1e2a3d] text-[10px] font-mono text-stone-400">
                   <th className="text-left py-2 px-2">Property</th>
                   <th className="text-right py-2 px-2">Units</th>
                   {rentComps.some(c => c.yearBuilt > 0) && <th className="text-right py-2 px-2">Year</th>}
@@ -478,9 +478,9 @@ export const MarketIntelligence: React.FC = () => {
                 {rentComps.map(comp => (
                   <tr
                     key={comp.id}
-                    className={`border-b border-stone-100 ${comp.isSubject ? 'bg-amber-50 font-semibold' : 'hover:bg-stone-50'}`}
+                    className={`border-b border-stone-100 ${comp.isSubject ? 'bg-[#1a1200] font-semibold' : 'hover:bg-[#0F1319]'}`}
                   >
-                    <td className="py-2 px-2 text-stone-900">
+                    <td className="py-2 px-2 text-[#E8E6E1]">
                       {comp.isSubject && <span className="text-amber-500 mr-1">&#9670;</span>}
                       {comp.name}
                     </td>
@@ -488,7 +488,7 @@ export const MarketIntelligence: React.FC = () => {
                     {rentComps.some(c => c.yearBuilt > 0) && (
                       <td className="text-right py-2 px-2 text-stone-600">{comp.yearBuilt > 0 ? comp.yearBuilt : '--'}</td>
                     )}
-                    <td className="text-right py-2 px-2 font-mono text-stone-900">${comp.avgRent.toLocaleString()}</td>
+                    <td className="text-right py-2 px-2 font-mono text-[#E8E6E1]">${comp.avgRent.toLocaleString()}</td>
                     {rentComps.some(c => c.rentPSF > 0) && (
                       <td className="text-right py-2 px-2 font-mono text-stone-600">{comp.rentPSF > 0 ? `$${comp.rentPSF.toFixed(2)}` : '--'}</td>
                     )}
@@ -507,35 +507,35 @@ export const MarketIntelligence: React.FC = () => {
       )}
 
       {demandLoading ? (
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-12 text-center">
           <div className="animate-pulse">
             <div className="h-4 bg-stone-200 rounded w-48 mx-auto mb-3"></div>
             <div className="text-xs text-stone-400">Loading demand intelligence...</div>
           </div>
         </div>
       ) : demandData && (demandData.userStats || demandData.demandSignals || demandData.searchTrends) ? (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-lg font-bold text-stone-900">Demand Intelligence</h3>
-            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono tracking-widest">DEMAND DATA</span>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Demand Intelligence</h3>
+            <span className="text-[10px] bg-[#1a1200] text-amber-400 px-2 py-0.5 rounded-full font-mono tracking-widest">DEMAND DATA</span>
           </div>
 
           {demandData.userStats && (
             <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="border border-stone-200 rounded-lg p-3">
+              <div className="border border-[#1e2a3d] rounded-lg p-3">
                 <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Active Renters (30d)</div>
-                <div className="text-2xl font-bold text-stone-900">{(demandData.userStats.activeUsers30d || 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold text-[#E8E6E1]">{(demandData.userStats.activeUsers30d || 0).toLocaleString()}</div>
               </div>
-              <div className="border border-stone-200 rounded-lg p-3">
+              <div className="border border-[#1e2a3d] rounded-lg p-3">
                 <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Total Users</div>
-                <div className="text-2xl font-bold text-stone-900">{(demandData.userStats.totalUsers || 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold text-[#E8E6E1]">{(demandData.userStats.totalUsers || 0).toLocaleString()}</div>
               </div>
-              <div className="border border-stone-200 rounded-lg p-3">
+              <div className="border border-[#1e2a3d] rounded-lg p-3">
                 <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Renters vs Landlords</div>
-                <div className="text-sm font-bold text-stone-900 mt-1">
+                <div className="text-sm font-bold text-[#E8E6E1] mt-1">
                   {demandData.userStats.byType ? (
                     <div className="flex items-center gap-2">
-                      <span className="text-amber-600">{(demandData.userStats.byType.renter || 0).toLocaleString()} renters</span>
+                      <span className="text-amber-400">{(demandData.userStats.byType.renter || 0).toLocaleString()} renters</span>
                       <span className="text-stone-300">|</span>
                       <span className="text-stone-600">{(demandData.userStats.byType.landlord || 0).toLocaleString()} landlords</span>
                     </div>
@@ -556,7 +556,7 @@ export const MarketIntelligence: React.FC = () => {
                   return (
                     <div key={range} className="flex items-center gap-3">
                       <div className="w-28 text-[11px] font-mono text-stone-500 text-right shrink-0">{range}</div>
-                      <div className="flex-1 bg-stone-100 rounded-full h-5 overflow-hidden">
+                      <div className="flex-1 bg-[#131920] rounded-full h-5 overflow-hidden">
                         <div
                           className="h-full bg-amber-500 rounded-full flex items-center justify-end pr-2"
                           style={{ width: `${Math.max(pct, 8)}%` }}
@@ -583,7 +583,7 @@ export const MarketIntelligence: React.FC = () => {
                     return (
                       <div key={type} className="flex items-center gap-2">
                         <div className="w-16 text-[11px] font-mono text-stone-500 text-right shrink-0">{type}</div>
-                        <div className="flex-1 bg-stone-100 rounded h-4 overflow-hidden">
+                        <div className="flex-1 bg-[#131920] rounded h-4 overflow-hidden">
                           <div
                             className="h-full bg-stone-700 rounded"
                             style={{ width: `${Math.max(pct, 5)}%` }}
@@ -608,7 +608,7 @@ export const MarketIntelligence: React.FC = () => {
                     return (
                       <div key={timeline} className="flex items-center gap-2">
                         <div className="w-24 text-[11px] font-mono text-stone-500 text-right shrink-0">{timeline}</div>
-                        <div className="flex-1 bg-stone-100 rounded h-4 overflow-hidden">
+                        <div className="flex-1 bg-[#131920] rounded h-4 overflow-hidden">
                           <div
                             className="h-full bg-emerald-500 rounded"
                             style={{ width: `${Math.max(pct, 5)}%` }}
@@ -633,7 +633,7 @@ export const MarketIntelligence: React.FC = () => {
                   return (
                     <div key={idx} className="flex items-center justify-between py-1 border-b border-stone-100">
                       <span className="text-xs text-stone-700">{name}</span>
-                      <span className="text-[10px] font-mono text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">{Number(count).toLocaleString()}</span>
+                      <span className="text-[10px] font-mono text-amber-400 bg-[#1a1200] px-1.5 py-0.5 rounded">{Number(count).toLocaleString()}</span>
                     </div>
                   );
                 })}
@@ -649,10 +649,10 @@ export const MarketIntelligence: React.FC = () => {
                   const location = item.location || item.area || item.name || item;
                   const searches = item.searches || item.count || item.volume || 0;
                   return (
-                    <div key={idx} className="bg-red-50 border border-red-200 rounded-lg p-2.5">
-                      <div className="text-xs font-medium text-red-800">{typeof location === 'string' ? location : JSON.stringify(location)}</div>
+                    <div key={idx} className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-2.5">
+                      <div className="text-xs font-medium text-red-300">{typeof location === 'string' ? location : JSON.stringify(location)}</div>
                       {searches > 0 && (
-                        <div className="text-[10px] text-red-600 mt-0.5">{Number(searches).toLocaleString()} searches, 0 matches</div>
+                        <div className="text-[10px] text-red-400 mt-0.5">{Number(searches).toLocaleString()} searches, 0 matches</div>
                       )}
                     </div>
                   );

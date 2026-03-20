@@ -45,10 +45,10 @@ function CalculationItemRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="border border-gray-100 rounded-lg overflow-hidden">
+    <div className="border border-[#1e2a3d] rounded-lg overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#0F1319] transition-colors text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
           {expanded ? (
@@ -56,33 +56,33 @@ function CalculationItemRow({
           ) : (
             <ChevronRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
           )}
-          <span className="text-xs font-medium text-gray-700 truncate">{item.label}</span>
+          <span className="text-xs font-medium text-[#9EA8B4] truncate">{item.label}</span>
           {item.crossReferenceAlerts && item.crossReferenceAlerts.length > 0 && (
             <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <span className="text-sm font-semibold text-gray-900">{item.result}</span>
+          <span className="text-sm font-semibold text-[#E8E6E1]">{item.result}</span>
           {item.resultUnit && (
-            <span className="text-xs text-gray-500">{item.resultUnit}</span>
+            <span className="text-xs text-[#6B7585]">{item.resultUnit}</span>
           )}
         </div>
       </button>
 
       {expanded && (
-        <div className="px-4 pb-3 pt-1 border-t border-gray-100 bg-gray-50/50 space-y-3">
-          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2">
+        <div className="px-4 pb-3 pt-1 border-t border-[#1e2a3d] bg-[#0F1319]/50 space-y-3">
+          <div className="flex items-center gap-2 bg-[#0F1319] border border-[#1e2a3d] rounded-md px-3 py-2">
             <Calculator className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-            <code className="text-xs text-gray-800 font-mono">{item.formula}</code>
+            <code className="text-xs text-[#E8E6E1] font-mono">{item.formula}</code>
           </div>
 
           <div className="space-y-1.5">
-            <div className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Inputs</div>
+            <div className="text-[10px] text-[#6B7585] uppercase tracking-wider font-medium">Inputs</div>
             {item.inputs.map((input, idx) => (
               <div key={idx} className="flex items-center justify-between gap-2 text-xs px-1">
-                <span className="text-gray-600">{input.label}</span>
+                <span className="text-[#9EA8B4]">{input.label}</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-[#E8E6E1]">
                     {input.value}{input.unit ? ` ${input.unit}` : ''}
                   </span>
                   {input.citation && (
@@ -98,12 +98,12 @@ function CalculationItemRow({
               {item.crossReferenceAlerts.map((alert, idx) => (
                 <div
                   key={idx}
-                  className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
+                  className="flex items-start gap-2 bg-[#1a1200] border border-amber-800/50 rounded-md px-3 py-2"
                 >
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-xs text-amber-800">{alert.message}</p>
-                    <p className="text-[10px] text-amber-600 mt-0.5">
+                    <p className="text-xs text-amber-300">{alert.message}</p>
+                    <p className="text-[10px] text-amber-400 mt-0.5">
                       Sections: {alert.sections.join(', ')}
                     </p>
                   </div>
@@ -141,10 +141,10 @@ export default function CalculationBreakdown({
       {sections.map((section) => {
         const isOpen = expandedSections[section.title] ?? false;
         return (
-          <div key={section.title} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div key={section.title} className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] overflow-hidden">
             <button
               onClick={() => toggleSection(section.title)}
-              className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors text-left"
+              className="w-full flex items-center justify-between px-5 py-3 hover:bg-[#0F1319] transition-colors text-left"
             >
               <div className="flex items-center gap-2">
                 {isOpen ? (
@@ -153,7 +153,7 @@ export default function CalculationBreakdown({
                   <ChevronRight className="w-4 h-4 text-gray-400" />
                 )}
                 {section.icon && <span className="text-sm">{section.icon}</span>}
-                <span className="text-xs font-bold text-gray-900 uppercase tracking-wide">
+                <span className="text-xs font-bold text-[#E8E6E1] uppercase tracking-wide">
                   {section.title}
                 </span>
               </div>
@@ -163,7 +163,7 @@ export default function CalculationBreakdown({
             </button>
 
             {isOpen && (
-              <div className="px-5 pb-4 space-y-2 border-t border-gray-100">
+              <div className="px-5 pb-4 space-y-2 border-t border-[#1e2a3d]">
                 <div className="pt-3" />
                 {section.items.map((item, idx) => (
                   <CalculationItemRow

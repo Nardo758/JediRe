@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
+import { T as BT } from '../../deal/bloomberg-tokens';
 
 interface PathOption {
   id: DevelopmentPath;
@@ -34,7 +35,7 @@ interface PathOption {
   timeline: string;
   entitlementCost: string;
   risk: string;
-  riskColor: string;
+  riskStyle: React.CSSProperties;
   when: string;
   description: string;
 }
@@ -90,7 +91,7 @@ export default function PathSelection({
         timeline: '0 months entitlement',
         entitlementCost: '$0',
         risk: 'Low',
-        riskColor: 'text-green-600 bg-green-50',
+        riskStyle: { color: BT.green, background: BT.greenBg },
         when: 'Speed matters, risk-averse sponsor',
         description: 'Build to current zoning maximum. No entitlement process needed.',
       },
@@ -102,7 +103,7 @@ export default function PathSelection({
         timeline: '+2-4 months',
         entitlementCost: '~$500K compliance',
         risk: 'Low-Moderate',
-        riskColor: 'text-blue-600 bg-blue-50',
+        riskStyle: { color: BT.blue, background: BT.blueBg },
         when: 'Overlay applies, best risk/reward',
         description: `Leverage overlay bonus for ${overlayBonusPct}% density uplift with compliance requirements.`,
       }] : []),
@@ -114,7 +115,7 @@ export default function PathSelection({
         timeline: '+3-6 months',
         entitlementCost: '~$25K',
         risk: 'Moderate',
-        riskColor: 'text-amber-600 bg-amber-50',
+        riskStyle: { color: BT.amberL, background: BT.amberBg },
         when: 'Binding constraint can be relieved',
         description: 'Request variance from specific constraints. Requires hardship justification.',
       },
@@ -126,7 +127,7 @@ export default function PathSelection({
         timeline: rezoneTimeline,
         entitlementCost: rezoneCost,
         risk: 'High',
-        riskColor: 'text-red-600 bg-red-50',
+        riskStyle: { color: BT.redL, background: BT.redBg },
         when: 'Value creation >> cost + risk',
         description: rezoneDesc,
       },
@@ -134,7 +135,6 @@ export default function PathSelection({
   }, [byRightUnits, overlayBonusPct, lotAcres, maxDensityPerAcre, rezoneAnalysis]);
 
   const handleSelect = (pathId: DevelopmentPath) => {
-    // Build a basic envelope for the selected path
     const pathOption = paths.find(p => p.id === pathId);
     const unitStr = pathOption?.units.match(/(\d+)/);
     const units = unitStr ? parseInt(unitStr[1]) : byRightUnits;
@@ -162,8 +162,8 @@ export default function PathSelection({
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-sm font-bold text-gray-900">Select Your Development Path</h3>
-        <p className="text-xs text-gray-500 mt-1">
+        <h3 className="text-sm font-bold" style={{ color: BT.text }}>Select Your Development Path</h3>
+        <p className="text-xs mt-1" style={{ color: BT.td }}>
           This selection propagates to Strategy (M08), ProForma (M09), 3D Design, Capital Structure (M11), and Risk (M14).
         </p>
       </div>
@@ -175,58 +175,62 @@ export default function PathSelection({
             <button
               key={path.id}
               onClick={() => handleSelect(path.id)}
-              className={`text-left rounded-lg border-2 p-4 transition-all ${
-                isSelected
-                  ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-300'
-                  : 'border-gray-200 hover:border-gray-300 bg-white hover:bg-gray-50'
-              }`}
+              className="text-left rounded-lg p-4 transition-all"
+              style={isSelected
+                ? { border: `2px solid ${BT.blue}`, background: `${BT.blueBg}80`, outline: `1px solid ${BT.blue}40` }
+                : { border: `2px solid ${BT.border}`, background: BT.bgCard }
+              }
             >
               <div className="flex items-center gap-2 mb-2">
-                <div className={`p-1.5 rounded-lg ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                <div className="p-1.5 rounded-lg"
+                  style={isSelected
+                    ? { background: BT.blueBg, color: BT.blueL }
+                    : { background: BT.bgPanel, color: BT.tm }
+                  }>
                   {path.icon}
                 </div>
                 <div className="flex-1">
-                  <div className="text-xs font-bold text-gray-900">{path.label}</div>
-                  <div className="text-lg font-bold text-gray-900">{path.units}</div>
+                  <div className="text-xs font-bold" style={{ color: BT.text }}>{path.label}</div>
+                  <div className="text-lg font-bold" style={{ color: BT.text }}>{path.units}</div>
                 </div>
-                {isSelected && <CheckCircle2 className="w-5 h-5 text-blue-600" />}
+                {isSelected && <CheckCircle2 className="w-5 h-5" style={{ color: BT.blue }} />}
               </div>
 
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div className="text-center">
-                  <Clock className="w-3 h-3 text-gray-400 mx-auto mb-0.5" />
-                  <div className="text-[10px] text-gray-900 font-medium">{path.timeline}</div>
+                  <Clock className="w-3 h-3 mx-auto mb-0.5" style={{ color: BT.td }} />
+                  <div className="text-[10px] font-medium" style={{ color: BT.text }}>{path.timeline}</div>
                 </div>
                 <div className="text-center">
-                  <DollarSign className="w-3 h-3 text-gray-400 mx-auto mb-0.5" />
-                  <div className="text-[10px] text-gray-900 font-medium">{path.entitlementCost}</div>
+                  <DollarSign className="w-3 h-3 mx-auto mb-0.5" style={{ color: BT.td }} />
+                  <div className="text-[10px] font-medium" style={{ color: BT.text }}>{path.entitlementCost}</div>
                 </div>
                 <div className="text-center">
-                  <AlertTriangle className="w-3 h-3 text-gray-400 mx-auto mb-0.5" />
-                  <div className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${path.riskColor}`}>{path.risk}</div>
+                  <AlertTriangle className="w-3 h-3 mx-auto mb-0.5" style={{ color: BT.td }} />
+                  <div className="text-[10px] font-medium px-1.5 py-0.5 rounded" style={path.riskStyle}>{path.risk}</div>
                 </div>
               </div>
 
-              <p className="text-[10px] text-gray-500 mb-1">{path.description}</p>
-              <p className="text-[10px] text-gray-400 italic">{path.when}</p>
+              <p className="text-[10px] mb-1" style={{ color: BT.td }}>{path.description}</p>
+              <p className="text-[10px] italic" style={{ color: BT.td }}>{path.when}</p>
             </button>
           );
         })}
       </div>
 
-      {/* Selected path summary */}
       {development_path && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-blue-600 flex-shrink-0" />
+        <div className="border rounded-lg p-3 flex items-center gap-3"
+          style={{ background: BT.blueBg, borderColor: `${BT.blue}50` }}>
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: BT.blue }} />
           <div className="flex-1">
-            <span className="text-xs font-bold text-blue-900">
+            <span className="text-xs font-bold" style={{ color: BT.blueL }}>
               Path {paths.find(p => p.id === development_path)?.label.charAt(0)}: {paths.find(p => p.id === development_path)?.label.slice(3)}
             </span>
-            <span className="text-xs text-blue-700 ml-2">
+            <span className="text-xs ml-2" style={{ color: BT.blue }}>
               {paths.find(p => p.id === development_path)?.units}
             </span>
           </div>
-          <span className="text-[10px] text-blue-600">Propagated to downstream modules</span>
+          <span className="text-[10px]" style={{ color: BT.blue }}>Propagated to downstream modules</span>
         </div>
       )}
     </div>

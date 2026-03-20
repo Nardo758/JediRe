@@ -42,19 +42,19 @@ interface SupplySectionProps {
 // Helper functions
 const getStatusColor = (status: ProjectStatus) => {
   const colors = {
-    'planned': 'bg-blue-100 text-blue-700 border-blue-300',
+    'planned': 'bg-[#0d1e3d] text-blue-400 border-blue-700',
     'under-construction': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-    'pre-leasing': 'bg-orange-100 text-orange-700 border-orange-300',
-    'delivered': 'bg-green-100 text-green-700 border-green-300'
+    'pre-leasing': 'bg-[#1a0d00] text-orange-700 border-orange-300',
+    'delivered': 'bg-[#022c22] text-green-400 border-green-700'
   };
   return colors[status] || colors.planned;
 };
 
 const getImpactColor = (level: ImpactLevel) => {
   const colors = {
-    'high': 'bg-red-100 text-red-700 border-red-300',
+    'high': 'bg-[#1c0a0a] text-red-400 border-red-700',
     'medium': 'bg-yellow-100 text-yellow-700 border-yellow-300',
-    'low': 'bg-green-100 text-green-700 border-green-300'
+    'low': 'bg-[#022c22] text-green-400 border-green-700'
   };
   return colors[level] || colors.low;
 };
@@ -202,7 +202,7 @@ export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading supply data...</p>
+            <p className="text-[#9EA8B4]">Loading supply data...</p>
           </div>
         </div>
       </div>
@@ -213,9 +213,9 @@ export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading supply data</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading supply data</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -228,8 +228,8 @@ export const SupplySection: React.FC<SupplySectionProps> = ({ deal }) => {
       <div className="flex items-center gap-3">
         <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
           isPipeline 
-            ? 'bg-orange-100 text-orange-700' 
-            : 'bg-purple-100 text-purple-700'
+            ? 'bg-[#1a0d00] text-orange-700' 
+            : 'bg-[#1a0d3d] text-purple-400'
         }`}>
           {isPipeline ? '🏗️ Acquisition: Supply Impact Analysis' : '🎯 Performance: Competition Tracking'}
         </div>
@@ -292,37 +292,37 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats, mode }) => {
       label: 'Total Pipeline Units',
       value: stats.totalPipelineUnits.toLocaleString(),
       icon: '🏗️',
-      color: 'bg-blue-50 border-blue-200'
+      color: 'bg-[#0d1e3d] border-blue-900/50'
     },
     {
       label: 'Units Within 3 Miles',
       value: stats.unitsWithin3Miles.toLocaleString(),
       icon: '📍',
-      color: 'bg-purple-50 border-purple-200'
+      color: 'bg-[#1a0d3d] border-purple-800/50'
     },
     {
       label: 'Delivering in 12 Months',
       value: stats.unitsDelivering12Months.toLocaleString(),
       icon: '📅',
-      color: 'bg-orange-50 border-orange-200'
+      color: 'bg-[#1a0d00] border-orange-200'
     },
     {
       label: 'Direct Competitors',
       value: stats.directCompetitors.toString(),
       icon: '🎯',
-      color: 'bg-red-50 border-red-200'
+      color: 'bg-[#1c0a0a] border-red-800/50'
     },
     {
       label: 'Avg Distance',
       value: `${stats.averageDistanceToCompetition.toFixed(1)} mi`,
       icon: '📏',
-      color: 'bg-green-50 border-green-200'
+      color: 'bg-[#022c22] border-green-800/50'
     }
   ];
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">
         {mode === 'acquisition' ? 'Supply Overview' : 'Competition Overview'}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -332,10 +332,10 @@ const QuickStatsGrid: React.FC<QuickStatsGridProps> = ({ stats, mode }) => {
             className={`${stat.color} border rounded-lg p-4 hover:shadow-md transition-shadow`}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-xs font-medium">{stat.label}</span>
+              <span className="text-[#9EA8B4] text-xs font-medium">{stat.label}</span>
               <span className="text-2xl">{stat.icon}</span>
             </div>
-            <div className="text-2xl font-bold text-gray-900">
+            <div className="text-2xl font-bold text-[#E8E6E1]">
               {stat.value}
             </div>
           </div>
@@ -379,8 +379,8 @@ const SupplyImpactCard: React.FC<SupplyImpactCardProps> = ({ supplyImpact, total
   ];
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4 flex items-center gap-2">
         <span>📊</span>
         {mode === 'acquisition' ? 'Supply Impact Calculator' : 'Competitive Pressure Analysis'}
       </h3>
@@ -388,11 +388,11 @@ const SupplyImpactCard: React.FC<SupplyImpactCardProps> = ({ supplyImpact, total
       <div className="grid grid-cols-3 gap-6">
         {impactData.map((item, index) => (
           <div key={index} className="text-center">
-            <div className="text-sm text-gray-600 mb-2">Within {item.distance}</div>
-            <div className="text-4xl font-bold text-gray-900 mb-2">
+            <div className="text-sm text-[#9EA8B4] mb-2">Within {item.distance}</div>
+            <div className="text-4xl font-bold text-[#E8E6E1] mb-2">
               {item.units.toLocaleString()}
             </div>
-            <div className="text-xs text-gray-500 mb-3">units</div>
+            <div className="text-xs text-[#6B7585] mb-3">units</div>
             <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold border ${getImpactColor(item.severity)}`}>
               {getImpactBadge(item.severity)}
             </div>
@@ -400,16 +400,16 @@ const SupplyImpactCard: React.FC<SupplyImpactCardProps> = ({ supplyImpact, total
         ))}
       </div>
 
-      <div className="mt-6 pt-6 border-t border-gray-200">
+      <div className="mt-6 pt-6 border-t border-[#1e2a3d]">
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <span className="text-gray-600">Total Pipeline Units:</span>
-            <span className="font-bold text-gray-900 ml-2">{totalUnits.toLocaleString()}</span>
+            <span className="text-[#9EA8B4]">Total Pipeline Units:</span>
+            <span className="font-bold text-[#E8E6E1] ml-2">{totalUnits.toLocaleString()}</span>
           </div>
           <div>
-            <span className="text-gray-600">Market Saturation Risk:</span>
+            <span className="text-[#9EA8B4]">Market Saturation Risk:</span>
             <span className={`font-bold ml-2 ${
-              supplyImpact['3mi'] > 1500 ? 'text-red-600' :
+              supplyImpact['3mi'] > 1500 ? 'text-red-400' :
               supplyImpact['3mi'] > 1000 ? 'text-yellow-600' :
               'text-green-600'
             }`}>
@@ -454,16 +454,16 @@ const FilterBar: React.FC<FilterBarProps> = ({
   ];
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
       <div className="flex items-center gap-4 flex-wrap">
         
         {/* Status Filter */}
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-700">Status:</label>
+          <label className="text-sm font-medium text-[#9EA8B4]">Status:</label>
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'all')}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-3 py-2 border border-[#253347] rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             {statusOptions.map(option => (
               <option key={option.value} value={option.value}>
@@ -475,11 +475,11 @@ const FilterBar: React.FC<FilterBarProps> = ({
 
         {/* Distance Filter */}
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-gray-700">Max Distance:</label>
+          <label className="text-sm font-medium text-[#9EA8B4]">Max Distance:</label>
           <select
             value={distanceFilter}
             onChange={(e) => setDistanceFilter(Number(e.target.value))}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-3 py-2 border border-[#253347] rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value={1}>Within 1 mile</option>
             <option value={3}>Within 3 miles</option>
@@ -494,14 +494,14 @@ const FilterBar: React.FC<FilterBarProps> = ({
             type="checkbox"
             checked={showCompetitiveOnly}
             onChange={(e) => setShowCompetitiveOnly(e.target.checked)}
-            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            className="w-4 h-4 text-blue-600 border-[#253347] rounded focus:ring-2 focus:ring-blue-500"
           />
-          <span className="text-sm font-medium text-gray-700">Direct Competitors Only</span>
+          <span className="text-sm font-medium text-[#9EA8B4]">Direct Competitors Only</span>
         </label>
 
         {/* Results Count */}
-        <div className="ml-auto text-sm text-gray-600">
-          Showing <span className="font-bold text-gray-900">{filteredCount}</span> of {totalProjects} projects
+        <div className="ml-auto text-sm text-[#9EA8B4]">
+          Showing <span className="font-bold text-[#E8E6E1]">{filteredCount}</span> of {totalProjects} projects
         </div>
       </div>
     </div>
@@ -532,8 +532,8 @@ const DeliveryTimelineChart: React.FC<DeliveryTimelineChartProps> = ({ projects,
   const quarters = Object.keys(projectsByQuarter).sort();
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4 flex items-center gap-2">
         <span>📅</span>
         {mode === 'acquisition' ? 'Delivery Timeline (Next 12 Months)' : 'New Competition Timeline'}
       </h3>
@@ -548,11 +548,11 @@ const DeliveryTimelineChart: React.FC<DeliveryTimelineChartProps> = ({ projects,
             <div key={quarter}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-gray-900 w-16">{quarter}</span>
-                  <span className="text-xs text-gray-600">
+                  <span className="text-sm font-bold text-[#E8E6E1] w-16">{quarter}</span>
+                  <span className="text-xs text-[#9EA8B4]">
                     {quarterProjects.length} projects • {totalUnits.toLocaleString()} units
                     {competitiveUnits > 0 && (
-                      <span className="text-red-600 font-semibold ml-2">
+                      <span className="text-red-400 font-semibold ml-2">
                         ({competitiveUnits.toLocaleString()} competitive)
                       </span>
                     )}
@@ -561,7 +561,7 @@ const DeliveryTimelineChart: React.FC<DeliveryTimelineChartProps> = ({ projects,
               </div>
               
               {/* Timeline bar */}
-              <div className="relative h-12 bg-gray-100 rounded-lg overflow-hidden">
+              <div className="relative h-12 bg-[#131920] rounded-lg overflow-hidden">
                 <div 
                   className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-bold"
                   style={{ width: `${Math.min((totalUnits / 500) * 100, 100)}%` }}
@@ -577,8 +577,8 @@ const DeliveryTimelineChart: React.FC<DeliveryTimelineChartProps> = ({ projects,
                     key={project.id}
                     className={`px-2 py-1 rounded text-xs font-medium ${
                       project.competitive 
-                        ? 'bg-red-100 text-red-700 border border-red-300'
-                        : 'bg-gray-100 text-gray-700 border border-gray-300'
+                        ? 'bg-[#1c0a0a] text-red-400 border border-red-700'
+                        : 'bg-[#131920] text-[#9EA8B4] border border-[#253347]'
                     }`}
                   >
                     {project.name} ({project.units})
@@ -591,7 +591,7 @@ const DeliveryTimelineChart: React.FC<DeliveryTimelineChartProps> = ({ projects,
       </div>
 
       {quarters.length === 0 && (
-        <div className="text-center py-8 text-gray-500">
+        <div className="text-center py-8 text-[#6B7585]">
           <p className="text-sm">No projects delivering in the next 12 months</p>
         </div>
       )}
@@ -606,13 +606,13 @@ interface PipelineProjectsGridProps {
 
 const PipelineProjectsGrid: React.FC<PipelineProjectsGridProps> = ({ projects, mode }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">
+    <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
         {mode === 'acquisition' ? 'Pipeline Projects' : 'Competitive Properties'}
       </h3>
       
       {projects.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-[#6B7585]">
           <p className="text-sm">No projects match the current filters</p>
         </div>
       ) : (
@@ -635,18 +635,18 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, mode }) => {
   return (
     <div className={`border-2 rounded-lg p-4 hover:shadow-lg transition-shadow ${
       project.competitive 
-        ? 'border-red-200 bg-red-50' 
-        : 'border-gray-200 bg-white'
+        ? 'border-red-800/50 bg-[#1c0a0a]' 
+        : 'border-[#1e2a3d] bg-[#0F1319]'
     }`}>
       
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
-          <h4 className="font-bold text-gray-900 text-sm mb-1">{project.name}</h4>
-          <p className="text-xs text-gray-600">{project.developer}</p>
+          <h4 className="font-bold text-[#E8E6E1] text-sm mb-1">{project.name}</h4>
+          <p className="text-xs text-[#9EA8B4]">{project.developer}</p>
         </div>
         {project.competitive && (
-          <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-1 rounded-full">
+          <span className="text-xs font-semibold text-red-400 bg-[#1c0a0a] px-2 py-1 rounded-full">
             🎯 Direct
           </span>
         )}
@@ -655,27 +655,27 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, mode }) => {
       {/* Key Metrics */}
       <div className="space-y-2 mb-3">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-600">Units:</span>
-          <span className="font-bold text-gray-900">{project.units.toLocaleString()}</span>
+          <span className="text-[#9EA8B4]">Units:</span>
+          <span className="font-bold text-[#E8E6E1]">{project.units.toLocaleString()}</span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-600">Distance:</span>
-          <span className="font-bold text-gray-900">{project.distance.toFixed(1)} mi</span>
+          <span className="text-[#9EA8B4]">Distance:</span>
+          <span className="font-bold text-[#E8E6E1]">{project.distance.toFixed(1)} mi</span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-600">Delivery:</span>
-          <span className="font-bold text-gray-900">{project.deliveryQuarter}</span>
+          <span className="text-[#9EA8B4]">Delivery:</span>
+          <span className="font-bold text-[#E8E6E1]">{project.deliveryQuarter}</span>
         </div>
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-600">Rent Range:</span>
-          <span className="font-bold text-gray-900">
+          <span className="text-[#9EA8B4]">Rent Range:</span>
+          <span className="font-bold text-[#E8E6E1]">
             ${project.rentRange.min.toLocaleString()} - ${project.rentRange.max.toLocaleString()}
           </span>
         </div>
         {project.percentLeased !== undefined && project.percentLeased > 0 && (
           <div className="flex items-center justify-between text-xs">
-            <span className="text-gray-600">Leased:</span>
-            <span className="font-bold text-gray-900">{project.percentLeased}%</span>
+            <span className="text-[#9EA8B4]">Leased:</span>
+            <span className="font-bold text-[#E8E6E1]">{project.percentLeased}%</span>
           </div>
         )}
       </div>
@@ -688,15 +688,15 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, mode }) => {
       </div>
 
       {/* Impact Level */}
-      <div className={`border-t pt-3 ${project.competitive ? 'border-red-200' : 'border-gray-200'}`}>
+      <div className={`border-t pt-3 ${project.competitive ? 'border-red-800/50' : 'border-[#1e2a3d]'}`}>
         <div className={`inline-block px-2 py-1 rounded text-xs font-semibold border ${getImpactColor(project.impactLevel)}`}>
           {getImpactBadge(project.impactLevel)}
         </div>
       </div>
 
       {/* Amenities (small preview) */}
-      <div className="mt-3 pt-3 border-t border-gray-200">
-        <div className="text-xs text-gray-600 line-clamp-2">
+      <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
+        <div className="text-xs text-[#9EA8B4] line-clamp-2">
           {project.amenities.slice(0, 3).join(' • ')}
           {project.amenities.length > 3 && ` +${project.amenities.length - 3} more`}
         </div>
@@ -761,8 +761,8 @@ const MarketInsightsCard: React.FC<MarketInsightsCardProps> = ({ stats, projects
   }, [stats]);
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+    <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-900/50 rounded-lg p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4 flex items-center gap-2">
         <span>💡</span>
         {mode === 'acquisition' ? 'Market Insights & Recommendations' : 'Competitive Analysis'}
       </h3>
@@ -773,17 +773,17 @@ const MarketInsightsCard: React.FC<MarketInsightsCardProps> = ({ stats, projects
             key={index}
             className={`p-4 rounded-lg border-l-4 ${
               insight.type === 'warning' 
-                ? 'bg-yellow-50 border-yellow-500' 
+                ? 'bg-[#1a1200] border-yellow-500' 
                 : insight.type === 'success'
-                ? 'bg-green-50 border-green-500'
-                : 'bg-blue-50 border-blue-500'
+                ? 'bg-[#022c22] border-green-500'
+                : 'bg-[#0d1e3d] border-blue-500'
             }`}
           >
             <div className="flex items-start gap-3">
               <span className="text-lg flex-shrink-0">
                 {insight.type === 'warning' ? '⚠️' : insight.type === 'success' ? '✅' : 'ℹ️'}
               </span>
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-[#9EA8B4]">
                 {insight.message}
               </p>
             </div>
@@ -792,11 +792,11 @@ const MarketInsightsCard: React.FC<MarketInsightsCardProps> = ({ stats, projects
       </div>
 
       {/* Action Items */}
-      <div className="mt-6 pt-6 border-t border-blue-200">
-        <h4 className="text-sm font-bold text-gray-900 mb-3">
+      <div className="mt-6 pt-6 border-t border-blue-900/50">
+        <h4 className="text-sm font-bold text-[#E8E6E1] mb-3">
           {mode === 'acquisition' ? 'Recommended Actions:' : 'Strategic Considerations:'}
         </h4>
-        <ul className="space-y-2 text-sm text-gray-700">
+        <ul className="space-y-2 text-sm text-[#9EA8B4]">
           {mode === 'acquisition' ? (
             <>
               <li className="flex items-start gap-2">

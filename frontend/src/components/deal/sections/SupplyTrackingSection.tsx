@@ -50,7 +50,7 @@ export const SupplyTrackingSection: React.FC<SupplyTrackingSectionProps> = ({ de
       `}
     >
       <div className="space-y-4">
-        <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+        <div className="bg-[#1a0d00] border border-orange-200 rounded-lg p-4">
           <h4 className="font-semibold text-orange-900 mb-2">Features to Include:</h4>
           <ul className="text-sm text-orange-800 space-y-1">
             <li>• Real-time pipeline tracking (planned, construction, delivered)</li>

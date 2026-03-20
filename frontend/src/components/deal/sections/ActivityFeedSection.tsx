@@ -26,32 +26,32 @@ const ACTIVITY_CONFIG: Record<string, {
   deal_created: {
     icon: TrendingUp,
     color: 'text-blue-600',
-    bgColor: 'bg-blue-100'
+    bgColor: 'bg-[#0d1e3d]'
   },
   boundary_defined: {
     icon: MapPin,
     color: 'text-purple-600',
-    bgColor: 'bg-purple-100'
+    bgColor: 'bg-[#1a0d3d]'
   },
   property_added: {
     icon: MapPin,
     color: 'text-green-600',
-    bgColor: 'bg-green-100'
+    bgColor: 'bg-[#022c22]'
   },
   property_removed: {
     icon: MapPin,
-    color: 'text-red-600',
-    bgColor: 'bg-red-100'
+    color: 'text-red-400',
+    bgColor: 'bg-[#1c0a0a]'
   },
   analysis_run: {
     icon: TrendingUp,
-    color: 'text-indigo-600',
+    color: 'text-indigo-400',
     bgColor: 'bg-indigo-100'
   },
   document_uploaded: {
     icon: FileText,
     color: 'text-orange-600',
-    bgColor: 'bg-orange-100'
+    bgColor: 'bg-[#1a0d00]'
   },
   team_member_invited: {
     icon: Users,
@@ -61,17 +61,17 @@ const ACTIVITY_CONFIG: Record<string, {
   stage_changed: {
     icon: CheckCircle,
     color: 'text-green-600',
-    bgColor: 'bg-green-100'
+    bgColor: 'bg-[#022c22]'
   },
   note_added: {
     icon: Edit,
-    color: 'text-gray-600',
-    bgColor: 'bg-gray-100'
+    color: 'text-[#9EA8B4]',
+    bgColor: 'bg-[#131920]'
   },
   default: {
     icon: Activity,
-    color: 'text-gray-600',
-    bgColor: 'bg-gray-100'
+    color: 'text-[#9EA8B4]',
+    bgColor: 'bg-[#131920]'
   }
 };
 
@@ -199,7 +199,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading activity feed...</p>
+            <p className="text-[#9EA8B4]">Loading activity feed...</p>
           </div>
         </div>
       </div>
@@ -210,9 +210,9 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading activity feed</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading activity feed</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -221,7 +221,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
   return (
     <div className="space-y-6">
       {/* Search and Filter Bar */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
         <div className="flex flex-wrap gap-3">
           {/* Search */}
           <div className="flex-1 min-w-[200px] relative">
@@ -231,7 +231,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
               placeholder="Search activities..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 
@@ -239,7 +239,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
           <select
             value={selectedType}
             onChange={(e) => setSelectedType(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            className="px-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
           >
             {ACTIVITY_TYPES.map(type => (
               <option key={type.value} value={type.value}>
@@ -251,7 +251,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
           {/* Sort Order Toggle */}
           <button
             onClick={() => setSortOrder(order => order === 'newest' ? 'oldest' : 'newest')}
-            className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-4 py-2 border border-[#253347] rounded-lg hover:bg-[#0F1319] text-sm font-medium transition-colors"
           >
             <Filter className="w-4 h-4" />
             {sortOrder === 'newest' ? 'Newest First' : 'Oldest First'}
@@ -261,19 +261,19 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
 
       {/* Activity Timeline */}
       {filteredActivities.length === 0 ? (
-        <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-12 text-center">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#131920] rounded-full mb-4">
             <Activity className="w-8 h-8 text-gray-400" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">
             No activity yet
           </h3>
-          <p className="text-sm text-gray-600 mb-6">
+          <p className="text-sm text-[#9EA8B4] mb-6">
             Activity will appear here as you work on this deal
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] overflow-hidden">
           <div className="divide-y divide-gray-200">
             {filteredActivities.map((activity, index) => {
               const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.default;
@@ -282,7 +282,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
               return (
                 <div
                   key={activity.id}
-                  className="p-4 hover:bg-gray-50 transition-colors"
+                  className="p-4 hover:bg-[#0F1319] transition-colors"
                 >
                   <div className="flex items-start gap-4">
                     {/* Timeline connector */}
@@ -294,7 +294,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
                       
                       {/* Vertical line (except for last item) */}
                       {index < filteredActivities.length - 1 && (
-                        <div className="w-0.5 h-full bg-gray-200 absolute top-10 bottom-0" />
+                        <div className="w-0.5 h-full bg-[#1e2a3d] absolute top-10 bottom-0" />
                       )}
                     </div>
 
@@ -302,23 +302,23 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
                     <div className="flex-1 min-w-0 pt-1">
                       <div className="flex items-start justify-between gap-4 mb-1">
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">
+                          <p className="text-sm font-medium text-[#E8E6E1]">
                             {activity.description}
                           </p>
                         </div>
-                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                        <span className="text-xs text-[#6B7585] whitespace-nowrap">
                           {formatTimestamp(activity.timestamp)}
                         </span>
                       </div>
                       
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-600">
+                        <span className="text-xs text-[#9EA8B4]">
                           {activity.userName}
                         </span>
                         
                         {/* User badge for AI */}
                         {activity.userId === 'ai' && (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[#1a0d3d] text-purple-800">
                             AI
                           </span>
                         )}
@@ -326,15 +326,15 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
 
                       {/* Metadata details (if any) */}
                       {activity.metadata && Object.keys(activity.metadata).length > 0 && (
-                        <div className="mt-2 text-xs text-gray-500">
+                        <div className="mt-2 text-xs text-[#6B7585]">
                           {activity.type === 'boundary_defined' && activity.metadata.acres && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#131920] rounded">
                               <MapPin className="w-3 h-3" />
                               {activity.metadata.acres.toFixed(1)} acres
                             </span>
                           )}
                           {activity.type === 'property_added' && activity.metadata.count && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 rounded">
+                            <span className="inline-flex items-center gap-1 px-2 py-1 bg-[#131920] rounded">
                               {activity.metadata.count} properties
                             </span>
                           )}
@@ -349,10 +349,10 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
 
           {/* Load More Button */}
           {hasMore && (
-            <div className="p-4 border-t border-gray-200 text-center">
+            <div className="p-4 border-t border-[#1e2a3d] text-center">
               <button
                 onClick={() => setDisplayCount(count => count + 20)}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-400 hover:bg-[#0d1e3d] rounded-lg transition-colors"
               >
                 <ChevronDown className="w-4 h-4" />
                 Load More Activity
@@ -364,8 +364,8 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
 
       {/* Stats Footer */}
       {filteredActivities.length > 0 && (
-        <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
-          <div className="flex items-center justify-between text-sm text-gray-600">
+        <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+          <div className="flex items-center justify-between text-sm text-[#9EA8B4]">
             <span>
               Showing {filteredActivities.length} of {activities.length} activities
               {selectedType !== 'all' && ` (${ACTIVITY_TYPES.find(t => t.value === selectedType)?.label})`}

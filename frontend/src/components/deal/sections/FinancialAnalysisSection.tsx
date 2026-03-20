@@ -12,18 +12,18 @@ export interface FinancialAnalysisSectionProps {
 
 // Component builder blocks for Enhanced version
 const COMPONENT_BLOCKS = [
-  { id: 1, name: 'Acquisition Costs', icon: '💰', color: 'bg-blue-100' },
-  { id: 2, name: 'Financing Terms', icon: '🏦', color: 'bg-green-100' },
-  { id: 3, name: 'Operating Income', icon: '📈', color: 'bg-purple-100' },
+  { id: 1, name: 'Acquisition Costs', icon: '💰', color: 'bg-[#0d1e3d]' },
+  { id: 2, name: 'Financing Terms', icon: '🏦', color: 'bg-[#022c22]' },
+  { id: 3, name: 'Operating Income', icon: '📈', color: 'bg-[#1a0d3d]' },
   { id: 4, name: 'Operating Expenses', icon: '📊', color: 'bg-yellow-100' },
-  { id: 5, name: 'Capital Expenditures', icon: '🔧', color: 'bg-red-100' },
+  { id: 5, name: 'Capital Expenditures', icon: '🔧', color: 'bg-[#1c0a0a]' },
   { id: 6, name: 'Reserve Funds', icon: '💵', color: 'bg-indigo-100' },
   { id: 7, name: 'Exit Strategy', icon: '🎯', color: 'bg-pink-100' },
   { id: 8, name: 'IRR Calculator', icon: '📉', color: 'bg-teal-100' },
-  { id: 9, name: 'Cash Flow Projection', icon: '💸', color: 'bg-orange-100' },
+  { id: 9, name: 'Cash Flow Projection', icon: '💸', color: 'bg-[#1a0d00]' },
   { id: 10, name: 'Waterfall Analysis', icon: '🌊', color: 'bg-cyan-100' },
   { id: 11, name: 'Tax Implications', icon: '📝', color: 'bg-lime-100' },
-  { id: 12, name: 'Equity Structure', icon: '🏗️', color: 'bg-amber-100' },
+  { id: 12, name: 'Equity Structure', icon: '🏗️', color: 'bg-[#1a1200]' },
   { id: 13, name: 'Sensitivity Dashboard', icon: '🎚️', color: 'bg-violet-100' }
 ];
 
@@ -214,20 +214,20 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Financial Analysis</h2>
-              <p className="text-sm text-gray-600 mt-1">
+              <h2 className="text-2xl font-bold text-[#E8E6E1]">Financial Analysis</h2>
+              <p className="text-sm text-[#9EA8B4] mt-1">
                 Professional-grade financial modeling for {deal.name}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {loading && (
-                <span className="text-sm text-gray-500">Loading...</span>
+                <span className="text-sm text-[#6B7585]">Loading...</span>
               )}
               {saving && (
                 <span className="text-sm text-blue-600">💾 Saving...</span>
               )}
               {!loading && !saving && saveError && (
-                <span className="text-sm text-red-600">⚠️ {saveError}</span>
+                <span className="text-sm text-red-400">⚠️ {saveError}</span>
               )}
               {!loading && !saving && !saveError && modelId && (
                 <span className="text-sm text-green-600">✓ Saved</span>
@@ -236,11 +236,11 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
           </div>
 
           {/* Component Builder */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
               📦 Component Builder
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-[#9EA8B4] mb-4">
               Select components to build your custom financial model
             </p>
             
@@ -251,28 +251,28 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   onClick={() => toggleComponent(block.id)}
                   className={`p-4 rounded-lg border-2 transition ${
                     activeComponents.includes(block.id)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-blue-500 bg-[#0d1e3d]'
+                      : 'border-[#1e2a3d] hover:border-[#253347]'
                   }`}
                 >
                   <div className={`w-12 h-12 ${block.color} rounded-lg flex items-center justify-center mx-auto mb-2`}>
                     <span className="text-2xl">{block.icon}</span>
                   </div>
-                  <div className="text-xs font-semibold text-gray-700 text-center">
+                  <div className="text-xs font-semibold text-[#9EA8B4] text-center">
                     {block.name}
                   </div>
                 </button>
               ))}
             </div>
 
-            <div className="mt-4 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-[#9EA8B4]">
               {activeComponents.length} of {COMPONENT_BLOCKS.length} components selected
             </div>
           </div>
 
           {/* Sensitivity Analysis */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
               🎚️ Sensitivity Analysis
             </h3>
             
@@ -280,7 +280,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
               {/* Revenue Adjustment */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">
+                  <label className="text-sm font-medium text-[#9EA8B4]">
                     Revenue Adjustment
                   </label>
                   <span className="text-sm font-semibold text-blue-600">
@@ -295,9 +295,9 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   value={revenueAdjust}
                   onChange={(e) => setRevenueAdjust(parseFloat(e.target.value))}
                   onBlur={handleBlur}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-[#1e2a3d] rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-[#6B7585] mt-1">
                   <span>-10%</span>
                   <span>0%</span>
                   <span>+10%</span>
@@ -307,7 +307,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
               {/* Expense Adjustment */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">
+                  <label className="text-sm font-medium text-[#9EA8B4]">
                     Expense Adjustment
                   </label>
                   <span className="text-sm font-semibold text-orange-600">
@@ -322,9 +322,9 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   value={expenseAdjust}
                   onChange={(e) => setExpenseAdjust(parseFloat(e.target.value))}
                   onBlur={handleBlur}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-[#1e2a3d] rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-[#6B7585] mt-1">
                   <span>-5%</span>
                   <span>0%</span>
                   <span>+5%</span>
@@ -334,7 +334,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
               {/* Cap Rate Adjustment */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">
+                  <label className="text-sm font-medium text-[#9EA8B4]">
                     Cap Rate Adjustment
                   </label>
                   <span className="text-sm font-semibold text-purple-600">
@@ -349,9 +349,9 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                   value={capRateAdjust}
                   onChange={(e) => setCapRateAdjust(parseFloat(e.target.value))}
                   onBlur={handleBlur}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  className="w-full h-2 bg-[#1e2a3d] rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <div className="flex justify-between text-xs text-[#6B7585] mt-1">
                   <span>-50 bps</span>
                   <span>0 bps</span>
                   <span>+50 bps</span>
@@ -361,44 +361,44 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
           </div>
 
           {/* Monte Carlo Results */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
               🎲 Monte Carlo Simulation Results
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-[#9EA8B4] mb-4">
               10,000 simulations across varying market conditions
             </p>
 
             <div className="grid grid-cols-3 gap-4">
-              <div className="bg-red-50 rounded-lg p-4 border border-red-200">
-                <div className="text-sm text-gray-600 mb-1">P90 (Conservative)</div>
-                <div className="text-3xl font-bold text-red-600">8.2%</div>
-                <div className="text-xs text-gray-500 mt-1">IRR</div>
+              <div className="bg-[#1c0a0a] rounded-lg p-4 border border-red-800/50">
+                <div className="text-sm text-[#9EA8B4] mb-1">P90 (Conservative)</div>
+                <div className="text-3xl font-bold text-red-400">8.2%</div>
+                <div className="text-xs text-[#6B7585] mt-1">IRR</div>
               </div>
               
-              <div className="bg-blue-50 rounded-lg p-4 border-2 border-blue-400">
-                <div className="text-sm text-gray-600 mb-1">P50 (Expected)</div>
+              <div className="bg-[#0d1e3d] rounded-lg p-4 border-2 border-blue-400">
+                <div className="text-sm text-[#9EA8B4] mb-1">P50 (Expected)</div>
                 <div className="text-3xl font-bold text-blue-600">14.7%</div>
-                <div className="text-xs text-gray-500 mt-1">IRR</div>
+                <div className="text-xs text-[#6B7585] mt-1">IRR</div>
               </div>
               
-              <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                <div className="text-sm text-gray-600 mb-1">P10 (Optimistic)</div>
+              <div className="bg-[#022c22] rounded-lg p-4 border border-green-800/50">
+                <div className="text-sm text-[#9EA8B4] mb-1">P10 (Optimistic)</div>
                 <div className="text-3xl font-bold text-green-600">22.1%</div>
-                <div className="text-xs text-gray-500 mt-1">IRR</div>
+                <div className="text-xs text-[#6B7585] mt-1">IRR</div>
               </div>
             </div>
 
-            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-              <div className="text-xs text-gray-600">
-                📊 Probability of achieving target 15% IRR: <span className="font-bold text-gray-900">67%</span>
+            <div className="mt-4 p-3 bg-[#0F1319] rounded-lg">
+              <div className="text-xs text-[#9EA8B4]">
+                📊 Probability of achieving target 15% IRR: <span className="font-bold text-[#E8E6E1]">67%</span>
               </div>
             </div>
           </div>
 
           {/* Export Options */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="bg-[#0F1319] rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
               📤 Export Analysis
             </h3>
             
@@ -422,8 +422,8 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Financial Analysis</h2>
-          <p className="text-sm text-gray-600 mt-1">
+          <h2 className="text-2xl font-bold text-[#E8E6E1]">Financial Analysis</h2>
+          <p className="text-sm text-[#9EA8B4] mt-1">
             Basic financial calculator for {deal.name}
           </p>
         </div>
@@ -451,32 +451,32 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
         />
 
         {/* Basic Calculator */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">
+        <div className="bg-[#0F1319] rounded-lg shadow p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
             Loan Calculator
           </h3>
           
           <div className="grid grid-cols-2 gap-6">
             {/* Purchase Price */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                 Purchase Price
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7585]">$</span>
                 <input
                   type="number"
                   value={purchasePrice}
                   onChange={(e) => setPurchasePrice(parseFloat(e.target.value) || 0)}
                   onBlur={handleBlur}
-                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-8 pr-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
             </div>
 
             {/* Down Payment */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                 Down Payment (%)
               </label>
               <input
@@ -484,13 +484,13 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 value={downPayment}
                 onChange={(e) => setDownPayment(parseFloat(e.target.value) || 0)}
                 onBlur={handleBlur}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
             {/* Interest Rate */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                 Interest Rate (%)
               </label>
               <input
@@ -499,13 +499,13 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 value={interestRate}
                 onChange={(e) => setInterestRate(parseFloat(e.target.value) || 0)}
                 onBlur={handleBlur}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
             {/* Loan Term */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                 Loan Term (years)
               </label>
               <input
@@ -513,38 +513,38 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 value={loanTerm}
                 onChange={(e) => setLoanTerm(parseFloat(e.target.value) || 0)}
                 onBlur={handleBlur}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
           </div>
 
           {/* Calculated Outputs */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
+          <div className="mt-6 pt-6 border-t border-[#1e2a3d]">
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-blue-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600 mb-1">Monthly Payment</div>
+              <div className="bg-[#0d1e3d] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4] mb-1">Monthly Payment</div>
                 <div className="text-2xl font-bold text-blue-600">
                   {formatCurrency(monthlyPayment)}
                 </div>
               </div>
               
-              <div className="bg-purple-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600 mb-1">Annual Debt Service</div>
+              <div className="bg-[#1a0d3d] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4] mb-1">Annual Debt Service</div>
                 <div className="text-2xl font-bold text-purple-600">
                   {formatCurrency(annualDebtService)}
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600 mb-1">Loan Amount</div>
-                <div className="text-xl font-bold text-gray-700">
+              <div className="bg-[#0F1319] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4] mb-1">Loan Amount</div>
+                <div className="text-xl font-bold text-[#9EA8B4]">
                   {formatCurrency(loanAmount)}
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600 mb-1">Down Payment</div>
-                <div className="text-xl font-bold text-gray-700">
+              <div className="bg-[#0F1319] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4] mb-1">Down Payment</div>
+                <div className="text-xl font-bold text-[#9EA8B4]">
                   {formatCurrency(purchasePrice * downPayment / 100)}
                 </div>
               </div>
@@ -553,25 +553,25 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
         </div>
 
         {/* Property Metrics */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">
+        <div className="bg-[#0F1319] rounded-lg shadow p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
             Property Metrics
           </h3>
           
           <div className="grid grid-cols-2 gap-6">
             {/* Estimated NOI */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                 Estimated NOI (Annual)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6B7585]">$</span>
                 <input
                   type="number"
                   value={estimatedNOI}
                   onChange={(e) => setEstimatedNOI(parseFloat(e.target.value) || 0)}
                   onBlur={handleBlur}
-                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full pl-8 pr-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="0"
                 />
               </div>
@@ -579,7 +579,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
 
             {/* Cap Rate */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                 Cap Rate (%)
               </label>
               <input
@@ -588,7 +588,7 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
                 value={capRate}
                 onChange={(e) => setCapRate(parseFloat(e.target.value) || 0)}
                 onBlur={handleBlur}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="0.0"
               />
             </div>
@@ -596,36 +596,36 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
 
           {/* Basic Metrics Display */}
           {estimatedNOI > 0 && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            <div className="mt-6 pt-6 border-t border-[#1e2a3d]">
+              <h4 className="text-sm font-semibold text-[#9EA8B4] mb-3">
                 Key Performance Indicators
               </h4>
               
               <div className="grid grid-cols-3 gap-4">
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <div className="text-xs text-gray-600 mb-1">Cash-on-Cash Return</div>
+                <div className="text-center p-4 bg-[#022c22] rounded-lg">
+                  <div className="text-xs text-[#9EA8B4] mb-1">Cash-on-Cash Return</div>
                   <div className="text-xl font-bold text-green-600">
                     {formatPercent(cashOnCashReturn)}
                   </div>
                 </div>
                 
-                <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                  <div className="text-xs text-gray-600 mb-1">DSCR</div>
+                <div className="text-center p-4 bg-[#1a1200] rounded-lg">
+                  <div className="text-xs text-[#9EA8B4] mb-1">DSCR</div>
                   <div className="text-xl font-bold text-yellow-600">
                     {debtServiceCoverageRatio.toFixed(2)}x
                   </div>
                 </div>
                 
-                <div className="text-center p-4 bg-indigo-50 rounded-lg">
-                  <div className="text-xs text-gray-600 mb-1">Cap Rate</div>
-                  <div className="text-xl font-bold text-indigo-600">
+                <div className="text-center p-4 bg-[#0d1020] rounded-lg">
+                  <div className="text-xs text-[#9EA8B4] mb-1">Cap Rate</div>
+                  <div className="text-xl font-bold text-indigo-400">
                     {formatPercent(capRate)}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="text-xs text-blue-900">
+              <div className="mt-4 p-3 bg-[#0d1e3d] rounded-lg border border-blue-900/50">
+                <div className="text-xs text-blue-300">
                   💡 <span className="font-semibold">Tip:</span> Upgrade to Financial Modeling Pro for detailed cash flow projections, IRR calculations, and sensitivity analysis.
                 </div>
               </div>
@@ -634,11 +634,11 @@ export const FinancialAnalysisSection: React.FC<FinancialAnalysisSectionProps> =
         </div>
 
         {/* Info Box */}
-        <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-          <h4 className="font-semibold text-gray-900 mb-2">
+        <div className="bg-[#0F1319] rounded-lg p-6 border border-[#1e2a3d]">
+          <h4 className="font-semibold text-[#E8E6E1] mb-2">
             📚 Understanding the Basics
           </h4>
-          <ul className="space-y-2 text-sm text-gray-700">
+          <ul className="space-y-2 text-sm text-[#9EA8B4]">
             <li><strong>NOI (Net Operating Income):</strong> Annual rental income minus operating expenses</li>
             <li><strong>Cap Rate:</strong> NOI divided by purchase price (measures return on investment)</li>
             <li><strong>Cash-on-Cash Return:</strong> Annual cash flow divided by cash invested</li>

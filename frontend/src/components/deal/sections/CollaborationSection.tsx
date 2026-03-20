@@ -36,13 +36,13 @@ const ROLE_ICONS: Record<string, React.ComponentType<any>> = {
 function getRoleColor(role: string): string {
   switch (role) {
     case 'owner':
-      return 'bg-purple-100 text-purple-800 border-purple-200';
+      return 'bg-[#1a0d3d] text-purple-800 border-purple-800/50';
     case 'editor':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
+      return 'bg-[#0d1e3d] text-blue-300 border-blue-900/50';
     case 'viewer':
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-[#131920] text-[#E8E6E1] border-[#1e2a3d]';
     default:
-      return 'bg-gray-100 text-gray-800 border-gray-200';
+      return 'bg-[#131920] text-[#E8E6E1] border-[#1e2a3d]';
   }
 }
 
@@ -122,8 +122,8 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
       {/* Header with Invite Button */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Team Access</h3>
-          <p className="text-sm text-gray-600 mt-1">
+          <h3 className="text-lg font-semibold text-[#E8E6E1]">Team Access</h3>
+          <p className="text-sm text-[#9EA8B4] mt-1">
             Manage who can view and edit this deal
           </p>
         </div>
@@ -137,16 +137,16 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
       </div>
 
       {/* Team Members List */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] overflow-hidden">
         {teamMembers.length === 0 ? (
           <div className="p-12 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-[#131920] rounded-full mb-4">
               <Users className="w-8 h-8 text-gray-400" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">
               No team members yet
             </h3>
-            <p className="text-sm text-gray-600 mb-6">
+            <p className="text-sm text-[#9EA8B4] mb-6">
               Invite colleagues to collaborate on this deal
             </p>
           </div>
@@ -157,7 +157,7 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
               return (
                 <div
                   key={member.id}
-                  className="p-4 hover:bg-gray-50 transition-colors"
+                  className="p-4 hover:bg-[#0F1319] transition-colors"
                 >
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
@@ -169,14 +169,14 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h4 className="text-sm font-semibold text-gray-900">
+                          <h4 className="text-sm font-semibold text-[#E8E6E1]">
                             {member.name}
                           </h4>
                           {member.role === 'owner' && (
-                            <span className="text-xs text-gray-500">(You)</span>
+                            <span className="text-xs text-[#6B7585]">(You)</span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{member.email}</p>
+                        <p className="text-sm text-[#9EA8B4] mb-2">{member.email}</p>
                         
                         {/* Role Badge */}
                         <div className="flex items-center gap-2">
@@ -186,14 +186,14 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                           </span>
                           
                           {member.lastActive && (
-                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                            <span className="text-xs text-[#6B7585] flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               Active {formatRelativeTime(member.lastActive)}
                             </span>
                           )}
                         </div>
 
-                        <p className="text-xs text-gray-500 mt-1">
+                        <p className="text-xs text-[#6B7585] mt-1">
                           {ROLE_DESCRIPTIONS[member.role]}
                         </p>
                       </div>
@@ -202,16 +202,16 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                     {/* Actions (only show if not owner or if multiple owners) */}
                     {member.role !== 'owner' && (
                       <div className="relative group">
-                        <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+                        <button className="p-2 text-gray-400 hover:text-[#9EA8B4] hover:bg-[#131920] rounded-lg transition-colors">
                           <MoreVertical className="w-4 h-4" />
                         </button>
                         
                         {/* Dropdown menu (simplified - would use proper dropdown component) */}
-                        <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity z-10">
+                        <div className="absolute right-0 top-full mt-1 w-48 bg-[#0F1319] rounded-lg shadow-lg border border-[#1e2a3d] py-1 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-opacity z-10">
                           <button
                             onClick={() => handleChangeRole(member.id, 'editor')}
                             disabled={member.role === 'editor'}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full px-4 py-2 text-left text-sm text-[#9EA8B4] hover:bg-[#0F1319] disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Edit className="w-4 h-4 inline mr-2" />
                             Make Editor
@@ -219,15 +219,15 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                           <button
                             onClick={() => handleChangeRole(member.id, 'viewer')}
                             disabled={member.role === 'viewer'}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full px-4 py-2 text-left text-sm text-[#9EA8B4] hover:bg-[#0F1319] disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Eye className="w-4 h-4 inline mr-2" />
                             Make Viewer
                           </button>
-                          <div className="border-t border-gray-200 my-1" />
+                          <div className="border-t border-[#1e2a3d] my-1" />
                           <button
                             onClick={() => handleRemoveMember(member.id)}
-                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                            className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-[#1c0a0a]"
                           >
                             <Trash2 className="w-4 h-4 inline mr-2" />
                             Remove Access
@@ -244,8 +244,8 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
       </div>
 
       {/* Role Permissions Guide */}
-      <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-        <h4 className="text-sm font-semibold text-blue-900 mb-3 flex items-center gap-2">
+      <div className="bg-[#0d1e3d] rounded-lg border border-blue-900/50 p-4">
+        <h4 className="text-sm font-semibold text-blue-300 mb-3 flex items-center gap-2">
           <Shield className="w-4 h-4" />
           Permission Levels
         </h4>
@@ -254,12 +254,12 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
             const RoleIcon = ROLE_ICONS[role];
             return (
               <div key={role} className="flex items-start gap-2">
-                <RoleIcon className="w-4 h-4 text-blue-700 mt-0.5 flex-shrink-0" />
+                <RoleIcon className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-medium text-blue-900">
+                  <p className="text-sm font-medium text-blue-300">
                     {ROLE_LABELS[role]}
                   </p>
-                  <p className="text-xs text-blue-700">{description}</p>
+                  <p className="text-xs text-blue-400">{description}</p>
                 </div>
               </div>
             );
@@ -270,15 +270,15 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
       {/* Invite Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="bg-[#0F1319] rounded-lg shadow-xl max-w-md w-full">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
+            <div className="flex items-center justify-between p-6 border-b border-[#1e2a3d]">
+              <h3 className="text-lg font-semibold text-[#E8E6E1]">
                 Invite Team Member
               </h3>
               <button
                 onClick={() => setShowInviteModal(false)}
-                className="p-1 text-gray-400 hover:text-gray-600 rounded-lg transition-colors"
+                className="p-1 text-gray-400 hover:text-[#9EA8B4] rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -288,7 +288,7 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
             <div className="p-6 space-y-4">
               {/* Email Input */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                   Email Address
                 </label>
                 <input
@@ -296,13 +296,13 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="colleague@example.com"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
 
               {/* Role Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                   Access Level
                 </label>
                 <div className="space-y-2">
@@ -313,8 +313,8 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                         key={role}
                         className={`flex items-start gap-3 p-3 border-2 rounded-lg cursor-pointer transition-colors ${
                           inviteRole === role
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
+                            ? 'border-blue-500 bg-[#0d1e3d]'
+                            : 'border-[#1e2a3d] hover:border-[#253347]'
                         }`}
                       >
                         <input
@@ -327,12 +327,12 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                         />
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
-                            <RoleIcon className="w-4 h-4 text-gray-600" />
-                            <span className="text-sm font-medium text-gray-900">
+                            <RoleIcon className="w-4 h-4 text-[#9EA8B4]" />
+                            <span className="text-sm font-medium text-[#E8E6E1]">
                               {ROLE_LABELS[role]}
                             </span>
                           </div>
-                          <p className="text-xs text-gray-600">
+                          <p className="text-xs text-[#9EA8B4]">
                             {ROLE_DESCRIPTIONS[role]}
                           </p>
                         </div>
@@ -344,7 +344,7 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
 
               {/* Optional Message */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                   Message (Optional)
                 </label>
                 <textarea
@@ -352,16 +352,16 @@ export function CollaborationSection({ deal }: CollaborationSectionProps) {
                   onChange={(e) => setInviteMessage(e.target.value)}
                   placeholder="Add a personal message to the invitation..."
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className="w-full px-3 py-2 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                 />
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200">
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-[#1e2a3d]">
               <button
                 onClick={() => setShowInviteModal(false)}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition-colors"
+                className="px-4 py-2 border border-[#253347] text-[#9EA8B4] rounded-lg hover:bg-[#0F1319] text-sm font-medium transition-colors"
               >
                 Cancel
               </button>

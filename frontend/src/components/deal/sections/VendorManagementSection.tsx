@@ -41,9 +41,9 @@ export const VendorManagementSection: React.FC<VendorManagementSectionProps> = (
       wireframe={wireframe}
     >
       <div className="space-y-4">
-        <div className="bg-white rounded-lg p-4 border border-gray-200">
-          <h4 className="font-semibold text-gray-900 mb-3">Planned Features</h4>
-          <ul className="space-y-2 text-sm text-gray-600">
+        <div className="bg-[#0F1319] rounded-lg p-4 border border-[#1e2a3d]">
+          <h4 className="font-semibold text-[#E8E6E1] mb-3">Planned Features</h4>
+          <ul className="space-y-2 text-sm text-[#9EA8B4]">
             <li className="flex items-start gap-2">
               <span className="text-purple-600">▸</span>
               <span><strong>Contractor Database:</strong> Centralized vendor directory with licenses and insurance</span>
@@ -75,7 +75,7 @@ export const VendorManagementSection: React.FC<VendorManagementSectionProps> = (
           <button className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium">
             Request Early Access
           </button>
-          <button className="px-6 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium">
+          <button className="px-6 py-2 bg-[#0F1319] border border-[#253347] text-[#9EA8B4] rounded-lg hover:bg-[#0F1319] transition-colors font-medium">
             Learn More
           </button>
         </div>

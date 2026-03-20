@@ -192,7 +192,7 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
   }
 
   return (
-    <div className="flex-shrink-0 w-[360px] bg-white border-l border-slate-200 flex flex-col h-full">
+    <div className="flex-shrink-0 w-[360px] bg-[#0F1319] border-l border-[#1e2a3d] flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 bg-gray-900 text-white flex-shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center">
@@ -221,19 +221,19 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-gray-50">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#0F1319]">
         {messages.length === 0 && (
           <div className="text-center py-6">
-            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <div className="w-10 h-10 bg-[#0d1e3d] rounded-full flex items-center justify-center mx-auto mb-3">
               <Zap className="w-5 h-5 text-blue-600" />
             </div>
-            <p className="text-sm text-gray-600 mb-4">Ask me about zoning, development capacity, or deal analysis.</p>
+            <p className="text-sm text-[#9EA8B4] mb-4">Ask me about zoning, development capacity, or deal analysis.</p>
             <div className="flex flex-col gap-2">
               {suggestions.map((q, i) => (
                 <button
                   key={i}
                   onClick={() => sendMessage(q)}
-                  className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
+                  className="w-full px-3 py-2 bg-[#0F1319] border border-[#1e2a3d] rounded-lg text-xs text-[#9EA8B4] hover:bg-[#0d1e3d] hover:border-blue-700 transition-colors text-left"
                 >
                   {q}
                 </button>
@@ -247,15 +247,15 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
             <div className={`max-w-[85%] rounded-lg px-3 py-2.5 ${
               msg.role === 'user'
                 ? 'bg-blue-600 text-white'
-                : 'bg-white border border-gray-200 text-gray-800'
+                : 'bg-[#0F1319] border border-[#1e2a3d] text-[#E8E6E1]'
             }`}>
               <p className="text-xs whitespace-pre-wrap leading-relaxed">{msg.content}</p>
               {msg.actions && msg.actions.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-gray-100">
+                <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-[#1e2a3d]">
                   {msg.actions.map((action, i) => (
                     <button
                       key={i}
-                      className="px-2 py-1 bg-gray-50 border border-gray-200 rounded text-[10px] text-gray-700 hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                      className="px-2 py-1 bg-[#0F1319] border border-[#1e2a3d] rounded text-[10px] text-[#9EA8B4] hover:bg-[#0d1e3d] hover:border-blue-700 transition-colors"
                     >
                       {action.icon} {action.label}
                     </button>
@@ -268,8 +268,8 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5">
-              <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg px-3 py-2.5">
+              <div className="flex items-center gap-2 text-xs text-[#6B7585]">
                 <div className="flex gap-1">
                   <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -285,13 +285,13 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
       </div>
 
       {messages.length > 0 && (
-        <div className="px-4 py-2 bg-white border-t border-gray-100 flex-shrink-0">
+        <div className="px-4 py-2 bg-[#0F1319] border-t border-[#1e2a3d] flex-shrink-0">
           <div className="flex flex-wrap gap-1.5">
             {suggestions.slice(0, 2).map((q, i) => (
               <button
                 key={i}
                 onClick={() => sendMessage(q)}
-                className="px-2 py-1 text-[10px] text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                className="px-2 py-1 text-[10px] text-[#6B7585] hover:text-blue-600 hover:bg-[#0d1e3d] rounded transition-colors"
               >
                 {q}
               </button>
@@ -300,7 +300,7 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
         </div>
       )}
 
-      <div className="px-4 py-3 bg-white border-t border-gray-200 flex-shrink-0">
+      <div className="px-4 py-3 bg-[#0F1319] border-t border-[#1e2a3d] flex-shrink-0">
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
@@ -309,7 +309,7 @@ export const ZoningAgentChat: React.FC<ZoningAgentChatProps> = ({
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Ask about this deal..."
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="flex-1 px-3 py-2 border border-[#253347] rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={isLoading}
           />
           <button

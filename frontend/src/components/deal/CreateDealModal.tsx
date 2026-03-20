@@ -239,29 +239,29 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
 
   return (
     <div className={`fixed inset-0 z-50 ${isDrawingMode ? '' : 'bg-black bg-opacity-50 flex items-center justify-center'}`}>
-      <div className={`bg-white shadow-2xl overflow-y-auto ${
+      <div className={`bg-[#0F1319] shadow-2xl overflow-y-auto ${
         isDrawingMode 
           ? 'absolute right-0 top-0 bottom-0 w-96 rounded-l-xl' 
           : 'rounded-xl max-w-4xl w-full max-h-[90vh]'
       }`}>
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Create New Deal</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="text-2xl font-bold text-[#E8E6E1]">Create New Deal</h2>
+            <p className="text-sm text-[#6B7585] mt-1">
               Step {currentStep} of {STEPS.DETAILS}
             </p>
           </div>
           <button
             onClick={handleClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl font-light"
+            className="text-gray-400 hover:text-[#9EA8B4] text-2xl font-light"
           >
             ×
           </button>
         </div>
 
         {/* Progress Bar */}
-        <div className="px-6 py-3 bg-gray-50">
+        <div className="px-6 py-3 bg-[#0F1319]">
           <div className="flex items-center justify-between">
             {[
               { num: STEPS.SETUP, label: 'Setup' },
@@ -274,17 +274,17 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                     className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
                       currentStep >= step.num
                         ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 text-gray-400'
+                        : 'bg-[#1e2a3d] text-gray-400'
                     }`}
                   >
                     {step.num}
                   </div>
-                  <span className="text-xs mt-2 text-center text-gray-600 font-medium">{step.label}</span>
+                  <span className="text-xs mt-2 text-center text-[#9EA8B4] font-medium">{step.label}</span>
                 </div>
                 {idx < 2 && (
                   <div
                     className={`flex-1 h-1 mx-2 mb-6 transition-all ${
-                      currentStep > step.num ? 'bg-blue-600' : 'bg-gray-200'
+                      currentStep > step.num ? 'bg-blue-600' : 'bg-[#1e2a3d]'
                     }`}
                   />
                 )}
@@ -300,29 +300,29 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
             <div className="space-y-6">
               {/* Category Selection */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                <h3 className="text-lg font-semibold text-[#E8E6E1] mb-3">
                   1. Deal Category
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     onClick={() => setDealCategory('portfolio')}
-                    className={`p-4 border-2 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition ${
-                      dealCategory === 'portfolio' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                    className={`p-4 border-2 rounded-lg hover:border-blue-500 hover:bg-[#0d1e3d] transition ${
+                      dealCategory === 'portfolio' ? 'border-blue-500 bg-[#0d1e3d]' : 'border-[#1e2a3d]'
                     }`}
                   >
                     <div className="text-3xl mb-2">📁</div>
-                    <h4 className="font-semibold text-gray-900 text-sm mb-1">Portfolio</h4>
-                    <p className="text-xs text-gray-600">Properties you own or manage</p>
+                    <h4 className="font-semibold text-[#E8E6E1] text-sm mb-1">Portfolio</h4>
+                    <p className="text-xs text-[#9EA8B4]">Properties you own or manage</p>
                   </button>
                   <button
                     onClick={() => setDealCategory('pipeline')}
-                    className={`p-4 border-2 rounded-lg hover:border-green-500 hover:bg-green-50 transition ${
-                      dealCategory === 'pipeline' ? 'border-green-500 bg-green-50' : 'border-gray-200'
+                    className={`p-4 border-2 rounded-lg hover:border-green-500 hover:bg-[#022c22] transition ${
+                      dealCategory === 'pipeline' ? 'border-green-500 bg-[#022c22]' : 'border-[#1e2a3d]'
                     }`}
                   >
                     <div className="text-3xl mb-2">📊</div>
-                    <h4 className="font-semibold text-gray-900 text-sm mb-1">Pipeline</h4>
-                    <p className="text-xs text-gray-600">Deals you're prospecting</p>
+                    <h4 className="font-semibold text-[#E8E6E1] text-sm mb-1">Pipeline</h4>
+                    <p className="text-xs text-[#9EA8B4]">Deals you're prospecting</p>
                   </button>
                 </div>
               </div>
@@ -330,29 +330,29 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
               {/* Development Type (shown after category selected) */}
               {dealCategory && (
                 <div className="animate-fadeIn">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  <h3 className="text-lg font-semibold text-[#E8E6E1] mb-3">
                     2. Development Type
                   </h3>
                   <div className="grid grid-cols-2 gap-4">
                     <button
                       onClick={() => setDevelopmentType('new')}
-                      className={`p-4 border-2 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition ${
-                        developmentType === 'new' ? 'border-purple-500 bg-purple-50' : 'border-gray-200'
+                      className={`p-4 border-2 rounded-lg hover:border-purple-500 hover:bg-[#1a0d3d] transition ${
+                        developmentType === 'new' ? 'border-purple-500 bg-[#1a0d3d]' : 'border-[#1e2a3d]'
                       }`}
                     >
                       <div className="text-3xl mb-2">🏗️</div>
-                      <h4 className="font-semibold text-gray-900 text-sm mb-1">New Development</h4>
-                      <p className="text-xs text-gray-600">Ground-up construction</p>
+                      <h4 className="font-semibold text-[#E8E6E1] text-sm mb-1">New Development</h4>
+                      <p className="text-xs text-[#9EA8B4]">Ground-up construction</p>
                     </button>
                     <button
                       onClick={() => setDevelopmentType('existing')}
-                      className={`p-4 border-2 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition ${
-                        developmentType === 'existing' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
+                      className={`p-4 border-2 rounded-lg hover:border-orange-500 hover:bg-[#1a0d00] transition ${
+                        developmentType === 'existing' ? 'border-orange-500 bg-[#1a0d00]' : 'border-[#1e2a3d]'
                       }`}
                     >
                       <div className="text-3xl mb-2">🏢</div>
-                      <h4 className="font-semibold text-gray-900 text-sm mb-1">Existing Property</h4>
-                      <p className="text-xs text-gray-600">Existing building</p>
+                      <h4 className="font-semibold text-[#E8E6E1] text-sm mb-1">Existing Property</h4>
+                      <p className="text-xs text-[#9EA8B4]">Existing building</p>
                     </button>
                   </div>
                 </div>
@@ -361,7 +361,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
               {/* Address (shown after type selected) */}
               {dealCategory && developmentType && (
                 <div className="animate-fadeIn">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  <h3 className="text-lg font-semibold text-[#E8E6E1] mb-3">
                     3. Property Address
                   </h3>
                   <div>
@@ -397,7 +397,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                       }}
                       placeholder="Start typing address... (e.g., 123 Peachtree St NE, Atlanta, GA)"
                     />
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-[#6B7585] mt-2">
                       Start typing and select from dropdown, or enter manually and click "Locate on Map"
                     </p>
                   </div>
@@ -412,10 +412,10 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
               {showTradeArea && (
                 <div>
                   <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      Define Trade Area <span className="text-sm font-normal text-gray-500">(Optional)</span>
+                    <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">
+                      Define Trade Area <span className="text-sm font-normal text-[#6B7585]">(Optional)</span>
                     </h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-[#9EA8B4]">
                       Define the geographic area you want to analyze, or skip to use system defaults.
                     </p>
                   </div>
@@ -440,7 +440,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   <div className="mt-4 flex justify-center">
                     <Button
                       onClick={handleSkipTradeArea}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-700"
+                      className="bg-[#1e2a3d] hover:bg-gray-300 text-[#9EA8B4]"
                     >
                       ⏭️ Skip - System will define later
                     </Button>
@@ -451,20 +451,20 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
               {showBoundary && developmentType === 'new' && (
                 <div className="space-y-4">
                   <div className="mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      Draw Property Boundary <span className="text-sm font-normal text-gray-500">(Optional)</span>
+                    <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">
+                      Draw Property Boundary <span className="text-sm font-normal text-[#6B7585]">(Optional)</span>
                     </h3>
-                    <p className="text-sm text-gray-600 mb-3">
+                    <p className="text-sm text-[#9EA8B4] mb-3">
                       Draw the exact property boundary on the map, or skip to use the address point.
                     </p>
                   </div>
                   
-                  <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg text-center">
+                  <div className="p-6 bg-[#0d1e3d] border-2 border-blue-900/50 rounded-lg text-center">
                     <div className="text-6xl mb-4">🗺️</div>
-                    <h4 className="text-lg font-semibold text-blue-900 mb-2">
+                    <h4 className="text-lg font-semibold text-blue-300 mb-2">
                       Drawing on Dashboard Map
                     </h4>
-                    <p className="text-sm text-blue-700 mb-4">
+                    <p className="text-sm text-blue-400 mb-4">
                       The map is now in drawing mode. Use the drawing tools to outline your property boundary.
                     </p>
                     <div className="text-xs text-blue-600 space-y-1">
@@ -486,7 +486,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                       </button>
                       <Button
                         onClick={handleSkipBoundary}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-700"
+                        className="bg-[#1e2a3d] hover:bg-gray-300 text-[#9EA8B4]"
                       >
                         ⏭️ Skip - Use point location
                       </Button>
@@ -494,8 +494,8 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   )}
                   
                   {boundary && boundary.type !== 'Point' && (
-                    <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg">
-                      <p className="text-sm text-green-800 font-semibold text-center">
+                    <div className="p-4 bg-[#022c22] border-2 border-green-800/50 rounded-lg">
+                      <p className="text-sm text-green-300 font-semibold text-center">
                         ✓ Boundary drawn successfully! Click "Continue" below.
                       </p>
                     </div>
@@ -508,11 +508,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
           {/* Step 3: Details */}
           {currentStep === STEPS.DETAILS && (
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">
                 Deal Info
               </h3>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                   Deal Name *
                 </label>
                 <input
@@ -523,11 +523,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   onChange={(e) => setDealName(e.target.value)}
                   placeholder="e.g., Buckhead Mixed-Use Development"
                   aria-label="Deal name"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                   Description
                 </label>
                 <textarea
@@ -538,11 +538,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   placeholder="Brief description of the deal..."
                   aria-label="Deal description"
                   rows={3}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-[#9EA8B4] mb-2">
                   Subscription Tier
                 </label>
                 <select
@@ -551,16 +551,16 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
                   value={tier}
                   onChange={(e) => setTier(e.target.value as any)}
                   aria-label="Subscription tier"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-[#253347] rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="basic">Basic</option>
                   <option value="pro">Pro</option>
                   <option value="enterprise">Enterprise</option>
                 </select>
               </div>
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="font-semibold text-blue-900 mb-2">Summary</h4>
-                <div className="text-sm text-blue-800 space-y-1">
+              <div className="p-4 bg-[#0d1e3d] border border-blue-900/50 rounded-lg">
+                <h4 className="font-semibold text-blue-300 mb-2">Summary</h4>
+                <div className="text-sm text-blue-300 space-y-1">
                   <p>
                     <strong>Category:</strong>{' '}
                     {dealCategory === 'portfolio' ? 'Portfolio (Owned)' : 'Pipeline (Prospecting)'}
@@ -587,14 +587,14 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({ isOpen, onClos
 
           {/* Error Message */}
           {error && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="mt-4 p-4 bg-[#1c0a0a] border border-red-800/50 rounded-lg">
+              <p className="text-sm text-red-300">{error}</p>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 bg-[#0F1319] border-t border-[#1e2a3d] flex items-center justify-between">
           <div>
             {(currentStep > STEPS.SETUP || (currentStep === STEPS.LOCATION && showBoundary)) && (
               <Button onClick={handleBack} disabled={isLoading}>

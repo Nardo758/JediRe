@@ -181,7 +181,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
   if (loading) {
     return (
       <div className="space-y-5">
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-12 text-center">
           <div className="animate-pulse">
             <div className="h-4 bg-stone-200 rounded w-48 mx-auto mb-3"></div>
             <div className="text-xs text-stone-400">Loading financial model...</div>
@@ -195,7 +195,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-stone-900">Financial Modeling</h2>
+          <h2 className="text-lg font-semibold text-[#E8E6E1]">Financial Modeling</h2>
           <p className="text-sm text-stone-500">Scenario analysis and sensitivity testing</p>
         </div>
         <div className="flex items-center gap-2">
@@ -203,7 +203,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
             <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">SAVED</span>
           )}
           {saving && (
-            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono">SAVING...</span>
+            <span className="text-[10px] bg-[#0d1e3d] text-blue-400 px-2 py-0.5 rounded-full font-mono">SAVING...</span>
           )}
         </div>
       </div>
@@ -216,7 +216,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
               activeScenario === s.id
                 ? 'bg-stone-900 text-white'
-                : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
+                : 'bg-[#0F1319] border border-[#1e2a3d] text-stone-600 hover:bg-[#0F1319]'
             }`}
           >
             {s.name}
@@ -228,8 +228,8 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
         {scenarios.map(s => {
           const isActive = s.id === activeScenario;
           return (
-            <div key={s.id} className={`bg-white rounded-xl border p-5 ${isActive ? 'border-stone-400 ring-1 ring-stone-300' : 'border-stone-200'}`}>
-              <div className="text-sm font-semibold text-stone-900 mb-3">{s.name}</div>
+            <div key={s.id} className={`bg-[#0F1319] rounded-xl border p-5 ${isActive ? 'border-stone-400 ring-1 ring-stone-300' : 'border-[#1e2a3d]'}`}>
+              <div className="text-sm font-semibold text-[#E8E6E1] mb-3">{s.name}</div>
               <div className="space-y-2">
                 <ResultRow label="IRR" value={`${s.results.irr.toFixed(1)}%`} good={s.results.irr > 15} />
                 <ResultRow label="Equity Multiple" value={`${s.results.equityMultiple.toFixed(2)}x`} good={s.results.equityMultiple > 1.5} />
@@ -243,8 +243,8 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
         })}
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-sm font-semibold text-stone-900 mb-4">
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+        <h3 className="text-sm font-semibold text-[#E8E6E1] mb-4">
           Assumptions — {current.name}
         </h3>
         <div className="grid grid-cols-2 gap-4">
@@ -271,7 +271,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
               ) : (
                 <button
                   onClick={() => setEditingKey(`${current.id}-${a.key}`)}
-                  className="text-xs font-mono font-semibold text-stone-900 hover:text-blue-600 cursor-pointer"
+                  className="text-xs font-mono font-semibold text-[#E8E6E1] hover:text-blue-600 cursor-pointer"
                 >
                   {a.unit === '$' ? `$${a.value.toLocaleString()}` : `${a.value}${a.unit}`}
                 </button>
@@ -282,14 +282,14 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
         <p className="text-[10px] text-stone-400 mt-3">Click any value to edit. Changes auto-save and recompute returns.</p>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-sm font-semibold text-stone-900 mb-4">Sensitivity Analysis</h3>
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+        <h3 className="text-sm font-semibold text-[#E8E6E1] mb-4">Sensitivity Analysis</h3>
         <div className="space-y-3">
           {sensitivityData.map((item, i) => (
             <div key={i} className="flex items-center gap-4">
               <span className="text-xs text-stone-600 w-40">{item.label}</span>
               <div className="flex-1 flex items-center gap-2">
-                <div className="flex-1 bg-stone-100 rounded-full h-2 relative">
+                <div className="flex-1 bg-[#131920] rounded-full h-2 relative">
                   <div
                     className={`h-2 rounded-full absolute ${item.impact >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
                     style={{
@@ -300,7 +300,7 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
                   <div className="absolute left-1/2 top-0 w-px h-2 bg-stone-400" />
                 </div>
                 <span className={`text-xs font-mono font-bold w-16 text-right ${
-                  item.impact >= 0 ? 'text-emerald-600' : 'text-red-600'
+                  item.impact >= 0 ? 'text-emerald-600' : 'text-red-400'
                 }`}>
                   {item.impact >= 0 ? '+' : ''}{item.impact.toFixed(1)}% IRR
                 </span>
@@ -308,8 +308,8 @@ export const FinancialModelingSection: React.FC<FinancialModelingSectionProps> =
             </div>
           ))}
         </div>
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs text-amber-800 leading-relaxed">
+        <div className="mt-4 bg-[#1a1200] border border-amber-800/50 rounded-lg p-3">
+          <p className="text-xs text-amber-300 leading-relaxed">
             Exit cap rate has the largest downside impact. A 25bps widening reduces IRR by {Math.abs(sensitivityData[2]?.impact || 0).toFixed(1)} points.
             Rent growth has the strongest upside lever.
           </p>
@@ -323,7 +323,7 @@ const ResultRow: React.FC<{ label: string; value: string; good?: boolean }> = ({
   <div className="flex justify-between items-center">
     <span className="text-[11px] text-stone-500">{label}</span>
     <span className={`text-xs font-mono font-bold ${
-      good === undefined ? 'text-stone-900' : good ? 'text-emerald-600' : 'text-red-500'
+      good === undefined ? 'text-[#E8E6E1]' : good ? 'text-emerald-600' : 'text-red-500'
     }`}>{value}</span>
   </div>
 );

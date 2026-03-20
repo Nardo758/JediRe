@@ -161,18 +161,18 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
   if (importResult) {
     return (
       <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Import Complete</h3>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+        <div className="bg-[#0F1319] rounded-xl shadow-xl max-w-md w-full">
+          <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">Import Complete</h3>
+            <button onClick={onClose} className="text-gray-400 hover:text-[#9EA8B4]">
               <X size={20} />
             </button>
           </div>
           <div className="p-6 space-y-4">
-            <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-3 p-4 bg-[#022c22] border border-green-800/50 rounded-lg">
               <Check size={24} className="text-green-600" />
               <div>
-                <p className="text-sm font-medium text-green-900">
+                <p className="text-sm font-medium text-green-300">
                   {importResult.imported} contact{importResult.imported !== 1 ? 's' : ''} imported successfully
                 </p>
               </div>
@@ -180,12 +180,12 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
 
             {importResult.skipped.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-700">
+                <p className="text-sm font-medium text-[#9EA8B4]">
                   {importResult.skipped.length} skipped:
                 </p>
                 <div className="max-h-32 overflow-y-auto space-y-1">
                   {importResult.skipped.map((s, i) => (
-                    <div key={i} className="text-xs text-gray-500 flex items-center gap-2">
+                    <div key={i} className="text-xs text-[#6B7585] flex items-center gap-2">
                       <span className="truncate">{s.email}</span>
                       <span className="text-gray-400">—</span>
                       <span className="text-gray-400">{s.reason}</span>
@@ -195,7 +195,7 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
               </div>
             )}
           </div>
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
+          <div className="px-6 py-4 bg-[#0F1319] border-t border-[#1e2a3d]">
             <button
               onClick={onClose}
               className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
@@ -210,15 +210,15 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+      <div className="bg-[#0F1319] rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between flex-shrink-0">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Import Contacts</h3>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">Import Contacts</h3>
+            <p className="text-sm text-[#6B7585] mt-0.5">
               Sync contacts from your email to add as team members
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-gray-400 hover:text-[#9EA8B4]">
             <X size={20} />
           </button>
         </div>
@@ -226,18 +226,18 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
-            <span className="ml-3 text-gray-500 text-sm">Checking connections...</span>
+            <span className="ml-3 text-[#6B7585] text-sm">Checking connections...</span>
           </div>
         ) : (
           <>
-            <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
+            <div className="px-6 py-3 border-b border-[#1e2a3d] flex-shrink-0">
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => status?.microsoft.connected ? fetchContacts('microsoft') : connectMicrosoft()}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     activeSource === 'microsoft'
-                      ? 'bg-blue-50 border-blue-200 text-blue-700'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      ? 'bg-[#0d1e3d] border-blue-900/50 text-blue-400'
+                      : 'border-[#1e2a3d] text-[#9EA8B4] hover:bg-[#0F1319]'
                   }`}
                 >
                   <svg width="16" height="16" viewBox="0 0 21 21" fill="none">
@@ -255,8 +255,8 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
                   onClick={() => status?.google.connected ? fetchContacts('google') : connectGoogle()}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                     activeSource === 'google'
-                      ? 'bg-blue-50 border-blue-200 text-blue-700'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      ? 'bg-[#0d1e3d] border-blue-900/50 text-blue-400'
+                      : 'border-[#1e2a3d] text-[#9EA8B4] hover:bg-[#0F1319]'
                   }`}
                 >
                   <svg width="16" height="16" viewBox="0 0 48 48">
@@ -274,7 +274,7 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
                   <button
                     onClick={() => activeSource && fetchContacts(activeSource)}
                     disabled={fetching}
-                    className="ml-auto p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                    className="ml-auto p-2 text-gray-400 hover:text-[#9EA8B4] rounded-lg hover:bg-[#131920]"
                     title="Refresh contacts"
                   >
                     <RefreshCw size={16} className={fetching ? 'animate-spin' : ''} />
@@ -286,7 +286,7 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
             {!status?.microsoft.connected && !status?.google.connected ? (
               <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
                 <Mail size={40} className="text-gray-300 mb-4" />
-                <p className="text-gray-600 font-medium mb-2">No email accounts connected</p>
+                <p className="text-[#9EA8B4] font-medium mb-2">No email accounts connected</p>
                 <p className="text-sm text-gray-400 mb-6 max-w-sm">
                   Connect your Outlook or Google account to import contacts as team members.
                   Go to Settings to connect your email first.
@@ -295,7 +295,7 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
             ) : (
               <>
                 {contacts.length > 0 && (
-                  <div className="px-6 py-3 border-b border-gray-100 flex-shrink-0">
+                  <div className="px-6 py-3 border-b border-[#1e2a3d] flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <div className="relative flex-1">
                         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -304,12 +304,12 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
                           placeholder="Search contacts..."
                           value={search}
                           onChange={(e) => setSearch(e.target.value)}
-                          className="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="w-full pl-9 pr-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-sm text-[#E8E6E1] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                       </div>
                       <button
                         onClick={selectAll}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium whitespace-nowrap"
+                        className="text-xs text-blue-600 hover:text-blue-400 font-medium whitespace-nowrap"
                       >
                         {selected.size === filtered.length ? 'Deselect All' : 'Select All'}
                       </button>
@@ -321,12 +321,12 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
                   {fetching ? (
                     <div className="flex items-center justify-center py-16">
                       <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                      <span className="ml-3 text-gray-500 text-sm">Fetching contacts...</span>
+                      <span className="ml-3 text-[#6B7585] text-sm">Fetching contacts...</span>
                     </div>
                   ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                       <Users size={32} className="text-gray-300 mb-3" />
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-[#6B7585]">
                         {search ? 'No contacts match your search' : 'No contacts found in this account'}
                       </p>
                     </div>
@@ -337,27 +337,27 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
                           key={contact.id}
                           className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
                             selected.has(contact.id)
-                              ? 'bg-blue-50 border border-blue-200'
-                              : 'hover:bg-gray-50 border border-transparent'
+                              ? 'bg-[#0d1e3d] border border-blue-900/50'
+                              : 'hover:bg-[#0F1319] border border-transparent'
                           }`}
                         >
                           <input
                             type="checkbox"
                             checked={selected.has(contact.id)}
                             onChange={() => toggleSelect(contact.id)}
-                            className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            className="w-4 h-4 text-blue-600 border-[#253347] rounded focus:ring-blue-500"
                           />
-                          <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-xs flex-shrink-0">
+                          <div className="w-9 h-9 rounded-full bg-[#0d1e3d] flex items-center justify-center text-blue-400 font-semibold text-xs flex-shrink-0">
                             {contact.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-900 truncate">{contact.name}</p>
-                            <p className="text-xs text-gray-500 truncate">{contact.email}</p>
+                            <p className="text-sm font-medium text-[#E8E6E1] truncate">{contact.name}</p>
+                            <p className="text-xs text-[#6B7585] truncate">{contact.email}</p>
                           </div>
                           {(contact.company || contact.title) && (
                             <div className="text-right flex-shrink-0 hidden sm:block">
                               {contact.title && (
-                                <p className="text-xs text-gray-500 truncate max-w-[160px]">{contact.title}</p>
+                                <p className="text-xs text-[#6B7585] truncate max-w-[160px]">{contact.title}</p>
                               )}
                               {contact.company && (
                                 <p className="text-xs text-gray-400 truncate max-w-[160px] flex items-center gap-1 justify-end">
@@ -374,14 +374,14 @@ export function ContactImportModal({ dealId, onClose, onImported }: ContactImpor
                 </div>
 
                 {contacts.length > 0 && (
-                  <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between flex-shrink-0 bg-gray-50">
-                    <p className="text-sm text-gray-500">
+                  <div className="px-6 py-4 border-t border-[#1e2a3d] flex items-center justify-between flex-shrink-0 bg-[#0F1319]">
+                    <p className="text-sm text-[#6B7585]">
                       {selected.size} of {filtered.length} selected
                     </p>
                     <div className="flex gap-2">
                       <button
                         onClick={onClose}
-                        className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900"
+                        className="px-4 py-2 text-sm text-[#9EA8B4] hover:text-[#E8E6E1]"
                       >
                         Cancel
                       </button>

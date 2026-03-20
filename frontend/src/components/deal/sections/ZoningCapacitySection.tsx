@@ -417,7 +417,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-        <span className="ml-3 text-gray-500">Loading zoning data...</span>
+        <span className="ml-3 text-[#6B7585]">Loading zoning data...</span>
       </div>
     );
   }
@@ -441,18 +441,18 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     (data.unit_mix?.twoBR?.percent || 0) +
     (data.unit_mix?.threeBR?.percent || 0);
 
-  const inputClass = "w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400";
-  const labelClass = "block text-xs font-medium text-gray-500 mb-1";
+  const inputClass = "w-full px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-[#E8E6E1] text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400";
+  const labelClass = "block text-xs font-medium text-[#6B7585] mb-1";
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+          <h2 className="text-xl font-bold text-[#E8E6E1] flex items-center gap-2">
             <Building2 size={22} className="text-blue-600" />
             Zoning & Development Capacity
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-[#6B7585] mt-1">
             Auto-populated from Property Boundary and zoning database
           </p>
         </div>
@@ -460,7 +460,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           <select
             value={selectedPropertyType}
             onChange={(e) => setSelectedPropertyType(e.target.value)}
-            className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-purple-500"
+            className="px-3 py-2 bg-[#0F1319] border border-[#253347] rounded-lg text-sm text-[#E8E6E1] focus:ring-2 focus:ring-purple-500"
           >
             {Object.entries(PROPERTY_TYPE_LABELS).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
@@ -478,7 +478,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       </div>
 
       {statusMsg && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${statusMsg.includes('Failed') || statusMsg.includes('No matching') || statusMsg.includes('No land') || statusMsg.includes('boundary') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+        <div className={`px-4 py-2 rounded-lg text-sm ${statusMsg.includes('Failed') || statusMsg.includes('No matching') || statusMsg.includes('No land') || statusMsg.includes('boundary') ? 'bg-[#1c0a0a] text-red-400 border border-red-800/50' : 'bg-[#022c22] text-green-400 border border-green-800/50'}`}>
           {statusMsg}
         </div>
       )}
@@ -486,14 +486,14 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Zoning Code</h3>
+              <h3 className="text-lg font-semibold text-[#E8E6E1]">Zoning Code</h3>
               {dataSource && (
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                   dataSource === 'verified'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-purple-100 text-purple-700'
+                    ? 'bg-[#022c22] text-green-400'
+                    : 'bg-[#1a0d3d] text-purple-400'
                 }`}>
                   {dataSource === 'verified' ? '✓ Database Verified' : '⚡ AI-Retrieved'}
                 </span>
@@ -504,20 +504,20 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 onKeyDown={(e) => e.key === 'Enter' && lookupZoningCode()}
                 placeholder="Enter zoning code (e.g. MR-4A)" className={`${inputClass} flex-1`} />
               <button onClick={() => lookupZoningCode()} disabled={lookingUp || !zoningCode}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white disabled:text-[#6B7585] rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                 {lookingUp ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 Look Up
               </button>
             </div>
             <button onClick={loadAvailableDistricts}
-              className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
+              className="text-xs text-blue-600 hover:text-blue-300 hover:underline">
               Browse all {deal?.city || 'Atlanta'} districts
             </button>
 
             {autoFillSource && (
-              <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-[#0d1e3d] border border-blue-900/50 rounded-lg">
                 <CheckCircle2 size={14} className="text-blue-600" />
-                <span className="text-sm text-blue-800">
+                <span className="text-sm text-blue-300">
                   Loaded from <strong>{autoFillSource}</strong>
                 </span>
               </div>
@@ -526,73 +526,73 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             {hasParams && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
                 {data.max_density && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500">Max Density</p>
-                    <p className="text-lg font-semibold text-gray-900">{data.max_density} <span className="text-xs text-gray-400">units/acre</span></p>
+                  <div className="p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+                    <p className="text-xs text-[#6B7585]">Max Density</p>
+                    <p className="text-lg font-semibold text-[#E8E6E1]">{data.max_density} <span className="text-xs text-gray-400">units/acre</span></p>
                   </div>
                 )}
                 {data.max_far && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500">Max FAR</p>
-                    <p className="text-lg font-semibold text-gray-900">{data.max_far}</p>
+                  <div className="p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+                    <p className="text-xs text-[#6B7585]">Max FAR</p>
+                    <p className="text-lg font-semibold text-[#E8E6E1]">{data.max_far}</p>
                   </div>
                 )}
                 {data.max_height_feet && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500">Max Height</p>
-                    <p className="text-lg font-semibold text-gray-900">{data.max_height_feet} <span className="text-xs text-gray-400">ft</span></p>
+                  <div className="p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+                    <p className="text-xs text-[#6B7585]">Max Height</p>
+                    <p className="text-lg font-semibold text-[#E8E6E1]">{data.max_height_feet} <span className="text-xs text-gray-400">ft</span></p>
                   </div>
                 )}
                 {data.max_stories && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500">Max Stories</p>
-                    <p className="text-lg font-semibold text-gray-900">{data.max_stories}</p>
+                  <div className="p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+                    <p className="text-xs text-[#6B7585]">Max Stories</p>
+                    <p className="text-lg font-semibold text-[#E8E6E1]">{data.max_stories}</p>
                   </div>
                 )}
                 {data.min_parking_per_unit && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500">Parking / Unit</p>
-                    <p className="text-lg font-semibold text-gray-900">{data.min_parking_per_unit} <span className="text-xs text-gray-400">spaces</span></p>
+                  <div className="p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+                    <p className="text-xs text-[#6B7585]">Parking / Unit</p>
+                    <p className="text-lg font-semibold text-[#E8E6E1]">{data.min_parking_per_unit} <span className="text-xs text-gray-400">spaces</span></p>
                   </div>
                 )}
                 {data.base_zoning && (
-                  <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                    <p className="text-xs text-gray-500">Base Zoning</p>
-                    <p className="text-lg font-semibold text-gray-900 capitalize">{data.base_zoning}</p>
+                  <div className="p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
+                    <p className="text-xs text-[#6B7585]">Base Zoning</p>
+                    <p className="text-lg font-semibold text-[#E8E6E1] capitalize">{data.base_zoning}</p>
                   </div>
                 )}
               </div>
             )}
 
             {!hasParams && !showDistrictPicker && (
-              <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+              <div className="mt-4 p-4 bg-[#0F1319] border border-[#1e2a3d] rounded-lg text-center">
                 <MapPin size={24} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Look up a zoning code to load parameters automatically,</p>
-                <p className="text-sm text-gray-500">or draw a property boundary to detect the zoning district.</p>
+                <p className="text-sm text-[#6B7585]">Look up a zoning code to load parameters automatically,</p>
+                <p className="text-sm text-[#6B7585]">or draw a property boundary to detect the zoning district.</p>
               </div>
             )}
           </div>
 
           {showDistrictPicker && availableDistricts.length > 0 && (
-            <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-sm">
+            <div className="bg-[#0F1319] rounded-xl border border-blue-900/50 p-5 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-[#E8E6E1] flex items-center gap-2">
                   <Info size={18} className="text-blue-600" />
                   Select a Zoning District
                 </h3>
                 <button onClick={() => setShowDistrictPicker(false)}
-                  className="text-xs text-gray-500 hover:text-gray-700">Close</button>
+                  className="text-xs text-[#6B7585] hover:text-[#9EA8B4]">Close</button>
               </div>
               <div className="max-h-72 overflow-y-auto space-y-2">
                 {availableDistricts.map((d) => (
                   <button key={d.id} onClick={() => selectDistrict(d)}
-                    className="w-full text-left p-3 bg-gray-50 hover:bg-blue-50 border border-gray-100 hover:border-blue-200 rounded-lg transition-colors">
+                    className="w-full text-left p-3 bg-[#0F1319] hover:bg-[#0d1e3d] border border-[#1e2a3d] hover:border-blue-900/50 rounded-lg transition-colors">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="text-sm font-semibold text-gray-900">{d.district_code}</span>
-                        <span className="text-sm text-gray-500 ml-2">— {d.district_name}</span>
+                        <span className="text-sm font-semibold text-[#E8E6E1]">{d.district_code}</span>
+                        <span className="text-sm text-[#6B7585] ml-2">— {d.district_name}</span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <div className="flex items-center gap-3 text-xs text-[#6B7585]">
                         {d.max_far && <span>FAR {parseFloat(String(d.max_far)).toFixed(1)}</span>}
                         {d.max_building_height_ft && <span>{d.max_building_height_ft} ft</span>}
                         {d.max_units_per_acre && <span>{parseFloat(String(d.max_units_per_acre))} u/ac</span>}
@@ -607,21 +607,21 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             </div>
           )}
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Density Bonuses</h3>
+          <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Density Bonuses</h3>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <div className="flex items-center justify-between p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Affordable Housing Bonus</p>
-                  <p className="text-xs text-gray-500">Increase density for affordable units</p>
+                  <p className="text-sm font-medium text-[#E8E6E1]">Affordable Housing Bonus</p>
+                  <p className="text-xs text-[#6B7585]">Increase density for affordable units</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <input type="number" value={data.affordable_bonus_percent || 25}
                     onChange={(e) => updateNumField('affordable_bonus_percent', e.target.value)}
-                    className="w-16 px-2 py-1 bg-white border border-gray-300 rounded text-gray-900 text-sm text-center" />
-                  <span className="text-xs text-gray-500">%</span>
+                    className="w-16 px-2 py-1 bg-[#0F1319] border border-[#253347] rounded text-[#E8E6E1] text-sm text-center" />
+                  <span className="text-xs text-[#6B7585]">%</span>
                   <button onClick={() => updateField('affordable_housing_bonus', !data.affordable_housing_bonus)}
-                    className="text-gray-500 hover:text-gray-700">
+                    className="text-[#6B7585] hover:text-[#9EA8B4]">
                     {data.affordable_housing_bonus ? (
                       <ToggleRight size={28} className="text-green-500" />
                     ) : (
@@ -631,18 +631,18 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 </div>
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+              <div className="flex items-center justify-between p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Transfer of Development Rights (TDR)</p>
-                  <p className="text-xs text-gray-500">Purchase development rights from other parcels</p>
+                  <p className="text-sm font-medium text-[#E8E6E1]">Transfer of Development Rights (TDR)</p>
+                  <p className="text-xs text-[#6B7585]">Purchase development rights from other parcels</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <input type="number" value={data.tdr_bonus_percent || 15}
                     onChange={(e) => updateNumField('tdr_bonus_percent', e.target.value)}
-                    className="w-16 px-2 py-1 bg-white border border-gray-300 rounded text-gray-900 text-sm text-center" />
-                  <span className="text-xs text-gray-500">%</span>
+                    className="w-16 px-2 py-1 bg-[#0F1319] border border-[#253347] rounded text-[#E8E6E1] text-sm text-center" />
+                  <span className="text-xs text-[#6B7585]">%</span>
                   <button onClick={() => updateField('tdr_available', !data.tdr_available)}
-                    className="text-gray-500 hover:text-gray-700">
+                    className="text-[#6B7585] hover:text-[#9EA8B4]">
                     {data.tdr_available ? (
                       <ToggleRight size={28} className="text-green-500" />
                     ) : (
@@ -654,12 +654,12 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Unit Mix Distribution</h3>
+          <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Unit Mix Distribution</h3>
             {unitMixTotal !== 100 && unitMixTotal > 0 && (
-              <div className="flex items-center gap-2 mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-3 p-2 bg-[#1a1200] border border-amber-800/50 rounded-lg">
                 <AlertTriangle size={14} className="text-amber-500" />
-                <span className="text-xs text-amber-700">Total is {unitMixTotal}% — should equal 100%</span>
+                <span className="text-xs text-amber-400">Total is {unitMixTotal}% — should equal 100%</span>
               </div>
             )}
             <div className="space-y-3">
@@ -672,16 +672,16 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 const item = data.unit_mix?.[key as keyof UnitMix];
                 return (
                   <div key={key} className="flex items-center gap-4">
-                    <span className="text-sm text-gray-700 w-24">{label}</span>
+                    <span className="text-sm text-[#9EA8B4] w-24">{label}</span>
                     <input type="number" min="0" max="100" value={item?.percent ?? 0}
                       onChange={(e) => updateUnitMixPercent(key, parseInt(e.target.value) || 0)}
-                      className="w-20 px-2 py-1.5 bg-white border border-gray-300 rounded text-gray-900 text-sm text-center" />
+                      className="w-20 px-2 py-1.5 bg-[#0F1319] border border-[#253347] rounded text-[#E8E6E1] text-sm text-center" />
                     <span className="text-xs text-gray-400">%</span>
-                    <div className="flex-1 bg-gray-100 rounded-full h-3">
+                    <div className="flex-1 bg-[#131920] rounded-full h-3">
                       <div className={`${color} rounded-full h-3 transition-all`}
                         style={{ width: `${item?.percent || 0}%` }} />
                     </div>
-                    <span className="text-sm font-medium text-gray-700 w-20 text-right">
+                    <span className="text-sm font-medium text-[#9EA8B4] w-20 text-right">
                       {item?.count || 0} units
                     </span>
                   </div>
@@ -690,8 +690,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Projection</h3>
+          <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Revenue Projection</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelClass}>Average Rent per Unit ($/month)</label>
@@ -701,18 +701,18 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               </div>
               <div className="flex items-end">
                 {data.avg_rent_per_unit && (data.max_units_with_incentives || data.max_units_by_right) ? (
-                  <div className="w-full p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="w-full p-3 bg-[#022c22] border border-green-800/50 rounded-lg">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Monthly</span>
-                      <span className="font-medium text-gray-900">{formatCurrency((data.avg_rent_per_unit || 0) * (withIncentivesUnits || byRightUnits))}</span>
+                      <span className="text-[#9EA8B4]">Monthly</span>
+                      <span className="font-medium text-[#E8E6E1]">{formatCurrency((data.avg_rent_per_unit || 0) * (withIncentivesUnits || byRightUnits))}</span>
                     </div>
                     <div className="flex justify-between text-sm mt-1">
-                      <span className="text-gray-600">Annual</span>
-                      <span className="font-bold text-green-700">{formatCurrency(data.annual_revenue)}</span>
+                      <span className="text-[#9EA8B4]">Annual</span>
+                      <span className="font-bold text-green-400">{formatCurrency(data.annual_revenue)}</span>
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-center text-sm text-gray-400">
+                  <div className="w-full p-3 bg-[#0F1319] border border-[#1e2a3d] rounded-lg text-center text-sm text-gray-400">
                     Enter rent to see revenue
                   </div>
                 )}
@@ -720,8 +720,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes & Restrictions</h3>
+          <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-5 shadow-sm">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Notes & Restrictions</h3>
             <textarea value={data.zoning_notes || ''} onChange={(e) => updateField('zoning_notes', e.target.value)}
               placeholder="Notes about zoning conditions, variances, or special considerations..."
               rows={3} className={`${inputClass} resize-none`} />
@@ -731,49 +731,49 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         <div className="space-y-6">
 
           {envelope ? (
-            <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-200 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-900/50 p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-[#E8E6E1] mb-3 flex items-center gap-2">
                 <Layers size={18} className="text-blue-600" />
                 Building Envelope
               </h3>
               <div className="text-center mb-4">
-                <p className="text-4xl font-bold text-blue-700">{formatNumber(envelope.maxCapacity)}</p>
-                <p className="text-xs text-gray-500 mt-1">Max Capacity ({PROPERTY_TYPE_LABELS[selectedPropertyType]})</p>
+                <p className="text-4xl font-bold text-blue-400">{formatNumber(envelope.maxCapacity)}</p>
+                <p className="text-xs text-[#6B7585] mt-1">Max Capacity ({PROPERTY_TYPE_LABELS[selectedPropertyType]})</p>
               </div>
               {envelope.limitingFactor && envelope.limitingFactor !== 'none' && (
-                <div className="flex items-center gap-2 p-2 mb-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-center gap-2 p-2 mb-3 bg-[#1a1200] border border-amber-800/50 rounded-lg">
                   <AlertTriangle size={14} className="text-amber-500" />
-                  <span className="text-xs text-amber-700">
+                  <span className="text-xs text-amber-400">
                     Bottleneck: {LIMITING_FACTOR_LABELS[envelope.limitingFactor] || envelope.limitingFactor}
                   </span>
                 </div>
               )}
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Buildable Area:</span>
-                  <span className="text-gray-900 font-medium">{(envelope.buildableArea / 43560).toFixed(2)} acres</span>
+                  <span className="text-[#6B7585]">Buildable Area:</span>
+                  <span className="text-[#E8E6E1] font-medium">{(envelope.buildableArea / 43560).toFixed(2)} acres</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Max Footprint:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(envelope.maxFootprint)} sq ft</span>
+                  <span className="text-[#6B7585]">Max Footprint:</span>
+                  <span className="text-[#E8E6E1] font-medium">{formatNumber(envelope.maxFootprint)} sq ft</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Max GFA:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(envelope.maxGFA)} sq ft</span>
+                  <span className="text-[#6B7585]">Max GFA:</span>
+                  <span className="text-[#E8E6E1] font-medium">{formatNumber(envelope.maxGFA)} sq ft</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Max Floors:</span>
-                  <span className="text-gray-900 font-medium">{envelope.maxFloors}</span>
+                  <span className="text-[#6B7585]">Max Floors:</span>
+                  <span className="text-[#E8E6E1] font-medium">{envelope.maxFloors}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Parking:</span>
-                  <span className="text-gray-900 font-medium">{envelope.parkingRequired} spaces</span>
+                  <span className="text-[#6B7585]">Parking:</span>
+                  <span className="text-[#E8E6E1] font-medium">{envelope.parkingRequired} spaces</span>
                 </div>
               </div>
 
               {Object.keys(constraintValues).length > 0 && (
                 <div className="mt-4">
-                  <p className="text-xs font-medium text-gray-500 mb-2">Constraint Breakdown</p>
+                  <p className="text-xs font-medium text-[#6B7585] mb-2">Constraint Breakdown</p>
                   <div className="space-y-2">
                     {Object.entries(constraintValues)
                       .filter(([, v]) => v > 0)
@@ -781,12 +781,12 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                       .map(([constraint, value]) => (
                         <div key={constraint}>
                           <div className="flex justify-between text-xs mb-0.5">
-                            <span className={`${constraint === envelope.limitingFactor ? 'text-amber-600 font-semibold' : 'text-gray-500'}`}>
+                            <span className={`${constraint === envelope.limitingFactor ? 'text-amber-400 font-semibold' : 'text-[#6B7585]'}`}>
                               {constraint === envelope.limitingFactor ? '⚠ ' : ''}{LIMITING_FACTOR_LABELS[constraint] || constraint}
                             </span>
                             <span className="font-medium">{formatNumber(value)}</span>
                           </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2">
+                          <div className="w-full bg-[#131920] rounded-full h-2">
                             <div className={`rounded-full h-2 transition-all ${
                               constraint === envelope.limitingFactor ? 'bg-amber-500' : 'bg-blue-400'
                             }`} style={{ width: `${(value / maxConstraintVal) * 100}%` }} />
@@ -798,32 +798,32 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               )}
             </div>
           ) : (
-            <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-200 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-900/50 p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4 flex items-center gap-2">
                 <Building2 size={18} className="text-blue-600" />
                 Building Envelope
               </h3>
               <div className="text-center py-6">
                 <Target size={32} className="text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">Click <strong>Analyze Envelope</strong> to calculate</p>
+                <p className="text-sm text-[#6B7585]">Click <strong>Analyze Envelope</strong> to calculate</p>
                 <p className="text-xs text-gray-400 mt-1">Uses data from Property Boundary + Zoning Code</p>
               </div>
             </div>
           )}
 
           {hasParams && (
-            <div className="bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-200 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <div className="bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-800/50 p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4 flex items-center gap-2">
                 <TrendingUp size={18} className="text-green-600" />
                 Capacity Summary
               </h3>
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-500">By Right</span>
-                    <span className="font-medium text-blue-700">{formatNumber(byRightUnits)}</span>
+                    <span className="text-[#6B7585]">By Right</span>
+                    <span className="font-medium text-blue-400">{formatNumber(byRightUnits)}</span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-4">
+                  <div className="w-full bg-[#131920] rounded-full h-4">
                     <div className="bg-blue-500 rounded-full h-4 transition-all" style={{
                       width: `${(byRightUnits / Math.max(withIncentivesUnits, byRightUnits, 1)) * 100}%`
                     }} />
@@ -832,10 +832,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 {withIncentivesUnits > byRightUnits && (
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className="text-gray-500">With Incentives</span>
-                      <span className="font-medium text-green-700">{formatNumber(withIncentivesUnits)}</span>
+                      <span className="text-[#6B7585]">With Incentives</span>
+                      <span className="font-medium text-green-400">{formatNumber(withIncentivesUnits)}</span>
                     </div>
-                    <div className="w-full bg-gray-100 rounded-full h-4">
+                    <div className="w-full bg-[#131920] rounded-full h-4">
                       <div className="bg-green-500 rounded-full h-4 transition-all" style={{
                         width: `${(withIncentivesUnits / Math.max(withIncentivesUnits, byRightUnits, 1)) * 100}%`
                       }} />
@@ -844,28 +844,28 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 )}
                 {withIncentivesUnits > byRightUnits && byRightUnits > 0 && (
                   <div className="text-center">
-                    <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 border border-green-200">
+                    <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-[#022c22] text-green-400 border border-green-800/50">
                       +{withIncentivesUnits - byRightUnits} units ({Math.round(((withIncentivesUnits - byRightUnits) / byRightUnits) * 100)}% increase)
                     </span>
                   </div>
                 )}
-                <div className="space-y-1 text-sm pt-2 border-t border-gray-200">
+                <div className="space-y-1 text-sm pt-2 border-t border-[#1e2a3d]">
                   {data.affordable_housing_bonus && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Affordable Bonus:</span>
-                      <span className="text-green-700 font-medium">+{data.affordable_bonus_percent || 25}%</span>
+                      <span className="text-[#6B7585]">Affordable Bonus:</span>
+                      <span className="text-green-400 font-medium">+{data.affordable_bonus_percent || 25}%</span>
                     </div>
                   )}
                   {data.tdr_available && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">TDR Bonus:</span>
-                      <span className="text-green-700 font-medium">+{data.tdr_bonus_percent || 15}%</span>
+                      <span className="text-[#6B7585]">TDR Bonus:</span>
+                      <span className="text-green-400 font-medium">+{data.tdr_bonus_percent || 15}%</span>
                     </div>
                   )}
                   {data.limiting_factor && data.limiting_factor !== 'unknown' && data.limiting_factor !== 'none' && (
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Limited by:</span>
-                      <span className="text-amber-700 font-medium">{LIMITING_FACTOR_LABELS[data.limiting_factor] || data.limiting_factor}</span>
+                      <span className="text-[#6B7585]">Limited by:</span>
+                      <span className="text-amber-400 font-medium">{LIMITING_FACTOR_LABELS[data.limiting_factor] || data.limiting_factor}</span>
                     </div>
                   )}
                 </div>
@@ -874,31 +874,31 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           )}
 
           {(data.annual_revenue || data.avg_rent_per_unit) && (
-            <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-200 p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Revenue Summary</h3>
+            <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-800/50 p-5 shadow-sm">
+              <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Revenue Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Avg Rent:</span>
-                  <span className="text-gray-900 font-medium">{formatCurrency(data.avg_rent_per_unit)}/mo</span>
+                  <span className="text-[#6B7585]">Avg Rent:</span>
+                  <span className="text-[#E8E6E1] font-medium">{formatCurrency(data.avg_rent_per_unit)}/mo</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Total Units:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(withIncentivesUnits || byRightUnits)}</span>
+                  <span className="text-[#6B7585]">Total Units:</span>
+                  <span className="text-[#E8E6E1] font-medium">{formatNumber(withIncentivesUnits || byRightUnits)}</span>
                 </div>
                 {data.annual_revenue && (
                   <>
-                    <div className="border-t border-gray-200 my-2" />
+                    <div className="border-t border-[#1e2a3d] my-2" />
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Annual Revenue:</span>
-                      <span className="text-gray-900 font-medium">{formatCurrency(data.annual_revenue)}</span>
+                      <span className="text-[#6B7585]">Annual Revenue:</span>
+                      <span className="text-[#E8E6E1] font-medium">{formatCurrency(data.annual_revenue)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-500">Pro Forma NOI:</span>
-                      <span className="text-gray-900 font-medium">{formatCurrency(data.pro_forma_noi)}</span>
+                      <span className="text-[#6B7585]">Pro Forma NOI:</span>
+                      <span className="text-[#E8E6E1] font-medium">{formatCurrency(data.pro_forma_noi)}</span>
                     </div>
-                    <div className="flex justify-between pt-2 border-t border-gray-200">
-                      <span className="text-gray-700 font-medium">Est. Value (5% cap):</span>
-                      <span className="text-lg font-bold text-purple-700">{formatCurrency(data.estimated_value)}</span>
+                    <div className="flex justify-between pt-2 border-t border-[#1e2a3d]">
+                      <span className="text-[#9EA8B4] font-medium">Est. Value (5% cap):</span>
+                      <span className="text-lg font-bold text-purple-400">{formatCurrency(data.estimated_value)}</span>
                     </div>
                   </>
                 )}
@@ -909,10 +909,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       </div>
 
       {hbuResults && hbuResults.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-5 shadow-sm">
           <button onClick={() => setShowHBU(!showHBU)}
             className="w-full flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] flex items-center gap-2">
               <Crown size={18} className="text-amber-500" />
               Highest & Best Use Analysis
             </h3>
@@ -923,41 +923,41 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-200">
-                      <th className="text-left py-2 px-3 text-gray-500 font-medium">Property Type</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-medium">Max Capacity</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-medium">Annual Revenue</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-medium">NOI</th>
-                      <th className="text-right py-2 px-3 text-gray-500 font-medium">Estimated Value</th>
+                    <tr className="border-b border-[#1e2a3d]">
+                      <th className="text-left py-2 px-3 text-[#6B7585] font-medium">Property Type</th>
+                      <th className="text-right py-2 px-3 text-[#6B7585] font-medium">Max Capacity</th>
+                      <th className="text-right py-2 px-3 text-[#6B7585] font-medium">Annual Revenue</th>
+                      <th className="text-right py-2 px-3 text-[#6B7585] font-medium">NOI</th>
+                      <th className="text-right py-2 px-3 text-[#6B7585] font-medium">Estimated Value</th>
                     </tr>
                   </thead>
                   <tbody>
                     {hbuResults.map((result, idx) => (
                       <tr key={result.propertyType}
-                        className={`border-b border-gray-100 ${result.recommended ? 'bg-amber-50' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                        className={`border-b border-[#1e2a3d] ${result.recommended ? 'bg-[#1a1200]' : idx % 2 === 0 ? 'bg-[#0F1319]' : 'bg-[#0F1319]'}`}>
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2">
                             <span>{PROPERTY_TYPE_ICONS[result.propertyType] || '🏢'}</span>
-                            <span className={`font-medium ${result.recommended ? 'text-amber-800' : 'text-gray-900'}`}>
+                            <span className={`font-medium ${result.recommended ? 'text-amber-300' : 'text-[#E8E6E1]'}`}>
                               {PROPERTY_TYPE_LABELS[result.propertyType] || result.propertyType}
                             </span>
                             {result.recommended && (
-                              <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium border border-amber-200">
+                              <span className="text-xs px-1.5 py-0.5 bg-[#1a1200] text-amber-400 rounded-full font-medium border border-amber-800/50">
                                 Best Use
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-right font-medium text-gray-900">
+                        <td className="py-3 px-3 text-right font-medium text-[#E8E6E1]">
                           {formatNumber(result.maxCapacity)}
                         </td>
-                        <td className="py-3 px-3 text-right font-medium text-gray-900">
+                        <td className="py-3 px-3 text-right font-medium text-[#E8E6E1]">
                           {formatCurrency(result.annualGrossRevenue)}
                         </td>
-                        <td className="py-3 px-3 text-right font-medium text-gray-900">
+                        <td className="py-3 px-3 text-right font-medium text-[#E8E6E1]">
                           {formatCurrency(result.estimatedNOI)}
                         </td>
-                        <td className={`py-3 px-3 text-right font-bold ${result.recommended ? 'text-amber-700' : 'text-gray-900'}`}>
+                        <td className={`py-3 px-3 text-right font-bold ${result.recommended ? 'text-amber-400' : 'text-[#E8E6E1]'}`}>
                           {formatCurrency(result.estimatedValue)}
                         </td>
                       </tr>
@@ -966,9 +966,9 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 </table>
               </div>
               {hbuResults[0]?.reasoning && (
-                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-xs font-medium text-amber-700 mb-1">Recommendation</p>
-                  <p className="text-sm text-amber-800">{hbuResults[0].reasoning}</p>
+                <div className="mt-3 p-3 bg-[#1a1200] border border-amber-800/50 rounded-lg">
+                  <p className="text-xs font-medium text-amber-400 mb-1">Recommendation</p>
+                  <p className="text-sm text-amber-300">{hbuResults[0].reasoning}</p>
                 </div>
               )}
             </div>
@@ -977,17 +977,17 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       )}
 
       {aiRecommendations && (
-        <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-200 p-5 shadow-sm">
+        <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-800/50 p-5 shadow-sm">
           <button onClick={() => setShowAI(!showAI)}
             className="w-full flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] flex items-center gap-2">
               <Sparkles size={18} className="text-purple-600" />
               AI Optimization Recommendations
             </h3>
             {showAI ? <ChevronUp size={20} className="text-gray-400" /> : <ChevronDown size={20} className="text-gray-400" />}
           </button>
           {showAI && (
-            <div className="mt-4 prose prose-sm max-w-none text-gray-700">
+            <div className="mt-4 prose prose-sm max-w-none text-[#9EA8B4]">
               {aiRecommendations.split('\n').filter(line => line.trim()).map((line, i) => (
                 <p key={i} className="mb-2 text-sm leading-relaxed">{line}</p>
               ))}

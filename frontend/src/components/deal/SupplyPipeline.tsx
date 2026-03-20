@@ -142,31 +142,31 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Error loading supply data: {error}</p>
+      <div className="bg-[#1c0a0a] border border-red-800/50 rounded-lg p-4">
+        <p className="text-red-300">Error loading supply data: {error}</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+    <div className="bg-[#0F1319] rounded-lg shadow-sm border border-[#1e2a3d]">
       {/* Header */}
-      <div className="border-b border-gray-200 p-4">
-        <h2 className="text-xl font-semibold text-gray-900">Supply Pipeline Analysis</h2>
-        <p className="text-sm text-gray-600 mt-1">
+      <div className="border-b border-[#1e2a3d] p-4">
+        <h2 className="text-xl font-semibold text-[#E8E6E1]">Supply Pipeline Analysis</h2>
+        <p className="text-sm text-[#9EA8B4] mt-1">
           Competitive projects and supply risk assessment
         </p>
       </div>
 
       {/* View Tabs */}
-      <div className="border-b border-gray-200 px-4">
+      <div className="border-b border-[#1e2a3d] px-4">
         <div className="flex space-x-4">
           <button
             onClick={() => setView('map')}
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
               view === 'map'
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+                : 'border-transparent text-[#9EA8B4] hover:text-[#E8E6E1]'
             }`}
           >
             Map View
@@ -176,7 +176,7 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
               view === 'risk'
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+                : 'border-transparent text-[#9EA8B4] hover:text-[#E8E6E1]'
             }`}
           >
             Risk Analysis
@@ -186,7 +186,7 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
               view === 'timeline'
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+                : 'border-transparent text-[#9EA8B4] hover:text-[#E8E6E1]'
             }`}
           >
             Delivery Timeline
@@ -196,7 +196,7 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
               view === 'table'
                 ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-600 hover:text-gray-900'
+                : 'border-transparent text-[#9EA8B4] hover:text-[#E8E6E1]'
             }`}
           >
             Project Table
@@ -209,7 +209,7 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
         {/* Map View */}
         {view === 'map' && (
           <div className="space-y-4">
-            <div className="h-96 rounded-lg overflow-hidden border border-gray-300">
+            <div className="h-96 rounded-lg overflow-hidden border border-[#253347]">
               <MapContainer
                 center={[dealLatitude, dealLongitude]}
                 zoom={12}
@@ -303,41 +303,41 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
 
             {/* Metrics Grid */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600">Pipeline Units</div>
-                <div className="text-2xl font-bold text-gray-900 mt-1">
+              <div className="bg-[#0F1319] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4]">Pipeline Units</div>
+                <div className="text-2xl font-bold text-[#E8E6E1] mt-1">
                   {supplyRisk.pipelineUnits.toLocaleString()}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-xs text-[#6B7585] mt-1">
                   Weighted: {supplyRisk.weightedPipelineUnits.toLocaleString()}
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600">Existing Units</div>
-                <div className="text-2xl font-bold text-gray-900 mt-1">
+              <div className="bg-[#0F1319] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4]">Existing Units</div>
+                <div className="text-2xl font-bold text-[#E8E6E1] mt-1">
                   {supplyRisk.existingUnits.toLocaleString()}
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600">Months to Absorb</div>
-                <div className="text-2xl font-bold text-gray-900 mt-1">
+              <div className="bg-[#0F1319] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4]">Months to Absorb</div>
+                <div className="text-2xl font-bold text-[#E8E6E1] mt-1">
                   {supplyRisk.monthsToAbsorb?.toFixed(1) || 'N/A'}
                 </div>
-                <div className="text-xs text-gray-500 mt-1 capitalize">
+                <div className="text-xs text-[#6B7585] mt-1 capitalize">
                   {supplyRisk.absorptionRisk} absorption risk
                 </div>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-600">Demand-Supply Gap</div>
+              <div className="bg-[#0F1319] rounded-lg p-4">
+                <div className="text-sm text-[#9EA8B4]">Demand-Supply Gap</div>
                 <div className={`text-2xl font-bold mt-1 ${
-                  (supplyRisk.demandSupplyGap || 0) > 0 ? 'text-green-600' : 'text-red-600'
+                  (supplyRisk.demandSupplyGap || 0) > 0 ? 'text-green-600' : 'text-red-400'
                 }`}>
                   {supplyRisk.demandSupplyGap?.toFixed(0) || 'N/A'}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-xs text-[#6B7585] mt-1">
                   {(supplyRisk.demandSupplyGap || 0) > 0 ? 'Demand exceeds supply' : 'Oversupply'}
                 </div>
               </div>
@@ -348,8 +348,8 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
               borderColor: getRiskColor(supplyRisk.riskLevel),
               backgroundColor: `${getRiskColor(supplyRisk.riskLevel)}10`
             }}>
-              <h3 className="font-semibold text-gray-900 mb-2">Risk Assessment</h3>
-              <p className="text-sm text-gray-700">
+              <h3 className="font-semibold text-[#E8E6E1] mb-2">Risk Assessment</h3>
+              <p className="text-sm text-[#9EA8B4]">
                 {supplyRisk.riskLevel === 'low' && 'Healthy market with manageable supply. Pipeline represents less than 10% of existing inventory.'}
                 {supplyRisk.riskLevel === 'medium' && 'Moderate supply pressure. Monitor absorption rates and adjust rent expectations accordingly.'}
                 {supplyRisk.riskLevel === 'high' && 'Elevated supply risk. Pipeline exceeds 20% of existing units. Consider pricing strategy carefully.'}
@@ -377,18 +377,18 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
             {/* Quarter Details */}
             <div className="space-y-3">
               {deliveryTimeline.map((timeline) => (
-                <div key={timeline.quarter} className="bg-gray-50 rounded-lg p-4">
+                <div key={timeline.quarter} className="bg-[#0F1319] rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">{timeline.quarter}</h4>
-                    <span className="text-sm text-gray-600">
+                    <h4 className="font-semibold text-[#E8E6E1]">{timeline.quarter}</h4>
+                    <span className="text-sm text-[#9EA8B4]">
                       {timeline.totalUnits} units ({timeline.totalWeightedUnits.toFixed(0)} weighted)
                     </span>
                   </div>
                   <div className="space-y-1">
                     {timeline.projects.map((project, idx) => (
                       <div key={idx} className="flex items-center justify-between text-sm">
-                        <span className="text-gray-700">{project.projectName || 'Unnamed Project'}</span>
-                        <span className="text-gray-600">{project.units} units</span>
+                        <span className="text-[#9EA8B4]">{project.projectName || 'Unnamed Project'}</span>
+                        <span className="text-[#9EA8B4]">{project.units} units</span>
                       </div>
                     ))}
                   </div>
@@ -402,26 +402,26 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
         {view === 'table' && (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-[#0F1319]">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Project</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Units</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Distance</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Impact</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Timing</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price Match</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[#6B7585] uppercase">Project</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[#6B7585] uppercase">Units</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[#6B7585] uppercase">Distance</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[#6B7585] uppercase">Impact</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[#6B7585] uppercase">Timing</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-[#6B7585] uppercase">Price Match</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-[#0F1319] divide-y divide-gray-200">
                 {competitiveProjects.map((project) => (
                   <tr key={project.supplyEventId}>
-                    <td className="px-4 py-3 text-sm text-gray-900">
+                    <td className="px-4 py-3 text-sm text-[#E8E6E1]">
                       {project.projectName || 'Unnamed Project'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
+                    <td className="px-4 py-3 text-sm text-[#E8E6E1]">
                       {project.units.toLocaleString()}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
+                    <td className="px-4 py-3 text-sm text-[#E8E6E1]">
                       {project.distanceMiles.toFixed(2)} mi
                     </td>
                     <td className="px-4 py-3">
@@ -435,7 +435,7 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
                         {project.competitiveImpact}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900 capitalize">
+                    <td className="px-4 py-3 text-sm text-[#E8E6E1] capitalize">
                       {project.deliveryTiming.replace(/_/g, ' ')}
                     </td>
                     <td className="px-4 py-3">
@@ -451,7 +451,7 @@ const SupplyPipeline: React.FC<SupplyPipelineProps> = ({
             </table>
 
             {competitiveProjects.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-[#6B7585]">
                 No competitive projects found within 3 miles
               </div>
             )}

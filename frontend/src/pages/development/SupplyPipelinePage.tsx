@@ -632,7 +632,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
         <button
           onClick={() => setSelectedPhase('planned')}
           className={`rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-[#1e2a3d] hover:border-blue-300'
+            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-[#1e2a3d] hover:border-blue-700'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -668,7 +668,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
         <button
           onClick={() => setSelectedPhase('delivered')}
           className={`rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-[#1e2a3d] hover:border-green-300'
+            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-[#1e2a3d] hover:border-green-700'
           }`}
         >
           <div className="flex items-center justify-between mb-2">
@@ -887,11 +887,11 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
       <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
         <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🤖 Developer Intelligence</h3>
         <div className="space-y-3">
-          <div className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
+          <div className="flex items-start space-x-3 p-3 bg-[#1a1200] rounded-lg">
             <span className="text-xl">⚠️</span>
             <div className="flex-1">
-              <div className="font-semibold text-yellow-900">High-Delay Developer Alert</div>
-              <div className="text-sm text-yellow-800 mt-1">
+              <div className="font-semibold text-amber-300">High-Delay Developer Alert</div>
+              <div className="text-sm text-amber-300 mt-1">
                 {topDevelopers.find(d => d.delayRate > 30)?.developer || 'Metro Development'} has a 35% delay rate. 
                 Their projects typically deliver 4-6 months late, creating market timing opportunities.
               </div>

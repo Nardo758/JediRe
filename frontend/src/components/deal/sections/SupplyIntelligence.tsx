@@ -147,7 +147,7 @@ export const SupplyIntelligence: React.FC = () => {
           <div className="text-[10px] font-mono text-amber-500 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
           <div className="text-lg font-semibold">Will new supply crush my rents or is the market absorbing it?</div>
         </div>
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-12 text-center">
           <div className="animate-pulse">
             <div className="h-4 bg-stone-200 rounded w-48 mx-auto mb-3"></div>
             <div className="text-xs text-stone-400">Loading supply intelligence...</div>
@@ -164,10 +164,10 @@ export const SupplyIntelligence: React.FC = () => {
           <div className="text-[10px] font-mono text-amber-500 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
           <div className="text-lg font-semibold">Will new supply crush my rents or is the market absorbing it?</div>
         </div>
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-          <div className="text-red-800 font-medium mb-2">No supply data available</div>
-          <div className="text-xs text-red-600 mb-3">{error || 'Sync apartment data first to see supply intelligence.'}</div>
-          <button onClick={loadData} className="text-xs bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1.5 rounded transition-colors">
+        <div className="bg-[#1c0a0a] border border-red-800/50 rounded-xl p-6 text-center">
+          <div className="text-red-300 font-medium mb-2">No supply data available</div>
+          <div className="text-xs text-red-400 mb-3">{error || 'Sync apartment data first to see supply intelligence.'}</div>
+          <button onClick={loadData} className="text-xs bg-[#1c0a0a] hover:bg-red-200 text-red-300 px-3 py-1.5 rounded transition-colors">
             Retry
           </button>
         </div>
@@ -182,9 +182,9 @@ export const SupplyIntelligence: React.FC = () => {
         <div className="text-lg font-semibold">Will new supply crush my rents or is the market absorbing it?</div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-bold text-stone-900">Supply Pressure Gauge</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1]">Supply Pressure Gauge</h3>
           <div className="flex items-center gap-2">
             <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
             <span className="text-[10px] font-mono text-stone-400 tracking-widest">PIPELINE / (EXISTING x ABSORPTION)</span>
@@ -194,9 +194,9 @@ export const SupplyIntelligence: React.FC = () => {
         <div className="grid grid-cols-3 gap-6 mt-4">
           <div className="flex flex-col items-center">
             <PressureGauge value={supplyPressure.pressureRatio} />
-            <div className="text-sm font-bold text-stone-900 mt-2">{supplyPressure.pressureRatio}x</div>
+            <div className="text-sm font-bold text-[#E8E6E1] mt-2">{supplyPressure.pressureRatio}x</div>
             <div className={`text-xs font-semibold mt-1 ${
-              supplyPressure.pressureRatio < 1.0 ? 'text-emerald-600' : 'text-red-600'
+              supplyPressure.pressureRatio < 1.0 ? 'text-emerald-600' : 'text-red-400'
             }`}>
               {supplyPressure.pressureLabel}
             </div>
@@ -213,23 +213,23 @@ export const SupplyIntelligence: React.FC = () => {
           <div className={`rounded-lg p-4 border ${
             supplyPressure.netDemandSupply >= 0
               ? 'bg-emerald-50 border-emerald-200'
-              : 'bg-red-50 border-red-200'
+              : 'bg-[#1c0a0a] border-red-800/50'
           }`}>
             <div className={`text-[10px] font-mono tracking-widest mb-2 ${
-              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-600' : 'text-red-600'
+              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-600' : 'text-red-400'
             }`}>NET POSITION</div>
             <div className={`text-2xl font-bold ${
-              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-700' : 'text-red-700'
+              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-700' : 'text-red-400'
             }`}>
               {supplyPressure.netDemandSupply >= 0 ? '+' : ''}{supplyPressure.netDemandSupply.toLocaleString()}
             </div>
             <div className={`text-xs mt-1 ${
-              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-600' : 'text-red-600'
+              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-600' : 'text-red-400'
             }`}>
               units {supplyPressure.netDemandSupply >= 0 ? 'excess demand' : 'excess supply'}
             </div>
             <div className={`mt-3 text-[11px] leading-relaxed ${
-              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-800' : 'text-red-800'
+              supplyPressure.netDemandSupply >= 0 ? 'text-emerald-800' : 'text-red-300'
             }`}>
               Demand: {supplyPressure.demandProjected.toLocaleString()} projected households<br />
               Supply: {supplyPressure.pipelineUnits.toLocaleString()} available units<br />
@@ -238,27 +238,27 @@ export const SupplyIntelligence: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <p className="text-xs text-amber-800 leading-relaxed">{supplyPressure.verdict}</p>
+        <div className="mt-4 bg-[#1a1200] border border-amber-800/50 rounded-lg p-3">
+          <p className="text-xs text-amber-300 leading-relaxed">{supplyPressure.verdict}</p>
         </div>
       </div>
 
       {submarkets.length > 0 && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
-          <h3 className="text-lg font-bold text-stone-900 mb-4">Submarket Supply Breakdown</h3>
+        <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Submarket Supply Breakdown</h3>
           <div className="space-y-3">
             {submarkets.map((sm, idx) => {
               const pressureColor = sm.market_pressure === 'seller_market' ? 'border-l-emerald-500 bg-emerald-50/50' :
-                sm.market_pressure === 'buyer_market' ? 'border-l-red-500 bg-red-50/50' : 'border-l-amber-500 bg-amber-50/50';
+                sm.market_pressure === 'buyer_market' ? 'border-l-red-500 bg-[#1c0a0a]/50' : 'border-l-amber-500 bg-[#1a1200]/50';
               const pressureBadge = sm.market_pressure === 'seller_market' ? 'bg-emerald-100 text-emerald-700' :
-                sm.market_pressure === 'buyer_market' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
+                sm.market_pressure === 'buyer_market' ? 'bg-[#1c0a0a] text-red-400' : 'bg-[#1a1200] text-amber-400';
 
               return (
-                <div key={idx} className={`border border-stone-200 border-l-4 ${pressureColor} rounded-lg p-4`}>
+                <div key={idx} className={`border border-[#1e2a3d] border-l-4 ${pressureColor} rounded-lg p-4`}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-stone-900">{sm.name}</span>
+                        <span className="text-sm font-semibold text-[#E8E6E1]">{sm.name}</span>
                         <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${pressureBadge}`}>
                           {sm.market_pressure.replace('_', ' ').toUpperCase()}
                         </span>
@@ -308,7 +308,7 @@ const PressureGauge: React.FC<{ value: number }> = ({ value }) => {
 const MetricRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex justify-between items-center">
     <span className="text-xs text-stone-500">{label}</span>
-    <span className="text-xs font-semibold font-mono text-stone-900">{value}</span>
+    <span className="text-xs font-semibold font-mono text-[#E8E6E1]">{value}</span>
   </div>
 );
 

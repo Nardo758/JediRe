@@ -503,7 +503,7 @@ const StatsGrid: React.FC<StatsGridProps> = ({ stats }) => {
               {stat.trend && (
                 <span className={`text-xs font-medium ${
                   stat.trend.direction === 'up' ? 'text-green-600' : 
-                  stat.trend.direction === 'down' ? 'text-red-600' : 
+                  stat.trend.direction === 'down' ? 'text-red-400' : 
                   'text-[#6B7585]'
                 }`}>
                   {stat.trend.direction === 'up' ? '↑' : stat.trend.direction === 'down' ? '↓' : '→'} {stat.trend.value}
@@ -898,7 +898,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
         {hasLiveData && file.type === 'file' && onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-            className="p-2 hover:bg-red-900/20 rounded text-red-600"
+            className="p-2 hover:bg-red-900/20 rounded text-red-400"
           >
             <span className="text-sm">🗑️</span>
           </button>

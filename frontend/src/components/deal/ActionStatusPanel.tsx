@@ -46,11 +46,11 @@ export const ActionStatusPanel: React.FC<ActionStatusPanelProps> = ({
   const getPhaseColor = () => {
     switch (status.phase) {
       case 'complete':
-        return 'bg-green-50 border-green-200';
+        return 'bg-[#022c22] border-green-800/50';
       case 'error':
-        return 'bg-red-50 border-red-200';
+        return 'bg-[#1c0a0a] border-red-800/50';
       default:
-        return 'bg-blue-50 border-blue-200';
+        return 'bg-[#0d1e3d] border-blue-900/50';
     }
   };
 
@@ -75,68 +75,68 @@ export const ActionStatusPanel: React.FC<ActionStatusPanelProps> = ({
         <div className="flex items-center gap-3">
           <div className="text-3xl">{getPhaseIcon()}</div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-[#E8E6E1]">
               {status.phase === 'complete'
                 ? 'Analysis Complete'
                 : status.phase === 'error'
                 ? 'Analysis Failed'
                 : 'Analyzing Deal'}
             </h3>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-[#9EA8B4]">
               {dealType} • {propertyType}
             </p>
           </div>
         </div>
         {status.currentAction && (
-          <div className="text-sm font-medium text-gray-700">{status.currentAction}</div>
+          <div className="text-sm font-medium text-[#9EA8B4]">{status.currentAction}</div>
         )}
       </div>
 
       {status.phase !== 'complete' && status.phase !== 'error' && (
         <div className="mb-4">
-          <div className="flex justify-between text-sm text-gray-600 mb-2">
+          <div className="flex justify-between text-sm text-[#9EA8B4] mb-2">
             <span>{status.message}</span>
             <span>{status.progress}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="w-full bg-[#1e2a3d] rounded-full h-2 overflow-hidden">
             <div
               className={`h-full ${getProgressColor()} transition-all duration-500 ease-out`}
               style={{ width: `${status.progress}%` }}
             >
-              <div className="w-full h-full animate-pulse bg-white opacity-20"></div>
+              <div className="w-full h-full animate-pulse bg-[#0F1319] opacity-20"></div>
             </div>
           </div>
         </div>
       )}
 
       {status.phase === 'complete' && (
-        <div className="text-sm text-green-700">
+        <div className="text-sm text-green-400">
           <p className="font-medium mb-2">Strategy recommendations are ready!</p>
           <p className="text-green-600">View results below</p>
         </div>
       )}
 
       {status.phase === 'error' && status.error && (
-        <div className="text-sm text-red-700">
+        <div className="text-sm text-red-400">
           <p className="font-medium mb-1">An error occurred:</p>
-          <p className="text-red-600">{status.error}</p>
+          <p className="text-red-400">{status.error}</p>
         </div>
       )}
 
       {status.phase === 'analyzing' && (
         <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
+          <div className="flex items-center gap-2 text-sm text-[#9EA8B4]">
             <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
             <span>Processing property data...</span>
           </div>
           {status.progress > 30 && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-[#9EA8B4]">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
               <span>Evaluating market conditions...</span>
             </div>
           )}
           {status.progress > 60 && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
+            <div className="flex items-center gap-2 text-sm text-[#9EA8B4]">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
               <span>Generating strategy recommendations...</span>
             </div>

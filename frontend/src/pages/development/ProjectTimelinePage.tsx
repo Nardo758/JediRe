@@ -548,22 +548,22 @@ export const ProjectTimelinePage: React.FC = () => {
   const selectedScenarioData = mockScenarios.find(s => s.type === selectedScenario)!;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0F1319]">
       
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
+      <div className="bg-[#0F1319] border-b border-[#1e2a3d] sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate(-1)}
-                className="text-gray-600 hover:text-gray-900 transition"
+                className="text-[#9EA8B4] hover:text-[#E8E6E1] transition"
               >
                 ← Back
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Development Project Timeline</h1>
-                <p className="text-sm text-gray-600 mt-1">
+                <h1 className="text-2xl font-bold text-[#E8E6E1]">Development Project Timeline</h1>
+                <p className="text-sm text-[#9EA8B4] mt-1">
                   123 Main Street • 12-Story Multifamily • 287 Units
                 </p>
               </div>
@@ -573,15 +573,15 @@ export const ProjectTimelinePage: React.FC = () => {
             <div className="flex items-center gap-6">
               <div className="text-center">
                 <div className="text-3xl font-bold text-blue-600">{overallProgress}%</div>
-                <div className="text-xs text-gray-600">Complete</div>
+                <div className="text-xs text-[#9EA8B4]">Complete</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">${(totalBudget / 1000000).toFixed(1)}M</div>
-                <div className="text-xs text-gray-600">Total Budget</div>
+                <div className="text-xs text-[#9EA8B4]">Total Budget</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-orange-600">May '26</div>
-                <div className="text-xs text-gray-600">Est. Completion</div>
+                <div className="text-xs text-[#9EA8B4]">Est. Completion</div>
               </div>
             </div>
 
@@ -612,8 +612,8 @@ export const ProjectTimelinePage: React.FC = () => {
                 onClick={() => setSelectedView(tab.id as any)}
                 className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
                   selectedView === tab.id
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100'
+                    ? 'bg-[#0d1e3d] text-blue-400'
+                    : 'text-[#9EA8B4] hover:bg-[#131920]'
                 }`}
               >
                 {tab.label}
@@ -628,7 +628,7 @@ export const ProjectTimelinePage: React.FC = () => {
         
         {/* Active Milestones Alert Bar */}
         {activeMilestones.length > 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="bg-[#1a1200] border border-yellow-200 rounded-lg p-4">
             <div className="flex items-start gap-3">
               <span className="text-2xl">⚠️</span>
               <div className="flex-1">
@@ -643,9 +643,9 @@ export const ProjectTimelinePage: React.FC = () => {
                         milestone.status === 'at-risk' ? 'bg-yellow-500' :
                         'bg-blue-500'
                       }`} />
-                      <span className="font-medium text-gray-900">{milestone.title}</span>
+                      <span className="font-medium text-[#E8E6E1]">{milestone.title}</span>
                       {milestone.daysUntil !== undefined && (
-                        <span className="text-gray-600">• {milestone.daysUntil}d remaining</span>
+                        <span className="text-[#9EA8B4]">• {milestone.daysUntil}d remaining</span>
                       )}
                     </div>
                   ))}
@@ -688,24 +688,24 @@ export const ProjectTimelinePage: React.FC = () => {
       {/* 3D Progress Modal */}
       {show3DProgress && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
-            <div className="bg-gray-50 border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-gray-900">3D Construction Progress</h2>
+          <div className="bg-[#0F1319] rounded-lg shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden">
+            <div className="bg-[#0F1319] border-b border-[#1e2a3d] px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-[#E8E6E1]">3D Construction Progress</h2>
               <button
                 onClick={() => setShow3DProgress(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
+                className="text-gray-400 hover:text-[#9EA8B4] text-2xl"
               >
                 ×
               </button>
             </div>
             <div className="p-6">
-              <div className="bg-gray-100 rounded-lg h-[600px] flex items-center justify-center">
+              <div className="bg-[#131920] rounded-lg h-[600px] flex items-center justify-center">
                 <div className="text-center">
                   <div className="text-6xl mb-4">🏗️</div>
-                  <p className="text-gray-600">
+                  <p className="text-[#9EA8B4]">
                     3D visualization integrated with Pipeline3DProgress component
                   </p>
-                  <p className="text-sm text-gray-500 mt-2">
+                  <p className="text-sm text-[#6B7585] mt-2">
                     Link to: /components/pipeline/Pipeline3DProgress.tsx
                   </p>
                 </div>
@@ -765,8 +765,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
     <div className="space-y-6">
       
       {/* Scenario Selector */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">📈 Scenario Planning</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">📈 Scenario Planning</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           {mockScenarios.map(scenario => (
             <button
@@ -774,23 +774,23 @@ const TimelineView: React.FC<TimelineViewProps> = ({
               onClick={() => setSelectedScenario(scenario.type)}
               className={`p-4 rounded-lg border-2 transition text-left ${
                 selectedScenario === scenario.type
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  ? 'border-blue-500 bg-[#0d1e3d]'
+                  : 'border-[#1e2a3d] hover:border-[#253347]'
               }`}
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-2xl">{scenario.icon}</span>
                 <span className={`text-sm font-bold ${
                   scenario.type === 'fast-track' ? 'text-green-600' :
-                  scenario.type === 'slow-case' ? 'text-red-600' :
+                  scenario.type === 'slow-case' ? 'text-red-400' :
                   'text-blue-600'
                 }`}>
                   {scenario.irrImpact}
                 </span>
               </div>
-              <h4 className="font-semibold text-gray-900 mb-1">{scenario.name}</h4>
-              <p className="text-xs text-gray-600 mb-2">{scenario.description}</p>
-              <div className="flex items-center gap-3 text-xs text-gray-500">
+              <h4 className="font-semibold text-[#E8E6E1] mb-1">{scenario.name}</h4>
+              <p className="text-xs text-[#9EA8B4] mb-2">{scenario.description}</p>
+              <div className="flex items-center gap-3 text-xs text-[#6B7585]">
                 <span>🏁 {scenario.completionDate}</span>
                 <span>🏠 {scenario.firstRentDate}</span>
               </div>
@@ -799,13 +799,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
         </div>
         
         {/* Selected Scenario Details */}
-        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-          <h4 className="text-xs font-semibold text-gray-700 mb-2">
+        <div className="bg-[#0F1319] rounded-lg p-4 border border-[#1e2a3d]">
+          <h4 className="text-xs font-semibold text-[#9EA8B4] mb-2">
             {scenarioData.name} Assumptions:
           </h4>
           <ul className="grid grid-cols-2 gap-2">
             {scenarioData.assumptions.map((assumption, idx) => (
-              <li key={idx} className="text-xs text-gray-600 flex items-start gap-2">
+              <li key={idx} className="text-xs text-[#9EA8B4] flex items-start gap-2">
                 <span className="text-green-500 mt-0.5">✓</span>
                 <span>{assumption}</span>
               </li>
@@ -815,16 +815,16 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       </div>
 
       {/* Gantt Chart */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">Development Gantt Chart</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-6 py-4 bg-[#0F1319] border-b border-[#1e2a3d]">
+          <h3 className="text-sm font-semibold text-[#9EA8B4]">Development Gantt Chart</h3>
         </div>
         
         <div className="p-6">
           {/* Timeline Header */}
-          <div className="relative h-16 mb-8 border-b-2 border-gray-300">
+          <div className="relative h-16 mb-8 border-b-2 border-[#253347]">
             {/* Year/Quarter markers */}
-            <div className="absolute inset-0 flex justify-between text-xs text-gray-500">
+            <div className="absolute inset-0 flex justify-between text-xs text-[#6B7585]">
               <div>
                 <div className="font-semibold">{dateRange.minDate.getFullYear()}</div>
                 <div className="text-gray-400">
@@ -871,7 +871,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   {/* Phase Bar */}
                   <div className="relative h-16">
                     {/* Background line */}
-                    <div className="absolute inset-0 bg-gray-50 rounded border border-gray-200" />
+                    <div className="absolute inset-0 bg-[#0F1319] rounded border border-[#1e2a3d]" />
                     
                     {/* Phase timeline bar */}
                     <div
@@ -885,7 +885,7 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                       {/* Progress fill */}
                       {phase.progress > 0 && (
                         <div
-                          className="absolute inset-0 bg-white/30 rounded-l-lg"
+                          className="absolute inset-0 bg-[#0F1319]/30 rounded-l-lg"
                           style={{ width: `${phase.progress}%` }}
                         />
                       )}
@@ -910,13 +910,13 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                     </div>
 
                     {/* Phase name on left */}
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-700 pointer-events-none">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-medium text-[#9EA8B4] pointer-events-none">
                       <span className="text-lg mr-2">{phase.icon}</span>
                       {phase.name}
                     </div>
 
                     {/* Dates on right */}
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-gray-500 pointer-events-none">
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-[#6B7585] pointer-events-none">
                       {new Date(phase.startDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
                       {' → '}
                       {new Date(phase.endDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
@@ -939,8 +939,8 @@ const TimelineView: React.FC<TimelineViewProps> = ({
       </div>
 
       {/* Critical Path Analysis */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 bg-orange-50 border-b border-orange-200">
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-6 py-4 bg-[#1a0d00] border-b border-orange-200">
           <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">
             <span>🎯</span>
             Critical Path Analysis
@@ -951,24 +951,24 @@ const TimelineView: React.FC<TimelineViewProps> = ({
             {criticalPath.map((item, index) => (
               <div
                 key={item.id}
-                className="flex items-center gap-4 p-4 rounded-lg border border-orange-200 bg-orange-50/30"
+                className="flex items-center gap-4 p-4 rounded-lg border border-orange-200 bg-[#1a0d00]/30"
               >
                 <div className="text-2xl font-bold text-orange-600">#{index + 1}</div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <h4 className="text-sm font-semibold text-gray-900">{item.task}</h4>
+                    <h4 className="text-sm font-semibold text-[#E8E6E1]">{item.task}</h4>
                     {item.floatDays === 0 && (
-                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded">
+                      <span className="px-2 py-0.5 bg-[#1c0a0a] text-red-400 text-xs font-medium rounded">
                         Zero Float
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-600">
+                  <div className="flex items-center gap-4 text-xs text-[#9EA8B4]">
                     <span>📅 {item.deadline}</span>
                     <span className={`font-medium ${
-                      item.daysRemaining <= 30 ? 'text-red-600' :
+                      item.daysRemaining <= 30 ? 'text-red-400' :
                       item.daysRemaining <= 60 ? 'text-yellow-600' :
-                      'text-gray-600'
+                      'text-[#9EA8B4]'
                     }`}>
                       ⏰ {item.daysRemaining} days remaining
                     </span>
@@ -977,9 +977,9 @@ const TimelineView: React.FC<TimelineViewProps> = ({
                   </div>
                   {item.blockers && item.blockers.length > 0 && (
                     <div className="mt-2 flex items-center gap-2">
-                      <span className="text-xs font-medium text-red-700">🚫 Blockers:</span>
+                      <span className="text-xs font-medium text-red-400">🚫 Blockers:</span>
                       {item.blockers.map((blocker, idx) => (
-                        <span key={idx} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
+                        <span key={idx} className="px-2 py-1 bg-[#1c0a0a] text-red-400 text-xs rounded">
                           {blocker}
                         </span>
                       ))}
@@ -990,14 +990,14 @@ const TimelineView: React.FC<TimelineViewProps> = ({
             ))}
           </div>
           
-          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mt-4 p-4 bg-[#0d1e3d] border border-blue-900/50 rounded-lg">
             <div className="flex items-start gap-3">
               <span className="text-2xl">💡</span>
               <div>
-                <h4 className="text-sm font-semibold text-blue-900 mb-1">
+                <h4 className="text-sm font-semibold text-blue-300 mb-1">
                   Total Float: 12 days • Risk Level: MEDIUM
                 </h4>
-                <p className="text-xs text-blue-700">
+                <p className="text-xs text-blue-400">
                   The adjacent parcel closing is on the critical path with zero float. 
                   Consider contingency plans if this deadline slips.
                 </p>
@@ -1034,8 +1034,8 @@ const MilestonesView: React.FC<MilestonesViewProps> = ({ phases }) => {
     <div className="space-y-6">
       
       {/* Milestone Progress Overview */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Milestone Progress</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Milestone Progress</h3>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <MilestoneStatCard label="Completed" count={grouped.completed.length} color="green" icon="✅" />
           <MilestoneStatCard label="In Progress" count={grouped.inProgress.length} color="blue" icon="🔄" />
@@ -1047,9 +1047,9 @@ const MilestonesView: React.FC<MilestonesViewProps> = ({ phases }) => {
 
       {/* Blocked/At Risk (Priority) */}
       {(grouped.blocked.length > 0 || grouped.atRisk.length > 0) && (
-        <div className="bg-white border border-red-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-red-50 border-b border-red-200">
-            <h3 className="text-sm font-semibold text-red-800">
+        <div className="bg-[#0F1319] border border-red-800/50 rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-[#1c0a0a] border-b border-red-800/50">
+            <h3 className="text-sm font-semibold text-red-300">
               🚨 Priority Attention Required ({grouped.blocked.length + grouped.atRisk.length})
             </h3>
           </div>
@@ -1063,9 +1063,9 @@ const MilestonesView: React.FC<MilestonesViewProps> = ({ phases }) => {
 
       {/* In Progress */}
       {grouped.inProgress.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-blue-50 border-b border-blue-200">
-            <h3 className="text-sm font-semibold text-blue-800">
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-[#0d1e3d] border-b border-blue-900/50">
+            <h3 className="text-sm font-semibold text-blue-300">
               🔄 In Progress ({grouped.inProgress.length})
             </h3>
           </div>
@@ -1079,9 +1079,9 @@ const MilestonesView: React.FC<MilestonesViewProps> = ({ phases }) => {
 
       {/* Upcoming */}
       {grouped.upcoming.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-700">
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-[#0F1319] border-b border-[#1e2a3d]">
+            <h3 className="text-sm font-semibold text-[#9EA8B4]">
               📅 Upcoming ({grouped.upcoming.length})
             </h3>
           </div>
@@ -1095,9 +1095,9 @@ const MilestonesView: React.FC<MilestonesViewProps> = ({ phases }) => {
 
       {/* Completed */}
       {grouped.completed.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-6 py-4 bg-green-50 border-b border-green-200">
-            <h3 className="text-sm font-semibold text-green-800">
+        <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+          <div className="px-6 py-4 bg-[#022c22] border-b border-green-800/50">
+            <h3 className="text-sm font-semibold text-green-300">
               ✅ Completed ({grouped.completed.length})
             </h3>
           </div>
@@ -1122,11 +1122,11 @@ interface MilestoneStatCardProps {
 
 const MilestoneStatCard: React.FC<MilestoneStatCardProps> = ({ label, count, color, icon }) => {
   const colorClasses = {
-    green: 'bg-green-50 border-green-200 text-green-700',
-    blue: 'bg-blue-50 border-blue-200 text-blue-700',
-    gray: 'bg-gray-50 border-gray-200 text-gray-700',
-    yellow: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-    red: 'bg-red-50 border-red-200 text-red-700',
+    green: 'bg-[#022c22] border-green-800/50 text-green-400',
+    blue: 'bg-[#0d1e3d] border-blue-900/50 text-blue-400',
+    gray: 'bg-[#0F1319] border-[#1e2a3d] text-[#9EA8B4]',
+    yellow: 'bg-[#1a1200] border-yellow-200 text-yellow-700',
+    red: 'bg-[#1c0a0a] border-red-800/50 text-red-400',
   };
 
   return (
@@ -1151,15 +1151,15 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
   const getStatusColor = (status: MilestoneStatus) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-700 border-green-300';
+        return 'bg-[#022c22] text-green-400 border-green-700';
       case 'in-progress':
-        return 'bg-blue-100 text-blue-700 border-blue-300';
+        return 'bg-[#0d1e3d] text-blue-400 border-blue-700';
       case 'at-risk':
         return 'bg-yellow-100 text-yellow-700 border-yellow-300';
       case 'blocked':
-        return 'bg-red-100 text-red-700 border-red-300';
+        return 'bg-[#1c0a0a] text-red-400 border-red-700';
       default:
-        return 'bg-gray-100 text-gray-700 border-gray-300';
+        return 'bg-[#131920] text-[#9EA8B4] border-[#253347]';
     }
   };
 
@@ -1180,22 +1180,22 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
 
   if (compact) {
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-sm transition">
+      <div className="flex items-center gap-3 p-3 rounded-lg border border-[#1e2a3d] hover:border-[#253347] hover:shadow-sm transition">
         <span className="text-xl">{getStatusIcon(milestone.status)}</span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-medium text-gray-900 truncate">{milestone.title}</span>
+            <span className="text-sm font-medium text-[#E8E6E1] truncate">{milestone.title}</span>
             {milestone.isCritical && (
-              <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-xs font-semibold rounded">
+              <span className="px-1.5 py-0.5 bg-[#1a0d00] text-orange-700 text-xs font-semibold rounded">
                 Critical
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 text-xs text-gray-600">
+          <div className="flex items-center gap-3 text-xs text-[#9EA8B4]">
             <span>📅 {milestone.targetDate}</span>
             {milestone.daysUntil !== undefined && (
               <span className={`font-medium ${
-                milestone.daysUntil <= 30 ? 'text-red-600' : 'text-gray-600'
+                milestone.daysUntil <= 30 ? 'text-red-400' : 'text-[#9EA8B4]'
               }`}>
                 {milestone.daysUntil}d remaining
               </span>
@@ -1204,7 +1204,7 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
           </div>
         </div>
         {milestone.progress !== undefined && milestone.progress > 0 && (
-          <div className="text-sm font-semibold text-gray-600">
+          <div className="text-sm font-semibold text-[#9EA8B4]">
             {milestone.progress}%
           </div>
         )}
@@ -1213,7 +1213,7 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
   }
 
   return (
-    <div className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition">
+    <div className="p-4 rounded-lg border border-[#1e2a3d] hover:border-[#253347] hover:shadow-md transition">
       <div className="flex items-start gap-3">
         <span className="text-2xl mt-1">{getStatusIcon(milestone.status)}</span>
         
@@ -1221,15 +1221,15 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
           <div className="flex items-start justify-between gap-2 mb-2">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <h4 className="text-sm font-semibold text-gray-900">{milestone.title}</h4>
+                <h4 className="text-sm font-semibold text-[#E8E6E1]">{milestone.title}</h4>
                 {milestone.isCritical && (
-                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-semibold rounded">
+                  <span className="px-2 py-0.5 bg-[#1a0d00] text-orange-700 text-xs font-semibold rounded">
                     Critical Path
                   </span>
                 )}
               </div>
               {milestone.description && (
-                <p className="text-xs text-gray-600 mb-2">{milestone.description}</p>
+                <p className="text-xs text-[#9EA8B4] mb-2">{milestone.description}</p>
               )}
             </div>
             <span className={`px-2 py-1 rounded text-xs font-medium border ${getStatusColor(milestone.status)}`}>
@@ -1240,11 +1240,11 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
           {/* Progress Bar */}
           {milestone.progress !== undefined && milestone.progress > 0 && milestone.progress < 100 && (
             <div className="mb-3">
-              <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <div className="flex justify-between text-xs text-[#9EA8B4] mb-1">
                 <span>Progress</span>
                 <span className="font-medium">{milestone.progress}%</span>
               </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-2 bg-[#1e2a3d] rounded-full overflow-hidden">
                 <div 
                   className={`h-full rounded-full transition-all ${
                     milestone.progress >= 80 ? 'bg-green-500' :
@@ -1258,16 +1258,16 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
           )}
 
           {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-600">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-[#9EA8B4]">
             <span>📅 Target: {milestone.targetDate}</span>
             {milestone.actualDate && (
               <span className="text-green-600">✅ Completed: {milestone.actualDate}</span>
             )}
             {milestone.daysUntil !== undefined && !milestone.actualDate && (
               <span className={`font-medium ${
-                milestone.daysUntil <= 7 ? 'text-red-600' :
+                milestone.daysUntil <= 7 ? 'text-red-400' :
                 milestone.daysUntil <= 30 ? 'text-yellow-600' :
-                'text-gray-600'
+                'text-[#9EA8B4]'
               }`}>
                 ⏰ {milestone.daysUntil} days remaining
               </span>
@@ -1277,8 +1277,8 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({ milestone, compact = fals
 
           {/* Dependencies */}
           {milestone.dependencies && milestone.dependencies.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <div className="text-xs text-gray-600">
+            <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
+              <div className="text-xs text-[#9EA8B4]">
                 <span className="font-medium">Dependencies:</span> {milestone.dependencies.join(', ')}
               </div>
             </div>
@@ -1301,31 +1301,31 @@ const TeamView: React.FC<TeamViewProps> = ({ team, phases }) => {
     <div className="space-y-6">
       
       {/* Team Directory */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">👥 Team Directory ({team.length})</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-6 py-4 bg-[#0F1319] border-b border-[#1e2a3d]">
+          <h3 className="text-sm font-semibold text-[#9EA8B4]">👥 Team Directory ({team.length})</h3>
         </div>
         <div className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {team.map(member => (
-              <div key={member.id} className="p-4 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition">
+              <div key={member.id} className="p-4 rounded-lg border border-[#1e2a3d] hover:border-[#253347] hover:shadow-md transition">
                 <div className="flex items-start gap-3">
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
                     {member.name.split(' ').map(n => n[0]).join('')}
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-semibold text-gray-900 mb-0.5">{member.name}</h4>
-                    <p className="text-sm text-gray-600 mb-2">{member.role}</p>
-                    <p className="text-xs text-gray-500 mb-3">{member.company}</p>
+                    <h4 className="font-semibold text-[#E8E6E1] mb-0.5">{member.name}</h4>
+                    <p className="text-sm text-[#9EA8B4] mb-2">{member.role}</p>
+                    <p className="text-xs text-[#6B7585] mb-3">{member.company}</p>
                     
                     <div className="space-y-1.5 mb-3">
-                      <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <div className="flex items-center gap-2 text-xs text-[#9EA8B4]">
                         <span>📧</span>
                         <a href={`mailto:${member.email}`} className="hover:text-blue-600">
                           {member.email}
                         </a>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <div className="flex items-center gap-2 text-xs text-[#9EA8B4]">
                         <span>📱</span>
                         <a href={`tel:${member.phone}`} className="hover:text-blue-600">
                           {member.phone}
@@ -1339,7 +1339,7 @@ const TeamView: React.FC<TeamViewProps> = ({ team, phases }) => {
                         return (
                           <span
                             key={phase}
-                            className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs rounded flex items-center gap-1"
+                            className="px-2 py-0.5 bg-[#131920] text-[#9EA8B4] text-xs rounded flex items-center gap-1"
                           >
                             {phaseData?.icon} {phaseData?.name.split(' ')[0]}
                           </span>
@@ -1361,9 +1361,9 @@ const TeamView: React.FC<TeamViewProps> = ({ team, phases }) => {
           if (phaseTeam.length === 0) return null;
           
           return (
-            <div key={phase.phase} className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className={`px-4 py-3 ${phase.color} bg-opacity-10 border-b border-gray-200`}>
-                <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+            <div key={phase.phase} className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+              <div className={`px-4 py-3 ${phase.color} bg-opacity-10 border-b border-[#1e2a3d]`}>
+                <h3 className="text-sm font-semibold text-[#E8E6E1] flex items-center gap-2">
                   <span>{phase.icon}</span>
                   {phase.name}
                 </h3>
@@ -1375,8 +1375,8 @@ const TeamView: React.FC<TeamViewProps> = ({ team, phases }) => {
                       {member.name.split(' ').map(n => n[0]).join('')}
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900">{member.name}</div>
-                      <div className="text-gray-600">{member.role}</div>
+                      <div className="font-medium text-[#E8E6E1]">{member.name}</div>
+                      <div className="text-[#9EA8B4]">{member.role}</div>
                     </div>
                   </div>
                 ))}
@@ -1405,25 +1405,25 @@ const BudgetView: React.FC<BudgetViewProps> = ({ phases }) => {
     <div className="space-y-6">
       
       {/* Budget Summary */}
-      <div className="bg-white border border-gray-200 rounded-lg p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Budget Summary</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-6">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-4">Budget Summary</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <div className="text-xs text-gray-600 mb-1">Total Budget</div>
-            <div className="text-3xl font-bold text-gray-900">
+            <div className="text-xs text-[#9EA8B4] mb-1">Total Budget</div>
+            <div className="text-3xl font-bold text-[#E8E6E1]">
               ${(totalPlanned / 1000000).toFixed(1)}M
             </div>
           </div>
           <div>
-            <div className="text-xs text-gray-600 mb-1">Spent to Date</div>
+            <div className="text-xs text-[#9EA8B4] mb-1">Spent to Date</div>
             <div className="text-3xl font-bold text-blue-600">
               ${(totalActual / 1000000).toFixed(1)}M
             </div>
           </div>
           <div>
-            <div className="text-xs text-gray-600 mb-1">Overall Variance</div>
+            <div className="text-xs text-[#9EA8B4] mb-1">Overall Variance</div>
             <div className={`text-3xl font-bold ${
-              overallVariance <= 0 ? 'text-green-600' : 'text-red-600'
+              overallVariance <= 0 ? 'text-green-600' : 'text-red-400'
             }`}>
               {overallVariance > 0 ? '+' : ''}{overallVariance.toFixed(1)}%
             </div>
@@ -1432,54 +1432,54 @@ const BudgetView: React.FC<BudgetViewProps> = ({ phases }) => {
       </div>
 
       {/* Budget by Phase Table */}
-      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <h3 className="text-sm font-semibold text-gray-700">Budget by Phase</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden">
+        <div className="px-6 py-4 bg-[#0F1319] border-b border-[#1e2a3d]">
+          <h3 className="text-sm font-semibold text-[#9EA8B4]">Budget by Phase</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-[#0F1319] border-b border-[#1e2a3d]">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">Phase</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Planned</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Actual</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Remaining</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-700 uppercase">Variance</th>
-                <th className="px-6 py-3 text-center text-xs font-semibold text-gray-700 uppercase">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#9EA8B4] uppercase">Phase</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">Planned</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">Actual</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">Remaining</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-[#9EA8B4] uppercase">Variance</th>
+                <th className="px-6 py-3 text-center text-xs font-semibold text-[#9EA8B4] uppercase">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {phases.map(phase => {
                 const remaining = phase.budget.planned - phase.budget.actual;
                 return (
-                  <tr key={phase.phase} className="hover:bg-gray-50">
+                  <tr key={phase.phase} className="hover:bg-[#0F1319]">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <span className="text-xl">{phase.icon}</span>
-                        <span className="text-sm font-medium text-gray-900">{phase.name}</span>
+                        <span className="text-sm font-medium text-[#E8E6E1]">{phase.name}</span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right text-sm text-gray-900">
+                    <td className="px-6 py-4 text-right text-sm text-[#E8E6E1]">
                       ${(phase.budget.planned / 1000000).toFixed(2)}M
                     </td>
-                    <td className="px-6 py-4 text-right text-sm text-gray-900">
+                    <td className="px-6 py-4 text-right text-sm text-[#E8E6E1]">
                       ${(phase.budget.actual / 1000000).toFixed(2)}M
                     </td>
-                    <td className="px-6 py-4 text-right text-sm text-gray-600">
+                    <td className="px-6 py-4 text-right text-sm text-[#9EA8B4]">
                       ${(remaining / 1000000).toFixed(2)}M
                     </td>
                     <td className="px-6 py-4 text-right">
                       <span className={`text-sm font-semibold ${
-                        phase.budget.variance <= 0 ? 'text-green-600' : 'text-red-600'
+                        phase.budget.variance <= 0 ? 'text-green-600' : 'text-red-400'
                       }`}>
                         {phase.budget.variance > 0 ? '+' : ''}{phase.budget.variance.toFixed(1)}%
                       </span>
                     </td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-2 py-1 text-xs font-medium rounded ${
-                        phase.status === 'complete' ? 'bg-green-100 text-green-700' :
-                        phase.status === 'in-progress' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-700'
+                        phase.status === 'complete' ? 'bg-[#022c22] text-green-400' :
+                        phase.status === 'in-progress' ? 'bg-[#0d1e3d] text-blue-400' :
+                        'bg-[#131920] text-[#9EA8B4]'
                       }`}>
                         {phase.status}
                       </span>
@@ -1488,21 +1488,21 @@ const BudgetView: React.FC<BudgetViewProps> = ({ phases }) => {
                 );
               })}
             </tbody>
-            <tfoot className="bg-gray-50 border-t-2 border-gray-300">
+            <tfoot className="bg-[#0F1319] border-t-2 border-[#253347]">
               <tr>
-                <td className="px-6 py-4 text-sm font-bold text-gray-900">TOTAL</td>
-                <td className="px-6 py-4 text-right text-sm font-bold text-gray-900">
+                <td className="px-6 py-4 text-sm font-bold text-[#E8E6E1]">TOTAL</td>
+                <td className="px-6 py-4 text-right text-sm font-bold text-[#E8E6E1]">
                   ${(totalPlanned / 1000000).toFixed(2)}M
                 </td>
-                <td className="px-6 py-4 text-right text-sm font-bold text-gray-900">
+                <td className="px-6 py-4 text-right text-sm font-bold text-[#E8E6E1]">
                   ${(totalActual / 1000000).toFixed(2)}M
                 </td>
-                <td className="px-6 py-4 text-right text-sm font-bold text-gray-600">
+                <td className="px-6 py-4 text-right text-sm font-bold text-[#9EA8B4]">
                   ${((totalPlanned - totalActual) / 1000000).toFixed(2)}M
                 </td>
                 <td className="px-6 py-4 text-right">
                   <span className={`text-sm font-bold ${
-                    overallVariance <= 0 ? 'text-green-600' : 'text-red-600'
+                    overallVariance <= 0 ? 'text-green-600' : 'text-red-400'
                   }`}>
                     {overallVariance > 0 ? '+' : ''}{overallVariance.toFixed(1)}%
                   </span>
@@ -1521,8 +1521,8 @@ const BudgetView: React.FC<BudgetViewProps> = ({ phases }) => {
             key={phase.phase}
             className={`p-4 rounded-lg border ${
               phase.budget.variance > 0
-                ? 'bg-red-50 border-red-200'
-                : 'bg-green-50 border-green-200'
+                ? 'bg-[#1c0a0a] border-red-800/50'
+                : 'bg-[#022c22] border-green-800/50'
             }`}
           >
             <div className="flex items-start gap-3">
@@ -1531,12 +1531,12 @@ const BudgetView: React.FC<BudgetViewProps> = ({ phases }) => {
               </span>
               <div>
                 <h4 className={`text-sm font-semibold mb-1 ${
-                  phase.budget.variance > 0 ? 'text-red-900' : 'text-green-900'
+                  phase.budget.variance > 0 ? 'text-red-300' : 'text-green-300'
                 }`}>
                   {phase.icon} {phase.name}
                 </h4>
                 <p className={`text-xs ${
-                  phase.budget.variance > 0 ? 'text-red-700' : 'text-green-700'
+                  phase.budget.variance > 0 ? 'text-red-400' : 'text-green-400'
                 }`}>
                   {phase.budget.variance > 0 ? 'Over budget by' : 'Under budget by'} {' '}
                   {Math.abs(phase.budget.variance).toFixed(1)}% 

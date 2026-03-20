@@ -246,7 +246,7 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
           }`}>
             {isPipeline ? '🎯 Acquisition Analysis' : '🏢 Performance Analysis'}
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-[#6B7585]">
             Powered by Claude Opus
           </div>
         </div>
@@ -255,13 +255,13 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
           <button
             onClick={() => analyzeWithRole(selectedRole)}
             disabled={loading}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium text-blue-400 bg-[#0d1e3d] border border-blue-700 rounded-lg hover:bg-[#0d1e3d] transition-colors disabled:opacity-50"
           >
             {loading ? '🔄 Analyzing...' : '🔄 Re-analyze'}
           </button>
           <button
             onClick={exportToPDF}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-[#9EA8B4] bg-[#0F1319] border border-[#253347] rounded-lg hover:bg-[#0F1319] transition-colors"
           >
             📄 Export PDF
           </button>
@@ -361,8 +361,8 @@ interface RoleSelectorProps {
 
 const RoleSelector: React.FC<RoleSelectorProps> = ({ selectedRole, onRoleChange, disabled }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-6">
+      <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">
         Select AI Analyst Role
       </h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -375,14 +375,14 @@ const RoleSelector: React.FC<RoleSelectorProps> = ({ selectedRole, onRoleChange,
               relative p-4 rounded-lg border-2 transition-all duration-200
               ${selectedRole === persona.id
                 ? `border-${persona.color}-500 bg-${persona.color}-50`
-                : 'border-gray-200 bg-white hover:border-gray-300'
+                : 'border-[#1e2a3d] bg-[#0F1319] hover:border-[#253347]'
               }
               ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
             `}
           >
             <div className="text-3xl mb-2">{persona.icon}</div>
-            <div className="text-sm font-semibold text-gray-900">{persona.name}</div>
-            <div className="text-xs text-gray-500 mt-1 line-clamp-2">{persona.description}</div>
+            <div className="text-sm font-semibold text-[#E8E6E1]">{persona.name}</div>
+            <div className="text-xs text-[#6B7585] mt-1 line-clamp-2">{persona.description}</div>
             
             {selectedRole === persona.id && (
               <div className={`absolute top-2 right-2 w-6 h-6 bg-gradient-to-br ${persona.gradient} rounded-full flex items-center justify-center`}>
@@ -434,12 +434,12 @@ interface ErrorStateProps {
 
 const ErrorState: React.FC<ErrorStateProps> = ({ error, onRetry }) => {
   return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+    <div className="bg-[#1c0a0a] border border-red-800/50 rounded-xl p-6">
       <div className="flex items-start gap-4">
         <div className="text-4xl">⚠️</div>
         <div className="flex-1">
-          <h3 className="text-lg font-bold text-red-900 mb-2">Analysis Failed</h3>
-          <p className="text-red-700 mb-4">{error}</p>
+          <h3 className="text-lg font-bold text-red-300 mb-2">Analysis Failed</h3>
+          <p className="text-red-400 mb-4">{error}</p>
           <button
             onClick={onRetry}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
@@ -501,15 +501,15 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
             </div>
 
             <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+              <div className="bg-[#0F1319]/10 backdrop-blur-sm rounded-lg p-3">
                 <div className="text-sm text-white/70 mb-1">Deal Score</div>
                 <div className="text-2xl font-bold">{analysis.score.toFixed(1)}/10</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+              <div className="bg-[#0F1319]/10 backdrop-blur-sm rounded-lg p-3">
                 <div className="text-sm text-white/70 mb-1">Confidence</div>
                 <div className="text-2xl font-bold">{analysis.confidence}%</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+              <div className="bg-[#0F1319]/10 backdrop-blur-sm rounded-lg p-3">
                 <div className="text-sm text-white/70 mb-1">Model</div>
                 <div className="text-xs font-medium mt-1">Claude Opus</div>
               </div>
@@ -519,14 +519,14 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
           <div className="flex gap-2">
             <button
               onClick={onCopy}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+              className="p-2 bg-[#0F1319]/10 hover:bg-[#0F1319]/20 rounded-lg transition-colors"
               title="Copy to clipboard"
             >
               📋
             </button>
             <button
               onClick={onToggle}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+              className="p-2 bg-[#0F1319]/10 hover:bg-[#0F1319]/20 rounded-lg transition-colors"
             >
               {expanded ? '▼' : '▶'}
             </button>
@@ -556,9 +556,9 @@ interface InsightsCardProps {
 
 const InsightsCard: React.FC<InsightsCardProps> = ({ insights, persona, expanded, onToggle }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d]">
       <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="p-6 cursor-pointer flex items-center justify-between hover:bg-[#0F1319] transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-center gap-3">
@@ -566,11 +566,11 @@ const InsightsCard: React.FC<InsightsCardProps> = ({ insights, persona, expanded
             💡
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Key Insights</h3>
-            <p className="text-sm text-gray-500">{insights.length} critical findings</p>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Key Insights</h3>
+            <p className="text-sm text-[#6B7585]">{insights.length} critical findings</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button className="text-gray-400 hover:text-[#9EA8B4]">
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -578,11 +578,11 @@ const InsightsCard: React.FC<InsightsCardProps> = ({ insights, persona, expanded
       {expanded && (
         <div className="px-6 pb-6 space-y-3">
           {insights.map((insight, i) => (
-            <div key={i} className="flex gap-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
+            <div key={i} className="flex gap-3 p-4 bg-[#0F1319] rounded-lg border border-[#1e2a3d]">
               <div className={`flex-shrink-0 w-6 h-6 bg-gradient-to-br ${persona.gradient} rounded-full flex items-center justify-center text-white text-xs font-bold`}>
                 {i + 1}
               </div>
-              <div className="flex-1 text-gray-700">{insight}</div>
+              <div className="flex-1 text-[#9EA8B4]">{insight}</div>
             </div>
           ))}
         </div>
@@ -612,9 +612,9 @@ const RisksCard: React.FC<RisksCardProps> = ({ risks, persona, expanded, onToggl
   const sortedRisks = [...risks].sort((a, b) => (b.priority || 5) - (a.priority || 5));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d]">
       <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="p-6 cursor-pointer flex items-center justify-between hover:bg-[#0F1319] transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-center gap-3">
@@ -622,11 +622,11 @@ const RisksCard: React.FC<RisksCardProps> = ({ risks, persona, expanded, onToggl
             ⚠️
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Risks</h3>
-            <p className="text-sm text-gray-500">{risks.length} identified risks</p>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Risks</h3>
+            <p className="text-sm text-[#6B7585]">{risks.length} identified risks</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button className="text-gray-400 hover:text-[#9EA8B4]">
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -634,35 +634,35 @@ const RisksCard: React.FC<RisksCardProps> = ({ risks, persona, expanded, onToggl
       {expanded && (
         <div className="px-6 pb-6 space-y-3">
           {sortedRisks.map((risk, i) => (
-            <div key={risk.id || i} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="p-4 bg-gray-50">
+            <div key={risk.id || i} className="border border-[#1e2a3d] rounded-lg overflow-hidden">
+              <div className="p-4 bg-[#0F1319]">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full bg-${getRiskColor(risk.level)}-100 text-${getRiskColor(risk.level)}-700`}>
                       {risk.level?.toUpperCase()}
                     </span>
-                    <span className="text-xs text-gray-500">{risk.category}</span>
+                    <span className="text-xs text-[#6B7585]">{risk.category}</span>
                   </div>
-                  <div className="text-xs font-medium text-gray-500">
+                  <div className="text-xs font-medium text-[#6B7585]">
                     Priority: {risk.priority}/10
                   </div>
                 </div>
-                <div className="font-medium text-gray-900 mb-2">{risk.description}</div>
+                <div className="font-medium text-[#E8E6E1] mb-2">{risk.description}</div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-500">Impact:</span>
-                    <span className="ml-2 font-medium text-gray-900">{risk.impact}</span>
+                    <span className="text-[#6B7585]">Impact:</span>
+                    <span className="ml-2 font-medium text-[#E8E6E1]">{risk.impact}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Probability:</span>
-                    <span className="ml-2 font-medium text-gray-900">{risk.probability}%</span>
+                    <span className="text-[#6B7585]">Probability:</span>
+                    <span className="ml-2 font-medium text-[#E8E6E1]">{risk.probability}%</span>
                   </div>
                 </div>
               </div>
               {risk.mitigation && (
-                <div className="p-4 bg-white border-t border-gray-200">
-                  <div className="text-xs font-semibold text-gray-500 mb-1">MITIGATION STRATEGY</div>
-                  <div className="text-sm text-gray-700">{risk.mitigation}</div>
+                <div className="p-4 bg-[#0F1319] border-t border-[#1e2a3d]">
+                  <div className="text-xs font-semibold text-[#6B7585] mb-1">MITIGATION STRATEGY</div>
+                  <div className="text-sm text-[#9EA8B4]">{risk.mitigation}</div>
                 </div>
               )}
             </div>
@@ -684,9 +684,9 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
   const sortedOpps = [...opportunities].sort((a, b) => (b.priority || 5) - (a.priority || 5));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d]">
       <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="p-6 cursor-pointer flex items-center justify-between hover:bg-[#0F1319] transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-center gap-3">
@@ -694,11 +694,11 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
             🎯
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Opportunities</h3>
-            <p className="text-sm text-gray-500">{opportunities.length} value creation opportunities</p>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Opportunities</h3>
+            <p className="text-sm text-[#6B7585]">{opportunities.length} value creation opportunities</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button className="text-gray-400 hover:text-[#9EA8B4]">
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -706,10 +706,10 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
       {expanded && (
         <div className="px-6 pb-6 space-y-3">
           {sortedOpps.map((opp, i) => (
-            <div key={opp.id || i} className="border border-gray-200 rounded-lg p-4">
+            <div key={opp.id || i} className="border border-[#1e2a3d] rounded-lg p-4">
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">
+                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-[#022c22] text-green-400">
                     {opp.type}
                   </span>
                 </div>
@@ -719,14 +719,14 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
                   </div>
                 )}
               </div>
-              <div className="font-medium text-gray-900 mb-3">{opp.description}</div>
+              <div className="font-medium text-[#E8E6E1] mb-3">{opp.description}</div>
               
               {opp.requirements && opp.requirements.length > 0 && (
                 <div className="mb-3">
-                  <div className="text-xs font-semibold text-gray-500 mb-2">REQUIREMENTS</div>
+                  <div className="text-xs font-semibold text-[#6B7585] mb-2">REQUIREMENTS</div>
                   <div className="flex flex-wrap gap-2">
                     {opp.requirements.map((req: string, j: number) => (
-                      <span key={j} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                      <span key={j} className="px-2 py-1 text-xs bg-[#131920] text-[#9EA8B4] rounded">
                         {req}
                       </span>
                     ))}
@@ -736,11 +736,11 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
 
               <div className="flex items-center justify-between text-sm">
                 <div>
-                  <span className="text-gray-500">Success Probability:</span>
-                  <span className="ml-2 font-medium text-gray-900">{opp.probability}%</span>
+                  <span className="text-[#6B7585]">Success Probability:</span>
+                  <span className="ml-2 font-medium text-[#E8E6E1]">{opp.probability}%</span>
                 </div>
                 {opp.timeline && (
-                  <div className="text-gray-500">Timeline: <span className="font-medium text-gray-900">{opp.timeline}</span></div>
+                  <div className="text-[#6B7585]">Timeline: <span className="font-medium text-[#E8E6E1]">{opp.timeline}</span></div>
                 )}
               </div>
             </div>
@@ -775,9 +775,9 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, persona,
   });
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d]">
       <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="p-6 cursor-pointer flex items-center justify-between hover:bg-[#0F1319] transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-center gap-3">
@@ -785,11 +785,11 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, persona,
             ✅
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Action Items</h3>
-            <p className="text-sm text-gray-500">{actionItems.length} recommended actions</p>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Action Items</h3>
+            <p className="text-sm text-[#6B7585]">{actionItems.length} recommended actions</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button className="text-gray-400 hover:text-[#9EA8B4]">
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -799,21 +799,21 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, persona,
           {sortedActions.map((action, i) => {
             const config = getPriorityConfig(action.priority);
             return (
-              <div key={action.id || i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+              <div key={action.id || i} className="flex items-start gap-3 p-3 bg-[#0F1319] rounded-lg border border-[#1e2a3d] hover:border-[#1e2a3d] transition-colors">
                 <div className="flex-shrink-0 text-xl">{config.emoji}</div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`px-2 py-0.5 text-xs font-semibold rounded bg-${config.color}-100 text-${config.color}-700`}>
                       {action.priority.toUpperCase()}
                     </span>
-                    <span className="text-xs text-gray-500">{action.category}</span>
+                    <span className="text-xs text-[#6B7585]">{action.category}</span>
                     {action.timeframe && (
-                      <span className="text-xs text-gray-500">• {action.timeframe}</span>
+                      <span className="text-xs text-[#6B7585]">• {action.timeframe}</span>
                     )}
                   </div>
-                  <div className="text-sm font-medium text-gray-900">{action.action}</div>
+                  <div className="text-sm font-medium text-[#E8E6E1]">{action.action}</div>
                   {action.owner && (
-                    <div className="text-xs text-gray-500 mt-1">Owner: {action.owner}</div>
+                    <div className="text-xs text-[#6B7585] mt-1">Owner: {action.owner}</div>
                   )}
                 </div>
               </div>
@@ -841,9 +841,9 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
   onToggle 
 }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d]">
       <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+        className="p-6 cursor-pointer flex items-center justify-between hover:bg-[#0F1319] transition-colors"
         onClick={onToggle}
       >
         <div className="flex items-center gap-3">
@@ -851,20 +851,20 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
             {persona.icon}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">{persona.name} Deep Dive</h3>
-            <p className="text-sm text-gray-500">Role-specific analysis and recommendations</p>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">{persona.name} Deep Dive</h3>
+            <p className="text-sm text-[#6B7585]">Role-specific analysis and recommendations</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button className="text-gray-400 hover:text-[#9EA8B4]">
           {expanded ? '▼' : '▶'}
         </button>
       </div>
 
       {expanded && (
         <div className="px-6 pb-6">
-          <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+          <div className="bg-[#0F1319] rounded-lg p-6 border border-[#1e2a3d]">
             <div className="mb-4">
-              <h4 className="font-semibold text-gray-900 mb-2">Focus Areas</h4>
+              <h4 className="font-semibold text-[#E8E6E1] mb-2">Focus Areas</h4>
               <div className="flex flex-wrap gap-2">
                 {persona.focus.map((focus, i) => (
                   <span key={i} className={`px-3 py-1 text-sm rounded-full bg-gradient-to-br ${persona.gradient} text-white`}>
@@ -877,10 +877,10 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
             <div className="space-y-4">
               {analysis.strengths.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-green-700 mb-2">✅ Strengths</h4>
+                  <h4 className="font-semibold text-green-400 mb-2">✅ Strengths</h4>
                   <ul className="space-y-1">
                     {analysis.strengths.map((strength, i) => (
-                      <li key={i} className="text-sm text-gray-700 flex gap-2">
+                      <li key={i} className="text-sm text-[#9EA8B4] flex gap-2">
                         <span className="text-green-500">•</span>
                         {strength}
                       </li>
@@ -891,10 +891,10 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
 
               {analysis.weaknesses.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-red-700 mb-2">⚠️ Weaknesses</h4>
+                  <h4 className="font-semibold text-red-400 mb-2">⚠️ Weaknesses</h4>
                   <ul className="space-y-1">
                     {analysis.weaknesses.map((weakness, i) => (
-                      <li key={i} className="text-sm text-gray-700 flex gap-2">
+                      <li key={i} className="text-sm text-[#9EA8B4] flex gap-2">
                         <span className="text-red-500">•</span>
                         {weakness}
                       </li>
@@ -905,10 +905,10 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
 
               {analysis.assumptions.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-blue-700 mb-2">📋 Key Assumptions</h4>
+                  <h4 className="font-semibold text-blue-400 mb-2">📋 Key Assumptions</h4>
                   <ul className="space-y-1">
                     {analysis.assumptions.map((assumption, i) => (
-                      <li key={i} className="text-sm text-gray-700 flex gap-2">
+                      <li key={i} className="text-sm text-[#9EA8B4] flex gap-2">
                         <span className="text-blue-500">•</span>
                         {assumption}
                       </li>
@@ -930,28 +930,28 @@ interface AnalysisMetadataProps {
 
 const AnalysisMetadata: React.FC<AnalysisMetadataProps> = ({ analysis }) => {
   return (
-    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+    <div className="bg-[#0F1319] rounded-lg p-4 border border-[#1e2a3d]">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <div className="text-gray-500 mb-1">Analysis Date</div>
-          <div className="font-medium text-gray-900">
+          <div className="text-[#6B7585] mb-1">Analysis Date</div>
+          <div className="font-medium text-[#E8E6E1]">
             {new Date(analysis.analysisDate).toLocaleDateString()}
           </div>
         </div>
         <div>
-          <div className="text-gray-500 mb-1">Model Version</div>
-          <div className="font-medium text-gray-900">{analysis.modelVersion}</div>
+          <div className="text-[#6B7585] mb-1">Model Version</div>
+          <div className="font-medium text-[#E8E6E1]">{analysis.modelVersion}</div>
         </div>
         {analysis.tokensUsed && (
           <div>
-            <div className="text-gray-500 mb-1">Tokens Used</div>
-            <div className="font-medium text-gray-900">{analysis.tokensUsed.toLocaleString()}</div>
+            <div className="text-[#6B7585] mb-1">Tokens Used</div>
+            <div className="font-medium text-[#E8E6E1]">{analysis.tokensUsed.toLocaleString()}</div>
           </div>
         )}
         {analysis.processingTime && (
           <div>
-            <div className="text-gray-500 mb-1">Processing Time</div>
-            <div className="font-medium text-gray-900">{(analysis.processingTime / 1000).toFixed(2)}s</div>
+            <div className="text-[#6B7585] mb-1">Processing Time</div>
+            <div className="font-medium text-[#E8E6E1]">{(analysis.processingTime / 1000).toFixed(2)}s</div>
           </div>
         )}
       </div>

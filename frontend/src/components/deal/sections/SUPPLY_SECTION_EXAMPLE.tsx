@@ -45,7 +45,7 @@ export const DealTabsWithSupplyExample: React.FC<{ deal: Deal }> = ({ deal }) =>
   return (
     <div>
       {/* Tab Navigation */}
-      <div className="flex gap-2 border-b border-gray-200 mb-6">
+      <div className="flex gap-2 border-b border-[#1e2a3d] mb-6">
         {tabs.map(tab => (
           <button
             key={tab.id}
@@ -53,7 +53,7 @@ export const DealTabsWithSupplyExample: React.FC<{ deal: Deal }> = ({ deal }) =>
             className={`px-4 py-2 font-medium text-sm transition-colors ${
               activeTab === tab.id
                 ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-900'
+                : 'text-[#9EA8B4] hover:text-[#E8E6E1]'
             }`}
           >
             <span className="mr-2">{tab.icon}</span>
@@ -86,7 +86,7 @@ export const SupplyWithLoadingExample: React.FC<{ deal: Deal }> = ({ deal }) => 
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading pipeline data...</p>
+          <p className="text-[#9EA8B4]">Loading pipeline data...</p>
         </div>
       </div>
     );
@@ -102,14 +102,14 @@ export const CompleteDealPageExample: React.FC<{ deal: Deal }> = ({ deal }) => {
     <div className="max-w-7xl mx-auto p-6 space-y-4">
       
       {/* Deal Header */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">{deal.name}</h1>
-        <p className="text-gray-600">{deal.address || deal.propertyAddress}</p>
+      <div className="bg-[#0F1319] rounded-lg shadow p-6 mb-6">
+        <h1 className="text-3xl font-bold text-[#E8E6E1] mb-2">{deal.name}</h1>
+        <p className="text-[#9EA8B4]">{deal.address || deal.propertyAddress}</p>
         <div className="flex gap-4 mt-4">
-          <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+          <span className="px-3 py-1 bg-[#0d1e3d] text-blue-400 rounded-full text-sm font-medium">
             {deal.dealType || deal.projectType}
           </span>
-          <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-medium">
+          <span className="px-3 py-1 bg-[#131920] text-[#9EA8B4] rounded-full text-sm font-medium">
             {deal.status}
           </span>
         </div>
@@ -202,11 +202,11 @@ export const CompleteDealPageExample: React.FC<{ deal: Deal }> = ({ deal }) => {
 
 export const MobileSupplyExample: React.FC<{ deal: Deal }> = ({ deal }) => {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0F1319]">
       {/* Mobile Header */}
-      <div className="bg-white border-b border-gray-200 p-4 sticky top-0 z-10">
-        <h1 className="text-lg font-bold text-gray-900">{deal.name}</h1>
-        <p className="text-sm text-gray-600">Supply Pipeline Analysis</p>
+      <div className="bg-[#0F1319] border-b border-[#1e2a3d] p-4 sticky top-0 z-10">
+        <h1 className="text-lg font-bold text-[#E8E6E1]">{deal.name}</h1>
+        <p className="text-sm text-[#9EA8B4]">Supply Pipeline Analysis</p>
       </div>
 
       {/* Supply Section (mobile-optimized) */}
@@ -268,15 +268,15 @@ export const SupplyTestWrapper: React.FC = () => {
   return (
     <div className="p-6">
       {/* Mode Toggle for Testing */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-        <h3 className="font-bold text-gray-900 mb-2">🧪 Testing Mode</h3>
+      <div className="bg-[#1a1200] border border-yellow-200 rounded-lg p-4 mb-6">
+        <h3 className="font-bold text-[#E8E6E1] mb-2">🧪 Testing Mode</h3>
         <div className="flex gap-2">
           <button
             onClick={() => setMode('acquisition')}
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               mode === 'acquisition'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-[#1e2a3d] text-[#9EA8B4] hover:bg-gray-300'
             }`}
           >
             Acquisition Mode
@@ -286,13 +286,13 @@ export const SupplyTestWrapper: React.FC = () => {
             className={`px-4 py-2 rounded-lg font-medium transition-colors ${
               mode === 'performance'
                 ? 'bg-purple-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                : 'bg-[#1e2a3d] text-[#9EA8B4] hover:bg-gray-300'
             }`}
           >
             Performance Mode
           </button>
         </div>
-        <p className="text-sm text-gray-600 mt-2">
+        <p className="text-sm text-[#9EA8B4] mt-2">
           Current Deal Status: <strong>{deal.status}</strong>
         </p>
       </div>

@@ -89,15 +89,15 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
   };
 
   const getScoreColor = (score: number | null | undefined) => {
-    if (!score && score !== 0) return 'bg-slate-100 text-slate-600';
-    if (score >= 80) return 'bg-green-100 text-green-700';
+    if (!score && score !== 0) return 'bg-[#131920] text-slate-600';
+    if (score >= 80) return 'bg-[#022c22] text-green-400';
     if (score >= 60) return 'bg-yellow-100 text-yellow-700';
-    return 'bg-red-100 text-red-700';
+    return 'bg-[#1c0a0a] text-red-400';
   };
 
   const getScoreBadge = (score: number | null | undefined) => {
     if (!score && score !== 0) return (
-      <span className="px-2 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-500 border border-slate-200">Not Scored</span>
+      <span className="px-2 py-1 text-xs font-medium rounded-full bg-[#131920] text-slate-500 border border-[#1e2a3d]">Not Scored</span>
     );
     return (
       <span className={`px-2 py-1 text-xs font-bold rounded-full ${getScoreColor(score)}`}>
@@ -108,7 +108,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-slate-200 p-8">
+      <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d] p-8">
         <div className="flex items-center justify-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
         </div>
@@ -138,7 +138,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white"
+        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-[#0F1319]"
       >
         <option value="">{placeholder || 'Select...'}</option>
         {options.map(opt => (
@@ -155,7 +155,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${checked ? 'bg-blue-500' : 'bg-slate-300'}`}
       >
-        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
+        <span className={`inline-block h-4 w-4 transform rounded-full bg-[#0F1319] transition-transform ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
       </button>
       <label className="text-sm text-slate-700">{label}</label>
     </div>
@@ -177,11 +177,11 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
   );
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200">
-      <div className="px-6 py-4 border-b border-slate-200">
+    <div className="bg-[#0F1319] rounded-xl border border-[#1e2a3d]">
+      <div className="px-6 py-4 border-b border-[#1e2a3d]">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-[#E8E6E1] flex items-center gap-2">
               <Activity size={20} />
               Site Intelligence
             </h2>
@@ -191,13 +191,13 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
             {data.data_completeness !== undefined && data.data_completeness > 0 && (
               <div className="text-right">
                 <div className="text-xs text-slate-400">Completeness</div>
-                <div className="text-xl font-bold text-slate-900">{data.data_completeness}%</div>
+                <div className="text-xl font-bold text-[#E8E6E1]">{data.data_completeness}%</div>
               </div>
             )}
             {data.overall_score !== undefined && data.overall_score > 0 && (
               <div className="text-right">
                 <div className="text-xs text-slate-400">Overall Score</div>
-                <div className="text-xl font-bold text-slate-900">{data.overall_score}/100</div>
+                <div className="text-xl font-bold text-[#E8E6E1]">{data.overall_score}/100</div>
               </div>
             )}
             <button
@@ -211,13 +211,13 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
           </div>
         </div>
         {saveMessage && (
-          <div className={`mt-2 text-sm px-3 py-1.5 rounded-lg ${saveMessage.startsWith('Failed') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+          <div className={`mt-2 text-sm px-3 py-1.5 rounded-lg ${saveMessage.startsWith('Failed') ? 'bg-[#1c0a0a] text-red-400' : 'bg-[#022c22] text-green-600'}`}>
             {saveMessage}
           </div>
         )}
       </div>
 
-      <div className="border-b border-slate-200">
+      <div className="border-b border-[#1e2a3d]">
         <div className="flex px-4">
           {TABS.map(tab => (
             <button
@@ -241,7 +241,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
         {activeTab === 'environmental' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-base font-semibold text-slate-900">Environmental Analysis</h3>
+              <h3 className="text-base font-semibold text-[#E8E6E1]">Environmental Analysis</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
               {renderInput('Soil Type', data.environmental?.soilType, (v) => updateCategory('environmental', 'soilType', v), { placeholder: 'e.g., Clay, Sand, Loam' })}
@@ -255,7 +255,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
         {activeTab === 'infrastructure' && (
           <div className="space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">Infrastructure & Utilities</h3>
+            <h3 className="text-base font-semibold text-[#E8E6E1]">Infrastructure & Utilities</h3>
             <div className="grid grid-cols-2 gap-4">
               {renderInput('Water Capacity', data.infrastructure?.waterCapacity, (v) => updateCategory('infrastructure', 'waterCapacity', v), { placeholder: 'e.g., 500 GPM' })}
               {renderSelect('Sewer Type', data.infrastructure?.sewerType, (v) => updateCategory('infrastructure', 'sewerType', v), SEWER_TYPES, 'Select type')}
@@ -269,7 +269,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
         {activeTab === 'accessibility' && (
           <div className="space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">Accessibility & Transportation</h3>
+            <h3 className="text-base font-semibold text-[#E8E6E1]">Accessibility & Transportation</h3>
             <div className="grid grid-cols-2 gap-4">
               {renderSelect('Road Access', data.accessibility?.roadAccess, (v) => updateCategory('accessibility', 'roadAccess', v), ROAD_ACCESS_TYPES, 'Select access type')}
               {renderInput('Road Type', data.accessibility?.roadType, (v) => updateCategory('accessibility', 'roadType', v), { placeholder: 'e.g., Paved, Collector' })}
@@ -283,7 +283,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
         {activeTab === 'regulatory' && (
           <div className="space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">Regulatory & Compliance</h3>
+            <h3 className="text-base font-semibold text-[#E8E6E1]">Regulatory & Compliance</h3>
             <div className="grid grid-cols-1 gap-4">
               {renderToggle('Located in Historic District', data.regulatory?.historicDistrict || false, (v) => updateCategory('regulatory', 'historicDistrict', v))}
               {renderInput('Required Permits (comma-separated)', data.regulatory?.permitsRequired?.join(', '), (v) => updateCategory('regulatory', 'permitsRequired', v.split(',').map((s: string) => s.trim()).filter(Boolean)), { placeholder: 'e.g., Building, Zoning, Environmental' })}
@@ -295,7 +295,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
         {activeTab === 'hazards' && (
           <div className="space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">Natural Hazards</h3>
+            <h3 className="text-base font-semibold text-[#E8E6E1]">Natural Hazards</h3>
             <div className="grid grid-cols-2 gap-4">
               {renderInput('Flood Zone', data.natural_hazards?.floodZone, (v) => updateCategory('natural_hazards', 'floodZone', v), { placeholder: 'e.g., X, AE, A' })}
               {renderSelect('Flood Risk', data.natural_hazards?.floodRisk, (v) => updateCategory('natural_hazards', 'floodRisk', v), RISK_LEVELS, 'Select risk level')}
@@ -308,7 +308,7 @@ export const SiteIntelligenceSection: React.FC<SiteIntelligenceSectionProps> = (
 
         {activeTab === 'market' && (
           <div className="space-y-4">
-            <h3 className="text-base font-semibold text-slate-900">Market Context</h3>
+            <h3 className="text-base font-semibold text-[#E8E6E1]">Market Context</h3>
             <div className="grid grid-cols-2 gap-4">
               {renderInput('Median Income', data.market_context?.medianIncome, (v) => updateCategory('market_context', 'medianIncome', v ? parseFloat(v) : null), { type: 'number', placeholder: 'e.g., 65000' })}
               {renderInput('Population', data.market_context?.population, (v) => updateCategory('market_context', 'population', v ? parseInt(v) : null), { type: 'number', placeholder: 'e.g., 50000' })}

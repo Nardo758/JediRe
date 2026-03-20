@@ -34,7 +34,7 @@ export const AcquisitionModeExample: React.FC = () => {
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-4">Acquisition Mode Example</h2>
-      <p className="text-gray-600 mb-6">
+      <p className="text-[#9EA8B4] mb-6">
         This example shows the Financial Section in Acquisition mode for a pipeline deal.
         It displays pro forma projections, return metrics, and sensitivity analysis.
       </p>
@@ -70,7 +70,7 @@ export const PerformanceModeExample: React.FC = () => {
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-4">Performance Mode Example</h2>
-      <p className="text-gray-600 mb-6">
+      <p className="text-[#9EA8B4] mb-6">
         This example shows the Financial Section in Performance mode for an owned asset.
         It displays actual performance, variance analysis, and performance tracking.
       </p>
@@ -123,7 +123,7 @@ export const DealDetailPageExample: React.FC<{ dealId: string }> = ({ dealId }) 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">Loading financial data...</div>
+        <div className="text-[#6B7585]">Loading financial data...</div>
       </div>
     );
   }
@@ -139,21 +139,21 @@ export const DealDetailPageExample: React.FC<{ dealId: string }> = ({ dealId }) 
   return (
     <div className="space-y-6">
       {/* Deal Header */}
-      <div className="border-b border-gray-200 pb-4">
-        <h1 className="text-3xl font-bold text-gray-900">{deal.name}</h1>
-        <p className="text-gray-600 mt-1">{deal.address || deal.propertyAddress}</p>
+      <div className="border-b border-[#1e2a3d] pb-4">
+        <h1 className="text-3xl font-bold text-[#E8E6E1]">{deal.name}</h1>
+        <p className="text-[#9EA8B4] mt-1">{deal.address || deal.propertyAddress}</p>
       </div>
 
       {/* Tab Navigation (simplified) */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-[#1e2a3d]">
         <nav className="flex space-x-8">
           <button className="border-b-2 border-blue-600 pb-4 px-1 text-sm font-medium text-blue-600">
             Financial
           </button>
-          <button className="border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700">
+          <button className="border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-[#6B7585] hover:text-[#9EA8B4]">
             Overview
           </button>
-          <button className="border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-gray-500 hover:text-gray-700">
+          <button className="border-b-2 border-transparent pb-4 px-1 text-sm font-medium text-[#6B7585] hover:text-[#9EA8B4]">
             Market
           </button>
         </nav>
@@ -199,7 +199,7 @@ export const CustomActionsExample: React.FC = () => {
         <div className="flex gap-2">
           <button 
             onClick={handleExport}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-4 py-2 text-sm font-medium text-[#9EA8B4] bg-[#0F1319] border border-[#253347] rounded-lg hover:bg-[#0F1319]"
           >
             📊 Export Report
           </button>
@@ -248,13 +248,13 @@ export const ModeComparisonExample: React.FC = () => {
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Acquisition Mode */}
-        <div className="border border-gray-300 rounded-lg p-6">
+        <div className="border border-[#253347] rounded-lg p-6">
           <h3 className="text-xl font-bold mb-4 text-blue-600">Acquisition Mode</h3>
           <FinancialSection deal={pipelineDeal} />
         </div>
 
         {/* Performance Mode */}
-        <div className="border border-gray-300 rounded-lg p-6">
+        <div className="border border-[#253347] rounded-lg p-6">
           <h3 className="text-xl font-bold mb-4 text-green-600">Performance Mode</h3>
           <FinancialSection deal={ownedDeal} />
         </div>
@@ -281,7 +281,7 @@ export const ResponsiveExample: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0F1319]">
       {/* Mobile-friendly container */}
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <FinancialSection deal={deal} />
@@ -341,11 +341,11 @@ class FinancialErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
-          <h3 className="text-lg font-semibold text-red-800 mb-2">
+        <div className="p-6 bg-[#1c0a0a] border border-red-800/50 rounded-lg">
+          <h3 className="text-lg font-semibold text-red-300 mb-2">
             Error Loading Financial Data
           </h3>
-          <p className="text-red-600 text-sm">
+          <p className="text-red-400 text-sm">
             Something went wrong. Please refresh the page or contact support.
           </p>
         </div>

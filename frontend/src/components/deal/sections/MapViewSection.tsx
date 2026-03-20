@@ -37,14 +37,14 @@ export const MapViewSection: React.FC<MapViewSectionProps> = ({ deal, mode = 'ac
       <div className="flex items-center justify-between">
         <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
           mode === 'acquisition' 
-            ? 'bg-blue-100 text-blue-700' 
-            : 'bg-green-100 text-green-700'
+            ? 'bg-[#0d1e3d] text-blue-400' 
+            : 'bg-[#022c22] text-green-400'
         }`}>
           {mode === 'acquisition' ? '🎯 Acquisition Map' : '🏢 Performance Map'}
         </div>
         <button
           onClick={() => setShowFullScreen(!showFullScreen)}
-          className="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors"
+          className="px-3 py-1 text-xs font-medium text-blue-600 hover:bg-[#0d1e3d] rounded transition-colors"
         >
           {showFullScreen ? 'Exit Full Screen' : '⛶ Full Screen'}
         </button>
@@ -53,17 +53,17 @@ export const MapViewSection: React.FC<MapViewSectionProps> = ({ deal, mode = 'ac
       {/* Quick Map Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {quickStats.map((stat, i) => (
-          <div key={i} className="bg-white border border-gray-200 rounded-lg p-3 text-center">
+          <div key={i} className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-3 text-center">
             <div className="text-2xl mb-1">{stat.icon}</div>
-            <div className="text-xs text-gray-500 mb-1">{stat.label}</div>
-            <div className="text-lg font-bold text-gray-900">{stat.value}</div>
+            <div className="text-xs text-[#6B7585] mb-1">{stat.label}</div>
+            <div className="text-lg font-bold text-[#E8E6E1]">{stat.value}</div>
           </div>
         ))}
       </div>
 
       {/* Layer Controls */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Map Layers</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Map Layers</h3>
         <div className="flex flex-wrap gap-2">
           {[
             { id: 'all', label: 'All Layers', icon: '🗺️' },
@@ -77,7 +77,7 @@ export const MapViewSection: React.FC<MapViewSectionProps> = ({ deal, mode = 'ac
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeLayer === layer.id
                   ? 'bg-blue-600 text-white shadow-md'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'
               }`}
             >
               {layer.icon} {layer.label}
@@ -87,23 +87,23 @@ export const MapViewSection: React.FC<MapViewSectionProps> = ({ deal, mode = 'ac
       </div>
 
       {/* Interactive Map */}
-      <div className={`bg-white border border-gray-200 rounded-lg overflow-hidden ${
+      <div className={`bg-[#0F1319] border border-[#1e2a3d] rounded-lg overflow-hidden ${
         showFullScreen ? 'fixed inset-4 z-50' : ''
       }`}>
-        <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+        <div className="px-4 py-3 bg-[#0F1319] border-b border-[#1e2a3d] flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[#9EA8B4] flex items-center gap-2">
             <span>🗺️</span> Interactive Map
             {activeLayer !== 'all' && (
-              <span className="text-xs font-normal text-gray-500">
+              <span className="text-xs font-normal text-[#6B7585]">
                 (Showing: {activeLayer})
               </span>
             )}
           </h3>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors">
+            <button className="px-3 py-1 text-xs font-medium text-[#9EA8B4] hover:text-[#E8E6E1] hover:bg-[#131920] rounded transition-colors">
               📥 Export
             </button>
-            <button className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors">
+            <button className="px-3 py-1 text-xs font-medium text-[#9EA8B4] hover:text-[#E8E6E1] hover:bg-[#131920] rounded transition-colors">
               ⚙️ Settings
             </button>
           </div>
@@ -115,58 +115,58 @@ export const MapViewSection: React.FC<MapViewSectionProps> = ({ deal, mode = 'ac
       </div>
 
       {/* Map Legend */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Map Legend</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Map Legend</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-blue-500 border-2 border-blue-700 rounded"></div>
-            <span className="text-gray-700">Deal Boundary</span>
+            <span className="text-[#9EA8B4]">Deal Boundary</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-            <span className="text-gray-700">Properties</span>
+            <span className="text-[#9EA8B4]">Properties</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-red-500 rounded-full"></div>
-            <span className="text-gray-700">Competition</span>
+            <span className="text-[#9EA8B4]">Competition</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-purple-500 rounded"></div>
-            <span className="text-gray-700">POIs</span>
+            <span className="text-[#9EA8B4]">POIs</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-yellow-500 rounded-full border-2 border-yellow-700"></div>
-            <span className="text-gray-700">Selected</span>
+            <span className="text-[#9EA8B4]">Selected</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-gradient-to-r from-blue-200 to-blue-500 rounded"></div>
-            <span className="text-gray-700">Heat Zones</span>
+            <span className="text-[#9EA8B4]">Heat Zones</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 border-2 border-dashed border-orange-500"></div>
-            <span className="text-gray-700">Search Area</span>
+            <span className="text-[#9EA8B4]">Search Area</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 bg-indigo-500 opacity-30 rounded"></div>
-            <span className="text-gray-700">Demographics</span>
+            <span className="text-[#9EA8B4]">Demographics</span>
           </div>
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white border border-gray-200 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Map Actions</h3>
+      <div className="bg-[#0F1319] border border-[#1e2a3d] rounded-lg p-4">
+        <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">Map Actions</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
+          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-blue-600 bg-[#0d1e3d] hover:bg-[#0d1e3d] rounded-lg transition-colors">
             <span>🔍</span> Search Properties
           </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors">
+          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-purple-600 bg-[#1a0d3d] hover:bg-[#1a0d3d] rounded-lg transition-colors">
             <span>📊</span> View Heatmap
           </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition-colors">
+          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-green-600 bg-[#022c22] hover:bg-[#022c22] rounded-lg transition-colors">
             <span>📍</span> Add POI
           </button>
-          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors">
+          <button className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-orange-600 bg-[#1a0d00] hover:bg-[#1a0d00] rounded-lg transition-colors">
             <span>📐</span> Measure Distance
           </button>
         </div>

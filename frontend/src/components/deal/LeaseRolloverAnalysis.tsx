@@ -48,12 +48,12 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mt-6 animate-pulse">
-        <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+      <div className="bg-[#0F1319] rounded-lg shadow p-6 mt-6 animate-pulse">
+        <div className="h-6 bg-[#1e2a3d] rounded w-1/3 mb-4"></div>
         <div className="grid grid-cols-3 gap-4">
-          <div className="h-20 bg-gray-200 rounded"></div>
-          <div className="h-20 bg-gray-200 rounded"></div>
-          <div className="h-20 bg-gray-200 rounded"></div>
+          <div className="h-20 bg-[#1e2a3d] rounded"></div>
+          <div className="h-20 bg-[#1e2a3d] rounded"></div>
+          <div className="h-20 bg-[#1e2a3d] rounded"></div>
         </div>
       </div>
     );
@@ -61,8 +61,8 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
 
   if (error || !leaseAnalysis) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mt-6">
-        <p className="text-gray-500 text-sm">{error || 'No lease data available'}</p>
+      <div className="bg-[#0F1319] rounded-lg shadow p-6 mt-6">
+        <p className="text-[#6B7585] text-sm">{error || 'No lease data available'}</p>
       </div>
     );
   }
@@ -70,7 +70,7 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
   const maxTimelineCount = Math.max(...Object.values(leaseAnalysis.expirationTimeline), 1);
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 mt-6">
+    <div className="bg-[#0F1319] rounded-lg shadow p-6 mt-6">
       <h3 className="text-lg font-semibold mb-4">Lease Rollover Analysis</h3>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
@@ -78,36 +78,36 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
           <div className="text-3xl font-bold text-blue-600">
             {leaseAnalysis.expiringNext30}
           </div>
-          <div className="text-sm text-gray-600">Expiring Next 30 Days</div>
+          <div className="text-sm text-[#9EA8B4]">Expiring Next 30 Days</div>
         </div>
 
         <div className="text-center">
           <div className="text-3xl font-bold text-purple-600">
             {leaseAnalysis.expiringNext90}
           </div>
-          <div className="text-sm text-gray-600">Expiring Next 90 Days</div>
+          <div className="text-sm text-[#9EA8B4]">Expiring Next 90 Days</div>
         </div>
 
         <div className="text-center">
           <div className={`text-3xl font-bold ${
-            leaseAnalysis.rolloverRiskScore > 40 ? 'text-red-600' :
+            leaseAnalysis.rolloverRiskScore > 40 ? 'text-red-400' :
             leaseAnalysis.rolloverRiskScore > 20 ? 'text-yellow-600' : 'text-green-600'
           }`}>
             {leaseAnalysis.rolloverRiskScore}%
           </div>
-          <div className="text-sm text-gray-600">Rollover Risk Score</div>
+          <div className="text-sm text-[#9EA8B4]">Rollover Risk Score</div>
         </div>
       </div>
 
       {leaseAnalysis.rentGapOpportunity.annualUpside > 0 && (
-        <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+        <div className="bg-[#022c22] border-l-4 border-green-500 p-4 mb-4">
           <div className="flex items-center">
             <div className="mr-2 text-lg">$</div>
             <div>
-              <div className="font-semibold text-green-900">
+              <div className="font-semibold text-green-300">
                 ${(leaseAnalysis.rentGapOpportunity.annualUpside / 1000).toFixed(0)}K Annual Upside
               </div>
-              <div className="text-sm text-green-700">
+              <div className="text-sm text-green-400">
                 {leaseAnalysis.rentGapOpportunity.unitsBelow} units below market rate
                 (avg ${leaseAnalysis.rentGapOpportunity.monthlyGap} gap/mo)
               </div>
@@ -116,7 +116,7 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
         </div>
       )}
 
-      <div className="text-sm text-gray-600 mb-2">Lease Expirations (Next 12 Months)</div>
+      <div className="text-sm text-[#9EA8B4] mb-2">Lease Expirations (Next 12 Months)</div>
       <div className="flex gap-1 h-24 items-end">
         {Object.entries(leaseAnalysis.expirationTimeline).map(([month, count]) => (
           <div key={month} className="flex-1 flex flex-col items-center">
@@ -125,7 +125,7 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
               style={{ height: `${(count / maxTimelineCount) * 100}%` }}
               title={`${month}: ${count} units`}
             />
-            <div className="text-[10px] mt-1 text-gray-500">
+            <div className="text-[10px] mt-1 text-[#6B7585]">
               {month.slice(5)}
             </div>
           </div>

@@ -509,7 +509,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
 
       {/* Mock data notice */}
       {!isLiveData && (
-        <div className="mx-4 mb-1 px-3 py-2 bg-amber-900/20 border border-amber-200 rounded-lg flex items-center gap-2">
+        <div className="mx-4 mb-1 px-3 py-2 bg-amber-900/20 border border-amber-800/50 rounded-lg flex items-center gap-2">
           <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
           </svg>
@@ -604,7 +604,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                       <span>Risk:</span>
                       <span className={`font-semibold ${
                         s.riskLevel === 'low' ? 'text-emerald-600' :
-                        s.riskLevel === 'medium' ? 'text-amber-600' : 'text-red-600'
+                        s.riskLevel === 'medium' ? 'text-amber-400' : 'text-red-400'
                       }`}>
                         {s.riskLevel.charAt(0).toUpperCase() + s.riskLevel.slice(1)}
                       </span>
@@ -615,8 +615,8 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
             </div>
 
                   {/* Insight */}
-                  <div className="mt-4 bg-amber-900/20 border border-amber-200 rounded-lg p-3">
-                    <p className="text-xs text-amber-800 leading-relaxed">
+                  <div className="mt-4 bg-amber-900/20 border border-amber-800/50 rounded-lg p-3">
+                    <p className="text-xs text-amber-300 leading-relaxed">
                       Build-to-Sell scores 84 vs Rental at 69 — a 15-point gap that flags an Arbitrage Opportunity.
                       Zoning allows 3x density (M02), supply pipeline is thin for new construction (M04), and demand signals are strong (M06).
                       Most investors would default to Rental — the platform sees the development play.
@@ -657,7 +657,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                           cell.intensity === 'strong' ? 'bg-emerald-900/20 text-emerald-300' :
                           cell.intensity === 'moderate' ? 'bg-emerald-900/20 text-emerald-300' :
                           cell.intensity === 'weak' ? 'bg-[#0a1628] text-[#7f8ea3]' :
-                          'bg-red-50 text-red-600';
+                          'bg-[#1c0a0a] text-red-400';
                         return (
                           <td key={strategy} className="py-1 px-1 text-center">
                             <div className={`${bgClass} rounded px-2 py-1.5 font-mono text-xs font-semibold`} title={cell.tooltip}>
@@ -735,7 +735,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
               </tbody>
             </table>
 
-                  <div className="mt-4 bg-blue-900/20 border border-blue-200 rounded-lg p-3">
+                  <div className="mt-4 bg-blue-900/20 border border-blue-900/50 rounded-lg p-3">
                     <p className="text-xs text-blue-300 leading-relaxed">
                       BTS yields 7.2% on cost with a 24-month exit to institutional buyer. Rental gives 8.5% CoC but ties up capital for 7+ years.
                       Risk-adjusted, BTS wins because you recycle capital 3x faster.
@@ -807,9 +807,9 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           <ROIComparisonChart projections={roiProjections} />
           {isOwned && <ExitScenariosSection scenarios={exitScenarios} />}
           {!isOwned && (
-            <div className="bg-blue-900/20 border border-blue-200 rounded-lg p-6 text-center">
+            <div className="bg-blue-900/20 border border-blue-900/50 rounded-lg p-6 text-center">
               <div className="text-3xl mb-3">💰</div>
-              <h3 className="text-lg font-semibold text-blue-900 mb-2">Exit Scenario Analysis</h3>
+              <h3 className="text-lg font-semibold text-blue-300 mb-2">Exit Scenario Analysis</h3>
               <p className="text-sm text-blue-300">
                 Exit scenarios become available once the deal moves to the Owned stage.
                 ROI projections above are based on current pipeline assumptions.
@@ -858,13 +858,13 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
                       matched === true
                         ? 'border-emerald-300'
                         : matched === false
-                        ? 'border-red-200'
+                        ? 'border-red-800/50'
                         : 'border-[#1e2a3d]'
                     }`}
                   >
                     <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-base font-bold ${
                       matched === true ? 'bg-emerald-900/20 text-emerald-300' :
-                      matched === false ? 'bg-red-900/20 text-red-600' :
+                      matched === false ? 'bg-red-900/20 text-red-400' :
                       'bg-[#1a2a3a] text-[#6b7f94]'
                     }`}>
                       {matched === true ? '✓' : matched === false ? '✗' : '?'}
@@ -975,8 +975,8 @@ const TrafficGateBadge: React.FC<{ strategyId: string }> = ({ strategyId }) => {
 
   const config = {
     qualified: { icon: '✅', label: 'Qualified', bg: 'bg-emerald-900/20', text: 'text-emerald-300', border: 'border-emerald-300' },
-    marginal: { icon: '⚠️', label: 'Marginal', bg: 'bg-amber-900/20', text: 'text-amber-800', border: 'border-amber-300' },
-    disqualified: { icon: '❌', label: 'Disqualified', bg: 'bg-red-900/20', text: 'text-red-300', border: 'border-red-300' },
+    marginal: { icon: '⚠️', label: 'Marginal', bg: 'bg-amber-900/20', text: 'text-amber-300', border: 'border-amber-300' },
+    disqualified: { icon: '❌', label: 'Disqualified', bg: 'bg-red-900/20', text: 'text-red-300', border: 'border-red-700' },
   }[gate.status];
 
   return (
@@ -1007,15 +1007,15 @@ const T04QuadrantInfluencer: React.FC<{ strategyId: string }> = ({ strategyId })
 
   const quadrantColors: Record<string, string> = {
     'Hidden Gem': 'bg-emerald-900/20 text-emerald-300 border-emerald-200',
-    'Validated Winner': 'bg-blue-900/20 text-blue-300 border-blue-200',
-    'Hype Risk': 'bg-orange-50 text-orange-300 border-orange-200',
-    'Dead Weight': 'bg-red-50 text-red-300 border-red-200',
+    'Validated Winner': 'bg-blue-900/20 text-blue-300 border-blue-900/50',
+    'Hype Risk': 'bg-[#1a0d00] text-orange-300 border-orange-200',
+    'Dead Weight': 'bg-[#1c0a0a] text-red-300 border-red-800/50',
   };
 
   const shiftColor = influence.direction === 'boost'
     ? 'text-emerald-600'
     : influence.direction === 'penalty'
-    ? 'text-red-600'
+    ? 'text-red-400'
     : 'text-[#6b7f94]';
 
   const shiftPrefix = influence.weightShift > 0 ? '+' : '';
@@ -1170,10 +1170,10 @@ const ROIComparisonChart: React.FC<ROIComparisonChartProps> = ({ projections }) 
             {projections.map((proj, idx) => (
               <tr key={idx} className="border-b border-[#1a2a3a] hover:bg-[#0a1628]">
                 <td className="py-3 px-4 font-medium text-[#e8e9ea]">{proj.strategy}</td>
-                <td className={`text-right py-3 px-4 ${proj.year1 < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                <td className={`text-right py-3 px-4 ${proj.year1 < 0 ? 'text-red-400' : 'text-green-600'}`}>
                   {proj.year1.toFixed(1)}%
                 </td>
-                <td className={`text-right py-3 px-4 ${proj.year3 < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                <td className={`text-right py-3 px-4 ${proj.year3 < 0 ? 'text-red-400' : 'text-green-600'}`}>
                   {proj.year3.toFixed(1)}%
                 </td>
                 <td className="text-right py-3 px-4 text-green-600">
@@ -1191,8 +1191,8 @@ const ROIComparisonChart: React.FC<ROIComparisonChartProps> = ({ projections }) 
         </table>
       </div>
 
-      <div className="mt-4 p-3 bg-blue-900/20 rounded-lg border border-blue-200">
-        <div className="text-xs text-blue-900">
+      <div className="mt-4 p-3 bg-blue-900/20 rounded-lg border border-blue-900/50">
+        <div className="text-xs text-blue-300">
           💡 <span className="font-semibold">Note:</span> Negative returns in early years reflect capital deployment phase. Returns accelerate during stabilization and exit.
         </div>
       </div>
@@ -1290,8 +1290,8 @@ const ImplementationChecklist: React.FC<ImplementationChecklistProps> = ({ tasks
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'bg-green-900/20 border-green-200';
-      case 'in-progress': return 'bg-blue-900/20 border-blue-200';
+      case 'completed': return 'bg-green-900/20 border-green-800/50';
+      case 'in-progress': return 'bg-blue-900/20 border-blue-900/50';
       case 'pending': return 'bg-[#0a1628] border-[#1e2a3d]';
       default: return 'bg-[#0a1628] border-[#1e2a3d]';
     }
@@ -1370,9 +1370,9 @@ interface RiskAssessmentSectionProps {
 const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) => {
   const getRiskColor = (level: string) => {
     switch (level) {
-      case 'low': return 'bg-green-900/20 text-green-300 border-green-300';
+      case 'low': return 'bg-green-900/20 text-green-300 border-green-700';
       case 'medium': return 'bg-yellow-900/20 text-yellow-300 border-yellow-300';
-      case 'high': return 'bg-red-900/20 text-red-300 border-red-300';
+      case 'high': return 'bg-red-900/20 text-red-300 border-red-700';
       default: return 'bg-[#1a2a3a] text-[#a0b0c0] border-[#2a3a4d]';
     }
   };
@@ -1518,8 +1518,8 @@ const OptimizationsSection: React.FC<OptimizationsSectionProps> = ({ optimizatio
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'implemented': return 'bg-green-900/20 border-green-200';
-      case 'in-progress': return 'bg-blue-900/20 border-blue-200';
+      case 'implemented': return 'bg-green-900/20 border-green-800/50';
+      case 'in-progress': return 'bg-blue-900/20 border-blue-900/50';
       case 'planned': return 'bg-[#0a1628] border-[#1e2a3d]';
       default: return 'bg-[#0a1628] border-[#1e2a3d]';
     }
@@ -1633,8 +1633,8 @@ const ExitScenariosSection: React.FC<ExitScenariosSectionProps> = ({ scenarios }
         ))}
       </div>
 
-      <div className="mt-6 p-4 bg-blue-900/20 rounded-lg border border-blue-200">
-        <div className="text-sm text-blue-900">
+      <div className="mt-6 p-4 bg-blue-900/20 rounded-lg border border-blue-900/50">
+        <div className="text-sm text-blue-300">
           💡 <span className="font-semibold">Recommendation:</span> Base case provides balanced risk/return profile. Monitor market conditions for opportunistic early exit if cap rates compress further.
         </div>
       </div>
@@ -1649,7 +1649,7 @@ const ArbitrageAlertBanner: React.FC<{ alert: ArbitrageAlert }> = ({ alert }) =>
       <div className="text-3xl flex-shrink-0">&#9889;</div>
       <div className="flex-1">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-sm font-bold text-amber-800 tracking-wide">ARBITRAGE DETECTED</span>
+          <span className="text-sm font-bold text-amber-300 tracking-wide">ARBITRAGE DETECTED</span>
           <span className="text-xs font-mono bg-amber-200 text-amber-300 px-2 py-0.5 rounded">
             +{alert.delta}pt gap
           </span>

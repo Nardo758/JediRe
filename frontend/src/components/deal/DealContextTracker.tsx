@@ -77,14 +77,14 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
   });
 
   return (
-    <div className="bg-white rounded-lg shadow-sm">
+    <div className="bg-[#0F1319] rounded-lg shadow-sm">
       {/* Header */}
       <div className="border-b px-6 py-4">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">Deal Context</h2>
+          <h2 className="text-2xl font-bold text-[#E8E6E1]">Deal Context</h2>
           <button
             onClick={loadData}
-            className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm bg-[#131920] hover:bg-[#1e2a3d] rounded-lg transition-colors"
           >
             🔄 Refresh
           </button>
@@ -98,7 +98,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
               px-4 py-2 rounded-lg font-medium transition-all
               ${viewMode === 'activity' 
                 ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'}
             `}
           >
             📋 Activity Feed
@@ -109,7 +109,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
               px-4 py-2 rounded-lg font-medium transition-all
               ${viewMode === 'timeline' 
                 ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'}
             `}
           >
             📅 Timeline
@@ -120,7 +120,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
               px-4 py-2 rounded-lg font-medium transition-all
               ${viewMode === 'moments' 
                 ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
+                : 'bg-[#131920] text-[#9EA8B4] hover:bg-[#1e2a3d]'}
             `}
           >
             ⭐ Key Moments
@@ -131,7 +131,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
       {/* Content */}
       <div className="p-6">
         {loading ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-[#6B7585]">
             Loading context...
           </div>
         ) : (
@@ -147,7 +147,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     aria-label="Filter activity type"
-                    className="border border-gray-300 rounded-lg px-3 py-2"
+                    className="border border-[#253347] rounded-lg px-3 py-2"
                   >
                     <option value="all">All Activity</option>
                     <option value="email_received">📧 Emails</option>

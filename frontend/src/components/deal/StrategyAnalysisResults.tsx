@@ -29,10 +29,10 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
   };
 
   const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 80) return 'text-green-600 bg-green-50';
-    if (confidence >= 60) return 'text-blue-600 bg-blue-50';
-    if (confidence >= 40) return 'text-yellow-600 bg-yellow-50';
-    return 'text-orange-600 bg-orange-50';
+    if (confidence >= 80) return 'text-green-600 bg-[#022c22]';
+    if (confidence >= 60) return 'text-blue-600 bg-[#0d1e3d]';
+    if (confidence >= 40) return 'text-yellow-600 bg-[#1a1200]';
+    return 'text-orange-600 bg-[#1a0d00]';
   };
 
   const getConfidenceLabel = (confidence: number) => {
@@ -44,18 +44,18 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-200">
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-6 border border-blue-900/50">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            <h2 className="text-2xl font-bold text-[#E8E6E1] mb-2">
               Strategy Recommendations
             </h2>
-            <p className="text-gray-600">
+            <p className="text-[#9EA8B4]">
               Based on analysis of your {dealType} deal, we've identified{' '}
               {results.strategies.length} potential strategies
             </p>
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-[#6B7585]">
             Analyzed {new Date(results.analysisCompletedAt).toLocaleDateString()}
           </div>
         </div>
@@ -72,31 +72,31 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
               key={strategy.id}
               className={`rounded-lg border-2 transition-all ${
                 isSelected
-                  ? 'border-blue-500 bg-blue-50'
+                  ? 'border-blue-500 bg-[#0d1e3d]'
                   : isRecommended
-                  ? 'border-green-500 bg-green-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-green-500 bg-[#022c22]'
+                  : 'border-[#1e2a3d] bg-[#0F1319] hover:border-[#253347]'
               }`}
             >
               <div className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-xl font-semibold text-gray-900">
+                      <h3 className="text-xl font-semibold text-[#E8E6E1]">
                         {strategy.name}
                       </h3>
                       {isRecommended && (
-                        <span className="px-3 py-1 text-xs font-semibold bg-green-100 text-green-800 rounded-full">
+                        <span className="px-3 py-1 text-xs font-semibold bg-[#022c22] text-green-300 rounded-full">
                           Recommended
                         </span>
                       )}
                       {isSelected && !isRecommended && (
-                        <span className="px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-800 rounded-full">
+                        <span className="px-3 py-1 text-xs font-semibold bg-[#0d1e3d] text-blue-300 rounded-full">
                           Selected
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-600 uppercase tracking-wide mb-2">
+                    <p className="text-sm text-[#9EA8B4] uppercase tracking-wide mb-2">
                       {strategy.type}
                     </p>
                   </div>
@@ -115,17 +115,17 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
 
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   {strategy.projectedROI && (
-                    <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <div className="text-sm text-gray-600">Projected ROI</div>
-                      <div className="text-2xl font-bold text-gray-900">
+                    <div className="bg-[#0F1319] rounded-lg p-3 border border-[#1e2a3d]">
+                      <div className="text-sm text-[#9EA8B4]">Projected ROI</div>
+                      <div className="text-2xl font-bold text-[#E8E6E1]">
                         {strategy.projectedROI}%
                       </div>
                     </div>
                   )}
                   {strategy.timelineMonths && (
-                    <div className="bg-white rounded-lg p-3 border border-gray-200">
-                      <div className="text-sm text-gray-600">Timeline</div>
-                      <div className="text-2xl font-bold text-gray-900">
+                    <div className="bg-[#0F1319] rounded-lg p-3 border border-[#1e2a3d]">
+                      <div className="text-sm text-[#9EA8B4]">Timeline</div>
+                      <div className="text-2xl font-bold text-[#E8E6E1]">
                         {strategy.timelineMonths} months
                       </div>
                     </div>
@@ -133,26 +133,26 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
                 </div>
 
                 {strategy.description && (
-                  <p className="text-gray-700 mb-4">{strategy.description}</p>
+                  <p className="text-[#9EA8B4] mb-4">{strategy.description}</p>
                 )}
 
                 <button
                   onClick={() => toggleExpand(strategy.id)}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium mb-4"
+                  className="text-sm text-blue-600 hover:text-blue-400 font-medium mb-4"
                 >
                   {isExpanded ? 'Hide Details' : 'Show Details'}
                 </button>
 
                 {isExpanded && (
-                  <div className="space-y-4 pt-4 border-t border-gray-200">
+                  <div className="space-y-4 pt-4 border-t border-[#1e2a3d]">
                     {strategy.opportunities && strategy.opportunities.length > 0 && (
                       <div>
-                        <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                        <h4 className="font-semibold text-[#E8E6E1] mb-2 flex items-center gap-2">
                           <span className="text-green-500">✓</span> Opportunities
                         </h4>
                         <ul className="space-y-1">
                           {strategy.opportunities.map((opp, idx) => (
-                            <li key={idx} className="text-sm text-gray-700 flex gap-2">
+                            <li key={idx} className="text-sm text-[#9EA8B4] flex gap-2">
                               <span className="text-green-500">•</span>
                               <span>{opp}</span>
                             </li>
@@ -163,12 +163,12 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
 
                     {strategy.risks && strategy.risks.length > 0 && (
                       <div>
-                        <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                        <h4 className="font-semibold text-[#E8E6E1] mb-2 flex items-center gap-2">
                           <span className="text-orange-500">!</span> Risks
                         </h4>
                         <ul className="space-y-1">
                           {strategy.risks.map((risk, idx) => (
-                            <li key={idx} className="text-sm text-gray-700 flex gap-2">
+                            <li key={idx} className="text-sm text-[#9EA8B4] flex gap-2">
                               <span className="text-orange-500">•</span>
                               <span>{risk}</span>
                             </li>
@@ -185,7 +185,7 @@ export const StrategyAnalysisResults: React.FC<StrategyAnalysisResultsProps> = (
                     className={`w-full py-3 px-6 rounded-lg font-semibold transition-colors ${
                       isSelected
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-50'
+                        : 'bg-[#0F1319] text-blue-600 border-2 border-blue-600 hover:bg-[#0d1e3d]'
                     }`}
                   >
                     {isSelected ? 'Selected Strategy' : 'Choose This Strategy'}
