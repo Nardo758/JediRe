@@ -133,13 +133,13 @@ type TabId = "overview" | "submarkets" | "trends" | "properties" | "deals" | "ra
 const BASE_TABS: { id: TabId; label: string; code: string }[] = [
   { id: "overview",    label: "OVERVIEW",    code: "F4-1" },
   { id: "submarkets",  label: "SUBMARKETS",  code: "F4-2" },
-  { id: "rankings",    label: "RANKINGS",    code: "F4-3" },
-  { id: "trends",      label: "TRENDS",      code: "F4-4" },
-  { id: "properties",  label: "PROPERTIES",  code: "F4-5" },
+  { id: "trends",      label: "TRENDS",      code: "F4-3" },
+  { id: "properties",  label: "PROPERTIES",  code: "F4-4" },
+  { id: "deals",       label: "DEALS",       code: "F4-5" },
+  { id: "rankings",    label: "RANKINGS",    code: "F4-6" },
 ];
-const OWNERS_TAB      = { id: "owners"    as TabId, label: "OWNERS",      code: "F4-6" };
 const CORP_HEALTH_TAB = { id: "corphealth" as TabId, label: "CORP HEALTH", code: "F4-7" };
-const DEALS_TAB       = { id: "deals"     as TabId, label: "DEALS",       code: "F4-8" };
+const OWNERS_TAB      = { id: "owners"    as TabId, label: "OWNERS",      code: "F4-8" };
 
 export interface CorpHealthSubmarket {
   name: string; msa: string | null; schi: number; divergence: number;
@@ -443,8 +443,8 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
   const cycleColor = msa.cycle === "EXPANSION" ? T.green : msa.cycle === "LATE EXP" ? T.amber : T.orange;
 
   const effectiveTabs = (embedded && corpHealthData)
-    ? [...BASE_TABS, OWNERS_TAB, CORP_HEALTH_TAB, DEALS_TAB]
-    : [...BASE_TABS, OWNERS_TAB, DEALS_TAB];
+    ? [...BASE_TABS, CORP_HEALTH_TAB, OWNERS_TAB]
+    : [...BASE_TABS, OWNERS_TAB];
 
   // When the marketId prop changes (MSA selector in terminal), reset to overview tab
   React.useEffect(() => { setActiveTab("overview"); }, [resolvedId]);
