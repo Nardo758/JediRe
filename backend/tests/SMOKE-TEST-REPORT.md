@@ -14,8 +14,8 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 383 | 118 | 265 | 0 |
-| **TOTAL** | | | **1,262** | **577 (46%)** | **685 (54%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 383 | 121 | 262 | 0 |
+| **TOTAL** | | | **1,262** | **580 (46%)** | **682 (54%)** | **0 (0%)** |
 
 **Zero server errors (5xx) across all 1,262 endpoints tested.**
 
@@ -102,8 +102,8 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| PASS   | 118   | HTTP 200 response |
-| SKIP   | 265   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds, 302 (OAuth redirect on forged state) |
+| PASS   | 121   | HTTP 200 response |
+| SKIP   | 262   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds, 302 (OAuth redirect on forged state) |
 | FAIL   | 0     | — |
 
 ### Route File Coverage (Phase 5 Additions)
@@ -125,7 +125,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 | `assetNotes.routes.ts` | 7 | 7 | check_lenient |
 | `noteCategories.routes.ts` | 6 | 6 (incl. /stats/usage) | check_lenient |
 | `noteReplies.routes.ts` | 5 | 5 | check_lenient |
-| `task-completion.routes.ts` | 4 | 4 | check_lenient |
+| `task-completion.routes.ts` | 4 | 4 | check_optional (mounted at /api/v1/task-completion) |
 
 ### Check Semantics
 
@@ -190,8 +190,9 @@ Routes mounted in `index.replit.ts` and confirmed responding:
 
 | Prefix | Router | Phase 5 Status |
 |--------|--------|----------------|
-| `/api/v1/microsoft` | inline + full microsoft router | ✅ 18 endpoints tested |
-| `/api/v1/module-wiring` | moduleWiringRouter | ✅ 22 endpoints tested |
+| `/api/v1/microsoft` | inline + full microsoft router | ✅ 19 endpoints tested (incl. 1 forged-state negative test) |
+| `/api/v1/module-wiring` | moduleWiringRouter | ✅ 55 endpoints tested (full registry, priority, formulas, data-flow, strategy, orchestrator, wire/*, wiring/capital-structure) |
+| `/api/v1/task-completion` | taskCompletionRouter | ✅ 4 endpoints tested (mounted in Phase 5) |
 | `/api/v1/capital-structure` | capitalStructureRouter | ✅ 13 endpoints tested |
 | `/api/v1/financial-models` | financialModelsRouter | ✅ 7 endpoints tested |
 | `/api/v1/strategy-analyses` | strategyAnalysesRouter | ✅ 5 endpoints tested |
@@ -204,31 +205,39 @@ Routes mounted in `index.replit.ts` and confirmed responding:
 | `/api/v1/data-library` | createDataLibraryRoutes | ✅ 4 endpoints tested |
 | `/api/v1/benchmark-timeline` | benchmarkTimelineRouter | ✅ 3 endpoints tested |
 
-### Unmounted Route Files (Identified, Not Yet Wired)
+### Unmounted Route Files (Tested as 404 SKIP — not wired in index)
+
+| File | Routes | Smoke Status | Reason |
+|------|--------|--------------|--------|
+| `maps.routes.ts` | 9 | SKIP (404) | Not mounted in index — 9 routes covered |
+| `mapAnnotations.routes.ts` | 6 | SKIP (404) | Not mounted in index — 6 routes covered |
+| `layers.routes.ts` | 7 | SKIP (404) | Not mounted in index — 7 routes covered |
+| `m22-archive.routes.ts` | 11 | SKIP (404) | Not mounted in index — 11 routes covered |
+| `audit.routes.ts` | 11 | SKIP (404) | Not mounted in index — 11 routes covered |
+| `extractions.routes.ts` | 6 | SKIP (404) | Not mounted in index — 6 routes covered |
+| `assetNews.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered |
+| `assetNotes.routes.ts` | 7 | SKIP (404) | Not mounted in index — 7 routes covered |
+| `noteCategories.routes.ts` | 6 | SKIP (404) | Not mounted in index — 6 routes covered |
+| `noteReplies.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered |
+| `kafka-events.routes.ts` | — | Not tested | Not imported in index |
+| `proposals.routes.ts` | — | Not tested | Not imported in index |
+| `geography.routes.ts` | — | Not tested | Not imported in index |
+| `credibility.routes.ts` | — | Not tested | Not imported in index |
+| `demand-intelligence.routes.ts` | — | Not tested | Not imported in index |
+| `apartment-locator.routes.ts` | — | Not tested | Not imported in index |
+| `traffic-intelligence.routes.ts` | — | Not tested | Not imported in index |
+
+### Intentionally Excluded Files (Out of Scope)
 
 | File | Reason |
 |------|--------|
-| `maps.routes.ts` | Not imported in index |
-| `mapAnnotations.routes.ts` | Not imported in index |
-| `kafka-events.routes.ts` | Not imported in index |
-| `proposals.routes.ts` | Not imported in index |
-| `geography.routes.ts` | Not imported in index |
-| `credibility.routes.ts` | Not imported in index |
-| `demand-intelligence.routes.ts` | Not imported in index |
-| `apartment-locator.routes.ts` | Not imported in index |
-| `traffic-intelligence.routes.ts` | Not imported in index |
-| `extractions.routes.ts` | Not imported (tested as 404 SKIP) |
-| `assetNews.routes.ts` | Not imported (tested as 404 SKIP) |
-| `assetNotes.routes.ts` | Not imported (tested as 404 SKIP) |
-| `noteCategories.routes.ts` | Not imported (tested as 404 SKIP) |
-| `noteReplies.routes.ts` | Not imported (tested as 404 SKIP) |
-| `task-completion.routes.ts` | Not imported (tested as 404 SKIP) |
+| `map-annotations.example.ts` | **Blueprint/prototype only** — uses Prisma ORM (project uses direct `pg` queries), never mounted in production index, superceded by `mapAnnotations.routes.ts`. Excluded from smoke coverage by design. |
 
 ---
 
 ## Recommended Follow-up
 
-1. **Mount missing routes** — Wire `maps`, `kafka-events`, `proposals`, `map-annotations`, and communication route files into `index.replit.ts`.
+1. **Mount missing routes** — Wire `maps`, `mapAnnotations`, `layers`, `m22-archive`, `audit`, `kafka-events`, `proposals`, and communication route files into `index.replit.ts`.
 2. **Add collection GET handlers** — Routes that return 404 on `GET /` could be given list endpoints for frontend use.
 3. **Seed test data** — Some endpoints skip due to no seeded data. Adding fixtures would convert SKIPs to PASSes.
 4. **Microsoft OAuth flow** — Connect Microsoft credentials in staging to enable full integration testing of the 15 OAuth-dependent endpoints.

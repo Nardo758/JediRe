@@ -25,9 +25,9 @@ router.post('/scan-completions', async (req: Request, res: Response) => {
       SELECT 
         id,
         subject,
-        body,
-        sender_email as sender,
-        recipients,
+        body_preview as body,
+        from_address as sender,
+        '[]'::json as recipients,
         received_at as timestamp
       FROM emails
       WHERE user_id = $1
@@ -104,8 +104,8 @@ router.post('/scan-completions', async (req: Request, res: Response) => {
       success: true,
       data: {
         scanned: {
-          emails: mockEmails.length,
-          tasks: mockTasks.length,
+          emails: emails.length,
+          tasks: tasks.length,
         },
         signals: filteredSignals,
         summary: {
