@@ -186,7 +186,7 @@ const TopStatusBar: React.FC<{ contextLabel: string; agentCount: number; emailCo
       alignItems: 'center',
       justifyContent: 'space-between',
       padding: '0 12px',
-      borderBottom: `1px solid ${T.border.subtle}`,
+      borderBottom: `1px solid ${T.borderSubtle}`,
       flexShrink: 0,
       fontFamily: T.font.mono,
       fontSize: T.fontSize.sm,
@@ -263,7 +263,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
       display: 'flex',
       alignItems: 'stretch',
       gap: 0,
-      borderBottom: `1px solid ${T.border.subtle}`,
+      borderBottom: `1px solid ${T.borderSubtle}`,
       flexShrink: 0,
       overflow: 'hidden',
     }}>
@@ -292,7 +292,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
               padding: '5px 12px 5px 10px',
               height: '100%',
               border: 'none',
-              borderRight: `1px solid ${T.border.subtle}`,
+              borderRight: `1px solid ${T.borderSubtle}`,
               borderBottom: isActive ? `2px solid ${T.text.amber}` : '2px solid transparent',
               cursor: 'pointer',
               fontFamily: T.font.mono,
@@ -321,7 +321,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           height: '100%', padding: '0 12px',
           background: 'transparent', border: 'none',
-          borderLeft: `1px solid ${T.border.subtle}`,
+          borderLeft: `1px solid ${T.borderSubtle}`,
           cursor: 'pointer',
           fontSize: 14,
           color: T.text.secondary,
@@ -332,7 +332,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
       >
         {isDark ? '☀' : '☾'}
       </button>
-      <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${T.border.subtle}`, paddingLeft: 12, paddingRight: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${T.borderSubtle}`, paddingLeft: 12, paddingRight: 12 }}>
         <span style={{
           fontSize: T.fontSize.xs,
           color: T.text.muted,
@@ -546,7 +546,7 @@ const BottomPanel: React.FC = () => {
     <div style={{
       height: collapsed ? 28 : 180,
       background: T.bg.panel,
-      borderTop: `1px solid ${T.border.medium}`,
+      borderTop: `1px solid ${T.borderMedium}`,
       display: 'flex',
       flexDirection: 'column',
       flexShrink: 0,
@@ -559,7 +559,7 @@ const BottomPanel: React.FC = () => {
         alignItems: 'center',
         padding: '0 8px',
         gap: 0,
-        borderBottom: collapsed ? 'none' : `1px solid ${T.border.subtle}`,
+        borderBottom: collapsed ? 'none' : `1px solid ${T.borderSubtle}`,
         flexShrink: 0,
       }}>
         <button
@@ -672,7 +672,7 @@ const BottomPanel: React.FC = () => {
                   display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
                   marginBottom: 2, fontSize: T.fontSize.sm,
                   background: T.bg.panelAlt, borderRadius: 3,
-                  borderLeft: `3px solid ${e.read ? T.border.subtle : T.text.orange}`,
+                  borderLeft: `3px solid ${e.read ? T.borderSubtle : T.text.orange}`,
                 }}>
                   {!e.read && <span style={{ color: T.text.orange, fontSize: '7px', fontWeight: 700 }}>●</span>}
                   <span style={{ color: T.text.cyan, fontSize: T.fontSize.xs, flexShrink: 0, width: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

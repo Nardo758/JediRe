@@ -1229,7 +1229,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <div style={{ textAlign: 'center', padding: '24px 0' }}>
           <p style={{ fontSize: 11, color: BT.ts, marginBottom: 4, ...bSans }}>No unit mix data available</p>
           <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
-          <button onClick={() => navigateToTab('unit-mix-intelligence')} style={{ fontSize: 10, color: BT.cyanL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+          <button onClick={() => navigateToTab('market')} style={{ fontSize: 10, color: BT.cyanL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
             Configure Unit Mix →
           </button>
         </div>
@@ -1281,7 +1281,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
               <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, textAlign: 'center', padding: '20px 0' }}>
                 <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>No rent comps data available</p>
                 <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Build your competitive set from Trade Area, Submarket, and MSA comps</p>
-                <button onClick={() => navigateToTab('unit-mix-intelligence')} style={{ fontSize: 10, color: BT.greenL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+                <button onClick={() => navigateToTab('competition')} style={{ fontSize: 10, color: BT.greenL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
                   Analyze Rent Comps →
                 </button>
               </div>
