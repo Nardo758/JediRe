@@ -942,34 +942,6 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
       });
     }
 
-    if (design3D?.unitMix) {
-      const dm = design3D.unitMix;
-      const totalU = design3D.totalUnits || buildingConfig.units;
-      const baseRent = assumptions?.avgRentPerUnit || 0;
-      const entries = [
-        { key: 'studio', count: dm.studio, sfRatio: 0.72, rentRatio: 0.82 },
-        { key: 'oneBR', count: dm.oneBed, sfRatio: 1.00, rentRatio: 1.00 },
-        { key: 'twoBR', count: dm.twoBed, sfRatio: 1.41, rentRatio: 1.28 },
-        { key: 'threeBR', count: dm.threeBed, sfRatio: 1.75, rentRatio: 1.58 },
-      ].filter(e => e.count > 0);
-      if (entries.length > 0) {
-        return entries.map(e => {
-          const rent = baseRent > 0 ? Math.round(baseRent * e.rentRatio) : 0;
-          const avgSfBase = assumptions?.avgUnitSf || 0;
-          const sf = avgSfBase > 0 ? Math.round(avgSfBase * e.sfRatio) : 0;
-          return {
-            type: labels[e.key],
-            units: e.count,
-            pct: `${Math.round((e.count / totalU) * 100)}%`,
-            sqft: sf,
-            targetRent: rent,
-            rentPsf: sf > 0 && rent > 0 ? parseFloat((rent / sf).toFixed(2)) : 0,
-            ...(colors[e.key] || { color: 'text-stone-600', bg: 'bg-stone-500' }),
-          };
-        });
-      }
-    }
-
     return [];
   })();
 
