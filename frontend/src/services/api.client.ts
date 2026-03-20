@@ -128,6 +128,8 @@ export const api = {
     getCapitalStructure: (dealId: string) => apiClient.get(`/api/v1/capital-structure/${dealId}`),
     updateCapitalStructure: (dealId: string, data: any) =>
       apiClient.patch(`/api/v1/capital-structure/${dealId}`, data),
+    calculateCapitalStack: (data: any) =>
+      apiClient.post(`/api/v1/capital-structure/stack`, data),
   },
 
   // Demand Intelligence (M05, M06)
@@ -244,6 +246,14 @@ export const api = {
     getZoningHistory: (parcelId: string) => apiClient.get(`/api/v1/zoning/history/${parcelId}`),
     compareZoning: (jurisdictions: any[]) =>
       apiClient.post(`/api/v1/zoning-comparator/compare`, { jurisdictions }),
+  },
+
+  // Entitlements & Benchmarking
+  entitlements: {
+    getEntitlementsByDeal: (dealId: string) =>
+      apiClient.get(`/api/v1/entitlements/deal/${dealId}`),
+    getBenchmarkTimeline: (county: string, state: string) =>
+      apiClient.get(`/api/v1/benchmark-timeline/benchmarks`, { params: { county, state } }),
   },
 
   // Scenario Generation

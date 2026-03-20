@@ -120,7 +120,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const loadEntitlements = async () => {
     if (!deal?.id) return;
     try {
-      const res = await apiClient.get(`/api/v1/entitlements/deal/${deal.id}`);
+      const res = await apiClient.entitlements.getEntitlementsByDeal(deal.id);
       if (res.data?.data && Array.isArray(res.data.data)) {
         setEntitlements(res.data.data);
       } else if (Array.isArray(res.data)) {
@@ -138,7 +138,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
     if (!totalCost) return;
     try {
-      const res = await apiClient.post(`/api/v1/capital-structure/stack`, {
+      const res = await apiClient.proforma.calculateCapitalStack({
         dealId: deal.id,
         strategy,
         layers: [
@@ -172,9 +172,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const state = deal?.state || deal?.tradeArea?.state || '';
     if (!county || !state) return;
     try {
-      const res = await apiClient.get(`/api/v1/benchmark-timeline/benchmarks`, {
-        params: { county, state },
-      });
+      const res = await apiClient.entitlements.getBenchmarkTimeline(county, state);
       const summaries = res.data?.summaries || [];
       if (summaries.length > 0) {
         const primary = summaries[0];
@@ -197,7 +195,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     if (!deal?.id) return;
     setScoreLoading(true);
     try {
-      const response = await apiClient.get(`/api/v1/jedi/score/${deal.id}`);
+      const response = await apiClient.jedi.getScore(deal.id);
       const scoreData = response.data?.data;
       if (scoreData?.score) {
         const s = scoreData.score;
