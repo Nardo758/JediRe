@@ -348,7 +348,7 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
                         <div className="absolute h-full bg-red-700/60 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
                         <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
                         <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
-                        <span className="absolute text-[8px] font-semibold" style={{ color: BT.tm }} style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '1px', transform: 'translateX(-50%)' }}>
+                        <span className="absolute text-[8px] font-semibold" style={{ color: BT.tm, left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '1px', transform: 'translateX(-50%)' }}>
                           {phase.p50Duration}mo
                         </span>
                       </div>
@@ -386,7 +386,7 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
         {mcData && mcData.histogram.filter(h => h.probability > 0.001).length > 0 && (
           <div>
             <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Probability Distribution</h4>
-            <div className="flex items-end gap-px rounded-lg border px-2 pt-2" style={{ background: BT.bgPanel, borderColor: BT.border }} style={{ height: '80px' }}>
+            <div className="flex items-end gap-px rounded-lg border px-2 pt-2" style={{ background: BT.bgPanel, borderColor: BT.border, height: '80px' }}>
               {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
                 const heightPct = (h.probability / maxProb) * 100;
                 const isExpected = Math.abs(h.monthBucket - expectedCase) < 2;
