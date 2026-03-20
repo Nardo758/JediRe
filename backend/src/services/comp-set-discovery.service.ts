@@ -499,10 +499,18 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
                ) / 1609.34 as distance_miles
         FROM property_records pr
         LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
-        CROSS JOIN trade_areas ta
-        WHERE ta.id = $1
-          AND pr.units >= 20
+        JOIN trade_areas ta ON ta.id = $1
+        WHERE pr.units >= 20
           AND pr.address != $4
+          AND COALESCE(p.lat, pr.lat) IS NOT NULL
+          AND COALESCE(p.lng, pr.lng) IS NOT NULL
+          AND ST_Within(
+            ST_SetSRID(ST_MakePoint(
+              COALESCE(p.lng, pr.lng::float),
+              COALESCE(p.lat, pr.lat::float)
+            ), 4326),
+            ta.boundary
+          )
         ORDER BY distance_miles ASC NULLS LAST
         LIMIT 100
       `, [deal.trade_area_id, deal.lng, deal.lat, deal.address || '']);
