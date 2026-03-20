@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { apiClient } from "../services/api.client";
+import { TickerBar } from "../components/terminal/TickerBar";
+import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { apiClient, api } from "../services/api.client";
+import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
+import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
+import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
+import { NewsIntelligencePage } from "./NewsIntelligencePage";
+import F4MarketsView from "./terminal/F4MarketsView";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -47,11 +53,11 @@ const STATIC_ALERTS = [
 ];
 
 const STATIC_NEWS = [
-  {id:"n1",time:"14:23",hl:"Amazon announces 2,000-job Tampa HQ expansion",impact:"+DEMAND",pts:"+3.2",affects:["Pipeline"]},
-  {id:"n2",time:"13:41",hl:"Greystar breaks ground 380-unit tower Downtown Tampa",impact:"+SUPPLY",pts:"-1.8",affects:[]},
-  {id:"n3",time:"11:15",hl:"FL Legislature passes insurance reform, 8% rate cap",impact:"RISK DN",pts:"+1.2",affects:["All FL"]},
-  {id:"n4",time:"09:32",hl:"Nocatee named #2 top-selling MPC nationally",impact:"+DEMAND",pts:"+2.4",affects:[]},
-  {id:"n5",time:"YST",hl:"Miami-Dade condo reserve law triggers $2.1B assessments",impact:"+DEMAND",pts:"+0.8",affects:[]},
+  {id:"n1",time:"14:23",hl:"Amazon announces 2,000-job Tampa HQ expansion",impact:"+DEMAND",pts:"+3.2",affects:["Pipeline"],mkt:"TAMPA·MF"},
+  {id:"n2",time:"13:41",hl:"Greystar breaks ground 380-unit tower Downtown Tampa",impact:"+SUPPLY",pts:"-1.8",affects:[],mkt:"TAMPA·MF"},
+  {id:"n3",time:"11:15",hl:"FL Legislature passes insurance reform, 8% rate cap",impact:"RISK DN",pts:"+1.2",affects:["All FL"],mkt:"FL·ALL"},
+  {id:"n4",time:"09:32",hl:"Nocatee named #2 top-selling MPC nationally",impact:"+DEMAND",pts:"+2.4",affects:[],mkt:"JAX·MF/SFR"},
+  {id:"n5",time:"YST",hl:"Miami-Dade condo reserve law triggers $2.1B assessments",impact:"+DEMAND",pts:"+0.8",affects:[],mkt:"MIA·CONDO"},
 ];
 
 const STATIC_AGENTS = [
@@ -93,17 +99,51 @@ const SUBMARKETS = [
   {name:"Downtown",props:35,units:"8,473",rent:"$1,542",vac:"6.9%",growth:"+0.6%",opp:"5.1/10",pressure:"buyer"},
 ];
 
+const PEER_MSA_DATA = [
+  { id:"atlanta-ga",      name:"Atlanta, GA",      props:1028, units:"250K", jedi:87, d30:"+4", trend:[78,80,81,82,83,84,85,86,87], rent:"$2,150", rentD:"+4.2%", vac:"5.8%", absorb:"2,840", pipeline:"15.8%", constraint:58, jobs:5.8, pop:"+2.1%", medInc:"$72,400", cap:"5.2%", cycle:"EXPANSION" },
+  { id:"raleigh-nc",      name:"Raleigh, NC",      props:480,  units:"98K",  jedi:85, d30:"+3", trend:[77,78,80,81,82,83,84,84,85], rent:"$1,740", rentD:"+3.9%", vac:"6.2%", absorb:"1,120", pipeline:"11.8%", constraint:72, jobs:5.5, pop:"+2.8%", medInc:"$78,200", cap:"5.0%", cycle:"EXPANSION" },
+  { id:"tampa-fl",        name:"Tampa, FL",         props:892,  units:"215K", jedi:82, d30:"+2", trend:[74,75,76,77,78,79,80,81,82], rent:"$1,908", rentD:"+3.0%", vac:"6.5%", absorb:"2,150", pipeline:"13.4%", constraint:64, jobs:5.2, pop:"+1.9%", medInc:"$65,800", cap:"5.4%", cycle:"LATE EXP" },
+  { id:"charlotte-nc",   name:"Charlotte, NC",    props:680,  units:"142K", jedi:82, d30:"+3", trend:[76,77,78,79,80,80,81,81,82], rent:"$1,680", rentD:"+3.5%", vac:"6.0%", absorb:"1,540", pipeline:"12.4%", constraint:68, jobs:5.2, pop:"+2.2%", medInc:"$68,400", cap:"5.2%", cycle:"EXPANSION" },
+  { id:"jacksonville-fl", name:"Jacksonville, FL", props:386,  units:"82K",  jedi:80, d30:"+5", trend:[70,72,73,74,75,76,77,79,80], rent:"$1,580", rentD:"+3.8%", vac:"5.4%", absorb:"980",   pipeline:"9.2%",  constraint:76, jobs:5.1, pop:"+2.4%", medInc:"$64,200", cap:"5.8%", cycle:"EXPANSION" },
+  { id:"orlando-fl",      name:"Orlando, FL",       props:714,  units:"178K", jedi:78, d30:"+1", trend:[72,73,74,74,75,76,77,77,78], rent:"$1,820", rentD:"+2.4%", vac:"7.1%", absorb:"1,680", pipeline:"16.2%", constraint:48, jobs:4.9, pop:"+1.7%", medInc:"$62,400", cap:"5.6%", cycle:"PEAK" },
+  { id:"miami-fl",        name:"Miami, FL",         props:1245, units:"310K", jedi:74, d30:"-2", trend:[80,79,78,77,76,75,75,74,74], rent:"$2,480", rentD:"+1.2%", vac:"8.4%", absorb:"1,920", pipeline:"18.6%", constraint:38, jobs:4.4, pop:"+0.8%", medInc:"$58,900", cap:"4.8%", cycle:"PEAK" },
+];
+const PEER_SUB_DATA = [
+  { name:"Midtown", props:52, units:"14,856", jedi:88, d30:"+3", trend:[80,82,83,84,85,86,86,87,88], rent:"$2,056", rentD:"+4.8%", rentSf:"$2.14", vac:"5.1%", absorb:"3.2%", pipeline:"12.4%", moSupply:14, opp:82, pressure:"BUYER", cap:"4.8%", ppu:"$245K", afford:"28%", review:4.2 },
+  { name:"Buckhead", props:39, units:"14,338", jedi:84, d30:"+1", trend:[78,79,80,81,82,82,83,83,84], rent:"$1,883", rentD:"+2.1%", rentSf:"$1.92", vac:"6.2%", absorb:"2.1%", pipeline:"8.8%", moSupply:11, opp:78, pressure:"BALANCED", cap:"5.0%", ppu:"$228K", afford:"31%", review:4.0 },
+  { name:"West End", props:53, units:"5,924", jedi:79, d30:"+6", trend:[68,70,72,73,74,75,76,78,79], rent:"$1,977", rentD:"+5.2%", rentSf:"$1.88", vac:"6.8%", absorb:"2.8%", pipeline:"6.2%", moSupply:8, opp:86, pressure:"BUYER", cap:"5.4%", ppu:"$185K", afford:"26%", review:3.8 },
+  { name:"East Atlanta", props:23, units:"6,789", jedi:72, d30:"-1", trend:[74,74,73,73,72,72,72,72,72], rent:"$2,031", rentD:"-0.6%", rentSf:"$1.95", vac:"8.4%", absorb:"0.8%", pipeline:"15.4%", moSupply:22, opp:62, pressure:"SELLER", cap:"5.8%", ppu:"$198K", afford:"33%", review:3.5 },
+  { name:"Downtown", props:35, units:"8,473", jedi:76, d30:"+2", trend:[70,71,72,73,73,74,75,75,76], rent:"$1,542", rentD:"+2.8%", rentSf:"$1.72", vac:"7.2%", absorb:"1.9%", pipeline:"14.8%", moSupply:18, opp:68, pressure:"BALANCED", cap:"5.6%", ppu:"$172K", afford:"24%", review:3.9 },
+  { name:"Sandy Springs", props:28, units:"9,120", jedi:81, d30:"+2", trend:[74,75,76,77,78,79,79,80,81], rent:"$1,920", rentD:"+3.4%", rentSf:"$1.98", vac:"5.8%", absorb:"2.4%", pipeline:"10.2%", moSupply:12, opp:74, pressure:"BUYER", cap:"5.2%", ppu:"$215K", afford:"27%", review:4.1 },
+];
+const PEER_PROP_DATA = [
+  { name:"Summit Ridge Apts", addr:"4200 Summit Ridge Pkwy", sub:"Midtown", jedi:86, d30:"+3", trend:[78,80,81,82,83,84,85,85,86], strat:"RENTAL", arbGap:8, units:240, year:1998, rent:"$1,385", rentD:"+3.8%", vsMkt:"+1.4%", revpau:"$1,312", occ:"92.4%", noi:"$2.34M", cap:"5.2%", ppu:"$188K", irr:"18.4%", traffic:74, review:4.1, risk:"LOW", stage:"DD" },
+  { name:"Westshore Innovation", addr:"2800 W Kennedy Blvd", sub:"Midtown", jedi:91, d30:"+5", trend:[82,83,85,86,87,88,89,90,91], strat:"BTS", arbGap:22, units:312, year:0, rent:"$2,180", rentD:"—", vsMkt:"+6.0%", revpau:"—", occ:"—", noi:"—", cap:"—", ppu:"—", irr:"24.3%", traffic:68, review:"—", risk:"MED", stage:"LOI" },
+  { name:"Piedmont Station", addr:"1400 Piedmont Ave", sub:"Midtown", jedi:82, d30:"+2", trend:[75,76,77,78,79,80,81,81,82], strat:"RENTAL", arbGap:5, units:186, year:2015, rent:"$2,240", rentD:"+2.1%", vsMkt:"+10.2%", revpau:"$2,128", occ:"95.1%", noi:"$4.12M", cap:"4.6%", ppu:"$265K", irr:"15.2%", traffic:82, review:4.4, risk:"LOW", stage:"PROSPECT" },
+  { name:"Colony Square Living", addr:"1197 Peachtree St", sub:"Midtown", jedi:79, d30:"-1", trend:[82,81,81,80,80,79,79,79,79], strat:"RENTAL", arbGap:3, units:420, year:2021, rent:"$2,580", rentD:"+0.4%", vsMkt:"+26.8%", revpau:"$2,451", occ:"93.8%", noi:"$8.64M", cap:"4.2%", ppu:"$312K", irr:"12.8%", traffic:88, review:4.6, risk:"LOW", stage:"LEAD" },
+  { name:"The Locale on 10th", addr:"1075 10th St NW", sub:"Midtown", jedi:84, d30:"+4", trend:[76,77,78,79,80,81,82,83,84], strat:"FLIP", arbGap:12, units:148, year:2002, rent:"$1,680", rentD:"+4.2%", vsMkt:"-17.4%", revpau:"$1,546", occ:"91.2%", noi:"$2.18M", cap:"5.8%", ppu:"$168K", irr:"21.5%", traffic:62, review:3.6, risk:"MED", stage:"DD" },
+  { name:"Skyline Lofts", addr:"880 Spring St NW", sub:"Midtown", jedi:77, d30:"+1", trend:[73,74,74,75,75,76,76,77,77], strat:"STR", arbGap:4, units:64, year:2008, rent:"$1,920", rentD:"+1.8%", vsMkt:"-5.6%", revpau:"$1,766", occ:"89.4%", noi:"$1.02M", cap:"6.2%", ppu:"$195K", irr:"12.4%", traffic:56, review:3.9, risk:"HIGH", stage:"LEAD" },
+];
+
 const PORTFOLIO_NAV = [
   {key:"F1",label:"DASHBOARD"},
   {key:"F2",label:"PIPELINE"},
   {key:"F3",label:"PORTFOLIO"},
   {key:"F4",label:"MARKETS"},
-  {key:"F5",label:"EMAIL"},
-  {key:"F6",label:"COMPETE"},
+  {key:"F5",label:"COMPETE"},
+  {key:"F6",label:"NEWS"},
   {key:"F7",label:"STRATEGIES"},
-  {key:"F8",label:"ORG TOOLS"},
-  {key:"F9",label:"ORG SETTINGS"},
+  {key:"F8",label:"REPORTS"},
+  {key:"F9",label:"SETTINGS"},
 ];
+
+const FKEY_SLUG: Record<string,string> = {
+  F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
+  F5:"compete",   F6:"news",     F7:"strategies",F8:"reports", F9:"settings",
+};
+const SLUG_FKEY: Record<string,string> = Object.fromEntries(
+  Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
+);
 
 const WIDGET_CATALOG = [
   {id:"pipeline",   label:"Deal Pipeline",         desc:"Live scrollable deal list with JEDI scores",            category:"DEALS",  color:"#F5A623"},
@@ -169,7 +209,29 @@ const MAP_TYPES = [
   {id:"marketheat",  label:"Market Heat",   color:"#00BCD4"},
 ];
 
-const TICKERS = ["^ TAMPA CAP 5.2% (-15bps)","* MIAMI ABS 94.7%","v ORL PIPELINE +2400","^ JAX EMPL +3.2%","* FL HOME $412K","^ RENT TPA +3.7%","* FDOT I-275 148.2K","v INS +18% YoY","^ NOCATEE +42%","* TPA JOBS #3"];
+const TICKERS = ["^ TAMPA·MF  CAP 5.2% (-15bps)","* MIAMI·MF  ABS 94.7%","v ORL·MF  PIPELINE +2,400u","^ JAX·MF  EMPL +3.2%","* ATL·MF  MED RENT $2,056","^ TPA·MF  RENT +3.7%","* CHAR·MF  LEASE VEL 22d","v MIA·CONDO  SUPPLY +18%","^ JAX·SFR  DEMAND +42%","* ATL·MF  JOBS +5.8%","^ ORL·MF  OCC 92.9%","* TPA·IND  ABSORB 1.2M SF","v ATL·OFF  VACANCY 21.4%","^ CHAR·MF  JEDI 82 (+3)"];
+
+const CURATED_METRIC_IDS_T = ['F_CAP_RATE','F_RENT_GROWTH','M_VACANCY','M_ABSORPTION','E_EMPLOYMENT_GROWTH','E_WAGE_GROWTH','E_POPULATION_GROWTH','C_SURGE_INDEX','S_PIPELINE_TO_STOCK','S_MONTHS_OF_SUPPLY','M_LEASE_VELOCITY','D_SEARCH_MOMENTUM'];
+const CURATED_METRIC_LABELS_T: Record<string,string> = {F_CAP_RATE:'CAP RATE',F_RENT_GROWTH:'RENT GROWTH',M_VACANCY:'VACANCY',M_ABSORPTION:'ABSORPTION',E_EMPLOYMENT_GROWTH:'EMPL GROWTH',E_WAGE_GROWTH:'WAGE GROWTH',E_POPULATION_GROWTH:'POP GROWTH',C_SURGE_INDEX:'SURGE IDX',S_PIPELINE_TO_STOCK:'PIPELINE/STOCK',S_MONTHS_OF_SUPPLY:'MOS SUPPLY',M_LEASE_VELOCITY:'LEASE VEL',D_SEARCH_MOMENTUM:'SRCH MOM'};
+const SCOPE_ABBREV_T: Record<string,string> = {property:'PROP',submarket:'SBMKT',zip:'ZIP',county:'CNTY',msa:'MSA'};
+const STATIC_METRICS_TICKER_T = [
+  {raw:'ATL·MF  CAP RATE  5.2%',    color:'#F5A623',sub:'MIDTOWN ATL',  subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  RENT GROWTH  +3.0%',color:'#00D26A',sub:'YBOR CITY',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·MF  VACANCY  6.9%',     color:'#F5A623',sub:'DOWNTOWN ATL', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  ABSORPTION  +2,150u/mo',color:'#00D26A',sub:'TPA MSA', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'JAX·MF  EMPL GROWTH  +2.4%',color:'#00D26A',sub:'JAX MSA',     subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·ALL  WAGE GROWTH  +3.4%',color:'#00D26A',sub:'ATL MSA',    subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ORL·MF  POP GROWTH  +1.7%', color:'#00D26A',sub:'ORL MSA',     subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  SURGE IDX  +0.42',  color:'#00D26A',sub:'YBOR CITY',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·MF  PIPELINE/STOCK  15.8%',color:'#F5A623',sub:'ATL MSA',  subColor:'rgba(245,166,35,0.45)'},
+  {raw:'MIA·CONDO  MOS SUPPLY  6.2mo',color:'#FF4757',sub:'BRICKELL',  subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ATL·MF  LEASE VEL  18d',    color:'#00D26A',sub:'MIDTOWN ATL', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'TPA·MF  SRCH MOM  +22%',    color:'#00D26A',sub:'YBOR CITY',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'CHAR·MF  CAP RATE  5.4%',   color:'#F5A623',sub:'UPTOWN CHAR', subColor:'rgba(245,166,35,0.45)'},
+  {raw:'ORL·MF  VACANCY  7.1%',     color:'#F5A623',sub:'LAKE NONA',   subColor:'rgba(245,166,35,0.45)'},
+  {raw:'JAX·SFR  RENT GROWTH  +4.1%',color:'#00D26A',sub:'NOCATEE',   subColor:'rgba(245,166,35,0.45)'},
+];
+const fmtMetric = (id:string, ev:string, hib:boolean, scope?:string) => { const label=CURATED_METRIC_LABELS_T[id]||id; const v=(ev||'').trim().split(' ')[0]; const isPos=v.startsWith('+'),isNeg=v.startsWith('-'); const color=hib?(isPos?'#00D26A':isNeg?'#FF4757':'#F5A623'):(isNeg?'#00D26A':isPos?'#FF4757':'#F5A623'); const sub=scope?(SCOPE_ABBREV_T[scope]??scope.toUpperCase()):undefined; return {raw:`${label}  ${v}`,color,sub,subColor:'rgba(245,166,35,0.45)'}; };
 
 // ─── API RESPONSE TYPES ──────────────────────────────────────
 interface ApiDeal {
@@ -316,7 +378,7 @@ function Spark({data,color,w=56,h=16}:{data:number[];color:string;w?:number;h?:n
 }
 
 function Bd({children,c}:{children:React.ReactNode;c:string}) {
-  return <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:8,fontWeight:700,color:c,background:c+"18",border:`1px solid ${c}33`,padding:"1px 5px",letterSpacing:0.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;
+  return <span style={{fontFamily:"'JetBrains Mono',monospace",fontSize:9,fontWeight:700,color:c,background:c+"18",border:`1px solid ${c}33`,padding:"2px 6px",letterSpacing:0.5,textTransform:"uppercase",whiteSpace:"nowrap"}}>{children}</span>;
 }
 
 function StageBd({stage,T}:{stage:string;T:ThemeType}) {
@@ -345,25 +407,36 @@ function PanelHeader({title,subtitle,right,borderColor,T}:{title:string;subtitle
   );
 }
 
-function MetricBox({label,value,sub,change,dir,T}:{label:string;value:string;sub:string;change:string;dir:string;T:ThemeType}) {
+function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:string;sub:string;change?:string;dir?:string;color?:string;T:ThemeType}) {
+  const valColor = color || T.text.amber;
+  const chColor = dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.secondary;
   return (
     <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"8px 10px",flex:1}}>
       <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,fontWeight:600,marginBottom:4}}>{label}</div>
       <div style={{display:"flex",alignItems:"baseline",gap:2}}>
-        <span style={{fontSize:18,fontWeight:800,color:T.text.amber}}>{value}</span>
+        <span style={{fontSize:18,fontWeight:800,color:valColor}}>{value}</span>
         <span style={{fontSize:10,color:T.text.secondary}}>{sub}</span>
       </div>
-      <div style={{fontSize:8,color:dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.secondary,marginTop:2,fontWeight:600}}>{change}</div>
-      <Spark data={[3,4,3,5,4,6,5,7,8]} color={dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.amber} w={80} h={12}/>
+      {change && <div style={{fontSize:8,color:chColor,marginTop:2,fontWeight:600}}>{change}</div>}
+      <Spark data={[3,4,3,5,4,6,5,7,8]} color={color||chColor||T.text.amber} w={80} h={12}/>
     </div>
   );
 }
 
 interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; maximized:boolean; zIndex:number }
 
+// ─── WATCHLIST HELPERS ────────────────────────────────────────
+const MSA_CITY_MAP: Record<string,string> = {
+  'atlanta-ga':'Atlanta','raleigh-nc':'Raleigh','tampa-fl':'Tampa',
+  'charlotte-nc':'Charlotte','jacksonville-fl':'Jacksonville',
+  'orlando-fl':'Orlando','miami-fl':'Miami',
+};
+
 // ─── MAIN TERMINAL PAGE ───────────────────────────────────────
 export default function TerminalPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { section } = useParams<{ section?: string }>();
 
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
@@ -372,13 +445,17 @@ export default function TerminalPage() {
 
   // Core UI state
   const [time, setTime] = useState(new Date());
-  const [fkey, setFkey] = useState("F1");
+  const [fkey, setFkey] = useState(() => {
+    if (section && SLUG_FKEY[section]) return SLUG_FKEY[section];
+    return (location.state as {fkey?:string})?.fkey || "F1";
+  });
   const [cmd, setCmd] = useState("");
   const [sortBy, setSortBy] = useState("score");
   const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
   const [fStage, setFStage] = useState("ALL");
   const [fStrat, setFStrat] = useState("ALL");
   const [bottomTab, setBottomTab] = useState("alerts");
+  const [bottomOpen, setBottomOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [selDealId, setSelDealId] = useState<string|null>(null);
 
@@ -408,6 +485,14 @@ export default function TerminalPage() {
   const [inviteRole, setInviteRole] = useState("analyst");
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
+  const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
+  const [marketsTab, setMarketsTab] = useState<"overview"|"submarkets"|"supply"|"trends"|"comps">("overview");
+  interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
+  interface CorpAlert { severity:string; message:string; time:string }
+  interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
+  interface SectorRotEntry { naics:string; markets:Record<string,{avgCHS:number|null;count:number}> }
+  interface CorpHealthLive { employers:CorpEmployer[]; schi:number|null; reHealth:number|null; divergence:number|null; herfindahl:number|null; alerts:CorpAlert[]; sectors:Record<string,number>; portfolioSubmarkets:DivSubmarket[]; topEmployers:CorpEmployer[]; sectorRotation:{sectors:SectorRotEntry[];markets:string[]}|null; loaded:boolean; loading:boolean }
+  const [corpHealthLive, setCorpHealthLive] = useState<CorpHealthLive>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},portfolioSubmarkets:[],topEmployers:[],sectorRotation:null,loaded:false,loading:false});
 
   // Media floating windows (global overlay, separate from dashboard windows)
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
@@ -484,12 +569,31 @@ export default function TerminalPage() {
   const [liveNews, setLiveNews] = useState(STATIC_NEWS);
   const [liveEmails, setLiveEmails] = useState(STATIC_EMAILS);
   const [liveAgents] = useState(STATIC_AGENTS);
+  const [metricsTicker, setMetricsTicker] = useState(STATIC_METRICS_TICKER_T);
+  const [rawCatalogMetricsT, setRawCatalogMetricsT] = useState<Array<Record<string,unknown>>>([]);
+  const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
 
   // ─── Effects ──────────────────────────────────────────────
   useEffect(() => { const t=setInterval(()=>setTime(new Date()),1000); return()=>clearInterval(t); }, []);
+
+  // Sync URL slug + browser tab title whenever fkey changes
+  useEffect(() => {
+    const slug = FKEY_SLUG[fkey] || "dashboard";
+    const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
+    document.title = `JEDI RE | ${label}`;
+    const target = `/terminal/${slug}`;
+    if (window.location.pathname !== target) navigate(target, { replace: true });
+  }, [fkey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Respond to browser back/forward button (URL changes without component re-mount)
+  useEffect(() => {
+    if (section && SLUG_FKEY[section] && SLUG_FKEY[section] !== fkey) {
+      setFkey(SLUG_FKEY[section]);
+    }
+  }, [section]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if(liveDeals.length===0) return;
@@ -568,6 +672,22 @@ export default function TerminalPage() {
       })
       .catch(()=>{});
   },[]);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/metrics/catalog').then(res => {
+      const metrics: Array<Record<string,unknown>> = res.data?.metrics || [];
+      const ordered = CURATED_METRIC_IDS_T
+        .map(id => metrics.find(m => m.id === id))
+        .filter(Boolean) as Array<Record<string,unknown>>;
+      if (ordered.length > 0) setRawCatalogMetricsT(ordered);
+    }).catch(()=>{});
+  },[]);
+
+  useEffect(() => {
+    if (rawCatalogMetricsT.length > 0) {
+      setMetricsTicker(rawCatalogMetricsT.map(m => fmtMetric(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean, metricsScope)));
+    }
+  }, [rawCatalogMetricsT, metricsScope]);
 
   useEffect(() => {
     apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })
@@ -748,9 +868,25 @@ export default function TerminalPage() {
   // ─── DEAL GRID (F2) ────────────────────────────────────────
   const DealGrid = () => (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
+      {/* F2-specific filter bar */}
+      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:28,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:0.5}}>FILTER</span>
+        <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"1px 5px",height:20}}>
+          <option value="ALL">All Stages</option>
+          {["DD","LOI","PROSPECT","LEAD"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={fStrat} onChange={e=>setFStrat(e.target.value)} style={{fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"1px 5px",height:20}}>
+          <option value="ALL">All Strats</option>
+          {["BTS","FLIP","RENTAL","STR"].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <div style={{flex:1}}/>
+        {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
+        {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
+        <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>{sorted.length} deals</span>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
-          <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:7,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
+          <div key={i} onClick={()=>h.c&&toggleSort(h.c)} style={{padding:"3px 4px",fontSize:9,fontWeight:700,color:sortBy===h.c?T.text.amber:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`,cursor:h.c?"pointer":"default",userSelect:"none"}}>
             {h.l}{h.c&&sortBy===h.c&&<span style={{color:T.text.amber,marginLeft:1}}>{sortDir==="desc"?"v":"^"}</span>}
           </div>
         ))}
@@ -764,13 +900,13 @@ export default function TerminalPage() {
         {sorted.map((d,i)=>(
           <div key={d.id}
             onClick={()=>setSelDealId(selDealId===d.id?null:d.id)}
-            onDoubleClick={()=>navigate(`/deals/${d.id}`)}
+            onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)}
             style={{display:"grid",gridTemplateColumns:gc,background:selDealId===d.id?T.bg.active:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:selDealId===d.id?`2px solid ${T.text.amber}`:"2px solid transparent",animation:flashes[d.id]?"flash 0.7s ease-out":"none"}}
           >
             <div style={{padding:4,fontSize:8,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}>
               <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{d.name}</div>
-              <div style={{fontSize:7,color:T.text.muted}}>{d.addr}</div>
+              <div style={{fontSize:9,color:T.text.muted}}>{d.addr}</div>
             </div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}><div style={{fontSize:8,color:T.text.secondary}}>{d.market}</div></div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>
@@ -792,7 +928,7 @@ export default function TerminalPage() {
         {selDealId&&(()=>{const d=sorted.find(x=>x.id===selDealId);return d?(
           <div style={{position:"sticky",bottom:0,background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:10,fontWeight:700,color:T.text.amber}}>{d.name}</span>
-            <button onClick={()=>navigate(`/deals/${d.id}`)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
+            <button onClick={()=>navigate(`/deals/${d.id}/detail`)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
             <button onClick={()=>setSelDealId(null)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",cursor:"pointer"}}>ESC</button>
           </div>
         ):null;})()}
@@ -841,7 +977,7 @@ export default function TerminalPage() {
         </svg>
         <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:8,color:"#8B95A5",opacity:0.18,textAlign:"center",pointerEvents:"none"}}>MAPBOX GL JS<br/>PORTFOLIO OVERVIEW</div>
         <div style={{position:"absolute",bottom:8,left:0,right:0,textAlign:"center"}}>
-          <button onClick={()=>navigate("/map")} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer"}}>OPEN FULL MAP →</button>
+          <button onClick={()=>setMapOpen(true)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer"}}>OPEN FULL MAP →</button>
         </div>
       </div>
     </div>
@@ -866,7 +1002,7 @@ export default function TerminalPage() {
   const WidgetMyDeals = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveDeals.slice(0,5).map((d,i)=>(
-        <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+        <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div>
               <div style={{display:"flex",gap:6,marginBottom:4}}><StageBd stage={d.stage} T={T}/></div>
@@ -912,7 +1048,7 @@ export default function TerminalPage() {
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveAlerts.map((a,i)=>{
         const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
-        return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
+        return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:10,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:10,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:9,color:T.text.muted}}>{a.time}</span></div>;
       })}
     </div>
   );
@@ -922,9 +1058,9 @@ export default function TerminalPage() {
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
         {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:9,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary,fontWeight:600}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
-            <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
-            <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{a.t} ago · {a.m} msgs</div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{fontSize:10,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary,fontWeight:600}}>{a.name}</span></span><span style={{fontSize:9,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
+            <div style={{fontSize:10,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
+            <div style={{fontSize:9,color:T.text.muted,marginTop:2}}>{a.t} ago · {a.m} msgs</div>
           </div>
         ))}
       </div>
@@ -934,7 +1070,7 @@ export default function TerminalPage() {
   const WidgetLeaderboard = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {[...liveDeals].filter(d=>d.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map((d,i)=>(
-        <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+        <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
           <span style={{fontSize:12,fontWeight:800,color:T.text.muted,minWidth:24}}>#{i+1}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{d.name}</div>
@@ -1262,7 +1398,7 @@ export default function TerminalPage() {
         )}
 
         {/* Dashboard header */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:34,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:32,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
             {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
@@ -1356,10 +1492,26 @@ export default function TerminalPage() {
     );
   };
 
+  const CORP_HEALTH_DEMO = [
+    {company:"Amazon",ticker:"AMZN",employees:12500,share:18.2,chs:74,tier:"healthy" as const,delta:+3,sector:"Technology",momentum:"+2.1%"},
+    {company:"Microsoft",ticker:"MSFT",employees:8200,share:11.9,chs:82,tier:"healthy" as const,delta:+1,sector:"Technology",momentum:"+1.4%"},
+    {company:"Boeing",ticker:"BA",employees:6800,share:9.9,chs:38,tier:"stress" as const,delta:-8,sector:"Aerospace",momentum:"-4.2%"},
+    {company:"T-Mobile",ticker:"TMUS",employees:4100,share:6.0,chs:65,tier:"watch" as const,delta:-2,sector:"Telecom",momentum:"+0.8%"},
+    {company:"Starbucks",ticker:"SBUX",employees:3500,share:5.1,chs:71,tier:"healthy" as const,delta:+5,sector:"Consumer",momentum:"+1.9%"},
+    {company:"Costco",ticker:"COST",employees:2900,share:4.2,chs:88,tier:"healthy" as const,delta:+2,sector:"Retail",momentum:"+3.1%"},
+    {company:"Swedish Medical",ticker:null,employees:2400,share:3.5,chs:null,tier:null,delta:null,sector:"Healthcare",momentum:"N/A"},
+    {company:"Expedia",ticker:"EXPE",employees:2100,share:3.1,chs:59,tier:"watch" as const,delta:-4,sector:"Technology",momentum:"-1.3%"},
+  ];
+  const DEMO_SCHI = 68.4;
+  const DEMO_RE_HEALTH = 72.1;
+  const DEMO_DIVERGENCE = -3.7;
+  const DEMO_HERFINDAHL = 0.072;
+  const tierColor = (tier: string|null) => tier==="healthy"?T.text.green:tier==="stress"?T.text.red:tier==="watch"?T.text.amber:T.text.muted;
+
   // ─── VIEW: F3 PORTFOLIO ────────────────────────────────────
   const ViewPortfolio = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="OWNED ASSETS" subtitle="Portfolio performance" borderColor={T.text.green} right={<button onClick={()=>navigate("/assets-owned")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW ALL →</button>}/>
+      <PanelHeader T={T} title="OWNED ASSETS" subtitle="Portfolio performance" borderColor={T.text.green} right={<button onClick={()=>setFkey("F3")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW ALL →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle}}>
         {[{l:"PORTFOLIO VALUE",v:"$312M",c:T.text.amberBright},{l:"WEIGHTED IRR",v:"16.8%",c:T.text.amber},{l:"AVG OCCUPANCY",v:"93.4%",c:T.text.green},{l:"NOI VARIANCE",v:"+2.3%",c:T.text.green}].map((m,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"8px 10px"}}>
@@ -1371,7 +1523,7 @@ export default function TerminalPage() {
       <div style={{padding:10}}>
         <div style={{fontSize:9,color:T.text.muted,marginBottom:6}}>Actual vs. projected variance tracking | Monthly actuals upload | Decision timeline</div>
         {["Midtown Heights (248u)","West End Lofts (180u)","Buckhead Tower (312u)","Downtown Station (156u)"].map((a,i)=>(
-          <div key={i} onClick={()=>navigate("/assets-owned")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F3")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
             <span style={{fontSize:10,color:T.text.primary,fontWeight:600}}>{a}</span>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
               <span style={{fontSize:10,fontWeight:700,color:T.text.green}}>{[76,72,81,68][i]}</span>
@@ -1381,174 +1533,90 @@ export default function TerminalPage() {
           </div>
         ))}
       </div>
+      <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:T.text.cyan}}/>
+          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>CORPORATE HEALTH OVERLAY</span>
+        </div>
+        {(() => {
+          const s = corpHealthLive.schi ?? DEMO_SCHI;
+          const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
+          const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
+          const topEmp = corpHealthLive.employers.length>0 ? (corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"\u2014") : CORP_HEALTH_DEMO[0].company;
+          return <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:800,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red}}>{s.toFixed(0)}</div>
+              <div style={{fontSize:7,color:T.text.muted}}>SCHI</div>
+            </div>
+            <div style={{width:1,height:30,background:T.border.subtle}}/>
+            <div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Divergence: <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Top Employer: <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>HHI: <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
+            </div>
+            <div style={{marginLeft:"auto"}}>
+              <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={60} h={16}/>
+              <div style={{fontSize:7,color:T.text.muted,textAlign:"center"}}>4Q trend</div>
+            </div>
+          </div>;
+        })()}
+      </div>
     </div>
   );
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
+  const corpHealthData = {
+    schi: corpHealthLive.schi ?? DEMO_SCHI,
+    reHealth: corpHealthLive.reHealth ?? DEMO_RE_HEALTH,
+    divergence: corpHealthLive.divergence ?? DEMO_DIVERGENCE,
+    herfindahl: corpHealthLive.herfindahl ?? DEMO_HERFINDAHL,
+    employers: corpHealthLive.employers.length > 0 ? corpHealthLive.employers.map((e: {company_name?:string;company?:string;employees?:number;sector?:string;share?:number;chs?:number;delta?:string}) => ({
+      company: e.company_name || e.company || "—",
+      sector: e.sector || "—",
+      employees: e.employees || 0,
+      share: e.share || 0,
+      chs: e.chs || 0,
+      delta: e.delta || "+0",
+    })) : undefined,
+    portfolioSubmarkets: corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
+      {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,employerCount:24,publicCount:8},
+      {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,employerCount:18,publicCount:6},
+      {name:"Redmond Tech",msa:"Seattle",schi:76.9,divergence:-8.1,signal:"aligned",reHealth:71.2,hhi:0.203,employerCount:12,publicCount:5},
+      {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,employerCount:45,publicCount:15},
+      {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,employerCount:30,publicCount:9},
+    ],
+    topEmployerText: corpHealthLive.employers.length > 0
+      ? `Top employer: ${corpHealthLive.employers[0]?.company_name||corpHealthLive.employers[0]?.company||"\u2014"}.`
+      : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
+  };
+
   const ViewMarkets = () => (
+    <F4MarketsView
+      selectedMsaId={selectedMsaId}
+      setSelectedMsaId={setSelectedMsaId}
+      corpHealthData={corpHealthData}
+      marketsTab={marketsTab}
+      setMarketsTab={setMarketsTab}
+    />
+  );
+  // ─── VIEW: F5 COMPETE (CompetitiveIntelligencePage) ──────
+  const ViewCompete = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<button onClick={()=>navigate("/market-intelligence")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>FULL INTEL →</button>}/>
-      <div style={{padding:"10px 10px 0"}}>
-        <div style={{fontSize:9,color:T.text.secondary,marginBottom:4}}>THE DECISION THIS PAGE DRIVES:</div>
-        <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10}}>Is this submarket getting stronger or weaker — and how fast?</div>
-      </div>
-      <div style={{display:"flex",gap:1,padding:"0 10px 10px"}}>
-        {MARKET_VITALS.map((v,i)=><MetricBox key={i} {...v} T={T}/>)}
-      </div>
-      <div style={{margin:"0 10px 10px",padding:"6px 10px",background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`}}>
-        <span style={{fontSize:9,color:T.text.secondary}}>Tracking 5 submarkets. Momentum signal: <span style={{fontWeight:700,color:T.text.amber}}>STRONG</span>.</span>
-      </div>
-      <div style={{margin:"0 10px"}}>
-        <PanelHeader T={T} title="SUBMARKET COMPARISON"/>
-        <div style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-          {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h=>(
-            <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-          ))}
-        </div>
-        {SUBMARKETS.map((s,i)=>(
-          <div key={i} style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-            <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.props}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.units}</div>
-            <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
-            <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
-            <div style={{padding:"5px 6px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.opp}</div>
-            <div style={{padding:"5px 6px",display:"flex",alignItems:"center"}}><Bd c={s.pressure==="seller"?T.text.red:T.text.green}>{s.pressure}</Bd></div>
-          </div>
-        ))}
-      </div>
+      <CompetitiveIntelligencePage />
     </div>
   );
 
-  // ─── VIEW: F5 EMAIL ────────────────────────────────────────
-  const ViewEmail = () => {
-    const TAG_COLORS:Record<string,string>={LOI:T.text.cyan,URGENT:T.text.red,DD:T.text.amber,DEBT:T.text.purple,ZONING:T.text.orange,LP:T.text.secondary,SCORE:T.text.green};
-    const folders=[{id:"inbox",label:"INBOX",count:STATIC_EMAILS.filter(e=>e.unread).length},{id:"sent",label:"SENT",count:0},{id:"starred",label:"STARRED",count:1},{id:"all",label:"ALL MAIL",count:STATIC_EMAILS.length}];
-    const filtered=STATIC_EMAILS.filter(e=>{
-      const matchFolder=emailFolder==="all"||e.folder===emailFolder||emailFolder==="starred";
-      const matchSearch=!emailSearch||e.from.toLowerCase().includes(emailSearch.toLowerCase())||e.subject.toLowerCase().includes(emailSearch.toLowerCase());
-      return matchFolder&&matchSearch;
-    });
-    const activeEmail=STATIC_EMAILS.find(e=>e.id===selEmail)||null;
-    return (
-      <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
-        <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
-          <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-            <button onClick={()=>navigate("/dashboard/email")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
-          </div>
-          <div style={{flex:1,overflow:"auto"}}>
-            {folders.map(f=>(
-              <div key={f.id} onClick={()=>setEmailFolder(f.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",background:emailFolder===f.id?T.bg.active:"transparent",borderLeft:emailFolder===f.id?`2px solid ${T.text.amber}`:"2px solid transparent"}}>
-                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:emailFolder===f.id?T.text.amber:T.text.secondary}}>{f.label}</span>
-                {f.count>0&&<span style={{fontSize:7,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,padding:"1px 5px"}}>{f.count}</span>}
-              </div>
-            ))}
-            <div style={{height:1,background:T.border.subtle,margin:"6px 0"}}/>
-            <div style={{padding:"6px 12px 3px"}}><span style={{fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:1}}>LABELS</span></div>
-            {["LOI","DD","DEBT","ZONING","URGENT","SCORE","LP"].map(tag=>(
-              <div key={tag} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",cursor:"pointer"}}>
-                <span style={{width:6,height:6,borderRadius:"50%",background:TAG_COLORS[tag]||T.text.muted,display:"inline-block",flexShrink:0}}/>
-                <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.secondary}}>{tag}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{width:300,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0}}>
-          <div style={{padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-            <div style={{display:"flex",alignItems:"center",gap:4,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"2px 7px",height:22}}>
-              <span style={{fontSize:9,color:T.text.muted}}>⌕</span>
-              <input value={emailSearch} onChange={e=>setEmailSearch(e.target.value)} placeholder="Search mail…" style={{flex:1,background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary}}/>
-            </div>
-          </div>
-          <div style={{flex:1,overflow:"auto"}}>
-            {filtered.length===0&&<div style={{padding:20,textAlign:"center",fontSize:9,color:T.text.muted}}>No messages</div>}
-            {filtered.map(e=>(
-              <div key={e.id} onClick={()=>setSelEmail(e.id)} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:selEmail===e.id?T.bg.active:e.unread?T.text.amber+"06":T.bg.panel,borderLeft:selEmail===e.id?`2px solid ${T.text.amber}`:e.unread?`2px solid ${T.text.orange}`:`2px solid transparent`}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:9,fontWeight:e.unread?700:500,color:e.unread?T.text.primary:T.text.secondary}}>{e.from}</span>
-                    {e.unread&&<span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>}
-                  </div>
-                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
-                </div>
-                <div style={{fontSize:8,fontWeight:e.unread?600:400,color:e.unread?T.text.primary:T.text.secondary,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</div>
-                <div style={{fontSize:7,color:T.text.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.preview}</div>
-                <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
-                  {e.tag&&<Bd c={TAG_COLORS[e.tag]||T.text.muted}>{e.tag}</Bd>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
-          {!activeEmail&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:10,color:T.text.muted}}>Select an email to read</div></div>}
-          {activeEmail&&(
-            <>
-              <div style={{padding:"10px 16px",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-                <div style={{fontSize:13,fontWeight:700,color:T.text.primary,marginBottom:4}}>{activeEmail.subject}</div>
-                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                  <span style={{fontSize:9,fontWeight:600,color:T.text.amber}}>{activeEmail.from}</span>
-                  <span style={{fontSize:8,color:T.text.muted}}>· {activeEmail.time}</span>
-                  {activeEmail.tag&&<Bd c={TAG_COLORS[activeEmail.tag]||T.text.muted}>{activeEmail.tag}</Bd>}
-                </div>
-                <div style={{display:"flex",gap:6,marginTop:8}}>
-                  {["REPLY","FORWARD"].map(a=>(
-                    <button key={a} onClick={()=>navigate("/dashboard/email")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={{flex:1,overflow:"auto",padding:"16px 18px"}}>
-                <pre style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:10,color:T.text.primary,lineHeight:"1.7",whiteSpace:"pre-wrap",margin:0}}>{activeEmail.body}</pre>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // ─── VIEW: F6 COMPETE ─────────────────────────────────────
-  const ViewCompete = () => (
+  // ─── VIEW: F6 NEWS (NewsIntelligencePage) ─────────────────
+  const ViewNews = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="COMPETITIVE INTELLIGENCE" subtitle="Performance Rankings | Acquisition Intel | Comp Analysis" borderColor={T.text.purple} right={<button onClick={()=>navigate("/competitive-intel")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>FULL REPORT →</button>}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>PERFORMANCE RANKINGS</div>
-          {["Westshore Commons","Celebration South","Riverview Preserve","Dadeland Station"].map((n,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
-              <span style={{fontSize:9,color:T.text.primary}}>#{i+1} {n}</span>
-              <span style={{fontSize:9,fontWeight:700,color:T.text.amber}}>{[82,85,79,76][i]}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>ACQUISITION TARGETS</div>
-          {["Flagler Village 42u (distress)","Channelside 186u (value-add)","Winter Park 94u (mismanaged)"].map((n,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
-              <span style={{fontSize:9,color:T.text.primary}}>{n}</span>
-              <Bd c={T.text.orange}>TARGET</Bd>
-            </div>
-          ))}
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>OPPORTUNITY ALERTS</div>
-          {["Buckhead: opp score 9.0, buyer market","West End: opp 7.9, rent growth accelerating","East Atlanta: vac 15.4%, distress signal"].map((n,i)=>(
-            <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:9,color:T.text.secondary}}>{n}</div>
-          ))}
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>PATTERN DETECTION</div>
-          <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.5}}>3 submarkets showing rent convergence pattern. West End approaching Midtown pricing within 18 months. <span style={{color:T.text.amber,fontWeight:600}}>Gentrification signal: STRONG.</span></div>
-        </div>
-      </div>
+      <NewsIntelligencePage />
     </div>
   );
 
   // ─── VIEW: F7 STRATEGIES ───────────────────────────────────
   const ViewStrategies = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>navigate("/strategy-builder")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F7")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
         {[
           {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
@@ -1556,7 +1624,7 @@ export default function TerminalPage() {
           {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
           {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
         ].map((row,i)=>(
-          <div key={i} onClick={()=>navigate("/strategy-builder")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F7")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
               <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
               <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
@@ -1569,24 +1637,24 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── VIEW: F8 ORG TOOLS ────────────────────────────────────
-  const ViewTools = () => (
+  // ─── VIEW: F8 REPORTS ──────────────────────────────────────
+  const ViewReports = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="ORG TOOLS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
+      <PanelHeader T={T} title="REPORTS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TASKS</div>
           {liveTasks.slice(0,4).map((t,i)=>(
             <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{t.title} <span style={{color:T.text.amber}}>({t.deal})</span></div>
           ))}
-          <button onClick={()=>navigate("/tasks")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW ALL TASKS →</button>
+          <button onClick={()=>setBottomTab("tasks")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW ALL TASKS →</button>
         </div>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>REPORTS</div>
           {["Deal Memo (latest deal)","LP Quarterly Report Q1 2026 (draft)","Market Report: Tampa MSA (auto)","Comp Report: Dadeland submarket"].map((r,i)=>(
             <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{r}</div>
           ))}
-          <button onClick={()=>navigate("/reports")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
+          <button onClick={()=>setFkey("F8")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
         </div>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TEAM</div>
@@ -1596,13 +1664,41 @@ export default function TerminalPage() {
               <Bd c={T.text.green}>{m.status}</Bd>
             </div>
           ))}
-          <button onClick={()=>navigate("/team")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
+          <button onClick={()=>setFkey("F9")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
         </div>
+      </div>
+      <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:T.text.cyan}}/>
+          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>CORPORATE HEALTH OVERLAY</span>
+        </div>
+        {(() => {
+          const s = corpHealthLive.schi ?? DEMO_SCHI;
+          const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
+          const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
+          const topEmp = corpHealthLive.employers.length>0 ? (corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"\u2014") : CORP_HEALTH_DEMO[0].company;
+          return <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:800,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red}}>{s.toFixed(0)}</div>
+              <div style={{fontSize:7,color:T.text.muted}}>SCHI</div>
+            </div>
+            <div style={{width:1,height:30,background:T.border.subtle}}/>
+            <div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Divergence: <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>Top Employer: <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
+              <div style={{fontSize:9,color:T.text.secondary}}>HHI: <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
+            </div>
+            <div style={{marginLeft:"auto"}}>
+              <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={60} h={16}/>
+              <div style={{fontSize:7,color:T.text.muted,textAlign:"center"}}>4Q trend</div>
+            </div>
+          </div>;
+        })()}
       </div>
     </div>
   );
 
-  // ─── F9: ORG SETTINGS ─────────────────────────────────────
+  // ─── F9: SETTINGS ────────────────────────────────────────
   const fetchOrgData = useCallback(() => {
     setOrgLoading(true); setOrgError(""); setOrgSuccess("");
     apiClient.get("/api/v1/orgs/mine")
@@ -1629,7 +1725,54 @@ export default function TerminalPage() {
       .finally(() => setOrgLoading(false));
   }, []);
 
-  useEffect(() => { if(fkey === "F9") fetchOrgData(); }, [fkey, fetchOrgData]);
+  // Legacy org fetch disabled — F9 now renders SettingsPage which manages its own data
+
+  const corpHealthStore = useCorporateHealth();
+  const dealStoreCorporateHealth = useDealStore(s => s.corporateHealth);
+  const fetchSubmarketHealth = useCorporateHealthStore(s => s.fetchSubmarketHealth);
+  const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
+
+  useEffect(() => {
+    if (fkey !== "F4" || corpHealthLive.loaded || corpHealthLive.loading) return;
+    setCorpHealthLive(prev => ({...prev, loading: true}));
+
+    const submarketIds = SUBMARKETS.map((_, i) => i + 1);
+    const firstSubmarketId = submarketIds[0] || 1;
+
+    fetchSubmarketHealth(firstSubmarketId).catch(() => {});
+    dealStoreFetchSubmarketHealth(firstSubmarketId).catch(() => {});
+
+    Promise.all([
+      api.corporateHealth.getAlerts().catch(() => ({data:{data:{alerts:[]}}})),
+      api.corporateHealth.getSectorRotation().catch(() => ({data:{data:{sectors:[],markets:[]}}})),
+      api.corporateHealth.getSubmarket(firstSubmarketId).catch(() => ({data:{data:null}})),
+      api.corporateHealth.getConcentration(firstSubmarketId).catch(() => ({data:{data:null}})),
+      api.corporateHealth.getPortfolio().catch(() => ({data:{data:{submarkets:[],topEmployers:[]}}})),
+    ]).then(([alertsRes, sectorsRes, subRes, concRes, portfolioRes]) => {
+      const alerts = Array.isArray(alertsRes.data?.data?.alerts) ? alertsRes.data.data.alerts : [];
+      const sectorRotation = sectorsRes.data?.data || {sectors:[],markets:[]};
+      const subData = subRes.data?.data;
+      const concData = concRes.data?.data;
+      const portfolioData = portfolioRes.data?.data || {};
+      setCorpHealthLive(prev => ({
+        ...prev,
+        alerts,
+        sectors: subData?.sectorBreakdown || {},
+        sectorRotation,
+        portfolioSubmarkets: portfolioData.submarkets || [],
+        topEmployers: portfolioData.topEmployers || [],
+        schi: subData?.schi ?? null,
+        reHealth: subData?.reHealth ?? null,
+        divergence: subData?.divergence ?? null,
+        herfindahl: concData?.herfindahl ?? null,
+        employers: subData?.employers || [],
+        loaded: true,
+        loading: false,
+      }));
+    }).catch(() => {
+      setCorpHealthLive(prev => ({...prev, loaded: true, loading: false}));
+    });
+  }, [fkey, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
   const handleInvite = () => {
     if(!inviteEmail || !orgData) return;
@@ -1653,14 +1796,14 @@ export default function TerminalPage() {
       .catch(err => setOrgError(err.response?.data?.error || "Failed to remove member"));
   };
 
-  const ViewOrgSettings = () => {
+  const ViewSettings = () => {
     const myRole = orgData?.my_role || "viewer";
     const canManage = myRole === "owner" || myRole === "principal";
     const isOwner = myRole === "owner";
     const roleBadgeColor: Record<string,string> = { owner: T.text.amber, principal: T.text.cyan, analyst: T.text.green, viewer: T.text.muted };
     return (
       <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-        <PanelHeader T={T} title="ORG SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
+        <PanelHeader T={T} title="SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
           right={<span style={{fontSize:8,color:T.text.muted}}>YOUR ROLE: <span style={{color:roleBadgeColor[myRole]||T.text.muted,fontWeight:700}}>{myRole.toUpperCase()}</span></span>}/>
         {orgLoading ? (
           <div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading organization data...</span></div>
@@ -1734,12 +1877,12 @@ export default function TerminalPage() {
               <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
                 <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
                   <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>PENDING INVITATIONS</span>
-                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv:any)=>inv.status==="pending").length} pending</span>
+                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv)=>inv.status==="pending").length} pending</span>
                 </div>
                 <div style={{maxHeight:200,overflow:"auto"}}>
                   {orgInvitations.length === 0 ? (
                     <div style={{padding:10,fontSize:9,color:T.text.muted,textAlign:"center"}}>No invitations sent</div>
-                  ) : orgInvitations.map((inv:any,i:number)=>(
+                  ) : orgInvitations.map((inv,i)=>(
                     <div key={inv.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
                       <div>
                         <div style={{fontSize:9,color:T.text.primary}}>{inv.email}</div>
@@ -1770,11 +1913,11 @@ export default function TerminalPage() {
       case "F2": return DealGrid();
       case "F3": return ViewPortfolio();
       case "F4": return ViewMarkets();
-      case "F5": return ViewEmail();
-      case "F6": return ViewCompete();
+      case "F5": return ViewCompete();
+      case "F6": return ViewNews();
       case "F7": return ViewStrategies();
-      case "F8": return ViewTools();
-      case "F9": return ViewOrgSettings();
+      case "F8": return ViewReports();
+      case "F9": return ViewSettings();
       default: return null;
     }
   };
@@ -1786,7 +1929,7 @@ export default function TerminalPage() {
       return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
     });
     if(bottomTab==="news") return liveNews.map((n,i)=>(
-      <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+      <div key={i} id={`news-row-${n.id}`} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
         <span style={{fontSize:8,color:T.text.muted,minWidth:34}}>{n.time}</span>
         <div style={{flex:1}}><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{n.hl}</div>{n.affects.length>0&&<div style={{display:"flex",gap:3,marginTop:2}}>{n.affects.map((a,j)=><Bd key={j} c={T.text.amber}>{a}</Bd>)}</div>}</div>
         <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize:8,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div><div style={{fontSize:8,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</div></div>
@@ -1950,18 +2093,24 @@ export default function TerminalPage() {
       {/* CRT overlay */}
       <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)"}}/>
 
-      {/* ═══ TOP STATUS BAR — 36px ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:36,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2}}>JEDI RE</span>
-          <span style={{fontSize:9,color:T.text.muted}}>|</span>
-          <span style={{fontSize:9,color:T.text.secondary}}>PORTFOLIO VIEW</span>
-          <span style={{fontSize:9,color:T.text.muted}}>|</span>
-          <span style={{fontSize:9,color:T.text.muted}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}</span>
+      {/* ═══ TOP STATUS BAR — 28px ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+          <span style={{fontFamily:T.font.display,fontSize:13,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JEDI RE</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,color:T.text.secondary,flexShrink:0}}>PORTFOLIO</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          {totalPV>0&&<span style={{fontSize:9,fontWeight:700,color:T.text.amberBright,flexShrink:0}}>PIPELINE: ${totalPV.toFixed(1)}M</span>}
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,fontWeight:600,color:T.text.cyan,flexShrink:0}}>ACTIVE: {activeCount}</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{fontSize:9,fontWeight:700,color:hAlerts>0?T.text.red:T.text.green,cursor:"pointer",flexShrink:0,animation:hAlerts>0?"pulse 2s infinite":"none"}}>ALERTS: {hAlerts}</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:4}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGENTS</span>
-          <span style={{fontSize:9,color:T.text.cyan}}>EMAIL: {liveEmails.filter(e=>e.unread).length}</span>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGT</span>
+          <span style={{fontSize:9,color:T.text.cyan}}>MAIL: {liveEmails.filter(e=>e.unread).length}</span>
           {mediaWindows.length>0&&(
             <div style={{position:"relative"}}>
               <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
@@ -2000,83 +2149,38 @@ export default function TerminalPage() {
         </div>
       </div>
 
-      {/* ═══ TICKER — 27px ═══ */}
-      <div style={{height:27,background:"#06080E",borderBottom:`1px solid ${T.border.subtle}`,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
-        <div style={{display:"flex",gap:24,whiteSpace:"nowrap",animation:"ticker 45s linear infinite",fontSize:9,lineHeight:"27px"}}>
-          {[...TICKERS,...TICKERS].map((t,i)=>(
-            <span key={i} style={{color:t.startsWith("^")?T.text.green:t.startsWith("v")?T.text.red:T.text.amber}}>{t}</span>
-          ))}
-        </div>
-      </div>
 
-      {/* ═══ KPI BAR — 50px ═══ */}
-      <div style={{display:"flex",alignItems:"stretch",background:T.bg.panel,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,height:50}}>
-        {[
-          {l:"TOTAL PIPELINE",v:totalPV>0?`$${totalPV.toFixed(1)}M`:`${liveDeals.length}`,c:T.text.amberBright,sub:`${liveDeals.length} deals`},
-          {l:"ACTIVE DEALS",v:String(activeCount),c:T.text.cyan,sub:"in progress"},
-          {l:"PORTFOLIO ASSETS",v:"23",c:T.text.green,sub:"owned"},
-          {l:"AVG DAYS/DEAL",v:liveDeals.length>0?String(Math.round(liveDeals.reduce((s,d)=>s+d.days,0)/liveDeals.length)):"—",c:T.text.amber,sub:"avg time"},
-        ].map((kpi,i)=>(
-          <div key={i} style={{padding:"4px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:110}}>
-            <div style={{fontSize:7,fontWeight:600,color:T.text.muted,letterSpacing:1}}>{kpi.l}</div>
-            <div style={{fontSize:16,fontWeight:800,color:kpi.c}}>{kpi.v}</div>
-            <div style={{fontSize:7,color:T.text.secondary}}>{kpi.sub}</div>
-          </div>
-        ))}
-        <div style={{padding:"4px 14px",borderRight:`1px solid ${T.border.subtle}`,minWidth:120}}>
-          <div style={{fontSize:7,fontWeight:600,color:T.text.muted,letterSpacing:1}}>BY STAGE</div>
-          <div style={{display:"flex",gap:10}}>{Object.entries(stages).map(([s,c])=>(
-            <div key={s} style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:700,color:c>0?T.text.amber:T.text.muted}}>{c}</div><div style={{fontSize:6,color:T.text.muted}}>{s}</div></div>
-          ))}</div>
-        </div>
-        <div onClick={()=>setBottomTab("alerts")} style={{padding:"4px 14px",borderRight:`1px solid ${T.border.subtle}`,cursor:"pointer",minWidth:80}}>
-          <div style={{fontSize:7,fontWeight:600,color:T.text.muted,letterSpacing:1}}>ALERTS</div>
-          <div style={{fontSize:16,fontWeight:800,color:hAlerts>0?T.text.red:T.text.green,animation:hAlerts>0?"pulse 2s infinite":"none"}}>{hAlerts}</div>
-        </div>
-        <div style={{flex:1}}/>
-        <div style={{display:"flex",alignItems:"center",gap:6,paddingRight:12}}>
-          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"5px 12px",cursor:"pointer",letterSpacing:0.4}}>+ NEW MAP</button>
-          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 14px",cursor:"pointer",letterSpacing:0.5}}>+ CREATE DEAL</button>
-        </div>
-      </div>
+      {/* ═══ COMBINED TICKER — 20px ═══ */}
+      <TickerBar height={20} speed={45} label="LIVE" labelColor={T.text.amber}
+        items={[
+          ...liveNews.map(n => {
+            const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
+            return { raw: `[${n.time}]${(n as {mkt?:string}).mkt ? ` [${(n as {mkt?:string}).mkt}]` : ''} ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
+          }),
+          ...TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber })),
+          ...metricsTicker,
+        ]}
+      />
 
       {/* ═══ F-KEY NAV BAR ═══ */}
       <div style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
-        <div style={{display:"flex",flex:1,overflow:"auto"}}>
+        <div style={{display:"flex",flex:1,overflowX:"auto"}}>
           {PORTFOLIO_NAV.map(n=>(
-            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,padding:"0 11px",height:30,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap",flexShrink:0}}>
-              <span style={{fontSize:7,fontWeight:700,opacity:0.6,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
+            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:1,minWidth:0}}>
+              <span style={{fontSize:9,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
               {n.label}
             </button>
           ))}
         </div>
-        <div style={{padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`}}>
-          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,width:190}}>
-            <span style={{color:T.text.amber,fontSize:9,fontWeight:700}}>{">"}</span>
-            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary,flex:1,width:"100%"}}/>
-            <span style={{width:6,height:12,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 9px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>+ DEAL</button>
+          <button onClick={()=>{setMapOpen(true);setMapCreating(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"3px 8px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>MAP</button>
+          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,flex:"0 1 130px",minWidth:60}}>
+            <span style={{color:T.text.amber,fontSize:10,fontWeight:700}}>{">"}</span>
+            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:10,color:T.text.primary,flex:1,width:"100%",minWidth:0}}/>
+            <span style={{width:5,height:11,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block",flexShrink:0}}/>
           </div>
         </div>
-      </div>
-
-      {/* ═══ GLOBAL FILTER TOOLBAR ═══ */}
-      <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:32,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-        <span style={{fontSize:8,color:T.text.muted,fontWeight:600,letterSpacing:0.5}}>FILTER:</span>
-        <select value={fStage} onChange={e=>setFStage(e.target.value)} style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:22}}>
-          <option value="ALL">All Stages</option>
-          {["DD","LOI","PROSPECT","LEAD"].map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-        <select value={fStrat} onChange={e=>setFStrat(e.target.value)} style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 6px",height:22}}>
-          <option value="ALL">All Strats</option>
-          {["BTS","FLIP","RENTAL","STR"].map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-        <button onClick={()=>setMapOpen(!mapOpen)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:22,cursor:"pointer"}}>
-          MAP
-        </button>
-        <div style={{flex:1}}/>
-        {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
-        {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
-        <span style={{fontSize:8,color:T.text.muted}}>{sorted.length} deals</span>
       </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
@@ -2085,9 +2189,14 @@ export default function TerminalPage() {
         {mapOpen&&<MapSidebar/>}
       </div>
 
-      {/* ═══ BOTTOM PANEL — 190px ═══ */}
-      <div style={{height:190,borderTop:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel}}>
-        <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+      {/* ═══ BOTTOM PANEL — collapsible ═══ */}
+      <div style={{position:"relative",height:bottomOpen?190:28,borderTop:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel,transition:"height 0.18s ease"}}>
+        {/* Tab bar */}
+        <div style={{display:"flex",background:T.bg.header,borderBottom:bottomOpen?`1px solid ${T.border.subtle}`:"none",flexShrink:0,height:28,alignItems:"center"}}>
+          {/* Collapse / expand toggle */}
+          <button onClick={()=>setBottomOpen(o=>!o)} title={bottomOpen?"Collapse panel":"Expand panel"} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 8px",height:"100%",flexShrink:0,lineHeight:1}}>
+            {bottomOpen?"▼":"▲"}
+          </button>
           {[
             {id:"alerts",l:"ALERTS",ct:hAlerts,cc:T.text.red},
             {id:"news",l:"NEWS",ct:liveNews.length,cc:T.text.cyan},
@@ -2096,19 +2205,19 @@ export default function TerminalPage() {
             {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
             {id:"media",l:"MEDIA",ct:mediaWindows.length,cc:T.text.orange},
           ].map(tab=>(
-            <button key={tab.id} onClick={()=>setBottomTab(tab.id)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"4px 14px",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+            <button key={tab.id} onClick={()=>{setBottomTab(tab.id);if(!bottomOpen)setBottomOpen(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"0 14px",height:"100%",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
               {tab.l}
-              <span style={{fontSize:7,fontWeight:700,padding:"0px 4px",background:bottomTab===tab.id?"rgba(0,0,0,0.2)":tab.cc+"18",color:bottomTab===tab.id?"rgba(0,0,0,0.7)":tab.cc}}>{tab.ct}</span>
+              <span style={{fontSize:9,fontWeight:700,padding:"1px 4px",background:bottomTab===tab.id?"rgba(0,0,0,0.2)":tab.cc+"18",color:bottomTab===tab.id?"rgba(0,0,0,0.7)":tab.cc}}>{tab.ct}</span>
             </button>
           ))}
           <div style={{flex:1}}/>
-          <div style={{display:"flex",alignItems:"center",paddingRight:12,gap:6}}>
-            <button onClick={()=>navigate("/news-intel")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>NEWS INTEL →</button>
+        </div>
+        {/* Content — only rendered when open */}
+        {bottomOpen&&(
+          <div style={{flex:1,overflow:"auto"}}>
+            {renderBottomTab()}
           </div>
-        </div>
-        <div style={{flex:1,overflow:"auto"}}>
-          {renderBottomTab()}
-        </div>
+        )}
       </div>
 
       {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}
@@ -2226,16 +2335,16 @@ export default function TerminalPage() {
         </div>
       )}
 
-      {/* ═══ STATUS BAR — 16px ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:16,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+      {/* ═══ STATUS BAR — 20px ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:20,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",gap:12}}>
-          <span style={{fontSize:7,color:T.text.muted}}>JEDI RE v3.0</span>
-          <span style={{fontSize:7,color:T.text.muted}}>REACT + VITE + MAPBOX + KAFKA</span>
+          <span style={{fontSize:9,color:T.text.muted}}>JEDI RE v3.0</span>
+          <span style={{fontSize:9,color:T.text.muted}}>REACT + VITE + MAPBOX + KAFKA</span>
         </div>
         <div style={{display:"flex",gap:12}}>
-          <span style={{fontSize:7,color:T.text.green}}>DB OK</span>
-          <span style={{fontSize:7,color:T.text.green}}>REDIS OK</span>
-          <span style={{fontSize:7,color:T.text.muted}}>{liveDeals.length} deals loaded</span>
+          <span style={{fontSize:9,color:T.text.green}}>DB OK</span>
+          <span style={{fontSize:9,color:T.text.green}}>REDIS OK</span>
+          <span style={{fontSize:9,color:T.text.muted}}>{liveDeals.length} deals loaded</span>
         </div>
       </div>
     </div>

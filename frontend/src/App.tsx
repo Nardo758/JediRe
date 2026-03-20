@@ -49,6 +49,8 @@ import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
+  BloombergMarketDetail,
+  BloombergMarketsLanding,
 } from './pages/MarketIntelligence';
 import {
   CompetitiveIntelligencePage,
@@ -118,6 +120,11 @@ function AppContent() {
 
         {/* Terminal — full-page, no MainLayout */}
         <Route path="/terminal" element={<TerminalPage />} />
+        <Route path="/terminal/:section" element={<TerminalPage />} />
+
+        {/* Bloomberg Market Intelligence — full-page, no MainLayout */}
+        <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
+        <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
         
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/terminal" replace />} />

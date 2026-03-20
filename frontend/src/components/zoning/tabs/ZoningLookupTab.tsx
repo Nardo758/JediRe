@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, MapPin, Building2, CheckCircle, AlertTriangle, XCircle, Info, Loader2, FileText, Bot, Paperclip, BarChart3, Shield, BookOpen, Brain, Code } from 'lucide-react';
+import { T as BT } from '../../deal/bloomberg-tokens';
 import { useZoningLookup } from '../../../hooks/useZoningLookup';
 import VerificationCard, { type VerificationData } from '../VerificationCard';
 import UserTrustGate from '../UserTrustGate';
@@ -256,7 +257,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSearch} className="bg-white border border-gray-200 rounded-lg p-4">
+      <form onSubmit={handleSearch} className="rounded-lg p-4" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -265,13 +266,13 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               placeholder="847 Peachtree St NE, Atlanta GA"
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" style={{ background: BT.bgCard, border: `1px solid ${BT.borderL}`, color: BT.text }}
             />
           </div>
           <button
             type="submit"
             disabled={loading || !address.trim()}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-medium text-sm transition-colors flex items-center gap-2"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-medium text-sm transition-colors flex items-center gap-2"
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             Look Up
@@ -280,7 +281,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
             <button
               type="button"
               onClick={() => { clear(); setAddress(''); setVerificationData(null); setTrustGatePassed(false); }}
-              className="px-3 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-lg text-sm transition-colors"
+              className="px-3 py-2.5 rounded-lg text-sm transition-colors" style={{ background: BT.bgPanel, color: BT.tm }}
             >
               Clear
             </button>
@@ -290,7 +291,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
       </form>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2">
+        <div className="rounded-lg p-3 text-sm flex items-center gap-2" style={{ background: BT.redBg, border: `1px solid ${BT.red}50`, color: BT.redL }}>
           <XCircle className="w-4 h-4 flex-shrink-0" />
           {error}
         </div>
@@ -299,7 +300,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
       {loading && (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-          <span className="ml-3 text-gray-500">Looking up zoning data...</span>
+          <span className="ml-3" style={{ color: BT.td }}>Looking up zoning data...</span>
         </div>
       )}
 
@@ -308,19 +309,20 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
           {/* SECTION A: Verification Card + Trust Gate */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 mb-1">
-              <Shield className="w-4 h-4 text-indigo-600" />
-              <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Section A — Verification</h2>
+              <Shield className="w-4 h-4 text-indigo-400" />
+              <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: BT.text }}>Section A — Verification</h2>
             </div>
 
             {verificationLoading && (
-              <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 px-4 py-3 rounded-lg" style={{ background: BT.blueBg, border: `1px solid ${BT.blue}50` }}>
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                <span className="text-sm text-blue-700">Running source verification...</span>
+                <span className="text-sm text-blue-400">Running source verification...</span>
               </div>
             )}
 
             {verificationError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2">
+              <div className="rounded-lg p-3 text-sm flex items-center gap-2"
+                style={{ background: BT.redBg, border: `1px solid ${BT.red}50`, color: BT.redL }}>
                 <XCircle className="w-4 h-4 flex-shrink-0" />
                 {verificationError}
               </div>
@@ -357,7 +359,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
               <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-1">
                   <BookOpen className="w-4 h-4 text-green-600" />
-                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Section B — Confirmed Rules</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: BT.text }}>Section B — Confirmed Rules</h2>
                 </div>
                 <ZoningClassificationCard result={result} onOpenSourcePanel={handleOpenSourcePanel} />
                 <DevelopmentParametersCard result={result} onOpenSourcePanel={handleOpenSourcePanel} />
@@ -367,8 +369,8 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
               {/* SECTION C: Capacity Analysis */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-1">
-                  <BarChart3 className="w-4 h-4 text-amber-600" />
-                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Section C — Capacity Analysis</h2>
+                  <BarChart3 className="w-4 h-4 text-amber-400" />
+                  <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: BT.text }}>Section C — Capacity Analysis</h2>
                 </div>
                 {result.variancePotential && <VariancePotentialCard result={result} onOpenSourcePanel={handleOpenSourcePanel} />}
                 <CalculationBreakdown
@@ -381,21 +383,21 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
               <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Brain className="w-4 h-4 text-purple-600" />
-                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wider">Section D — AI Recommendation</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: BT.text }}>Section D — AI Recommendation</h2>
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+                  <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: BT.border, background: BT.bgCard }}>
                     <Code className="w-4 h-4 text-green-600" />
-                    <h3 className="text-gray-900 font-semibold text-sm">Based on CODE (verified):</h3>
+                    <h3 className="font-semibold text-sm" style={{ color: BT.text }}>Based on CODE (verified):</h3>
                   </div>
                   <div className="p-4 space-y-2">
-                    <div className="flex items-start gap-2 text-xs text-gray-700">
+                    <div className="flex items-start gap-2 text-xs" style={{ color: BT.tm }}>
                       <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" />
                       <span>Zoning designation <strong>{result.district.code}</strong> permits multifamily residential use by right per {result.district.codeReference || 'municipal code'}.</span>
                     </div>
                     {result.parameters.maxDensity != null && (
-                      <div className="flex items-start gap-2 text-xs text-gray-700">
+                      <div className="flex items-start gap-2 text-xs" style={{ color: BT.tm }}>
                         <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" />
                         <span>
                           Maximum density of {result.parameters.maxDensity} du/ac confirmed via code.
@@ -408,7 +410,7 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
                       </div>
                     )}
                     {result.parameters.maxHeight != null && (
-                      <div className="flex items-start gap-2 text-xs text-gray-700">
+                      <div className="flex items-start gap-2 text-xs" style={{ color: BT.tm }}>
                         <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0 mt-0.5" />
                         <span>
                           Height limit of {result.parameters.maxHeight} ft verified.
@@ -423,20 +425,20 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
                   </div>
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+                <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+                  <div className="px-4 py-3 border-b flex items-center gap-2" style={{ borderColor: BT.border, background: BT.bgCard }}>
                     <Bot className="w-4 h-4 text-purple-600" />
-                    <h3 className="text-gray-900 font-semibold text-sm">Based on ANALYSIS (JEDI-derived):</h3>
+                    <h3 className="font-semibold text-sm" style={{ color: BT.text }}>Based on ANALYSIS (JEDI-derived):</h3>
                   </div>
                   <div className="p-4 space-y-2">
                     <StrategyAlignmentCard alignments={result.strategyAlignment} />
                     {result.variancePotential?.aiRecommendation && (
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mt-3">
-                        <p className="text-xs text-purple-800 flex items-start gap-1.5">
+                      <div className="rounded-lg p-3 mt-3" style={{ background: BT.violBg, border: `1px solid ${BT.violet}50` }}>
+                        <p className="text-xs text-purple-300 flex items-start gap-1.5">
                           <span className="flex-shrink-0 mt-0.5">🤖</span>
                           <span className="font-medium">JEDI Analysis: </span>
                         </p>
-                        <p className="text-xs text-purple-700 mt-1 ml-5 leading-relaxed">
+                        <p className="text-xs text-purple-400 mt-1 ml-5 leading-relaxed">
                           "{result.variancePotential.aiRecommendation}"
                         </p>
                         <p className="text-[10px] text-purple-500 mt-2 ml-5 italic">
@@ -445,13 +447,13 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
                       </div>
                     )}
                     {result.parameters.aiNotes.length > 0 && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                        <p className="text-xs text-blue-800 font-medium mb-1.5 flex items-center gap-1">
+                      <div className="rounded-lg p-3" style={{ background: BT.blueBg, border: `1px solid ${BT.blue}50` }}>
+                        <p className="text-xs text-blue-300 font-medium mb-1.5 flex items-center gap-1">
                           <Info className="w-3 h-3" /> AI Analysis Notes
                         </p>
                         <ul className="space-y-1">
                           {result.parameters.aiNotes.map((note, i) => (
-                            <li key={i} className="text-xs text-blue-700 flex items-start gap-1.5">
+                            <li key={i} className="text-xs text-blue-400 flex items-start gap-1.5">
                               <span className="text-blue-500 mt-0.5">•</span>
                               {note}
                             </li>
@@ -487,14 +489,14 @@ export default function ZoningLookupTab({ dealId, deal }: ZoningLookupTabProps) 
 function ZoningClassificationCard({ result, onOpenSourcePanel }: { result: ZoningLookupResult; onOpenSourcePanel: (data: SourceCitationData) => void }) {
   const { district } = result;
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-        <h3 className="text-gray-900 font-semibold text-sm flex items-center gap-2">
+    <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: BT.border, background: BT.bgCard }}>
+        <h3 className="font-semibold text-sm flex items-center gap-2" style={{ color: BT.text }}>
           <Building2 className="w-4 h-4 text-blue-600" />
           Zoning Classification
         </h3>
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50">
+          <button className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md" style={{ color: BT.tm, background: BT.bgCard, border: `1px solid ${BT.borderL}` }}>
             <FileText className="w-3 h-3" /> View Full Code
           </button>
         </div>
@@ -527,9 +529,9 @@ function ZoningClassificationCard({ result, onOpenSourcePanel }: { result: Zonin
 function DevelopmentParametersCard({ result, onOpenSourcePanel }: { result: ZoningLookupResult; onOpenSourcePanel: (data: SourceCitationData) => void }) {
   const { parameters } = result;
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h3 className="text-gray-900 font-semibold text-sm">Development Parameters</h3>
+    <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgCard }}>
+        <h3 className="font-semibold text-sm" style={{ color: BT.text }}>Development Parameters</h3>
       </div>
       <div className="p-4">
         <div className="grid grid-cols-3 gap-3 mb-4">
@@ -541,7 +543,7 @@ function DevelopmentParametersCard({ result, onOpenSourcePanel }: { result: Zoni
         </div>
 
         <div className="mb-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Setbacks</p>
+          <p className="text-xs uppercase tracking-wider mb-2 font-medium" style={{ color: BT.td }}>Setbacks</p>
           <div className="grid grid-cols-3 gap-2">
             <SetbackBoxWithSource label="Front" value={parameters.setbacks.front} citation={{ section: '§16-28.005(a)', sourceType: 'code' }} onOpenSourcePanel={onOpenSourcePanel} />
             <SetbackBoxWithSource label="Side" value={parameters.setbacks.side} citation={{ section: '§16-28.005(b)', sourceType: 'code' }} onOpenSourcePanel={onOpenSourcePanel} />
@@ -550,21 +552,21 @@ function DevelopmentParametersCard({ result, onOpenSourcePanel }: { result: Zoni
         </div>
 
         <div className="mb-3">
-          <p className="text-xs text-gray-500 uppercase tracking-wider mb-2 font-medium">Parking Requirements</p>
+          <p className="text-xs uppercase tracking-wider mb-2 font-medium" style={{ color: BT.td }}>Parking Requirements</p>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <span className="text-gray-500 flex items-center gap-1">
-              Residential: <span className="text-gray-900 font-medium">{parameters.parking.residential != null ? `${parameters.parking.residential}/unit` : 'N/A'}</span>
+            <span className="flex items-center gap-1" style={{ color: BT.td }}>
+              Residential: <span className="font-medium" style={{ color: BT.text }}>{parameters.parking.residential != null ? `${parameters.parking.residential}/unit` : 'N/A'}</span>
               {parameters.parking.residential != null && <ViewSourceBadge section="§16-28.014" sourceType="code" onOpenPanel={onOpenSourcePanel} />}
             </span>
-            <span className="text-gray-500 flex items-center gap-1">
-              Guest: <span className="text-gray-900 font-medium">{parameters.parking.guest != null ? `${parameters.parking.guest}/unit` : 'N/A'}</span>
+            <span className="flex items-center gap-1" style={{ color: BT.td }}>
+              Guest: <span className="font-medium" style={{ color: BT.text }}>{parameters.parking.guest != null ? `${parameters.parking.guest}/unit` : 'N/A'}</span>
             </span>
-            <span className="text-gray-500 flex items-center gap-1">
-              Commercial: <span className="text-gray-900 font-medium">{parameters.parking.commercial != null ? `${parameters.parking.commercial}/1000sf` : 'N/A'}</span>
+            <span className="flex items-center gap-1" style={{ color: BT.td }}>
+              Commercial: <span className="font-medium" style={{ color: BT.text }}>{parameters.parking.commercial != null ? `${parameters.parking.commercial}/1000sf` : 'N/A'}</span>
               {parameters.parking.commercial != null && <ViewSourceBadge section="§16-28.015" sourceType="code" onOpenPanel={onOpenSourcePanel} />}
             </span>
-            <span className="text-gray-500 flex items-center gap-1">
-              Bicycle: <span className="text-gray-900 font-medium">{parameters.parking.bicycle != null ? `${parameters.parking.bicycle}/unit` : 'N/A'}</span>
+            <span className="flex items-center gap-1" style={{ color: BT.td }}>
+              Bicycle: <span className="font-medium" style={{ color: BT.text }}>{parameters.parking.bicycle != null ? `${parameters.parking.bicycle}/unit` : 'N/A'}</span>
             </span>
           </div>
         </div>
@@ -579,9 +581,9 @@ function PermittedUsesCard({ uses, onOpenSourcePanel }: { uses: PermittedUse[]; 
   const prohibited = uses.filter(u => u.category === 'prohibited');
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h3 className="text-gray-900 font-semibold text-sm">Permitted Uses</h3>
+    <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgCard }}>
+        <h3 className="font-semibold text-sm" style={{ color: BT.text }}>Permitted Uses</h3>
       </div>
       <div className="p-4">
         <div className="grid grid-cols-3 gap-4">
@@ -590,9 +592,9 @@ function PermittedUsesCard({ uses, onOpenSourcePanel }: { uses: PermittedUse[]; 
             emoji="✅"
             uses={byRight}
             icon={<CheckCircle className="w-3.5 h-3.5 text-green-600" />}
-            textColor="text-green-700"
-            borderColor="border-green-200"
-            bgColor="bg-green-50"
+            textColor="text-green-400"
+            borderColor="border-green-800/50"
+            bgColor="bg-[#022c22]"
           />
           <UseColumn
             title="Conditional"
@@ -601,16 +603,16 @@ function PermittedUsesCard({ uses, onOpenSourcePanel }: { uses: PermittedUse[]; 
             icon={<AlertTriangle className="w-3.5 h-3.5 text-yellow-600" />}
             textColor="text-yellow-700"
             borderColor="border-yellow-200"
-            bgColor="bg-yellow-50"
+            bgColor="bg-[#1a1200]"
           />
           <UseColumn
             title="Prohibited"
             emoji="❌"
             uses={prohibited}
-            icon={<XCircle className="w-3.5 h-3.5 text-red-600" />}
-            textColor="text-red-700"
-            borderColor="border-red-200"
-            bgColor="bg-red-50"
+            icon={<XCircle className="w-3.5 h-3.5 text-red-400" />}
+            textColor="text-red-400"
+            borderColor="border-red-800/50"
+            bgColor="bg-[#1c0a0a]"
           />
         </div>
       </div>
@@ -618,7 +620,7 @@ function PermittedUsesCard({ uses, onOpenSourcePanel }: { uses: PermittedUse[]; 
   );
 }
 
-function UseColumn({ title, emoji, uses, icon, textColor, borderColor, bgColor }: {
+function UseColumn({ title, emoji, uses, icon, textColor, borderColor, bgColor, bgStyle }: {
   title: string;
   emoji: string;
   uses: PermittedUse[];
@@ -626,10 +628,11 @@ function UseColumn({ title, emoji, uses, icon, textColor, borderColor, bgColor }
   textColor: string;
   borderColor: string;
   bgColor: string;
+  bgStyle?: React.CSSProperties;
 }) {
   return (
-    <div className={`${bgColor} border ${borderColor} rounded-lg p-3`}>
-      <div className={`flex items-center gap-1.5 mb-2 ${textColor} font-medium text-xs`}>
+    <div className="border rounded-lg p-3" style={bgStyle}>
+      <div className="flex items-center gap-1.5 mb-2 font-medium text-xs">
         {icon}
         {title} {emoji}
       </div>
@@ -638,7 +641,7 @@ function UseColumn({ title, emoji, uses, icon, textColor, borderColor, bgColor }
       ) : (
         <ul className="space-y-1">
           {uses.map((u, i) => (
-            <li key={i} className="text-xs text-gray-700 flex items-start gap-1">
+            <li key={i} className="text-xs flex items-start gap-1" style={{ color: BT.tm }}>
               <span className="mt-0.5">•</span>
               {u.name}
             </li>
@@ -651,38 +654,38 @@ function UseColumn({ title, emoji, uses, icon, textColor, borderColor, bgColor }
 
 function StrategyAlignmentCard({ alignments }: { alignments: StrategyAlignment[] }) {
   const statusConfig = {
-    compatible: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', label: 'Compatible', icon: '✅' },
-    conditional: { bg: 'bg-yellow-50', text: 'text-yellow-700', border: 'border-yellow-200', label: 'Conditional', icon: '⚠️' },
-    incompatible: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', label: 'Incompatible', icon: '❌' },
+    compatible: { bg: '', text: '', border: '', style: { background: BT.greenBg, color: BT.greenL, border: `1px solid ${BT.green}50` }, label: 'Compatible', icon: '✅' },
+    conditional: { bg: '', text: '', border: '', style: { background: BT.amberBg, color: BT.amberL, border: `1px solid ${BT.amber}50` }, label: 'Conditional', icon: '⚠️' },
+    incompatible: { bg: '', text: '', border: '', style: { background: BT.redBg, color: BT.redL, border: `1px solid ${BT.red}50` }, label: 'Incompatible', icon: '❌' },
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h3 className="text-gray-900 font-semibold text-sm">Strategy Alignment</h3>
+    <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgCard }}>
+        <h3 className="font-semibold text-sm" style={{ color: BT.text }}>Strategy Alignment</h3>
       </div>
       <div className="overflow-hidden">
         <table className="w-full text-xs">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-200">
-              <th className="text-left text-gray-500 font-medium px-4 py-2.5">Strategy</th>
-              <th className="text-left text-gray-500 font-medium px-4 py-2.5">Compatibility</th>
-              <th className="text-left text-gray-500 font-medium px-4 py-2.5">Notes</th>
+            <tr className="border-b" style={{ background: BT.bgCard, borderColor: BT.border }}>
+              <th className="text-left font-medium px-4 py-2.5" style={{ color: BT.td }}>Strategy</th>
+              <th className="text-left font-medium px-4 py-2.5" style={{ color: BT.td }}>Compatibility</th>
+              <th className="text-left font-medium px-4 py-2.5" style={{ color: BT.td }}>Notes</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {alignments.map((a, i) => {
               const config = statusConfig[a.status];
               return (
-                <tr key={i} className="hover:bg-gray-50">
-                  <td className="px-4 py-2.5 text-gray-900 font-medium">{a.strategy}</td>
+                <tr key={i}>
+                  <td className="px-4 py-2.5 font-medium" style={{ color: BT.text }}>{a.strategy}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`inline-flex items-center gap-1 ${config.bg} ${config.text} border ${config.border} px-2 py-0.5 rounded-full`}>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full" style={config.style}>
                       <span>{config.icon}</span>
                       {config.label}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-gray-600">{a.note}</td>
+                  <td className="px-4 py-2.5" style={{ color: BT.tm }}>{a.note}</td>
                 </tr>
               );
             })}
@@ -702,27 +705,27 @@ function VariancePotentialCard({ result, onOpenSourcePanel }: { result: ZoningLo
   const variancePct = (vp.varianceUnits / maxUnits) * 100;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-        <h3 className="text-gray-900 font-semibold text-sm">By-Right vs Variance Potential</h3>
+    <div className="rounded-lg overflow-hidden" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgCard }}>
+        <h3 className="font-semibold text-sm" style={{ color: BT.text }}>By-Right vs Variance Potential</h3>
       </div>
       <div className="p-4">
         <div className="space-y-3 mb-4">
           <div>
             <div className="flex justify-between text-xs mb-1">
-              <span className="text-gray-600">By-Right</span>
-              <span className="text-gray-900 font-medium">{vp.byRightUnits} units</span>
+              <span style={{ color: BT.tm }}>By-Right</span>
+              <span className="font-medium" style={{ color: BT.text }}>{vp.byRightUnits} units</span>
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-3">
+            <div className="w-full rounded-full h-3" style={{ background: BT.bgPanel }}>
               <div className="bg-blue-500 rounded-full h-3 transition-all" style={{ width: `${byRightPct}%` }} />
             </div>
           </div>
           <div>
             <div className="flex justify-between text-xs mb-1">
-              <span className="text-gray-600">With Variance</span>
-              <span className="text-gray-900 font-medium">{vp.varianceUnits} units</span>
+              <span style={{ color: BT.tm }}>With Variance</span>
+              <span className="font-medium" style={{ color: BT.text }}>{vp.varianceUnits} units</span>
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-3">
+            <div className="w-full rounded-full h-3" style={{ background: BT.bgPanel }}>
               <div className="bg-emerald-500 rounded-full h-3 transition-all" style={{ width: `${variancePct}%` }} />
             </div>
           </div>
@@ -732,32 +735,32 @@ function VariancePotentialCard({ result, onOpenSourcePanel }: { result: ZoningLo
         </div>
 
         <div className="grid grid-cols-3 gap-2 mb-4">
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Variance Path</p>
-            <p className="text-xs text-gray-900 font-medium mt-0.5">{vp.variancePath}</p>
+          <div className="rounded-lg p-2.5 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>Variance Path</p>
+            <p className="text-xs font-medium mt-0.5" style={{ color: BT.text }}>{vp.variancePath}</p>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Est. Timeline</p>
-            <p className="text-xs text-gray-900 font-medium mt-0.5">{vp.estTimeline}</p>
+          <div className="rounded-lg p-2.5 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>Est. Timeline</p>
+            <p className="text-xs font-medium mt-0.5" style={{ color: BT.text }}>{vp.estTimeline}</p>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Est. Cost</p>
-            <p className="text-xs text-gray-900 font-medium mt-0.5">{vp.estCost}</p>
+          <div className="rounded-lg p-2.5 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>Est. Cost</p>
+            <p className="text-xs font-medium mt-0.5" style={{ color: BT.text }}>{vp.estCost}</p>
           </div>
         </div>
 
         {vp.successRate != null && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center mb-4">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider">Success Rate</p>
-            <p className="text-xs text-gray-900 font-medium mt-0.5">{vp.successRate}% (local historical)</p>
+          <div className="rounded-lg p-2.5 text-center mb-4" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+            <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>Success Rate</p>
+            <p className="text-xs font-medium mt-0.5" style={{ color: BT.text }}>{vp.successRate}% (local historical)</p>
           </div>
         )}
 
         <div className="flex gap-2">
-          <button className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+          <button className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg" style={{ color: BT.tm, background: BT.bgCard, border: `1px solid ${BT.borderL}` }}>
             <Paperclip className="w-3.5 h-3.5" /> Attach to Deal Capsule
           </button>
-          <button className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+          <button className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg" style={{ color: BT.blueL, background: BT.blueBg, border: `1px solid ${BT.blue}50` }}>
             <BarChart3 className="w-3.5 h-3.5" /> Run Dev Feasibility
           </button>
         </div>
@@ -769,8 +772,8 @@ function VariancePotentialCard({ result, onOpenSourcePanel }: { result: ZoningLo
 function InfoField({ label, value, highlight, className }: { label: string; value: string; highlight?: boolean; className?: string }) {
   return (
     <div className={className}>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className={`text-sm mt-0.5 ${highlight ? 'text-blue-600 font-semibold' : 'text-gray-900'}`}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>{label}</p>
+      <p className={`text-sm mt-0.5 ${highlight ? 'text-blue-600 font-semibold' : ''}`} style={highlight ? undefined : { color: BT.text }}>{value}</p>
     </div>
   );
 }
@@ -785,9 +788,9 @@ function InfoFieldWithSource({ label, value, highlight, className, citation, onO
 }) {
   return (
     <div className={className}>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>{label}</p>
       <div className="flex items-center gap-1.5 mt-0.5">
-        <p className={`text-sm ${highlight ? 'text-blue-600 font-semibold' : 'text-gray-900'}`}>{value}</p>
+        <p className={`text-sm ${highlight ? 'text-blue-600 font-semibold' : ''}`} style={highlight ? undefined : { color: BT.text }}>{value}</p>
         <ViewSourceBadge section={citation.section} sourceType={citation.sourceType} onOpenPanel={onOpenSourcePanel} />
       </div>
     </div>
@@ -796,9 +799,9 @@ function InfoFieldWithSource({ label, value, highlight, className, citation, onO
 
 function ParamBox({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className="text-sm text-gray-900 font-medium mt-0.5">{value}</p>
+    <div className="rounded-lg p-2.5 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>{label}</p>
+      <p className="text-sm font-medium mt-0.5" style={{ color: BT.text }}>{value}</p>
     </div>
   );
 }
@@ -810,9 +813,9 @@ function ParamBoxWithSource({ label, value, citation, onOpenSourcePanel }: {
   onOpenSourcePanel: (data: SourceCitationData) => void;
 }) {
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className="text-sm text-gray-900 font-medium mt-0.5">{value}</p>
+    <div className="rounded-lg p-2.5 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>{label}</p>
+      <p className="text-sm font-medium mt-0.5" style={{ color: BT.text }}>{value}</p>
       <ViewSourceBadge section={citation.section} sourceType={citation.sourceType} onOpenPanel={onOpenSourcePanel} />
     </div>
   );
@@ -820,9 +823,9 @@ function ParamBoxWithSource({ label, value, citation, onOpenSourcePanel }: {
 
 function SetbackBox({ label, value }: { label: string; value: number | null }) {
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded p-2 text-center">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className="text-sm text-gray-900 font-medium">{value != null ? `${value} ft` : 'N/A'}</p>
+    <div className="rounded p-2 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>{label}</p>
+      <p className="text-sm font-medium" style={{ color: BT.text }}>{value != null ? `${value} ft` : 'N/A'}</p>
     </div>
   );
 }
@@ -834,9 +837,9 @@ function SetbackBoxWithSource({ label, value, citation, onOpenSourcePanel }: {
   onOpenSourcePanel: (data: SourceCitationData) => void;
 }) {
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded p-2 text-center">
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</p>
-      <p className="text-sm text-gray-900 font-medium">{value != null ? `${value} ft` : 'N/A'}</p>
+    <div className="rounded p-2 text-center" style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <p className="text-[10px] uppercase tracking-wider" style={{ color: BT.td }}>{label}</p>
+      <p className="text-sm font-medium" style={{ color: BT.text }}>{value != null ? `${value} ft` : 'N/A'}</p>
       {value != null && <ViewSourceBadge section={citation.section} sourceType={citation.sourceType} onOpenPanel={onOpenSourcePanel} />}
     </div>
   );

@@ -1,0 +1,445 @@
+/**
+ * Bloomberg Terminal v0.34 — Shared UI Component Library
+ * Compact, dense terminal-style components used across all Deal Capsule modules.
+ * All colors/tokens sourced from attached_assets Bloomberg v0.34 spec.
+ */
+
+import React from 'react';
+
+// ─── Core v0.34 color tokens ──────────────────────────────────────────────────
+export const BT = {
+  bg: {
+    terminal: '#0A0E17',
+    panel:    '#0F1319',
+    panelAlt: '#131821',
+    header:   '#1A1F2E',
+    hover:    '#1E2538',
+    active:   '#252D40',
+    input:    '#0D1117',
+    topBar:   '#06080E',
+  },
+  text: {
+    primary:   '#E8ECF1',
+    secondary: '#8B95A5',
+    muted:     '#4A5568',
+    white:     '#FFFFFF',
+    amber:     '#F5A623',
+    amberBright: '#FFD166',
+    green:     '#00D26A',
+    red:       '#FF4757',
+    cyan:      '#00BCD4',
+    orange:    '#FF8C42',
+    purple:    '#A78BFA',
+    teal:      '#00E5A0',
+  },
+  border: {
+    subtle: '#1E2538',
+    medium: '#2A3348',
+    bright: '#3B4A6B',
+  },
+  // Platform Metric category colors
+  met: {
+    physTraffic:  '#60a5fa',
+    digTraffic:   '#f59e0b',
+    compTraffic:  '#a855f7',
+    financial:    '#22c55e',
+    occupancy:    '#14b8a6',
+    economic:     '#ec4899',
+    supply:       '#f97316',
+    quality:      '#8b5cf6',
+  },
+  font: {
+    mono:    "'JetBrains Mono','Fira Code','SF Mono',monospace",
+    display: "'IBM Plex Mono',monospace",
+    label:   "'IBM Plex Sans',sans-serif",
+  },
+} as const;
+
+const MONO = BT.font.mono;
+
+// ─── CSS animations injected once ─────────────────────────────────────────────
+export const BT_CSS = `
+  @keyframes bt-glow  { 0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66} }
+  @keyframes bt-glowR { 0%,100%{box-shadow:0 0 4px #FF475744}50%{box-shadow:0 0 10px #FF475766} }
+  @keyframes bt-pulse { 0%,100%{opacity:1}50%{opacity:0.6} }
+  @keyframes bt-fade  { from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)} }
+  @keyframes bt-blink { 0%,49%{opacity:1}50%,100%{opacity:0} }
+`;
+
+// ─── Spark — SVG polyline sparkline ───────────────────────────────────────────
+export function Spark({ data, color = BT.text.green, w = 56, h = 16 }: {
+  data: number[]; color?: string; w?: number; h?: number;
+}) {
+  if (!data || data.length < 2) return null;
+  const mx = Math.max(...data), mn = Math.min(...data), r = mx - mn || 1;
+  const pts = data.map((v, i) =>
+    `${(i / (data.length - 1)) * w},${h - ((v - mn) / r) * (h - 2) + 1}`
+  ).join(' ');
+  return (
+    <svg width={w} height={h} style={{ display: 'block', flexShrink: 0 }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ─── Bd — compact badge ───────────────────────────────────────────────────────
+export function Bd({ children, c, onClick }: {
+  children: React.ReactNode; c: string; onClick?: () => void;
+}) {
+  return (
+    <span
+      onClick={onClick}
+      style={{
+        fontFamily: MONO, fontSize: 8, fontWeight: 700, color: c,
+        background: `${c}18`, border: `1px solid ${c}33`,
+        padding: '1px 5px', letterSpacing: 0.5, textTransform: 'uppercase' as const,
+        whiteSpace: 'nowrap' as const, cursor: onClick ? 'pointer' : 'default',
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+// ─── StageBd — deal stage badge ───────────────────────────────────────────────
+export function StageBd({ stage }: { stage: string }) {
+  const m: Record<string, string> = {
+    DD: BT.text.cyan, LOI: BT.text.amber,
+    PROSPECT: BT.text.secondary, LEAD: BT.text.muted,
+    ACTIVE: BT.text.green, CLOSED: BT.text.purple,
+  };
+  return <Bd c={m[stage] ?? BT.text.muted}>{stage}</Bd>;
+}
+
+// ─── RiskDot — colored dot with optional glow ─────────────────────────────────
+export function RiskDot({ level }: { level: 'HIGH' | 'MED' | 'LOW' | string }) {
+  const c = level === 'HIGH' ? BT.text.red : level === 'MED' ? BT.text.orange : BT.text.green;
+  const anim = level === 'HIGH' ? 'bt-glowR 2s infinite' : level === 'LOW' ? 'bt-glow 2s infinite' : 'none';
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8, fontFamily: MONO, fontWeight: 600, color: c }}>
+      <span style={{ width: 5, height: 5, borderRadius: '50%', background: c, animation: anim }} />
+      {level}
+    </span>
+  );
+}
+
+// ─── MetricTag — platform metric source label ──────────────────────────────────
+export function MetricTag({ label, color }: { label: string; color: string }) {
+  return (
+    <span style={{
+      fontSize: 6, color, background: `${color}12`, padding: '0 3px',
+      borderRadius: 2, whiteSpace: 'nowrap' as const, fontFamily: MONO, fontWeight: 600,
+    }}>
+      {label}
+    </span>
+  );
+}
+
+// ─── PanelHeader ──────────────────────────────────────────────────────────────
+export function PanelHeader({
+  title, subtitle, right, borderColor, metrics,
+}: {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  borderColor?: string;
+  metrics?: Array<{ l: string; c: string }>;
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '6px 10px',
+      background: BT.bg.header,
+      borderBottom: `1px solid ${BT.border.subtle}`,
+      borderTop: borderColor ? `2px solid ${borderColor}` : 'none',
+      flexShrink: 0,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8, fontFamily: MONO }}>{title}</span>
+        {subtitle && <span style={{ fontSize: 8, color: BT.text.secondary, fontFamily: MONO }}>{subtitle}</span>}
+        {metrics && (
+          <div style={{ display: 'flex', gap: 2 }}>
+            {metrics.map((m, i) => <MetricTag key={i} label={m.l} color={m.c} />)}
+          </div>
+        )}
+      </div>
+      {right && <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{right}</div>}
+    </div>
+  );
+}
+
+// ─── SectionPanel ─────────────────────────────────────────────────────────────
+export function SectionPanel({
+  title, subtitle, borderColor, metrics, right, children, style: s,
+}: {
+  title?: string;
+  subtitle?: string;
+  borderColor?: string;
+  metrics?: Array<{ l: string; c: string }>;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div style={{
+      background: BT.bg.panel,
+      border: `1px solid ${BT.border.subtle}`,
+      display: 'flex',
+      flexDirection: 'column' as const,
+      ...s,
+    }}>
+      {title && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '5px 8px',
+          background: BT.bg.header,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+          borderTop: borderColor ? `2px solid ${borderColor}` : 'none',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5, fontFamily: MONO }}>{title}</span>
+            {subtitle && <span style={{ fontSize: 7, color: BT.text.secondary, fontFamily: MONO }}>{subtitle}</span>}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {metrics && metrics.map((m, i) => <MetricTag key={i} label={m.l} color={m.c} />)}
+            {right}
+          </div>
+        </div>
+      )}
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  );
+}
+
+// ─── DataRow ──────────────────────────────────────────────────────────────────
+export function DataRow({
+  label, value, valueColor, sub, border = true, metricColor,
+}: {
+  label: string;
+  value: React.ReactNode;
+  valueColor?: string;
+  sub?: string;
+  border?: boolean;
+  metricColor?: string;
+}) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '4px 8px',
+      borderBottom: border ? `1px solid ${BT.border.subtle}` : 'none',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        {metricColor && <span style={{ width: 3, height: 3, borderRadius: '50%', background: metricColor }} />}
+        <span style={{ fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, fontFamily: MONO }}>{label}</span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: valueColor ?? BT.text.amber, fontFamily: MONO }}>{value}</span>
+        {sub && <span style={{ fontSize: 7, color: BT.text.secondary, fontFamily: MONO }}>{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ─── MiniBar ──────────────────────────────────────────────────────────────────
+export function MiniBar({
+  value, max = 100, color, label, showVal = true,
+}: {
+  value: number; max?: number; color?: string; label?: string; showVal?: boolean;
+}) {
+  const pct = Math.min((value / max) * 100, 100);
+  const bc = color ?? (pct >= 75 ? BT.text.green : pct >= 50 ? BT.text.amber : BT.text.red);
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+      {label && (
+        <span style={{ fontSize: 7, color: BT.text.muted, minWidth: 60, letterSpacing: 0.5, fontFamily: MONO }}>{label}</span>
+      )}
+      <div style={{ flex: 1, height: 4, background: BT.bg.terminal, borderRadius: 1 }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: bc, borderRadius: 1 }} />
+      </div>
+      {showVal && (
+        <span style={{ fontSize: 8, fontWeight: 700, color: bc, minWidth: 20, textAlign: 'right' as const, fontFamily: MONO }}>{value}</span>
+      )}
+    </div>
+  );
+}
+
+// ─── SubTabBar ────────────────────────────────────────────────────────────────
+export function SubTabBar({
+  tabs, active, setActive, color,
+}: {
+  tabs: string[];
+  active: number;
+  setActive: (i: number) => void;
+  color?: string;
+}) {
+  const ac = color ?? BT.text.amber;
+  return (
+    <div style={{
+      display: 'flex',
+      background: BT.bg.header,
+      borderBottom: `1px solid ${BT.border.medium}`,
+      flexShrink: 0,
+      overflowX: 'auto' as const,
+    }}>
+      {tabs.map((tab, i) => (
+        <button
+          key={i}
+          onClick={() => setActive(i)}
+          style={{
+            fontFamily: MONO, fontSize: 8, fontWeight: active === i ? 700 : 500,
+            padding: '5px 12px',
+            background: 'transparent',
+            border: 'none',
+            borderBottom: active === i ? `2px solid ${ac}` : '2px solid transparent',
+            color: active === i ? ac : BT.text.secondary,
+            cursor: 'pointer',
+            whiteSpace: 'nowrap' as const,
+            letterSpacing: 0.5,
+            transition: 'color 0.1s',
+          }}
+        >
+          {tab}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── VerifiedLink ─────────────────────────────────────────────────────────────
+export function VerifiedLink({ source }: { source: string }) {
+  return (
+    <span style={{
+      fontSize: 7, color: BT.text.teal, cursor: 'pointer',
+      textDecoration: 'underline', textDecorationStyle: 'dotted' as const,
+      fontFamily: MONO,
+    }}>
+      {source} ✓
+    </span>
+  );
+}
+
+// ─── AlertBanner — colored left-border alert strip ────────────────────────────
+export function AlertBanner({
+  label, text, color, badge,
+}: {
+  label: string; text: string; color: string; badge?: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      padding: '5px 10px',
+      background: `${color}08`,
+      borderLeft: `3px solid ${color}`,
+      display: 'flex', alignItems: 'center', gap: 8,
+      flexShrink: 0,
+    }}>
+      <span style={{ fontSize: 9, color, fontWeight: 700, fontFamily: MONO, whiteSpace: 'nowrap' as const }}>
+        {label}:
+      </span>
+      <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO, flex: 1 }}>{text}</span>
+      {badge}
+    </div>
+  );
+}
+
+// ─── ModuleShell — full module wrapper with PanelHeader ───────────────────────
+export function ModuleShell({
+  title, subtitle, borderColor, metrics, right, children,
+}: {
+  title: string;
+  subtitle?: string;
+  borderColor?: string;
+  metrics?: Array<{ l: string; c: string }>;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column' as const,
+      height: '100%', background: BT.bg.terminal, overflow: 'hidden',
+      animation: 'bt-fade 0.15s',
+    }}>
+      <style>{BT_CSS}</style>
+      <PanelHeader title={title} subtitle={subtitle} borderColor={borderColor} metrics={metrics} right={right} />
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─── KpiTile — metric tile with category top border and sparkline ─────────────
+export function KpiTile({
+  label, value, sub, color, spark,
+}: {
+  label: string; value: string; sub?: string; color?: string; spark?: number[];
+}) {
+  const c = color ?? BT.text.amber;
+  return (
+    <div style={{
+      background: BT.bg.panel,
+      borderTop: `2px solid ${c}`,
+      padding: '6px 8px',
+      display: 'flex', flexDirection: 'column' as const, gap: 2,
+    }}>
+      <div style={{ fontSize: 7, color: BT.text.muted, letterSpacing: 0.8, fontFamily: MONO }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 800, color: c, fontFamily: MONO }}>{value}</div>
+      {sub && <div style={{ fontSize: 7, color: BT.text.secondary, fontFamily: MONO }}>{sub}</div>}
+      {spark && <Spark data={spark} color={c} w={80} h={12} />}
+    </div>
+  );
+}
+
+// ─── TableHeader — compact table column headers ───────────────────────────────
+export function TableHeader({ cols }: { cols: Array<{ label: string; color?: string; flex?: number | string }> }) {
+  return (
+    <div style={{ display: 'flex', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
+      {cols.map((c, i) => (
+        <div key={i} style={{
+          padding: '4px 8px',
+          fontSize: 7, fontWeight: 700,
+          color: c.color ?? BT.text.muted,
+          letterSpacing: 0.8, fontFamily: MONO,
+          flex: c.flex ?? 1,
+          borderRight: `1px solid ${BT.border.subtle}`,
+        }}>
+          {c.label}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── TableRow — alternating-bg table row ──────────────────────────────────────
+export function TableRow({
+  cells, index, onClick,
+}: {
+  cells: Array<{ value: React.ReactNode; color?: string; flex?: number | string; weight?: number }>;
+  index: number;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex',
+        background: index % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        cursor: onClick ? 'pointer' : 'default',
+      }}
+    >
+      {cells.map((c, i) => (
+        <div key={i} style={{
+          padding: '4px 8px',
+          fontSize: 8, fontWeight: c.weight ?? 500,
+          color: c.color ?? BT.text.secondary,
+          fontFamily: MONO, flex: c.flex ?? 1,
+          borderRight: `1px solid ${BT.border.subtle}`,
+          display: 'flex', alignItems: 'center',
+        }}>
+          {c.value}
+        </div>
+      ))}
+    </div>
+  );
+}
