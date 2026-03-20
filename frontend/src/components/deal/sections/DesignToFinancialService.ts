@@ -52,7 +52,9 @@ class DesignToFinancialService {
     const yieldOnCost = totalDevelopmentCost > 0 ? (netOperatingIncome / totalDevelopmentCost) * 100 : 0;
     const costPerUnit = inputs.totalUnits > 0 ? totalDevelopmentCost / inputs.totalUnits : 0;
     const capRate = 5.5;
-    const irr = 15;
+    // NOTE: IRR calculation from 3D design is limited. Full IRR calculation requires capital structure (debt service).
+    // This service returns a placeholder; real IRR comes from ProForma module via API call.
+    const irr = 0;
     const equityMultiple = 2.0;
 
     return {
