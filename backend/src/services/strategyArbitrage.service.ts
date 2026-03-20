@@ -41,16 +41,50 @@ function extractDealSignals(deal: any): Record<string, number> {
   const data = deal.deal_data || {};
   const scores = deal.scores || data.scores || {};
 
+  // ── Platform-computed metrics (preferred over deal.scores fallbacks) ──
+  // demand_strength_score / demand_score from deal_market_data (0-100)
+  const platformDemand: number | null =
+    deal.platform_demand_strength ?? deal.platform_demand_score ?? null;
+
+  // supply_balance_score from market_research_metrics (0-100; high = well-balanced)
+  // Invert to supply_pressure: high supply balance → low pressure → 0
+  const platformSupplyBalance: number | null = deal.platform_supply_balance ?? null;
+  const platformSupplyPressure: number | null =
+    platformSupplyBalance != null ? 1 - Math.min(1, platformSupplyBalance / 100) : null;
+
+  // rent_growth_trailing_12mo from deal_market_data (percent, e.g. 3.5 = 3.5%)
+  // Normalize: 0% → 0, 10% → 1.0
+  const platformRentGrowth: number | null =
+    deal.platform_rent_growth != null
+      ? Math.min(1, Math.max(0, Number(deal.platform_rent_growth) / 10))
+      : null;
+
+  // overall_opportunity_score from market_research_metrics (0-100)
+  const platformOpportunity: number | null =
+    deal.platform_opportunity_score != null
+      ? Math.min(1, Number(deal.platform_opportunity_score) / 100)
+      : null;
+
   return {
-    supply_pressure: Math.min(1, (scores.supply ?? 0) / 100),
-    demand_growth: Math.min(1, (scores.demand ?? 0) / 100),
-    rent_momentum: Math.min(1, (scores.momentum ?? 0) / 100),
-    job_growth: Math.min(1, (scores.demand ?? 0) / 100),
-    cap_rate_spread: Math.min(1, (scores.position ?? 0) / 100),
+    supply_pressure:
+      platformSupplyPressure ?? Math.min(1, (scores.supply ?? 0) / 100),
+    demand_growth:
+      platformDemand != null
+        ? Math.min(1, platformDemand / 100)
+        : Math.min(1, (scores.demand ?? 0) / 100),
+    rent_momentum:
+      platformRentGrowth ?? Math.min(1, (scores.momentum ?? 0) / 100),
+    job_growth:
+      platformDemand != null
+        ? Math.min(1, platformDemand / 100)
+        : Math.min(1, (scores.demand ?? 0) / 100),
+    cap_rate_spread:
+      platformOpportunity ?? Math.min(1, (scores.position ?? 0) / 100),
     irr_potential: Math.min(1, (deal.irr_pct ?? 0) / 30),
     risk_score: Math.min(1, (scores.risk ?? 0) / 100),
     regulatory_risk: Math.min(1, (scores.risk ?? 50) / 100),
-    market_volatility: Math.min(1, (scores.supply ?? 50) / 100),
+    market_volatility:
+      platformSupplyPressure ?? Math.min(1, (scores.supply ?? 50) / 100),
     project_type: deal.project_type || 'existing',
   };
 }
@@ -194,9 +228,20 @@ export async function scoreAndPersist(dealId: string): Promise<StrategyScore[]> 
 
     const [dealRes, strategiesRes] = await Promise.all([
       pool.query(
-        `SELECT d.*, ds.irr_pct, ds.coc_year_5, ds.npv
+        `SELECT d.*,
+                ds.irr_pct, ds.coc_year_5, ds.npv,
+                dmd.demand_score           AS platform_demand_score,
+                dmd.rent_growth_trailing_12mo AS platform_rent_growth,
+                dmd.rent_growth_forecast_12mo AS platform_rent_growth_forecast,
+                dmd.submarket_occupancy    AS platform_occupancy,
+                dmd.pipeline_units         AS platform_pipeline_units,
+                mrm.demand_strength_score  AS platform_demand_strength,
+                mrm.supply_balance_score   AS platform_supply_balance,
+                mrm.overall_opportunity_score AS platform_opportunity_score
          FROM deals d
          LEFT JOIN deal_scenarios ds ON ds.deal_id = d.id
+         LEFT JOIN deal_market_data dmd ON dmd.deal_id = d.id
+         LEFT JOIN market_research_metrics mrm ON mrm.deal_id = d.id
          WHERE d.id = $1 LIMIT 1`,
         [dealId]
       ),
