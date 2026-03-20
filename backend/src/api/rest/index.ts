@@ -91,6 +91,8 @@ import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
 import { createCapsuleRoutes } from './capsule.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
+import { createUnitMixRoutes } from './unitMix.routes';
+import dealCompSetsRoutes from './deal-comp-sets.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -272,6 +274,9 @@ export function setupRESTRoutes(app: Application): void {
   // Competition Analysis routes (Development deal competitive analysis)
   app.use(`${API_PREFIX}/deals`, competitionRoutes);
 
+  // Deal Comp Sets routes (Tiered comp discovery & management)
+  app.use(`${API_PREFIX}/deals`, dealCompSetsRoutes);
+
   // Deal Market Intelligence routes
   app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
 
@@ -343,6 +348,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Design Assistant routes (LLM-powered design modifications)
   app.use(`${API_PREFIX}/design-assistant`, designAssistantRoutes);
+
+  // Unit Mix Intelligence routes (Unit type composition analysis + comp set discovery)
+  const { getPool: getUnitMixPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/unit-mix`, createUnitMixRoutes(getUnitMixPool()));
 
   // M28 Cycle Intelligence routes (Investment cycle timing analysis)
   app.use(`${API_PREFIX}/cycle-intelligence`, m28CycleIntelligenceRoutes);

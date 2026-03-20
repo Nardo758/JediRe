@@ -150,6 +150,8 @@ export const api = {
     getCapitalStructure: (dealId: string) => apiClient.get(`/api/v1/capital-structure/${dealId}`),
     updateCapitalStructure: (dealId: string, data: any) =>
       apiClient.patch(`/api/v1/capital-structure/${dealId}`, data),
+    calculateCapitalStack: (data: any) =>
+      apiClient.post(`/api/v1/capital-structure/stack`, data),
   },
 
   // Demand Intelligence (M05, M06)
@@ -211,10 +213,14 @@ export const api = {
       apiClient.get(`/api/v1/traffic-data/context/${propertyId}`),
     getTrafficData: (dealId: string) => apiClient.get(`/api/v1/traffic-data/${dealId}`),
     getTrafficComps: (dealId: string) => apiClient.get(`/api/v1/traffic-comps/${dealId}`),
+    getCompTrafficAverages: (dealId: string) =>
+      apiClient.get(`/api/v1/traffic-comps/${dealId}/averages`),
     compareTraffic: (dealIds: string[]) =>
       apiClient.post(`/api/v1/traffic-comps/compare`, { deal_ids: dealIds }),
     getTrafficForecast: (dealId: string, months?: number) =>
       apiClient.get(`/api/v1/traffic-comps/${dealId}/forecast`, { params: { months } }),
+    getCompTrafficBaseline: (dealId: string) =>
+      apiClient.get(`/api/v1/traffic-comps/${dealId}/baseline`),
   },
 
   // Market Correlations
@@ -268,6 +274,14 @@ export const api = {
       apiClient.post(`/api/v1/zoning-comparator/compare`, { jurisdictions }),
   },
 
+  // Entitlements & Benchmarking
+  entitlements: {
+    getEntitlementsByDeal: (dealId: string) =>
+      apiClient.get(`/api/v1/entitlements/deal/${dealId}`),
+    getBenchmarkTimeline: (county: string, state: string) =>
+      apiClient.get(`/api/v1/benchmark-timeline/benchmarks`, { params: { county, state } }),
+  },
+
   // Scenario Generation
   scenarios: {
     generateScenarios: (dealId: string, options?: any) =>
@@ -311,6 +325,22 @@ export const api = {
     updateTradeArea: (id: string, data: any) => apiClient.patch(`/api/v1/trade-areas/${id}`, data),
     deleteTradeArea: (id: string) => apiClient.delete(`/api/v1/trade-areas/${id}`),
     getTradeAreaMetrics: (id: string) => apiClient.get(`/api/v1/trade-areas/${id}/metrics`),
+  },
+
+  // Comp Discovery & Management (M15)
+  compDiscovery: {
+    discoverTieredComps: (dealId: string, radiusMiles?: number) =>
+      apiClient.get(`/api/v1/deals/${dealId}/comp-set/discover-tiered`, { params: { radiusMiles } }),
+    getCompSet: (dealId: string) =>
+      apiClient.get(`/api/v1/deals/${dealId}/comp-set`),
+    discoverComps: (dealId: string, options?: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set/discover`, options),
+    addCompToSet: (dealId: string, comp: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set/add-to-set`, comp),
+    addCompPropertyToSet: (dealId: string, data: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set`, data),
+    removeCompFromSet: (dealId: string, compAddress: string) =>
+      apiClient.post(`/api/v1/deals/${dealId}/comp-set/remove`, { comp_property_address: compAddress }),
   },
 
   // Module Management

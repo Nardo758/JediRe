@@ -121,7 +121,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const loadEntitlements = async () => {
     if (!deal?.id) return;
     try {
-      const res = await apiClient.get(`/api/v1/entitlements/deal/${deal.id}`);
+      const res = await apiClient.entitlements.getEntitlementsByDeal(deal.id);
       if (res.data?.data && Array.isArray(res.data.data)) {
         setEntitlements(res.data.data);
       } else if (Array.isArray(res.data)) {
@@ -139,7 +139,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
     if (!totalCost) return;
     try {
-      const res = await apiClient.post(`/api/v1/capital-structure/stack`, {
+      const res = await apiClient.proforma.calculateCapitalStack({
         dealId: deal.id,
         strategy,
         layers: [
@@ -173,9 +173,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const state = deal?.state || deal?.tradeArea?.state || '';
     if (!county || !state) return;
     try {
-      const res = await apiClient.get(`/api/v1/benchmark-timeline/benchmarks`, {
-        params: { county, state },
-      });
+      const res = await apiClient.entitlements.getBenchmarkTimeline(county, state);
       const summaries = res.data?.summaries || [];
       if (summaries.length > 0) {
         const primary = summaries[0];
@@ -198,7 +196,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     if (!deal?.id) return;
     setScoreLoading(true);
     try {
-      const response = await apiClient.get(`/api/v1/jedi/score/${deal.id}`);
+      const response = await apiClient.jedi.getScore(deal.id);
       const scoreData = response.data?.data;
       if (scoreData?.score) {
         const s = scoreData.score;
@@ -824,12 +822,12 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>MODULE ACCESS</div>
           {[
             { key: 'F2', label: 'PROPERTY & ZONING', hint: 'Parcels · Entitlement · Setbacks', tab: 'zoning' },
-            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market-intelligence' },
+            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market' },
             { key: 'F4', label: 'SUPPLY PIPELINE', hint: 'Pipeline · Threat level · Capacity', tab: 'supply' },
-            { key: 'F6', label: 'PRO FORMA', hint: '3-layer NOI model · Sensitivity', tab: 'proforma' },
-            { key: 'F7', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'debt' },
-            { key: 'F8', label: 'RISK ASSESSMENT', hint: 'Monte Carlo · Insurance · Supply', tab: 'risk-management' },
-            { key: 'F9', label: 'SALE COMPS', hint: 'Transaction intelligence', tab: 'comps' },
+            { key: 'F6', label: 'STRATEGY & DESIGN', hint: '4-strategy arbitrage · 3D massing', tab: 'strategy' },
+            { key: 'F8', label: 'PRO FORMA', hint: '3-layer NOI model · Sensitivity', tab: 'proforma' },
+            { key: 'F9', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'capital' },
+            { key: 'F10', label: 'RISK & DUE DILIGENCE', hint: 'Monte Carlo · Insurance · DD checklist', tab: 'risk' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } satisfies React.CSSProperties}>
@@ -1110,11 +1108,11 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         )}
       </div>
 
-      <SectionHead 
-        title="Building Configuration" 
+      <SectionHead
+        title="Building Configuration"
         right={
-          <button 
-            onClick={() => navigateToTab('3d-design')} 
+          <button
+            onClick={() => navigateToTab('strategy')}
             className="text-[10px] text-violet-600 hover:text-violet-700 font-medium"
           >
             Edit in 3D Design →
