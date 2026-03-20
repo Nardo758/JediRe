@@ -47,12 +47,46 @@ import {
 // Store actions interface
 // ---------------------------------------------------------------------------
 
+// ─── M08 Strategy Score types ─────────────────────────────────────────────
+
+export interface M08StrategyScore {
+  strategy_id: string;
+  strategy_name: string;
+  overall_score: number;
+  sub_scores: Record<string, number>;
+  gate_result: 'PASS' | 'FAIL' | 'N/A';
+  gate_failures: string[];
+  soft_penalty: number;
+  confidence: number;
+  is_system_template?: boolean;
+  sort_order?: number;
+}
+
+export interface M08ArbitrageResult {
+  winning_strategy_id: string | null;
+  winning_strategy_name: string | null;
+  runner_up_strategy_id: string | null;
+  runner_up_strategy_name: string | null;
+  winning_score: number;
+  runner_up_score: number;
+  delta: number;
+  arbitrage_detected: boolean;
+}
+
 interface DealStoreActions {
   // ─── DEAL LIST (Dashboard) ────────────────────────────────
   deals: any[];
   isLoading: boolean;
   error: string | null;
   fetchDeals: () => Promise<void>;
+
+  // ─── M08 STRATEGY ARBITRAGE ───────────────────────────────
+  strategyScores: M08StrategyScore[];
+  arbitrageResult: M08ArbitrageResult | null;
+  strategyScoresLoading: boolean;
+  fetchStrategyScores: (dealId: string) => Promise<void>;
+  recalculateStrategyScores: (dealId: string) => Promise<void>;
+  fetchArbitrage: (dealId: string) => Promise<void>;
 
   // ─── LIFECYCLE ────────────────────────────────────────────
   /** Create a new deal */
@@ -404,6 +438,45 @@ export const useDealStore = create<DealStore>()(
       } catch (error: any) {
         console.error('[dealStore] Failed to fetch deals:', error);
         set({ error: error.message, isLoading: false });
+      }
+    },
+
+    // ─── M08 STRATEGY ARBITRAGE ───────────────────────────────
+    strategyScores: [] as M08StrategyScore[],
+    arbitrageResult: null as M08ArbitrageResult | null,
+    strategyScoresLoading: false,
+
+    fetchStrategyScores: async (dealId: string) => {
+      set({ strategyScoresLoading: true });
+      try {
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/strategy-scores`);
+        const scores: M08StrategyScore[] = res.data?.data ?? res.data ?? [];
+        set({ strategyScores: scores, strategyScoresLoading: false });
+      } catch (err) {
+        console.error('[dealStore] fetchStrategyScores failed:', err);
+        set({ strategyScoresLoading: false });
+      }
+    },
+
+    recalculateStrategyScores: async (dealId: string) => {
+      set({ strategyScoresLoading: true });
+      try {
+        const res = await apiClient.post(`/api/v1/deals/${dealId}/strategy-scores/recalculate`);
+        const scores: M08StrategyScore[] = res.data?.data ?? res.data ?? [];
+        set({ strategyScores: scores, strategyScoresLoading: false });
+      } catch (err) {
+        console.error('[dealStore] recalculateStrategyScores failed:', err);
+        set({ strategyScoresLoading: false });
+      }
+    },
+
+    fetchArbitrage: async (dealId: string) => {
+      try {
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/arbitrage`);
+        const result: M08ArbitrageResult = res.data?.data ?? res.data ?? null;
+        set({ arbitrageResult: result });
+      } catch (err) {
+        console.error('[dealStore] fetchArbitrage failed:', err);
       }
     },
 
@@ -990,7 +1063,7 @@ export const useDevCapacity = () =>
     updateZoningOutput: s.updateZoningOutput,
   }));
 
-/** M08 Strategy Arbitrage — reads scores, unit mix, zoning */
+/** M08 Strategy Arbitrage — reads scores, unit mix, zoning + live M08 slices */
 export const useStrategyArbitrage = () =>
   useDealStore((s) => ({
     strategy: s.strategy,
@@ -1004,6 +1077,13 @@ export const useStrategyArbitrage = () =>
     isDevelopment: s.isDevelopment(),
     projectType: s.projectType,
     productType: s.productType,
+    // M08 live slices
+    strategyScores: s.strategyScores,
+    arbitrageResult: s.arbitrageResult,
+    strategyScoresLoading: s.strategyScoresLoading,
+    fetchStrategyScores: s.fetchStrategyScores,
+    recalculateStrategyScores: s.recalculateStrategyScores,
+    fetchArbitrage: s.fetchArbitrage,
   }));
 
 /** M09 ProForma — reads unit mix, assumptions, capital */
