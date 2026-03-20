@@ -228,7 +228,7 @@ interface CustomStrategy {
 export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
   const { mode, isPipeline, isOwned } = useDealMode(deal);
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
-  const [activeTab, setActiveTab] = useState<StrategyTab>('overview');
+  const [activeTab, setActiveTab] = useState<StrategyTab>('signals');
   const [customStrategies, setCustomStrategies] = useState<CustomStrategy[]>([]);
   const [customLoading, setCustomLoading] = useState(false);
   const [scoreDealResult, setScoreDealResult] = useState<any[]>([]);
@@ -1446,22 +1446,31 @@ const M08ArbitrageBanner: React.FC<{ arbitrage: M08ArbitrageResult; scores?: M08
   );
 };
 
-/** M08 Score Matrix — live N-column strategy grid */
+/** Derive the canonical top-5 signal keys across all strategies */
+function top5Signals(scores: M08StrategyScore[]): string[] {
+  const allKeys = new Set<string>();
+  scores.forEach(s => Object.keys(s.sub_scores ?? {}).forEach(k => allKeys.add(k)));
+  const ranked = [...allKeys]
+    .map(k => ({ k, avg: scores.reduce((sum, s) => sum + (s.sub_scores?.[k] ?? 0), 0) / scores.length }))
+    .sort((a, b) => b.avg - a.avg);
+  return ranked.slice(0, 5).map(r => r.k);
+}
+
 const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () => void }> = ({ scores, onRecalculate }) => {
   const [gatedExpanded, setGatedExpanded] = useState(false);
 
   const allSorted = [...scores].sort((a, b) => b.overall_score - a.overall_score);
-  // Main matrix: only strategies that passed (or failed) gates — not N/A (gated/excluded)
-  const passedScores = allSorted.filter(s => s.gate_result !== 'N/A');
+  const winner = allSorted.find(s => s.gate_result === 'PASS') ?? allSorted[0];
   const gatedScores = allSorted.filter(s => s.gate_result === 'N/A');
-  const winner = passedScores[0];
-
-  const scoreColor = (s: number) =>
-    s >= 75 ? '#00D26A' : s >= 50 ? '#F5A623' : '#FF4757';
 
   const STRATEGY_COLORS: Record<number, string> = {
     0: '#A78BFA', 1: '#00BCD4', 2: '#00D26A', 3: '#F5A623', 4: '#FF8C42',
   };
+  const scoreColor = (s: number) =>
+    s >= 75 ? '#00D26A' : s >= 50 ? '#F5A623' : '#FF4757';
+
+  const signalKeys = top5Signals(allSorted);
+  const signalLabel = (k: string) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
   if (!scores || scores.length === 0) {
     return (
@@ -1493,73 +1502,104 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
         </div>
       </div>
       <p className="text-xs text-[#6b7f94] mb-4">
-        Each strategy scored against JEDI market intelligence signals with strategy-specific weights
+        N-column comparison: rows = score / gate / 5 signals / confidence; columns = strategies ranked by score
       </p>
 
-      {/* Main matrix — passed/failed strategies only (N/A gated excluded) */}
-      {passedScores.length > 0 ? (
-        <div className={`grid gap-4 ${passedScores.length <= 2 ? 'grid-cols-2' : passedScores.length === 3 ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
-          {passedScores.map((s, idx) => {
-            const color = STRATEGY_COLORS[idx] ?? '#8B95A5';
-            const isWinner = winner && s.strategy_id === winner.strategy_id;
-            return (
-              <div
-                key={s.strategy_id}
-                className="rounded-xl p-4 relative"
-                style={{
-                  background: '#0a1628',
-                  border: `2px solid ${isWinner ? color : '#1e2a3d'}`,
-                }}
-              >
-                {isWinner && (
-                  <div className="absolute -top-2 left-3 text-white text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wider"
-                    style={{ background: '#F5A623' }}>
-                    RECOMMENDED
-                  </div>
-                )}
-                <div className="text-3xl font-bold mb-1 font-mono" style={{ color: scoreColor(s.overall_score) }}>
-                  {s.overall_score.toFixed(0)}
-                </div>
-                <div className="text-xs font-semibold text-[#E8ECF1] mb-2 leading-tight">{s.strategy_name}</div>
-
-                {/* Gate badge */}
-                <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold mb-3 border ${
-                  s.gate_result === 'PASS'
-                    ? 'bg-emerald-900/20 text-emerald-300 border-emerald-400/30'
-                    : 'bg-red-900/20 text-red-400 border-red-400/30'
-                }`}>
-                  <span>{s.gate_result === 'PASS' ? '✓' : '✗'}</span>
-                  <span>GATE: {s.gate_result}</span>
-                </div>
-
-                {/* Sub-scores bar */}
-                <div className="space-y-1 mt-1">
-                  {Object.entries(s.sub_scores ?? {}).slice(0, 3).map(([key, val]) => (
-                    <div key={key} className="flex items-center gap-1.5">
-                      <div className="text-[9px] text-[#5a6a7a] w-16 truncate">{key.replace(/_/g, ' ')}</div>
-                      <div className="flex-1 bg-[#1e2a3d] rounded-full h-1">
-                        <div className="h-1 rounded-full" style={{ width: `${Math.min(val, 100)}%`, background: color }} />
-                      </div>
-                      <div className="text-[9px] font-mono text-[#8B95A5] w-7 text-right">{val.toFixed(0)}</div>
+      {/* True N-column matrix table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs border-collapse">
+          <thead>
+            <tr className="border-b-2 border-[#1e2a3d]">
+              <th className="text-left py-2 px-3 font-mono text-[#5a6a7a] w-28">METRIC</th>
+              {allSorted.map((s, idx) => {
+                const isWin = winner && s.strategy_id === winner.strategy_id;
+                const col = STRATEGY_COLORS[idx] ?? '#8B95A5';
+                return (
+                  <th key={s.strategy_id} className="py-2 px-3 text-center">
+                    <div className="flex flex-col items-center gap-1">
+                      {isWin && (
+                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full tracking-wider"
+                          style={{ background: '#F5A623', color: '#0A0E17' }}>
+                          ★ TOP
+                        </span>
+                      )}
+                      <span className="font-semibold" style={{ color: col }}>
+                        {s.strategy_name.length > 14 ? s.strategy_name.slice(0, 14) + '…' : s.strategy_name}
+                      </span>
                     </div>
-                  ))}
-                </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Overall Score row */}
+            <tr className="border-b border-[#1e2a3d] bg-[#0a1628]/50">
+              <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">OVERALL</td>
+              {allSorted.map(s => (
+                <td key={s.strategy_id} className="py-2 px-3 text-center">
+                  <span className="text-lg font-bold font-mono" style={{ color: scoreColor(s.overall_score) }}>
+                    {s.overall_score.toFixed(0)}
+                  </span>
+                </td>
+              ))}
+            </tr>
 
-                {/* Confidence */}
-                {s.confidence !== undefined && (
-                  <div className="mt-2 text-[9px] text-[#5a6a7a] font-mono">
-                    CONF: <span className="text-[#8B95A5]">{s.confidence.toFixed(0)}%</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-xs text-[#6b7f94] text-center py-6 border border-[#1e2a3d] rounded-lg">
-          No strategies passed gate checks — see Gated Strategies below.
-        </div>
-      )}
+            {/* Gate row */}
+            <tr className="border-b border-[#1e2a3d]">
+              <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">GATE</td>
+              {allSorted.map(s => (
+                <td key={s.strategy_id} className="py-2 px-3 text-center">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-bold border ${
+                    s.gate_result === 'PASS'
+                      ? 'bg-emerald-900/20 text-emerald-300 border-emerald-400/30'
+                      : s.gate_result === 'FAIL'
+                        ? 'bg-red-900/20 text-red-400 border-red-400/30'
+                        : 'bg-[#1e2a3d] text-[#5a6a7a] border-[#2a3a4d]'
+                  }`}>
+                    {s.gate_result}
+                  </span>
+                </td>
+              ))}
+            </tr>
+
+            {/* 5 signal rows */}
+            {signalKeys.map((key, i) => (
+              <tr key={key} className={`border-b border-[#1a2a3a] ${i % 2 === 0 ? '' : 'bg-[#0a1628]/30'}`}>
+                <td className="py-1.5 px-3 font-medium text-[#8B95A5] text-[10px] max-w-[7rem] truncate" title={signalLabel(key)}>
+                  {signalLabel(key)}
+                </td>
+                {allSorted.map((s, idx) => {
+                  const val = s.sub_scores?.[key] ?? 0;
+                  const col = STRATEGY_COLORS[idx] ?? '#A78BFA';
+                  return (
+                    <td key={s.strategy_id} className="py-1.5 px-3 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="font-mono font-semibold text-[11px]" style={{ color: col }}>
+                          {val.toFixed(0)}
+                        </span>
+                        <div className="w-10 bg-[#1e2a3d] rounded-full h-0.5">
+                          <div className="h-0.5 rounded-full" style={{ width: `${Math.min(val, 100)}%`, background: col }} />
+                        </div>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+
+            {/* Confidence row */}
+            <tr className="border-t-2 border-[#2a3a4d]">
+              <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">CONF %</td>
+              {allSorted.map(s => (
+                <td key={s.strategy_id} className="py-2 px-3 text-center font-mono text-[11px] text-[#8B95A5]">
+                  {s.confidence != null ? `${s.confidence.toFixed(0)}%` : '—'}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       {/* Gated strategies — collapsed section below main matrix */}
       {gatedScores.length > 0 && (
@@ -1609,14 +1649,15 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
     return { bg: 'rgba(255, 71, 87, 0.10)', text: '#FF4757' };
   };
 
-  const signalKeys = scores[0] ? Object.keys(scores[0].sub_scores ?? {}) : [];
+  // Enforce exactly 5 signal rows using the canonical top-5 across all strategies
+  const signalKeys = top5Signals(scores);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-bold text-[#e8e9ea] tracking-wide">SIGNAL HEATMAP</h3>
         <span className="text-[10px] font-mono text-[#5a6a7a] tracking-widest">
-          {signalKeys.length} SIGNALS × {scores.length} STRATEGIES
+          5 SIGNALS × {scores.length} STRATEGIES
         </span>
       </div>
       <p className="text-xs text-[#6b7f94] mb-4">
@@ -1755,10 +1796,10 @@ const ROIComparison: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => 
               <YAxis tick={{ fill: '#8B95A5', fontSize: 9, fontFamily: 'monospace' }} axisLine={false} tickLine={false} />
               <Tooltip
                 contentStyle={{ background: '#0d1f35', border: '1px solid #1e2a3d', borderRadius: 6, color: '#E8ECF1', fontSize: 10 }}
-                formatter={(val: number, _: any, props: any) => {
-                  const d = props.payload;
+                formatter={(val: number, _name: string, item: { payload: { hasData: boolean; unit: string; label: string } }) => {
+                  const d = item.payload;
                   return d.hasData
-                    ? [`${val.toFixed(1)}${d.unit}`, d.label]
+                    ? [`${(val as number).toFixed(1)}${d.unit}`, d.label]
                     : ['— (no data)', d.label];
                 }}
               />
