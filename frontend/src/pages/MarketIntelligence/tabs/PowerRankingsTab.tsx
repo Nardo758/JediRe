@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../../api/client';
 import { useTabTheme } from '../../../hooks/useTabTheme';
+import { PropertyCardPanel, type PropertyCardData } from '../../../components/property/PropertyCardPanel';
 
 interface PowerRankingsTabProps {
   marketId: string;
@@ -66,6 +67,7 @@ function matchesSize(units: number, filter: string): boolean {
 const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
   const T = useTabTheme();
   const navigate = useNavigate();
+  const [selectedProperty, setSelectedProperty] = useState<PropertyCardData | null>(null);
 
   const pcsColor = (score: number): string => {
     if (score >= 85) return T.green;
@@ -192,6 +194,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
   };
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 12px', background: T.bg, minHeight: '100%' }}>
 
       {/* ── SECTION 1: FILTER BAR ── */}
@@ -339,9 +342,18 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                                 <button
                                   onClick={e => {
                                     e.stopPropagation();
-                                    const propertyId = `P-${marketId.toUpperCase()}-${String(property.id).padStart(5, '0')}`;
-                                    navigate(`/market-intelligence/property/${propertyId}`, {
-                                      state: { from: 'Power Rankings', propertyRow: { id: property.id, property: property.name, address: property.address || '', submarket: property.submarket, units: property.units, year: property.yearBuilt, class: property.class, owner: property.owner || '', jedi: property.pcsScore } }
+                                    setSelectedProperty({
+                                      id: property.id,
+                                      name: property.name,
+                                      address: property.address,
+                                      submarket: property.submarket,
+                                      units: property.units,
+                                      yearBuilt: property.yearBuilt,
+                                      class: property.class,
+                                      owner: property.owner,
+                                      jediScore: property.pcsScore,
+                                      pcsScore: property.pcsScore,
+                                      pcsRank: property.rank,
                                     });
                                   }}
                                   style={{ fontSize: 9, fontWeight: 700, color: T.amber, background: T.amber + '15', border: `1px solid ${T.amber}50`, borderRadius: 2, padding: '4px 10px', cursor: 'pointer', letterSpacing: 1, ...mono }}
@@ -450,6 +462,16 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
       </div>
 
     </div>
+
+    {/* Property Card Panel — full-screen overlay */}
+    {selectedProperty && (
+      <PropertyCardPanel
+        property={selectedProperty}
+        onClose={() => setSelectedProperty(null)}
+        sourceLabel="Power Rankings"
+      />
+    )}
+    </>
   );
 };
 
