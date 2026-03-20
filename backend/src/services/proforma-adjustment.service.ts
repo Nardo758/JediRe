@@ -38,11 +38,11 @@ export interface ProFormaAssumptions {
 }
 
 export interface AssumptionValue {
-  baseline: number;
-  current: number;
-  userOverride?: number;
+  baseline: string;
+  current: string;
+  userOverride?: string;
   overrideReason?: string;
-  effective: number; // User override > current > baseline
+  effective: string; // User override > current > baseline
 }
 
 export interface AssumptionAdjustment {
@@ -52,10 +52,10 @@ export interface AssumptionAdjustment {
   demandEventId?: string;
   adjustmentTrigger: 'news_event' | 'demand_signal' | 'manual' | 'periodic_update';
   assumptionType: 'rent_growth' | 'vacancy' | 'opex_growth' | 'exit_cap' | 'absorption';
-  previousValue: number;
-  newValue: number;
-  adjustmentDelta: number;
-  adjustmentPct: number;
+  previousValue: string;
+  newValue: string;
+  adjustmentDelta: string;
+  adjustmentPct: string;
   calculationMethod: string;
   calculationInputs: any;
   confidenceScore: number;
@@ -1016,64 +1016,65 @@ export class ProFormaAdjustmentService {
   }
   
   private mapProForma(row: any): ProFormaAssumptions {
+    // Return values as strings (from PostgreSQL NUMERIC columns) - parse only when doing calculations
+    const rentGrowthBaseline = (row.rent_growth_baseline || '0').toString();
+    const rentGrowthCurrent = row.rent_growth_current ? row.rent_growth_current.toString() : rentGrowthBaseline;
+    const rentGrowthUserOverride = row.rent_growth_user_override ? row.rent_growth_user_override.toString() : undefined;
+
+    const vacancyBaseline = (row.vacancy_baseline || '0').toString();
+    const vacancyCurrent = row.vacancy_current ? row.vacancy_current.toString() : vacancyBaseline;
+    const vacancyUserOverride = row.vacancy_user_override ? row.vacancy_user_override.toString() : undefined;
+
+    const opexGrowthBaseline = (row.opex_growth_baseline || '0').toString();
+    const opexGrowthCurrent = row.opex_growth_current ? row.opex_growth_current.toString() : opexGrowthBaseline;
+    const opexGrowthUserOverride = row.opex_growth_user_override ? row.opex_growth_user_override.toString() : undefined;
+
+    const exitCapBaseline = (row.exit_cap_baseline || '0').toString();
+    const exitCapCurrent = row.exit_cap_current ? row.exit_cap_current.toString() : exitCapBaseline;
+    const exitCapUserOverride = row.exit_cap_user_override ? row.exit_cap_user_override.toString() : undefined;
+
+    const absorptionBaseline = (row.absorption_baseline || '0').toString();
+    const absorptionCurrent = row.absorption_current ? row.absorption_current.toString() : absorptionBaseline;
+    const absorptionUserOverride = row.absorption_user_override ? row.absorption_user_override.toString() : undefined;
+
     return {
       id: row.id,
       dealId: row.deal_id,
       strategy: row.strategy,
       rentGrowth: {
-        baseline: parseFloat(row.rent_growth_baseline) || 0,
-        current: row.rent_growth_current ? parseFloat(row.rent_growth_current) : parseFloat(row.rent_growth_baseline),
-        userOverride: row.rent_growth_user_override ? parseFloat(row.rent_growth_user_override) : undefined,
+        baseline: rentGrowthBaseline,
+        current: rentGrowthCurrent,
+        userOverride: rentGrowthUserOverride,
         overrideReason: row.rent_growth_override_reason,
-        effective: row.rent_growth_user_override 
-          ? parseFloat(row.rent_growth_user_override)
-          : row.rent_growth_current 
-            ? parseFloat(row.rent_growth_current)
-            : parseFloat(row.rent_growth_baseline)
+        effective: rentGrowthUserOverride || rentGrowthCurrent || rentGrowthBaseline
       },
       vacancy: {
-        baseline: parseFloat(row.vacancy_baseline) || 0,
-        current: row.vacancy_current ? parseFloat(row.vacancy_current) : parseFloat(row.vacancy_baseline),
-        userOverride: row.vacancy_user_override ? parseFloat(row.vacancy_user_override) : undefined,
+        baseline: vacancyBaseline,
+        current: vacancyCurrent,
+        userOverride: vacancyUserOverride,
         overrideReason: row.vacancy_override_reason,
-        effective: row.vacancy_user_override 
-          ? parseFloat(row.vacancy_user_override)
-          : row.vacancy_current 
-            ? parseFloat(row.vacancy_current)
-            : parseFloat(row.vacancy_baseline)
+        effective: vacancyUserOverride || vacancyCurrent || vacancyBaseline
       },
       opexGrowth: {
-        baseline: parseFloat(row.opex_growth_baseline) || 0,
-        current: row.opex_growth_current ? parseFloat(row.opex_growth_current) : parseFloat(row.opex_growth_baseline),
-        userOverride: row.opex_growth_user_override ? parseFloat(row.opex_growth_user_override) : undefined,
+        baseline: opexGrowthBaseline,
+        current: opexGrowthCurrent,
+        userOverride: opexGrowthUserOverride,
         overrideReason: row.opex_growth_override_reason,
-        effective: row.opex_growth_user_override 
-          ? parseFloat(row.opex_growth_user_override)
-          : row.opex_growth_current 
-            ? parseFloat(row.opex_growth_current)
-            : parseFloat(row.opex_growth_baseline)
+        effective: opexGrowthUserOverride || opexGrowthCurrent || opexGrowthBaseline
       },
       exitCap: {
-        baseline: parseFloat(row.exit_cap_baseline) || 0,
-        current: row.exit_cap_current ? parseFloat(row.exit_cap_current) : parseFloat(row.exit_cap_baseline),
-        userOverride: row.exit_cap_user_override ? parseFloat(row.exit_cap_user_override) : undefined,
+        baseline: exitCapBaseline,
+        current: exitCapCurrent,
+        userOverride: exitCapUserOverride,
         overrideReason: row.exit_cap_override_reason,
-        effective: row.exit_cap_user_override 
-          ? parseFloat(row.exit_cap_user_override)
-          : row.exit_cap_current 
-            ? parseFloat(row.exit_cap_current)
-            : parseFloat(row.exit_cap_baseline)
+        effective: exitCapUserOverride || exitCapCurrent || exitCapBaseline
       },
       absorption: {
-        baseline: parseFloat(row.absorption_baseline) || 0,
-        current: row.absorption_current ? parseFloat(row.absorption_current) : parseFloat(row.absorption_baseline),
-        userOverride: row.absorption_user_override ? parseFloat(row.absorption_user_override) : undefined,
+        baseline: absorptionBaseline,
+        current: absorptionCurrent,
+        userOverride: absorptionUserOverride,
         overrideReason: row.absorption_override_reason,
-        effective: row.absorption_user_override 
-          ? parseFloat(row.absorption_user_override)
-          : row.absorption_current 
-            ? parseFloat(row.absorption_current)
-            : parseFloat(row.absorption_baseline)
+        effective: absorptionUserOverride || absorptionCurrent || absorptionBaseline
       },
       strategySpecificData: row.strategy_specific_data,
       lastRecalculation: row.last_recalculation ? new Date(row.last_recalculation) : undefined,
@@ -1089,13 +1090,13 @@ export class ProFormaAdjustmentService {
       demandEventId: row.demand_event_id,
       adjustmentTrigger: row.adjustment_trigger,
       assumptionType: row.assumption_type,
-      previousValue: parseFloat(row.previous_value),
-      newValue: parseFloat(row.new_value),
-      adjustmentDelta: parseFloat(row.adjustment_delta),
-      adjustmentPct: parseFloat(row.adjustment_pct),
+      previousValue: (row.previous_value || '0').toString(),
+      newValue: (row.new_value || '0').toString(),
+      adjustmentDelta: (row.adjustment_delta || '0').toString(),
+      adjustmentPct: (row.adjustment_pct || '0').toString(),
       calculationMethod: row.calculation_method,
       calculationInputs: row.calculation_inputs,
-      confidenceScore: parseFloat(row.confidence_score),
+      confidenceScore: parseFloat(row.confidence_score) || 0,
       confidencFactors: row.confidence_factors,
       createdAt: new Date(row.created_at),
       notes: row.notes

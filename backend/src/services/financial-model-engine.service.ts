@@ -223,30 +223,41 @@ export class FinancialModelEngineService {
 
   private async callClaudeForModel(assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
     if (!ANTHROPIC_API_KEY) {
-      throw new Error('Anthropic API key not configured');
+      const err: any = new Error('Anthropic API key not configured');
+      err.statusCode = 503;
+      throw err;
     }
 
     const systemPrompt = this.buildSystemPrompt(assumptions.modelType);
     const userPrompt = this.buildUserPrompt(assumptions);
 
-    const response = await axios.post(
-      `${ANTHROPIC_BASE_URL}/v1/messages`,
-      {
-        model: CLAUDE_MODEL,
-        max_tokens: 16000,
-        temperature: 0.1,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userPrompt }],
-      },
-      {
-        headers: {
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
+    let response: any;
+    try {
+      response = await axios.post(
+        `${ANTHROPIC_BASE_URL}/v1/messages`,
+        {
+          model: CLAUDE_MODEL,
+          max_tokens: 16000,
+          temperature: 0.1,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userPrompt }],
         },
-        timeout: 120000,
-      }
-    );
+        {
+          headers: {
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          timeout: 120000,
+        }
+      );
+    } catch (axiosError: any) {
+      const isNetworkErr = axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ENOTFOUND' ||
+        axiosError.code === 'ERR_CONNECT_TIMEOUT' || axiosError.code === 'ETIMEDOUT';
+      const serviceErr: any = new Error(isNetworkErr ? 'AI model service unavailable' : (axiosError.message || 'AI service error'));
+      serviceErr.statusCode = isNetworkErr ? 503 : (axiosError.response?.status || 503);
+      throw serviceErr;
+    }
 
     const text = response.data.content?.[0]?.text || '';
 
@@ -318,24 +329,25 @@ Return ONLY valid JSON matching the FinancialModelResult schema. No explanation,
 
   private buildUserPrompt(a: ProFormaAssumptions): string {
     const totalUnits = a.dealInfo.totalUnits;
-    const avgRent = a.unitMix.length > 0
-      ? a.unitMix.reduce((sum, u) => sum + u.marketRent * u.units, 0) / totalUnits
+    const unitMix = a.unitMix || [];
+    const avgRent = unitMix.length > 0
+      ? unitMix.reduce((sum, u) => sum + u.marketRent * u.units, 0) / totalUnits
       : 1500;
-    const totalSF = a.dealInfo.netRentableSF || a.unitMix.reduce((sum, u) => sum + u.unitSize * u.units, 0);
+    const totalSF = a.dealInfo.netRentableSF || unitMix.reduce((sum, u) => sum + u.unitSize * u.units, 0);
 
-    const expenseLines = Object.entries(a.expenses).map(([name, e]) =>
+    const expenseLines = Object.entries(a.expenses || {}).map(([name, e]: [string, any]) =>
       `  - ${name}: $${e.amount}/year, type: ${e.type}, growth: ${(e.growthRate * 100).toFixed(1)}%`
     ).join('\n');
 
-    const otherIncomeLines = Object.entries(a.revenue.otherIncome || {}).map(([name, oi]) =>
+    const otherIncomeLines = Object.entries((a.revenue || {}).otherIncome || {}).map(([name, oi]: [string, any]) =>
       `  - ${name}: $${oi.perUnitMonth}/unit/month, penetration: ${(oi.penetration * 100).toFixed(0)}%`
     ).join('\n');
 
-    const capexLines = (a.capex.lineItems || []).map(item =>
+    const capexLines = ((a.capex || {}).lineItems || []).map((item: any) =>
       `  - ${item.description}: $${item.amount}`
     ).join('\n');
 
-    const waterfallLines = (a.waterfall.hurdles || []).map((h, i) =>
+    const waterfallLines = ((a.waterfall || {}).hurdles || []).map((h: any, i: number) =>
       `  Tier ${i + 1}: ${(h.hurdleRate * 100).toFixed(1)}% hurdle, GP promote ${(h.promoteToGP * 100).toFixed(0)}%, LP split ${(h.lpSplit * 100).toFixed(0)}%`
     ).join('\n');
 
@@ -350,25 +362,25 @@ DEAL INFO:
 - Hold Period: ${a.holdPeriod} years
 
 UNIT MIX:
-${a.unitMix.map(u => `- ${u.floorPlan}: ${u.units} units, ${u.unitSize} SF, ${u.beds} bed, Market Rent: $${u.marketRent}/mo, In-Place: $${u.inPlaceRent}/mo, Occupied: ${u.occupied}/${u.units}`).join('\n')}
+${unitMix.map(u => `- ${u.floorPlan}: ${u.units} units, ${u.unitSize} SF, ${u.beds} bed, Market Rent: $${u.marketRent}/mo, In-Place: $${u.inPlaceRent}/mo, Occupied: ${u.occupied}/${u.units}`).join('\n')}
 
 Average Market Rent: $${avgRent.toFixed(0)}/unit/mo ($${(avgRent / (totalSF / totalUnits)).toFixed(2)}/SF)
 
 ACQUISITION:
-- Purchase Price: $${a.acquisition.purchasePrice}
-- Going-In Cap Rate: ${(a.acquisition.capRate * 100).toFixed(2)}%
-- Closing Costs: ${JSON.stringify(a.acquisition.closingCosts)}
+- Purchase Price: $${a.acquisition?.purchasePrice ?? 'N/A'}
+- Going-In Cap Rate: ${((a.acquisition?.capRate ?? 0) * 100).toFixed(2)}%
+- Closing Costs: ${JSON.stringify(a.acquisition?.closingCosts ?? {})}
 
 DISPOSITION:
-- Exit Cap Rate: ${(a.disposition.exitCapRate * 100).toFixed(2)}%
-- Selling Costs: ${(a.disposition.sellingCosts * 100).toFixed(2)}% of sale price
-- Sale NOI Method: ${a.disposition.saleNOIMethod}
+- Exit Cap Rate: ${((a.disposition?.exitCapRate ?? 0) * 100).toFixed(2)}%
+- Selling Costs: ${((a.disposition?.sellingCosts ?? 0) * 100).toFixed(2)}% of sale price
+- Sale NOI Method: ${a.disposition?.saleNOIMethod ?? 'N/A'}
 
 REVENUE ASSUMPTIONS:
-- Annual Rent Growth: ${a.revenue.rentGrowth.map(r => (r * 100).toFixed(1) + '%').join(', ')}
-- Loss-to-Lease: ${(a.revenue.lossToLease * 100).toFixed(1)}%
-- Stabilized Occupancy: ${(a.revenue.stabilizedOccupancy * 100).toFixed(1)}%
-- Collection Loss: ${(a.revenue.collectionLoss * 100).toFixed(2)}%
+- Annual Rent Growth: ${(a.revenue?.rentGrowth || []).map((r: number) => (r * 100).toFixed(1) + '%').join(', ') || 'N/A'}
+- Loss-to-Lease: ${((a.revenue?.lossToLease ?? 0) * 100).toFixed(1)}%
+- Stabilized Occupancy: ${((a.revenue?.stabilizedOccupancy ?? 0) * 100).toFixed(1)}%
+- Collection Loss: ${((a.revenue?.collectionLoss ?? 0) * 100).toFixed(2)}%
 - Other Income:
 ${otherIncomeLines || '  (none)'}
 
@@ -376,25 +388,25 @@ OPERATING EXPENSES:
 ${expenseLines || '  (none)'}
 
 FINANCING:
-- Loan Amount: $${a.financing.loanAmount}
-- Type: ${a.financing.loanType}
-- Interest Rate: ${(a.financing.interestRate * 100).toFixed(2)}%
-- Spread: ${(a.financing.spread * 100).toFixed(2)}%
-- Term: ${a.financing.term} years
-- Amortization: ${a.financing.amortization} years
-- IO Period: ${a.financing.ioPeriod} months
-- Origination Fee: ${(a.financing.originationFee * 100).toFixed(2)}%
-- Rate Cap Cost: $${a.financing.rateCapCost}
-- Prepayment Penalty: ${(a.financing.prepayPenalty * 100).toFixed(2)}%
+- Loan Amount: $${a.financing?.loanAmount ?? 'N/A'}
+- Type: ${a.financing?.loanType ?? 'N/A'}
+- Interest Rate: ${((a.financing?.interestRate ?? 0) * 100).toFixed(2)}%
+- Spread: ${((a.financing?.spread ?? 0) * 100).toFixed(2)}%
+- Term: ${a.financing?.term ?? 'N/A'} years
+- Amortization: ${a.financing?.amortization ?? 'N/A'} years
+- IO Period: ${a.financing?.ioPeriod ?? 0} months
+- Origination Fee: ${((a.financing?.originationFee ?? 0) * 100).toFixed(2)}%
+- Rate Cap Cost: $${a.financing?.rateCapCost ?? 0}
+- Prepayment Penalty: ${((a.financing?.prepayPenalty ?? 0) * 100).toFixed(2)}%
 
 CAPITAL EXPENDITURES:
 ${capexLines || '  (none)'}
-- Contingency: ${(a.capex.contingencyPct * 100).toFixed(0)}%
-- Replacement Reserves: $${a.capex.reservesPerUnit}/unit/year
+- Contingency: ${(((a.capex || {}) as any).contingencyPct ?? 0) * 100}%
+- Replacement Reserves: $${((a.capex || {}) as any).reservesPerUnit ?? 0}/unit/year
 
 WATERFALL:
-- Total Equity: $${a.waterfall.equityContribution}
-- LP/GP Split: ${(a.waterfall.lpShare * 100).toFixed(0)}/${(a.waterfall.gpShare * 100).toFixed(0)}
+- Total Equity: $${((a.waterfall || {}) as any).equityContribution ?? 'N/A'}
+- LP/GP Split: ${(((a.waterfall || {}) as any).lpShare ?? 0) * 100}/${(((a.waterfall || {}) as any).gpShare ?? 0) * 100}
 ${waterfallLines || '  No promote structure'}`;
 
     if (a.modelType === 'development' && a.development) {
