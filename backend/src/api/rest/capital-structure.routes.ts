@@ -496,9 +496,14 @@ router.get('/:dealId', async (req: Request, res: Response) => {
     const assumptions = dealData.assumptions || dealData.strategyDefaults?.assumptions || {};
     const interestRate = parseFloat(assumptions.interestRate || assumptions.interest_rate || '7.0');
     const ltc = parseFloat(assumptions.ltc || '65');
+
+    // Check deal_data for stored mezzanine
+    const storedMezz = dealData.capitalStack?.mezz || dealData.financing?.mezzanine || null;
+    const mezzAmt = storedMezz ? parseFloat(storedMezz.amount || storedMezz || '0') : 0;
+
     const seniorAmt = Math.round(totalCost * (ltc / 100));
-    const equityAmt = totalCost - seniorAmt;
-    const layers = [
+    const equityAmt = Math.max(0, totalCost - seniorAmt - mezzAmt);
+    const layers: any[] = [
       {
         name: 'Senior Debt',
         type: 'senior_debt',
@@ -507,15 +512,25 @@ router.get('/:dealId', async (req: Request, res: Response) => {
         ltc,
         rate: interestRate,
       },
-      {
-        name: 'Equity',
-        type: 'equity',
-        layerType: 'equity',
-        amount: equityAmt,
-        ltc: 100 - ltc,
-        targetReturn: parseFloat(assumptions.targetIrr || '18'),
-      },
     ];
+    if (mezzAmt > 0) {
+      layers.push({
+        name: 'Mezzanine',
+        type: 'mezz_debt',
+        layerType: 'mezz',
+        amount: mezzAmt,
+        ltc: Math.round((mezzAmt / totalCost) * 100),
+        rate: parseFloat(storedMezz?.rate || assumptions.mezzRate || '12'),
+      });
+    }
+    layers.push({
+      name: 'Equity',
+      type: 'equity',
+      layerType: 'equity',
+      amount: equityAmt,
+      ltc: Math.round((equityAmt / totalCost) * 100),
+      targetReturn: parseFloat(assumptions.targetIrr || '18'),
+    });
     res.json({ exists: true, dealId, stack: { layers } });
   } catch (err: any) {
     logger.error('[CapStructure Routes] GET /:dealId failed', { error: err.message });
