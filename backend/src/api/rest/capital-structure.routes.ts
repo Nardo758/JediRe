@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
+import Decimal from 'decimal.js';
 import {
   capitalStructureService,
   type CapitalLayer,
@@ -33,6 +34,58 @@ const upload = multer({
 const router = Router();
 
 // ============================================================================
+// Input Validation Helpers
+// ============================================================================
+
+/**
+ * Validate that financial amount is a string (for PostgreSQL NUMERIC precision)
+ */
+function validateFinancialString(value: any, fieldName: string): string {
+  if (typeof value === 'string') {
+    // Verify it's a valid numeric string
+    try {
+      new Decimal(value);
+      return value;
+    } catch {
+      throw new Error(`${fieldName} must be a valid numeric string (e.g., "2500000.50"), got: ${value}`);
+    }
+  }
+  if (typeof value === 'number') {
+    return value.toString();
+  }
+  throw new Error(`${fieldName} must be a string or number, got: ${typeof value}`);
+}
+
+/**
+ * Validate CapitalLayer fields are strings
+ */
+function validateCapitalLayer(layer: any): CapitalLayer {
+  if (!layer.id || !layer.name || !layer.layerType || !layer.term) {
+    throw new Error('Layer must have: id, name, layerType, term');
+  }
+  return {
+    ...layer,
+    amount: validateFinancialString(layer.amount, 'Layer.amount'),
+    rate: validateFinancialString(layer.rate, 'Layer.rate'),
+  };
+}
+
+/**
+ * Validate CapitalUses fields are strings
+ */
+function validateCapitalUses(uses: any): CapitalUses {
+  return {
+    acquisitionPrice: validateFinancialString(uses.acquisitionPrice, 'Uses.acquisitionPrice'),
+    closingCosts: validateFinancialString(uses.closingCosts, 'Uses.closingCosts'),
+    renovationBudget: validateFinancialString(uses.renovationBudget, 'Uses.renovationBudget'),
+    carryingCosts: validateFinancialString(uses.carryingCosts, 'Uses.carryingCosts'),
+    reserves: validateFinancialString(uses.reserves, 'Uses.reserves'),
+    developerFee: validateFinancialString(uses.developerFee, 'Uses.developerFee'),
+    total: validateFinancialString(uses.total, 'Uses.total'),
+  };
+}
+
+// ============================================================================
 // Capital Stack Endpoints
 // ============================================================================
 
@@ -45,17 +98,29 @@ router.post('/stack', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing required fields: dealId, strategy, layers, uses, noi' });
     }
 
-    const stack = capitalStructureService.buildCapitalStack(
-      dealId,
-      strategy as StrategyType,
-      layers as CapitalLayer[],
-      uses as CapitalUses,
-      noi,
-      propertyValue || 0,
-      grossPotentialRent,
-    );
+    if (!Array.isArray(layers)) {
+      return res.status(400).json({ error: 'layers must be an array' });
+    }
 
-    res.json({ stack });
+    // Validate and convert financial fields to strings for precision
+    try {
+      const validatedLayers = layers.map(validateCapitalLayer);
+      const validatedUses = validateCapitalUses(uses);
+
+      const stack = capitalStructureService.buildCapitalStack(
+        dealId,
+        strategy as StrategyType,
+        validatedLayers,
+        validatedUses,
+        noi,
+        propertyValue || 0,
+        grossPotentialRent,
+      );
+
+      res.json({ stack });
+    } catch (validationError: any) {
+      return res.status(400).json({ error: validationError.message });
+    }
   } catch (error: any) {
     logger.error('[CapStructure Routes] Stack build failed', { error: error.message });
     res.status(500).json({ error: 'Failed to build capital stack', detail: error.message });
@@ -380,9 +445,28 @@ router.get('/rate-sheet/:dealId/latest', async (req: Request, res: Response) => 
 
 router.post('/optimal-strategy', async (req: Request, res: Response) => {
   try {
+    const { noi, debtService, acquisitionPrice } = req.body;
+
+    // Validate financial inputs are properly formatted
+    if (typeof noi !== 'number' && typeof noi !== 'string') {
+      return res.status(400).json({
+        error: 'Financial inputs must be strings (e.g., "2500000.50") or numbers',
+        example: { noi: '2500000.50', debtService: '150000.00', acquisitionPrice: '15000000.00' }
+      });
+    }
+
     const { getOptimalStrategy } = await import('../../services/rate-index.service');
     const liveRates = await fetchLiveRates();
-    const result = await getOptimalStrategy(req.body, liveRates);
+
+    // Convert numeric values to strings for precision
+    const requestPayload = {
+      ...req.body,
+      noi: typeof noi === 'number' ? noi.toString() : noi,
+      debtService: typeof debtService === 'number' ? debtService.toString() : debtService,
+      acquisitionPrice: typeof acquisitionPrice === 'number' ? acquisitionPrice.toString() : acquisitionPrice,
+    };
+
+    const result = await getOptimalStrategy(requestPayload, liveRates);
     res.json(result);
   } catch (error: any) {
     logger.error('[CapStructure Routes] Optimal strategy failed', { error: error.message });

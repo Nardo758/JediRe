@@ -11,6 +11,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { proformaAdjustmentService } from '../../services/proforma-adjustment.service';
 import { trafficToProForma } from '../../services/trafficToProFormaService';
+import Decimal from 'decimal.js';
 
 const logger = { 
   error: (...args: any[]) => console.error(...args),
@@ -419,16 +420,36 @@ router.get('/:dealId/export', authMiddleware.requireAuth, async (req: Request, r
 // Helper Functions
 // ============================================================================
 
+/**
+ * Format decimal value for display - handles both string and number types
+ */
+function formatDecimal(value: string | number, places: number = 4): string {
+  if (typeof value === 'string') {
+    return new Decimal(value).toFixed(places);
+  }
+  return new Decimal(value).toFixed(places);
+}
+
+/**
+ * Calculate percentage change between two decimal values
+ */
+function calcPercentChange(baseline: string | number, adjusted: string | number): string {
+  const baselineNum = new Decimal(baseline);
+  const adjustedNum = new Decimal(adjusted);
+  if (baselineNum.isZero()) return '0.00';
+  return adjustedNum.minus(baselineNum).dividedBy(baselineNum).times(100).toFixed(1);
+}
+
 function generateCSV(comparison: any): string {
   const lines = [
     'Deal Name,Strategy,Assumption,Baseline,Adjusted,Difference,% Change',
-    `${comparison.dealName},${comparison.strategy},Rent Growth,${comparison.baseline.rentGrowth.baseline}%,${comparison.baseline.rentGrowth.effective}%,${comparison.differences.rentGrowth.toFixed(2)}%,${((comparison.differences.rentGrowth / comparison.baseline.rentGrowth.baseline) * 100).toFixed(1)}%`,
-    `${comparison.dealName},${comparison.strategy},Vacancy,${comparison.baseline.vacancy.baseline}%,${comparison.baseline.vacancy.effective}%,${comparison.differences.vacancy.toFixed(2)}%,${((comparison.differences.vacancy / comparison.baseline.vacancy.baseline) * 100).toFixed(1)}%`,
-    `${comparison.dealName},${comparison.strategy},OpEx Growth,${comparison.baseline.opexGrowth.baseline}%,${comparison.baseline.opexGrowth.effective}%,${comparison.differences.opexGrowth.toFixed(2)}%,${((comparison.differences.opexGrowth / comparison.baseline.opexGrowth.baseline) * 100).toFixed(1)}%`,
-    `${comparison.dealName},${comparison.strategy},Exit Cap,${comparison.baseline.exitCap.baseline}%,${comparison.baseline.exitCap.effective}%,${comparison.differences.exitCap.toFixed(2)}%,${((comparison.differences.exitCap / comparison.baseline.exitCap.baseline) * 100).toFixed(1)}%`,
-    `${comparison.dealName},${comparison.strategy},Absorption,${comparison.baseline.absorption.baseline} leases/mo,${comparison.baseline.absorption.effective} leases/mo,${comparison.differences.absorption.toFixed(2)},${((comparison.differences.absorption / comparison.baseline.absorption.baseline) * 100).toFixed(1)}%`
+    `${comparison.dealName},${comparison.strategy},Rent Growth,${formatDecimal(comparison.baseline.rentGrowth.baseline, 4)}%,${formatDecimal(comparison.baseline.rentGrowth.effective, 4)}%,${formatDecimal(comparison.differences.rentGrowth, 2)}%,${calcPercentChange(comparison.baseline.rentGrowth.baseline, comparison.baseline.rentGrowth.effective)}%`,
+    `${comparison.dealName},${comparison.strategy},Vacancy,${formatDecimal(comparison.baseline.vacancy.baseline, 4)}%,${formatDecimal(comparison.baseline.vacancy.effective, 4)}%,${formatDecimal(comparison.differences.vacancy, 2)}%,${calcPercentChange(comparison.baseline.vacancy.baseline, comparison.baseline.vacancy.effective)}%`,
+    `${comparison.dealName},${comparison.strategy},OpEx Growth,${formatDecimal(comparison.baseline.opexGrowth.baseline, 4)}%,${formatDecimal(comparison.baseline.opexGrowth.effective, 4)}%,${formatDecimal(comparison.differences.opexGrowth, 2)}%,${calcPercentChange(comparison.baseline.opexGrowth.baseline, comparison.baseline.opexGrowth.effective)}%`,
+    `${comparison.dealName},${comparison.strategy},Exit Cap,${formatDecimal(comparison.baseline.exitCap.baseline, 4)}%,${formatDecimal(comparison.baseline.exitCap.effective, 4)}%,${formatDecimal(comparison.differences.exitCap, 2)}%,${calcPercentChange(comparison.baseline.exitCap.baseline, comparison.baseline.exitCap.effective)}%`,
+    `${comparison.dealName},${comparison.strategy},Absorption,${formatDecimal(comparison.baseline.absorption.baseline, 2)} leases/mo,${formatDecimal(comparison.baseline.absorption.effective, 2)} leases/mo,${formatDecimal(comparison.differences.absorption, 2)},${calcPercentChange(comparison.baseline.absorption.baseline, comparison.baseline.absorption.effective)}%`
   ];
-  
+
   return lines.join('\n');
 }
 
@@ -441,22 +462,22 @@ function generateMarkdown(comparison: any): string {
 
 | Assumption | Baseline | News-Adjusted | Difference | % Change |
 |------------|----------|---------------|------------|----------|
-| Rent Growth | ${comparison.baseline.rentGrowth.baseline}% | ${comparison.baseline.rentGrowth.effective}% | ${comparison.differences.rentGrowth.toFixed(2)}% | ${((comparison.differences.rentGrowth / comparison.baseline.rentGrowth.baseline) * 100).toFixed(1)}% |
-| Vacancy | ${comparison.baseline.vacancy.baseline}% | ${comparison.baseline.vacancy.effective}% | ${comparison.differences.vacancy.toFixed(2)}% | ${((comparison.differences.vacancy / comparison.baseline.vacancy.baseline) * 100).toFixed(1)}% |
-| OpEx Growth | ${comparison.baseline.opexGrowth.baseline}% | ${comparison.baseline.opexGrowth.effective}% | ${comparison.differences.opexGrowth.toFixed(2)}% | ${((comparison.differences.opexGrowth / comparison.baseline.opexGrowth.baseline) * 100).toFixed(1)}% |
-| Exit Cap Rate | ${comparison.baseline.exitCap.baseline}% | ${comparison.baseline.exitCap.effective}% | ${comparison.differences.exitCap.toFixed(2)}% | ${((comparison.differences.exitCap / comparison.baseline.exitCap.baseline) * 100).toFixed(1)}% |
-| Absorption Rate | ${comparison.baseline.absorption.baseline} leases/mo | ${comparison.baseline.absorption.effective} leases/mo | ${comparison.differences.absorption.toFixed(2)} | ${((comparison.differences.absorption / comparison.baseline.absorption.baseline) * 100).toFixed(1)}% |
+| Rent Growth | ${formatDecimal(comparison.baseline.rentGrowth.baseline, 4)}% | ${formatDecimal(comparison.baseline.rentGrowth.effective, 4)}% | ${formatDecimal(comparison.differences.rentGrowth, 2)}% | ${calcPercentChange(comparison.baseline.rentGrowth.baseline, comparison.baseline.rentGrowth.effective)}% |
+| Vacancy | ${formatDecimal(comparison.baseline.vacancy.baseline, 4)}% | ${formatDecimal(comparison.baseline.vacancy.effective, 4)}% | ${formatDecimal(comparison.differences.vacancy, 2)}% | ${calcPercentChange(comparison.baseline.vacancy.baseline, comparison.baseline.vacancy.effective)}% |
+| OpEx Growth | ${formatDecimal(comparison.baseline.opexGrowth.baseline, 4)}% | ${formatDecimal(comparison.baseline.opexGrowth.effective, 4)}% | ${formatDecimal(comparison.differences.opexGrowth, 2)}% | ${calcPercentChange(comparison.baseline.opexGrowth.baseline, comparison.baseline.opexGrowth.effective)}% |
+| Exit Cap Rate | ${formatDecimal(comparison.baseline.exitCap.baseline, 4)}% | ${formatDecimal(comparison.baseline.exitCap.effective, 4)}% | ${formatDecimal(comparison.differences.exitCap, 2)}% | ${calcPercentChange(comparison.baseline.exitCap.baseline, comparison.baseline.exitCap.effective)}% |
+| Absorption Rate | ${formatDecimal(comparison.baseline.absorption.baseline, 2)} leases/mo | ${formatDecimal(comparison.baseline.absorption.effective, 2)} leases/mo | ${formatDecimal(comparison.differences.absorption, 2)} | ${calcPercentChange(comparison.baseline.absorption.baseline, comparison.baseline.absorption.effective)}% |
 
 ## Recent News Events
 
-${comparison.recentAdjustments.map((adj: any, i: number) => 
-  `${i + 1}. **${adj.assumptionType}** adjusted by ${adj.adjustmentDelta > 0 ? '+' : ''}${adj.adjustmentDelta.toFixed(2)} (${adj.newsHeadline || 'Manual adjustment'})`
+${comparison.recentAdjustments.map((adj: any, i: number) =>
+  `${i + 1}. **${adj.assumptionType}** adjusted by ${adj.adjustmentDelta > 0 ? '+' : ''}${formatDecimal(adj.adjustmentDelta, 4)} (${adj.newsHeadline || 'Manual adjustment'})`
 ).join('\n')}
 
 ---
 *Generated on ${new Date().toISOString()}*
 `;
-  
+
   return md;
 }
 
