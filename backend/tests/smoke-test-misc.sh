@@ -125,6 +125,7 @@ echo "── microsoft ──"
 check_strict  "Microsoft: GET /microsoft/status"                         GET  "$BASE/api/v1/microsoft/status"
 check_lenient "Microsoft: GET /microsoft/auth/url"                       GET  "$BASE/api/v1/microsoft/auth/url"
 check_optional "Microsoft: GET /microsoft/auth/callback"                  GET  "$BASE/api/v1/microsoft/auth/callback"
+check_optional "Microsoft: GET /microsoft/auth/callback (forged state — must not 5xx)" GET "$BASE/api/v1/microsoft/auth/callback?code=fake&state=forged.invalidsig"
 check_optional "Microsoft: GET /microsoft/auth/connect"                  GET  "$BASE/api/v1/microsoft/auth/connect"
 check_optional "Microsoft: POST /microsoft/auth/disconnect"              POST "$BASE/api/v1/microsoft/auth/disconnect" -d '{}'
 check_optional "Microsoft: GET /microsoft/emails/inbox"                  GET  "$BASE/api/v1/microsoft/emails/inbox"

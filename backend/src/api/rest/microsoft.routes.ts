@@ -12,9 +12,44 @@ import {
   MicrosoftAuthService,
   MicrosoftGraphService,
 } from '../../services/microsoft-graph.service';
+import crypto from 'crypto';
 
 const router = Router();
 const authService = new MicrosoftAuthService();
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function signOAuthState(userId: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new AppError(500, 'JWT_SECRET not configured');
+  const payload = Buffer.from(
+    JSON.stringify({ userId, nonce: crypto.randomBytes(16).toString('hex'), exp: Date.now() + OAUTH_STATE_TTL_MS })
+  ).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyOAuthState(state: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new AppError(500, 'JWT_SECRET not configured');
+  const dot = state.lastIndexOf('.');
+  if (dot === -1) throw new AppError(400, 'Invalid OAuth state');
+  const payload = state.slice(0, dot);
+  const sig = state.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+    throw new AppError(400, 'OAuth state signature invalid');
+  }
+  let parsed: { userId: string; nonce: string; exp: number };
+  try {
+    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    throw new AppError(400, 'OAuth state payload malformed');
+  }
+  if (!parsed.userId || !parsed.exp) throw new AppError(400, 'OAuth state missing fields');
+  if (Date.now() > parsed.exp) throw new AppError(400, 'OAuth state expired');
+  return parsed.userId;
+}
 
 /**
  * GET /api/v1/microsoft/status
@@ -68,7 +103,8 @@ router.get('/auth/connect', requireAuth, async (req: AuthenticatedRequest, res: 
     }
     
     const userId = req.user!.userId;
-    const authUrl = authService.getAuthorizationUrl(userId);
+    const signedState = signOAuthState(userId);
+    const authUrl = authService.getAuthorizationUrl(signedState);
     
     logger.info('Starting Microsoft OAuth flow', { userId });
     
@@ -97,8 +133,12 @@ router.get('/auth/callback', async (req: Request, res: Response, next) => {
     if (!code || typeof code !== 'string') {
       throw new AppError(400, 'Authorization code missing');
     }
-    
-    const userId = state as string; // We passed userId as state
+
+    if (!state || typeof state !== 'string') {
+      throw new AppError(400, 'OAuth state missing');
+    }
+
+    const userId = verifyOAuthState(state);
     
     // Exchange code for tokens
     const tokens = await authService.getTokenFromCode(code);
