@@ -2,6 +2,33 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount, EmailIntel } from '../services/inbox.service';
 
+interface DealDetails {
+  id: string;
+  name?: string;
+  triage_score?: number | null;
+  jedi_score?: number | null;
+  stage?: string | null;
+  deal_category?: string | null;
+  project_type?: string | null;
+  pipeline_value?: number | null;
+  pipeline_stage?: string | null;
+  timeline_end?: string | null;
+}
+interface TeamMember {
+  id: string;
+  name?: string;
+  role?: string;
+  email?: string;
+  status?: string;
+  last_contact_at?: string | null;
+}
+interface ActivityEvent {
+  id?: string;
+  actor_name?: string;
+  action?: string;
+  created_at?: string;
+}
+
 const T = {
   bg: {
     primary: "#0a0e17",
@@ -200,11 +227,11 @@ export function EmailPage() {
   const [emailIntel, setEmailIntel] = useState<EmailIntel | null>(null);
   const [intelLoading, setIntelLoading] = useState(false);
   const [dealLinkOpen, setDealLinkOpen] = useState(false);
-  const [dealsList, setDealsList] = useState<any[]>([]);
+  const [dealsList, setDealsList] = useState<DealDetails[]>([]);
   const [dealsLoading, setDealsLoading] = useState(false);
-  const [dealDetails, setDealDetails] = useState<any | null>(null);
-  const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [teamActivity, setTeamActivity] = useState<any[]>([]);
+  const [dealDetails, setDealDetails] = useState<DealDetails | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamActivity, setTeamActivity] = useState<ActivityEvent[]>([]);
   const [dismissedActions, setDismissedActions] = useState<Set<string>>(new Set());
   const [propPanelOpen, setPropPanelOpen] = useState(true);
   const [newsPanelOpen, setNewsPanelOpen] = useState(true);
@@ -771,11 +798,6 @@ export function EmailPage() {
                         URGENT
                       </span>
                     )}
-                    {signals.length > 0 && (
-                      <span style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.green, background: `${T.accent.green}12`, padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>
-                        {signals.length} READY
-                      </span>
-                    )}
                     <span style={{ marginLeft: "auto", fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>
                       {formatDate(email.received_at)}
                     </span>
@@ -818,6 +840,11 @@ export function EmailPage() {
                     {email.has_attachments && (
                       <span style={{ fontSize: 10, color: T.text.tertiary, fontFamily: FONTS.mono }}>
                         {"\uD83D\uDCCE"} {email.attachment_count || 1}
+                      </span>
+                    )}
+                    {signals.length > 0 && (
+                      <span style={{ marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, color: T.accent.green, background: `${T.accent.green}12`, padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>
+                        {signals.length} READY
                       </span>
                     )}
                   </div>
@@ -1276,9 +1303,71 @@ export function EmailPage() {
           <div style={{ flex: 1, overflowY: "auto" as const, padding: 16 }}>
             {sidePanel === 'actions' && (
               <div>
-                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 14, textTransform: "uppercase" as const }}>
-                  Quick Actions
+                <div style={{ borderBottom: `1px solid ${T.border.subtle}`, marginBottom: 14, paddingBottom: 12 }}>
+                  <div onClick={() => setAccountsPanelOpen(!accountsPanelOpen)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: accountsPanelOpen ? 10 : 0, cursor: "pointer" }}>
+                    <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const }}>Connected Accounts</span>
+                    <span style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{accountsPanelOpen ? '▲' : '▼'}</span>
+                  </div>
+                  {accountsPanelOpen && (
+                    <div>
+                      {connectedAccounts.length === 0 ? (
+                        <div style={{ fontSize: 10, color: T.text.tertiary, marginBottom: 8, textAlign: "center" as const, padding: "8px 0" }}>No accounts connected</div>
+                      ) : connectedAccounts.map((acct) => (
+                        <div key={acct.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6, marginBottom: 4 }}>
+                          <div style={{ width: 7, height: 7, borderRadius: "50%", background: acct.needs_reauth ? T.accent.red : acct.sync_enabled ? T.accent.green : T.text.tertiary, flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 10, color: T.text.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{acct.email_address}</div>
+                            <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{acct.provider} · {acct.email_count ?? 0} emails</div>
+                          </div>
+                          <button onClick={() => handleSyncAccount(acct.id)} disabled={syncingAccountId === acct.id} style={{ fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px", background: `${T.accent.blue}15`, border: `1px solid ${T.accent.blue}30`, borderRadius: 3, color: T.accent.blue, cursor: "pointer" }}>
+                            {syncingAccountId === acct.id ? '...' : 'Sync'}
+                          </button>
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                        <button onClick={handleConnectGmail} style={{ flex: 1, padding: "6px 0", background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 5, color: T.text.tertiary, fontSize: 9, fontFamily: FONTS.mono, cursor: "pointer" }}>+ Gmail</button>
+                        <button onClick={handleConnectMicrosoft} style={{ flex: 1, padding: "6px 0", background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 5, color: T.text.tertiary, fontSize: 9, fontFamily: FONTS.mono, cursor: "pointer" }}>+ Outlook</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
+                {selectedEmail && emailIntel && emailIntel.propertyExtractions.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>
+                      Extracted Properties
+                    </div>
+                    {emailIntel.propertyExtractions.map((prop: any, i: number) => (
+                      <div key={i} style={{ padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6, marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>
+                          {prop.pin_address || prop.property_name || 'Property'}
+                        </div>
+                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2, color: prop.status === 'auto-created' ? T.accent.green : T.accent.amber, background: prop.status === 'auto-created' ? `${T.accent.green}15` : `${T.accent.amber}15` }}>{prop.status || 'pending'}</span>
+                          {prop.status === 'requires-review' && (
+                            <button onClick={() => { inboxService.approveExtraction(prop.id).then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); }); }} style={{ marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px", background: T.accent.blue, border: "none", borderRadius: 3, color: "#fff", cursor: "pointer" }}>Approve</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {selectedEmail && emailIntel && emailIntel.newsExtraction && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>Private Intelligence</div>
+                    <div style={{ padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6 }}>
+                      {emailIntel.newsExtraction.event_type && (
+                        <div style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 3, textTransform: "uppercase" as const }}>{emailIntel.newsExtraction.event_type}</div>
+                      )}
+                      <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>{emailIntel.newsExtraction.title}</div>
+                      <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 4 }}>{emailIntel.newsExtraction.summary}</div>
+                      <a href="/dashboard/news" style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.blue, textDecoration: "none", cursor: "pointer" }}>View in News Feed {"\u2192"}</a>
+                    </div>
+                  </div>
+                )}
+                {intelLoading && (
+                  <div style={{ textAlign: "center" as const, padding: 12, fontSize: 10, color: T.text.tertiary }}>Loading intelligence...</div>
+                )}
+                <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 10, marginTop: 4, textTransform: "uppercase" as const }}>Quick Actions</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
                   {[
                     { label: "Link to Deal", icon: "\uD83D\uDD17", color: T.accent.blue, action: handleLinkToDeal },
@@ -1327,99 +1416,6 @@ export function EmailPage() {
                   ))}
                 </div>
 
-                {selectedEmail && emailIntel && emailIntel.propertyExtractions.length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.green, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>
-                      Extracted Properties
-                    </div>
-                    {emailIntel.propertyExtractions.map((prop: any, i: number) => (
-                      <div key={i} style={{
-                        padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`,
-                        borderRadius: 6, marginBottom: 6,
-                      }}>
-                        <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>
-                          {prop.pin_address || prop.property_name || 'Property'}
-                        </div>
-                        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                          <span style={{
-                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
-                            color: prop.status === 'auto-created' ? T.accent.green : T.accent.amber,
-                            background: prop.status === 'auto-created' ? `${T.accent.green}15` : `${T.accent.amber}15`,
-                          }}>{prop.status || 'pending'}</span>
-                          {prop.status === 'requires-review' && (
-                            <button onClick={() => {
-                              inboxService.approveExtraction(prop.id)
-                                .then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); });
-                            }} style={{
-                              marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px",
-                              background: T.accent.blue, border: "none", borderRadius: 3,
-                              color: "#fff", cursor: "pointer",
-                            }}>Approve</button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {selectedEmail && emailIntel && emailIntel.newsExtraction && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>
-                      Private Intelligence
-                    </div>
-                    <div style={{
-                      padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6,
-                    }}>
-                      {emailIntel.newsExtraction.event_type && (
-                        <div style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 3, textTransform: "uppercase" as const }}>
-                          {emailIntel.newsExtraction.event_type}
-                        </div>
-                      )}
-                      <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>
-                        {emailIntel.newsExtraction.title}
-                      </div>
-                      <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 4 }}>
-                        {emailIntel.newsExtraction.summary}
-                      </div>
-                      <a href="/dashboard/news" style={{
-                        fontSize: 9, fontFamily: FONTS.mono, color: T.accent.blue, textDecoration: "none", cursor: "pointer",
-                      }}>View in News Feed {"\u2192"}</a>
-                    </div>
-                  </div>
-                )}
-                {intelLoading && (
-                  <div style={{ textAlign: "center" as const, padding: 12, fontSize: 10, color: T.text.tertiary }}>
-                    Loading intelligence...
-                  </div>
-                )}
-
-                <div style={{ borderTop: `1px solid ${T.border.subtle}`, marginTop: 16, paddingTop: 12 }}>
-                  <div onClick={() => setAccountsPanelOpen(!accountsPanelOpen)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: accountsPanelOpen ? 10 : 0, cursor: "pointer" }}>
-                    <span style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, textTransform: "uppercase" as const }}>Connected Accounts</span>
-                    <span style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{accountsPanelOpen ? '▲' : '▼'}</span>
-                  </div>
-                  {accountsPanelOpen && (
-                    <div>
-                      {connectedAccounts.length === 0 ? (
-                        <div style={{ fontSize: 10, color: T.text.tertiary, marginBottom: 8, textAlign: "center" as const, padding: "8px 0" }}>No accounts connected</div>
-                      ) : connectedAccounts.map((acct) => (
-                        <div key={acct.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6, marginBottom: 4 }}>
-                          <div style={{ width: 7, height: 7, borderRadius: "50%", background: acct.needs_reauth ? T.accent.red : acct.sync_enabled ? T.accent.green : T.text.tertiary, flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 10, color: T.text.primary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{acct.email_address}</div>
-                            <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{acct.provider} · {acct.email_count ?? 0} emails</div>
-                          </div>
-                          <button onClick={() => handleSyncAccount(acct.id)} disabled={syncingAccountId === acct.id} style={{ fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px", background: `${T.accent.blue}15`, border: `1px solid ${T.accent.blue}30`, borderRadius: 3, color: T.accent.blue, cursor: "pointer" }}>
-                            {syncingAccountId === acct.id ? '...' : 'Sync'}
-                          </button>
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                        <button onClick={handleConnectGmail} style={{ flex: 1, padding: "6px 0", background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 5, color: T.text.tertiary, fontSize: 9, fontFamily: FONTS.mono, cursor: "pointer" }}>+ Gmail</button>
-                        <button onClick={handleConnectMicrosoft} style={{ flex: 1, padding: "6px 0", background: "transparent", border: `1px solid ${T.border.subtle}`, borderRadius: 5, color: T.text.tertiary, fontSize: 9, fontFamily: FONTS.mono, cursor: "pointer" }}>+ Outlook</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 
@@ -1566,24 +1562,26 @@ export function EmailPage() {
                         </div>
                       );
                     }))}
+                    <div onClick={() => { if (selectedEmail?.deal_id) window.location.href = `/dashboard/deals/${selectedEmail.deal_id}?add_member=1`; }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", background: "transparent", border: `1px dashed ${T.border.subtle}`, borderRadius: 6, marginBottom: 5, cursor: "pointer", opacity: 0.7 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 6, background: T.bg.tertiary, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: T.text.tertiary, flexShrink: 0 }}>+</div>
+                      <div style={{ fontSize: 11, color: T.text.tertiary }}>Add Team Member</div>
+                    </div>
                   </>
                 )}
 
-                {selectedEmail && teamActivity.length > 0 && (
+                {selectedEmail && (
                   <>
                     <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.text.tertiary, letterSpacing: 1, marginBottom: 8, marginTop: 16, textTransform: "uppercase" as const }}>
                       Recent Activity
                     </div>
-                    {teamActivity.map((event: any, i: number) => (
-                      <div key={i} style={{
-                        padding: "6px 10px", borderLeft: `2px solid ${T.accent.blue}40`, marginBottom: 4,
-                      }}>
+                    {teamActivity.length > 0 ? teamActivity.map((event: any, i: number) => (
+                      <div key={i} style={{ padding: "6px 10px", borderLeft: `2px solid ${T.accent.blue}40`, marginBottom: 4 }}>
                         <div style={{ fontSize: 10, color: T.text.secondary }}>{event.actor_name} {event.action}</div>
-                        <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>
-                          {event.created_at ? formatDate(event.created_at) : ''}
-                        </div>
+                        <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>{event.created_at ? formatDate(event.created_at) : ''}</div>
                       </div>
-                    ))}
+                    )) : (
+                      <div style={{ fontSize: 10, color: T.text.tertiary, textAlign: "center" as const, padding: "8px 0" }}>No recent activity</div>
+                    )}
                   </>
                 )}
 
