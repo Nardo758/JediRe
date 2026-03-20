@@ -51,6 +51,7 @@ import {
   MarketIntelligencePage,
   MyMarketsDashboard,
   BloombergMarketDetail,
+  BloombergMarketsLanding,
 } from './pages/MarketIntelligence';
 import WatchlistPage from './pages/MarketIntelligence/WatchlistPage';
 import {
@@ -116,8 +117,8 @@ function AppContent() {
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/terminal/:section" element={<TerminalPage />} />
 
-        {/* Bloomberg Market Detail — full-page, no MainLayout (/market-intelligence landing removed) */}
-        <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
+        {/* Bloomberg Market Intelligence — full-page, no MainLayout */}
+        <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
         <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
         <Route path="/market-intelligence/watchlist" element={<WatchlistPage />} />
         

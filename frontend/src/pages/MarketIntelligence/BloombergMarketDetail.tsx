@@ -108,6 +108,118 @@ const MSA_RECORDS: Record<string, MSARecord> = {
       { name: "Ballantyne", jedi: 80, rent: "$1,640", rentD: "+3.1%", vac: "6.4%", pipe: "10.8%", opp: 72, cap: "5.4%" },
     ],
   },
+  "tampa-fl": {
+    id: "tampa-fl", name: "Tampa, FL", full: "Tampa-St. Petersburg-Clearwater MSA",
+    props: 892, units: "215,000", jedi: 82, d30: "+2", confidence: 79,
+    rent: "$1,908", rentD: "+3.0%", vac: "6.5%", absorb: "2,150/qtr",
+    pipeline: "28,803", pipelinePct: "13.4%", moSupply: "13.4",
+    pop: "3.2M", popD: "+1.9%", jobs: "1.6M", jobsD: "+2.4%",
+    medInc: "$65,800", incD: "+2.8%", afford: "28.4%", jobsApt: "5.2x",
+    cap: "5.4%", capD: "-12bps", ppu: "$208K", ppuD: "+6.8%", txnVol: "$3.1B", deals: "96",
+    cycle: "LATE EXP", cycleMonth: 44, cyclePct: 72,
+    rentHistory: [1680,1710,1730,1755,1780,1810,1840,1860,1875,1888,1898,1908],
+    vacHistory: [7.4,7.2,7.0,6.9,6.8,6.6,6.5,6.4,6.4,6.5,6.5,6.5],
+    rentSf: "$1.84", vsNational: "+15.2%", concession: "2.8%", revpau: "$1,786",
+    permitVel: "-6.4% YoY",
+    primer: `Tampa is a <g>3.2M-person MSA</g> tracking <c>{props} properties</c> and <c>{units} units</c>. The Bay Area market is in <g>month 44 of a late expansion cycle</g> — employment growing <g>+2.4% YoY</g>, population <g>+1.9%</g>, and median income <g>+2.8%</g>. Average effective rent reached <g>$1,908/mo (+3.0% YoY)</g> with vacancy at <g>6.5%</g>. <o>Primary risk:</o> supply pipeline at <o>13.4% of existing stock</o> (28,803 units) translating to <o>13.4 months of supply</o>. Amazon HQ expansion adding <g>2,000+ jobs</g>. Affordability at <g>28.4%</g> remains healthy. JEDI Score: <g>82 (+2 over 30d)</g> — Good Opportunity.`,
+    signals: [
+      { id: "D", name: "DEMAND", score: 80, delta: "+3", weight: 30, color: T.green, desc: "Amazon HQ expansion +2,000 jobs. Pop +1.9%. Strong in-migration from NE corridor." },
+      { id: "S", name: "SUPPLY", score: 62, delta: "-1", weight: 25, color: T.orange, desc: "28,803 pipeline units (13.4%). 13.4 mo supply. Permits decelerating." },
+      { id: "M", name: "MOMENTUM", score: 74, delta: "+2", weight: 20, color: T.amber, desc: "Rent growth +3.0% YoY. Absorption steady at 2,150/qtr. Concessions falling." },
+      { id: "P", name: "POSITION", score: 68, delta: "+1", weight: 15, color: T.purple, desc: "Top 10 SE market. Strong tourist economy and port activity driving demand." },
+      { id: "R", name: "RISK", score: 34, delta: "-2", weight: 10, color: T.muted, desc: "FL wind/flood insurance surcharges +12%. Affordability buffer healthy at 28.4%. Score inverted." },
+    ],
+    submarkets: [
+      { name: "Ybor City", jedi: 86, rent: "$2,040", rentD: "+4.2%", vac: "5.4%", pipe: "9.8%", opp: 84, cap: "5.0%", isTop: true },
+      { name: "Downtown Tampa", jedi: 82, rent: "$1,960", rentD: "+3.6%", vac: "6.0%", pipe: "12.4%", opp: 78, cap: "5.2%" },
+      { name: "South Tampa", jedi: 80, rent: "$1,840", rentD: "+2.8%", vac: "6.8%", pipe: "11.2%", opp: 74, cap: "5.4%" },
+      { name: "Westshore", jedi: 78, rent: "$1,760", rentD: "+2.4%", vac: "7.2%", pipe: "14.8%", opp: 70, cap: "5.6%" },
+    ],
+  },
+  "orlando-fl": {
+    id: "orlando-fl", name: "Orlando, FL", full: "Orlando-Kissimmee-Sanford MSA",
+    props: 714, units: "178,000", jedi: 78, d30: "+1", confidence: 74,
+    rent: "$1,820", rentD: "+2.4%", vac: "7.1%", absorb: "1,680/qtr",
+    pipeline: "28,836", pipelinePct: "16.2%", moSupply: "17.2",
+    pop: "2.8M", popD: "+1.7%", jobs: "1.3M", jobsD: "+2.1%",
+    medInc: "$62,400", incD: "+2.4%", afford: "30.0%", jobsApt: "4.9x",
+    cap: "5.6%", capD: "-8bps", ppu: "$194K", ppuD: "+5.2%", txnVol: "$2.2B", deals: "72",
+    cycle: "PEAK", cycleMonth: 52, cyclePct: 82,
+    rentHistory: [1600,1620,1645,1660,1680,1700,1720,1748,1768,1790,1808,1820],
+    vacHistory: [7.8,7.6,7.5,7.4,7.3,7.2,7.1,7.0,7.0,7.1,7.1,7.1],
+    rentSf: "$1.76", vsNational: "+9.8%", concession: "3.2%", revpau: "$1,706",
+    permitVel: "-4.2% YoY",
+    primer: `Orlando is a <g>2.8M-person MSA</g> tracking <c>{props} properties</c> and <c>{units} units</c>. The tourism-driven market is in <g>month 52 near cycle peak</g> — employment growing <g>+2.1% YoY</g>, population <g>+1.7%</g>. Average rent reached <g>$1,820/mo (+2.4% YoY)</g> with vacancy at <g>7.1%</g>. <o>Primary risk:</o> pipeline elevated at <o>16.2% of existing stock</o> (28,836 units) — <o>17.2 months of supply</o>. Tourism recovery continues with hotel-to-apartment conversions adding stock. <a>Affordability watch:</a> rent-to-income at 30.0%, at the burdened threshold. JEDI Score: <a>78 (+1 over 30d)</a> — Moderate Opportunity, cycle caution.`,
+    signals: [
+      { id: "D", name: "DEMAND", score: 74, delta: "+1", weight: 30, color: T.amber, desc: "Tourism recovery strong. Disney/Universal expansions. Remote worker influx slowing." },
+      { id: "S", name: "SUPPLY", score: 48, delta: "-3", weight: 25, color: T.red, desc: "28,836 pipeline units (16.2%). 17.2 mo supply — elevated risk." },
+      { id: "M", name: "MOMENTUM", score: 72, delta: "+1", weight: 20, color: T.amber, desc: "Rent growth +2.4% — decelerating. Absorption holding at 1,680/qtr." },
+      { id: "P", name: "POSITION", score: 66, delta: "+1", weight: 15, color: T.purple, desc: "Mid-tier SE market. I-4 corridor advantages. Institutional interest moderate." },
+      { id: "R", name: "RISK", score: 38, delta: "-1", weight: 10, color: T.muted, desc: "Affordability at 30% threshold. FL insurance risk. Score inverted." },
+    ],
+    submarkets: [
+      { name: "Lake Nona", jedi: 84, rent: "$2,020", rentD: "+4.0%", vac: "5.8%", pipe: "11.2%", opp: 82, cap: "5.0%", isTop: true },
+      { name: "Dr. Phillips", jedi: 80, rent: "$1,920", rentD: "+3.2%", vac: "6.4%", pipe: "9.8%", opp: 76, cap: "5.2%" },
+      { name: "Winter Park", jedi: 76, rent: "$1,780", rentD: "+2.4%", vac: "7.2%", pipe: "14.2%", opp: 70, cap: "5.6%" },
+      { name: "Downtown Orlando", jedi: 72, rent: "$1,640", rentD: "+1.8%", vac: "8.4%", pipe: "18.4%", opp: 64, cap: "5.8%" },
+    ],
+  },
+  "miami-fl": {
+    id: "miami-fl", name: "Miami, FL", full: "Miami-Fort Lauderdale-Pompano Beach MSA",
+    props: 1245, units: "310,000", jedi: 74, d30: "-2", confidence: 71,
+    rent: "$2,480", rentD: "+1.2%", vac: "8.4%", absorb: "1,920/qtr",
+    pipeline: "57,660", pipelinePct: "18.6%", moSupply: "30.0",
+    pop: "6.1M", popD: "+0.8%", jobs: "2.8M", jobsD: "+1.6%",
+    medInc: "$58,900", incD: "+1.8%", afford: "50.5%", jobsApt: "4.4x",
+    cap: "4.8%", capD: "+5bps", ppu: "$342K", ppuD: "+3.2%", txnVol: "$6.8B", deals: "184",
+    cycle: "PEAK", cycleMonth: 58, cyclePct: 88,
+    rentHistory: [2180,2220,2260,2300,2340,2370,2400,2420,2440,2455,2468,2480],
+    vacHistory: [7.2,7.4,7.6,7.8,8.0,8.1,8.2,8.3,8.4,8.4,8.4,8.4],
+    rentSf: "$2.38", vsNational: "+49.5%", concession: "4.2%", revpau: "$2,268",
+    permitVel: "+2.1% YoY",
+    primer: `Miami is a <g>6.1M-person MSA</g> tracking <c>{props} properties</c> and <c>{units} units</c>. The global gateway market is at <a>cycle peak (month 58)</a> — employment growing <g>+1.6% YoY</g>, population <g>+0.8%</g>. Average rent reached <g>$2,480/mo (+1.2% YoY)</g> but growth is decelerating with vacancy rising to <o>8.4%</o>. <o>Primary risk:</o> pipeline is critically elevated at <o>18.6% of existing stock</o> (57,660 units) with <o>30.0 months of supply</o> at current absorption. <a>Affordability crisis:</a> rent-to-income at <o>50.5%</o> — severely burdened, limiting organic demand growth. International capital inflow remains a demand driver but domestic renter pool is constrained. JEDI Score: <a>74 (-2 over 30d)</a> — Caution. Supply overhang headwind.`,
+    signals: [
+      { id: "D", name: "DEMAND", score: 68, delta: "-2", weight: 30, color: T.amber, desc: "International migration sustaining demand. Domestic renter pool constrained by affordability." },
+      { id: "S", name: "SUPPLY", score: 38, delta: "-4", weight: 25, color: T.red, desc: "57,660 pipeline units (18.6%). 30.0 mo supply — extreme overhang." },
+      { id: "M", name: "MOMENTUM", score: 62, delta: "-3", weight: 20, color: T.orange, desc: "Rent growth decelerating to +1.2%. Concessions rising +4.2%. Leasing velocity slowing." },
+      { id: "P", name: "POSITION", score: 72, delta: "-1", weight: 15, color: T.purple, desc: "Global gateway. International capital. Lifestyle destination premium sustained." },
+      { id: "R", name: "RISK", score: 48, delta: "+2", weight: 10, color: T.red, desc: "Affordability 50.5% — severely burdened. FL insurance surcharges. Hurricane risk. Score inverted." },
+    ],
+    submarkets: [
+      { name: "Brickell", jedi: 80, rent: "$2,840", rentD: "+2.4%", vac: "7.2%", pipe: "14.8%", opp: 76, cap: "4.4%", isTop: true },
+      { name: "Wynwood", jedi: 76, rent: "$2,560", rentD: "+1.8%", vac: "8.0%", pipe: "16.2%", opp: 72, cap: "4.6%" },
+      { name: "Coral Gables", jedi: 74, rent: "$2,380", rentD: "+0.8%", vac: "8.8%", pipe: "12.4%", opp: 68, cap: "4.8%" },
+      { name: "North Miami", jedi: 68, rent: "$2,120", rentD: "+0.4%", vac: "10.2%", pipe: "22.4%", opp: 60, cap: "5.2%" },
+    ],
+  },
+  "jacksonville-fl": {
+    id: "jacksonville-fl", name: "Jacksonville, FL", full: "Jacksonville-St. Johns-Clay MSA",
+    props: 386, units: "82,000", jedi: 80, d30: "+5", confidence: 76,
+    rent: "$1,580", rentD: "+3.8%", vac: "5.4%", absorb: "980/qtr",
+    pipeline: "7,544", pipelinePct: "9.2%", moSupply: "7.7",
+    pop: "1.6M", popD: "+2.4%", jobs: "760K", jobsD: "+2.8%",
+    medInc: "$64,200", incD: "+3.2%", afford: "27.2%", jobsApt: "5.1x",
+    cap: "5.8%", capD: "-18bps", ppu: "$178K", ppuD: "+9.8%", txnVol: "$1.2B", deals: "44",
+    cycle: "EXPANSION", cycleMonth: 24, cyclePct: 42,
+    rentHistory: [1380,1400,1420,1440,1460,1485,1510,1535,1552,1564,1574,1580],
+    vacHistory: [6.8,6.5,6.2,6.0,5.8,5.6,5.5,5.4,5.4,5.4,5.4,5.4],
+    rentSf: "$1.52", vsNational: "-4.6%", concession: "1.8%", revpau: "$1,484",
+    permitVel: "-9.2% YoY",
+    primer: `Jacksonville is a <g>1.6M-person MSA</g> tracking <c>{props} properties</c> and <c>{units} units</c>. Florida's largest city by land area is in <g>month 24 of an early expansion cycle</g> — the best momentum profile in the SE. Employment growing <g>+2.8% YoY</g>, population <g>+2.4%</g>, median income <g>+3.2%</g>. Average rent reached <g>$1,580/mo (+3.8% YoY)</g> with vacancy tightening to <g>5.4%</g> — a 5-year low. <g>Strongest supply discipline</g> in the peer set: pipeline only <g>9.2% of stock</g> (7,544 units) with <g>7.7 months of supply</g> — well below market equilibrium. Affordability is healthy at <g>27.2% rent-to-income</g>. JEDI Score: <g>80 (+5 over 30d) — best 30d momentum in cohort</g>. Emerging opportunity.`,
+    signals: [
+      { id: "D", name: "DEMAND", score: 82, delta: "+5", weight: 30, color: T.green, desc: "Nocatee #2 top-selling MPC nationally. Port expansion +1,400 jobs. Military demand stable." },
+      { id: "S", name: "SUPPLY", score: 78, delta: "+2", weight: 25, color: T.green, desc: "7,544 pipeline units (9.2%) — lowest in peer set. 7.7 mo supply. Permits falling -9.2%." },
+      { id: "M", name: "MOMENTUM", score: 80, delta: "+5", weight: 20, color: T.green, desc: "Rent growth accelerating +3.8%. Vacancy at 5-year low. Leasing velocity surging." },
+      { id: "P", name: "POSITION", score: 70, delta: "+3", weight: 15, color: T.purple, desc: "Undervalued relative to peer MSAs. Institutional discovery phase. Rising cap compression." },
+      { id: "R", name: "RISK", score: 20, delta: "-2", weight: 10, color: T.muted, desc: "Affordability 27.2% — healthy buffer. Low insurance risk vs Miami/Tampa. Score inverted." },
+    ],
+    submarkets: [
+      { name: "Nocatee", jedi: 88, rent: "$1,840", rentD: "+5.2%", vac: "4.2%", pipe: "6.4%", opp: 88, cap: "5.4%", isTop: true },
+      { name: "Southside", jedi: 82, rent: "$1,620", rentD: "+4.1%", vac: "5.0%", pipe: "7.8%", opp: 80, cap: "5.7%" },
+      { name: "Riverside", jedi: 78, rent: "$1,540", rentD: "+3.6%", vac: "5.8%", pipe: "10.4%", opp: 74, cap: "5.9%" },
+      { name: "Downtown JAX", jedi: 72, rent: "$1,440", rentD: "+2.8%", vac: "7.2%", pipe: "12.8%", opp: 66, cap: "6.2%" },
+    ],
+  },
 };
 
 type Signal = { id: string; name: string; score: number; delta: string; weight: number; color: string; desc: string };
@@ -476,10 +588,10 @@ export default function BloombergMarketDetail({ embedded = false, marketId: mark
       {!embedded && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px", height: 34, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
           <button
-            onClick={() => navigate("/terminal", { state: { fkey: "F4" } })}
+            onClick={() => navigate("/market-intelligence")}
             style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "3px 10px", fontSize: 11, cursor: "pointer", ...mono, borderRadius: 2 }}
           >
-            ◀ F4 MARKETS
+            ◀ MSA INDEX
           </button>
           <span style={{ fontSize: 11, fontWeight: 700, color: T.amber }}>{msa.name}</span>
           <span style={{ color: T.borderM }}>/</span>

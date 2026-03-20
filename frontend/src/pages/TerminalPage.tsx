@@ -1614,6 +1614,9 @@ export default function TerminalPage() {
               {label}
             </button>
           ))}
+          <button onClick={() => navigate("/market-intelligence")} style={{background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,fontSize:8,fontFamily:T.font.mono,fontWeight:700,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
+            FULL INTEL →
+          </button>
         </div>
       </div>
 
