@@ -14,10 +14,10 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 266 | 89 | 177 | 0 |
-| **TOTAL** | | | **1,145** | **548 (48%)** | **597 (52%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 324 | 106 | 218 | 0 |
+| **TOTAL** | | | **1,203** | **571 (47%)** | **632 (53%)** | **0 (0%)** |
 
-**Zero server errors (5xx) across all 1,145 endpoints tested.**
+**Zero server errors (5xx) across all 1,203 endpoints tested.**
 
 ---
 
@@ -85,17 +85,28 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 ## Phase 5 — Module Wiring & Misc (`smoke-test-misc.sh`)
 
-**266 endpoints** across dashboard, gmail, microsoft integration, contacts sync, emails (AI actions), email extractions, news, intelligence, orgs/RBAC, context tracker, module wiring (full matrix), trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences, property types/strategies, custom strategies, strategies, zoning intelligence/learning/verification/profile, development scenarios, team management, collaboration, notarize, data upload, entitlements, regulatory alerts, municode, scrape, design references, financial model, financial dashboard, visibility, property analytics, traffic data, traffic comps, unit mix, training/calibration/capsules, m22 archive, audit chain, kafka-events, proposals, admin, portfolio, agents, chat, correlations, opportunities, notifications, map configs, grid/rankings, **capital structure (full)**, **financial models CRUD**, **strategy analyses CRUD**, **dd-checklists CRUD**, **modules**, **module libraries**, **strategy definitions**, **property metrics**, **property scoring**, **opus**, **data library**, **market research**, **benchmark timeline**.
+**324 endpoints** across dashboard, gmail, microsoft integration, contacts sync, emails (AI actions), email extractions, news, intelligence, orgs/RBAC, context tracker, **full module wiring matrix (all 55 routes)**, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences, property types/strategies, custom strategies, strategies, zoning intelligence/learning/verification/profile, development scenarios, team management, collaboration, notarize, data upload, entitlements, regulatory alerts, municode, scrape, design references, financial model, financial dashboard, visibility, property analytics, traffic data, traffic comps, unit mix, training/calibration/capsules, m22 archive, audit chain, kafka-events, proposals, admin, portfolio, agents, chat, correlations, opportunities, notifications, map configs, grid/rankings, **capital structure (13 endpoints)**, **financial models CRUD (7 endpoints)**, **strategy analyses CRUD (5 endpoints)**, **dd-checklists CRUD (5 endpoints)**, **modules (4 endpoints)**, **module libraries (3 endpoints)**, **strategy definitions (4 endpoints)**, **property metrics (3 endpoints)**, **property scoring (3 endpoints)**, **opus (3 endpoints)**, **data library (4 endpoints)**, **market research (4 endpoints)**, **benchmark timeline (3 endpoints)**, **extractions (6 endpoints)**, **asset news (4 endpoints)**, **asset notes (5 endpoints)**, **note categories (5 endpoints)**, **note replies (5 endpoints)**, **task completion (4 endpoints)**.
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| PASS   | 89    | HTTP 200 response |
-| SKIP   | 177   | 404 (no collection GET handler), 400 (validation), 401 (auth) |
+| PASS   | 106   | HTTP 200 response |
+| SKIP   | 218   | 404 (no collection GET or unmounted), 400 (validation), 401 (auth) |
 | FAIL   | 0     | — |
 
-Key coverage: full module wiring matrix (55 routes), formulas, data-flow, orchestrator, wire endpoints, capital structure stack/sizing/rates/waterfall, financial model CRUD, strategy analysis compare, DD checklist tasks.
+Key module-wiring coverage (all 55 route endpoints):
+- Registry: `GET /modules/registry`, `/modules/registry/:id`, `/modules/priority/:priority`, `/modules/build-order`
+- Formulas: `GET /formulas`, `/formulas/:id`, `/formulas/module/:moduleId`; `POST /formulas/:id/execute`
+- Data Flow: `GET /data-flow/matrix`, `/incoming/:id`, `/outgoing/:id`, `/cascade/:id`, `/readiness/:id`, `/cycles`
+- Strategy: `GET /strategy/weights`; `POST /strategy/analyze/:id`, `/strategy/compare`, `/strategy/analyze-with-envelope/:id`
+- Orchestrator: `GET /orchestrator/status`, `/orchestrator/pipelines`, `/orchestrator/validate`, `/orchestrator/deal-readiness/:id`; `POST /orchestrator/initialize`, `/orchestrator/execute/:m/:d`, `/orchestrator/cascade/:m/:d`, `/orchestrator/pipeline/:p/:d`, `/orchestrator/p0/:d`
+- Wire: `POST /wire/p0`, `/wire/jedi-score`, `/wire/news`, `/wire/risk`, `/wire/strategy`, `/wire/zoning`, `/wire/p1`, `/wire/traffic`, `/wire/traffic/forecast`, `/wire/proforma/sync`, `/wire/proforma/init`, `/wire/scenarios`, `/wire/scenarios/recalculate`, `/wire/competition`, `/wire/debt`, `/wire/exit`, `/wire/portfolio`, `/wire/subscriptions/setup`, `/wire/subscriptions/p1/setup`, `/wire/subscriptions/p2/setup`, `/wire/subscriptions/all/setup`, `/wire/p2`
+- Wiring Cap-Structure: `POST /wiring/capital-structure/stack`, `/waterfall`, `/scenarios`, `/rate-analysis`, `/pipeline`, `/subscriptions`
 
-Known SKIP patterns: routes that have sub-paths but no collection GET `/` (returns 404 by design — no list endpoint implemented). This is expected behavior.
+Bug fix: Endpoint `POST /module-wiring/wiring/capital-structure/pipeline` had a JS error when `uses` field was omitted (`Cannot read .total of undefined`). Added null-guard to provide default `uses` object when not supplied.
+
+Known SKIP patterns (expected 404):
+- Unmounted route files: extractions, assetNews, assetNotes, noteCategories, noteReplies, task-completion, maps, kafka-events, proposals, map-annotations
+- Routes with sub-paths but no collection GET `/` (leasing-traffic, uploads, design-references, traffic-data, traffic-comps, portfolio, agents, correlations, opportunities, orgs)
 
 ---
 

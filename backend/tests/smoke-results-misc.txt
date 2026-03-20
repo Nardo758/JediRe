@@ -1,3 +1,3 @@
 Misc / Module-Wiring Smoke Test Results
-Run at: Fri Mar 20 05:21:26 AM UTC 2026
-PASS: 89 | SKIP: 177 | FAIL: 0 | TOTAL: 266
+Run at: Fri Mar 20 05:33:57 AM UTC 2026
+PASS: 106 | SKIP: 218 | FAIL: 0 | TOTAL: 324

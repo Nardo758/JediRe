@@ -210,6 +210,62 @@ check_lenient "ModuleWiring: POST /module-wiring/wire/traffic"            POST "
   -d '{}'
 check_lenient "ModuleWiring: POST /module-wiring/wiring/cap-struct/stack" POST "$BASE/api/v1/module-wiring/wiring/capital-structure/stack" \
   -d '{"dealId":"'"$DEAL_ID"'","strategy":"core"}'
+check_lenient "ModuleWiring: GET /module-wiring/modules/priority/:p"     GET  "$BASE/api/v1/module-wiring/modules/priority/p0"
+check_lenient "ModuleWiring: GET /module-wiring/formulas/module/:id"     GET  "$BASE/api/v1/module-wiring/formulas/module/jedi"
+check_lenient "ModuleWiring: POST /module-wiring/strategy/compare"       POST "$BASE/api/v1/module-wiring/strategy/compare" \
+  -d '{"dealIds":["'"$DEAL_ID"'"]}'
+check_lenient "ModuleWiring: POST /module-wiring/strategy/analyze-env"   POST "$BASE/api/v1/module-wiring/strategy/analyze-with-envelope/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/orch/initialize"         POST "$BASE/api/v1/module-wiring/orchestrator/initialize" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/orch/execute/:m/:d"      POST "$BASE/api/v1/module-wiring/orchestrator/execute/jedi/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/orch/cascade/:m/:d"      POST "$BASE/api/v1/module-wiring/orchestrator/cascade/jedi/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/orch/pipeline/:p/:d"     POST "$BASE/api/v1/module-wiring/orchestrator/pipeline/p0/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/orch/p0"                 POST "$BASE/api/v1/module-wiring/orchestrator/p0/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/zoning"             POST "$BASE/api/v1/module-wiring/wire/zoning/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/subscriptions/setup" POST "$BASE/api/v1/module-wiring/wire/subscriptions/setup" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/proforma/sync"      POST "$BASE/api/v1/module-wiring/wire/proforma/sync/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/proforma/init"      POST "$BASE/api/v1/module-wiring/wire/proforma/init/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/scenarios"          POST "$BASE/api/v1/module-wiring/wire/scenarios/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/scenarios/recalc"   POST "$BASE/api/v1/module-wiring/wire/scenarios/recalculate/$FAKE_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/competition"        POST "$BASE/api/v1/module-wiring/wire/competition/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/debt"               POST "$BASE/api/v1/module-wiring/wire/debt/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/subs/p1"            POST "$BASE/api/v1/module-wiring/wire/subscriptions/p1/setup" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/p2"                 POST "$BASE/api/v1/module-wiring/wire/p2/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/traffic/forecast"   POST "$BASE/api/v1/module-wiring/wire/traffic/forecast/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/exit"               POST "$BASE/api/v1/module-wiring/wire/exit/$DEAL_ID" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/portfolio"          POST "$BASE/api/v1/module-wiring/wire/portfolio" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/subs/p2"            POST "$BASE/api/v1/module-wiring/wire/subscriptions/p2/setup" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wire/subs/all"           POST "$BASE/api/v1/module-wiring/wire/subscriptions/all/setup" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wiring/cap-struct/wfall" POST "$BASE/api/v1/module-wiring/wiring/capital-structure/waterfall" \
+  -d '{"dealId":"'"$DEAL_ID"'"}'
+check_lenient "ModuleWiring: POST /module-wiring/wiring/cap-struct/scen"  POST "$BASE/api/v1/module-wiring/wiring/capital-structure/scenarios" \
+  -d '{}'
+check_lenient "ModuleWiring: POST /module-wiring/wiring/cap-struct/rate"  POST "$BASE/api/v1/module-wiring/wiring/capital-structure/rate-analysis" \
+  -d '{"dealId":"'"$DEAL_ID"'"}'
+check_lenient "ModuleWiring: POST /module-wiring/wiring/cap-struct/pipe"  POST "$BASE/api/v1/module-wiring/wiring/capital-structure/pipeline" \
+  -d '{"dealId":"'"$DEAL_ID"'","strategy":"core","layers":[],"noi":500000,"propertyValue":7000000}'
+check_lenient "ModuleWiring: POST /module-wiring/wiring/cap-struct/subs"  POST "$BASE/api/v1/module-wiring/wiring/capital-structure/subscriptions" \
+  -d '{}'
 
 # ── Trade Areas ───────────────────────────────────────────
 echo "── trade-areas ──"
@@ -659,6 +715,69 @@ check_lenient "BenchTimeline: GET /benchmark-timeline"                 GET  "$BA
 check_lenient "BenchTimeline: GET /benchmark-timeline/:id"             GET  "$BASE/api/v1/benchmark-timeline/$FAKE_ID"
 check_lenient "BenchTimeline: POST /benchmark-timeline"                POST "$BASE/api/v1/benchmark-timeline" \
   -d '{"dealId":"'"$DEAL_ID"'","county":"Fulton","state":"GA"}'
+
+# ── Extractions (unmounted — extractions.routes.ts) ───────
+echo "── extractions ──"
+check_lenient "Extractions: GET /extractions/pending"                  GET  "$BASE/api/v1/extractions/pending"
+check_lenient "Extractions: POST /extractions/:id/approve"             POST "$BASE/api/v1/extractions/$FAKE_ID/approve" \
+  -d '{}'
+check_lenient "Extractions: POST /extractions/:id/reject"              POST "$BASE/api/v1/extractions/$FAKE_ID/reject" \
+  -d '{}'
+check_lenient "Extractions: POST /extractions/:id/skip"                POST "$BASE/api/v1/extractions/$FAKE_ID/skip" \
+  -d '{}'
+check_lenient "Extractions: POST /extractions/bulk-approve"            POST "$BASE/api/v1/extractions/bulk-approve" \
+  -d '{"ids":[]}'
+check_lenient "Extractions: POST /extractions/bulk-reject"             POST "$BASE/api/v1/extractions/bulk-reject" \
+  -d '{"ids":[]}'
+
+# ── Asset News (unmounted — assetNews.routes.ts) ──────────
+echo "── asset-news ──"
+check_lenient "AssetNews: GET /assets/:id/news"                        GET  "$BASE/api/v1/assets/$FAKE_ID/news"
+check_lenient "AssetNews: POST /assets/:id/news"                       POST "$BASE/api/v1/assets/$FAKE_ID/news" \
+  -d '{"newsEventId":"'"$FAKE_ID"'"}'
+check_lenient "AssetNews: PATCH /assets/:id/news/:nid"                 PATCH "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID" \
+  -d '{"relevanceScore":0.8}'
+check_lenient "AssetNews: DELETE /assets/:id/news/:nid"                DELETE "$BASE/api/v1/assets/$FAKE_ID/news/$FAKE_ID"
+
+# ── Asset Notes (unmounted — assetNotes.routes.ts) ────────
+echo "── asset-notes ──"
+check_lenient "AssetNotes: GET /assets/:id/notes"                      GET  "$BASE/api/v1/assets/$FAKE_ID/notes"
+check_lenient "AssetNotes: GET /assets/:id/notes/:nid"                 GET  "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID"
+check_lenient "AssetNotes: POST /assets/:id/notes"                     POST "$BASE/api/v1/assets/$FAKE_ID/notes" \
+  -d '{"content":"smoke note","latitude":33.749,"longitude":-84.388}'
+check_lenient "AssetNotes: PATCH /assets/:id/notes/:nid"               PATCH "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID" \
+  -d '{"content":"updated"}'
+check_lenient "AssetNotes: DELETE /assets/:id/notes/:nid"              DELETE "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID"
+
+# ── Note Categories (unmounted — noteCategories.routes.ts) ─
+echo "── note-categories ──"
+check_lenient "NoteCategories: GET /note-categories"                   GET  "$BASE/api/v1/note-categories"
+check_lenient "NoteCategories: GET /note-categories/:id"               GET  "$BASE/api/v1/note-categories/$FAKE_ID"
+check_lenient "NoteCategories: POST /note-categories"                  POST "$BASE/api/v1/note-categories" \
+  -d '{"name":"Smoke Category","color":"#ff0000"}'
+check_lenient "NoteCategories: PATCH /note-categories/:id"             PATCH "$BASE/api/v1/note-categories/$FAKE_ID" \
+  -d '{"name":"Updated"}'
+check_lenient "NoteCategories: DELETE /note-categories/:id"            DELETE "$BASE/api/v1/note-categories/$FAKE_ID"
+
+# ── Note Replies (unmounted — noteReplies.routes.ts) ──────
+echo "── note-replies ──"
+check_lenient "NoteReplies: GET /notes/:id/replies"                    GET  "$BASE/api/v1/notes/$FAKE_ID/replies"
+check_lenient "NoteReplies: GET /notes/:id/replies/:rid"               GET  "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID"
+check_lenient "NoteReplies: POST /notes/:id/replies"                   POST "$BASE/api/v1/notes/$FAKE_ID/replies" \
+  -d '{"content":"smoke reply"}'
+check_lenient "NoteReplies: PATCH /notes/:id/replies/:rid"             PATCH "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID" \
+  -d '{"content":"updated reply"}'
+check_lenient "NoteReplies: DELETE /notes/:id/replies/:rid"            DELETE "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID"
+
+# ── Task Completion (unmounted — task-completion.routes.ts) ─
+echo "── task-completion ──"
+check_lenient "TaskComp: POST /task-completion/scan-completions"       POST "$BASE/api/v1/task-completion/scan-completions" \
+  -d '{}'
+check_lenient "TaskComp: POST /task-completion/:id/complete-from-email" POST "$BASE/api/v1/task-completion/$FAKE_ID/complete-from-email" \
+  -d '{"emailId":1}'
+check_lenient "TaskComp: POST /task-completion/:id/reject-completion"  POST "$BASE/api/v1/task-completion/$FAKE_ID/reject-completion" \
+  -d '{}'
+check_lenient "TaskComp: GET /task-completion/completion-suggestions"  GET  "$BASE/api/v1/task-completion/completion-suggestions"
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo ""
