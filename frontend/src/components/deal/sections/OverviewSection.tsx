@@ -10,7 +10,7 @@ import {
   AnalysisStatus,
   StrategyResults,
 } from '@/services/dealAnalysis.service';
-import { apiClient } from '@/services/api.client';
+import apiClient, { api } from '@/services/api.client';
 import {
   type JEDIScoreData,
   type SignalScore,
@@ -66,7 +66,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 }) => {
   const { 
     capitalStructure, strategy: strategyCtx, financial, market, design3D, 
-    activeScenario, zoningProfile, siteData, dealInputs, canonicalData,
+    activeScenario, zoningProfile, updateZoningProfile, siteData, dealInputs, canonicalData,
     assumptions, computedReturns, fullContext, assumptionsLoading 
   } = useDealModule();
 
@@ -110,6 +110,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     loadEntitlements();
     loadCapitalStack();
     loadEntitlementBenchmarks();
+    loadZoningProfile();
     return () => { stopPolling?.(); };
   }, [deal?.id]);
 
@@ -121,7 +122,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const loadEntitlements = async () => {
     if (!deal?.id) return;
     try {
-      const res = await apiClient.entitlements.getEntitlementsByDeal(deal.id);
+      const res = await api.entitlements.getEntitlementsByDeal(deal.id);
       if (res.data?.data && Array.isArray(res.data.data)) {
         setEntitlements(res.data.data);
       } else if (Array.isArray(res.data)) {
@@ -134,28 +135,14 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 
   const loadCapitalStack = async () => {
     if (!deal?.id) return;
-    const strategy = deal.strategyType || deal.strategy || 'value_add';
-    const totalCost = deal.purchasePrice || deal.budget || 0;
-    const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
-    if (!totalCost) return;
     try {
-      const res = await apiClient.proforma.calculateCapitalStack({
-        dealId: deal.id,
-        strategy,
-        layers: [
-          { type: 'senior_debt', amount: totalCost * 0.65 },
-          { type: 'equity', amount: totalCost * 0.35 },
-        ],
-        uses: { acquisition: totalCost },
-        noi,
-      });
-      if (res.data?.data) {
-        setCapitalStackData(res.data.data);
-      } else if (res.data?.stack || res.data?.layers) {
-        setCapitalStackData(res.data);
+      const res = await api.proforma.getCapitalStructure(deal.id);
+      const data = res.data;
+      if (data?.exists && data?.stack) {
+        setCapitalStackData(data.stack);
       }
     } catch (err) {
-      console.warn('Could not load capital stack:', err);
+      console.warn('Could not load capital structure:', err);
     }
   };
 
@@ -173,7 +160,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const state = deal?.state || deal?.tradeArea?.state || '';
     if (!county || !state) return;
     try {
-      const res = await apiClient.entitlements.getBenchmarkTimeline(county, state);
+      const res = await api.entitlements.getBenchmarkTimeline(county, state);
       const summaries = res.data?.summaries || [];
       if (summaries.length > 0) {
         const primary = summaries[0];
@@ -192,11 +179,33 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     }
   };
 
+  const loadZoningProfile = async () => {
+    if (!deal?.id) return;
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${deal.id}/zoning-profile`);
+      const data = res.data;
+      if (data?.exists && data?.profile) {
+        const p = data.profile;
+        updateZoningProfile({
+          baseDistrictCode: p.base_district_code ?? null,
+          municipality: p.municipality ?? null,
+          appliedFar: p.applied_far ?? null,
+          lotAreaSf: p.lot_area_sf ?? null,
+          buildableAreaSf: p.buildable_area_sf ?? null,
+          constraintSource: p.constraint_source ?? 'api',
+          lastUpdated: Date.now(),
+        });
+      }
+    } catch (err) {
+      console.warn('Could not load zoning profile:', err);
+    }
+  };
+
   const loadJediScore = async () => {
     if (!deal?.id) return;
     setScoreLoading(true);
     try {
-      const response = await apiClient.jedi.getScore(deal.id);
+      const response = await api.jedi.getScore(deal.id);
       const scoreData = response.data?.data;
       if (scoreData?.score) {
         const s = scoreData.score;
