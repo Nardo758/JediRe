@@ -1387,11 +1387,13 @@ const M08ArbitrageBanner: React.FC<{ arbitrage: M08ArbitrageResult; scores?: M08
   const runnerScore = scores?.find(s => s.strategy_id === arbitrage.runner_up_strategy_id);
 
   const roiCallout = (() => {
-    if (!winnerScore?.roi_estimate && !runnerScore?.roi_estimate) return null;
-    const wIrr  = winnerScore?.roi_estimate?.irr;
-    const rIrr  = runnerScore?.roi_estimate?.irr;
-    const wYoc  = winnerScore?.roi_estimate?.yoc;
-    const rYoc  = runnerScore?.roi_estimate?.yoc;
+    const wRoi = normalizeRoiEstimate(winnerScore?.roi_estimate);
+    const rRoi = normalizeRoiEstimate(runnerScore?.roi_estimate);
+    if (!wRoi && !rRoi) return null;
+    const wIrr  = wRoi?.irr;
+    const rIrr  = rRoi?.irr;
+    const wYoc  = wRoi?.yoc;
+    const rYoc  = rRoi?.yoc;
     const parts: string[] = [];
     if (wIrr != null && rIrr != null && Math.abs(wIrr - rIrr) > 0.1)
       parts.push(`IRR delta +${(wIrr - rIrr).toFixed(1)}%`);
@@ -1729,6 +1731,18 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
   );
 };
 
+/** Normalize roi_estimate to handle backend field name variants (e.g. revpar vs rev_par) */
+function normalizeRoiEstimate(raw: M08StrategyScore['roi_estimate']): NonNullable<M08StrategyScore['roi_estimate']> | null {
+  if (!raw) return null;
+  const r = raw as Record<string, number | undefined>;
+  return {
+    irr: r['irr'] ?? r['irr_pct'] ?? r['IRR'],
+    yoc: r['yoc'] ?? r['yield_on_cost'] ?? r['YOC'],
+    profit_margin: r['profit_margin'] ?? r['profitMargin'] ?? r['margin'],
+    rev_par: r['rev_par'] ?? r['revpar'] ?? r['RevPAR'] ?? r['rev_PAR'],
+  };
+}
+
 /** Infer the primary ROI metric key for a strategy based on its type or name keywords */
 function roiKeyForStrategy(s: M08StrategyScore): { key: keyof NonNullable<M08StrategyScore['roi_estimate']>; label: string; unit: string } {
   const t = (s.strategy_type ?? '').toLowerCase();
@@ -1757,7 +1771,8 @@ const ROIComparison: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => 
 
   const chartData = sorted.map((s, i) => {
     const { key, label, unit } = roiKeyForStrategy(s);
-    const raw = s.roi_estimate?.[key];
+    const normalized = normalizeRoiEstimate(s.roi_estimate);
+    const raw = normalized?.[key];
     return {
       name: s.strategy_name.length > 12 ? s.strategy_name.slice(0, 12) + '…' : s.strategy_name,
       value: raw ?? 0,
