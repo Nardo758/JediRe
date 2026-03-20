@@ -28,11 +28,11 @@ function scoreToVerdict(score: number): { verdict: string; verdictColor: string 
 
 function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
   const signalDefs = [
-    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-900/10', moduleLink: 'market-intelligence' },
+    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-900/10', moduleLink: 'market' },
     { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-900/10', moduleLink: 'supply' },
-    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-900/10', moduleLink: 'market-intelligence' },
-    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-900/10', moduleLink: 'market-intelligence' },
-    { id: 'risk', name: 'Risk', color: 'bg-[#4B5563]', bgColor: 'bg-[#131920]', moduleLink: 'risk-management' },
+    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-900/10', moduleLink: 'market' },
+    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-900/10', moduleLink: 'market' },
+    { id: 'risk', name: 'Risk', color: 'bg-[#4B5563]', bgColor: 'bg-[#131920]', moduleLink: 'risk' },
   ];
 
   return signalDefs.map(def => {
@@ -625,7 +625,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
               )}
             </div>
             <button style={{ fontSize: 9, fontWeight: 700, color: alertColor, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, marginLeft: 16, ...bMono }}
-              onClick={() => navigateToTab('risk-management')}>
+              onClick={() => navigateToTab('risk')}>
               Risk Dashboard →
             </button>
           </div>
@@ -1570,13 +1570,13 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
   const stabilizedNoi = financial?.noi || financial?.stabilizedNoi || computedReturns?.stabilizedNoi || 0;
   const noiDelta = stabilizedNoi - existingNoi;
 
-  const existingOccupancy = deal.existingOccupancy || deal.occupancy || 0.84;
-  const stabilizedOccupancy = deal.stabilizedOccupancy || 0.95;
+  const existingOccupancy: number | null = deal.existingOccupancy ?? deal.occupancy ?? null;
+  const stabilizedOccupancy: number | null = deal.stabilizedOccupancy ?? null;
   const existingRentPerUnit = deal.existingRentPerUnit || deal.avgRent || 0;
   const stabilizedRentPerUnit = deal.stabilizedRentPerUnit || deal.targetRent || 0;
   const rentDelta = stabilizedRentPerUnit - existingRentPerUnit;
-  const existingCapRate = askPrice > 0 && existingNoi > 0 ? existingNoi / askPrice : (deal.existingCapRate || 0);
-  const existingExpenseRatio = deal.existingExpenseRatio || 0.52;
+  const existingCapRate = askPrice > 0 && existingNoi > 0 ? existingNoi / askPrice : (deal.existingCapRate ?? null);
+  const existingExpenseRatio: number | null = deal.existingExpenseRatio ?? null;
 
   const deferred = deal.deferred || 0;
   const renovationBudget = financial?.renovationBudget || deal.renovationBudget || 0;
@@ -1584,7 +1584,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
   const expansionCost = financial?.expansionCost || deal.expansionCost || 0;
   const expansionCostPerUnit = expansionUnits > 0 && expansionCost > 0 ? Math.round(expansionCost / expansionUnits) : 0;
   const expansionSqft = deal.expansionSqft || expansionUnits * 900;
-  const expansionType = deal.expansionType || 'Garden Walk-Up';
+  const expansionType: string | null = deal.expansionType ?? null;
   const softCosts = financial?.softCosts || 0;
   const totalInvestment = financial?.totalDevelopmentCost
     || deal.totalInvestment
@@ -1594,12 +1594,12 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
   const seniorDebt = capitalStructure?.seniorDebt || (totalInvestment * 0.644) || 0;
   const equityRequired = capitalStructure?.equity || capitalStructure?.equityRequired || (totalInvestment * 0.356) || 0;
   const ltv = totalInvestment > 0 ? seniorDebt / totalInvestment : 0;
-  const bridgeRate = capitalStructure?.rate || deal.rate || 0.0675;
-  const bridgeTerm = capitalStructure?.term || deal.term || '3+1+1 Bridge';
-  const equitySplit = capitalStructure?.equitySplit || deal.equitySplit || '90/10 LP/GP';
-  const prefReturn = capitalStructure?.prefReturn || deal.prefReturn || 0.08;
-  const promote = capitalStructure?.promote || deal.promote || '70/30 above pref';
-  const lenderType = capitalStructure?.lender || deal.lenderType || 'Bridge (Recourse → Non-recourse at stabilization)';
+  const bridgeRate: number | null = capitalStructure?.rate ?? deal.rate ?? null;
+  const bridgeTerm: string | null = capitalStructure?.term ?? deal.term ?? null;
+  const equitySplit: string | null = capitalStructure?.equitySplit ?? deal.equitySplit ?? null;
+  const prefReturn: number | null = capitalStructure?.prefReturn ?? deal.prefReturn ?? null;
+  const promote: string | null = capitalStructure?.promote ?? deal.promote ?? null;
+  const lenderType: string | null = capitalStructure?.lender ?? deal.lenderType ?? null;
 
   const exitCapRate = financial?.exitCapRate || deal.exitCapRate || 0.055;
   const exitValue = stabilizedNoi > 0 ? stabilizedNoi / exitCapRate : (deal.exitValue || 0);
@@ -1665,11 +1665,11 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
 
   const moduleItems = [
     { module: 'M02', label: 'Property & Zoning', status: 'complete', link: 'zoning' },
-    { module: 'M05', label: 'Market Intelligence', status: 'in-progress', link: 'market-intelligence' },
-    { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic-intelligence' },
+    { module: 'M05', label: 'Market Intelligence', status: 'in-progress', link: 'market' },
+    { module: 'M07', label: 'Traffic Intelligence', status: 'not-started', link: 'traffic' },
     { module: 'M09', label: 'Pro Forma', status: 'in-progress', link: 'proforma' },
     { module: 'M11', label: 'Capital Structure', status: 'not-started', link: 'capital' },
-    { module: 'M13', label: 'Risk Management', status: 'not-started', link: 'risk-management' },
+    { module: 'M13', label: 'Risk Management', status: 'not-started', link: 'risk' },
     { module: 'M15', label: 'Competition', status: 'in-progress', link: 'competition' },
     { module: 'M08', label: 'Strategy', status: 'not-started', link: 'strategy' },
     { module: 'M17', label: 'Execution', status: 'not-started', link: 'execution' },
@@ -1722,8 +1722,8 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
         <RSection number="1" title="Acquisition + As-Is Metrics" subtitle="What you're buying today — current operations baseline" />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 10 }}>
           <RCard><RMetric label="GOING-IN CAP RATE" value={existingCapRate > 0 ? `${(existingCapRate * 100).toFixed(2)}%` : '—'} sub="Based on trailing 12mo NOI" /></RCard>
-          <RCard><RMetric label="CURRENT NOI" value={existingNoi > 0 ? `$${(existingNoi / 1_000).toFixed(0)}K` : '—'} sub={`Expense ratio: ${(existingExpenseRatio * 100).toFixed(0)}%`} /></RCard>
-          <RCard><RMetric label="OCCUPANCY" value={existingOccupancy > 0 ? `${(existingOccupancy * 100).toFixed(0)}%` : '—'} sub="Physical occupancy" color={existingOccupancy > 0 && existingOccupancy < 0.9 ? BT.amberL : BT.text} /></RCard>
+          <RCard><RMetric label="CURRENT NOI" value={existingNoi > 0 ? `$${(existingNoi / 1_000).toFixed(0)}K` : '—'} sub={existingExpenseRatio != null ? `Expense ratio: ${(existingExpenseRatio * 100).toFixed(0)}%` : undefined} /></RCard>
+          <RCard><RMetric label="OCCUPANCY" value={existingOccupancy != null ? `${(existingOccupancy * 100).toFixed(0)}%` : '—'} sub="Physical occupancy" color={existingOccupancy != null && existingOccupancy < 0.9 ? BT.amberL : BT.text} /></RCard>
           <RCard><RMetric label="AVG RENT / UNIT" value={existingRentPerUnit > 0 ? `$${existingRentPerUnit.toLocaleString()}/mo` : '—'} sub="All unit types blended" /></RCard>
         </div>
         <RCard>
@@ -1758,7 +1758,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
               <div style={{ fontSize: 9, color: BT.td, marginBottom: 4, ...bMono }}>AS-IS NOI</div>
               <div style={{ fontSize: 28, fontWeight: 700, color: BT.text, ...bMono }}>{existingNoi > 0 ? `$${(existingNoi / 1_000).toFixed(0)}K` : '—'}</div>
               <div style={{ fontSize: 10, color: BT.tm, marginTop: 4, ...bSans }}>
-                {existingUnits > 0 ? `${existingUnits} units` : ''}{existingOccupancy > 0 ? ` · ${(existingOccupancy * 100).toFixed(0)}% occ` : ''}{existingRentPerUnit > 0 ? ` · $${existingRentPerUnit.toLocaleString()}/mo` : ''}
+                {existingUnits > 0 ? `${existingUnits} units` : ''}{existingOccupancy != null ? ` · ${(existingOccupancy * 100).toFixed(0)}% occ` : ''}{existingRentPerUnit > 0 ? ` · $${existingRentPerUnit.toLocaleString()}/mo` : ''}
               </div>
             </div>
             <div style={{ fontSize: 22, color: BT.td, padding: '0 6px' }}>→</div>
@@ -1766,7 +1766,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
               <div style={{ fontSize: 9, color: BT.greenL, marginBottom: 4, ...bMono }}>STABILIZED NOI</div>
               <div style={{ fontSize: 28, fontWeight: 700, color: BT.greenL, ...bMono }}>{stabilizedNoi > 0 ? `$${(stabilizedNoi / 1_000_000).toFixed(2)}M` : '—'}</div>
               <div style={{ fontSize: 10, color: BT.tm, marginTop: 4, ...bSans }}>
-                {totalUnits > 0 ? `${totalUnits} units` : ''}{` · ${(stabilizedOccupancy * 100).toFixed(0)}% occ`}{stabilizedRentPerUnit > 0 ? ` · $${stabilizedRentPerUnit.toLocaleString()}/mo` : ''}
+                {totalUnits > 0 ? `${totalUnits} units` : ''}{stabilizedOccupancy != null ? ` · ${(stabilizedOccupancy * 100).toFixed(0)}% occ` : ''}{stabilizedRentPerUnit > 0 ? ` · $${stabilizedRentPerUnit.toLocaleString()}/mo` : ''}
               </div>
             </div>
             <div style={{ fontSize: 22, color: BT.td, padding: '0 6px' }}>=</div>
@@ -1877,7 +1877,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 9, letterSpacing: 2, color: BT.violL, ...bMono }}>EXPANSION</div>
-                <div style={{ fontSize: 10, color: BT.tm, marginTop: 2, ...bSans }}>+{expansionUnits} new units · {expansionType}</div>
+                <div style={{ fontSize: 10, color: BT.tm, marginTop: 2, ...bSans }}>+{expansionUnits} new units{expansionType ? ` · ${expansionType}` : ''}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: 17, fontWeight: 700, color: BT.text, ...bMono }}>{expansionCost > 0 ? `$${(expansionCost / 1_000_000).toFixed(1)}M` : '—'}</div>
@@ -1886,7 +1886,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
             </div>
             <RDataRow label="New Units" value={expansionUnits > 0 ? `+${expansionUnits}` : '—'} />
             {expansionSqft > 0 && <RDataRow label="New SF" value={`${expansionSqft.toLocaleString()} SF`} />}
-            <RDataRow label="Building Type" value={expansionType} />
+            <RDataRow label="Building Type" value={expansionType ?? '—'} />
             {deal.expansionParkingAdd > 0 && <RDataRow label="Additional Parking" value={`+${deal.expansionParkingAdd} spaces`} />}
             {expansionCost > 0 && expansionSqft > 0 && <RDataRow label="Cost / SF" value={`$${Math.round(expansionCost / expansionSqft).toLocaleString()}`} />}
             <RDataRow label="Entitlement Status" value={expansionRequiresVariance ? 'Variance needed' : 'By-right'} />
@@ -2033,14 +2033,14 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
             <div style={{ fontSize: 9, letterSpacing: 2, color: BT.td, marginBottom: 10, ...bMono }}>SOURCES</div>
             <RDataRow label="Senior Debt (Bridge)" value={seniorDebt > 0 ? `$${(seniorDebt / 1_000_000).toFixed(1)}M` : '—'} />
             <RDataRow label="LTV" value={ltv > 0 ? `${(ltv * 100).toFixed(1)}%` : '—'} />
-            <RDataRow label="Rate" value={bridgeRate > 0 ? `${(bridgeRate * 100).toFixed(2)}%` : '—'} />
-            <RDataRow label="Term" value={bridgeTerm} />
-            <RDataRow label="Lender Type" value={lenderType} />
+            <RDataRow label="Rate" value={bridgeRate != null && bridgeRate > 0 ? `${(bridgeRate * 100).toFixed(2)}%` : '—'} />
+            <RDataRow label="Term" value={bridgeTerm ?? '—'} />
+            <RDataRow label="Lender Type" value={lenderType ?? '—'} />
             <div style={{ height: 12 }} />
             <RDataRow label="Sponsor Equity" value={equityRequired > 0 ? `$${(equityRequired / 1_000_000).toFixed(1)}M` : '—'} />
-            <RDataRow label="LP/GP Split" value={equitySplit} />
-            <RDataRow label="Pref Return" value={prefReturn > 0 ? `${(prefReturn * 100).toFixed(0)}%` : '—'} />
-            <RDataRow label="Promote" value={promote} />
+            <RDataRow label="LP/GP Split" value={equitySplit ?? '—'} />
+            <RDataRow label="Pref Return" value={prefReturn != null && prefReturn > 0 ? `${(prefReturn * 100).toFixed(0)}%` : '—'} />
+            <RDataRow label="Promote" value={promote ?? '—'} />
             <RDataRow label="Total Capitalization" value={totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—'} bold />
           </RCard>
           <RCard>
