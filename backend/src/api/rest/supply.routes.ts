@@ -329,7 +329,7 @@ router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
       marketBalance: demandForecast ? {
         demandSupplyGap: supplyRisk.demandSupplyGap,
         netMarketPressure: supplyRisk.netMarketPressure,
-        interpretation: this.interpretMarketBalance(
+        interpretation: interpretMarketBalance(
           supplyRisk.demandSupplyGap || 0,
           supplyRisk.netMarketPressure || 0
         )

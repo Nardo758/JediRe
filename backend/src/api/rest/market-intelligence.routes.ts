@@ -453,7 +453,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
         `SELECT 
           mcs.*,
           mv.*,
-          (SELECT COUNT(*) FROM deals WHERE user_id = $1 AND LOWER(REPLACE(location, ' ', '-')) = mcs.market_id) as active_deals_count
+          (SELECT COUNT(*) FROM deals WHERE user_id = $1 AND LOWER(REPLACE(COALESCE(city, ''), ' ', '-')) || '-' || LOWER(COALESCE(state_code, '')) = mcs.market_id) as active_deals_count
          FROM market_coverage_status mcs
          LEFT JOIN LATERAL (
            SELECT * FROM market_vitals WHERE market_id = mcs.market_id ORDER BY date DESC LIMIT 1

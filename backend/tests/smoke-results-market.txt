@@ -1,0 +1,166 @@
+========================================
+  JediRe Smoke Test — Phase 4 (Market)
+  Fri Mar 20 04:11:07 AM UTC 2026
+========================================
+
+▶ Health
+  PASS [200] Health check
+
+▶ Market Intelligence (/api/v1/markets)
+  PASS [200] Markets overview
+  PASS [200] Markets available
+  PASS [200] Market preferences GET
+  SKIP [404] Market summary (marketId) — no data (OK)
+  SKIP [403] Market alerts (marketId) — business logic restriction (OK)
+  PASS [200] Market compare
+  PASS [200] Market properties
+  PASS [200] Market stats
+  PASS [200] Submarket stats
+  PASS [200] Enhanced: submarkets detail
+  PASS [200] Enhanced: compare-data
+  PASS [200] Enhanced: market owners
+
+▶ Market Research (/api/v1/market-research)
+  PASS [200] Market research status
+  SKIP [404] Market research report — no data (OK)
+  SKIP [404] Market research metrics — no data (OK)
+  SKIP [404] Market research intelligence — no data (OK)
+  SKIP [404] Market research sources — no data (OK)
+  SKIP [404] Market research analysis-input — no data (OK)
+
+▶ Cycle Intelligence (/api/v1/cycle-intelligence)
+  PASS [200] Cycle: test/rate-environment (no auth)
+  PASS [200] Cycle: rate-environment
+  PASS [200] Cycle: rate-history
+  PASS [200] Cycle: leading-indicators
+  PASS [200] Cycle: pattern-matches
+  PASS [200] Cycle: macro-risk
+  SKIP [404] Cycle: phase (marketId) — no data (OK)
+  SKIP [404] Cycle: divergence (marketId) — no data (OK)
+  PASS [200] Cycle: predict rent-growth
+  PASS [200] Cycle: predict value-change
+  PASS [200] Cycle: predict cap-rate
+  PASS [200] Cycle: predict full-chain
+  SKIP [404] Cycle: phase-optimal-strategy — no data (OK)
+  PASS [200] Cycle: construction-cost-index
+  PASS [200] Cycle: market-metrics-history
+  PASS [200] Cycle: deal-performance-by-phase
+
+▶ F40 Performance (/api/v1/f40)
+  PASS [200] F40: market
+  PASS [200] F40: rankings
+  PASS [200] F40: comp-set
+
+▶ Opportunities (/api/v1/opportunities)
+  PASS [200] Opportunities: detect
+  PASS [200] Opportunities: rankings
+
+▶ Intelligence Layer (/api/v1/intelligence)
+  PASS [200] Intelligence: stats
+  PASS [200] Intelligence: patterns
+  PASS [200] Intelligence: docs pending
+  PASS [200] Intelligence: docs flagged
+  PASS [200] Intelligence: user/stats
+  PASS [200] Intelligence: user/preferences
+
+▶ Supply (/api/v1/supply)
+  PASS [200] Supply: events
+  SKIP [404] Supply: competitive (deal) — no data (OK)
+  SKIP [404] Supply: trade-area pipeline — no data (OK)
+  SKIP [404] Supply: trade-area risk — no data (OK)
+  SKIP [404] Supply: timeline — no data (OK)
+  SKIP [404] Supply: market-dynamics — no data (OK)
+  SKIP [400] Supply: deals supply — bad request/no data (OK)
+
+▶ Demand (/api/v1/demand)
+  SKIP [404] Demand: events — no data (OK)
+  SKIP [400] Demand: deals demand — bad request/no data (OK)
+  SKIP [404] Demand: trade-area — no data (OK)
+  SKIP [404] Demand: impact (deal) — no data (OK)
+
+▶ Comps (/api/v1/comps)
+  PASS [200] Comps: summary
+  SKIP [404] Comps: property — no data (OK)
+  PASS [200] Comps: property rent-comps
+  PASS [200] Comps: submarket stats
+
+▶ Sale Comps M27 (/api/v1/deals/:dealId/comps)
+  SKIP [404] M27: get comps for deal — no data (OK)
+  PASS [200] M27: exit cap rate
+  PASS [200] M27: comps summary
+
+▶ Competition (/api/v1/deals/:dealId)
+  PASS [200] Competition: competitors
+  PASS [200] Competition: advantage-matrix
+  PASS [200] Competition: waitlist-props
+  PASS [200] Competition: aging-competitors
+
+▶ JEDI Scoring (/api/v1/jedi)
+  PASS [200] JEDI: score (deal)
+  PASS [200] JEDI: history (deal)
+  PASS [200] JEDI: impact (deal)
+  PASS [200] JEDI: alerts
+  PASS [200] JEDI: alerts (deal)
+
+▶ Traffic (/api/v1/traffic)
+  PASS [200] Traffic: model performance
+  PASS [200] Traffic: calibration active
+  PASS [200] Traffic: validation errors
+
+▶ Traffic Data (/api/v1/traffic-data)
+  PASS [200] Traffic-data: adt/stations
+  SKIP [400] Traffic-data: realtime — bad request/no data (OK)
+  SKIP [404] Traffic-data: context — no data (OK)
+
+▶ Traffic Comps (/api/v1/traffic-comps)
+  PASS [200] Traffic-comps: deal
+  PASS [200] Traffic-comps: averages
+  PASS [200] Traffic-comps: selections
+  PASS [200] Traffic-comps: proxy-cands
+
+▶ Leasing Traffic (/api/v1/leasing-traffic)
+  PASS [200] Leasing-traffic: dot-profiles/summary
+  PASS [200] Leasing-traffic: dot-profiles/temporal
+  SKIP [404] Leasing-traffic: predict (property) — no data (OK)
+  PASS [200] Leasing-traffic: weekly-report hist
+  PASS [200] Leasing-traffic: trend-patterns
+  PASS [200] Leasing-traffic: data-sources
+
+▶ Benchmark Timeline (/api/v1/benchmark-timeline)
+  SKIP [400] Benchmark: benchmarks — bad request/no data (OK)
+  SKIP [400] Benchmark: detailed-steps — bad request/no data (OK)
+  SKIP [400] Benchmark: jurisdiction-comparison — bad request/no data (OK)
+
+▶ Property Analytics (/api/v1/property-analytics)
+  PASS [200] Property-analytics: property
+  PASS [200] Property-analytics: score
+  PASS [200] Property-analytics: history
+  SKIP [400] Property-analytics: digital-share — bad request/no data (OK)
+
+▶ Geography (/api/v1)
+  PASS [200] Geo: trade-areas list
+  SKIP [404] Geo: submarkets — no data (OK)
+  SKIP [404] Geo: msas — no data (OK)
+  SKIP [404] Geo: lookup — no data (OK)
+
+▶ Trade Areas (/api/v1/trade-areas)
+  PASS [200] Trade-areas: list
+  PASS [200] Trade-areas: library
+
+▶ Deal Market Intelligence (/api/v1/deals)
+  PASS [200] Deal market-intelligence
+  PASS [200] Deal geographic-context
+
+▶ Market (/api/v1/market)
+  PASS [200] Market: inventory
+  PASS [200] Market: trends
+
+========================================
+  RESULTS
+========================================
+  PASS: 74
+  SKIP: 32  (404/400 — no data, acceptable)
+  FAIL: 0
+
+
+Completed: Fri Mar 20 04:11:13 AM UTC 2026

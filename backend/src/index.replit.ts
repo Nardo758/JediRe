@@ -248,8 +248,8 @@ app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
-app.use('/api/v1/markets', marketIntelligenceRouter(pool));
-app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
+app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
+app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 
 import createUnifiedPropertiesRoutes from './api/rest/unified-properties.routes';
 app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
