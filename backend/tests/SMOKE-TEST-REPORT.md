@@ -14,10 +14,10 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 383 | 121 | 262 | 0 |
-| **TOTAL** | | | **1,262** | **580 (46%)** | **682 (54%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 385 | 122 | 263 | 0 |
+| **TOTAL** | | | **1,264** | **581 (46%)** | **683 (54%)** | **0 (0%)** |
 
-**Zero server errors (5xx) across all 1,262 endpoints tested.**
+**Zero server errors (5xx) across all 1,264 endpoints tested.**
 
 ---
 
@@ -85,7 +85,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 ## Phase 5 — Module Wiring & Misc (`smoke-test-misc.sh`)
 
-**383 endpoints** covering all remaining mounted route groups (including 1 security negative-test for forged OAuth state):
+**385 endpoints** covering all remaining mounted route groups (including 1 security negative-test for forged OAuth state):
 
 - Dashboard, Gmail, Microsoft (inline + full oauth router — 18 endpoints, all 15 from `microsoft.routes.ts` + 3 from `inline-microsoft.routes.ts`), contacts sync, emails (AI actions), email extractions, news, intelligence
 - Orgs/RBAC, context tracker, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences
@@ -102,8 +102,8 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| PASS   | 121   | HTTP 200 response |
-| SKIP   | 262   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds, 302 (OAuth redirect on forged state) |
+| PASS   | 122   | HTTP 200 response |
+| SKIP   | 263   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds, 302 (OAuth redirect on forged state) |
 | FAIL   | 0     | — |
 
 ### Route File Coverage (Phase 5 Additions)
@@ -133,7 +133,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 |------------|------|------|------|
 | `check_strict` | 2xx | — | any non-2xx |
 | `check_lenient` | 2xx | 400/403/404 | 5xx |
-| `check_optional` | 2xx | anything else | — (for routes needing external OAuth) |
+| `check_optional` | 2xx | 4xx / 302 | 5xx (never masked — used for OAuth/external-creds routes where 4xx is expected) |
 
 Key module-wiring coverage (all 55 route endpoints):
 - Registry: `GET /modules/registry`, `/modules/registry/:id`, `/modules/priority/:priority`, `/modules/build-order`

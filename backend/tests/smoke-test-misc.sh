@@ -562,6 +562,8 @@ check_lenient "MapAnnot: POST /map-annotations"                       POST "$BAS
 check_lenient "MapAnnot: PUT /map-annotations/:id"                    PUT  "$BASE/api/v1/map-annotations/$FAKE_ID" \
   -d '{"content":"updated"}'
 check_lenient "MapAnnot: DELETE /map-annotations/:id"                 DELETE "$BASE/api/v1/map-annotations/$FAKE_ID"
+check_lenient "MapAnnot: POST /map-annotations/:id/duplicate"         POST "$BASE/api/v1/map-annotations/$FAKE_ID/duplicate" \
+  -d '{}'
 check_lenient "MapAnnot: POST /map-annotations/:id/share"             POST "$BASE/api/v1/map-annotations/$FAKE_ID/share" \
   -d '{"userId":"'"$FAKE_ID"'"}'
 
@@ -628,6 +630,7 @@ check_lenient "Proposals: POST /proposals/:id/comment"      POST "$BASE/api/v1/p
 
 # ── Admin ─────────────────────────────────────────────────
 echo "── admin ──"
+check_lenient "Admin: GET /admin/data-tracker"                      GET  "$BASE/api/v1/admin/data-tracker"
 check_lenient "Admin: GET /admin/data-tracker/status"               GET  "$BASE/api/v1/admin/data-tracker/status"
 check_lenient "Admin: GET /admin/data-tracker/coverage"             GET  "$BASE/api/v1/admin/data-tracker/coverage"
 check_lenient "Admin: GET /admin/atlanta-url-discovery/status"      GET  "$BASE/api/v1/admin/atlanta-url-discovery/status"

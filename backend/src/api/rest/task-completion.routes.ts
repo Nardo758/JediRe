@@ -15,7 +15,10 @@ const router = Router();
 router.post('/scan-completions', async (req: Request, res: Response) => {
   try {
     const { emailIds, taskIds, daysBack = 7 } = req.body;
-    const userId = (req as any).user?.id;
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
 
     // Import database connection
     const { query } = await import('../../database/connection');
@@ -52,7 +55,7 @@ router.post('/scan-completions', async (req: Request, res: Response) => {
       timestamp: row.timestamp,
     }));
 
-    // Fetch open/in-progress tasks from database
+    // Fetch open/in-progress tasks scoped to the current user's accessible deals
     let taskQuery = `
       SELECT 
         t.id,
@@ -66,11 +69,22 @@ router.post('/scan-completions', async (req: Request, res: Response) => {
       FROM deal_team_tasks t
       LEFT JOIN deals d ON t.deal_id = d.id
       WHERE t.status IN ('todo', 'in-progress')
+        AND (
+          EXISTS (
+            SELECT 1 FROM deal_team_members m
+            WHERE m.id = t.assigned_to_id AND m.user_id = $1
+          )
+          OR d.user_id = $1::uuid
+          OR EXISTS (
+            SELECT 1 FROM deal_team_members dtm
+            WHERE dtm.deal_id = t.deal_id AND dtm.user_id = $1
+          )
+        )
     `;
-    const taskParams: any[] = [];
+    const taskParams: any[] = [userId];
 
     if (taskIds && taskIds.length > 0) {
-      taskQuery += ` AND t.id = ANY($1)`;
+      taskQuery += ` AND t.id = ANY($2)`;
       taskParams.push(taskIds);
     }
 
@@ -133,10 +147,14 @@ router.post('/:taskId/complete-from-email', async (req: Request, res: Response) 
   try {
     const { taskId } = req.params;
     const { emailId, completionDate, source = 'email-detection' } = req.body;
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
 
     const { query } = await import('../../database/connection');
 
-    // Update task status in database
+    // Update task status — only for tasks the user is assigned to or has deal access
     const result = await query(
       `UPDATE deal_team_tasks 
        SET 
@@ -144,13 +162,27 @@ router.post('/:taskId/complete-from-email', async (req: Request, res: Response) 
          completed_at = $1,
          updated_at = NOW()
        WHERE id = $2
+         AND (
+           EXISTS (
+             SELECT 1 FROM deal_team_members m
+             WHERE m.id = deal_team_tasks.assigned_to_id AND m.user_id = $3
+           )
+           OR EXISTS (
+             SELECT 1 FROM deals d
+             WHERE d.id = deal_team_tasks.deal_id AND d.user_id = $3::uuid
+           )
+           OR EXISTS (
+             SELECT 1 FROM deal_team_members dtm
+             WHERE dtm.deal_id = deal_team_tasks.deal_id AND dtm.user_id = $3
+           )
+         )
        RETURNING 
          id,
          title,
          status,
          completed_at,
          deal_id`,
-      [completionDate || new Date(), taskId]
+      [completionDate || new Date(), taskId, userId]
     );
 
     if (result.rows.length === 0) {
