@@ -13,6 +13,8 @@ interface DealDetails {
   pipeline_value?: number | null;
   pipeline_stage?: string | null;
   timeline_end?: string | null;
+  budget?: number | null;
+  pipelineStage?: string | null;
 }
 interface TeamMember {
   id: string;
@@ -1238,11 +1240,13 @@ export function EmailPage() {
                           <div style={{ width: 7, height: 7, borderRadius: "50%", background: T.accent.green }} />
                           <span style={{ fontSize: 11, fontFamily: FONTS.mono, color: T.text.primary, letterSpacing: 0.5 }}>AGENT RECOMMENDATIONS</span>
                         </div>
-                        <button
-                          onClick={() => Promise.all(readyItems.map((a: any) => handleExecuteAction(a)))}
-                          style={{ background: "transparent", border: `1px solid ${T.accent.green}40`, borderRadius: 4, color: T.accent.green, fontSize: 10, fontFamily: FONTS.mono, padding: "4px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
-                          EXECUTE ALL ({readyItems.length})
-                        </button>
+                        {readyItems.length > 0 && (
+                          <button
+                            onClick={() => Promise.all(readyItems.map((a: any) => handleExecuteAction(a)))}
+                            style={{ background: "transparent", border: `1px solid ${T.accent.green}40`, borderRadius: 4, color: T.accent.green, fontSize: 10, fontFamily: FONTS.mono, padding: "4px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+                            EXECUTE ALL ({readyItems.length})
+                          </button>
+                        )}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column" as const, gap: 6 }}>
                         {pendingItems.map((item: any, i: number) => {
