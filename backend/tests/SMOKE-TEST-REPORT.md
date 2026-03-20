@@ -219,13 +219,13 @@ Routes mounted in `index.replit.ts` and confirmed responding:
 | `assetNotes.routes.ts` | 7 | SKIP (404) | Not mounted in index — 7 routes covered |
 | `noteCategories.routes.ts` | 6 | SKIP (404) | Not mounted in index — 6 routes covered |
 | `noteReplies.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered |
-| `kafka-events.routes.ts` | — | Not tested | Not imported in index |
-| `proposals.routes.ts` | — | Not tested | Not imported in index |
-| `geography.routes.ts` | — | Not tested | Not imported in index |
-| `credibility.routes.ts` | — | Not tested | Not imported in index |
-| `demand-intelligence.routes.ts` | — | Not tested | Not imported in index |
-| `apartment-locator.routes.ts` | — | Not tested | Not imported in index |
-| `traffic-intelligence.routes.ts` | — | Not tested | Not imported in index |
+| `kafka-events.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered via check_lenient |
+| `proposals.routes.ts` | 7 | SKIP (404) | Not mounted in index — 7 routes covered via check_lenient |
+| `geography.routes.ts` | — | Not in script | No dedicated test block in smoke-test-misc.sh |
+| `credibility.routes.ts` | — | Not in script | No dedicated test block in smoke-test-misc.sh |
+| `demand-intelligence.routes.ts` | — | Not in script | No dedicated test block in smoke-test-misc.sh |
+| `apartment-locator.routes.ts` | — | Not in script | No dedicated test block in smoke-test-misc.sh |
+| `traffic-intelligence.routes.ts` | — | Not in script | No dedicated test block in smoke-test-misc.sh |
 
 ### Intentionally Excluded Files (Out of Scope)
 
