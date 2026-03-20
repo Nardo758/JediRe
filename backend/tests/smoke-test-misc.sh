@@ -117,6 +117,11 @@ check_lenient "Gmail: GET /gmail/sync"                     GET  "$BASE/api/v1/gm
 check_lenient "Gmail: POST /gmail/connect"                 POST "$BASE/api/v1/gmail/connect"
 check_lenient "Gmail: POST /gmail/sync/:id"                POST "$BASE/api/v1/gmail/sync/$FAKE_ID"
 check_lenient "Gmail: DELETE /gmail/disconnect/:id"        DELETE "$BASE/api/v1/gmail/disconnect/$FAKE_ID"
+check_lenient "Gmail: GET /gmail/callback"                 GET  "$BASE/api/v1/gmail/callback"
+check_lenient "Gmail: PATCH /gmail/accounts/:id"           PATCH "$BASE/api/v1/gmail/accounts/$FAKE_ID" \
+  -d '{"label":"updated"}'
+check_lenient "Gmail: GET /gmail/emails"                   GET  "$BASE/api/v1/gmail/emails"
+check_lenient "Gmail: GET /gmail/sync-logs"                GET  "$BASE/api/v1/gmail/sync-logs"
 
 # ── Microsoft (inline + full router) ─────────────────────
 # inline-microsoft.routes.ts: /status, /auth/url, /auth/callback
@@ -867,14 +872,15 @@ check_lenient "NoteCategories: PATCH /note-categories/:id"             PATCH "$B
 check_lenient "NoteCategories: DELETE /note-categories/:id"            DELETE "$BASE/api/v1/note-categories/$FAKE_ID"
 
 # ── Note Replies (unmounted — noteReplies.routes.ts) ──────
+# Routes defined as /:assetId/notes/:noteId/replies (intended mount: /api/v1/assets)
 echo "── note-replies ──"
-check_lenient "NoteReplies: GET /notes/:id/replies"                    GET  "$BASE/api/v1/notes/$FAKE_ID/replies"
-check_lenient "NoteReplies: GET /notes/:id/replies/:rid"               GET  "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID"
-check_lenient "NoteReplies: POST /notes/:id/replies"                   POST "$BASE/api/v1/notes/$FAKE_ID/replies" \
+check_lenient "NoteReplies: GET /assets/:aId/notes/:nId/replies"        GET    "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/replies"
+check_lenient "NoteReplies: GET /assets/:aId/notes/:nId/replies/:rId"   GET    "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/replies/$FAKE_ID"
+check_lenient "NoteReplies: POST /assets/:aId/notes/:nId/replies"       POST   "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/replies" \
   -d '{"content":"smoke reply"}'
-check_lenient "NoteReplies: PATCH /notes/:id/replies/:rid"             PATCH "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID" \
+check_lenient "NoteReplies: PATCH /assets/:aId/notes/:nId/replies/:rId" PATCH  "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/replies/$FAKE_ID" \
   -d '{"content":"updated reply"}'
-check_lenient "NoteReplies: DELETE /notes/:id/replies/:rid"            DELETE "$BASE/api/v1/notes/$FAKE_ID/replies/$FAKE_ID"
+check_lenient "NoteReplies: DELETE /assets/:aId/notes/:nId/replies/:rId" DELETE "$BASE/api/v1/assets/$FAKE_ID/notes/$FAKE_ID/replies/$FAKE_ID"
 
 # ── Task Completion (mounted at /api/v1/task-completion) ─────
 echo "── task-completion ──"

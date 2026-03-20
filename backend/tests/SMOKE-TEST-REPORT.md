@@ -14,10 +14,10 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 385 | 122 | 263 | 0 |
-| **TOTAL** | | | **1,264** | **581 (46%)** | **683 (54%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 389 | 124 | 265 | 0 |
+| **TOTAL** | | | **1,268** | **583 (46%)** | **685 (54%)** | **0 (0%)** |
 
-**Zero server errors (5xx) across all 1,264 endpoints tested.**
+**Zero server errors (5xx) across all 1,268 endpoints tested.**
 
 ---
 
@@ -85,7 +85,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 ## Phase 5 — Module Wiring & Misc (`smoke-test-misc.sh`)
 
-**385 endpoints** covering all remaining mounted route groups (including 1 security negative-test for forged OAuth state):
+**389 endpoints** covering all remaining mounted route groups (including 1 security negative-test for forged OAuth state):
 
 - Dashboard, Gmail, Microsoft (inline + full oauth router — 18 endpoint checks; mount order: `inline-microsoft.routes.ts` first handles `/auth/init`, `/auth/callback`, `/status`; `microsoft.routes.ts` handles the remaining 13 unique routes; 2 paths overlap but inline takes precedence as first-mounted), contacts sync, emails (AI actions), email extractions, news, intelligence
 - Orgs/RBAC, context tracker, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences
@@ -102,8 +102,8 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 | Status | Count | Meaning |
 |--------|-------|---------|
-| PASS   | 122   | HTTP 200 response |
-| SKIP   | 263   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds, 302 (OAuth redirect on forged state) |
+| PASS   | 124   | HTTP 200 response |
+| SKIP   | 265   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds, 302 (OAuth redirect on forged state) |
 | FAIL   | 0     | — |
 
 ### Route File Coverage (Phase 5 Additions)
@@ -124,7 +124,8 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 | `assetNews.routes.ts` | 5 | 5 | check_lenient |
 | `assetNotes.routes.ts` | 7 | 7 | check_lenient |
 | `noteCategories.routes.ts` | 6 | 6 (incl. /stats/usage) | check_lenient |
-| `noteReplies.routes.ts` | 5 | 5 | check_lenient |
+| `gmail.routes.ts` | 12 | 12 | check_lenient (callback, PATCH accounts, emails, sync-logs added) |
+| `noteReplies.routes.ts` | 5 | 5 | check_lenient (paths corrected to `/assets/:aId/notes/:nId/replies`) |
 | `task-completion.routes.ts` | 4 | 4 | check_optional (mounted at /api/v1/task-completion) |
 
 ### Check Semantics
@@ -220,7 +221,7 @@ Routes mounted in `index.replit.ts` and confirmed responding:
 | `assetNews.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered |
 | `assetNotes.routes.ts` | 7 | SKIP (404) | Not mounted in index — 7 routes covered |
 | `noteCategories.routes.ts` | 6 | SKIP (404) | Not mounted in index — 6 routes covered |
-| `noteReplies.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered |
+| `noteReplies.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered (paths corrected: `/assets/:aId/notes/:nId/replies`) |
 | `kafka-events.routes.ts` | 5 | SKIP (404) | Not mounted in index — 5 routes covered via check_lenient |
 | `proposals.routes.ts` | 7 | SKIP (404) | Not mounted in index — 7 routes covered via check_lenient |
 | `geography.routes.ts` | — | Not in script | No dedicated test block in smoke-test-misc.sh |
