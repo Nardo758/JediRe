@@ -32,12 +32,22 @@ function computeCompSetSummary(comps: TieredCompProperty[]): CompSetSummary {
   const inSet = comps.filter(c => c.in_comp_set);
   if (inSet.length === 0) return { count: 0, avgRent: null, avgUnits: null, avgDistance: null, avgMatchScore: null };
 
-  const withRent = inSet.filter(c => c.avg_rent != null && c.avg_rent > 0);
+  const withRent = inSet.filter(c => c.avg_rent != null && c.avg_rent > 0 && c.units > 0);
   const withDist = inSet.filter(c => c.distance_miles != null);
+
+  // Rent is unit-weighted: larger properties carry proportionally more weight
+  const weightedRent = withRent.length > 0
+    ? (() => {
+        const totalUnits = withRent.reduce((s, c) => s + c.units, 0);
+        return totalUnits > 0
+          ? Math.round(withRent.reduce((s, c) => s + (c.avg_rent || 0) * c.units, 0) / totalUnits)
+          : null;
+      })()
+    : null;
 
   return {
     count: inSet.length,
-    avgRent: withRent.length > 0 ? Math.round(withRent.reduce((s, c) => s + (c.avg_rent || 0), 0) / withRent.length) : null,
+    avgRent: weightedRent,
     avgUnits: Math.round(inSet.reduce((s, c) => s + c.units, 0) / inSet.length),
     avgDistance: withDist.length > 0 ? Math.round(withDist.reduce((s, c) => s + (c.distance_miles || 0), 0) / withDist.length * 10) / 10 : null,
     avgMatchScore: Math.round(inSet.reduce((s, c) => s + c.match_score, 0) / inSet.length),
