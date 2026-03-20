@@ -525,17 +525,48 @@ hit POST "/api/v1/properties/$PROP_ID/neighbors/ai-analysis" jwt \
   '{"type":"owner-disposition"}'
 
 # ============================================================
-# NOT MOUNTED — expect 404 (ai-rendering, building-design-3d, design-assistant)
-# These route files exist but are not imported/mounted in index.replit.ts
+# NOT MOUNTED — expect 404 / 401
+# Files exist but are NOT imported/mounted in index.replit.ts:
+#   ai-rendering.routes.ts, building-design-3d.routes.ts,
+#   design-assistant.routes.ts, design.routes.ts,
+#   zoning.routes.ts, zoning-comparator.routes.ts
 # ============================================================
+
+section "ZONING LEGACY ROUTES (zoning.routes.ts — not mounted — expect 404)"
+# POST /lookup, GET /districts/:muni/:state, GET /rules/:districtId, POST /analyze
+# Would mount at /api/v1/zoning-info if added; hits 404 since file is not imported
+hit POST "/api/v1/zoning-info/lookup"                                          jwt \
+  '{"lat":33.749,"lng":-84.388,"municipality":"Atlanta"}'
+hit GET  "/api/v1/zoning-info/districts/atlanta/GA"                           jwt
+hit GET  "/api/v1/zoning-info/rules/$ZONE_DIST_ID"                            jwt
+hit POST "/api/v1/zoning-info/analyze"                                         jwt \
+  '{"address":"123 Main St Atlanta GA","lat":33.749,"lng":-84.388}'
+
+section "ZONING COMPARATOR (zoning-comparator.routes.ts — not mounted — expect 404)"
+# POST /districts, POST /parcels, POST /jurisdictions
+# Not imported in index.replit.ts — all paths yield 404
+hit POST "/api/v1/zoning-comparator/districts"     jwt \
+  '{"districtCodes":["R-4","C-1"],"municipality":"Atlanta"}'
+hit POST "/api/v1/zoning-comparator/parcels"       jwt \
+  "{\"parcelIds\":[\"$PROP_ID\"]}"
+hit POST "/api/v1/zoning-comparator/jurisdictions" jwt \
+  '{"jurisdictions":["Atlanta","Marietta"]}'
+
 section "AI RENDERING (not mounted — expect 404)"
 hit GET  "/api/v1/ai/render/styles"  none
 hit GET  "/api/v1/ai/render/status"  none
 hit POST "/api/v1/ai/render"         jwt '{"imageBase64":"abc","style":"modern-glass"}'
 
 section "BUILDING DESIGN 3D (not mounted — expect 404)"
-hit GET  "/api/v1/deals/$DEAL_ID/design-3d"   jwt
-hit POST "/api/v1/deals/$DEAL_ID/design-3d"   jwt '{"buildingSections":[]}'
+# GET, POST, DELETE /:dealId/design-3d — all three verbs from the route file
+hit GET    "/api/v1/deals/$DEAL_ID/design-3d"   jwt
+hit POST   "/api/v1/deals/$DEAL_ID/design-3d"   jwt '{"buildingSections":[]}'
+hit DELETE "/api/v1/deals/$DEAL_ID/design-3d"   jwt
+
+section "DESIGN ROUTES (design.routes.ts — not mounted — expect 404)"
+# POST /:dealId/chat — not mounted in index.replit.ts
+hit POST "/api/v1/deals/$DEAL_ID/design-chat"  jwt \
+  '{"message":"Generate a modern facade design"}'
 
 section "DESIGN ASSISTANT (not mounted — expect 404)"
 hit GET  "/api/v1/design-assistant/status"  none
