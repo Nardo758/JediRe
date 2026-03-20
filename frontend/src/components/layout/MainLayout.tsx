@@ -532,8 +532,7 @@ export const MainLayout: React.FC = () => {
         try {
           const scoreRes = await api.get(`/jedi/score/${dealId}`);
           const s = scoreRes.data?.data || scoreRes.data;
-          const scoreNum = typeof s?.score === 'number' ? s.score : (s?.score?.totalScore ?? s?.totalScore ?? null);
-          if (scoreNum != null) ctx = { ...ctx, jedi_score: scoreNum, delta_30d: s.delta_30d ?? s.delta ?? s.change ?? ctx.delta_30d };
+          if (s?.score != null) ctx = { ...ctx, jedi_score: s.score, delta_30d: s.delta_30d ?? s.delta ?? ctx.delta_30d };
         } catch {
           /* JEDI score endpoint may not have data */
         }
