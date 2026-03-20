@@ -20,7 +20,7 @@ import { ModuleMarketplacePage } from './pages/ModuleMarketplacePage';
 
 // Lazy-load map-heavy components to reduce initial bundle size
 const MapPage = lazy(() => import('./pages/MapPage').then(m => ({ default: m.MapPage })));
-const Design3DPage = lazy(() => import('./pages/Design3DPage.updated').then(m => ({ default: m.Design3DPage })));
+const Design3DPage = lazy(() => import('./pages/Design3DPage').then(m => ({ default: m.Design3DPage })));
 const AssetsOwnedPage = lazy(() => import('./pages/AssetsOwnedPage').then(m => ({ default: m.AssetsOwnedPage })));
 import { ModulesPage } from './pages/settings/ModulesPage';
 import { ModuleLibrariesPage } from './pages/settings/ModuleLibrariesPage';

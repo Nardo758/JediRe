@@ -48,7 +48,7 @@ import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { BT, BT_CSS, PanelHeader } from '../components/deal/bloomberg-ui';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
-import { Design3DPageEnhanced } from './Design3DPage.enhanced';
+import { Design3DPage as Design3DPageEnhanced } from './Design3DPage';
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
 import { ActivityFeed } from '../components/deal/ActivityFeed';
 import { CommentThread } from '../components/deal/CommentThread';
