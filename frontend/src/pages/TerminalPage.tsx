@@ -9,6 +9,7 @@ import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIn
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
 import WatchlistPage from "./MarketIntelligence/WatchlistPage";
+import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -427,6 +428,13 @@ function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:stri
 
 interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; maximized:boolean; zIndex:number }
 
+// ─── LIVE CLOCK (isolated component — avoids re-rendering the whole terminal every second) ───
+function LiveClock() {
+  const [t, setT] = useState(new Date());
+  useEffect(() => { const id = setInterval(() => setT(new Date()), 1000); return () => clearInterval(id); }, []);
+  return <span style={{fontSize:9,color:"inherit"}}>{t.toLocaleTimeString("en-US",{hour12:false})}</span>;
+}
+
 // ─── WATCHLIST HELPERS ────────────────────────────────────────
 const MSA_CITY_MAP: Record<string,string> = {
   'atlanta-ga':'Atlanta','raleigh-nc':'Raleigh','tampa-fl':'Tampa',
@@ -446,7 +454,6 @@ export default function TerminalPage() {
   const T = theme==="dark" ? DARK : LIGHT;
 
   // Core UI state
-  const [time, setTime] = useState(new Date());
   const [fkey, setFkey] = useState(() => {
     if (section && SLUG_FKEY[section]) return SLUG_FKEY[section];
     return (location.state as {fkey?:string})?.fkey || "F1";
@@ -488,7 +495,7 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"detail"|"watchlist">("detail");
+  const [marketsView, setMarketsView] = useState<"detail"|"watchlist"|"peers">("detail");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -579,8 +586,6 @@ export default function TerminalPage() {
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
 
   // ─── Effects ──────────────────────────────────────────────
-  useEffect(() => { const t=setInterval(()=>setTime(new Date()),1000); return()=>clearInterval(t); }, []);
-
   // Sync URL slug + browser tab title whenever fkey changes
   useEffect(() => {
     const slug = FKEY_SLUG[fkey] || "dashboard";
@@ -1611,14 +1616,17 @@ export default function TerminalPage() {
         {marketsView === "watchlist" && (
           <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>WATCHLIST</span>
         )}
+        {marketsView === "peers" && (
+          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>PEER COMPARISON</span>
+        )}
         <div style={{flex:1}}/>
         <div style={{display:"flex",gap:2}}>
-          {([["detail","MARKET DETAIL"],["watchlist","WATCHLIST"]] as ["detail"|"watchlist", string][]).map(([v,label]) => (
+          {([["detail","MARKET DETAIL"],["watchlist","WATCHLIST"],["peers","PEER COMP"]] as ["detail"|"watchlist"|"peers", string][]).map(([v,label]) => (
             <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
               {label}
             </button>
           ))}
-          <button onClick={() => navigate("/market-intelligence")} style={{background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,fontSize:8,fontFamily:T.font.mono,fontWeight:700,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
+          <button onClick={() => setFkey("F4")} style={{background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,fontSize:8,fontFamily:T.font.mono,fontWeight:700,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
             FULL INTEL →
           </button>
         </div>
@@ -1630,6 +1638,9 @@ export default function TerminalPage() {
         )}
         {marketsView === "watchlist" && (
           <WatchlistPage embedded />
+        )}
+        {marketsView === "peers" && (
+          <PeerComparisonPage embedded />
         )}
       </div>
     </div>
@@ -1648,7 +1659,7 @@ export default function TerminalPage() {
       <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
         <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
           <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-            <button onClick={()=>navigate("/dashboard/email")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
+            <button onClick={()=>setFkey("F5")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
           </div>
           <div style={{flex:1,overflow:"auto"}}>
             {folders.map(f=>(
@@ -1707,7 +1718,7 @@ export default function TerminalPage() {
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:8}}>
                   {["REPLY","FORWARD"].map(a=>(
-                    <button key={a} onClick={()=>navigate("/dashboard/email")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
+                    <button key={a} onClick={()=>setFkey("F5")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
                   ))}
                 </div>
               </div>
@@ -1738,7 +1749,7 @@ export default function TerminalPage() {
   // ─── VIEW: F8 STRATEGIES ───────────────────────────────────
   const ViewStrategies = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>navigate("/strategy-builder")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F8")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
         {[
           {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
@@ -1746,7 +1757,7 @@ export default function TerminalPage() {
           {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
           {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
         ].map((row,i)=>(
-          <div key={i} onClick={()=>navigate("/strategy-builder")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F8")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
               <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
               <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
@@ -2265,7 +2276,7 @@ export default function TerminalPage() {
             </div>
           )}
           <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
-          <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}>{time.toLocaleTimeString("en-US",{hour12:false})}</span>
+          <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}
           </button>

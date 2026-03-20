@@ -75,7 +75,7 @@ import { FilesSection } from '../components/deal/sections/FilesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
-import { StrategySection } from '../components/deal/sections/StrategySection';
+import { CustomScreenTab as M08StrategyScoring } from '../components/deal/sections/CustomScreenTab';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
@@ -251,7 +251,7 @@ const StrategyScreen = (props: ScreenProps) => (
       { l: 'FAR', c: BT.text.purple },
     ]}
     tabs={[
-      { id: 'strategy',  label: 'Strategy',   component: StrategySection },
+      { id: 'strategy',  label: 'Strategy',   component: (p: ScreenProps) => <M08StrategyScoring dealId={p.dealId} /> },
       { id: 'design-3d', label: '3D Design',  component: (p: ScreenProps) => (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>

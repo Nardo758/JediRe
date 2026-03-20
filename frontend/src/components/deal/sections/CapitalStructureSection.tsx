@@ -25,8 +25,6 @@ import {
   rateForecast,
   lockVsFloatAnalysis,
   spreadAnalysis,
-  defaultWaterfall,
-  waterfallResult,
   scenarioComparison,
   debtTimeline,
   stackInsights,
@@ -88,7 +86,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const [liveStack, setLiveStack] = useState<any>(null);
   const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
   const [liveRateData, setLiveRateData] = useState<any>(null);
-  const [liveWaterfall, setLiveWaterfall] = useState<any>(null);
+
   const [liveScenarios, setLiveScenarios] = useState<any>(null);
   const [liveTimeline, setLiveTimeline] = useState<any>(null);
   const [liveInsights, setLiveInsights] = useState<any>(null);
@@ -222,31 +220,6 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         }
       };
       fetchRates();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'waterfall' && !fetchedTabs.current.has('waterfall')) {
-      fetchedTabs.current.add('waterfall');
-      const fetchWaterfall = async () => {
-        markTabLoading('waterfall', true);
-        try {
-          const res = await apiClient.post(`${API_BASE}/waterfall`, {
-            config: defaultWaterfall,
-            exitProceeds: waterfallResult.exitProceeds,
-            holdYears: 5,
-            annualCashFlows: [],
-          });
-          if (res.data?.waterfall) {
-            setLiveWaterfall(res.data.waterfall);
-            markTabLive('waterfall');
-          }
-        } catch {
-        } finally {
-          markTabLoading('waterfall', false);
-        }
-      };
-      fetchWaterfall();
     }
   }, [activeTab]);
 
@@ -829,125 +802,6 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   );
 
   // ========================================================================
-  // Tab 4: Equity Waterfall
-  // ========================================================================
-
-  const renderEquityWaterfall = () => {
-    const wf = defaultWaterfall;
-    const result = waterfallResult;
-    return (
-      <div className="space-y-6">
-        {/* Structure overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Equity Structure</h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">LP Capital ({wf.lpPercentage}%)</span>
-                <span className="text-sm font-semibold">{fmtM(wf.lpCapital)}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">GP Co-Invest ({wf.gpPercentage}%)</span>
-                <span className="text-sm font-semibold">{fmtM(wf.gpCapital)}</span>
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t">
-                <span className="text-sm font-semibold text-gray-900">Total Equity</span>
-                <span className="text-sm font-bold text-gray-900">{fmtM(wf.totalEquity)}</span>
-              </div>
-              <div className="mt-2 p-3 bg-blue-50 rounded text-xs text-blue-800">
-                Preferred Return: {wf.preferredReturn}% annual
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">LP Returns</h4>
-            <div className="text-3xl font-bold text-green-600">{fmtPct(result.lpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{result.lpEquityMultiple.toFixed(2)}x Multiple</div>
-            <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.lpTotalReturn)}</div>
-          </div>
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">GP Returns</h4>
-            <div className="text-3xl font-bold text-purple-600">{fmtPct(result.gpIRR)} IRR</div>
-            <div className="text-lg font-semibold text-gray-700 mt-1">{(result.gpEffectiveShare * 100).toFixed(0)}% Effective Share</div>
-            <div className="text-sm text-gray-600 mt-2">Total: {fmtM(result.gpTotalReturn)}</div>
-          </div>
-        </div>
-
-        {/* Waterfall visualization */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Distribution Waterfall</h4>
-          <div className="space-y-4">
-            {result.distributions.map((dist, i) => {
-              const total = result.totalDistributed;
-              const lpWidth = (dist.lpDistribution / total) * 100;
-              const gpWidth = (dist.gpDistribution / total) * 100;
-              return (
-                <div key={dist.tierId}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-900">{dist.tierName}</span>
-                    <span className="text-sm text-gray-600">{fmtM(dist.totalDistribution)}</span>
-                  </div>
-                  <div className="flex rounded-lg overflow-hidden h-8 bg-gray-100">
-                    {lpWidth > 0 && (
-                      <div className="bg-green-500 flex items-center justify-center" style={{ width: `${lpWidth}%` }}>
-                        {lpWidth > 8 && <span className="text-white text-xs font-semibold">LP {fmtM(dist.lpDistribution)}</span>}
-                      </div>
-                    )}
-                    {gpWidth > 0 && (
-                      <div className="bg-purple-500 flex items-center justify-center" style={{ width: `${gpWidth}%` }}>
-                        {gpWidth > 8 && <span className="text-white text-xs font-semibold">GP {fmtM(dist.gpDistribution)}</span>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Insight */}
-          <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <div className="text-sm text-purple-900">
-              <span className="font-semibold">At projected {fmtPct(result.distributions[result.distributions.length - 1].irr)} IRR:</span>{' '}
-              GP earns {(result.gpEffectiveShare * 100).toFixed(0)}% effective share on {wf.gpPercentage}% equity contribution.
-              LP still nets {fmtPct(result.lpIRR)} IRR and {result.lpEquityMultiple.toFixed(2)}x multiple.
-            </div>
-          </div>
-        </div>
-
-        {/* Tier details */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h4 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">Promote Structure</h4>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Tier</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">IRR Hurdle</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">LP Split</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">GP Split</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Description</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {wf.tiers.map((tier) => (
-                  <tr key={tier.id}>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{tier.name}</td>
-                    <td className="px-4 py-3 text-sm text-right text-gray-700">{fmtPct(tier.hurdleRate * 100)}</td>
-                    <td className="px-4 py-3 text-sm text-right text-green-600 font-semibold">{(tier.lpSplit * 100).toFixed(0)}%</td>
-                    <td className="px-4 py-3 text-sm text-right text-purple-600 font-semibold">{(tier.gpSplit * 100).toFixed(0)}%</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{tier.description}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ========================================================================
   // Tab 5: Scenario Comparison
   // ========================================================================
