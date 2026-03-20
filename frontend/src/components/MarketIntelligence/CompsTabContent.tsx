@@ -36,6 +36,39 @@ const Badge = ({ children, color = T.text.amber, bg, border: bdr }) => (
   }}>{children}</span>
 );
 
+type VintageBand = 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s' | 'all';
+type BuildingTypology = 'garden' | 'low_rise_elevator' | 'mid_rise' | 'high_rise' | 'all';
+
+const VINTAGE_LABELS: Record<VintageBand, string> = {
+  all: 'ALL VINTAGES', pre1980: 'PRE-1980', '1980s': '1980s', '1990s': '1990s', '2000s': '2000s', '2010s': '2010s', '2020s': '2020+',
+};
+const TYPOLOGY_LABELS: Record<BuildingTypology, string> = {
+  all: 'ALL TYPES', garden: 'GARDEN 2–3 STY', low_rise_elevator: 'LOW-RISE ELEV', mid_rise: 'MID-RISE', high_rise: 'HIGH-RISE',
+};
+const VINTAGE_YEAR_RANGES: Partial<Record<VintageBand, [number, number]>> = {
+  pre1980: [0, 1979], '1980s': [1980, 1989], '1990s': [1990, 1999], '2000s': [2000, 2009], '2010s': [2010, 2019], '2020s': [2020, 9999],
+};
+const TYPOLOGY_STORY_RANGES: Partial<Record<BuildingTypology, [number, number]>> = {
+  garden: [1, 3], low_rise_elevator: [4, 5], mid_rise: [6, 12], high_rise: [13, 999],
+};
+
+function inferVintage(year?: number): VintageBand {
+  if (!year) return 'all';
+  if (year < 1980) return 'pre1980';
+  if (year < 1990) return '1980s';
+  if (year < 2000) return '1990s';
+  if (year < 2010) return '2000s';
+  if (year < 2020) return '2010s';
+  return '2020s';
+}
+function inferTypology(stories?: number): BuildingTypology {
+  if (!stories) return 'all';
+  if (stories <= 3) return 'garden';
+  if (stories <= 5) return 'low_rise_elevator';
+  if (stories <= 12) return 'mid_rise';
+  return 'high_rise';
+}
+
 interface Comp {
   id: string;
   comp_property_address: string;
@@ -59,6 +92,19 @@ interface CompsTabContentProps {
   apiBaseUrl?: string;
 }
 
+const FilterChip = ({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) => (
+  <button
+    onClick={onClick}
+    style={{
+      padding: "3px 8px", fontSize: 8, fontFamily: T.font.mono, fontWeight: 600,
+      letterSpacing: "0.04em", cursor: "pointer", borderRadius: 2, whiteSpace: "nowrap",
+      background: active ? `${T.text.amber}18` : "transparent",
+      border: `1px solid ${active ? T.text.amber : T.border.subtle}`,
+      color: active ? T.text.amber : T.text.muted,
+    }}
+  >{label}</button>
+);
+
 export const CompsTabContent: React.FC<CompsTabContentProps> = ({ 
   dealId, 
   apiBaseUrl = "/api/v1" 
@@ -68,6 +114,8 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
   const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'distance' | 'score' | 'rent'>('score');
+  const [vintageFilter, setVintageFilter] = useState<VintageBand>('all');
+  const [typologyFilter, setTypologyFilter] = useState<BuildingTypology>('all');
 
   useEffect(() => {
     fetchComps();
@@ -120,18 +168,29 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
     }
   };
 
-  const sortedComps = [...comps].sort((a, b) => {
+  const filteredComps = comps.filter(c => {
+    if (vintageFilter !== 'all') {
+      const range = VINTAGE_YEAR_RANGES[vintageFilter];
+      if (!range || c.year_built === undefined || c.year_built < range[0] || c.year_built > range[1]) return false;
+    }
+    if (typologyFilter !== 'all') {
+      const range = TYPOLOGY_STORY_RANGES[typologyFilter];
+      if (!range || c.stories === undefined || c.stories < range[0] || c.stories > range[1]) return false;
+    }
+    return true;
+  });
+
+  const sortedComps = [...filteredComps].sort((a, b) => {
     switch (sortBy) {
-      case 'distance':
-        return (a.distance_miles || 999) - (b.distance_miles || 999);
-      case 'score':
-        return (b.match_score || 0) - (a.match_score || 0);
-      case 'rent':
-        return (b.avg_rent || 0) - (a.avg_rent || 0);
-      default:
-        return 0;
+      case 'distance': return (a.distance_miles || 999) - (b.distance_miles || 999);
+      case 'score':    return (b.match_score || 0) - (a.match_score || 0);
+      case 'rent':     return (b.avg_rent || 0) - (a.avg_rent || 0);
+      default:         return 0;
     }
   });
+
+  const availableVintages = Array.from(new Set(comps.map(c => inferVintage(c.year_built)).filter(v => v !== 'all'))) as VintageBand[];
+  const availableTypologies = Array.from(new Set(comps.map(c => inferTypology(c.stories)).filter(t => t !== 'all'))) as BuildingTypology[];
 
   if (loading) {
     return (
@@ -241,6 +300,38 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
 
   return (
     <div>
+      {/* Peer-Group Filter Bar */}
+      <div style={{
+        background: T.bg.header,
+        border: `1px solid ${T.border.subtle}`,
+        borderLeft: `2px solid ${T.text.amber}`,
+        borderRadius: 3,
+        marginBottom: 8,
+        padding: "7px 10px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber, letterSpacing: "0.06em", marginRight: 4 }}>PEER GROUP</span>
+          <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted, marginRight: 2 }}>VINTAGE:</span>
+          {(['all', ...availableVintages] as VintageBand[]).map(v => (
+            <FilterChip key={v} label={VINTAGE_LABELS[v]} active={vintageFilter === v} onClick={() => setVintageFilter(v)} />
+          ))}
+          {availableVintages.length === 0 && (['all', 'pre1980', '1980s', '1990s', '2000s', '2010s', '2020s'] as VintageBand[]).map(v => (
+            <FilterChip key={v} label={VINTAGE_LABELS[v]} active={vintageFilter === v} onClick={() => setVintageFilter(v)} />
+          ))}
+          <span style={{ width: 1, height: 14, background: T.border.medium, margin: "0 4px", display: "inline-block" }} />
+          <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted, marginRight: 2 }}>TYPE:</span>
+          {(['all', ...availableTypologies] as BuildingTypology[]).map(t => (
+            <FilterChip key={t} label={TYPOLOGY_LABELS[t]} active={typologyFilter === t} onClick={() => setTypologyFilter(t)} />
+          ))}
+          {availableTypologies.length === 0 && (['all', 'garden', 'low_rise_elevator', 'mid_rise', 'high_rise'] as BuildingTypology[]).map(t => (
+            <FilterChip key={t} label={TYPOLOGY_LABELS[t]} active={typologyFilter === t} onClick={() => setTypologyFilter(t)} />
+          ))}
+          <span style={{ marginLeft: "auto", fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
+            {filteredComps.length}/{comps.length} COMPS
+          </span>
+        </div>
+      </div>
+
       {/* Header with controls */}
       <div style={{
         display: 'flex',
@@ -283,7 +374,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Badge color={T.text.green}>
-            {comps.length} COMPS
+            {filteredComps.length} COMPS
           </Badge>
           <button
             onClick={handleDiscoverComps}

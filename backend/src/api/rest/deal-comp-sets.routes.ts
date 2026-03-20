@@ -195,6 +195,11 @@ router.delete('/:dealId/comp-set/:compId', requireAuth, async (req: Authenticate
     const pool = getPool();
     const { dealId, compId } = req.params;
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(compId) || !UUID_RE.test(dealId)) {
+      return res.status(404).json({ success: false, error: 'Comp not found in this deal' });
+    }
+
     const result = await pool.query(`
       UPDATE deal_comp_sets 
       SET status = 'removed', updated_at = NOW()

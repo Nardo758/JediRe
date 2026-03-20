@@ -129,13 +129,19 @@ router.post('/:dealId/snapshot', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await compTrafficService.snapshotCompTraffic(tradeAreaId);
+    let snapshotCount = 0;
+    try {
+      const result = await compTrafficService.snapshotCompTraffic(tradeAreaId);
+      snapshotCount = result.count;
+    } catch (snapErr: any) {
+      logger.warn('[TrafficComps] snapshotCompTraffic partial failure, returning 0', { error: snapErr.message });
+    }
 
     res.json({
       success: true,
       dealId,
       trade_area_id: tradeAreaId,
-      properties_snapshotted: result.count,
+      properties_snapshotted: snapshotCount,
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {

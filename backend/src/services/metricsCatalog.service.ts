@@ -19,6 +19,107 @@ export type MetricCategory =
 
 export type MetricGranularity = 'property' | 'submarket' | 'zip' | 'county' | 'msa';
 
+export type VintageBand = 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s';
+export type BuildingTypology = 'garden' | 'low_rise_elevator' | 'mid_rise' | 'high_rise';
+
+export const VINTAGE_BANDS: Record<VintageBand, { label: string; yearRange: [number, number] }> = {
+  pre1980:        { label: 'Pre-1980',   yearRange: [0,    1979] },
+  '1980s':        { label: '1980s',      yearRange: [1980, 1989] },
+  '1990s':        { label: '1990s',      yearRange: [1990, 1999] },
+  '2000s':        { label: '2000s',      yearRange: [2000, 2009] },
+  '2010s':        { label: '2010s',      yearRange: [2010, 2019] },
+  '2020s':        { label: '2020+',      yearRange: [2020, 9999] },
+};
+
+export const BUILDING_TYPOLOGIES: Record<BuildingTypology, { label: string; storyRange: [number, number]; description: string }> = {
+  garden:               { label: 'Garden (2–3 Story Walkup)',    storyRange: [1, 3],    description: 'Low-density walkup, no elevators, surface parking' },
+  low_rise_elevator:    { label: 'Low-Rise Elevator (4–5 Story)', storyRange: [4, 5],   description: 'Elevator-served, podium or tuck-under parking' },
+  mid_rise:             { label: 'Mid-Rise (6–12 Story)',         storyRange: [6, 12],  description: 'Urban density, structured parking, full amenity package' },
+  high_rise:            { label: 'High-Rise (13+ Story)',         storyRange: [13, 999], description: 'Urban core, concierge services, premium finishes' },
+};
+
+export function getVintageBand(yearBuilt: number): VintageBand {
+  if (yearBuilt < 1980) return 'pre1980';
+  if (yearBuilt < 1990) return '1980s';
+  if (yearBuilt < 2000) return '1990s';
+  if (yearBuilt < 2010) return '2000s';
+  if (yearBuilt < 2020) return '2010s';
+  return '2020s';
+}
+
+export function getTypology(stories: number): BuildingTypology {
+  if (stories <= 3) return 'garden';
+  if (stories <= 5) return 'low_rise_elevator';
+  if (stories <= 12) return 'mid_rise';
+  return 'high_rise';
+}
+
+export interface PeerGroupBenchmark {
+  metricId: string;
+  vintage: VintageBand;
+  typology: BuildingTypology;
+  p25: number;
+  p50: number;
+  p75: number;
+  unit: string;
+  direction: 'higher_better' | 'lower_better';
+  label: string;
+}
+
+const PEER_BENCHMARKS: Record<string, Record<VintageBand, Record<BuildingTypology, { p25: number; p50: number; p75: number }>>> = {
+  F_CAP_RATE: {
+    pre1980: { garden:{p25:5.8,p50:6.5,p75:7.4}, low_rise_elevator:{p25:5.5,p50:6.2,p75:7.1}, mid_rise:{p25:5.0,p50:5.7,p75:6.5}, high_rise:{p25:4.5,p50:5.2,p75:6.0} },
+    '1980s':  { garden:{p25:5.5,p50:6.1,p75:7.0}, low_rise_elevator:{p25:5.2,p50:5.9,p75:6.8}, mid_rise:{p25:4.8,p50:5.5,p75:6.3}, high_rise:{p25:4.3,p50:5.0,p75:5.8} },
+    '1990s':  { garden:{p25:5.0,p50:5.7,p75:6.5}, low_rise_elevator:{p25:4.8,p50:5.4,p75:6.2}, mid_rise:{p25:4.4,p50:5.0,p75:5.8}, high_rise:{p25:3.9,p50:4.6,p75:5.4} },
+    '2000s':  { garden:{p25:4.5,p50:5.2,p75:6.0}, low_rise_elevator:{p25:4.3,p50:4.9,p75:5.7}, mid_rise:{p25:3.9,p50:4.5,p75:5.3}, high_rise:{p25:3.5,p50:4.1,p75:4.9} },
+    '2010s':  { garden:{p25:4.0,p50:4.7,p75:5.5}, low_rise_elevator:{p25:3.8,p50:4.4,p75:5.2}, mid_rise:{p25:3.5,p50:4.1,p75:4.9}, high_rise:{p25:3.2,p50:3.8,p75:4.5} },
+    '2020s':  { garden:{p25:3.8,p50:4.4,p75:5.2}, low_rise_elevator:{p25:3.6,p50:4.2,p75:5.0}, mid_rise:{p25:3.3,p50:3.9,p75:4.7}, high_rise:{p25:3.0,p50:3.6,p75:4.4} },
+  },
+  F_RENT_GROWTH: {
+    pre1980: { garden:{p25:1.2,p50:2.4,p75:3.8}, low_rise_elevator:{p25:1.4,p50:2.6,p75:4.0}, mid_rise:{p25:1.5,p50:2.8,p75:4.3}, high_rise:{p25:1.8,p50:3.1,p75:4.7} },
+    '1980s':  { garden:{p25:1.5,p50:2.8,p75:4.1}, low_rise_elevator:{p25:1.7,p50:3.0,p75:4.4}, mid_rise:{p25:1.9,p50:3.3,p75:4.8}, high_rise:{p25:2.1,p50:3.5,p75:5.1} },
+    '1990s':  { garden:{p25:1.8,p50:3.2,p75:4.6}, low_rise_elevator:{p25:2.0,p50:3.4,p75:4.9}, mid_rise:{p25:2.2,p50:3.7,p75:5.3}, high_rise:{p25:2.5,p50:4.0,p75:5.7} },
+    '2000s':  { garden:{p25:2.1,p50:3.6,p75:5.2}, low_rise_elevator:{p25:2.3,p50:3.9,p75:5.5}, mid_rise:{p25:2.6,p50:4.2,p75:5.9}, high_rise:{p25:2.9,p50:4.6,p75:6.3} },
+    '2010s':  { garden:{p25:2.5,p50:4.1,p75:5.9}, low_rise_elevator:{p25:2.7,p50:4.4,p75:6.2}, mid_rise:{p25:3.0,p50:4.8,p75:6.7}, high_rise:{p25:3.3,p50:5.2,p75:7.2} },
+    '2020s':  { garden:{p25:2.8,p50:4.5,p75:6.4}, low_rise_elevator:{p25:3.0,p50:4.8,p75:6.8}, mid_rise:{p25:3.3,p50:5.2,p75:7.3}, high_rise:{p25:3.6,p50:5.6,p75:7.8} },
+  },
+  M_VACANCY: {
+    pre1980: { garden:{p25:5.5,p50:8.2,p75:11.5}, low_rise_elevator:{p25:5.0,p50:7.6,p75:10.8}, mid_rise:{p25:4.5,p50:7.0,p75:10.0}, high_rise:{p25:4.0,p50:6.4,p75:9.5} },
+    '1980s':  { garden:{p25:5.2,p50:7.8,p75:11.0}, low_rise_elevator:{p25:4.8,p50:7.3,p75:10.4}, mid_rise:{p25:4.3,p50:6.7,p75:9.6}, high_rise:{p25:3.8,p50:6.1,p75:9.1} },
+    '1990s':  { garden:{p25:4.8,p50:7.2,p75:10.3}, low_rise_elevator:{p25:4.4,p50:6.7,p75:9.8}, mid_rise:{p25:4.0,p50:6.2,p75:9.2}, high_rise:{p25:3.5,p50:5.7,p75:8.7} },
+    '2000s':  { garden:{p25:4.2,p50:6.5,p75:9.5}, low_rise_elevator:{p25:3.9,p50:6.1,p75:9.0}, mid_rise:{p25:3.5,p50:5.6,p75:8.5}, high_rise:{p25:3.1,p50:5.2,p75:8.0} },
+    '2010s':  { garden:{p25:3.6,p50:5.8,p75:8.7}, low_rise_elevator:{p25:3.3,p50:5.4,p75:8.2}, mid_rise:{p25:3.0,p50:5.0,p75:7.7}, high_rise:{p25:2.7,p50:4.6,p75:7.2} },
+    '2020s':  { garden:{p25:4.0,p50:6.8,p75:10.2}, low_rise_elevator:{p25:4.5,p50:7.5,p75:11.0}, mid_rise:{p25:5.0,p50:8.2,p75:12.0}, high_rise:{p25:5.5,p50:9.0,p75:13.5} },
+  },
+  M_LEASE_VELOCITY: {
+    pre1980: { garden:{p25:4,p50:8,p75:14}, low_rise_elevator:{p25:5,p50:9,p75:15}, mid_rise:{p25:6,p50:11,p75:18}, high_rise:{p25:7,p50:13,p75:21} },
+    '1980s':  { garden:{p25:5,p50:9,p75:15}, low_rise_elevator:{p25:6,p50:11,p75:17}, mid_rise:{p25:7,p50:13,p75:20}, high_rise:{p25:8,p50:15,p75:23} },
+    '1990s':  { garden:{p25:6,p50:11,p75:17}, low_rise_elevator:{p25:7,p50:13,p75:19}, mid_rise:{p25:9,p50:15,p75:23}, high_rise:{p25:10,p50:17,p75:26} },
+    '2000s':  { garden:{p25:8,p50:14,p75:21}, low_rise_elevator:{p25:9,p50:16,p75:23}, mid_rise:{p25:11,p50:18,p75:26}, high_rise:{p25:12,p50:20,p75:29} },
+    '2010s':  { garden:{p25:10,p50:17,p75:25}, low_rise_elevator:{p25:12,p50:19,p75:28}, mid_rise:{p25:14,p50:22,p75:31}, high_rise:{p25:16,p50:25,p75:35} },
+    '2020s':  { garden:{p25:8,p50:14,p75:22}, low_rise_elevator:{p25:10,p50:17,p75:26}, mid_rise:{p25:12,p50:20,p75:30}, high_rise:{p25:14,p50:23,p75:34} },
+  },
+};
+
+export function getPeerGroupBenchmarks(vintage: VintageBand, typology: BuildingTypology): PeerGroupBenchmark[] {
+  return Object.entries(PEER_BENCHMARKS).map(([metricId, vintageMap]) => {
+    const typologyMap = vintageMap[vintage];
+    const vals = typologyMap ? typologyMap[typology] : null;
+    const metric = METRICS_CATALOG.find(m => m.id === metricId);
+    return {
+      metricId,
+      vintage,
+      typology,
+      p25: vals?.p25 ?? 0,
+      p50: vals?.p50 ?? 0,
+      p75: vals?.p75 ?? 0,
+      unit: metric?.unit ?? '',
+      direction: metric?.higherIsBetter ? 'higher_better' : 'lower_better',
+      label: metric?.name ?? metricId,
+    };
+  });
+}
+
 export interface LeadLagRelationship {
   metricId: string;
   lagMonths: number;

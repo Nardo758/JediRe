@@ -9,7 +9,6 @@
  * Section 2: Zoning Verification & Parameters (inline ZoningConfirmTab content)
  */
 
-import { T as BT } from '../../deal/bloomberg-tokens';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Building2,
@@ -114,12 +113,14 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
     } catch {}
   }, []);
 
+  // When boundary is completed, auto-expand zoning section and fetch data
   const handleBoundaryComplete = () => {
     setBoundaryComplete(true);
     setZoningExpanded(true);
     fetchZoningFromBoundary();
   };
 
+  // Check if boundary already exists on mount
   useEffect(() => {
     if (!dealId) return;
     (async () => {
@@ -127,6 +128,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         const res = await apiClient.get(`/api/v1/deals/${dealId}/boundary`);
         if (res.data?.id || res.data?.boundary_geojson) {
           setBoundaryComplete(true);
+          // Check if zoning is already confirmed
           try {
             const zoningRes = await apiClient.get(`/api/v1/deals/${dealId}/zoning-confirmation`);
             if (zoningRes.data?.confirmed_at) {
@@ -144,6 +146,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
               if (confirmedCode) {
                 fetchDistrictDetails(confirmedCode, confirmedMunicipality || undefined);
               }
+              // Background GIS discrepancy check — compare live parcel data against confirmed code
               if (res.data?.centroid) {
                 const c = res.data.centroid;
                 let clng: number | null = null, clat: number | null = null;
@@ -172,6 +175,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
                 }
               }
             } else {
+              // Boundary exists but zoning not confirmed — fetch zoning options
               setZoningExpanded(true);
               fetchZoningFromBoundary();
             }
@@ -180,7 +184,9 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             fetchZoningFromBoundary();
           }
         }
-      } catch {}
+      } catch {
+        // No boundary yet
+      }
     })();
   }, [dealId]);
 
@@ -228,6 +234,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         return;
       }
 
+      // Try parcel lookup first
       let parcelZoning: any = null;
       try {
         const parcelRes = await apiClient.get('/api/v1/zoning/parcel-lookup', {
@@ -266,6 +273,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         setAvailableDistricts(districts);
 
         const municipalityId = `${cityName.toLowerCase().replace(/\s+/g, '-')}-${stateName.toLowerCase()}`;
+        let municodeUrl: string | undefined;
         const resolveDistrictMunicode = async (code: string) => {
           try {
             const res = await apiClient.get('/api/v1/municode/resolve', {
@@ -280,7 +288,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
             (d) => d.zoning_code?.toUpperCase() === parcelZoning.zoningCode?.toUpperCase()
           );
           setSelectedDistrictId(matchingDistrict ? matchingDistrict.id : districts[0].id);
-          const municodeUrl = await resolveDistrictMunicode(parcelZoning.zoningCode);
+          municodeUrl = await resolveDistrictMunicode(parcelZoning.zoningCode);
           setDetectedZoning({
             code: parcelZoning.zoningCode,
             name: parcelZoning.zoningName || parcelZoning.zoningCode,
@@ -296,7 +304,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         } else {
           const bestMatch = districts[0];
           setSelectedDistrictId(bestMatch.id);
-          const municodeUrl = await resolveDistrictMunicode(bestMatch.zoning_code);
+          municodeUrl = await resolveDistrictMunicode(bestMatch.zoning_code);
           setDetectedZoning({
             code: bestMatch.zoning_code,
             name: bestMatch.district_name,
@@ -366,6 +374,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       const boundaryRes = await apiClient.get(`/api/v1/deals/${dealId}/boundary`);
       const boundary = boundaryRes.data;
 
+      // Run intelligence analysis
       try {
         await apiClient.post('/api/v1/zoning-intelligence/analyze', {
           dealId,
@@ -379,6 +388,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         });
       } catch {}
 
+      // Save confirmation
       await apiClient.post(`/api/v1/deals/${dealId}/zoning-confirmation`, {
         zoning_code: zoneCode,
         municipality: detectedZoning?.municipality || locationInfo?.city,
@@ -465,10 +475,9 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
       {/* ─── SECTION 1: Parcel Detection & Confirmation ─── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-            style={{ background: BT.blueBg, color: BT.blueL }}>1</div>
-          <h3 className="text-sm font-bold" style={{ color: BT.text }}>Parcel Detection & Boundary</h3>
-          {boundaryComplete && <CheckCircle2 className="w-4 h-4" style={{ color: BT.greenL }} />}
+          <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold">1</div>
+          <h3 className="text-sm font-bold text-gray-900">Parcel Detection & Boundary</h3>
+          {boundaryComplete && <CheckCircle2 className="w-4 h-4 text-green-600" />}
         </div>
         <PropertyBoundarySection
           deal={deal}
@@ -478,228 +487,211 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         />
       </div>
 
-      {/* ─── SECTION 2: Zoning Selection & Confirmation ─── */}
-      <div className={`rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}
-        style={{ border: `1px solid ${BT.border}` }}>
-        <div className="px-5 py-4 space-y-4" style={{ background: BT.bgCard }}>
+      {/* ─── SECTION 2 (Formerly Section 3): Zoning Selection & Confirmation ─── */}
+      <div className={`border rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+        <div className="px-5 py-4 bg-white space-y-4">
 
-          {/* Confirmed state header */}
-          {zoningConfirmed && detectedZoning && (
-            <div className="flex items-center justify-between rounded-lg px-4 py-2.5"
-              style={{ background: BT.greenBg, border: `1px solid ${BT.green}50` }}>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: BT.greenL }} />
-                <span className="text-xs font-semibold" style={{ color: BT.greenL }}>Zoning Confirmed:</span>
-                <span className="text-xs font-bold" style={{ color: BT.greenL }}>{detectedZoning.code}</span>
-                {detectedZoning.municipality && (
-                  <span className="text-xs" style={{ color: BT.green }}>({detectedZoning.municipality})</span>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  setZoningConfirmed(false);
-                  setDetectedZoning(null);
-                  setZoningExpanded(true);
-                  setZoningDiscrepancy(null);
-                  setError(null);
-                  fetchZoningFromBoundary();
-                }}
-                className="flex items-center gap-1.5 text-xs rounded px-2.5 py-1 transition-colors"
-                style={{ color: BT.greenL, border: `1px solid ${BT.green}50`, background: BT.bgCard }}
-              >
-                <RefreshCw className="w-3 h-3" />
-                Change Zoning
-              </button>
-            </div>
-          )}
-
-          {/* GIS discrepancy warning */}
-          {zoningDiscrepancy && zoningConfirmed && (
-            <div className="rounded-lg px-4 py-3" style={{ background: BT.amberBg, border: `1px solid ${BT.amber}` }}>
-              <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: BT.amberL }} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold" style={{ color: BT.amberL }}>City GIS Mismatch Detected</p>
-                  <p className="text-xs mt-0.5" style={{ color: BT.amber }}>
-                    {detectedZoning?.municipality || 'City'}'s official zoning map shows this parcel as{' '}
-                    <span className="font-bold">{zoningDiscrepancy.liveCode}</span>{' '}
-                    ({zoningDiscrepancy.liveName}), but your confirmation says{' '}
-                    <span className="font-bold">{detectedZoning?.code}</span>.
-                    {zoningDiscrepancy.sourceUrl && (
-                      <a
-                        href={zoningDiscrepancy.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-1 underline"
-                        style={{ color: BT.amberL }}
-                      >
-                        View GIS source <ExternalLink className="w-2.5 h-2.5 inline" />
-                      </a>
-                    )}
-                  </p>
+            {/* Confirmed state header — always visible when zoning is locked */}
+            {zoningConfirmed && detectedZoning && (
+              <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  <span className="text-xs font-semibold text-green-900">Zoning Confirmed:</span>
+                  <span className="text-xs font-bold text-green-800">{detectedZoning.code}</span>
+                  {detectedZoning.municipality && (
+                    <span className="text-xs text-green-700">({detectedZoning.municipality})</span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => setZoningDiscrepancy(null)}
-                    className="text-[10px] rounded px-2 py-1 transition-colors"
-                    style={{ color: BT.amberL, border: `1px solid ${BT.amber}50`, background: BT.bgCard }}
-                  >
-                    Keep {detectedZoning?.code}
-                  </button>
-                  <button
-                    onClick={handleUpdateToGisCode}
-                    disabled={discrepancyUpdating}
-                    className="flex items-center gap-1 text-[10px] font-medium text-white rounded px-2.5 py-1 transition-colors disabled:opacity-50"
-                    style={{ background: BT.amber }}
-                  >
-                    {discrepancyUpdating ? (
-                      <><Loader2 className="w-3 h-3 animate-spin" /> Updating...</>
-                    ) : (
-                      <>Update to {zoningDiscrepancy.liveCode}</>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Loading */}
-          {zoningLoading && (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="w-6 h-6 animate-spin mr-3" style={{ color: BT.blueL }} />
-              <span className="text-sm" style={{ color: BT.tm }}>Looking up zoning from property assessor records...</span>
-            </div>
-          )}
-
-          {/* Error */}
-          {error && !zoningLoading && (
-            <div className="rounded-lg p-3 flex items-start gap-2" style={{ background: BT.amberBg, border: `1px solid ${BT.amber}50` }}>
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: BT.amberL }} />
-              <div>
-                <p className="text-xs font-medium" style={{ color: BT.amberL }}>Could not auto-detect zoning</p>
-                <p className="text-xs mt-0.5" style={{ color: BT.amber }}>{error}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Detected zoning - district selection & confirm */}
-          {detectedZoning && !zoningLoading && !manualEntry && (
-            <div className="space-y-3">
-              {availableDistricts.length > 1 && !zoningConfirmed && (
-                <div>
-                  <p className="text-xs font-medium mb-1.5" style={{ color: BT.tm }}>
-                    Not the right district? Select from {availableDistricts.length} available:
-                  </p>
-                  <div className="relative mb-2">
-                    <Search className="absolute left-2.5 top-2 w-3.5 h-3.5" style={{ color: BT.td }} />
-                    <input
-                      type="text"
-                      value={districtSearch}
-                      onChange={(e) => setDistrictSearch(e.target.value)}
-                      placeholder="Search districts..."
-                      className="w-full pl-8 pr-3 py-1.5 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                      style={{ border: `1px solid ${BT.border}`, background: BT.bgPanel, color: BT.text }}
-                    />
-                  </div>
-                  <div className="max-h-40 overflow-y-auto rounded" style={{ border: `1px solid ${BT.border}` }}>
-                    {filteredDistricts.map(d => (
-                      <button
-                        key={d.id}
-                        onClick={() => handleDistrictSelect(d)}
-                        className="w-full text-left px-3 py-1.5 text-xs transition-colors"
-                        style={{
-                          borderBottom: `1px solid ${BT.border}`,
-                          background: selectedDistrictId === d.id ? BT.blueBg : 'transparent',
-                          color: selectedDistrictId === d.id ? BT.blueL : BT.tm,
-                        }}
-                        onMouseEnter={e => { if (selectedDistrictId !== d.id) (e.currentTarget as HTMLElement).style.background = BT.bgPanel; }}
-                        onMouseLeave={e => { if (selectedDistrictId !== d.id) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                      >
-                        <span className="font-medium">{d.zoning_code}</span>
-                        <span className="ml-2" style={{ color: BT.td }}>{d.district_name}</span>
-                        {d.max_height && <span className="ml-2" style={{ color: BT.td }}>({d.max_height}ft)</span>}
-                      </button>
-                    ))}
-                    {filteredDistricts.length === 0 && (
-                      <p className="px-3 py-2 text-xs" style={{ color: BT.td }}>No matching districts</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {!zoningConfirmed && (
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    onClick={() => setManualEntry(true)}
-                    className="text-xs underline"
-                    style={{ color: BT.td }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = BT.tm; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BT.td; }}
-                  >
-                    Enter manually instead
-                  </button>
-                  <button
-                    onClick={handleConfirm}
-                    disabled={analyzing}
-                    className="flex items-center gap-2 px-5 py-2 text-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    style={{ background: BT.blue }}
-                  >
-                    {analyzing ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing...</>
-                    ) : (
-                      <><Sparkles className="w-3.5 h-3.5" /> Confirm & Analyze</>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Manual entry */}
-          {(manualEntry || (!detectedZoning && !zoningLoading)) && !zoningConfirmed && (
-            <div className="space-y-3">
-              <h4 className="text-sm font-semibold" style={{ color: BT.text }}>Enter Zoning Manually</h4>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: BT.tm }}>Zoning District Code *</label>
-                <input
-                  type="text"
-                  value={manualCode}
-                  onChange={(e) => setManualCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. MRC-3, R-4, C-2"
-                  className="w-full px-3 py-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  style={{ border: `1px solid ${BT.borderL}`, background: BT.bgPanel, color: BT.text }}
-                />
-                <p className="text-[10px] mt-1" style={{ color: BT.td }}>Find this on your municipality's zoning map or planning department website</p>
-              </div>
-              <div className="flex gap-2">
-                {detectedZoning && (
-                  <button onClick={() => { setManualEntry(false); setManualCode(''); }}
-                    className="px-3 py-1.5 text-xs rounded-lg transition-colors"
-                    style={{ color: BT.tm, border: `1px solid ${BT.borderL}`, background: 'transparent' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BT.bgPanel; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                  >Cancel</button>
-                )}
                 <button
-                  onClick={handleConfirm}
-                  disabled={!manualCode.trim() || analyzing}
-                  className="flex-1 flex items-center justify-center gap-2 px-5 py-2 text-white text-xs font-medium rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  style={{ background: BT.blue }}
+                  onClick={() => {
+                    setZoningConfirmed(false);
+                    setDetectedZoning(null);
+                    setZoningExpanded(true);
+                    setZoningDiscrepancy(null);
+                    setError(null);
+                    fetchZoningFromBoundary();
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 border border-green-300 hover:border-green-400 rounded px-2.5 py-1 transition-colors bg-white hover:bg-green-50"
                 >
-                  {analyzing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing...</> : <>Confirm & Analyze</>}
+                  <RefreshCw className="w-3 h-3" />
+                  Change Zoning
                 </button>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* What happens next */}
-          {!zoningConfirmed && (
-            <div className="rounded-lg p-3" style={{ background: BT.bgPanel, border: `1px solid ${BT.border}` }}>
-              <p className="text-[10px]" style={{ color: BT.tm }}>
-                <strong style={{ color: BT.text }}>What happens next:</strong> Once confirmed, our AI agent will analyze the zoning code and calculate your maximum development capacity. Every zoning parameter will include a source link.
-              </p>
-            </div>
-          )}
+            {/* GIS discrepancy warning — shown when live city GIS disagrees with confirmed code */}
+            {zoningDiscrepancy && zoningConfirmed && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg px-4 py-3">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-amber-900">City GIS Mismatch Detected</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      {detectedZoning?.municipality || 'City'}'s official zoning map shows this parcel as{' '}
+                      <span className="font-bold">{zoningDiscrepancy.liveCode}</span>{' '}
+                      ({zoningDiscrepancy.liveName}), but your confirmation says{' '}
+                      <span className="font-bold">{detectedZoning?.code}</span>.
+                      {zoningDiscrepancy.sourceUrl && (
+                        <a
+                          href={zoningDiscrepancy.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="ml-1 text-amber-600 underline hover:text-amber-800"
+                        >
+                          View GIS source <ExternalLink className="w-2.5 h-2.5 inline" />
+                        </a>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => setZoningDiscrepancy(null)}
+                      className="text-[10px] text-amber-600 hover:text-amber-800 border border-amber-300 rounded px-2 py-1 bg-white hover:bg-amber-50 transition-colors"
+                    >
+                      Keep {detectedZoning?.code}
+                    </button>
+                    <button
+                      onClick={handleUpdateToGisCode}
+                      disabled={discrepancyUpdating}
+                      className="flex items-center gap-1 text-[10px] font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 rounded px-2.5 py-1 transition-colors"
+                    >
+                      {discrepancyUpdating ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" /> Updating...</>
+                      ) : (
+                        <>Update to {zoningDiscrepancy.liveCode}</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Loading */}
+            {zoningLoading && (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 text-blue-600 animate-spin mr-3" />
+                <span className="text-sm text-gray-600">Looking up zoning from property assessor records...</span>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && !zoningLoading && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-medium text-amber-900">Could not auto-detect zoning</p>
+                  <p className="text-xs text-amber-700 mt-0.5">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Detected zoning - district selection & confirm */}
+            {detectedZoning && !zoningLoading && !manualEntry && (
+              <div className="space-y-3">
+                {/* District selection dropdown */}
+                {availableDistricts.length > 1 && !zoningConfirmed && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-700 mb-1.5">
+                      Not the right district? Select from {availableDistricts.length} available:
+                    </p>
+                    <div className="relative mb-2">
+                      <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" />
+                      <input
+                        type="text"
+                        value={districtSearch}
+                        onChange={(e) => setDistrictSearch(e.target.value)}
+                        placeholder="Search districts..."
+                        className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="max-h-40 overflow-y-auto border border-gray-200 rounded">
+                      {filteredDistricts.map(d => (
+                        <button
+                          key={d.id}
+                          onClick={() => handleDistrictSelect(d)}
+                          className={`w-full text-left px-3 py-1.5 text-xs border-b border-gray-100 last:border-0 transition-colors ${
+                            selectedDistrictId === d.id
+                              ? 'bg-blue-50 text-blue-900'
+                              : 'hover:bg-gray-50 text-gray-700'
+                          }`}
+                        >
+                          <span className="font-medium">{d.zoning_code}</span>
+                          <span className="text-gray-500 ml-2">{d.district_name}</span>
+                          {d.max_height && <span className="text-gray-400 ml-2">({d.max_height}ft)</span>}
+                        </button>
+                      ))}
+                      {filteredDistricts.length === 0 && (
+                        <p className="px-3 py-2 text-xs text-gray-500">No matching districts</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Confirm / Manual toggle */}
+                {!zoningConfirmed && (
+                  <div className="flex items-center justify-between pt-2">
+                    <button
+                      onClick={() => setManualEntry(true)}
+                      className="text-xs text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Enter manually instead
+                    </button>
+                    <button
+                      onClick={handleConfirm}
+                      disabled={analyzing}
+                      className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {analyzing ? (
+                        <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing...</>
+                      ) : (
+                        <><Sparkles className="w-3.5 h-3.5" /> Confirm & Analyze</>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Manual entry */}
+            {(manualEntry || (!detectedZoning && !zoningLoading)) && !zoningConfirmed && (
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-gray-900">Enter Zoning Manually</h4>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Zoning District Code *</label>
+                  <input
+                    type="text"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. MRC-3, R-4, C-2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">Find this on your municipality's zoning map or planning department website</p>
+                </div>
+                <div className="flex gap-2">
+                  {detectedZoning && (
+                    <button onClick={() => { setManualEntry(false); setManualCode(''); }}
+                      className="px-3 py-1.5 text-xs text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >Cancel</button>
+                  )}
+                  <button
+                    onClick={handleConfirm}
+                    disabled={!manualCode.trim() || analyzing}
+                    className="flex-1 flex items-center justify-center gap-2 px-5 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {analyzing ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing...</> : <>Confirm & Analyze</>}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* What happens next */}
+            {!zoningConfirmed && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                <p className="text-[10px] text-gray-600">
+                  <strong className="text-gray-900">What happens next:</strong> Once confirmed, our AI agent will analyze the zoning code and calculate your maximum development capacity. Every zoning parameter will include a source link.
+                </p>
+              </div>
+            )}
         </div>
       </div>
 

@@ -81,7 +81,9 @@ router.put('/templates/:templateId', async (req: Request, res: Response) => {
     if (!template) return res.status(404).json({ error: 'Template not found' });
     res.json({ success: true, data: template });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    const msg = err.message || '';
+    const status = msg.includes('No fields') ? 400 : msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 

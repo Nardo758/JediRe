@@ -314,7 +314,7 @@ router.get('/impact/:dealId', async (req: Request, res: Response) => {
     // Get deal's trade area
     const dealResult = await query(
       `SELECT ta.id as trade_area_id, ta.name as trade_area_name,
-              p.address, d.name as deal_name
+              p.address_line1 AS address, d.name as deal_name
        FROM deals d
        LEFT JOIN properties p ON p.deal_id = d.id
        LEFT JOIN trade_areas ta ON ta.property_id = p.id

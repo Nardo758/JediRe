@@ -1,0 +1,77 @@
+~/workspace$ cd /home/user/JediRe
+git pull origin claude/seven-layer-diagnostic-audit-bSaW4
+cd backend
+npm install
+npm run dev  # Start backend to verify it compile
+bash: cd: /home/user/JediRe: No such file or directory
+remote: Enumerating objects: 85, done.
+remote: Counting objects: 100% (85/85), done.
+remote: Compressing objects: 100% (7/7), done.
+remote: Total 55 (delta 48), reused 55 (delta 48), pack-reused 0 (from 0)
+Unpacking objects: 100% (55/55), 9.54 KiB | 651.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * branch              claude/seven-layer-diagnostic-audit-bSaW4 -> FETCH_HEAD
+   055b3bb9..2e2d1951  claude/seven-layer-diagnostic-audit-bSaW4 -> origin/claude/seven-layer-diagnostic-audit-bSaW4
+Auto-merging backend/src/api/rest/capital-structure.routes.ts
+CONFLICT (content): Merge conflict in backend/src/api/rest/capital-structure.routes.ts
+Auto-merging backend/src/api/rest/index.ts
+Auto-merging backend/src/api/rest/traffic-comps.routes.ts
+Auto-merging frontend/src/components/deal/sections/OverviewSection.tsx
+CONFLICT (content): Merge conflict in frontend/src/components/deal/sections/OverviewSection.tsx
+Auto-merging frontend/src/services/api.client.ts
+Automatic merge failed; fix conflicts and then commit the result.
+
+up to date, audited 430 packages in 1s
+
+66 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (1 low, 5 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node --transpile-only src/index.replit.ts
+
+{"level":"WARN","timestamp":"2026-03-20T04:57:21.914Z","logger":"kafkajs","message":"KafkaJS v2.0.0 switched default partitioner. To retain the same partitioning behavior as in previous versions, create the producer with the option \"createPartitioner: Partitioners.LegacyPartitioner\". See the migration guide at https://kafka.js.org/docs/migration-guide-v2.0.0#producer-new-default-partitioner for details. Silence this warning by setting the environment variable \"KAFKAJS_NO_PARTITIONER_WARNING=1\""}
+{"level":"WARN","timestamp":"2026-03-20T04:57:21.915Z","logger":"kafkajs","message":"[Producer] Limiting retries for the idempotent producer may invalidate EoS guarantees"}
+04:57:22 [warn] Mapbox token not found. Falling back to OpenStreetMap Nominatim (rate-limited).
+{
+  "service": "jedire-api",
+  "environment": "development"
+}
+/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:859
+    return new TSError(diagnosticText, diagnosticCodes, diagnostics);
+           ^
+TSError: ⨯ Unable to compile TypeScript:
+src/api/rest/capital-structure.routes.ts:461:1 - error TS1185: Merge conflict marker encountered.
+
+461 <<<<<<< HEAD
+    ~~~~~~~
+src/api/rest/capital-structure.routes.ts:463:1 - error TS1185: Merge conflict marker encountered.
+
+463 =======
+    ~~~~~~~
+src/api/rest/capital-structure.routes.ts:475:1 - error TS1185: Merge conflict marker encountered.
+
+475 >>>>>>> 2e2d195164a2bc3f9814ef41007250472bb19c7b
+    ~~~~~~~
+
+    at createTSError (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:859:12)
+    at reportTSError (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:863:19)
+    at /home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1379:34
+    at Object.compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1458:13)
+    at Module.m._compile (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1617:30)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+    at Object.require.extensions.<computed> [as .ts] (/home/runner/workspace/backend/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1266:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1091:12)
+    at Module.require (node:internal/modules/cjs/loader:1289:19) {
+  diagnosticCodes: [ 1185, 1185, 1185 ]
+}

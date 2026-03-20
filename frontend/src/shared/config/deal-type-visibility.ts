@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M17' | 'M18' | 'M22';
+  | 'M17' | 'M18' | 'M20' | 'M22';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -411,6 +411,17 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
     },
   },
 
+  {
+    moduleId: 'M20',
+    name: 'AI Agent',
+    fKey: 'F12',
+    station: 'S6',
+    stationLabel: 'Post-Close',
+    category: 'Operations',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'Opus AI Agent + AI Recommendations — available for all deal types.',
+  },
+
   // ─── S6: Post-Close ────────────────────────────────────────────────────────
 
   {
@@ -558,7 +569,11 @@ export function getRiskWeightProfile(dealType: DealType): RiskWeightProfile {
  */
 export function isModuleVisible(moduleId: ModuleId, dealType: DealType): boolean {
   const tab = MODULE_TABS.find((t) => t.moduleId === moduleId);
-  return tab ? tab.showFor[dealType] !== 'hidden' : false;
+  if (!tab) {
+    console.warn(`[DealTypeVisibility] Unknown moduleId: ${moduleId}`);
+    return true;
+  }
+  return tab.showFor[dealType] !== 'hidden';
 }
 
 /**
@@ -636,8 +651,8 @@ export const DD_CHECKLISTS: Record<DDChecklistPreset, DDChecklistCategory[]> = {
     { category: 'Cost Validation', items: ['Independent cost estimate', 'Hard cost budget review', 'Soft cost budget review', 'Construction schedule review', 'GC qualification & references'] },
   ],
   redevelopment: [
-    { category: 'Existing Structure', items: ['Structural engineering assessment', 'Roof condition & remaining life', 'HVAC system evaluation', 'Plumbing & electrical assessment', 'Foundation integrity', 'Load-bearing wall identification', 'Code compliance gap analysis'] },
-    { category: 'Environmental & Hazmat', items: ['Phase I ESA', 'Asbestos abatement survey', 'Lead paint assessment', 'Mold remediation assessment', 'Underground storage tank search', 'Hazardous materials inventory'] },
+    { category: 'Existing Structure', items: ['Structural engineering assessment', 'Roof condition & remaining life', 'HVAC system evaluation', 'Plumbing & electrical assessment', 'Foundation integrity', 'Load-bearing wall identification', 'Seismic evaluation (if applicable)', 'Code compliance gap analysis'] },
+    { category: 'Environmental & Hazmat', items: ['Phase I ESA', 'Phase II ESA (if applicable)', 'Asbestos abatement survey', 'Lead paint assessment', 'Mold remediation assessment', 'Underground storage tank search', 'Hazardous materials inventory'] },
     { category: 'Entitlement & Regulatory', items: ['Zoning change/variance feasibility', 'Historic preservation review', 'Building code upgrade requirements', 'ADA retrofit requirements', 'Change of use permits', 'Impact fee assessment'] },
     { category: 'Financial Audit (Existing Ops)', items: ['Current rent roll', 'Trailing 12-month P&L', 'Tenant relocation cost estimate', 'Lease termination provisions', 'Service contract termination costs'] },
     { category: 'Renovation Scope', items: ['Architectural scope document', 'Demo vs renovation boundary', 'Independent cost estimate', 'Construction phasing plan', 'Temporary relocation plan (if occupied)', 'GC qualification & references'] },

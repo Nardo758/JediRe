@@ -15,7 +15,7 @@ router.post('/build', async (req: Request, res: Response) => {
     return res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Financial model build error:', error.message);
-    return res.status(500).json({ error: error.message || 'Failed to build financial model' });
+    return res.status(error.statusCode || 500).json({ error: error.message || 'Failed to build financial model' });
   }
 });
 

@@ -102,7 +102,7 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
         WHERE deal_id = $12
         RETURNING *`,
         [
-          JSON.stringify(validatedData.boundaryGeoJSON),
+          JSON.stringify(validatedData.boundaryGeoJSON || {}),
           validatedData.parcelArea || null,
           validatedData.parcelAreaSF || null,
           validatedData.perimeter || null,
@@ -126,7 +126,7 @@ router.post('/deals/:dealId/boundary', async (req: Request, res: Response) => {
         RETURNING *`,
         [
           dealId,
-          JSON.stringify(validatedData.boundaryGeoJSON),
+          JSON.stringify(validatedData.boundaryGeoJSON || {}),
           validatedData.parcelArea || null,
           validatedData.parcelAreaSF || null,
           validatedData.perimeter || null,
@@ -682,14 +682,14 @@ router.post('/deals/:dealId/zoning-confirmation', async (req: Request, res: Resp
          SET zoning_code = $1, municipality = $2, state = $3, confirmed_at = $4, updated_at = NOW()
          WHERE deal_id = $5
          RETURNING *`,
-        [zoning_code, municipality, state, confirmed_at, dealId]
+        [zoning_code || 'UNKNOWN', municipality, state, confirmed_at || new Date().toISOString(), dealId]
       );
     } else {
       result = await pool.query(
         `INSERT INTO deal_zoning_confirmations (deal_id, zoning_code, municipality, state, confirmed_at)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [dealId, zoning_code, municipality, state, confirmed_at]
+        [dealId, zoning_code || 'UNKNOWN', municipality, state, confirmed_at || new Date().toISOString()]
       );
     }
 

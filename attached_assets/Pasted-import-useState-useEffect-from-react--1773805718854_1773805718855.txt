@@ -1,0 +1,1026 @@
+import { useState, useEffect } from "react";
+
+// ═══════════════════════════════════════════════════════════════
+// JEDI RE — DEAL CAPSULE BLOOMBERG TERMINAL v0.34
+// Updated with: Gap Analysis findings + Platform Metrics + 
+// 3-Layer Visual + Missing Codebase Features + F13 Execution
+// ═══════════════════════════════════════════════════════════════
+
+const T = {
+  bg: { terminal:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117",topBar:"#050810" },
+  text: { primary:"#E8ECF1",secondary:"#8B95A5",muted:"#4A5568",amber:"#F5A623",amberBright:"#FFD166",green:"#00D26A",red:"#FF4757",cyan:"#00BCD4",orange:"#FF8C42",purple:"#A78BFA",white:"#FFFFFF",teal:"#00E5A0" },
+  border: { subtle:"#1E2538",medium:"#2A3348",bright:"#3B4A6B" },
+  font: { mono:"'JetBrains Mono','Fira Code','SF Mono',monospace",display:"'IBM Plex Mono',monospace",label:"'IBM Plex Sans',sans-serif" },
+  // Platform Metric category colors (from correlation-metrics-engine)
+  met: { physTraffic:"#60a5fa",digTraffic:"#f59e0b",compTraffic:"#a855f7",financial:"#22c55e",occupancy:"#14b8a6",economic:"#ec4899",supply:"#f97316",quality:"#8b5cf6" },
+};
+
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}
+@keyframes glowR{0%,100%{box-shadow:0 0 4px #FF475744}50%{box-shadow:0 0 10px #FF475766}}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+*{scrollbar-width:thin;scrollbar-color:#2A3348 #0A0E17}
+*::-webkit-scrollbar{width:5px;height:5px}
+*::-webkit-scrollbar-track{background:#0A0E17}
+*::-webkit-scrollbar-thumb{background:#2A3348}
+`;
+
+const DEAL = {
+  id:1,name:"Westshore Commons",addr:"4201 W Boy Scout Blvd, Tampa FL 33607",market:"Tampa, FL",sub:"Westshore",score:82,delta:"+4",strat:"BTS",irr:"24.3%",em:"2.8x",units:248,price:"$38.5M",ppu:"$155K",stage:"DD",days:23,risk:"LOW",rs:32,trend:[72,74,73,76,78,77,79,80,82],
+  acreage:14.2,lotSqFt:618552,dealType:"Development",propType:"Multifamily",
+};
+
+// Updated nav: F13 Execution added, AI Agent in command palette
+const DEAL_NAV = [
+  {key:"F1",label:"OVERVIEW",m:"M01"},{key:"F2",label:"PROPERTY",m:"M02"},{key:"F3",label:"MARKET",m:"M05"},
+  {key:"F4",label:"SUPPLY",m:"M04"},{key:"F5",label:"STRATEGY",m:"M08"},{key:"F6",label:"PROFORMA",m:"M09"},
+  {key:"F7",label:"CAPITAL",m:"M11"},{key:"F8",label:"RISK",m:"M14"},{key:"F9",label:"COMPS",m:"M15"},
+  {key:"F10",label:"TRAFFIC",m:"M07"},{key:"F11",label:"DOCS",m:"M18"},{key:"F12",label:"EXIT",m:"M20"},
+  {key:"F13",label:"EXECUTION",m:"M17"},
+];
+
+// ─── UTILITY COMPONENTS ──────────────────────────────────────
+
+function Spark({ data, color = T.text.green, w = 56, h = 16 }) {
+  if (!data) return null;
+  const mx = Math.max(...data), mn = Math.min(...data), r = mx - mn || 1;
+  const p = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - mn) / r) * h}`).join(" ");
+  return (<svg width={w} height={h} style={{ display:"block" }}><polyline points={p} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" /></svg>);
+}
+
+function Bd({ children, c }) {
+  return (<span style={{ fontFamily:T.font.mono, fontSize:8, fontWeight:700, color:c, background:c+"18", border:`1px solid ${c}33`, padding:"1px 5px", letterSpacing:0.5, textTransform:"uppercase", whiteSpace:"nowrap" }}>{children}</span>);
+}
+
+function StageBd({ stage }) { const m={DD:T.text.cyan,LOI:T.text.amber,PROSPECT:T.text.secondary,LEAD:T.text.muted}; return <Bd c={m[stage]||T.text.muted}>{stage}</Bd>; }
+function StratBd({ s }) { return <Bd c={T.text.purple}>{"^"} {s}</Bd>; }
+function RiskDot({ level }) { const c=level==="HIGH"?T.text.red:level==="MED"?T.text.orange:T.text.green; return <span style={{ display:"flex",alignItems:"center",gap:3,fontSize:8,fontFamily:T.font.mono,fontWeight:600,color:c }}><span style={{ width:5,height:5,borderRadius:"50%",background:c,...(level==="HIGH"?{animation:"glowR 2s infinite"}:{}) }} />{level}</span>; }
+
+// Platform Metric source tag — shows which metric category feeds a value
+function MetricTag({ label, color }) {
+  return <span style={{ fontSize:6, color, background:color+"12", padding:"0 3px", borderRadius:2, whiteSpace:"nowrap", fontFamily:T.font.mono, fontWeight:600 }}>{label}</span>;
+}
+
+function PanelHeader({ title, subtitle, right, borderColor, metrics }) {
+  return (
+    <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,borderTop:borderColor?`2px solid ${borderColor}`:"none" }}>
+      <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+        <span style={{ fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8 }}>{title}</span>
+        {subtitle && <span style={{ fontSize:8,color:T.text.secondary }}>{subtitle}</span>}
+        {metrics && <div style={{ display:"flex",gap:2 }}>{metrics.map((m,i)=>(<MetricTag key={i} label={m.l} color={m.c} />))}</div>}
+      </div>
+      {right && <div style={{ display:"flex",alignItems:"center",gap:6 }}>{right}</div>}
+    </div>
+  );
+}
+
+function MiniBar({ value, max=100, color, label, showPct=true }) {
+  const pct=Math.min((value/max)*100,100); const bc=color||(pct>=75?T.text.green:pct>=50?T.text.amber:T.text.red);
+  return (<div style={{ display:"flex",alignItems:"center",gap:6,width:"100%" }}>{label&&<span style={{ fontSize:7,color:T.text.muted,minWidth:60,letterSpacing:0.5 }}>{label}</span>}<div style={{ flex:1,height:4,background:T.bg.terminal,borderRadius:1 }}><div style={{ height:"100%",width:`${pct}%`,background:bc,borderRadius:1 }} /></div>{showPct&&<span style={{ fontSize:8,fontWeight:700,color:bc,minWidth:20,textAlign:"right" }}>{value}</span>}</div>);
+}
+
+function DataRow({ label, value, valueColor, sub, border=true, metricColor }) {
+  return (
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",borderBottom:border?`1px solid ${T.border.subtle}`:"none" }}>
+      <div style={{ display:"flex",alignItems:"center",gap:4 }}>
+        {metricColor && <span style={{ width:3,height:3,borderRadius:"50%",background:metricColor }} />}
+        <span style={{ fontSize:8,color:T.text.muted,letterSpacing:0.5 }}>{label}</span>
+      </div>
+      <div style={{ display:"flex",alignItems:"baseline",gap:4 }}>
+        <span style={{ fontSize:9,fontWeight:700,color:valueColor||T.text.amber }}>{value}</span>
+        {sub&&<span style={{ fontSize:7,color:T.text.secondary }}>{sub}</span>}
+      </div>
+    </div>
+  );
+}
+
+function SectionPanel({ title, subtitle, borderColor, metrics, children }) {
+  return (
+    <div style={{ background:T.bg.panel,border:`1px solid ${T.border.subtle}`,display:"flex",flexDirection:"column" }}>
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,borderTop:borderColor?`2px solid ${borderColor}`:"none" }}>
+        <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+          <span style={{ fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5 }}>{title}</span>
+          {subtitle&&<span style={{ fontSize:7,color:T.text.secondary }}>{subtitle}</span>}
+        </div>
+        {metrics&&<div style={{ display:"flex",gap:2 }}>{metrics.map((m,i)=>(<MetricTag key={i} label={m.l} color={m.c} />))}</div>}
+      </div>
+      <div style={{ flex:1 }}>{children}</div>
+    </div>
+  );
+}
+
+function VerifiedLink({ source }) {
+  return <span style={{ fontSize:7,color:T.text.teal,cursor:"pointer",textDecoration:"underline",textDecorationStyle:"dotted" }}>{source} ✓</span>;
+}
+
+// Sub-tab bar component (reused across F2, F3, F6, F8)
+function SubTabBar({ tabs, active, setActive, color=T.text.cyan }) {
+  return (
+    <div style={{ display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,overflowX:"auto" }}>
+      {tabs.map((t,i)=>(<button key={i} onClick={()=>setActive(i)} style={{ fontFamily:T.font.mono,fontSize:8,fontWeight:600,padding:"4px 10px",background:active===i?color+"22":"transparent",color:active===i?color:T.text.muted,border:"none",borderBottom:active===i?`2px solid ${color}`:"2px solid transparent",cursor:"pointer",whiteSpace:"nowrap" }}>{t}</button>))}
+    </div>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────
+
+export default function DealCapsuleBloomberg() {
+  const [time, setTime] = useState(new Date());
+  const [fkey, setFkey] = useState("F1");
+  const [cmd, setCmd] = useState("");
+  const [subTab, setSubTab] = useState(0);
+
+  useEffect(() => { const t=setInterval(()=>setTime(new Date()),1000); return ()=>clearInterval(t); },[]);
+
+  const d = DEAL;
+  const tickers = ["^ SURGE +0.35","^ RENT +3.0%","v VAC 8.5%","^ ABSORB 95.2%","* TPI 1.34","^ WAGE +4.2%","^ DIGITAL +35.5%","v CONC 2.8%","* POP +2.1%","^ CAP -15bps"];
+
+  // ═══════════════════════════════════════════════════════════
+  // F1 — OVERVIEW (M01) — ENHANCED WITH AUDIT FINDINGS
+  // Now includes: 3-Layer, Deal Details, Platform Metrics per
+  // JEDI signal, Key Financials, Deal Team, Activity Feed
+  // ═══════════════════════════════════════════════════════════
+  const DealOverview = () => {
+    const sc = d.score>=80?T.text.green:d.score>=65?T.text.amber:T.text.red;
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+        {/* Row 1: JEDI Score + Signals with Platform Metric Sources + Deal Details */}
+        <div style={{ display:"grid",gridTemplateColumns:"170px 1fr 190px",gap:1,background:T.border.subtle }}>
+          {/* JEDI Score Gauge */}
+          <div style={{ background:T.bg.panel,padding:10,display:"flex",flexDirection:"column",alignItems:"center" }}>
+            <div style={{ fontSize:8,color:T.text.muted,letterSpacing:1.5,marginBottom:4 }}>JEDI SCORE</div>
+            <div style={{ width:80,height:80,borderRadius:"50%",border:`3px solid ${sc}`,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",boxShadow:`0 0 20px ${sc}33` }}>
+              <span style={{ fontSize:28,fontWeight:800,color:sc }}>{d.score}</span>
+              <span style={{ fontSize:8,color:T.text.green,fontWeight:600 }}>{d.delta} 30d</span>
+            </div>
+            <div style={{ fontSize:7,color:T.text.muted,marginTop:4 }}>Confidence: 87%</div>
+            <Spark data={d.trend} color={sc} w={100} h={20} />
+            <Bd c={sc}>{d.score>=85?"STRONG OPPORTUNITY":d.score>=70?"OPPORTUNITY":"NEUTRAL"}</Bd>
+          </div>
+          {/* 5 Master Signals with Platform Metric Sources */}
+          <div style={{ background:T.bg.panel,padding:10 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>5 MASTER SIGNALS — PLATFORM METRIC SOURCES</div>
+            {[
+              {l:"DEMAND",v:88,w:"30%",sources:[{l:"Jobs +3.2%",c:T.met.economic},{l:"Pop +2.1%",c:T.met.economic},{l:"Search +35.5%",c:T.met.digTraffic},{l:"Migration +3.2K",c:T.met.economic}]},
+              {l:"SUPPLY",v:72,w:"25%",sources:[{l:"Pipeline 4.2%",c:T.met.supply},{l:"Permits 12/mo",c:T.met.supply},{l:"Mo Supply 14.1",c:T.met.occupancy},{l:"Deliveries 380/q",c:T.met.supply}]},
+              {l:"MOMENTUM",v:85,w:"20%",sources:[{l:"Rent +3.0%",c:T.met.financial},{l:"Traj +19.1%",c:T.met.compTraffic},{l:"Absorb 95.2%",c:T.met.occupancy},{l:"Surge +0.35",c:T.met.physTraffic}]},
+              {l:"POSITION",v:79,w:"15%",sources:[{l:"TPI 1.34",c:T.met.compTraffic},{l:"Dig Share 8.2%",c:T.met.digTraffic},{l:"Rent Prem +1.4%",c:T.met.financial},{l:"Phys Score 74",c:T.met.physTraffic}]},
+              {l:"RISK",v:81,w:"10%",sources:[{l:"Occ 94.2%",c:T.met.occupancy},{l:"Conc 2.8%",c:T.met.financial},{l:"Sentiment +0.42",c:T.met.quality},{l:"R/I 32%",c:T.met.economic}]},
+            ].map((s,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",gap:4,marginBottom:4 }}>
+                <span style={{ fontSize:7,color:T.text.muted,minWidth:58 }}>{s.l} ({s.w})</span>
+                <div style={{ width:40,height:5,background:T.bg.terminal }}><div style={{ height:"100%",width:`${s.v}%`,background:s.v>=80?T.text.green:s.v>=60?T.text.amber:T.text.red }} /></div>
+                <span style={{ fontSize:9,fontWeight:700,color:s.v>=80?T.text.green:s.v>=60?T.text.amber:T.text.red,minWidth:18 }}>{s.v}</span>
+                <div style={{ display:"flex",gap:2,flex:1,overflow:"hidden" }}>{s.sources.map((src,si)=>(<MetricTag key={si} label={src.l} color={src.c} />))}</div>
+              </div>
+            ))}
+            {/* Strategy Quick Scores */}
+            <div style={{ display:"flex",gap:4,marginTop:4 }}>
+              {[{l:"BTS",v:84,win:true},{l:"FLIP",v:58},{l:"RENTAL",v:69},{l:"STR",v:45}].map((s,i)=>(
+                <div key={i} style={{ flex:1,textAlign:"center",padding:"3px 2px",background:T.bg.terminal,borderTop:s.win?`2px solid ${T.text.amber}`:"2px solid transparent" }}>
+                  <div style={{ fontSize:7,color:T.text.muted }}>{s.l}</div>
+                  <div style={{ fontSize:14,fontWeight:800,color:s.win?T.text.amber:T.text.secondary }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Deal Details Panel */}
+          <div style={{ background:T.bg.panel }}>
+            <div style={{ padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}` }}><span style={{ fontSize:8,fontWeight:700,color:T.text.white,letterSpacing:0.5 }}>DEAL DETAILS</span></div>
+            <DataRow label="PRICE" value={d.price} /><DataRow label="$/UNIT" value={d.ppu} /><DataRow label="UNITS" value={d.units||"LAND"} />
+            <DataRow label="TYPE" value={d.propType} valueColor={T.text.secondary} /><DataRow label="DEAL TYPE" value={d.dealType} valueColor={T.text.cyan} />
+            <DataRow label="MARKET" value={d.sub} valueColor={T.text.secondary} /><DataRow label="IRR" value={d.irr} valueColor={T.text.green} />
+            <DataRow label="EM" value={d.em} /><DataRow label="STAGE" value={d.stage} valueColor={T.text.cyan} />
+            <DataRow label="DAYS" value={`${d.days}d`} valueColor={d.days>30?T.text.orange:T.text.secondary} />
+            <DataRow label="RISK SCORE" value={d.rs} valueColor={T.text.green} border={false} />
+          </div>
+        </div>
+
+        {/* Arbitrage + Divergence Alerts */}
+        <div style={{ padding:6,background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`,margin:"1px 0" }}>
+          <span style={{ fontSize:9,color:T.text.amber,fontWeight:600 }}>ARBITRAGE:</span>
+          <span style={{ fontSize:9,color:T.text.secondary }}> BTS outscores Rental by 15pts. Zoning allows 3x density, supply pipeline thin for new construction.</span>
+        </div>
+        <div style={{ padding:6,background:T.text.red+"08",borderLeft:`3px solid ${T.text.red}`,margin:"0 0 1px" }}>
+          <span style={{ fontSize:9,color:T.text.red,fontWeight:600 }}>DIVERGENCE:</span>
+          <span style={{ fontSize:9,color:T.text.secondary }}> Digital-Physical Gap +31.3pp — digital demand surging (+35.5%) but physical ADT only +3.2%. Demand building before manifesting. </span>
+          <Bd c={T.text.red}>BUY WINDOW</Bd>
+        </div>
+
+        {/* 3-Layer Assumptions Quick View (GAP #1 from audit) */}
+        <div style={{ margin:"0 0 1px" }}>
+          <PanelHeader title="3-LAYER ASSUMPTIONS" subtitle="Quick View from M09" borderColor={T.text.orange}
+            right={<div style={{ display:"flex",gap:3 }}><Bd c={T.text.cyan}>BROKER</Bd><Bd c={T.text.green}>PLATFORM</Bd><Bd c={T.text.purple}>YOU</Bd></div>}
+            metrics={[{l:"F_RENT",c:T.met.financial},{l:"O_VACANCY",c:T.met.occupancy},{l:"F_CAP",c:T.met.financial}]}
+          />
+          <div style={{ display:"grid",gridTemplateColumns:"1.5fr 1fr 1fr 1fr",gap:0 }}>
+            {["ASSUMPTION","BROKER","PLATFORM","YOU"].map((h,i)=>(<div key={i} style={{ padding:"3px 8px",fontSize:7,fontWeight:700,color:[T.text.muted,T.text.cyan,T.text.green,T.text.purple][i],background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+            {[
+              {a:"RENT GROWTH",b:"4.0%",p:"3.0%",u:"3.5%",flag:true,mc:T.met.financial},
+              {a:"VACANCY",b:"5.0%",p:"8.5%",u:"7.0%",flag:true,mc:T.met.occupancy},
+              {a:"EXIT CAP",b:"5.0%",p:"5.5%",u:"5.25%",mc:T.met.financial},
+              {a:"EXPENSE GROWTH",b:"2.5%",p:"3.8%",u:"3.5%",flag:true,mc:T.met.financial},
+              {a:"INSURANCE $/U",b:"$1,200",p:"$1,850",u:"$1,600",flag:true},
+              {a:"RENT PSF",b:"$2.12",p:"$1.94",u:"$2.00",mc:T.met.financial},
+              {a:"HOLD PERIOD",b:"5yr",p:"5yr",u:"5yr"},
+            ].map((row,ri)=>(
+              <React.Fragment key={ri}>
+                <div style={{ padding:"3px 8px",fontSize:8,fontWeight:600,color:T.text.primary,background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center",gap:3 }}>
+                  {row.mc&&<span style={{ width:3,height:3,borderRadius:"50%",background:row.mc }} />}
+                  {row.a}{row.flag&&<span style={{ width:4,height:4,borderRadius:"50%",background:T.text.orange }} />}
+                </div>
+                {[row.b,row.p,row.u].map((v,ci)=>(<div key={ci} style={{ padding:"3px 8px",fontSize:9,fontWeight:700,color:[T.text.cyan,T.text.green,T.text.purple][ci],background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}` }}>{v}</div>))}
+              </React.Fragment>
+            ))}
+          </div>
+          {/* Returns Row */}
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle }}>
+            {[{h:"BROKER RETURNS",irr:"28.1%",em:"3.2x",noi:"$2,840K",c:T.text.cyan},{h:"PLATFORM-ADJUSTED",irr:"22.4%",em:"2.5x",noi:"$2,680K",c:T.text.green},{h:"YOUR MODEL",irr:"24.3%",em:"2.8x",noi:"$2,740K",c:T.text.purple}].map((col,i)=>(
+              <div key={i} style={{ background:T.bg.panel,padding:5,borderTop:`2px solid ${col.c}` }}>
+                <div style={{ fontSize:7,fontWeight:700,color:col.c,letterSpacing:0.8,marginBottom:2 }}>{col.h}</div>
+                <div style={{ display:"flex",gap:8 }}>
+                  <div><span style={{ fontSize:6,color:T.text.muted }}>IRR </span><span style={{ fontSize:9,fontWeight:700,color:col.c }}>{col.irr}</span></div>
+                  <div><span style={{ fontSize:6,color:T.text.muted }}>EM </span><span style={{ fontSize:9,fontWeight:700,color:col.c }}>{col.em}</span></div>
+                  <div><span style={{ fontSize:6,color:T.text.muted }}>NOI </span><span style={{ fontSize:9,fontWeight:700,color:col.c }}>{col.noi}</span></div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ padding:4,background:T.text.orange+"08",borderLeft:`3px solid ${T.text.orange}` }}>
+            <span style={{ fontSize:8,color:T.text.orange,fontWeight:600 }}>COLLISION:</span>
+            <span style={{ fontSize:8,color:T.text.secondary }}> Broker IRR 28.1% vs platform 22.4% (-570bps). Broker understates vacancy 350bps + insurance $650/unit.</span>
+          </div>
+        </div>
+
+        {/* AI Intelligence Brief */}
+        <div style={{ background:T.bg.panel,margin:"0 0 1px",padding:8 }}>
+          <div style={{ fontSize:8,fontWeight:700,color:T.text.cyan,letterSpacing:0.8,marginBottom:4 }}>AI INTELLIGENCE BRIEF</div>
+          {[
+            {cat:"DEMAND",msg:"Amazon 2,000-job HQ expansion 1.8mi. Absorption 95.2% 2nd month. Pop inflow accelerating.",c:T.text.green},
+            {cat:"SUPPLY",msg:"Pipeline 4.2% stock (below 5% threshold). 600u in 12mo at 0.8mi — NovaStar 320u primary competitor.",c:T.text.amber},
+            {cat:"RISK",msg:"Insurance reform 8% cap. Execution risk: first dev in submarket. GC GMP contract mitigates.",c:T.text.orange},
+            {cat:"ACTION",msg:"Accelerate LOI. BTS at 18 DU/ac captures zoning upside before 860u pipeline delivers Q1 2027.",c:T.text.amber},
+          ].map((b,i)=>(<div key={i} style={{ display:"flex",gap:6,marginBottom:3 }}><Bd c={b.c}>{b.cat}</Bd><span style={{ fontSize:8,color:T.text.secondary,lineHeight:1.4 }}>{b.msg}</span></div>))}
+        </div>
+
+        {/* Key Financials + Deal Team + Activity (GAP from audit) */}
+        <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle }}>
+          <SectionPanel title="KEY FINANCIALS" borderColor={T.text.amber} metrics={[{l:"F_NOI",c:T.met.financial},{l:"F_CAP",c:T.met.financial}]}>
+            <DataRow label="GOING-IN CAP" value="5.2%" metricColor={T.met.financial} /><DataRow label="STABILIZED NOI" value="$2,680K" metricColor={T.met.financial} />
+            <DataRow label="DEBT SERVICE" value="$1,920K" sub="/yr" /><DataRow label="DSCR" value="1.40x" valueColor={T.text.green} />
+            <DataRow label="LTC" value="75%" /><DataRow label="EQUITY REQ" value="$5.9M" border={false} />
+          </SectionPanel>
+          <SectionPanel title="DEAL TEAM" borderColor={T.text.purple}>
+            {[{role:"LEAD",name:"Leon",t:"2h"},{role:"ANALYST",name:"Sarah K.",t:"4h"},{role:"LEGAL",name:"Becker & Poliakoff",t:"1d"},{role:"LENDER",name:"Centennial Bank",t:"3d"},{role:"GC",name:"Moss Construction",t:"5d"}].map((m,i)=>(
+              <div key={i} style={{ display:"flex",justifyContent:"space-between",padding:"3px 8px",borderBottom:`1px solid ${T.border.subtle}` }}>
+                <div style={{ display:"flex",gap:4,alignItems:"center" }}><Bd c={T.text.purple}>{m.role}</Bd><span style={{ fontSize:8,color:T.text.primary }}>{m.name}</span></div>
+                <span style={{ fontSize:7,color:T.text.muted }}>{m.t}</span>
+              </div>
+            ))}
+          </SectionPanel>
+          <SectionPanel title="RECENT ACTIVITY" borderColor={T.text.cyan}>
+            {[{act:"JEDI Score: 82 (+4)",t:"2h",c:T.text.green},{act:"Insurance quotes received (3)",t:"6h",c:T.text.amber},{act:"DRC Site Plan Rev 1 submitted",t:"1d",c:T.text.cyan},{act:"Phase I ESA — CLEAN",t:"2d",c:T.text.green},{act:"Amazon HQ demand event",t:"2d",c:T.text.green}].map((a,i)=>(
+              <div key={i} style={{ display:"flex",gap:6,padding:"3px 8px",borderBottom:`1px solid ${T.border.subtle}` }}>
+                <span style={{ fontSize:7,color:T.text.muted,minWidth:16 }}>{a.t}</span><span style={{ fontSize:8,color:a.c }}>{a.act}</span>
+              </div>
+            ))}
+          </SectionPanel>
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // F2 — PROPERTY & ZONING (M02) + Zoning Agent Chat tab
+  // ═══════════════════════════════════════════════════════════
+  const DealProperty = () => {
+    const tabs = ["BOUNDARY & ZONING","DEV CAPACITY","REGULATORY RISK","ZONING COMP","TIME-TO-SHOVEL","ZONING AGENT"];
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column" }}>
+        <PanelHeader title="PROPERTY & ZONING" subtitle="M02 | Verification-First" borderColor={T.text.cyan} />
+        <SubTabBar tabs={tabs} active={subTab} setActive={setSubTab} color={T.text.cyan} />
+        <div style={{ flex:1,overflow:"auto" }}>
+          {subTab===0 && (<div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+            <SectionPanel title="PARCEL IDENTITY" subtitle="County Records" borderColor={T.text.teal}>
+              <DataRow label="PARCEL ID" value="A-08-29-19-5RY-000001" /><DataRow label="LOT SIZE" value="14.2 ac" sub="618,552 SF" />
+              <DataRow label="FRONTAGE" value="420 ft" sub="Boy Scout Blvd" /><DataRow label="SHAPE FACTOR" value="0.92" valueColor={T.text.green} />
+              <DataRow label="FLOOD ZONE" value="Zone X" valueColor={T.text.green} /><DataRow label="OWNER" value="WESTSHORE DEV LLC" />
+              <DataRow label="ACQUIRED" value="06/2019" sub="$18.2M" /><DataRow label="ASSESSED" value="$22.4M" sub="2025" border={false} />
+            </SectionPanel>
+            <SectionPanel title="ZONING DESIGNATION" subtitle="Verified" borderColor={T.text.amber}>
+              <div style={{ padding:"6px 8px",background:T.text.amber+"08",borderBottom:`1px solid ${T.border.subtle}` }}>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}><span style={{ fontSize:14,fontWeight:800,color:T.text.amber }}>PD-C</span><Bd c={T.text.green}>VERIFIED 10/10</Bd></div>
+                <div style={{ fontSize:8,color:T.text.secondary }}>Planned Development — Commercial</div>
+              </div>
+              <DataRow label="MAX DENSITY" value="18 DU/ac" sub="= 255 units" /><DataRow label="MAX FAR" value="2.0" /><DataRow label="MAX HEIGHT" value="65 ft" sub="~5 stories" />
+              <DataRow label="PARKING REQ" value="1.5/unit" sub="= 383 spaces" /><DataRow label="SETBACKS" value="F25 / S10 / R20" />
+              <div style={{ padding:"4px 8px" }}><div style={{ display:"flex",flexWrap:"wrap",gap:3 }}>{["Municode 27-156","27-156.4(b)","27-157","County GIS","Planning Dept","CRA Overlay"].map((s,i)=>(<VerifiedLink key={i} source={s} />))}</div></div>
+            </SectionPanel>
+            <div style={{ gridColumn:"1/-1" }}>
+              <SectionPanel title="BINDING CONSTRAINT ANALYSIS" subtitle="Minimum governs">
+                <div style={{ display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:1,background:T.border.subtle }}>
+                  {[{c:"DENSITY",limit:"255u",usage:"248",pct:97,bind:true},{c:"FAR",limit:"1.24M",usage:"842K",pct:68},{c:"HEIGHT",limit:"65ft",usage:"58ft",pct:89},{c:"COVERAGE",limit:"371K",usage:"298K",pct:80},{c:"PARKING",limit:"383",usage:"396",pct:103,bind:true}].map((x,i)=>(
+                    <div key={i} style={{ background:T.bg.panel,padding:6,borderTop:x.bind?`2px solid ${T.text.red}`:"2px solid transparent",textAlign:"center" }}>
+                      <div style={{ fontSize:7,color:T.text.muted,letterSpacing:1 }}>{x.c}</div>
+                      <div style={{ fontSize:14,fontWeight:800,color:x.bind?T.text.red:T.text.green }}>{x.pct}%</div>
+                      <div style={{ fontSize:7,color:T.text.secondary }}>{x.usage}/{x.limit}</div>
+                      {x.bind&&<Bd c={T.text.red}>BINDING</Bd>}
+                    </div>
+                  ))}
+                </div>
+              </SectionPanel>
+            </div>
+          </div>)}
+          {subTab===1 && (<div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle }}>
+            {[{typ:"GARDEN (3-STORY)",u:180,den:"12.7",cost:"$42M",time:"18mo",f:85},{typ:"PODIUM 5-OVER-1",u:248,den:"17.5",cost:"$62M",time:"24mo",f:92},{typ:"WRAP (5-STORY)",u:220,den:"15.5",cost:"$55M",time:"22mo",f:78}].map((t,i)=>(
+              <div key={i} style={{ background:T.bg.panel,borderTop:t.f>=90?`2px solid ${T.text.amber}`:"2px solid transparent" }}>
+                <div style={{ padding:"6px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}` }}>
+                  <span style={{ fontSize:9,fontWeight:700,color:t.f>=90?T.text.amber:T.text.secondary }}>{t.typ}</span>
+                  {t.f>=90&&<span style={{ marginLeft:4 }}><Bd c={T.text.amber}>BEST FIT</Bd></span>}
+                </div>
+                <DataRow label="UNITS" value={t.u} /><DataRow label="DENSITY" value={t.den+" DU/ac"} /><DataRow label="EST. COST" value={t.cost} valueColor={T.text.amber} /><DataRow label="TIMELINE" value={t.time} />
+                <div style={{ padding:"4px 8px" }}><MiniBar value={t.f} label="FEASIBILITY" color={t.f>=90?T.text.green:t.f>=75?T.text.amber:T.text.red} /></div>
+              </div>
+            ))}
+          </div>)}
+          {subTab===2 && (<div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+            {[{r:"CONCURRENCY",sc:22,st:"PASS",d:"Water/sewer/drainage OK. Traffic pending FDOT."},{r:"ENVIRONMENTAL",sc:18,st:"PASS",d:"Phase I clean. No wetlands."},{r:"TREE PRESERVATION",sc:35,st:"CAUTION",d:"14 specimen oaks >24\" DBH. Mitigation ~$180K."},{r:"IMPACT FEES",sc:15,st:"KNOWN",d:"$2,841/u transport + $1,200/u parks + $3,456/u schools = $1.86M"},{r:"MORATORIUM",sc:0,st:"CLEAR",d:"No active moratorium."},{r:"HISTORIC",sc:0,st:"N/A",d:"Not in historic district."}].map((r,i)=>(
+              <div key={i} style={{ background:T.bg.panel,padding:8,borderLeft:`3px solid ${r.sc>=30?T.text.orange:r.sc>0?T.text.green:T.text.muted}` }}>
+                <div style={{ display:"flex",justifyContent:"space-between",marginBottom:3 }}>
+                  <span style={{ fontSize:9,fontWeight:700,color:T.text.white }}>{r.r}</span>
+                  <div style={{ display:"flex",gap:4 }}><Bd c={r.sc>=30?T.text.orange:r.sc>0?T.text.green:T.text.muted}>{r.st}</Bd><span style={{ fontSize:10,fontWeight:800,color:r.sc>=30?T.text.orange:T.text.green }}>{r.sc}</span></div>
+                </div>
+                <div style={{ fontSize:8,color:T.text.secondary,lineHeight:1.4 }}>{r.d}</div>
+              </div>
+            ))}
+          </div>)}
+          {subTab===3 && (<div style={{ display:"grid",gridTemplateColumns:"1.2fr repeat(4,1fr)",gap:0 }}>
+            {["PARAMETER","PD-C (SUBJECT)","RM-24","CI","PD-A"].map((h,i)=>(<div key={i} style={{ padding:"4px 8px",fontSize:7,fontWeight:700,color:i===1?T.text.amber:T.text.muted,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+            {[{p:"MAX DENSITY",v:["18 DU/ac","24 DU/ac","N/A","12 DU/ac"]},{p:"MAX HEIGHT",v:["65 ft","75 ft","45 ft","45 ft"]},{p:"FAR",v:["2.0","2.5","1.5","1.0"]},{p:"PARKING",v:["1.5/u","1.25/u","3.0/1K","2.0/u"]},{p:"RESIDENTIAL",v:["YES","YES","NO","YES"]}].map((row,ri)=>(
+              [row.p,...row.v].map((cell,ci)=>(<div key={`${ri}-${ci}`} style={{ padding:"4px 8px",fontSize:8,fontWeight:ci===0?600:ci===1?700:400,color:ci===0?T.text.muted:ci===1?T.text.amber:T.text.secondary,background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,borderRight:`1px solid ${T.border.subtle}` }}>{cell}</div>))
+            ))}
+          </div>)}
+          {subTab===4 && (<div style={{ display:"flex",flexDirection:"column",gap:1 }}>
+            {[{ph:"PRE-APPLICATION",dur:"2-4 wk",st:"COMPLETE",pct:100,d:"Pre-app meeting 2/15."},{ph:"SITE PLAN REVIEW",dur:"8-12 wk",st:"IN PROGRESS",pct:40,d:"Submitted 2/28. DRC Rev 1 expected 4/1."},{ph:"ZONING COMPLIANCE",dur:"2-4 wk",st:"PENDING",pct:0,d:"Conditional on site plan."},{ph:"BUILDING PERMIT",dur:"4-8 wk",st:"PENDING",pct:0,d:"Structural 60%. MEP pending."},{ph:"UTILITY CONNECT",dur:"4-6 wk",st:"PENDING",pct:0,d:"Capacity letter obtained."},{ph:"CLEAR TO BUILD",dur:"—",st:"EST. Q4 2026",pct:0,d:"Monte Carlo p50: 10mo. p90: 14mo."}].map((p,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",background:T.bg.panel }}>
+                <div style={{ width:140,padding:"6px 8px",borderRight:`1px solid ${T.border.subtle}` }}><div style={{ fontSize:8,fontWeight:700,color:p.st==="COMPLETE"?T.text.green:p.st==="IN PROGRESS"?T.text.amber:T.text.muted }}>{p.ph}</div><div style={{ fontSize:7,color:T.text.secondary }}>{p.dur}</div></div>
+                <div style={{ width:80,padding:"0 6px" }}><Bd c={p.st==="COMPLETE"?T.text.green:p.st==="IN PROGRESS"?T.text.amber:T.text.muted}>{p.st}</Bd></div>
+                <div style={{ width:60,padding:"0 6px" }}><MiniBar value={p.pct} showPct={true} color={p.pct===100?T.text.green:p.pct>0?T.text.amber:T.text.muted} /></div>
+                <div style={{ flex:1,padding:"4px 8px",fontSize:8,color:T.text.secondary }}>{p.d}</div>
+              </div>
+            ))}
+          </div>)}
+          {/* NEW: Zoning Agent Chat tab (from codebase audit) */}
+          {subTab===5 && (<div style={{ padding:12 }}>
+            <div style={{ background:T.bg.panel,border:`1px solid ${T.border.medium}`,borderRadius:4,padding:12 }}>
+              <div style={{ fontSize:9,fontWeight:700,color:T.text.purple,marginBottom:8 }}>ZONING AGENT — AI CHAT</div>
+              <div style={{ background:T.bg.terminal,border:`1px solid ${T.border.subtle}`,borderRadius:4,padding:8,marginBottom:8,minHeight:120 }}>
+                {[{role:"AGENT",msg:"Based on Municode 27-156, PD-C permits multifamily residential at 18 DU/acre. The binding constraint is density (97% utilized at 248 units) and parking (103% — 13 spaces over minimum). Consider reducing to 242 units to create parking buffer.",c:T.text.teal},
+                  {role:"USER",msg:"What if we request a parking variance?",c:T.text.amber},
+                  {role:"AGENT",msg:"Tampa Board of Adjustment has approved 68% of parking variances in Westshore CRA since 2020. Typical reduction: 10-15%. With transit adjacency (BRT stop 0.4mi), probability increases to ~78%. Est. timeline: 6-8 weeks additional.",c:T.text.teal},
+                ].map((m,i)=>(<div key={i} style={{ marginBottom:6,padding:"4px 6px",borderLeft:`2px solid ${m.c}` }}><div style={{ fontSize:7,color:m.c,fontWeight:700,marginBottom:1 }}>{m.role}</div><div style={{ fontSize:8,color:T.text.secondary,lineHeight:1.5 }}>{m.msg}</div></div>))}
+              </div>
+              <div style={{ display:"flex",gap:6 }}>
+                <input placeholder="Ask about zoning, setbacks, variances..." style={{ flex:1,background:T.bg.input,border:`1px solid ${T.border.subtle}`,borderRadius:3,padding:"4px 8px",fontFamily:T.font.mono,fontSize:9,color:T.text.primary,outline:"none" }} />
+                <button style={{ background:T.text.purple,color:T.bg.terminal,border:"none",borderRadius:3,padding:"4px 10px",fontFamily:T.font.mono,fontSize:8,fontWeight:700,cursor:"pointer" }}>ASK</button>
+              </div>
+            </div>
+          </div>)}
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // F3 — MARKET (M05+M06) + Unit Mix, Trends, Opp Engine tabs
+  // ═══════════════════════════════════════════════════════════
+  const DealMarket = () => {
+    const tabs = ["MARKET INTEL","UNIT MIX INTEL","TRENDS","OPPORTUNITY ENGINE"];
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column" }}>
+        <PanelHeader title="MARKET & DEMAND INTELLIGENCE" subtitle="M05+M06" borderColor={T.text.green}
+          metrics={[{l:"F_RENT +3.0%",c:T.met.financial},{l:"O_ABSORB 95.2%",c:T.met.occupancy},{l:"E_JOBS +3.2%",c:T.met.economic},{l:"D_SEARCH +35.5%",c:T.met.digTraffic}]}
+        />
+        <SubTabBar tabs={tabs} active={subTab} setActive={setSubTab} color={T.text.green} />
+        <div style={{ flex:1,overflow:"auto" }}>
+          {subTab===0 && (<>
+            {/* KPI Strip with metric source colors */}
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:1,background:T.border.subtle }}>
+              {[{l:"AVG EFF. RENT",v:"$1,908",sub:"/mo",chg:"+3.0%",data:[1780,1800,1820,1860,1890,1908],mc:T.met.financial},{l:"VACANCY",v:"8.5%",chg:"-0.8%",data:[10.2,9.8,9.5,9.1,8.8,8.5],mc:T.met.occupancy},{l:"ABSORPTION",v:"95.2%",chg:"+1.4%",data:[90,91,92,93,94,95.2],mc:T.met.occupancy},{l:"POP GROWTH",v:"+2.1%",sub:"YoY",chg:"Accel",data:[1.2,1.5,1.7,1.9,2.0,2.1],mc:T.met.economic},{l:"DEMAND SCORE",v:"88",sub:"/100",chg:"+3 30d",data:[78,82,84,86,87,88],mc:T.text.green}].map((m,i)=>(
+                <div key={i} style={{ background:T.bg.panel,padding:"8px 10px",borderTop:`2px solid ${m.mc}` }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:4 }}><span style={{ width:4,height:4,borderRadius:"50%",background:m.mc }} /><span style={{ fontSize:7,color:T.text.muted,letterSpacing:1,fontWeight:600 }}>{m.l}</span></div>
+                  <div style={{ display:"flex",alignItems:"baseline",gap:2,marginTop:2 }}><span style={{ fontSize:16,fontWeight:800,color:T.text.amber }}>{m.v}</span>{m.sub&&<span style={{ fontSize:8,color:T.text.secondary }}>{m.sub}</span>}</div>
+                  <div style={{ fontSize:8,fontWeight:600,color:T.text.green,marginTop:1 }}>{m.chg}</div>
+                  <Spark data={m.data} color={m.mc} w={80} h={14} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle,marginTop:1 }}>
+              <SectionPanel title="DEMAND DRIVERS" subtitle="3mi radius" borderColor={T.text.green} metrics={[{l:"E_JOBS",c:T.met.economic},{l:"E_POP",c:T.met.economic}]}>
+                {[{d:"EMPLOYMENT",impact:"+3.2% YoY",sc:91,detail:"Amazon +2K jobs. MacDill 15K stable.",mc:T.met.economic},{d:"POPULATION",impact:"+2.1% YoY",sc:85,detail:"42K residents. Migration +1,400/yr.",mc:T.met.economic},{d:"HH INCOME",impact:"$78,200",sc:78,detail:"Renter 58%. Income-to-rent 3.4x.",mc:T.met.economic},{d:"INFRA",impact:"BRT funded",sc:72,detail:"Colonial BRT. Howard Frankland.",mc:T.text.cyan}].map((drv,i)=>(
+                  <div key={i} style={{ display:"flex",gap:6,padding:"5px 8px",borderBottom:`1px solid ${T.border.subtle}` }}>
+                    <span style={{ fontSize:14,fontWeight:800,color:drv.sc>=85?T.text.green:T.text.amber,minWidth:24,textAlign:"center" }}>{drv.sc}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:"flex",justifyContent:"space-between" }}><div style={{ display:"flex",alignItems:"center",gap:3 }}><span style={{ width:3,height:3,borderRadius:"50%",background:drv.mc }} /><span style={{ fontSize:8,fontWeight:700,color:T.text.primary }}>{drv.d}</span></div><span style={{ fontSize:8,color:T.text.green }}>{drv.impact}</span></div>
+                      <div style={{ fontSize:7,color:T.text.secondary,marginTop:1 }}>{drv.detail}</div>
+                    </div>
+                  </div>
+                ))}
+              </SectionPanel>
+              <SectionPanel title="RENT COMP MATRIX" subtitle="Apartments.com + RentCast" borderColor={T.text.amber} metrics={[{l:"F_RENT",c:T.met.financial}]}>
+                <div style={{ display:"grid",gridTemplateColumns:"1.5fr 0.7fr 0.7fr 0.7fr",gap:0 }}>
+                  {["PROPERTY","1BR","2BR","3BR"].map((h,i)=>(<div key={i} style={{ padding:"3px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+                  {[{n:"Camden Westshore",v:["$1,890","$2,240","$2,680"]},{n:"MAA Westshore",v:["$1,820","$2,150","—"]},{n:"Channelside Apts",v:["$1,950","$2,310","$2,750"]},{n:"SUBMARKET AVG",v:["$1,843","$2,188","$2,715"],bold:true}].map((r,ri)=>(
+                    [r.n,...r.v].map((cell,ci)=>(<div key={`${ri}-${ci}`} style={{ padding:"3px 6px",fontSize:ci===0?8:9,fontWeight:r.bold?700:ci===0?500:600,color:r.bold?T.text.amber:ci===0?T.text.primary:T.text.secondary,background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,borderRight:`1px solid ${T.border.subtle}` }}>{cell}</div>))
+                  ))}
+                </div>
+              </SectionPanel>
+            </div>
+          </>)}
+          {/* NEW: Unit Mix Intelligence tab (from codebase) */}
+          {subTab===1 && (<div style={{ padding:1 }}>
+            <div style={{ fontSize:8,color:T.text.muted,padding:"6px 10px",background:T.bg.header }}>Unit-level market analysis — which unit types command premium in this trade area?</div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:1,background:T.border.subtle }}>
+              {[{type:"STUDIO",demand:"HIGH",rent:"$1,608",share:"8%",trend:"+4.2%"},{type:"1BR",demand:"VERY HIGH",rent:"$1,843",share:"42%",trend:"+3.8%"},{type:"2BR",demand:"HIGH",rent:"$2,188",share:"38%",trend:"+2.9%"},{type:"3BR",demand:"MODERATE",rent:"$2,715",share:"10%",trend:"+1.2%"},{type:"TOWNHOME",demand:"LOW",rent:"$2,950",share:"2%",trend:"+0.5%"}].map((u,i)=>(
+                <div key={i} style={{ background:T.bg.panel,padding:8 }}>
+                  <div style={{ fontSize:9,fontWeight:700,color:T.text.white }}>{u.type}</div>
+                  <Bd c={u.demand==="VERY HIGH"?T.text.green:u.demand==="HIGH"?T.text.amber:T.text.muted}>{u.demand}</Bd>
+                  <DataRow label="AVG RENT" value={u.rent} valueColor={T.met.financial} /><DataRow label="MIX SHARE" value={u.share} /><DataRow label="GROWTH" value={u.trend} valueColor={T.text.green} border={false} />
+                </div>
+              ))}
+            </div>
+          </div>)}
+          {/* NEW: Trends tab */}
+          {subTab===2 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>MARKET TREND INDICATORS</div>
+            {[{metric:"Rent Growth Trajectory",v:"+3.0%",trend:"Accelerating",data:[1.8,2.0,2.2,2.5,2.7,2.9,3.0],c:T.met.financial},{metric:"Vacancy Compression",v:"8.5%",trend:"Tightening",data:[10.2,9.8,9.5,9.1,8.8,8.5],c:T.met.occupancy},{metric:"Wage-Rent Spread",v:"+1.2pp",trend:"Wages leading",data:[0.4,0.5,0.6,0.7,0.8,1.0,1.2],c:T.met.economic},{metric:"Digital-Physical Gap",v:"+31.3pp",trend:"Demand building",data:[8,12,16,20,26,30,31.3],c:T.met.compTraffic},{metric:"Concession Decline",v:"2.8%",trend:"Demand > Supply",data:[4.2,3.8,3.4,3.2,3.0,2.9,2.8],c:T.met.financial}].map((t,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.border.subtle}` }}>
+                <span style={{ width:4,height:4,borderRadius:"50%",background:t.c }} />
+                <span style={{ fontSize:9,color:T.text.primary,fontWeight:600,minWidth:160 }}>{t.metric}</span>
+                <span style={{ fontSize:12,fontWeight:800,color:t.c,minWidth:60 }}>{t.v}</span>
+                <Bd c={T.text.green}>{t.trend}</Bd>
+                <Spark data={t.data} color={t.c} w={100} h={18} />
+              </div>
+            ))}
+          </div>)}
+          {/* NEW: Opportunity Engine tab */}
+          {subTab===3 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.amber,marginBottom:6 }}>OPPORTUNITY DETECTION ENGINE</div>
+            {[{opp:"RENT UPSIDE",score:88,detail:"Submarket avg $1,908. Subject positioned for +$120/u premium based on BTS amenity package + location.",signal:"Rent Premium +1.4% confirms positioning"},{opp:"CONCESSION ARBITRAGE",score:82,detail:"Market concessions declining (-0.4% QoQ). New deliveries will face 2.8% concession environment vs 4.2% 12mo ago.",signal:"Absorption rate 95.2% driving compression"},{opp:"TIMING WINDOW",score:91,detail:"Digital demand surge (+35.5%) not yet reflected in physical traffic (+3.2%). 2-6 month window before institutions discover.",signal:"Digital-Physical Gap at +31.3pp"}].map((o,i)=>(
+              <div key={i} style={{ padding:8,background:T.bg.panel,borderLeft:`3px solid ${T.text.amber}`,marginBottom:4,borderRadius:2 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",marginBottom:3 }}>
+                  <span style={{ fontSize:9,fontWeight:700,color:T.text.white }}>{o.opp}</span>
+                  <span style={{ fontSize:14,fontWeight:800,color:T.text.amber }}>{o.score}</span>
+                </div>
+                <div style={{ fontSize:8,color:T.text.secondary,lineHeight:1.4 }}>{o.detail}</div>
+                <div style={{ fontSize:7,color:T.text.teal,marginTop:3 }}>SIGNAL: {o.signal}</div>
+              </div>
+            ))}
+          </div>)}
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // F4 — SUPPLY (M04) — with platform metric tags
+  // ═══════════════════════════════════════════════════════════
+  const DealSupply = () => (
+    <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+      <PanelHeader title="SUPPLY PIPELINE INTELLIGENCE" subtitle="M04 | Trade Area + 5mi" borderColor={T.text.orange}
+        metrics={[{l:"S_PIPE 1,240",c:T.met.supply},{l:"S_PCT 4.2%",c:T.met.supply},{l:"O_ABSORB 255/q",c:T.met.occupancy}]}
+      />
+      <div style={{ display:"grid",gridTemplateColumns:"160px 1fr",gap:1,background:T.border.subtle }}>
+        <div style={{ background:T.bg.panel,padding:10,textAlign:"center" }}>
+          <div style={{ fontSize:7,color:T.text.muted,letterSpacing:1.5 }}>SUPPLY PRESSURE</div>
+          <div style={{ fontSize:32,fontWeight:800,color:T.text.amber,marginTop:2 }}>4.2%</div>
+          <div style={{ fontSize:8,color:T.text.secondary }}>Pipeline-to-Stock</div>
+          <Bd c={T.text.amber}>MODERATE</Bd>
+          <div style={{ fontSize:7,color:T.text.muted,marginTop:4 }}>Threshold: 5.0%</div>
+        </div>
+        <div style={{ background:T.bg.panel,padding:10,display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8 }}>
+          {[{l:"PIPELINE",v:"1,240",s:"units",c:T.met.supply},{l:"STOCK",v:"14,200",s:"units",c:T.text.secondary},{l:"DEMAND",v:"1,680",s:"u/yr",c:T.met.occupancy},{l:"ABSORB",v:"18",s:"mo avg",c:T.met.occupancy}].map((m,i)=>(
+            <div key={i}><div style={{ display:"flex",alignItems:"center",gap:2 }}><span style={{ width:3,height:3,borderRadius:"50%",background:m.c }} /><span style={{ fontSize:7,color:T.text.muted }}>{m.l}</span></div><div style={{ fontSize:16,fontWeight:800,color:m.c }}>{m.v}</div><div style={{ fontSize:7,color:T.text.secondary }}>{m.s}</div></div>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop:1 }}>
+        <div style={{ display:"grid",gridTemplateColumns:"1.5fr 0.5fr 0.7fr 0.6fr 0.6fr 0.5fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}` }}>
+          {["PROJECT","UNITS","DELIVERY","DIST","SEGMENT","THREAT"].map((h,i)=>(<div key={i} style={{ padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+        </div>
+        {[{n:"Greystar Tower DT",u:380,del:"Q3 2026",dist:"2.1mi",seg:"LUXURY",t:"MED"},{n:"Altis Grand Central",u:280,del:"Q1 2027",dist:"3.4mi",seg:"CLASS A",t:"HIGH"},{n:"NovaStar Westshore",u:320,del:"Q1 2027",dist:"0.8mi",seg:"CLASS A",t:"HIGH"},{n:"Camden Preserve II",u:160,del:"Q4 2027",dist:"4.2mi",seg:"GARDEN",t:"LOW"},{n:"Encore Phase 3",u:100,del:"Q2 2027",dist:"5.0mi",seg:"AFFORD",t:"LOW"}].map((p,i)=>(
+          <div key={i} style={{ display:"grid",gridTemplateColumns:"1.5fr 0.5fr 0.7fr 0.6fr 0.6fr 0.5fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}` }}>
+            <div style={{ padding:"4px 6px",fontSize:8,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}` }}>{p.n}</div>
+            <div style={{ padding:"4px 6px",fontSize:9,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}` }}>{p.u}</div>
+            <div style={{ padding:"4px 6px",fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}` }}>{p.del}</div>
+            <div style={{ padding:"4px 6px",fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}` }}>{p.dist}</div>
+            <div style={{ padding:"4px 6px",borderRight:`1px solid ${T.border.subtle}` }}><Bd c={T.text.cyan}>{p.seg}</Bd></div>
+            <div style={{ padding:"4px 6px" }}><RiskDot level={p.t} /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // F5 — STRATEGY (M08) — kept from original + verdict text
+  // ═══════════════════════════════════════════════════════════
+  const DealStrategy = () => (
+    <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+      <PanelHeader title="STRATEGY ARBITRAGE" subtitle="M08 | 4-Strategy Comparison" borderColor={T.text.purple} />
+      <div style={{ padding:6,background:T.text.purple+"08",borderLeft:`3px solid ${T.text.purple}` }}>
+        <span style={{ fontSize:9,color:T.text.purple,fontWeight:600 }}>ARBITRAGE ALERT:</span>
+        <span style={{ fontSize:9,color:T.text.secondary }}> BTS outscores RENTAL by 15pts. Broker recommends Rental — platform sees 3x density upside. Delta &gt; 15pt threshold.</span>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:1,background:T.border.subtle,marginTop:1 }}>
+        {[
+          {s:"BUILD-TO-SELL",sc:84,irr:"24.3%",em:"2.8x",yoc:"7.2%",time:"24mo",win:true,signals:{D:88,S:72,M:85,P:79,R:81},verdict:"Strong density, thin supply, Amazon catalyst."},
+          {s:"FLIP",sc:58,irr:"21.5%",em:"1.6x",yoc:"N/A",time:"8mo",signals:{D:60,S:55,M:72,P:52,R:48},verdict:"No structure. Land-only — not applicable."},
+          {s:"RENTAL",sc:69,irr:"18.7%",em:"2.1x",yoc:"5.8%",time:"Hold",signals:{D:75,S:68,M:62,P:70,R:72},verdict:"Viable but BTS captures more density premium."},
+          {s:"STR",sc:45,irr:"12.4%",em:"1.3x",yoc:"4.4%",time:"Hold",signals:{D:42,S:40,M:55,P:48,R:38},verdict:"Regulatory uncertainty at 248-unit scale."},
+        ].map((col,ci)=>(
+          <div key={ci} style={{ background:T.bg.panel,borderTop:col.win?`3px solid ${T.text.amber}`:"3px solid transparent" }}>
+            <div style={{ padding:"8px 10px",textAlign:"center",borderBottom:`1px solid ${T.border.subtle}` }}>
+              <div style={{ fontSize:9,fontWeight:700,color:col.win?T.text.amber:T.text.secondary,letterSpacing:1 }}>{col.s}</div>
+              <div style={{ fontSize:28,fontWeight:800,color:col.win?T.text.amber:T.text.muted,marginTop:2 }}>{col.sc}</div>
+              {col.win&&<Bd c={T.text.amber}>WINNER +15</Bd>}
+            </div>
+            <div style={{ padding:8 }}>
+              {[{l:"IRR",v:col.irr},{l:"EM",v:col.em},{l:"YOC",v:col.yoc},{l:"TIMELINE",v:col.time}].map((m,mi)=>(<div key={mi} style={{ display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:`1px solid ${T.border.subtle}` }}><span style={{ fontSize:8,color:T.text.muted }}>{m.l}</span><span style={{ fontSize:9,fontWeight:700,color:T.text.amber }}>{m.v}</span></div>))}
+              <div style={{ marginTop:6,fontSize:8,color:T.text.muted,letterSpacing:1 }}>SIGNALS</div>
+              {Object.entries(col.signals).map(([k,v])=>(<div key={k} style={{ display:"flex",alignItems:"center",gap:4,marginTop:2 }}><span style={{ fontSize:7,color:T.text.muted,minWidth:14 }}>{k}</span><div style={{ flex:1,height:4,background:T.bg.terminal }}><div style={{ height:"100%",width:`${v}%`,background:v>=75?T.text.green:v>=55?T.text.amber:T.text.red }} /></div><span style={{ fontSize:7,fontWeight:700,color:v>=75?T.text.green:v>=55?T.text.amber:T.text.red }}>{v}</span></div>))}
+              <div style={{ marginTop:6,fontSize:7,color:T.text.secondary,lineHeight:1.4,fontStyle:"italic" }}>{col.verdict}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // F6 — PROFORMA (M09) + Tax & Sensitivity tabs
+  // ═══════════════════════════════════════════════════════════
+  const DealProforma = () => {
+    const tabs = ["3-LAYER MODEL","TAX INTELLIGENCE","SENSITIVITY"];
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column" }}>
+        <PanelHeader title="PRO FORMA ENGINE" subtitle="M09 | 3-Layer Assumption Model" borderColor={T.text.amber}
+          right={<div style={{ display:"flex",gap:3 }}><Bd c={T.text.cyan}>BROKER</Bd><Bd c={T.text.green}>PLATFORM</Bd><Bd c={T.text.purple}>USER</Bd></div>}
+          metrics={[{l:"F_RENT",c:T.met.financial},{l:"O_VACANCY",c:T.met.occupancy},{l:"F_CAP",c:T.met.financial},{l:"E_WAGE",c:T.met.economic}]}
+        />
+        <SubTabBar tabs={tabs} active={subTab} setActive={setSubTab} color={T.text.amber} />
+        <div style={{ flex:1,overflow:"auto" }}>
+          {subTab===0 && (<>
+            <div style={{ display:"grid",gridTemplateColumns:"1.8fr 1fr 1fr 1fr",gap:0 }}>
+              {["ASSUMPTION","BROKER","PLATFORM","YOU"].map((h,i)=>(<div key={i} style={{ padding:"4px 8px",fontSize:7,fontWeight:700,color:[T.text.muted,T.text.cyan,T.text.green,T.text.purple][i],background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+              {[{a:"RENT GROWTH",b:"4.0%",p:"3.0%",u:"3.5%",flag:true},{a:"VACANCY",b:"5.0%",p:"8.5%",u:"7.0%",flag:true},{a:"EXIT CAP",b:"5.0%",p:"5.5%",u:"5.25%"},{a:"EXPENSE GROWTH",b:"2.5%",p:"3.8%",u:"3.5%",flag:true},{a:"INSURANCE $/U",b:"$1,200",p:"$1,850",u:"$1,600",flag:true},{a:"RENT PSF",b:"$2.12",p:"$1.94",u:"$2.00"},{a:"HOLD PERIOD",b:"5yr",p:"5yr",u:"5yr"}].map((row,ri)=>(
+                <React.Fragment key={ri}>
+                  <div style={{ padding:"4px 8px",fontSize:8,fontWeight:600,color:T.text.primary,background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center",gap:4 }}>{row.a}{row.flag&&<span style={{ width:5,height:5,borderRadius:"50%",background:T.text.orange }} />}</div>
+                  {[row.b,row.p,row.u].map((v,ci)=>(<div key={ci} style={{ padding:"4px 8px",fontSize:9,fontWeight:700,color:[T.text.cyan,T.text.green,T.text.purple][ci],background:ri%2===0?T.bg.panel:T.bg.panelAlt,borderRight:`1px solid ${T.border.subtle}`,borderBottom:`1px solid ${T.border.subtle}` }}>{v}</div>))}
+                </React.Fragment>
+              ))}
+            </div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle,marginTop:1 }}>
+              {[{h:"BROKER RETURNS",irr:"28.1%",em:"3.2x",noi:"$2,840K",coc:"8.2%",c:T.text.cyan},{h:"PLATFORM-ADJUSTED",irr:"22.4%",em:"2.5x",noi:"$2,680K",coc:"6.8%",c:T.text.green},{h:"YOUR MODEL",irr:"24.3%",em:"2.8x",noi:"$2,740K",coc:"7.4%",c:T.text.purple}].map((col,i)=>(
+                <div key={i} style={{ background:T.bg.panel,padding:8,borderTop:`2px solid ${col.c}` }}>
+                  <div style={{ fontSize:8,fontWeight:700,color:col.c,letterSpacing:0.8,marginBottom:4 }}>{col.h}</div>
+                  <DataRow label="IRR" value={col.irr} valueColor={col.c} /><DataRow label="EQUITY MULT" value={col.em} valueColor={col.c} />
+                  <DataRow label="YEAR 1 NOI" value={col.noi} valueColor={col.c} /><DataRow label="CASH-ON-CASH" value={col.coc} valueColor={col.c} border={false} />
+                </div>
+              ))}
+            </div>
+            <div style={{ padding:6,background:T.text.orange+"08",borderLeft:`3px solid ${T.text.orange}`,marginTop:1 }}>
+              <span style={{ fontSize:9,color:T.text.orange,fontWeight:600 }}>COLLISION:</span>
+              <span style={{ fontSize:9,color:T.text.secondary }}> Broker IRR 28.1% vs platform 22.4% (-570bps). Broker understates vacancy 350bps + insurance $650/unit.</span>
+            </div>
+          </>)}
+          {/* NEW: Tax Intelligence tab (from codebase TaxModule) */}
+          {subTab===1 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>TAX INTELLIGENCE — M26</div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+              {[{l:"PROPERTY TAX RATE",v:"1.92%",detail:"Hillsborough County millage. Subject to Save Our Homes cap on reassessment."},{l:"EST. ANNUAL TAX",v:"$739K",detail:"Based on $38.5M purchase. May contest at $34M assessed for savings."},{l:"INSURANCE EST.",v:"$458K",detail:"$1,850/unit × 248 units. 3 carrier quotes active. 8% cap via reform."},{l:"TAX INCENTIVES",v:"2 AVAILABLE",detail:"Opportunity Zone: 10% basis step-up. CRA TIF: 50% increment rebate 15yr."}].map((t,i)=>(
+                <div key={i} style={{ background:T.bg.panel,padding:8 }}>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:3 }}><span style={{ fontSize:8,fontWeight:600,color:T.text.muted }}>{t.l}</span><span style={{ fontSize:14,fontWeight:800,color:T.text.amber }}>{t.v}</span></div>
+                  <div style={{ fontSize:8,color:T.text.secondary,lineHeight:1.4 }}>{t.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>)}
+          {/* NEW: Sensitivity tab */}
+          {subTab===2 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>SENSITIVITY ANALYSIS — KEY DRIVERS</div>
+            {[{driver:"EXIT CAP RATE",range:"4.8% – 5.6%",baseIRR:"24.3%",bearIRR:"18.4%",bullIRR:"31.2%",impact:"HIGH"},{driver:"RENT GROWTH",range:"+1.5% – +4.5%",baseIRR:"24.3%",bearIRR:"20.1%",bullIRR:"28.8%",impact:"HIGH"},{driver:"VACANCY",range:"6.0% – 10.0%",baseIRR:"24.3%",bearIRR:"21.8%",bullIRR:"26.4%",impact:"MED"},{driver:"CONSTRUCTION COST",range:"-5% – +15%",baseIRR:"24.3%",bearIRR:"19.6%",bullIRR:"25.8%",impact:"HIGH"},{driver:"TIMELINE DELAY",range:"0 – 6 months",baseIRR:"24.3%",bearIRR:"21.2%",bullIRR:"24.3%",impact:"MED"}].map((s,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border.subtle}` }}>
+                <span style={{ fontSize:8,fontWeight:600,color:T.text.primary,minWidth:120 }}>{s.driver}</span>
+                <span style={{ fontSize:7,color:T.text.muted,minWidth:100 }}>{s.range}</span>
+                <span style={{ fontSize:9,fontWeight:700,color:T.text.red,minWidth:40 }}>{s.bearIRR}</span>
+                <div style={{ flex:1,height:6,background:T.bg.terminal,position:"relative" }}>
+                  <div style={{ position:"absolute",left:"30%",right:"30%",height:"100%",background:T.text.amber+"44" }} />
+                  <div style={{ position:"absolute",left:"50%",top:-1,width:2,height:8,background:T.text.amber }} />
+                </div>
+                <span style={{ fontSize:9,fontWeight:700,color:T.text.green,minWidth:40 }}>{s.bullIRR}</span>
+                <Bd c={s.impact==="HIGH"?T.text.red:T.text.orange}>{s.impact}</Bd>
+              </div>
+            ))}
+          </div>)}
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // F7 — CAPITAL (M11) — kept from original
+  // ═══════════════════════════════════════════════════════════
+  const DealCapital = () => {
+    const stack = [{layer:"SENIOR DEBT",amount:"$28.8M",pct:75,rate:"SOFR+275",term:"36mo",io:"24mo",color:T.text.cyan},{layer:"MEZZANINE",amount:"$3.8M",pct:10,rate:"12.0% Fixed",term:"36mo",io:"Curr Pay",color:T.text.orange},{layer:"PREF EQUITY",amount:"$1.9M",pct:5,rate:"10.0% Pref",term:"—",io:"Accrued",color:T.text.purple},{layer:"COMMON EQ",amount:"$3.9M",pct:10,rate:"Target 24%",term:"—",io:"Residual",color:T.text.amber}];
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+        <PanelHeader title="CAPITAL STRUCTURE" subtitle="M11 | Stack + DSCR" borderColor={T.text.cyan} />
+        <div style={{ display:"grid",gridTemplateColumns:"180px 1fr",gap:1,background:T.border.subtle }}>
+          <div style={{ background:T.bg.panel,padding:10 }}>
+            <div style={{ fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:6 }}>CAPITAL STACK</div>
+            {stack.map((s,i)=>(<div key={i} style={{ height:Math.max(s.pct*0.6,16),background:s.color+"22",border:`1px solid ${s.color}44`,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 6px",marginBottom:2 }}><span style={{ fontSize:7,fontWeight:700,color:s.color }}>{s.layer}</span><span style={{ fontSize:7,fontWeight:700,color:s.color }}>{s.pct}%</span></div>))}
+            <DataRow label="TOTAL" value="$38.5M" /><DataRow label="LTC" value="75%" /><DataRow label="WACC" value="8.2%" valueColor={T.text.green} border={false} />
+          </div>
+          <div style={{ background:T.bg.panel }}>
+            <div style={{ display:"grid",gridTemplateColumns:"1.2fr 0.8fr 0.5fr 0.8fr 0.6fr 0.6fr" }}>
+              {["TRANCHE","AMOUNT","% CAP","RATE","TERM","I/O"].map((h,i)=>(<div key={i} style={{ padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+              {stack.map((s,i)=>([s.layer,s.amount,`${s.pct}%`,s.rate,s.term,s.io].map((cell,ci)=>(<div key={`${i}-${ci}`} style={{ padding:"4px 6px",fontSize:8,fontWeight:ci<=1?700:500,color:ci===0?s.color:T.text.secondary,background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,borderRight:`1px solid ${T.border.subtle}` }}>{cell}</div>))))}
+            </div>
+            <div style={{ padding:8,borderTop:`1px solid ${T.border.medium}` }}>
+              <div style={{ fontSize:8,fontWeight:700,color:T.text.white,marginBottom:4 }}>DEBT SERVICE COVERAGE</div>
+              {[{yr:"YR 1",noi:"$2,680K",ds:"$1,920K",dscr:"1.40x",c:T.text.green},{yr:"YR 2",noi:"$2,760K",ds:"$2,280K",dscr:"1.21x",c:T.text.amber},{yr:"YR 3",noi:"$2,843K",ds:"$2,280K",dscr:"1.25x",c:T.text.green}].map((r,i)=>(
+                <div key={i} style={{ display:"grid",gridTemplateColumns:"50px 1fr 1fr 70px",gap:6,padding:"3px 0",borderBottom:`1px solid ${T.border.subtle}` }}>
+                  <span style={{ fontSize:8,fontWeight:700,color:T.text.muted }}>{r.yr}</span><span style={{ fontSize:8,color:T.text.secondary }}>NOI: {r.noi}</span><span style={{ fontSize:8,color:T.text.secondary }}>DS: {r.ds}</span><span style={{ fontSize:10,fontWeight:800,color:r.c }}>{r.dscr}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // F8 — RISK (M14) + Collision, DD Checklist, Legal/ESG tabs
+  // ═══════════════════════════════════════════════════════════
+  const DealRisk = () => {
+    const tabs = ["RISK SCORES","COLLISION ANALYSIS","DD CHECKLIST","LEGAL & ESG"];
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column" }}>
+        <PanelHeader title="RISK & DUE DILIGENCE" subtitle="M14 | 6 Categories + Monte Carlo" borderColor={T.text.red}
+          right={<div style={{ display:"flex",alignItems:"center",gap:6 }}><span style={{ fontSize:8,color:T.text.muted }}>COMPOSITE</span><span style={{ fontSize:16,fontWeight:800,color:T.text.green }}>32</span><Bd c={T.text.green}>LOW</Bd></div>}
+        />
+        <SubTabBar tabs={tabs} active={subTab} setActive={setSubTab} color={T.text.red} />
+        <div style={{ flex:1,overflow:"auto" }}>
+          {subTab===0 && (<>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle }}>
+              {[{cat:"SUPPLY",sc:28,tr:"+2",dt:[20,22,24,26,27,28],d:"Pipeline 4.2%. 600u in 12mo at 0.8mi.",mit:"Phase delivery."},{cat:"EXECUTION",sc:42,tr:"+4",dt:[30,34,38,40,41,42],d:"First dev in Westshore. GC mitigates.",mit:"GMP contract."},{cat:"MARKET",sc:35,tr:"-2",dt:[40,38,37,36,35,35],d:"Tampa slowing from peak. Still above avg.",mit:"Rate lock."},{cat:"INSURANCE",sc:38,tr:"0",dt:[38,38,38,38,38,38],d:"FL wind zone inland. Reform 8% cap.",mit:"3 carriers."},{cat:"REGULATORY",sc:18,tr:"-1",dt:[22,21,20,19,18,18],d:"PD-C established.",mit:"Pre-app confirmed."},{cat:"CLIMATE",sc:24,tr:"0",dt:[24,24,24,24,24,24],d:"Zone X. 15mi coast.",mit:"Structural hardening."}].map((r,i)=>{
+                const c=r.sc>=50?T.text.red:r.sc>=35?T.text.orange:T.text.green;
+                return (<div key={i} style={{ background:T.bg.panel,padding:8,borderLeft:`3px solid ${c}` }}>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:3 }}><span style={{ fontSize:9,fontWeight:700,color:T.text.white }}>{r.cat}</span><div style={{ display:"flex",alignItems:"center",gap:4 }}><span style={{ fontSize:14,fontWeight:800,color:c }}>{r.sc}</span><span style={{ fontSize:8,color:r.tr.startsWith("+")?T.text.red:r.tr.startsWith("-")?T.text.green:T.text.muted }}>{r.tr}</span></div></div>
+                  <Spark data={r.dt} color={c} w={100} h={14} />
+                  <div style={{ fontSize:7,color:T.text.secondary,lineHeight:1.4,marginTop:3 }}>{r.d}</div>
+                  <div style={{ fontSize:7,color:T.text.teal,marginTop:2 }}>MIT: {r.mit}</div>
+                </div>);
+              })}
+            </div>
+            <div style={{ background:T.bg.panel,marginTop:1,padding:8,borderTop:`2px solid ${T.text.purple}` }}>
+              <div style={{ fontSize:9,fontWeight:700,color:T.text.purple,marginBottom:4 }}>MONTE CARLO — 1,000 RUNS</div>
+              <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8 }}>
+                {[{l:"P10 (BEAR)",v:"18.4%",c:T.text.red},{l:"P50 (BASE)",v:"24.3%",c:T.text.amber},{l:"P90 (BULL)",v:"31.2%",c:T.text.green},{l:"PROB ≥ TARGET",v:"94%",c:T.text.green}].map((m,i)=>(<div key={i}><div style={{ fontSize:7,color:T.text.muted }}>{m.l}</div><div style={{ fontSize:16,fontWeight:800,color:m.c }}>{m.v}</div></div>))}
+              </div>
+            </div>
+          </>)}
+          {/* NEW: Collision Analysis tab (from codebase CollisionAnalysisSection) */}
+          {subTab===1 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.orange,marginBottom:6 }}>LAYER COLLISION ANALYSIS — LayeredValue&lt;T&gt;</div>
+            <div style={{ fontSize:8,color:T.text.secondary,marginBottom:8 }}>Resolution order: User &gt; Platform &gt; Broker. Collisions flagged when layers diverge &gt;100bps.</div>
+            {[{field:"RENT GROWTH",broker:"4.0%",platform:"3.0%",user:"3.5%",resolved:"3.5%",src:"user",collision:true,delta:"100bps",reason:"Broker +100bps vs 90d trailing. User conservative split."},{field:"VACANCY",broker:"5.0%",platform:"8.5%",user:"7.0%",resolved:"7.0%",src:"user",collision:true,delta:"350bps",reason:"Broker uses optimistic pro forma vacancy, not current submarket."},{field:"INSURANCE $/U",broker:"$1,200",platform:"$1,850",user:"$1,600",resolved:"$1,600",src:"user",collision:true,delta:"$650",reason:"FL insurance crisis. Broker uses pre-reform rates."},{field:"EXIT CAP",broker:"5.0%",platform:"5.5%",user:"5.25%",resolved:"5.25%",src:"user",collision:false,delta:"50bps",reason:"Minor divergence within tolerance."},{field:"EXPENSE GROWTH",broker:"2.5%",platform:"3.8%",user:"3.5%",resolved:"3.5%",src:"user",collision:true,delta:"130bps",reason:"Insurance + maintenance inflation not in broker model."}].map((c,i)=>(
+              <div key={i} style={{ padding:"6px 8px",background:T.bg.panel,borderLeft:`3px solid ${c.collision?T.text.orange:T.text.green}`,marginBottom:2,borderRadius:2 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2 }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:4 }}>{c.collision&&<span style={{ width:5,height:5,borderRadius:"50%",background:T.text.orange }} />}<span style={{ fontSize:9,fontWeight:700,color:T.text.white }}>{c.field}</span></div>
+                  <div style={{ display:"flex",gap:4 }}><Bd c={T.text.cyan}>{c.broker}</Bd><Bd c={T.text.green}>{c.platform}</Bd><Bd c={T.text.purple}>{c.user}</Bd><span style={{ fontSize:8,color:T.text.muted }}>→</span><span style={{ fontSize:9,fontWeight:700,color:T.text.amber }}>{c.resolved}</span><Bd c={T.text.purple}>{c.src}</Bd></div>
+                </div>
+                {c.collision&&<div style={{ fontSize:7,color:T.text.orange }}>DELTA: {c.delta} — {c.reason}</div>}
+              </div>
+            ))}
+          </div>)}
+          {/* NEW: DD Checklist tab (from codebase DueDiligenceSection) */}
+          {subTab===2 && (<div style={{ padding:8 }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6 }}>
+              <div style={{ fontSize:9,fontWeight:700,color:T.text.amber }}>DUE DILIGENCE CHECKLIST — 18/24 COMPLETE</div>
+              <MiniBar value={75} color={T.text.amber} label="" />
+            </div>
+            {[{cat:"LEGAL",items:[{n:"PSA Executed",st:"✓"},{n:"Title Commitment",st:"✓"},{n:"Entity Formation",st:"✓"},{n:"FIRPTA/CFIUS",st:"○"}]},{cat:"ENVIRONMENTAL",items:[{n:"Phase I ESA",st:"✓"},{n:"Phase II (if req)",st:"N/A"},{n:"Geotech Report",st:"✓"},{n:"NPDES Permit",st:"○"}]},{cat:"PHYSICAL",items:[{n:"ALTA Survey",st:"✓"},{n:"Appraisal",st:"○"},{n:"Property Condition",st:"✓"},{n:"Zoning Letter",st:"✓"}]},{cat:"FINANCIAL",items:[{n:"Insurance Quotes",st:"✓"},{n:"Construction Budget v3",st:"✓"},{n:"Financing LOI",st:"○"},{n:"Tax Analysis",st:"✓"}]},{cat:"MARKET",items:[{n:"Broker OM Review",st:"✓"},{n:"Rent Comp Analysis",st:"✓"},{n:"Supply Pipeline",st:"✓"},{n:"Demand Validation",st:"✓"}]},{cat:"CLOSING",items:[{n:"Closing Agent",st:"○"},{n:"Wire Instructions",st:"○"},{n:"Insurance Binder",st:"○"},{n:"Final Walk",st:"○"}]}].map((g,gi)=>(
+              <div key={gi} style={{ marginBottom:4 }}>
+                <div style={{ fontSize:8,fontWeight:700,color:T.text.cyan,marginBottom:2 }}>{g.cat}</div>
+                <div style={{ display:"flex",gap:3,flexWrap:"wrap" }}>
+                  {g.items.map((it,ii)=>(<Bd key={ii} c={it.st==="✓"?T.text.green:it.st==="N/A"?T.text.muted:T.text.orange}>{it.n} {it.st}</Bd>))}
+                </div>
+              </div>
+            ))}
+          </div>)}
+          {/* NEW: Legal & ESG tab */}
+          {subTab===3 && (<div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+            <SectionPanel title="LEGAL COMPLIANCE" borderColor={T.text.purple}>
+              <DataRow label="ENTITY TYPE" value="FL LLC" /><DataRow label="REGISTERED AGENT" value="CT Corporation" />
+              <DataRow label="OPERATING AGREEMENT" value="DRAFTED" valueColor={T.text.amber} /><DataRow label="FIRPTA EXEMPT" value="YES" valueColor={T.text.green} />
+              <DataRow label="OFAC CLEARED" value="YES" valueColor={T.text.green} /><DataRow label="TITLE EXCEPTIONS" value="3 standard" border={false} />
+            </SectionPanel>
+            <SectionPanel title="ENVIRONMENTAL & ESG" borderColor={T.text.green}>
+              <DataRow label="PHASE I STATUS" value="CLEAN" valueColor={T.text.green} /><DataRow label="WETLANDS" value="NONE" valueColor={T.text.green} />
+              <DataRow label="ENDANGERED SPECIES" value="NONE" valueColor={T.text.green} /><DataRow label="TREE MITIGATION" value="$180K" valueColor={T.text.orange} />
+              <DataRow label="ENERGY STAR TARGET" value="YES" valueColor={T.text.green} /><DataRow label="FLOOD ZONE" value="X — Minimal" valueColor={T.text.green} border={false} />
+            </SectionPanel>
+          </div>)}
+        </div>
+      </div>
+    );
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // F9 — COMPS (M15) — kept from original
+  // ═══════════════════════════════════════════════════════════
+  const DealComps = () => (
+    <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+      <PanelHeader title="COMP INTELLIGENCE" subtitle="M15 | Sale + Rent + Like-Kind" borderColor={T.text.teal} metrics={[{l:"F_CAP 5.2%",c:T.met.financial},{l:"F_PPU $155K",c:T.met.financial}]} />
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(6,1fr)" }}>
+        {["PROPERTY","DATE","PRICE","$/UNIT","CAP","DIST"].map((h,i)=>(<div key={i} style={{ padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+        {[{n:"Camden 320u",d:"11/25",p:"$57.6M",pp:"$180K",c:"5.1%",di:"0.4mi"},{n:"MAA 280u",d:"08/25",p:"$44.8M",pp:"$160K",c:"5.4%",di:"0.8mi"},{n:"Altis 242u",d:"06/25",p:"$38.7M",pp:"$160K",c:"5.3%",di:"2.1mi"},{n:"Post Harbour 196u",d:"03/25",p:"$29.4M",pp:"$150K",c:"5.6%",di:"1.4mi"},{n:"Channelside 186u",d:"01/25",p:"$33.5M",pp:"$180K",c:"4.9%",di:"3.2mi"}].map((c,i)=>(
+          [c.n,c.d,c.p,c.pp,c.c,c.di].map((cell,ci)=>(<div key={`${i}-${ci}`} style={{ padding:"4px 6px",fontSize:ci===0?8:9,fontWeight:ci===0?600:ci>=2?700:400,color:ci===0?T.text.primary:ci===3?T.text.amber:T.text.secondary,background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,borderRight:`1px solid ${T.border.subtle}` }}>{cell}</div>))
+        ))}
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle,marginTop:1 }}>
+        {[{l:"AVG $/UNIT",v:"$166K",s:"5 comps"},{l:"MEDIAN CAP",v:"5.3%",s:"T12mo"},{l:"SUBJECT $/U",v:"$155K",s:"-6.6% vs avg"},{l:"SUBJECT CAP",v:"5.2%",s:"going-in"}].map((m,i)=>(<div key={i} style={{ background:T.bg.panel,padding:8 }}><div style={{ fontSize:7,color:T.text.muted }}>{m.l}</div><div style={{ fontSize:16,fontWeight:800,color:T.text.amber }}>{m.v}</div><div style={{ fontSize:7,color:T.text.secondary }}>{m.s}</div></div>))}
+      </div>
+      <div style={{ padding:6,background:T.text.green+"08",borderLeft:`3px solid ${T.text.green}`,marginTop:1 }}>
+        <span style={{ fontSize:9,color:T.text.green,fontWeight:600 }}>VERDICT:</span>
+        <span style={{ fontSize:9,color:T.text.secondary }}> Subject at $155K/u is 6.6% below avg. Going-in cap 5.2% justified by BTS premium + demand catalyst.</span>
+      </div>
+    </div>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // F10 — TRAFFIC (M07) — with full platform metrics
+  // ═══════════════════════════════════════════════════════════
+  const DealTraffic = () => (
+    <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+      <PanelHeader title="TRAFFIC INTELLIGENCE" subtitle="M07 | Physical + Digital + Fusion" borderColor={T.text.teal}
+        metrics={[{l:"T_PHYS 74",c:T.met.physTraffic},{l:"D_DIGITAL 82",c:T.met.digTraffic},{l:"C_TPI 1.34",c:T.met.compTraffic},{l:"Q_SENT +0.42",c:T.met.quality}]}
+      />
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:1,background:T.border.subtle }}>
+        {[{l:"T-02 PHYSICAL",v:74,s:"Walk-in proxy",c:T.met.physTraffic,dt:[60,64,68,72,74]},{l:"T-03 DIGITAL",v:82,s:"Online engagement",c:T.met.digTraffic,dt:[70,74,78,80,82]},{l:"T-04 QUADRANT",v:"WINNER",s:"High phys + digital",c:T.text.amber},{l:"T-07 TRAJECTORY",v:"+19.1%",s:"DEMAND SURGE",c:T.met.compTraffic,dt:[4,8,12,16,19.1]}].map((m,i)=>(
+          <div key={i} style={{ background:T.bg.panel,padding:10,textAlign:"center",borderTop:`2px solid ${m.c}` }}>
+            <div style={{ fontSize:7,color:m.c,letterSpacing:1,fontWeight:600 }}>{m.l}</div>
+            <div style={{ fontSize:22,fontWeight:800,color:m.c,marginTop:2 }}>{m.v}</div>
+            <div style={{ fontSize:7,color:T.text.secondary }}>{m.s}</div>
+            {m.dt?<div style={{ display:"flex",justifyContent:"center",marginTop:4 }}><Spark data={m.dt} color={m.c} w={80} h={16} /></div>:<Bd c={T.text.amber}>VALIDATED</Bd>}
+          </div>
+        ))}
+      </div>
+      {/* Divergence Alert */}
+      <div style={{ padding:6,background:T.text.red+"08",borderLeft:`3px solid ${T.text.red}`,margin:"1px 0" }}>
+        <span style={{ fontSize:9,color:T.text.red,fontWeight:600 }}>DIGITAL-PHYSICAL GAP: +31.3pp</span>
+        <span style={{ fontSize:9,color:T.text.secondary }}> — Digital demand surging (+35.5%) but physical ADT only +3.2%. Demand building before manifesting. </span>
+        <Bd c={T.text.red}>BUY WINDOW</Bd>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+        <SectionPanel title="FDOT TRAFFIC COUNTS" borderColor={T.met.physTraffic} metrics={[{l:"T_AADT",c:T.met.physTraffic},{l:"T_SURGE",c:T.met.physTraffic}]}>
+          {[{rd:"Boy Scout Blvd",aadt:"42,800",tr:"+3.2%"},{rd:"I-275 (adjacent)",aadt:"148,200",tr:"+1.8%"},{rd:"Westshore Blvd",aadt:"38,400",tr:"+2.4%"},{rd:"Kennedy Blvd",aadt:"35,600",tr:"+1.1%"}].map((r,i)=>(
+            <div key={i} style={{ display:"flex",justifyContent:"space-between",padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}` }}>
+              <span style={{ fontSize:8,color:T.text.primary }}>{r.rd}</span>
+              <div style={{ textAlign:"right" }}><span style={{ fontSize:10,fontWeight:800,color:T.text.amber }}>{r.aadt}</span><div style={{ fontSize:7,color:T.text.green }}>{r.tr} YoY</div></div>
+            </div>
+          ))}
+        </SectionPanel>
+        <SectionPanel title="REVIEW SENTIMENT" subtitle="Area 2mi" borderColor={T.met.quality} metrics={[{l:"Q_SENT",c:T.met.quality},{l:"Q_RATING",c:T.met.quality}]}>
+          {[{cat:"MANAGEMENT",sc:3.8,sent:"MIXED"},{cat:"MAINTENANCE",sc:4.1,sent:"POSITIVE"},{cat:"AMENITIES",sc:4.3,sent:"POSITIVE"},{cat:"LOCATION",sc:4.6,sent:"STRONG"}].map((r,i)=>(
+            <div key={i} style={{ display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}` }}>
+              <span style={{ fontSize:7,color:T.text.muted,minWidth:70 }}>{r.cat}</span>
+              <span style={{ fontSize:12,fontWeight:800,color:r.sc>=4.0?T.text.green:T.text.amber }}>{r.sc}</span>
+              <Bd c={r.sc>=4.0?T.text.green:T.text.amber}>{r.sent}</Bd>
+            </div>
+          ))}
+        </SectionPanel>
+      </div>
+    </div>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // F11 — DOCS & DD (M18) — kept from original
+  // ═══════════════════════════════════════════════════════════
+  const DealDocs = () => (
+    <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+      <PanelHeader title="DOCUMENT CENTER" subtitle="M18 | Deal Room + AI Extraction" borderColor={T.text.cyan} right={<Bd c={T.text.green}>10 FILES</Bd>} />
+      <div style={{ display:"grid",gridTemplateColumns:"1.8fr 0.5fr 0.5fr 0.7fr 0.6fr 0.4fr" }}>
+        {["DOCUMENT","TYPE","SIZE","UPLOADED","STATUS","AI"].map((h,i)=>(<div key={i} style={{ padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,borderRight:`1px solid ${T.border.subtle}` }}>{h}</div>))}
+        {[{n:"Purchase & Sale Agreement",t:"LEGAL",sz:"2.4MB",d:"03/01",st:"EXECUTED",ai:"PARSED"},{n:"Phase I ESA Report",t:"ENV",sz:"8.1MB",d:"02/28",st:"COMPLETE",ai:"PARSED"},{n:"ALTA Survey",t:"SURVEY",sz:"12.3MB",d:"02/25",st:"FINAL",ai:"PARSED"},{n:"Appraisal Report",t:"FINANCE",sz:"4.7MB",d:"02/20",st:"DRAFT",ai:"PENDING"},{n:"Title Commitment",t:"LEGAL",sz:"1.8MB",d:"02/18",st:"REVIEW",ai:"PARSED"},{n:"Geotechnical Report",t:"ENV",sz:"6.2MB",d:"02/15",st:"COMPLETE",ai:"PARSED"},{n:"Broker OM",t:"MARKET",sz:"3.5MB",d:"02/10",st:"RECEIVED",ai:"PARSED"},{n:"Insurance Quotes (3)",t:"FINANCE",sz:"890KB",d:"03/05",st:"ACTIVE",ai:"PARSED"},{n:"Construction Budget v3",t:"FINANCE",sz:"1.2MB",d:"03/02",st:"V3",ai:"PARSED"},{n:"Site Plan (DRC Rev 1)",t:"DESIGN",sz:"15.4MB",d:"02/28",st:"IN REVIEW",ai:"—"}].map((doc,i)=>{
+          const tc={LEGAL:T.text.purple,ENV:T.text.green,FINANCE:T.text.amber,SURVEY:T.text.cyan,MARKET:T.text.orange,DESIGN:T.text.teal};
+          return [doc.n,doc.t,doc.sz,doc.d,doc.st,doc.ai].map((cell,ci)=>(<div key={`${i}-${ci}`} style={{ padding:"4px 6px",fontSize:8,fontWeight:ci===0?600:400,color:ci===0?T.text.primary:ci===1?(tc[cell]||T.text.secondary):T.text.secondary,background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,borderRight:`1px solid ${T.border.subtle}` }}>
+            {ci===4?<Bd c={cell==="EXECUTED"||cell==="COMPLETE"||cell==="FINAL"?T.text.green:cell==="DRAFT"||cell==="IN REVIEW"||cell==="REVIEW"?T.text.amber:T.text.secondary}>{cell}</Bd>:ci===5?<Bd c={cell==="PARSED"?T.text.teal:T.text.muted}>{cell}</Bd>:cell}
+          </div>));
+        })}
+      </div>
+    </div>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // F12 — EXIT (M20) — kept from original
+  // ═══════════════════════════════════════════════════════════
+  const DealExit = () => (
+    <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s" }}>
+      <PanelHeader title="EXIT STRATEGY & TIMING" subtitle="M20 | Disposition" borderColor={T.text.amberBright} />
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle }}>
+        {[{e:"CONDO CONVERT",tl:"Mo 26",pr:"$52.2M",irr:"28.1%",em:"3.2x",sc:88,win:true},{e:"BULK SALE",tl:"Mo 24",pr:"$46.4M",irr:"24.3%",em:"2.8x",sc:82},{e:"REFI + HOLD",tl:"Mo 36",pr:"N/A",irr:"22.1%",em:"3.4x",sc:75},{e:"1031 EXCHANGE",tl:"Mo 24",pr:"$46.4M",irr:"24.3%",em:"2.8x",sc:71}].map((e,i)=>(
+          <div key={i} style={{ background:T.bg.panel,borderTop:e.win?`3px solid ${T.text.amber}`:"3px solid transparent" }}>
+            <div style={{ padding:"8px 10px",textAlign:"center",borderBottom:`1px solid ${T.border.subtle}` }}>
+              <div style={{ fontSize:8,fontWeight:700,color:e.win?T.text.amber:T.text.secondary,letterSpacing:0.8 }}>{e.e}</div>
+              <div style={{ fontSize:22,fontWeight:800,color:e.win?T.text.amber:T.text.muted,marginTop:2 }}>{e.sc}</div>
+              {e.win&&<Bd c={T.text.amber}>OPTIMAL</Bd>}
+            </div>
+            <div style={{ padding:8 }}><DataRow label="TIMELINE" value={e.tl} /><DataRow label="EXIT PRICE" value={e.pr} valueColor={T.text.amber} /><DataRow label="IRR" value={e.irr} valueColor={T.text.green} /><DataRow label="EM" value={e.em} border={false} /></div>
+          </div>
+        ))}
+      </div>
+      {/* Timing Bar Chart */}
+      <div style={{ background:T.bg.panel,marginTop:1,padding:8,borderTop:`2px solid ${T.text.amber}` }}>
+        <div style={{ fontSize:9,fontWeight:700,color:T.text.amber,marginBottom:4 }}>EXIT TIMING OPTIMIZATION</div>
+        <div style={{ display:"flex",alignItems:"flex-end",gap:2,height:50 }}>
+          {[{mo:3,irr:8},{mo:6,irr:12},{mo:9,irr:16},{mo:12,irr:19},{mo:15,irr:22},{mo:18,irr:24},{mo:21,irr:26},{mo:24,irr:27},{mo:27,irr:24},{mo:30,irr:22},{mo:33,irr:20},{mo:36,irr:18}].map((b,i)=>{
+            const opt=i===7;
+            return (<div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center" }}><div style={{ width:"100%",height:`${b.irr*1.8}px`,background:opt?T.text.amber:T.text.amber+"44",borderRadius:1 }} /><div style={{ fontSize:6,color:opt?T.text.amber:T.text.muted,marginTop:2,fontWeight:opt?800:400 }}>M{b.mo}</div></div>);
+          })}
+        </div>
+        <div style={{ display:"flex",justifyContent:"space-between",marginTop:4 }}><span style={{ fontSize:7,color:T.text.muted }}>Peak: Mo 21–27</span><span style={{ fontSize:8,color:T.text.amber,fontWeight:700 }}>OPTIMAL: Month 24 @ 27% IRR</span></div>
+      </div>
+    </div>
+  );
+
+  // ═══════════════════════════════════════════════════════════
+  // F13 — EXECUTION (M17) — NEW from codebase audit
+  // Timeline + PM + Construction + Closing/RON
+  // ═══════════════════════════════════════════════════════════
+  const DealExecution = () => {
+    const tabs = ["TIMELINE","PROJECT MGMT","CONSTRUCTION","CLOSING"];
+    return (
+      <div style={{ flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column" }}>
+        <PanelHeader title="EXECUTION & PROJECT MANAGEMENT" subtitle="M17 | Timeline + PM + Construction + Closing" borderColor={T.text.amberBright} />
+        <SubTabBar tabs={tabs} active={subTab} setActive={setSubTab} color={T.text.amberBright} />
+        <div style={{ flex:1,overflow:"auto" }}>
+          {subTab===0 && (<div style={{ padding:1 }}>
+            <div style={{ fontSize:8,color:T.text.muted,padding:"6px 10px",background:T.bg.header }}>PROJECT TIMELINE — Key milestones with actual vs. planned dates</div>
+            {[{milestone:"LAND ACQUISITION",planned:"03/15/26",actual:"03/15/26",status:"COMPLETE",pct:100},{milestone:"SITE PLAN APPROVAL",planned:"06/01/26",actual:"—",status:"IN PROGRESS",pct:40},{milestone:"BUILDING PERMIT",planned:"08/15/26",actual:"—",status:"PENDING",pct:0},{milestone:"CONSTRUCTION START",planned:"09/01/26",actual:"—",status:"PENDING",pct:0},{milestone:"VERTICAL BUILD",planned:"09/26 - 06/27",actual:"—",status:"PENDING",pct:0},{milestone:"FIRST UNITS DELIVERED",planned:"04/01/27",actual:"—",status:"PENDING",pct:0},{milestone:"STABILIZATION",planned:"09/01/27",actual:"—",status:"PENDING",pct:0},{milestone:"DISPOSITION/EXIT",planned:"03/01/28",actual:"—",status:"PENDING",pct:0}].map((m,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}` }}>
+                <div style={{ width:180,padding:"5px 8px",borderRight:`1px solid ${T.border.subtle}` }}><span style={{ fontSize:9,fontWeight:700,color:m.status==="COMPLETE"?T.text.green:m.status==="IN PROGRESS"?T.text.amber:T.text.muted }}>{m.milestone}</span></div>
+                <div style={{ width:90,padding:"0 8px",fontSize:8,color:T.text.secondary }}>{m.planned}</div>
+                <div style={{ width:90,padding:"0 8px",fontSize:8,color:m.actual!=="—"?T.text.green:T.text.muted }}>{m.actual}</div>
+                <div style={{ width:80,padding:"0 8px" }}><Bd c={m.status==="COMPLETE"?T.text.green:m.status==="IN PROGRESS"?T.text.amber:T.text.muted}>{m.status}</Bd></div>
+                <div style={{ flex:1,padding:"0 8px" }}><MiniBar value={m.pct} showPct={true} color={m.pct===100?T.text.green:m.pct>0?T.text.amber:T.text.muted} /></div>
+              </div>
+            ))}
+          </div>)}
+          {subTab===1 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>PROJECT MANAGEMENT — TASK TRACKER</div>
+            <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8 }}>
+              {[{status:"TO DO",count:12,color:T.text.muted,tasks:["Finalize GC contract","Submit building permit","Utility connection app","Insurance binder"]},{status:"IN PROGRESS",count:5,color:T.text.amber,tasks:["DRC Site Plan Rev 1","Phase II (if flagged)","Construction drawings","MEP engineering"]},{status:"COMPLETE",count:18,color:T.text.green,tasks:["PSA executed","Phase I ESA","ALTA Survey","Geotech report"]}].map((col,i)=>(
+                <div key={i} style={{ background:T.bg.panel,borderTop:`2px solid ${col.color}`,padding:8 }}>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}><span style={{ fontSize:9,fontWeight:700,color:col.color }}>{col.status}</span><span style={{ fontSize:12,fontWeight:800,color:col.color }}>{col.count}</span></div>
+                  {col.tasks.map((t,ti)=>(<div key={ti} style={{ padding:"3px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary }}>{t}</div>))}
+                </div>
+              ))}
+            </div>
+          </div>)}
+          {subTab===2 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>CONSTRUCTION MANAGEMENT</div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+              <SectionPanel title="BUDGET STATUS" borderColor={T.text.amber}>
+                <DataRow label="HARD COSTS" value="$48.2M" sub="budget" /><DataRow label="COMMITTED" value="$12.4M" sub="25.7%" />
+                <DataRow label="SPENT TO DATE" value="$3.8M" sub="7.9%" /><DataRow label="CONTINGENCY" value="$2.4M" sub="5.0% remaining" />
+                <DataRow label="CHANGE ORDERS" value="$0" valueColor={T.text.green} border={false} />
+              </SectionPanel>
+              <SectionPanel title="GC STATUS" borderColor={T.text.cyan}>
+                <DataRow label="CONTRACTOR" value="Moss Construction" valueColor={T.text.primary} />
+                <DataRow label="CONTRACT TYPE" value="GMP" /><DataRow label="GMP AMOUNT" value="$48.2M" />
+                <DataRow label="SUBS CONTRACTED" value="14/22" sub="64%" /><DataRow label="NEXT DRAW" value="04/01/26" sub="$2.1M" border={false} />
+              </SectionPanel>
+            </div>
+          </div>)}
+          {subTab===3 && (<div style={{ padding:8 }}>
+            <div style={{ fontSize:9,fontWeight:700,color:T.text.white,marginBottom:6 }}>CLOSING & NOTARIZE (RON)</div>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle }}>
+              {[{l:"CLOSING DATE",v:"TBD",detail:"Contingent on financing LOI. Est. 04/15/26."},{l:"CLOSING AGENT",v:"First American Title",detail:"Escrow opened. Escrow #: FA-2026-04821."},{l:"WIRE INSTRUCTIONS",v:"PENDING",detail:"Will be sent 48hr before close."},{l:"RON AVAILABLE",v:"YES",detail:"Remote Online Notarization enabled via Notarize.com. FL compliant."}].map((c,i)=>(
+                <div key={i} style={{ background:T.bg.panel,padding:8 }}>
+                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:2 }}><span style={{ fontSize:8,fontWeight:600,color:T.text.muted }}>{c.l}</span><span style={{ fontSize:10,fontWeight:800,color:T.text.amber }}>{c.v}</span></div>
+                  <div style={{ fontSize:8,color:T.text.secondary }}>{c.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>)}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── RENDER ────────────────────────────────────────────────
+
+  const renderContent = () => {
+    switch (fkey) {
+      case "F1": return <DealOverview />;
+      case "F2": return <DealProperty />;
+      case "F3": return <DealMarket />;
+      case "F4": return <DealSupply />;
+      case "F5": return <DealStrategy />;
+      case "F6": return <DealProforma />;
+      case "F7": return <DealCapital />;
+      case "F8": return <DealRisk />;
+      case "F9": return <DealComps />;
+      case "F10": return <DealTraffic />;
+      case "F11": return <DealDocs />;
+      case "F12": return <DealExit />;
+      case "F13": return <DealExecution />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div style={{ background:T.bg.terminal,height:"100vh",fontFamily:T.font.mono,color:T.text.primary,display:"flex",flexDirection:"column",overflow:"hidden" }}>
+      <style>{css}</style>
+      <div style={{ position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)" }} />
+
+      {/* TOP BAR */}
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:24,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0 }}>
+        <div style={{ display:"flex",alignItems:"center",gap:12 }}>
+          <span style={{ fontFamily:T.font.display,fontSize:12,fontWeight:800,color:T.text.amber,letterSpacing:2 }}>JEDI RE</span>
+          <span style={{ fontSize:8,color:T.text.muted }}>|</span>
+          <span style={{ fontSize:8,color:T.text.amber,fontWeight:600 }}>DEAL CAPSULE</span>
+          <span style={{ fontSize:7,color:T.text.secondary }}>54 METRICS LIVE</span>
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          {[T.met.physTraffic,T.met.digTraffic,T.met.compTraffic,T.met.financial,T.met.occupancy,T.met.economic,T.met.supply,T.met.quality].map((c,i)=>(<span key={i} style={{ width:4,height:4,borderRadius:"50%",background:c }} />))}
+          <span style={{ fontSize:8,color:T.text.green,display:"flex",alignItems:"center",gap:3 }}><span style={{ width:4,height:4,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite" }} />5 AGENTS</span>
+          <span style={{ fontSize:8,color:T.text.amber,fontWeight:600 }}>{time.toLocaleTimeString("en-US",{hour12:false})}</span>
+        </div>
+      </div>
+
+      {/* TICKER */}
+      <div style={{ height:18,background:"#06080E",borderBottom:`1px solid ${T.border.subtle}`,overflow:"hidden",flexShrink:0 }}>
+        <div style={{ display:"flex",gap:20,whiteSpace:"nowrap",animation:"ticker 45s linear infinite",fontSize:8,lineHeight:"18px" }}>
+          {[...tickers,...tickers].map((t,i)=>(<span key={i} style={{ color:t.startsWith("^")?T.text.green:t.startsWith("v")?T.text.red:T.text.amber }}>{t}</span>))}
+        </div>
+      </div>
+
+      {/* DEAL CONTEXT BAR */}
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:26,background:T.text.amber+"08",borderBottom:`1px solid ${T.text.amber}22`,flexShrink:0 }}>
+        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          <span style={{ fontFamily:T.font.mono,fontSize:7,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"1px 5px",fontWeight:700 }}>ESC</span>
+          <span style={{ fontSize:11,fontWeight:700,color:T.text.amber }}>{d.name}</span>
+          <Bd c={T.text.cyan}>{d.dealType}</Bd>
+          <span style={{ fontSize:8,color:T.text.secondary }}>{d.addr}</span>
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+          <span style={{ fontSize:14,fontWeight:800,color:d.score>=80?T.text.green:T.text.amber }}>{d.score}</span>
+          <span style={{ fontSize:8,color:T.text.green }}>{d.delta}</span>
+          <StratBd s={d.strat} /><StageBd stage={d.stage} /><RiskDot level={d.risk} />
+        </div>
+      </div>
+
+      {/* F-KEY NAV */}
+      <div style={{ display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header }}>
+        <div style={{ display:"flex",flex:1,overflow:"auto" }}>
+          {DEAL_NAV.map(n=>(
+            <button key={n.key} onClick={()=>{setFkey(n.key);setSubTab(0);}} style={{
+              fontFamily:T.font.mono,fontSize:9,fontWeight:600,padding:"0 9px",height:28,cursor:"pointer",
+              background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,
+              border:"none",display:"flex",alignItems:"center",gap:3,whiteSpace:"nowrap",flexShrink:0,
+            }}>
+              <span style={{ fontSize:7,fontWeight:700,opacity:0.6,color:fkey===n.key?T.bg.terminal:T.text.muted }}>{n.key}</span>
+              {n.label}
+              <span style={{ fontSize:6,opacity:0.5 }}>{n.m}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ padding:"0 8px",borderLeft:`1px solid ${T.border.medium}` }}>
+          <div style={{ display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:20,width:160 }}>
+            <span style={{ color:T.text.amber,fontSize:8,fontWeight:700 }}>{">"}</span>
+            <input value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="⌘K AI Agent" style={{ background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary,flex:1,width:"100%" }} />
+            <span style={{ width:6,height:11,background:T.text.amber,animation:"blink 1s infinite" }} />
+          </div>
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{ flex:1,display:"flex",overflow:"hidden",minHeight:0 }}>{renderContent()}</div>
+
+      {/* STATUS BAR */}
+      <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:16,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0 }}>
+        <div style={{ display:"flex",gap:12 }}><span style={{ fontSize:7,color:T.text.muted }}>JEDI RE v0.34</span><span style={{ fontSize:7,color:T.text.muted }}>DEAL CAPSULE — {DEAL_NAV.find(n=>n.key===fkey)?.m} — 54 PLATFORM METRICS</span></div>
+        <div style={{ display:"flex",gap:8 }}>{[T.met.physTraffic,T.met.digTraffic,T.met.compTraffic,T.met.financial,T.met.occupancy,T.met.economic,T.met.supply,T.met.quality].map((c,i)=>(<span key={i} style={{ fontSize:6,color:c }}>●</span>))}<span style={{ fontSize:7,color:T.text.muted }}>{time.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span></div>
+      </div>
+    </div>
+  );
+}

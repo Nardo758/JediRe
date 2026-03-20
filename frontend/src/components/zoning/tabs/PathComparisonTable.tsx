@@ -6,10 +6,9 @@
  */
 
 import React, { useMemo } from 'react';
-import { CheckCircle2, TrendingUp } from 'lucide-react';
+import { CheckCircle2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
-import type { DevelopmentPath } from '../../../types/zoning.types';
-import { T as BT } from '../../deal/bloomberg-tokens';
+import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 
 interface PathRow {
   id: DevelopmentPath;
@@ -20,7 +19,7 @@ interface PathRow {
   constructionCost: string;
   estimatedIrr: string;
   riskLevel: string;
-  riskStyle: React.CSSProperties;
+  riskColor: string;
   approvalProb: string;
 }
 
@@ -63,6 +62,8 @@ export default function PathComparisonTable({
     };
 
     const estIrr = (units: number, months: number, risk: number) => {
+      // Simplified: more units = better base, more time = higher carry cost,
+      // more risk = bigger discount
       const base = 18 + (units / byRightUnits - 1) * 12;
       const timePenalty = months * 0.15;
       const riskDiscount = risk * 2;
@@ -79,7 +80,7 @@ export default function PathComparisonTable({
         constructionCost: estConstructionCost(byRightUnits),
         estimatedIrr: estIrr(byRightUnits, 0, 0),
         riskLevel: 'Low',
-        riskStyle: { color: BT.greenL, background: BT.greenBg },
+        riskColor: 'text-green-700 bg-green-50',
         approvalProb: '100%',
       },
     ];
@@ -94,7 +95,7 @@ export default function PathComparisonTable({
         constructionCost: estConstructionCost(overlayUnits),
         estimatedIrr: estIrr(overlayUnits, 3, 1),
         riskLevel: 'Low-Med',
-        riskStyle: { color: BT.blueL, background: BT.blueBg },
+        riskColor: 'text-blue-700 bg-blue-50',
         approvalProb: '85-95%',
       });
     }
@@ -109,7 +110,7 @@ export default function PathComparisonTable({
         constructionCost: estConstructionCost(varianceUnits),
         estimatedIrr: estIrr(varianceUnits, 4.5, 2),
         riskLevel: 'Moderate',
-        riskStyle: { color: BT.amberL, background: BT.amberBg },
+        riskColor: 'text-amber-700 bg-amber-50',
         approvalProb: '60-75%',
       },
       {
@@ -121,7 +122,7 @@ export default function PathComparisonTable({
         constructionCost: estConstructionCost(rezoneUnits),
         estimatedIrr: estIrr(rezoneUnits, 13, 4),
         riskLevel: 'High',
-        riskStyle: { color: BT.redL, background: BT.redBg },
+        riskColor: 'text-red-700 bg-red-50',
         approvalProb: '30-50%',
       },
     );
@@ -130,25 +131,23 @@ export default function PathComparisonTable({
   }, [byRightUnits, overlayBonusPct, lotAcres, maxDensityPerAcre, avgUnitSizeSf, costPerSf, rezoneAnalysis]);
 
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
-      <div className="px-5 py-3 border-b" style={{ borderColor: BT.border, background: BT.bgCard }}>
-        <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>Path Comparison</h3>
-        <p className="text-xs mt-0.5" style={{ color: BT.td }}>Side-by-side metrics for all development paths</p>
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Path Comparison</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Side-by-side metrics for all development paths</p>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b" style={{ background: BT.bgCard, borderColor: BT.border }}>
-              <th className="text-left py-2.5 px-4 text-xs font-semibold uppercase tracking-wider" style={{ color: BT.td }}>Metric</th>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left py-2.5 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Metric</th>
               {paths.map(p => (
                 <th
                   key={p.id}
-                  className="text-center py-2.5 px-4 text-xs font-semibold uppercase tracking-wider"
-                  style={development_path === p.id
-                    ? { color: BT.blueL, background: BT.blueBg }
-                    : { color: BT.td }
-                  }
+                  className={`text-center py-2.5 px-4 text-xs font-semibold uppercase tracking-wider ${
+                    development_path === p.id ? 'text-blue-700 bg-blue-50' : 'text-gray-500'
+                  }`}
                 >
                   <div className="flex items-center justify-center gap-1">
                     {development_path === p.id && <CheckCircle2 className="w-3 h-3" />}
@@ -158,7 +157,7 @@ export default function PathComparisonTable({
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-gray-100">
             {[
               { label: 'Max Units', key: 'units', format: (v: number) => v.toLocaleString() },
               { label: 'Entitlement Timeline', key: 'timeline' },
@@ -168,23 +167,20 @@ export default function PathComparisonTable({
               { label: 'Risk Level', key: 'riskLevel', isRisk: true },
               { label: 'Approval Probability', key: 'approvalProb' },
             ].map(row => (
-              <tr key={row.label} className="border-b" style={{ borderColor: BT.border }}>
-                <td className="py-2.5 px-4 text-xs font-medium" style={{ color: BT.tm }}>{row.label}</td>
+              <tr key={row.label} className="hover:bg-gray-50/50">
+                <td className="py-2.5 px-4 text-xs font-medium text-gray-700">{row.label}</td>
                 {paths.map(p => {
                   const val = (p as any)[row.key];
                   const isSelected = development_path === p.id;
                   return (
                     <td
                       key={p.id}
-                      className="py-2.5 px-4 text-center text-xs"
-                      style={isSelected
-                        ? { background: `${BT.blueBg}80`, fontWeight: 600, color: BT.text }
-                        : { color: BT.tm }
-                      }
+                      className={`py-2.5 px-4 text-center text-xs ${
+                        isSelected ? 'bg-blue-50/50 font-semibold text-gray-900' : 'text-gray-600'
+                      }`}
                     >
                       {row.isRisk ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
-                          style={p.riskStyle}>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${p.riskColor}`}>
                           {val}
                         </span>
                       ) : row.format ? (
@@ -202,10 +198,9 @@ export default function PathComparisonTable({
       </div>
 
       {development_path && (
-        <div className="px-5 py-3 border-t flex items-center gap-2"
-          style={{ background: BT.blueBg, borderColor: `${BT.blue}40` }}>
-          <TrendingUp className="w-4 h-4" style={{ color: BT.blue }} />
-          <span className="text-xs" style={{ color: BT.blueL }}>
+        <div className="px-5 py-3 bg-blue-50 border-t border-blue-100 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-blue-600" />
+          <span className="text-xs text-blue-800">
             <strong>{paths.find(p => p.id === development_path)?.label}</strong> selected —
             {' '}{paths.find(p => p.id === development_path)?.units.toLocaleString()} units,
             {' '}{paths.find(p => p.id === development_path)?.estimatedIrr} est. IRR

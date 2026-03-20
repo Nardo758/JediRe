@@ -333,8 +333,8 @@ export class CapitalStructureService {
     notRecommended: DebtProduct[];
   } {
     const allowedTypes = STRATEGY_DEBT_MATRIX[strategy] || [];
-    const recommended = allProducts.filter(p => p.bestForStrategies.includes(strategy) || allowedTypes.includes(p.productType));
-    const notRecommended = allProducts.filter(p => !p.bestForStrategies.includes(strategy) && !allowedTypes.includes(p.productType));
+    const recommended = allProducts.filter(p => (p.bestForStrategies || []).includes(strategy) || allowedTypes.includes(p.productType || ''));
+    const notRecommended = allProducts.filter(p => !(p.bestForStrategies || []).includes(strategy) && !allowedTypes.includes(p.productType || ''));
     return { recommended, notRecommended };
   }
 
@@ -351,7 +351,7 @@ export class CapitalStructureService {
     const allowedTypes = STRATEGY_DEBT_MATRIX[strategy] || [];
 
     for (const product of debtProducts) {
-      if (!allowedTypes.includes(product.productType) && !product.bestForStrategies.includes(strategy)) {
+      if (!allowedTypes.includes(product.productType || '') && !(product.bestForStrategies || []).includes(strategy)) {
         let issue = `${product.name} is not typically used for ${strategy} deals.`;
         let suggestion = `Consider products from: ${allowedTypes.join(', ')}.`;
 
@@ -583,7 +583,8 @@ export class CapitalStructureService {
       });
 
       const ltv = propertyValue > 0 ? new Decimal(totalDebt).dividedBy(propertyValue).times(100).toFixed(2) : '0.00';
-      const ltcValue = new Decimal(scenario.uses.total);
+      const usesTotal = (scenario.uses as any)?.total ?? Object.values(scenario.uses || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+      const ltcValue = new Decimal(usesTotal || 0);
       const ltc = ltcValue.toNumber() > 0 ? new Decimal(totalDebt).dividedBy(ltcValue).times(100).toFixed(2) : '0.00';
       const wacc = executeFormula('F45', { layers: scenario.layers });
       const debtYield = executeFormula('F22', { noi, loan_amount: totalDebt });
@@ -665,9 +666,9 @@ export class CapitalStructureService {
     const insights: Array<{ metric: string; value: string; insight: string; severity: 'info' | 'success' | 'warning' | 'danger'; action?: { label: string; handler: string } }> = [];
 
     // Convert string metrics to numbers for comparisons
-    const dscrNum = new Decimal(metrics.dscr).toNumber();
-    const ltvNum = new Decimal(metrics.ltv).toNumber();
-    const waccNum = new Decimal(metrics.weightedAvgCostOfCapital).toNumber();
+    const dscrNum = new Decimal(metrics.dscr ?? 0).toNumber();
+    const ltvNum = new Decimal(metrics.ltv ?? 0).toNumber();
+    const waccNum = new Decimal(metrics.weightedAvgCostOfCapital ?? 0).toNumber();
 
     // DSCR insight
     if (dscrNum < 1.15) {

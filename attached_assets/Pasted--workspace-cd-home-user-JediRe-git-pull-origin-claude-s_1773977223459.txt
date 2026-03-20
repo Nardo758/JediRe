@@ -1,0 +1,74 @@
+~/workspace$ cd /home/user/JediRe
+git pull origin claude/seven-layer-diagnostic-audit-bSaW4
+cd backend
+npm install
+npm run dev  # Start backend to verify it compiles
+bash: cd: /home/user/JediRe: No such file or directory
+remote: Enumerating objects: 126, done.
+remote: Counting objects: 100% (120/120), done.
+remote: Compressing objects: 100% (56/56), done.
+remote: Total 86 (delta 50), reused 66 (delta 30), pack-reused 0 (from 0)
+Unpacking objects: 100% (86/86), 101.37 KiB | 132.00 KiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * branch              claude/seven-layer-diagnostic-audit-bSaW4 -> FETCH_HEAD
+ * [new branch]        claude/seven-layer-diagnostic-audit-bSaW4 -> origin/claude/seven-layer-diagnostic-audit-bSaW4
+Auto-merging backend/package.json
+Auto-merging frontend/src/App.tsx
+CONFLICT (content): Merge conflict in frontend/src/App.tsx
+Auto-merging frontend/src/services/api.client.ts
+CONFLICT (content): Merge conflict in frontend/src/services/api.client.ts
+Automatic merge failed; fix conflicts and then commit the result.
+
+added 4 packages, and audited 430 packages in 9s
+
+66 packages are looking for funding
+  run `npm fund` for details
+
+6 vulnerabilities (1 low, 5 high)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+Some issues need review, and may require choosing
+a different dependency.
+
+Run `npm audit` for details.
+
+> jedire-backend-replit@1.0.0 dev
+> ts-node --transpile-only src/index.replit.ts
+
+{"level":"WARN","timestamp":"2026-03-20T03:25:43.221Z","logger":"kafkajs","message":"KafkaJS v2.0.0 switched default partitioner. To retain the same partitioning behavior as in previous versions, create the producer with the option \"createPartitioner: Partitioners.LegacyPartitioner\". See the migration guide at https://kafka.js.org/docs/migration-guide-v2.0.0#producer-new-default-partitioner for details. Silence this warning by setting the environment variable \"KAFKAJS_NO_PARTITIONER_WARNING=1\""}
+{"level":"WARN","timestamp":"2026-03-20T03:25:43.223Z","logger":"kafkajs","message":"[Producer] Limiting retries for the idempotent producer may invalidate EoS guarantees"}
+03:25:43 [warn] Mapbox token not found. Falling back to OpenStreetMap Nominatim (rate-limited).
+{
+  "service": "jedire-api",
+  "environment": "development"
+}
+03:25:45 [info] Agent orchestrator processing loop started
+{
+  "service": "jedire-api",
+  "environment": "development"
+}
+Serving static files from: /home/runner/workspace/frontend/dist
+03:25:45 [error] Uncaught Exception: listen EADDRINUSE: address already in use 0.0.0.0:4000
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "code": "EADDRINUSE",
+  "errno": -98,
+  "syscall": "listen",
+  "address": "0.0.0.0",
+  "port": 4000,
+  "stack": "Error: listen EADDRINUSE: address already in use 0.0.0.0:4000\n    at Server.setupListenHandle [as _listen2] (node:net:1908:16)\n    at listenInCluster (node:net:1965:12)\n    at doListen (node:net:2139:7)\n    at processTicksAndRejections (node:internal/process/task_queues:83:21)"
+}
+03:25:46 [error] Failed to send Clawdbot webhook: connect ECONNREFUSED 127.0.0.1:8080
+{
+  "service": "jedire-api",
+  "environment": "development",
+  "event": "error"
+}
+03:25:47 [error] Process exiting due to uncaught exception
+{
+  "service": "jedire-api",
+  "environment": "development"
+}

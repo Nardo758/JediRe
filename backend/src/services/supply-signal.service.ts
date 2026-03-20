@@ -73,7 +73,7 @@ export interface SupplyEvent {
 }
 
 export interface SupplyPipeline {
-  tradeAreaId: number;
+  tradeAreaId: string | number;
   permittedProjects: number;
   permittedUnits: number;
   permittedWeightedUnits: number;
@@ -90,7 +90,7 @@ export interface SupplyPipeline {
 }
 
 export interface SupplyRiskScore {
-  tradeAreaId: number;
+  tradeAreaId: string | number;
   tradeAreaName?: string;
   quarter: string;
   pipelineUnits: number;
@@ -266,7 +266,7 @@ class SupplySignalService {
   /**
    * Get supply pipeline for trade area
    */
-  async getSupplyPipeline(tradeAreaId: number): Promise<SupplyPipeline> {
+  async getSupplyPipeline(tradeAreaId: string | number): Promise<SupplyPipeline> {
     // Update pipeline first
     await query(`SELECT update_supply_pipeline($1)`, [tradeAreaId]);
     
@@ -303,7 +303,7 @@ class SupplySignalService {
    * Calculate supply risk score for trade area
    */
   async calculateSupplyRisk(
-    tradeAreaId: number,
+    tradeAreaId: string | number,
     quarter: string,
     demandUnits?: number
   ): Promise<SupplyRiskScore> {
@@ -419,7 +419,7 @@ class SupplySignalService {
     const deal = dealResult.rows[0];
     
     if (!deal.latitude || !deal.longitude) {
-      throw new Error(`Deal has no location data: ${dealId}`);
+      return [];
     }
     
     // Find nearby supply events using Haversine formula
@@ -526,23 +526,22 @@ class SupplySignalService {
    * Get supply delivery timeline for trade area
    */
   async getSupplyDeliveryTimeline(
-    tradeAreaId: number,
+    tradeAreaId: string | number,
     startQuarter?: string,
     endQuarter?: string
   ): Promise<SupplyDeliveryTimeline[]> {
     let sql = `
       SELECT 
         sdt.quarter,
-        sdt.quarter_start,
-        sdt.quarter_end,
         se.project_name,
-        se.units,
-        sdt.weighted_units_delivered,
+        se.unit_count AS units,
+        sdt.units_delivered AS weighted_units_delivered,
         se.status
       FROM supply_delivery_timeline sdt
       JOIN supply_events se ON se.id = sdt.supply_event_id
-      JOIN trade_area_event_impacts taei ON taei.event_id = se.news_event_id
-      WHERE taei.trade_area_id = $1
+      WHERE sdt.supply_event_id IN (
+        SELECT id FROM supply_events WHERE trade_area_id::text = $1::text
+      )
     `;
     
     const params: any[] = [tradeAreaId];
@@ -568,8 +567,8 @@ class SupplySignalService {
       if (!timelineMap.has(row.quarter)) {
         timelineMap.set(row.quarter, {
           quarter: row.quarter,
-          quarterStart: row.quarter_start,
-          quarterEnd: row.quarter_end,
+          quarterStart: row.quarter_start || null,
+          quarterEnd: row.quarter_end || null,
           projects: [],
           totalUnits: 0,
           totalWeightedUnits: 0

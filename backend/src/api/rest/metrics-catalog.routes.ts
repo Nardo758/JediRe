@@ -13,6 +13,13 @@ import {
   getMetricsByCategory,
   getCategoriesWithCounts,
   MetricGranularity,
+  VINTAGE_BANDS,
+  BUILDING_TYPOLOGIES,
+  VintageBand,
+  BuildingTypology,
+  getVintageBand,
+  getTypology,
+  getPeerGroupBenchmarks,
 } from '../../services/metricsCatalog.service';
 import { DotAggregatorService } from '../../services/dot-aggregator.service';
 import { MetricCorrelationEngine } from '../../services/metric-correlation-engine.service';
@@ -62,6 +69,64 @@ router.get('/categories', async (req: Request, res: Response) => {
       success: false,
       error: 'Failed to fetch categories',
     });
+  }
+});
+
+/**
+ * GET /metrics/dimensions
+ * Returns available vintage bands and building typologies for peer-group filtering
+ */
+router.get('/dimensions', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    vintageBands: Object.entries(VINTAGE_BANDS).map(([id, v]) => ({ id, ...v })),
+    buildingTypologies: Object.entries(BUILDING_TYPOLOGIES).map(([id, t]) => ({ id, ...t })),
+  });
+});
+
+/**
+ * GET /metrics/peer-group?vintage=1990s&typology=garden
+ * Returns metric benchmarks (p25/p50/p75) for the given vintage + typology peer group.
+ * Optionally derive vintage/typology from yearBuilt + stories query params.
+ */
+router.get('/peer-group', (req: Request, res: Response) => {
+  try {
+    let vintage = req.query.vintage as VintageBand | undefined;
+    let typology = req.query.typology as BuildingTypology | undefined;
+
+    const yearBuilt = req.query.yearBuilt ? parseInt(req.query.yearBuilt as string, 10) : undefined;
+    const stories   = req.query.stories   ? parseInt(req.query.stories   as string, 10) : undefined;
+
+    if (!vintage && yearBuilt !== undefined) vintage  = getVintageBand(yearBuilt);
+    if (!typology && stories  !== undefined) typology = getTypology(stories);
+
+    if (!vintage || !typology) {
+      return res.status(400).json({
+        success: false,
+        error: 'Provide vintage + typology, or yearBuilt + stories query params',
+      });
+    }
+
+    if (!VINTAGE_BANDS[vintage]) {
+      return res.status(400).json({ success: false, error: `Unknown vintage: ${vintage}` });
+    }
+    if (!BUILDING_TYPOLOGIES[typology]) {
+      return res.status(400).json({ success: false, error: `Unknown typology: ${typology}` });
+    }
+
+    const benchmarks = getPeerGroupBenchmarks(vintage, typology);
+
+    res.json({
+      success: true,
+      vintage,
+      vintageMeta: VINTAGE_BANDS[vintage],
+      typology,
+      typologyMeta: BUILDING_TYPOLOGIES[typology],
+      benchmarks,
+    });
+  } catch (error) {
+    logger.error('Error fetching peer-group benchmarks:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch peer-group benchmarks' });
   }
 });
 

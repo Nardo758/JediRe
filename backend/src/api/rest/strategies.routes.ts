@@ -1,554 +1,220 @@
 /**
- * Strategy Engine Routes
- * GET  /api/v1/strategies          — list preset + user's custom strategies
- * POST /api/v1/strategies          — save a new custom strategy
- * POST /api/v1/strategies/preview  — evaluate conditions against metric_time_series
- * GET  /api/v1/strategies/:id      — get single strategy
- * POST /api/v1/strategies/:id/run  — execute strategy
- * GET  /api/v1/strategies/:id/results — get cached results
- * POST /api/v1/strategies/score-deal/:dealId — score a deal
+ * M08 Strategy Arbitrage Routes
+ * GET  /api/v1/strategies              — list strategies (system + org)
+ * GET  /api/v1/strategies/templates    — list system templates only
+ * POST /api/v1/strategies              — create custom strategy
+ * GET  /api/v1/strategies/:id         — get single strategy
+ * PUT  /api/v1/strategies/:id         — update strategy
+ * DELETE /api/v1/strategies/:id       — soft-delete strategy
+ * POST /api/v1/strategies/:id/clone   — clone a strategy
+ * PUT  /api/v1/strategies/reorder     — reorder strategies
+ * POST /api/v1/strategies/score-deal/:dealId — score deal (backward compat)
  */
 
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query, getPool } from '../../database/connection';
-import { StrategyExecutionService } from '../../services/strategyExecution.service';
+import { scoreAndPersist, detectArbitrage, calculateStrategyScore } from '../../services/strategyArbitrage.service';
+import { logger } from '../../utils/logger';
 
 const router = Router();
-const pool = getPool();
-const strategyExecutionService = new StrategyExecutionService(pool);
 
-// ── Metric ID mapping ────────────────────────────────────────────────────────
-// Maps user-facing metricId strings to actual metric_id values in metric_time_series
-const METRIC_MAP: Record<string, string> = {
-  SFR_HOME_VALUE:    'home_value_index',
-  HOME_VALUE:        'home_value_index',
-  ZHVI:              'home_value_index',
-  ZHVI_ALL:          'home_value_index',
-  HOME_VALUE_YOY:    'home_value_index_yoy',
-  ZHVI_YOY:          'home_value_index_yoy',
-  RENT:              'rent_index',
-  SFR_RENT:          'rent_index',
-  ZORI:              'rent_index',
-  RENT_INDEX:        'rent_index',
-  ZORI_YOY:          'rent_index_yoy',
-  RENT_YOY:          'rent_index_yoy',
-  RENT_INDEX_YOY:    'rent_index_yoy',
-};
-
-function resolveMetricId(raw: string): string {
-  return METRIC_MAP[raw?.toUpperCase()] ?? raw?.toLowerCase();
+function validateWeights(weights: Record<string, number>): boolean {
+  const positiveSum = Object.values(weights)
+    .filter(v => v > 0)
+    .reduce((a, b) => a + b, 0);
+  return Math.abs(positiveSum - 1.0) < 0.05;
 }
 
-// ── Scope → geography_type mapping ──────────────────────────────────────────
-const SCOPE_MAP: Record<string, string> = {
-  submarket:   'metro',
-  metro:       'metro',
-  msa:         'metro',
-  city:        'city',
-  zip:         'zip',
-  zipcode:     'zip',
-  state:       'state',
-  national:    'state',
-  property:    'city',
-};
-
-function resolveGeoType(scope: string): string {
-  return SCOPE_MAP[scope?.toLowerCase()] ?? 'metro';
-}
-
-// ── SQL operator builder ─────────────────────────────────────────────────────
-type Operator = 'gt' | 'lt' | 'gte' | 'lte' | 'eq' | 'neq' | 'between' | 'change_gt' | 'change_lt';
-
-function buildOperatorSql(operator: Operator, paramOffset: number): { sql: string; paramCount: number } {
-  switch (operator) {
-    case 'gt':        return { sql: `> $${paramOffset}`,                   paramCount: 1 };
-    case 'lt':        return { sql: `< $${paramOffset}`,                   paramCount: 1 };
-    case 'gte':       return { sql: `>= $${paramOffset}`,                  paramCount: 1 };
-    case 'lte':       return { sql: `<= $${paramOffset}`,                  paramCount: 1 };
-    case 'eq':        return { sql: `= $${paramOffset}`,                   paramCount: 1 };
-    case 'neq':       return { sql: `<> $${paramOffset}`,                  paramCount: 1 };
-    case 'between':   return { sql: `BETWEEN $${paramOffset} AND $${paramOffset + 1}`, paramCount: 2 };
-    case 'change_gt': return { sql: `> $${paramOffset}`,                   paramCount: 1 };
-    case 'change_lt': return { sql: `< $${paramOffset}`,                   paramCount: 1 };
-    default:          return { sql: `> $${paramOffset}`,                   paramCount: 1 };
+function normalizeWeights(weights: Record<string, number>): Record<string, number> {
+  const entries = Object.entries(weights);
+  const positiveSum = entries.filter(([, v]) => v > 0).reduce((a, [, v]) => a + v, 0);
+  if (positiveSum === 0) return weights;
+  const normalized: Record<string, number> = {};
+  for (const [k, v] of entries) {
+    normalized[k] = v > 0 ? v / positiveSum : v;
   }
+  return normalized;
 }
 
-interface Condition {
-  id: string;
-  metricId: string;
-  operator: Operator;
-  value: number | number[];
-  weight?: number;
-  required?: boolean;
-}
-
-interface PreviewRequest {
-  scope?: string;
-  combinator?: 'AND' | 'OR';
-  conditions: Condition[];
-  maxResults?: number;
-}
-
-interface GeoMatch {
-  geographyId: string;
-  geographyName: string | null;
-  geographyType: string;
-  matchedConditions: number;
-  totalConditions: number;
-  score: number;
-  metrics: Record<string, { value: number; date: string }>;
-}
-
-// ── GET /api/v1/strategies ────────────────────────────────────────────────────
-router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/templates', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.userId;
-
-    const result = await query(`
-      SELECT id, name, description, type, scope, conditions, combinator,
-             signal_weights, sort_by, sort_direction, max_results,
-             asset_classes, deal_types, tags, is_active, is_public,
-             run_count, last_run_at, created_at, updated_at, user_id
-      FROM strategy_definitions
-      WHERE type = 'preset'
-         OR (type = 'custom' AND (user_id = $1 OR is_public = true))
-         OR user_id IS NULL
-      ORDER BY type DESC, name ASC
-    `, [userId]);
-
-    const strategies = result.rows.map(r => ({
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      type: r.type,
-      scope: r.scope,
-      conditions: r.conditions,
-      combinator: r.combinator,
-      signalWeights: r.signal_weights,
-      sortBy: r.sort_by,
-      sortDirection: r.sort_direction,
-      maxResults: r.max_results,
-      assetClasses: r.asset_classes,
-      dealTypes: r.deal_types,
-      tags: r.tags,
-      isActive: r.is_active,
-      isPublic: r.is_public,
-      runCount: r.run_count,
-      lastRunAt: r.last_run_at,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-      isOwned: r.user_id === userId,
-    }));
-
-    res.json({ success: true, data: strategies });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── POST /api/v1/strategies ───────────────────────────────────────────────────
-router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-    const {
-      name, description, scope = 'submarket', conditions = [],
-      combinator = 'AND', signalWeights, sortBy, sortDirection = 'desc',
-      maxResults = 50, assetClasses = [], dealTypes = [], tags = [],
-      isPublic = false,
-    } = req.body;
-
-    if (!name) return res.status(400).json({ error: 'name is required' });
-    if (!Array.isArray(conditions) || conditions.length === 0) {
-      return res.status(400).json({ error: 'conditions must be a non-empty array' });
-    }
-
-    const result = await query(`
-      INSERT INTO strategy_definitions
-        (user_id, name, description, type, scope, conditions, combinator,
-         signal_weights, sort_by, sort_direction, max_results, asset_classes,
-         deal_types, tags, is_public)
-      VALUES ($1,$2,$3,'custom',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      RETURNING *
-    `, [
-      userId, name, description, scope,
-      JSON.stringify(conditions), combinator,
-      signalWeights ? JSON.stringify(signalWeights) : null,
-      sortBy, sortDirection, maxResults,
-      assetClasses, dealTypes, tags, isPublic,
-    ]);
-
-    res.status(201).json({ success: true, strategy: result.rows[0] });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── POST /api/v1/strategies/preview ──────────────────────────────────────────
-router.post('/preview', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const {
-      scope = 'submarket',
-      combinator = 'AND',
-      conditions = [],
-      maxResults = 50,
-    }: PreviewRequest = req.body;
-
-    if (!Array.isArray(conditions) || conditions.length === 0) {
-      return res.status(400).json({ error: 'conditions must be a non-empty array' });
-    }
-
-    const geoType = resolveGeoType(scope);
-    const totalConditions = conditions.length;
-
-    // Check if metric_time_series has any data
-    const countCheck = await query(
-      `SELECT COUNT(*) AS cnt FROM metric_time_series WHERE geography_type = $1 LIMIT 1`,
-      [geoType]
-    );
-    const hasData = parseInt(countCheck.rows[0]?.cnt ?? '0') > 0;
-
-    if (!hasData) {
-      return res.json({
-        success: true,
-        scope,
-        geoType,
-        combinator,
-        totalConditions,
-        matchCount: 0,
-        results: [],
-        warning: `No metric data found for geography_type="${geoType}". Ingest Zillow ZHVI/ZORI data first.`,
-      });
-    }
-
-    // ── Evaluate each condition independently ─────────────────────────────
-    // For each condition: find geographies where the latest metric value passes the filter.
-    // We collect sets of matching geography_ids, then combine with AND/OR.
-
-    const conditionSets: Array<{
-      condition: Condition;
-      geoIds: Set<string>;
-      latestValues: Map<string, { value: number; date: string }>;
-    }> = [];
-
-    for (const cond of conditions) {
-      const metricId = resolveMetricId(cond.metricId);
-      const { sql: opSql, paramCount } = buildOperatorSql(cond.operator, 3);
-
-      // Value(s) for the operator
-      const values: number[] = Array.isArray(cond.value) ? cond.value : [cond.value];
-      const operatorParams = values.slice(0, paramCount);
-
-      // Get latest value per geography_id for this metric, filtered by operator
-      const latestResult = await query(`
-        SELECT DISTINCT ON (geography_id)
-          geography_id,
-          geography_name,
-          period_date::TEXT AS period_date,
-          value
-        FROM metric_time_series
-        WHERE metric_id      = $1
-          AND geography_type = $2
-          AND value          ${opSql}
-        ORDER BY geography_id, period_date DESC
-      `, [metricId, geoType, ...operatorParams]);
-
-      const geoIds = new Set<string>();
-      const latestValues = new Map<string, { value: number; date: string }>();
-
-      for (const row of latestResult.rows) {
-        geoIds.add(row.geography_id);
-        latestValues.set(row.geography_id, { value: row.value, date: row.period_date });
-      }
-
-      conditionSets.push({ condition: cond, geoIds, latestValues });
-    }
-
-    // ── Combine condition sets ─────────────────────────────────────────────
-    let candidateGeoIds: Set<string>;
-
-    if (combinator === 'AND') {
-      // Intersection: must match all required conditions
-      const requiredSets = conditionSets.filter(c => c.condition.required !== false);
-      if (requiredSets.length === 0) {
-        candidateGeoIds = conditionSets[0]?.geoIds ?? new Set();
-      } else {
-        candidateGeoIds = new Set(requiredSets[0].geoIds);
-        for (const cs of requiredSets.slice(1)) {
-          for (const id of candidateGeoIds) {
-            if (!cs.geoIds.has(id)) candidateGeoIds.delete(id);
-          }
-        }
-      }
-    } else {
-      // OR: union of all condition sets
-      candidateGeoIds = new Set();
-      for (const cs of conditionSets) {
-        for (const id of cs.geoIds) candidateGeoIds.add(id);
-      }
-    }
-
-    // ── Score and rank results ─────────────────────────────────────────────
-    const results: GeoMatch[] = [];
-    const totalWeight = conditions.reduce((s, c) => s + (c.weight ?? 50), 0);
-
-    // Get geography names for candidates in a single query
-    const geoIdList = Array.from(candidateGeoIds).slice(0, 500);
-    const nameResult = geoIdList.length > 0
-      ? await query(
-          `SELECT DISTINCT ON (geography_id) geography_id, geography_name
-           FROM metric_time_series
-           WHERE geography_type = $1 AND geography_id = ANY($2)`,
-          [geoType, geoIdList]
-        )
-      : { rows: [] };
-    const nameMap = new Map(nameResult.rows.map(r => [r.geography_id, r.geography_name]));
-
-    for (const geoId of candidateGeoIds) {
-      let matchedConditions = 0;
-      let weightedScore = 0;
-      const metrics: Record<string, { value: number; date: string }> = {};
-
-      for (const cs of conditionSets) {
-        const metricKey = cs.condition.metricId;
-        if (cs.geoIds.has(geoId)) {
-          matchedConditions++;
-          const w = cs.condition.weight ?? 50;
-          weightedScore += w;
-          const mv = cs.latestValues.get(geoId);
-          if (mv) metrics[metricKey] = mv;
-        }
-      }
-
-      const score = totalWeight > 0 ? Math.round((weightedScore / totalWeight) * 100) : 0;
-
-      results.push({
-        geographyId: geoId,
-        geographyName: nameMap.get(geoId) ?? null,
-        geographyType: geoType,
-        matchedConditions,
-        totalConditions,
-        score,
-        metrics,
-      });
-    }
-
-    // Sort by score desc, then alphabetically by name
-    results.sort((a, b) => b.score - a.score || (a.geographyName ?? '').localeCompare(b.geographyName ?? ''));
-
-    const paginated = results.slice(0, maxResults);
-
-    res.json({
-      success: true,
-      scope,
-      geoType,
-      combinator,
-      totalConditions,
-      matchCount: results.length,
-      results: paginated,
-    });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── PUT /api/v1/strategies/:id ────────────────────────────────────────────────
-router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-    const { id } = req.params;
-    const {
-      name, description, scope, conditions,
-      combinator, signalWeights, sortBy, sortDirection,
-      maxResults, assetClasses, dealTypes, tags, isPublic,
-    } = req.body;
-
-    const result = await query(`
-      UPDATE strategy_definitions SET
-        name = COALESCE($3, name),
-        description = COALESCE($4, description),
-        scope = COALESCE($5, scope),
-        conditions = COALESCE($6, conditions),
-        combinator = COALESCE($7, combinator),
-        sort_by = COALESCE($8, sort_by),
-        sort_direction = COALESCE($9, sort_direction),
-        max_results = COALESCE($10, max_results),
-        asset_classes = COALESCE($11, asset_classes),
-        deal_types = COALESCE($12, deal_types),
-        tags = COALESCE($13, tags),
-        is_public = COALESCE($14, is_public),
-        updated_at = NOW()
-      WHERE id = $1 AND user_id = $2
-      RETURNING *
-    `, [
-      id, userId, name, description, scope,
-      conditions ? JSON.stringify(conditions) : null,
-      combinator, sortBy, sortDirection, maxResults,
-      assetClasses, dealTypes, tags, isPublic,
-    ]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Strategy not found or unauthorized' });
-    }
-    res.json({ success: true, strategy: result.rows[0] });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── DELETE /api/v1/strategies/:id ─────────────────────────────────────────────
-router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-    const { id } = req.params;
-
     const result = await query(
-      `DELETE FROM strategy_definitions WHERE id = $1 AND user_id = $2 RETURNING id`,
-      [id, userId]
+      `SELECT * FROM strategies WHERE is_system_template = true AND is_active = true ORDER BY sort_order`,
+      []
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Strategy not found or unauthorized' });
-    }
-    res.json({ success: true, deleted: id });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── GET /api/v1/strategies/:id ────────────────────────────────────────────────
-router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const userId = req.user?.userId;
-    const { id } = req.params;
-
-    const result = await query(
-      `SELECT id, name, description, type, scope, conditions, combinator,
-              signal_weights, sort_by, sort_direction, max_results,
-              asset_classes, deal_types, tags, is_active, is_public,
-              run_count, last_run_at, created_at, updated_at, user_id
-       FROM strategy_definitions
-       WHERE id = $1 AND (type = 'preset' OR user_id = $2 OR is_public = true)`,
-      [id, userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Strategy not found' });
-    }
-
-    const r = result.rows[0];
-    const strategy = {
-      id: r.id,
-      name: r.name,
-      description: r.description,
-      type: r.type,
-      scope: r.scope,
-      conditions: r.conditions,
-      combinator: r.combinator,
-      signalWeights: r.signal_weights,
-      sortBy: r.sort_by,
-      sortDirection: r.sort_direction,
-      maxResults: r.max_results,
-      assetClasses: r.asset_classes,
-      dealTypes: r.deal_types,
-      tags: r.tags,
-      isActive: r.is_active,
-      isPublic: r.is_public,
-      runCount: r.run_count,
-      lastRunAt: r.last_run_at,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at,
-    };
-
-    res.json({ success: true, data: strategy });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ── POST /api/v1/strategies/:id/run ────────────────────────────────────────────
-router.post('/:id/run', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const results = await strategyExecutionService.executeStrategy(id);
-
-    res.json({
-      success: true,
-      data: results,
-      match_count: results.length,
-    });
+    res.json({ success: true, templates: result.rows });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to run strategy',
-    });
+    logger.error('[M08] Error fetching templates:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch templates' });
   }
 });
 
-// ── GET /api/v1/strategies/:id/results ─────────────────────────────────────────
-router.get('/:id/results', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/reorder', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  res.status(405).json({ success: false, error: 'Use PUT /reorder' });
+});
+
+router.put('/reorder', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { id } = req.params;
-
-    const result = await pool.query(
-      `SELECT * FROM strategy_runs WHERE strategy_id = $1 ORDER BY run_at DESC LIMIT 1`,
-      [id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'No results found for this strategy',
-      });
+    const { order } = req.body;
+    if (!Array.isArray(order)) return res.status(400).json({ success: false, error: 'order must be array of ids' });
+    for (let i = 0; i < order.length; i++) {
+      await query(`UPDATE strategies SET sort_order = $1, updated_at = NOW() WHERE id = $2`, [i, order[i]]);
     }
-
-    const runData = result.rows[0];
-    const results = JSON.parse(runData.results);
-
-    res.json({
-      success: true,
-      data: results,
-      count: results.length,
-      runAt: runData.run_at,
-    });
+    res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to fetch results',
-    });
+    logger.error('[M08] Error reordering:', error);
+    res.status(500).json({ success: false, error: 'Failed to reorder' });
   }
 });
 
-// ── POST /api/v1/strategies/score-deal/:dealId ─────────────────────────────────
 router.post('/score-deal/:dealId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const userId = req.user?.userId;
+    const scores = await scoreAndPersist(dealId);
+    const arbitrage = detectArbitrage(scores);
+    res.json({ success: true, data: scores, arbitrage });
+  } catch (error: any) {
+    logger.error('[M08] Error scoring deal:', error);
+    res.status(500).json({ success: false, error: 'Failed to score deal' });
+  }
+});
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        error: 'User ID required',
-      });
+router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT * FROM strategies WHERE is_active = true ORDER BY is_system_template DESC, sort_order`,
+      []
+    );
+    res.json({ success: true, strategies: result.rows });
+  } catch (error: any) {
+    logger.error('[M08] Error listing strategies:', error);
+    res.status(500).json({ success: false, error: 'Failed to list strategies' });
+  }
+});
+
+router.post('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { name, description, signal_weights, property_gates, risk_gates, execution_profile } = req.body;
+    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
+
+    const weights = signal_weights || {};
+    if (Object.keys(weights).length > 0 && !validateWeights(weights)) {
+      return res.status(400).json({ success: false, error: 'signal_weights must sum to 1.0 (±0.05)' });
     }
 
-    const results = await strategyExecutionService.scoreDeal(dealId, userId);
-
-    // Filter to only strategies that matched
-    const matched = results.filter((r) => r.matched);
-
-    res.json({
-      success: true,
-      data: results,
-      matchedCount: matched.length,
-      totalCount: results.length,
-    });
+    const result = await query(
+      `INSERT INTO strategies (name, description, signal_weights, property_gates, risk_gates, execution_profile, is_system_template, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies))
+       RETURNING *`,
+      [
+        name, description || null,
+        JSON.stringify(weights),
+        JSON.stringify(property_gates || []),
+        JSON.stringify(risk_gates || []),
+        JSON.stringify(execution_profile || {}),
+      ]
+    );
+    res.status(201).json({ success: true, strategy: result.rows[0] });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to score deal',
-    });
+    logger.error('[M08] Error creating strategy:', error);
+    res.status(500).json({ success: false, error: 'Failed to create strategy' });
+  }
+});
+
+router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
+    res.json({ success: true, strategy: result.rows[0] });
+  } catch (error: any) {
+    logger.error('[M08] Error fetching strategy:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch strategy' });
+  }
+});
+
+router.put('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const existing = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
+    if (existing.rows[0].is_system_template) {
+      return res.status(403).json({ success: false, error: 'Cannot modify system templates' });
+    }
+
+    const { name, description, signal_weights, property_gates, risk_gates, execution_profile } = req.body;
+    if (signal_weights && !validateWeights(signal_weights)) {
+      return res.status(400).json({ success: false, error: 'signal_weights must sum to 1.0 (±0.05)' });
+    }
+
+    const result = await query(
+      `UPDATE strategies SET
+        name = COALESCE($1, name),
+        description = COALESCE($2, description),
+        signal_weights = COALESCE($3::jsonb, signal_weights),
+        property_gates = COALESCE($4::jsonb, property_gates),
+        risk_gates = COALESCE($5::jsonb, risk_gates),
+        execution_profile = COALESCE($6::jsonb, execution_profile),
+        version = version + 1,
+        updated_at = NOW()
+       WHERE id = $7 RETURNING *`,
+      [
+        name || null, description || null,
+        signal_weights ? JSON.stringify(signal_weights) : null,
+        property_gates ? JSON.stringify(property_gates) : null,
+        risk_gates ? JSON.stringify(risk_gates) : null,
+        execution_profile ? JSON.stringify(execution_profile) : null,
+        id,
+      ]
+    );
+    res.json({ success: true, strategy: result.rows[0] });
+  } catch (error: any) {
+    logger.error('[M08] Error updating strategy:', error);
+    res.status(500).json({ success: false, error: 'Failed to update strategy' });
+  }
+});
+
+router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const existing = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    if (existing.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
+    if (existing.rows[0].is_system_template) {
+      return res.status(403).json({ success: false, error: 'Cannot delete system templates' });
+    }
+    await query(`UPDATE strategies SET is_active = false, updated_at = NOW() WHERE id = $1`, [id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error('[M08] Error deleting strategy:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete strategy' });
+  }
+});
+
+router.post('/:id/clone', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const source = await query(`SELECT * FROM strategies WHERE id = $1`, [id]);
+    if (source.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
+    const s = source.rows[0];
+
+    const normalizedWeights = normalizeWeights(s.signal_weights || {});
+    const result = await query(
+      `INSERT INTO strategies (name, description, signal_weights, property_gates, risk_gates, execution_profile, is_system_template, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies))
+       RETURNING *`,
+      [
+        `${s.name} (Copy)`, s.description,
+        JSON.stringify(normalizedWeights),
+        JSON.stringify(s.property_gates || []),
+        JSON.stringify(s.risk_gates || []),
+        JSON.stringify(s.execution_profile || {}),
+      ]
+    );
+    res.status(201).json({ success: true, strategy: result.rows[0] });
+  } catch (error: any) {
+    logger.error('[M08] Error cloning strategy:', error);
+    res.status(500).json({ success: false, error: 'Failed to clone strategy' });
   }
 });
 

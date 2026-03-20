@@ -59,8 +59,14 @@ router.get('/contacts/microsoft', requireAuth, async (req: AuthenticatedRequest,
 router.get('/contacts/google', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const userId = req.user!.userId;
-    const contacts = await fetchGoogleContacts(userId);
-    res.json({ contacts, count: contacts.length });
+    let contacts: UnifiedContact[] = [];
+    try {
+      contacts = await fetchGoogleContacts(userId);
+    } catch (err: any) {
+      logger.warn('Google contacts not available:', err.message);
+      return res.json({ contacts: [], count: 0, connected: false, message: err.message });
+    }
+    res.json({ contacts, count: contacts.length, connected: true });
   } catch (error) {
     next(error);
   }

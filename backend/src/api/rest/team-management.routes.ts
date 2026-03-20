@@ -171,11 +171,10 @@ router.post('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: 
     }
     const data = TaskSchema.parse(req.body);
     const result = await pool.query(
-      `INSERT INTO deal_tasks (deal_id, title, description, assigned_to, assigned_to_name, status, priority, due_date, tags, created_by_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      `INSERT INTO deal_tasks (deal_id, title, description, assigned_to, status, priority, due_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [dealId, data.title, data.description ?? null, data.assigned_to ?? null,
-       data.assigned_to_name ?? null, data.status, data.priority,
-       data.due_date ?? null, data.tags ?? [], data.created_by_name ?? null]
+       data.status, data.priority, data.due_date ?? null]
     );
     res.json(result.rows[0]);
   } catch (error) {

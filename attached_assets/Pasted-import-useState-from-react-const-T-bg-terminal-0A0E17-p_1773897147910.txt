@@ -1,0 +1,536 @@
+import { useState } from "react";
+
+const T = {
+  bg: { terminal:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117" },
+  text: { primary:"#E8ECF1",secondary:"#8B95A5",muted:"#4A5568",amber:"#F5A623",green:"#00D26A",red:"#FF4757",cyan:"#00BCD4",orange:"#FF8C42",purple:"#A78BFA",white:"#FFFFFF" },
+  border: { subtle:"#1E2538",medium:"#2A3348",bright:"#3B4A6B" },
+  font: { mono:"'JetBrains Mono','Fira Code',monospace",label:"'IBM Plex Sans',sans-serif" },
+};
+
+// ═══════════════════════════════════════════════════════════
+// MARKETS F4 — CONTENT ARCHITECTURE
+// ═══════════════════════════════════════════════════════════
+const MARKETS_F4_TABS = [
+  {
+    key: "overview",
+    label: "OVERVIEW",
+    decision: "Which of my tracked markets is strongest right now?",
+    modules: ["M05"],
+    content: [
+      { type: "KPI_ROW", label: "Market Summary KPIs", items: ["Tracked MSAs: 6", "Tracked Submarkets: 24", "Total Units Monitored: 50,380", "Weighted Momentum: STRONG"] },
+      { type: "SORTABLE_TABLE", label: "MSA Ranking Table", columns: ["MSA", "JEDI Mkt Score", "Rent Growth", "Vacancy", "Absorption", "Pipeline Pressure", "Momentum", "Trend Spark"], note: "Sortable by any column. Click MSA → drills into submarket view. This is the top-level 'where should I be looking' view." },
+      { type: "MAP", label: "MSA Heatmap", note: "Mapbox with MSA polygons colored by market score (green→amber→red gradient). Click polygon → zoom to submarket level." },
+    ],
+    dataSource: "apartments.com scraper + RentCast API + Census + BLS",
+    existingCode: "MyMarketsOverview.tsx (757 lines, mock data)",
+    wireAction: "Replace mock data with GET /api/v1/markets/msa-summary. Already partially defined in apartments data sync service.",
+  },
+  {
+    key: "submarkets",
+    label: "SUBMARKETS",
+    decision: "Within my target MSA, which submarket is outperforming?",
+    modules: ["M05", "M15"],
+    content: [
+      { type: "MSA_SELECTOR", label: "MSA Dropdown", note: "Select MSA to filter submarket table. Default: user's primary market from settings." },
+      { type: "SORTABLE_TABLE", label: "Submarket Ranking Grid", columns: ["Submarket", "Score (F26)", "Rent/SF", "Rent Δ 90d", "Vacancy", "Absorption", "Pipeline Units", "Months Supply", "Pop Growth", "HHI Median", "Trend"], note: "This is the F26 Submarket Rank formula visualization. Each row is a submarket. Click row → Deal-level F3 Market for that submarket." },
+      { type: "SPARKLINE_GRID", label: "Trend Comparison", note: "Small multiples: 6 sparklines per submarket showing 12-month trends for key metrics." },
+    ],
+    dataSource: "apartments.com + RentCast + Census GeoEnrichment",
+    existingCode: "SubmarketAnalysis.tsx (partial), no ranking logic",
+    wireAction: "Build GET /api/v1/markets/submarket-rank/:msaId. Implements F26 weighted scoring. Frontend: new SubmarketRankGrid component.",
+  },
+  {
+    key: "supply",
+    label: "SUPPLY",
+    decision: "How much new inventory is coming, and will the market absorb it?",
+    modules: ["M04"],
+    content: [
+      { type: "KPI_ROW", label: "Supply Summary", items: ["Pipeline: 12,400 units", "Under Construction: 8,200", "Delivering 12mo: 4,800", "Months Supply: 14.2"] },
+      { type: "STACKED_BAR", label: "Pipeline by Status + Delivery Quarter", note: "Stacked bar chart: Permitted | Under Construction | Delivering. X-axis = quarters. Shows the supply wave." },
+      { type: "MAP", label: "Supply Map", note: "Mapbox with construction site pins. Size = units. Color = delivery status. Click pin → project details." },
+      { type: "TABLE", label: "Project List", columns: ["Project", "Developer", "Units", "Status", "Delivery", "Submarket", "Distance", "Segment"], note: "Sortable list of all tracked pipeline projects." },
+    ],
+    dataSource: "Supply Agent → supply-signal.service → permit DBs + CoStar",
+    existingCode: "FutureSupplyPage.tsx (505 lines, mock data). Supply Agent WORKS.",
+    wireAction: "Wire FutureSupplyPage to GET /api/v1/supply/pipeline/:tradeAreaId. Agent is live. This is a P0 connection.",
+  },
+  {
+    key: "trends",
+    label: "TRENDS",
+    decision: "Are fundamentals accelerating or decelerating?",
+    modules: ["M05", "M07"],
+    content: [
+      { type: "MULTI_LINE_CHART", label: "Market Vitals Over Time", note: "5 lines: Rent Growth, Vacancy (inv), Absorption, Pipeline Pressure, Employment Growth. Toggle MSA or submarket level. 6mo/12mo/24mo toggle." },
+      { type: "CORRELATION_PANEL", label: "Pattern Detection", note: "From CI Engine: rent-traffic-wage correlations. Anomaly alerts. Divergence signals between submarkets." },
+      { type: "SENTIMENT_BAR", label: "Market Sentiment", note: "Composite score from news intel (M19), Google reviews (M07), and employment data (BLS). Trend arrow." },
+    ],
+    dataSource: "M05 market data + M07 traffic + M19 news intel + BLS QCEW",
+    existingCode: "MarketTrends.tsx (partial), TrendCharts.tsx (has chart shells)",
+    wireAction: "Incremental: wire rent/vacancy trends first from apartments.com data. Traffic and sentiment are P2.",
+  },
+  {
+    key: "comps",
+    label: "COMPS",
+    decision: "What are comparable properties actually achieving?",
+    modules: ["M15"],
+    content: [
+      { type: "FILTER_BAR", label: "Comp Filters", items: ["Submarket", "Year Built Range", "Unit Count", "Class (A/B/C)", "Distance", "Strategy Type"] },
+      { type: "COMP_TABLE", label: "Rent Comp Grid", columns: ["Property", "Submarket", "Units", "Year", "Class", "Rent/SF", "Occupancy", "Rating", "Concessions", "Distance"], note: "This is the portfolio-level comp library. Click property → opens comp detail with unit mix, floor plans, amenities, review intel." },
+      { type: "SCATTER_PLOT", label: "Rent vs Year Built / Units", note: "Scatter plot with property dots. X = year built, Y = rent/SF. Size = units. Color = occupancy. Reveals sweet spots." },
+    ],
+    dataSource: "apartments.com scraper + RentCast + Google Places reviews",
+    existingCode: "CompAnalysis.tsx (exists but white UI). Comp Library in settings references 847 comps.",
+    wireAction: "Retheme to Bloomberg dark. Wire to GET /api/v1/comps/library. Scraper service exists.",
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+// DEAL CAPSULE — TAB-BY-TAB CONVERSION AUDIT
+// ═══════════════════════════════════════════════════════════
+const DEAL_TABS = [
+  {
+    fkey: "F1", label: "OVERVIEW", module: "M01",
+    uiStatus: "bloomberg", confidence: 95,
+    notes: "JEDI Score gauge, property snapshot, owner intel all converted. Minor: ensure sparkline uses T.text.green not hardcoded hex.",
+    actions: [],
+  },
+  {
+    fkey: "F2", label: "PROPERTY & ZONING", module: "M02",
+    uiStatus: "white", confidence: 30,
+    notes: "7-tab zoning workflow (Boundary → Confirm → Entitlement → Dev Cap → Regulatory → Comparator → Time-to-Shovel) still renders in white Tailwind cards with bg-white, text-gray-700, border-gray-200. Municode source links work but styled in blue hyperlink style, not amber.",
+    actions: [
+      { task: "Replace all bg-white → T.bg.panel", effort: "S", priority: "P0" },
+      { task: "Replace text-gray-* → T.text.primary/secondary/muted", effort: "S", priority: "P0" },
+      { task: "Replace border-gray-200 → T.border.subtle", effort: "S", priority: "P0" },
+      { task: "Restyle Municode links: amber text, underline on hover only", effort: "XS", priority: "P0" },
+      { task: "Convert tab pills from rounded-lg bg-blue-50 → flat T.bg.active with amber active border-bottom", effort: "S", priority: "P0" },
+      { task: "Zoning parameter cards: dark card with labeled key-value pairs, not white cards with shadows", effort: "M", priority: "P0" },
+      { task: "Entitlement tracker: convert progress bar from blue gradient → amber/green stepped indicator", effort: "S", priority: "P1" },
+      { task: "Dev Capacity 3D massing (React Three Fiber): already dark bg — just verify T token usage for overlays", effort: "XS", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F3", label: "MARKET & DEMAND", module: "M05+M06",
+    uiStatus: "partial", confidence: 60,
+    notes: "Market vitals header and KPI row are Bloomberg-styled. Trade area map (Mapbox) is naturally dark. BUT: the rent comp table below still uses white rows, and the demographic breakdown panel has light card styling.",
+    actions: [
+      { task: "Rent comp table: swap to alternating T.bg.panel / T.bg.panelAlt rows", effort: "S", priority: "P0" },
+      { task: "Demographic cards: replace bg-gray-50 → T.bg.header with T.border.subtle border", effort: "S", priority: "P0" },
+      { task: "Chart backgrounds: ensure all Recharts use fill='transparent' with T.text gridlines", effort: "S", priority: "P0" },
+      { task: "Demand events list: convert from white list-items to bordered rows matching DealGrid pattern", effort: "S", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F4", label: "SUPPLY PIPELINE", module: "M04",
+    uiStatus: "partial", confidence: 65,
+    notes: "Supply Agent output panel is Bloomberg-styled. Pipeline table has mixed styling — headers dark but body rows have white backgrounds on hover states. Map pins need color harmonization.",
+    actions: [
+      { task: "Table body: remove all hover:bg-white, replace with hover:bg-[T.bg.hover]", effort: "S", priority: "P0" },
+      { task: "Status badges: use Bd component pattern (Supply Agent ON badge style)", effort: "S", priority: "P0" },
+      { task: "Absorption chart: verify dark theme, remove any white tick labels", effort: "XS", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F5", label: "STRATEGY ARBITRAGE", module: "M08",
+    uiStatus: "bloomberg", confidence: 90,
+    notes: "4-column strategy comparison fully Bloomberg-styled in prototype. Winner column has amber border + glow. Signal bars use correct T colors. Only gap: arbitrage alert banner uses inline styles, should use T tokens.",
+    actions: [
+      { task: "Arbitrage alert banner: replace inline amber hex → T.text.amber", effort: "XS", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F6", label: "PRO FORMA", module: "M09",
+    uiStatus: "partial", confidence: 55,
+    notes: "3-layer model concept is built. Layer selector tabs are dark. BUT: the actual spreadsheet-style ProForma table uses white cell backgrounds with black text — deliberately mimicking an Excel feel. Decision needed: keep Excel-light aesthetic for the numbers grid (readability argument) or go full dark?",
+    actions: [
+      { task: "DECISION: ProForma grid styling approach (see recommendation below)", effort: "—", priority: "P0" },
+      { task: "If dark: swap cell bg to T.bg.panel, number text to T.text.primary, subtotal rows to T.bg.header", effort: "M", priority: "P0" },
+      { task: "Layer indicator badges: already correct, just verify Bd component usage", effort: "XS", priority: "P1" },
+      { task: "Sensitivity heatmap: convert from red-yellow-green (light) to Bloomberg red/amber/green (dark)", effort: "S", priority: "P1" },
+    ],
+    recommendation: "GO DARK. Bloomberg terminal proformas are dark with amber/green/red text on black. The Excel aesthetic breaks immersion. Use T.bg.panel for cells, T.text.amber for key outputs (NOI, IRR), T.text.green for positive deltas, T.text.red for negative. Alternating rows T.bg.panel / T.bg.panelAlt. This is the terminal — not a spreadsheet.",
+  },
+  {
+    fkey: "F7", label: "CAPITAL STRUCTURE", module: "M11",
+    uiStatus: "stub", confidence: 20,
+    notes: "Currently a DealStub placeholder. Capital Structure Engine is spec-only (7 files to create). No real UI to convert — needs to be built Bloomberg-native from scratch.",
+    actions: [
+      { task: "Build CapitalStack component: horizontal stacked bar (senior/mezz/equity) in terminal colors", effort: "M", priority: "P1" },
+      { task: "Build DebtComparison table: multi-loan toggle with DSCR/LTV/yield metrics", effort: "L", priority: "P1" },
+      { task: "Build WACC calculator widget: inputs in T.bg.input, output in amber", effort: "S", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F8", label: "RISK ASSESSMENT", module: "M14",
+    uiStatus: "partial", confidence: 50,
+    notes: "Risk score gauge is Bloomberg-styled. BUT: the 6-category risk breakdown uses light card-style panels with colored left borders on white backgrounds. Monte Carlo chart has white background.",
+    actions: [
+      { task: "Risk category cards: swap bg-white → T.bg.panel, keep colored left-border pattern but use T color tokens", effort: "S", priority: "P0" },
+      { task: "Monte Carlo chart: dark bg, green/amber/red distribution curves on transparent", effort: "S", priority: "P0" },
+      { task: "Risk matrix heatmap: convert from light grid to dark grid with T.text color fills", effort: "S", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F9", label: "COMPS", module: "M15",
+    uiStatus: "white", confidence: 25,
+    notes: "Comp analysis module is almost entirely white UI. Property comp cards use shadow-md on white, photo thumbnails in rounded corners, rent data in gray text. This is one of the two worst offenders alongside Zoning.",
+    actions: [
+      { task: "Comp cards: replace bg-white shadow-md → T.bg.panel border T.border.subtle, no shadow", effort: "M", priority: "P0" },
+      { task: "Photo thumbnails: add T.border.subtle 1px border, remove rounded-lg → use 2px radius", effort: "XS", priority: "P0" },
+      { task: "Rent data: swap gray text → T.text.amber for price, T.text.primary for labels", effort: "S", priority: "P0" },
+      { task: "Comp table header: use PanelHeader component pattern", effort: "S", priority: "P0" },
+      { task: "Map (if present): Mapbox dark style already handles this — verify overlay popups use dark theme", effort: "XS", priority: "P1" },
+      { task: "Subject vs Comp comparison bar chart: dark bg, amber for subject, cyan for comps", effort: "S", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F10", label: "TRAFFIC", module: "M07",
+    uiStatus: "stub", confidence: 15,
+    notes: "New module. Currently renders generic DealStub. Traffic Engine has backend gaps (3 hardcoded market adjustment factors, empty migration files, routes not mounted). Build Bloomberg-native when backend is ready.",
+    actions: [
+      { task: "Backend first: mount M07 routes in index.ts, fix 3 empty migration files", effort: "M", priority: "P2" },
+      { task: "When ready: build TrafficDashboard with drive-by counts + digital traffic + lease prediction", effort: "L", priority: "P2" },
+    ],
+  },
+  {
+    fkey: "F11", label: "DOCUMENTS", module: "M18",
+    uiStatus: "partial", confidence: 45,
+    notes: "Document list view has dark header but file rows use white backgrounds. Upload dropzone styled in light blue dashed border.",
+    actions: [
+      { task: "File rows: alternating T.bg.panel / T.bg.panelAlt", effort: "S", priority: "P1" },
+      { task: "Upload dropzone: T.border.medium dashed, T.text.muted label, amber on drag-over", effort: "XS", priority: "P1" },
+      { task: "File type icons: mono-color (T.text.secondary), not colored emoji/icons", effort: "XS", priority: "P1" },
+    ],
+  },
+  {
+    fkey: "F12", label: "EXIT ANALYSIS", module: "M20",
+    uiStatus: "stub", confidence: 20,
+    notes: "DealStub placeholder. Exit timing dashboard exists as standalone prototype (exit_timing_dashboard.jsx) but in light Tailwind theme. Needs full retheme.",
+    actions: [
+      { task: "Convert exit_timing_dashboard.jsx from Tailwind light → Bloomberg T tokens", effort: "M", priority: "P2" },
+      { task: "Integrate into Deal F12 screen instead of standalone route", effort: "S", priority: "P2" },
+    ],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+// COMPONENT
+// ═══════════════════════════════════════════════════════════
+const statusColors = { bloomberg: T.text.green, partial: T.text.amber, white: T.text.red, stub: T.text.muted };
+const statusLabels = { bloomberg: "BLOOMBERG ✓", partial: "PARTIAL", white: "WHITE UI ✗", stub: "STUB ONLY" };
+const effortColors = { XS: T.text.green, S: T.text.green, M: T.text.amber, L: T.text.orange, XL: T.text.red, "—": T.text.muted };
+
+export default function SpecDashboard() {
+  const [view, setView] = useState("markets");
+  const [selectedMarketTab, setSelectedMarketTab] = useState("overview");
+  const [selectedDealTab, setSelectedDealTab] = useState("F2");
+  const [showActions, setShowActions] = useState(true);
+
+  const selectedMarket = MARKETS_F4_TABS.find(t => t.key === selectedMarketTab);
+  const selectedDeal = DEAL_TABS.find(t => t.fkey === selectedDealTab);
+
+  const totalActions = DEAL_TABS.reduce((s, t) => s + t.actions.length, 0);
+  const p0Actions = DEAL_TABS.reduce((s, t) => s + t.actions.filter(a => a.priority === "P0").length, 0);
+  const whiteCount = DEAL_TABS.filter(t => t.uiStatus === "white").length;
+  const partialCount = DEAL_TABS.filter(t => t.uiStatus === "partial").length;
+
+  return (
+    <div style={{ background: T.bg.terminal, minHeight: "100vh", fontFamily: T.font.mono, color: T.text.primary, display: "flex", flexDirection: "column" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #2A3348 #0A0E17; }
+        *::-webkit-scrollbar { width: 5px; } *::-webkit-scrollbar-track { background: #0A0E17; } *::-webkit-scrollbar-thumb { background: #2A3348; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+
+      {/* TOP BAR */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px", height: 36, background: "#050810", borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: T.text.amber, letterSpacing: 2 }}>JEDI RE</span>
+          <span style={{ fontSize: 9, color: T.text.muted }}>|</span>
+          <span style={{ fontSize: 10, color: T.text.cyan, fontWeight: 600 }}>UI CONVERSION SPEC</span>
+        </div>
+        <div style={{ display: "flex", gap: 6 }}>
+          <span style={{ fontSize: 9, color: T.text.muted }}>P0 ACTIONS: <span style={{ color: T.text.red, fontWeight: 700 }}>{p0Actions}</span></span>
+          <span style={{ fontSize: 9, color: T.text.muted }}>| TOTAL: <span style={{ color: T.text.amber, fontWeight: 700 }}>{totalActions}</span></span>
+          <span style={{ fontSize: 9, color: T.text.muted }}>| WHITE TABS: <span style={{ color: T.text.red, fontWeight: 700 }}>{whiteCount}</span></span>
+        </div>
+      </div>
+
+      {/* VIEW SELECTOR */}
+      <div style={{ display: "flex", borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        {[{ k: "markets", l: "MARKETS F4 — CONTENT ARCHITECTURE" }, { k: "capsule", l: "DEAL CAPSULE — TAB CONVERSION AUDIT" }].map(v => (
+          <button key={v.k} onClick={() => setView(v.k)} style={{
+            flex: 1, padding: "8px 0", background: view === v.k ? T.bg.active : "transparent",
+            color: view === v.k ? T.text.amber : T.text.secondary, fontSize: 11, fontWeight: 700,
+            fontFamily: T.font.mono, border: "none", cursor: "pointer", letterSpacing: 1,
+            borderBottom: view === v.k ? `2px solid ${T.text.amber}` : "2px solid transparent",
+          }}>{v.l}</button>
+        ))}
+      </div>
+
+      {/* CONTENT */}
+      <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
+
+        {/* ═══ MARKETS F4 VIEW ═══ */}
+        {view === "markets" && (
+          <>
+            {/* LEFT: Tab list */}
+            <div style={{ width: 220, borderRight: `1px solid ${T.border.subtle}`, overflow: "auto", flexShrink: 0 }}>
+              <div style={{ padding: "10px 12px 6px", fontSize: 8, color: T.text.muted, letterSpacing: 1 }}>PORTFOLIO → F4 MARKETS</div>
+              <div style={{ padding: "4px 12px 10px", fontSize: 10, color: T.text.white, fontWeight: 600, fontFamily: T.font.label }}>
+                5 internal tabs that replace the old MyMarkets routes
+              </div>
+              {MARKETS_F4_TABS.map(tab => (
+                <button key={tab.key} onClick={() => setSelectedMarketTab(tab.key)} style={{
+                  display: "block", width: "100%", textAlign: "left", padding: "8px 12px",
+                  background: selectedMarketTab === tab.key ? T.bg.active : "transparent",
+                  borderLeft: selectedMarketTab === tab.key ? `3px solid ${T.text.amber}` : "3px solid transparent",
+                  border: "none", borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer",
+                  borderLeft: selectedMarketTab === tab.key ? `3px solid ${T.text.amber}` : "3px solid transparent",
+                }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: selectedMarketTab === tab.key ? T.text.amber : T.text.primary, fontFamily: T.font.mono }}>{tab.label}</div>
+                  <div style={{ fontSize: 8, color: T.text.muted, marginTop: 2, fontFamily: T.font.label }}>{tab.modules.join(" + ")}</div>
+                </button>
+              ))}
+
+              <div style={{ margin: "12px", padding: "8px 10px", background: T.text.cyan + "0A", border: `1px solid ${T.text.cyan}22`, borderRadius: 2 }}>
+                <div style={{ fontSize: 8, color: T.text.cyan, fontWeight: 700, letterSpacing: 1 }}>KEY INSIGHT</div>
+                <div style={{ fontSize: 9, color: T.text.secondary, marginTop: 4, fontFamily: T.font.label, lineHeight: 1.4 }}>
+                  Markets F4 is <span style={{ color: T.text.white, fontWeight: 600 }}>portfolio-level market intelligence</span> — 
+                  it answers "where should I invest?" across all your tracked markets. 
+                  Deal-level F3 (Market) answers "what's happening in THIS deal's trade area?" 
+                  Don't duplicate. F4 = macro. Deal F3 = micro.
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: Tab detail */}
+            <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+              {selectedMarket && (
+                <div style={{ padding: 16 }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, borderTop: `3px solid ${T.text.cyan}`, marginBottom: 16 }}>
+                    <div>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: T.text.white }}>{selectedMarket.label}</span>
+                      <span style={{ fontSize: 9, color: T.text.muted, marginLeft: 8 }}>{selectedMarket.modules.join(" + ")}</span>
+                    </div>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: T.text.cyan, background: T.text.cyan + "18", padding: "2px 8px", letterSpacing: 0.5 }}>PORTFOLIO CONTEXT</span>
+                  </div>
+
+                  {/* Decision */}
+                  <div style={{ padding: "8px 12px", background: T.text.amber + "08", borderLeft: `3px solid ${T.text.amber}`, marginBottom: 16 }}>
+                    <div style={{ fontSize: 8, color: T.text.amber, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>THE DECISION THIS TAB DRIVES</div>
+                    <div style={{ fontSize: 11, color: T.text.white, fontWeight: 600, fontFamily: T.font.label }}>{selectedMarket.decision}</div>
+                  </div>
+
+                  {/* Content blocks */}
+                  <div style={{ fontSize: 9, color: T.text.secondary, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>CONTENT BLOCKS</div>
+                  {selectedMarket.content.map((c, i) => (
+                    <div key={i} style={{ display: "flex", gap: 12, padding: "8px 12px", background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}`, marginBottom: 1 }}>
+                      <div style={{ width: 120, flexShrink: 0 }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: T.text.purple, background: T.text.purple + "18", padding: "1px 5px", letterSpacing: 0.5 }}>{c.type}</span>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 10, color: T.text.primary, fontWeight: 600 }}>{c.label}</div>
+                        {c.columns && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                            {c.columns.map((col, ci) => (
+                              <span key={ci} style={{ fontSize: 7, color: T.text.cyan, background: T.text.cyan + "12", padding: "1px 4px", border: `1px solid ${T.text.cyan}22` }}>{col}</span>
+                            ))}
+                          </div>
+                        )}
+                        {c.items && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                            {c.items.map((item, ii) => (
+                              <span key={ii} style={{ fontSize: 8, color: T.text.secondary, background: T.bg.header, padding: "2px 6px" }}>{item}</span>
+                            ))}
+                          </div>
+                        )}
+                        {c.note && <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: T.font.label, lineHeight: 1.4 }}>{c.note}</div>}
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Wiring info */}
+                  <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ padding: "8px 12px", background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+                      <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, marginBottom: 4 }}>DATA SOURCE</div>
+                      <div style={{ fontSize: 9, color: T.text.green, fontFamily: T.font.label }}>{selectedMarket.dataSource}</div>
+                    </div>
+                    <div style={{ padding: "8px 12px", background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+                      <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, marginBottom: 4 }}>EXISTING CODE</div>
+                      <div style={{ fontSize: 9, color: T.text.orange, fontFamily: T.font.label }}>{selectedMarket.existingCode}</div>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: T.bg.header, border: `1px solid ${T.text.amber}33` }}>
+                    <div style={{ fontSize: 8, color: T.text.amber, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>WIRE ACTION</div>
+                    <div style={{ fontSize: 9, color: T.text.primary, fontFamily: T.font.label, lineHeight: 1.4 }}>{selectedMarket.wireAction}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ═══ DEAL CAPSULE VIEW ═══ */}
+        {view === "capsule" && (
+          <>
+            {/* LEFT: Tab list with status indicators */}
+            <div style={{ width: 240, borderRight: `1px solid ${T.border.subtle}`, overflow: "auto", flexShrink: 0 }}>
+              <div style={{ padding: "10px 12px 6px", fontSize: 8, color: T.text.muted, letterSpacing: 1 }}>DEAL CONTEXT → F1–F12</div>
+              
+              {/* Summary bar */}
+              <div style={{ margin: "4px 8px 8px", display: "flex", gap: 4 }}>
+                {Object.entries(statusColors).map(([k, c]) => {
+                  const count = DEAL_TABS.filter(t => t.uiStatus === k).length;
+                  return (
+                    <div key={k} style={{ flex: 1, padding: "4px", background: c + "12", border: `1px solid ${c}33`, textAlign: "center" }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: c }}>{count}</div>
+                      <div style={{ fontSize: 6, color: c, letterSpacing: 0.5 }}>{k.toUpperCase()}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {DEAL_TABS.map(tab => {
+                const sc = statusColors[tab.uiStatus];
+                return (
+                  <button key={tab.fkey} onClick={() => setSelectedDealTab(tab.fkey)} style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+                    textAlign: "left", padding: "6px 10px", border: "none", cursor: "pointer",
+                    background: selectedDealTab === tab.fkey ? T.bg.active : "transparent",
+                    borderLeft: selectedDealTab === tab.fkey ? `3px solid ${T.text.amber}` : "3px solid transparent",
+                    borderBottom: `1px solid ${T.border.subtle}`,
+                  }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 8, color: T.text.muted }}>{tab.fkey}</span>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: selectedDealTab === tab.fkey ? T.text.amber : T.text.primary, fontFamily: T.font.mono }}>{tab.label}</span>
+                      </div>
+                      <div style={{ fontSize: 7, color: T.text.muted, marginTop: 1 }}>{tab.module}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {tab.actions.length > 0 && <span style={{ fontSize: 8, color: T.text.amber, fontWeight: 700 }}>{tab.actions.length}</span>}
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: sc }} />
+                    </div>
+                  </button>
+                );
+              })}
+
+              <div style={{ margin: 8, padding: "6px 8px", background: T.text.red + "0A", border: `1px solid ${T.text.red}22`, borderRadius: 2 }}>
+                <div style={{ fontSize: 8, color: T.text.red, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>WORST OFFENDERS</div>
+                <div style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.label, lineHeight: 1.5 }}>
+                  <span style={{ color: T.text.red, fontWeight: 600 }}>F2 Zoning</span> and <span style={{ color: T.text.red, fontWeight: 600 }}>F9 Comps</span> — 
+                  both still fully white Tailwind UI. These need surgical token replacement.
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: Tab detail */}
+            <div style={{ flex: 1, overflow: "auto", animation: "fadeIn 0.15s" }}>
+              {selectedDeal && (
+                <div style={{ padding: 16 }}>
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: T.bg.header, borderTop: `3px solid ${statusColors[selectedDeal.uiStatus]}`, borderBottom: `1px solid ${T.border.subtle}`, marginBottom: 16 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: T.text.white }}>{selectedDeal.fkey} {selectedDeal.label}</span>
+                      <span style={{ fontSize: 9, color: T.text.muted }}>{selectedDeal.module}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{
+                        fontSize: 8, fontWeight: 700, letterSpacing: 0.5, padding: "2px 8px",
+                        color: statusColors[selectedDeal.uiStatus],
+                        background: statusColors[selectedDeal.uiStatus] + "18",
+                        border: `1px solid ${statusColors[selectedDeal.uiStatus]}33`,
+                      }}>{statusLabels[selectedDeal.uiStatus]}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <div style={{ width: 60, height: 4, background: T.bg.terminal, borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ width: `${selectedDeal.confidence}%`, height: "100%", background: selectedDeal.confidence >= 80 ? T.text.green : selectedDeal.confidence >= 50 ? T.text.amber : T.text.red, borderRadius: 2 }} />
+                        </div>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: T.text.secondary }}>{selectedDeal.confidence}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status notes */}
+                  <div style={{ padding: "8px 12px", background: T.bg.panel, borderLeft: `3px solid ${statusColors[selectedDeal.uiStatus]}`, marginBottom: 16 }}>
+                    <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, marginBottom: 4 }}>STATUS ASSESSMENT</div>
+                    <div style={{ fontSize: 10, color: T.text.primary, fontFamily: T.font.label, lineHeight: 1.5 }}>{selectedDeal.notes}</div>
+                  </div>
+
+                  {/* Recommendation (if present) */}
+                  {selectedDeal.recommendation && (
+                    <div style={{ padding: "8px 12px", background: T.text.amber + "08", border: `1px solid ${T.text.amber}33`, marginBottom: 16 }}>
+                      <div style={{ fontSize: 8, color: T.text.amber, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>RECOMMENDATION</div>
+                      <div style={{ fontSize: 10, color: T.text.primary, fontFamily: T.font.label, lineHeight: 1.5 }}>{selectedDeal.recommendation}</div>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  {selectedDeal.actions.length > 0 ? (
+                    <>
+                      <div style={{ fontSize: 9, color: T.text.secondary, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>
+                        CONVERSION ACTIONS ({selectedDeal.actions.length})
+                      </div>
+                      {selectedDeal.actions.map((action, i) => (
+                        <div key={i} style={{
+                          display: "grid", gridTemplateColumns: "44px 44px 1fr", gap: 8, alignItems: "center",
+                          padding: "6px 10px", background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt,
+                          borderBottom: `1px solid ${T.border.subtle}`, borderLeft: action.priority === "P0" ? `3px solid ${T.text.red}` : `3px solid transparent`,
+                        }}>
+                          <span style={{
+                            fontSize: 8, fontWeight: 700, textAlign: "center", padding: "2px 0",
+                            color: action.priority === "P0" ? T.text.red : action.priority === "P1" ? T.text.amber : T.text.muted,
+                          }}>{action.priority}</span>
+                          <span style={{
+                            fontSize: 8, fontWeight: 700, textAlign: "center", padding: "2px 4px",
+                            color: effortColors[action.effort], background: effortColors[action.effort] + "18",
+                          }}>{action.effort}</span>
+                          <span style={{ fontSize: 9, color: T.text.primary, fontFamily: T.font.label }}>{action.task}</span>
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div style={{ padding: "12px", background: T.text.green + "08", border: `1px solid ${T.text.green}22`, textAlign: "center" }}>
+                      <span style={{ fontSize: 10, color: T.text.green, fontWeight: 600 }}>No conversion actions needed — this tab is Bloomberg-native.</span>
+                    </div>
+                  )}
+
+                  {/* Token replacement cheatsheet for white/partial tabs */}
+                  {(selectedDeal.uiStatus === "white" || selectedDeal.uiStatus === "partial") && (
+                    <div style={{ marginTop: 20, padding: "10px 12px", background: T.bg.header, border: `1px solid ${T.border.medium}` }}>
+                      <div style={{ fontSize: 9, color: T.text.cyan, fontWeight: 700, letterSpacing: 1, marginBottom: 8 }}>TOKEN REPLACEMENT CHEATSHEET</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 20px 1fr", gap: "4px 8px", fontSize: 9 }}>
+                        {[
+                          ["bg-white", "→", "T.bg.panel (#0F1319)"],
+                          ["bg-gray-50", "→", "T.bg.panelAlt (#131821)"],
+                          ["bg-gray-100", "→", "T.bg.header (#1A1F2E)"],
+                          ["text-gray-900", "→", "T.text.primary (#E8ECF1)"],
+                          ["text-gray-600", "→", "T.text.secondary (#8B95A5)"],
+                          ["text-gray-400", "→", "T.text.muted (#4A5568)"],
+                          ["text-blue-600", "→", "T.text.amber (#F5A623)"],
+                          ["border-gray-200", "→", "T.border.subtle (#1E2538)"],
+                          ["border-gray-300", "→", "T.border.medium (#2A3348)"],
+                          ["shadow-md", "→", "REMOVE (no shadows in terminal)"],
+                          ["rounded-lg", "→", "borderRadius: 2 (max)"],
+                          ["hover:bg-gray-50", "→", "hover T.bg.hover (#1E2538)"],
+                        ].map((row, i) => (
+                          <React.Fragment key={i}>
+                            <span style={{ color: T.text.red, fontFamily: T.font.mono }}>{row[0]}</span>
+                            <span style={{ color: T.text.muted, textAlign: "center" }}>{row[1]}</span>
+                            <span style={{ color: T.text.green, fontFamily: T.font.mono }}>{row[2]}</span>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

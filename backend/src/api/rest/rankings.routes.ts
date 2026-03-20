@@ -125,13 +125,17 @@ router.get('/:marketId', async (req: Request, res: Response) => {
 
     const result = await pool.query(`
       SELECT 
-        id, parcel_id, address, owner_name, units, year_built,
-        building_sqft, assessed_value, total_assessed_value,
-        class_code, neighborhood_code, property_type
-      FROM property_records
-      WHERE property_type = 'Multifamily'
-        AND units > 50
-      ORDER BY units DESC
+        pr.id, pr.parcel_id, pr.address, pr.owner_name, pr.units, pr.year_built,
+        pr.building_sqft, pr.assessed_value, pr.total_assessed_value,
+        pr.class_code, pr.neighborhood_code, pr.property_type,
+        rst.property_name
+      FROM property_records pr
+      LEFT JOIN rent_scrape_targets rst
+        ON LOWER(TRIM(SPLIT_PART(pr.address, ',', 1))) = LOWER(TRIM(rst.address))
+        AND rst.property_name IS NOT NULL
+      WHERE pr.property_type = 'Multifamily'
+        AND pr.units > 50
+      ORDER BY pr.units DESC
       LIMIT 40
     `);
 
@@ -149,10 +153,11 @@ router.get('/:marketId', async (req: Request, res: Response) => {
       const propClass = deriveClass(row.class_code, yearBuilt);
 
       const addrParts = (row.address || '').split(',')[0].trim();
-      const name = addrParts
+      const addrFallback = addrParts
         .split(' ')
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
+      const name = row.property_name || addrFallback;
 
       return {
         id: row.id,
@@ -204,13 +209,17 @@ router.get('/performance/:marketId', async (req: Request, res: Response) => {
 
     const result = await pool.query(`
       SELECT 
-        id, parcel_id, address, owner_name, units, year_built,
-        building_sqft, assessed_value, total_assessed_value,
-        class_code, neighborhood_code, property_type
-      FROM property_records
-      WHERE property_type = 'Multifamily'
-        AND units > 50
-      ORDER BY units DESC
+        pr.id, pr.parcel_id, pr.address, pr.owner_name, pr.units, pr.year_built,
+        pr.building_sqft, pr.assessed_value, pr.total_assessed_value,
+        pr.class_code, pr.neighborhood_code, pr.property_type,
+        rst.property_name
+      FROM property_records pr
+      LEFT JOIN rent_scrape_targets rst
+        ON LOWER(TRIM(SPLIT_PART(pr.address, ',', 1))) = LOWER(TRIM(rst.address))
+        AND rst.property_name IS NOT NULL
+      WHERE pr.property_type = 'Multifamily'
+        AND pr.units > 50
+      ORDER BY pr.units DESC
       LIMIT 200
     `);
 
@@ -228,10 +237,11 @@ router.get('/performance/:marketId', async (req: Request, res: Response) => {
       const propClass = deriveClass(row.class_code, yearBuilt);
 
       const addrParts = (row.address || '').split(',')[0].trim();
-      const name = addrParts
+      const addrFallback = addrParts
         .split(' ')
         .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
+      const name = row.property_name || addrFallback;
 
       return {
         id: row.id,

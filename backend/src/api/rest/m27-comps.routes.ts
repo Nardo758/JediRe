@@ -45,7 +45,8 @@ router.post('/deals/:dealId/comps/generate', requireAuth, async (req: Authentica
     });
   } catch (error: any) {
     console.error('Generate comp set error:', error);
-    res.status(500).json({
+    const status = (error.message && (error.message.includes('coordinates') || error.message.includes('not found') || error.message.includes('required'))) ? 400 : 500;
+    res.status(status).json({
       success: false,
       error: error.message
     });

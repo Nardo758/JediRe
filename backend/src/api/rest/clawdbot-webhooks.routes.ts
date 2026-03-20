@@ -23,7 +23,7 @@ function validateSignature(req: Request): boolean {
   const signature = req.headers['x-webhook-signature'] as string;
   const secret = process.env.CLAWDBOT_WEBHOOK_SECRET;
 
-  if (!secret) return true;
+  if (!secret) return false;
   if (!signature) return false;
 
   const payload = JSON.stringify(req.body);
@@ -45,7 +45,7 @@ function validateSignature(req: Request): boolean {
 function validateAuthToken(req: Request): boolean {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   const expectedToken = process.env.CLAWDBOT_AUTH_TOKEN;
-  if (!expectedToken) return true;
+  if (!expectedToken) return false;
   if (!token) return false;
   return token === expectedToken;
 }
@@ -601,7 +601,8 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
 
       case 'recent_errors': {
         const limit = params?.limit || 20;
-        const hours = params?.hours || 24;
+        const hoursRaw = params?.hours || 24;
+        const hours = Math.max(1, Math.min(720, parseInt(String(hoursRaw), 10) || 24));
 
         const errorsResult = await pool.query(`
           SELECT
@@ -615,10 +616,10 @@ router.post('/command', validateWebhook, async (req: ClawdbotWebhookRequest, res
             is_webgl_error as "isWebGLError",
             created_at as "createdAt"
           FROM error_logs
-          WHERE created_at > NOW() - INTERVAL '${hours} hours'
+          WHERE created_at > NOW() - ($2 * INTERVAL '1 hour')
           ORDER BY created_at DESC
           LIMIT $1
-        `, [limit]).catch(() => ({ rows: [], rowCount: 0 }));
+        `, [limit, hours]).catch(() => ({ rows: [], rowCount: 0 }));
 
         result = {
           errors: errorsResult.rows,

@@ -56,7 +56,7 @@ interface MarketTabContentProps {
 
 export const MarketTabContent: React.FC<MarketTabContentProps> = ({ 
   dealId, 
-  apiBaseUrl = "/api/v1" 
+  apiBaseUrl = "/api/v1/deals" 
 }) => {
   const [marketData, setMarketData] = useState<any>(null);
   const [loading, setLoading] = useState(true);

@@ -31,6 +31,9 @@ router.get('/property/:propertyId', async (req: Request, res: Response) => {
     const results = await compQueryService.findCompsForProperty(req.params.propertyId);
     res.json({ success: true, data: results, count: results.length });
   } catch (err: any) {
+    if (err.message && err.message.toLowerCase().includes('not found')) {
+      return res.status(404).json({ error: err.message });
+    }
     res.status(500).json({ error: err.message });
   }
 });

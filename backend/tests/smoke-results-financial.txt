@@ -1,11 +1,259 @@
-================================================================================
-SMOKE TEST: Financial & Strategy Routes (Phase 3)
-================================================================================
-Base URL: http://localhost:3000
-Timestamp: 2026-03-20 03:06:50
-Auth Token: ...
-================================================================================
+JediRe Financial & Strategy Smoke Test Results (Phase 3)
+Run: Fri Mar 20 03:44:47 AM UTC 2026
+BASE_URL: http://localhost:4000
+DEAL_ID : 12eb9e11-3b2d-44d5-9f59-877a76344c18
+PROP_ID : 750a68ce-d0cf-4d3e-b184-82335a774b9c
 
-[0;34m[INFO][0m Starting smoke tests for ~192 financial & strategy endpoints...
-[0;34m[INFO][0m 
-=== Testing proforma.routes.ts (12 endpoints) ===
+PASS=64  WARN=122  FAIL=0  TOTAL=186
+
+
+── PRO FORMA ADJUSTMENTS ──
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma
+WARN 404  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/initialize
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/history
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/adjustments
+WARN 404  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/recalculate
+WARN 404  PATCH  /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/override
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/comparison
+WARN 404  DELETE /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/override/rent_growth
+WARN 404  POST   /api/v1/deals/batch/proforma/recalculate
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/export
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/traffic-integration?propertyId=750a68ce-d0cf-4d3e-b184-82335a774b9c
+WARN 404  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/proforma/traffic-refresh
+
+── PROFORMA GENERATOR ──
+PASS 200  POST   /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/proforma/generate
+PASS 200  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/proforma/snapshots
+WARN 404  GET    /api/v1/properties/proforma/snapshots/00000000-0000-0000-0000-000000000098
+PASS 200  DELETE /api/v1/properties/proforma/snapshots/00000000-0000-0000-0000-000000000098
+WARN 404  GET    /api/v1/properties/proforma/templates
+WARN 404  POST   /api/v1/properties/proforma/templates
+WARN 404  GET    /api/v1/properties/proforma/templates/00000000-0000-0000-0000-000000000099
+WARN 404  PUT    /api/v1/properties/proforma/templates/00000000-0000-0000-0000-000000000099
+WARN 404  DELETE /api/v1/properties/proforma/templates/00000000-0000-0000-0000-000000000099
+
+── FINANCIAL DASHBOARD ──
+PASS 200  GET    /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/summary
+PASS 200  POST   /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/auto-assumptions
+WARN 404  POST   /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/analyze
+WARN 404  GET    /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/assumptions
+WARN 404  PATCH  /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/assumptions
+WARN 404  POST   /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/validate
+WARN 400  POST   /api/v1/financial-dashboard/12eb9e11-3b2d-44d5-9f59-877a76344c18/chat
+
+── FINANCIAL MODEL ENGINE ──
+WARN 000000  POST   /api/v1/financial-model/build
+WARN 404  GET    /api/v1/financial-model/12eb9e11-3b2d-44d5-9f59-877a76344c18/latest
+WARN 404  GET    /api/v1/financial-model/12eb9e11-3b2d-44d5-9f59-877a76344c18/export/excel
+
+── FINANCIAL MODELS CRUD ──
+PASS 200  GET    /api/v1/financial-models
+PASS 200  POST   /api/v1/financial-models
+PASS 200  GET    /api/v1/financial-models/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  PATCH  /api/v1/financial-models/00000000-0000-0000-0000-000000000096
+WARN 404  DELETE /api/v1/financial-models/00000000-0000-0000-0000-000000000096
+WARN 400  POST   /api/v1/financial-models/12eb9e11-3b2d-44d5-9f59-877a76344c18/compute-claude
+WARN 404  GET    /api/v1/financial-models/12eb9e11-3b2d-44d5-9f59-877a76344c18/claude-output
+WARN 400  GET    /api/v1/financial-models/12eb9e11-3b2d-44d5-9f59-877a76344c18/assumptions
+PASS 200  PATCH  /api/v1/financial-models/12eb9e11-3b2d-44d5-9f59-877a76344c18/assumptions
+PASS 200  POST   /api/v1/financial-models/12eb9e11-3b2d-44d5-9f59-877a76344c18/validate
+
+── CAPITAL STRUCTURE — Stack & Sizing ──
+PASS 200  POST   /api/v1/capital-structure/stack
+PASS 200  POST   /api/v1/capital-structure/size-senior
+PASS 200  POST   /api/v1/capital-structure/size-mezz
+PASS 200  POST   /api/v1/capital-structure/insights
+
+── CAPITAL STRUCTURE — Debt Products ──
+PASS 200  POST   /api/v1/capital-structure/debt-products/recommend
+PASS 200  POST   /api/v1/capital-structure/debt-products/mismatch
+
+── CAPITAL STRUCTURE — Rates ──
+PASS 200  POST   /api/v1/capital-structure/rate/cycle-phase
+PASS 200  POST   /api/v1/capital-structure/rate/all-in
+PASS 200  POST   /api/v1/capital-structure/rate/lock-vs-float
+PASS 200  POST   /api/v1/capital-structure/rate/sensitivity
+PASS 200  POST   /api/v1/capital-structure/rate/spread-percentile
+PASS 200  GET    /api/v1/capital-structure/rates/live
+PASS 200  GET    /api/v1/capital-structure/rates/history?period=1y
+
+── CAPITAL STRUCTURE — Waterfall & Scenarios ──
+PASS 200  POST   /api/v1/capital-structure/waterfall
+PASS 200  POST   /api/v1/capital-structure/scenarios/compare
+
+── CAPITAL STRUCTURE — Lifecycle & Rate Sheet ──
+PASS 200  POST   /api/v1/capital-structure/lifecycle/refi
+PASS 200  POST   /api/v1/capital-structure/lifecycle/draw-progress
+WARN 404  GET    /api/v1/capital-structure/rate-sheet/12eb9e11-3b2d-44d5-9f59-877a76344c18/latest
+PASS 202  POST   /api/v1/capital-structure/optimal-strategy
+
+── STRATEGY ANALYSES ──
+PASS 200  POST   /api/v1/strategy-analyses
+PASS 200  GET    /api/v1/strategy-analyses/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 400  POST   /api/v1/strategy-analyses/compare
+WARN 404  PATCH  /api/v1/strategy-analyses/00000000-0000-0000-0000-000000000097
+WARN 404  DELETE /api/v1/strategy-analyses/00000000-0000-0000-0000-000000000097
+
+── CUSTOM STRATEGIES ──
+WARN 409  POST   /api/v1/custom-strategies
+PASS 200  GET    /api/v1/custom-strategies
+WARN 404  GET    /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097
+WARN 404  PUT    /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097
+WARN 404  DELETE /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097
+WARN 404  POST   /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097/duplicate
+WARN 404  POST   /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097/apply-to-type
+WARN 404  GET    /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097/deals
+WARN 404  GET    /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097/performance
+WARN 404  GET    /api/v1/custom-strategies/00000000-0000-0000-0000-000000000097/property-assignments
+
+── OPUS ──
+WARN 400  GET    /api/v1/opus/conversations
+PASS 201  POST   /api/v1/opus/conversations
+WARN 404  GET    /api/v1/opus/conversations/00000000-0000-0000-0000-000000000095
+PASS 204  DELETE /api/v1/opus/conversations/00000000-0000-0000-0000-000000000095
+WARN 400  POST   /api/v1/opus/conversations/00000000-0000-0000-0000-000000000095/messages
+WARN 400  GET    /api/v1/opus/proforma-versions
+WARN 404  GET    /api/v1/opus/proforma-versions/00000000-0000-0000-0000-000000000099
+WARN 400  POST   /api/v1/opus/proforma-versions
+PASS 204  DELETE /api/v1/opus/proforma-versions/00000000-0000-0000-0000-000000000099
+
+── M26 TAX ──
+WARN 400  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/tax/projection
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/tax/projection
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/tax/summary
+
+── TAX COMP ANALYSIS ──
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/tax/comp-analysis
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/tax/comp-analysis
+WARN 404  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/tax/comp-analysis/summary
+
+── UNIT MIX PROPAGATION ──
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/unit-mix/apply
+PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/unit-mix/status
+PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/unit-mix/set
+WARN 400  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/development-path/select
+
+── UNIT MIX ──
+PASS 200  GET    /api/v1/unit-mix/12eb9e11-3b2d-44d5-9f59-877a76344c18/comps
+PASS 200  GET    /api/v1/unit-mix/12eb9e11-3b2d-44d5-9f59-877a76344c18/trends
+PASS 200  GET    /api/v1/unit-mix/12eb9e11-3b2d-44d5-9f59-877a76344c18/program
+WARN 400  POST   /api/v1/unit-mix/12eb9e11-3b2d-44d5-9f59-877a76344c18/program
+PASS 200  GET    /api/v1/unit-mix/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning
+
+── DATA LIBRARY ──
+PASS 200  GET    /api/v1/data-library
+PASS 200  GET    /api/v1/data-library/comparables
+WARN 404  GET    /api/v1/data-library/00000000-0000-0000-0000-000000000099
+WARN 404  PATCH  /api/v1/data-library/00000000-0000-0000-0000-000000000099
+PASS 204  DELETE /api/v1/data-library/00000000-0000-0000-0000-000000000099
+
+── DATA UPLOAD ──
+PASS 200  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/actuals
+PASS 200  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/uploads
+
+── UPLOADS ──
+WARN 400  POST   /api/v1/uploads/process
+PASS 200  GET    /api/v1/uploads/templates
+PASS 200  GET    /api/v1/uploads/history/750a68ce-d0cf-4d3e-b184-82335a774b9c
+
+── UPLOAD TEMPLATES ──
+PASS 200  GET    /api/v1/upload-templates
+WARN 404  GET    /api/v1/upload-templates/excel
+
+── SETTINGS AI PREFERENCES ──
+PASS 200  GET    /api/v1/settings/ai-preferences
+WARN 400  PUT    /api/v1/settings/ai-preferences
+
+── TRAINING ──
+WARN 400  POST   /api/training/examples
+WARN 400  POST   /api/training/examples/bulk
+WARN 400  POST   /api/training/extract-patterns
+WARN 400  POST   /api/training/generate-suggestions
+PASS 200  GET    /api/training/6253ba3f-d40d-4597-86ab-270c8397a857/M08
+PASS 200  GET    /api/training/6253ba3f-d40d-4597-86ab-270c8397a857/all
+WARN 400  PUT    /api/training/suggestions/00000000-0000-0000-0000-000000000099/feedback
+PASS 200  DELETE /api/training/6253ba3f-d40d-4597-86ab-270c8397a857/M08
+
+── CALIBRATION ──
+WARN 400  POST   /api/calibration/actuals
+WARN 400  POST   /api/calibration/actuals/bulk
+WARN 400  POST   /api/calibration/validate
+WARN 400  POST   /api/calibration/calculate
+PASS 200  GET    /api/calibration/6253ba3f-d40d-4597-86ab-270c8397a857/M08
+PASS 200  GET    /api/calibration/6253ba3f-d40d-4597-86ab-270c8397a857/summary
+PASS 200  GET    /api/calibration/6253ba3f-d40d-4597-86ab-270c8397a857/M08/validations
+WARN 400  POST   /api/calibration/6253ba3f-d40d-4597-86ab-270c8397a857/M08/recalculate
+PASS 200  GET    /api/calibration/6253ba3f-d40d-4597-86ab-270c8397a857/750a68ce-d0cf-4d3e-b184-82335a774b9c/actuals
+PASS 200  DELETE /api/calibration/6253ba3f-d40d-4597-86ab-270c8397a857/M08
+
+── CORRELATIONS ──
+PASS 200  GET    /api/v1/correlations/report
+PASS 200  GET    /api/v1/correlations/property/750a68ce-d0cf-4d3e-b184-82335a774b9c
+WARN 404  GET    /api/v1/correlations/metric/irr
+PASS 200  GET    /api/v1/correlations/summary
+WARN 403  POST   /api/v1/correlations/admin/correlations/compute
+PASS 200  GET    /api/v1/correlations/market/atlanta
+
+── FINANCIAL ASSUMPTIONS (not mounted — expect 4xx) ──
+WARN 404  POST   /api/v1/financial/link-design
+WARN 404  GET    /api/v1/financial/linked/00000000-0000-0000-0000-000000000099?type=design
+WARN 404  POST   /api/v1/financial/export-design
+WARN 404  POST   /api/v1/financial/compare-to-targets
+WARN 401  GET    /api/v1/financial/health
+
+── SCENARIOS (not mounted — expect 4xx) ──
+WARN 404  POST   /api/v1/scenarios/generate/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  GET    /api/v1/scenarios/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  GET    /api/v1/scenarios/00000000-0000-0000-0000-000000000099/details
+WARN 404  GET    /api/v1/scenarios/12eb9e11-3b2d-44d5-9f59-877a76344c18/comparison
+WARN 404  PUT    /api/v1/scenarios/00000000-0000-0000-0000-000000000099/recalculate
+WARN 404  POST   /api/v1/scenarios/custom
+WARN 404  PUT    /api/v1/scenarios/00000000-0000-0000-0000-000000000099
+WARN 404  DELETE /api/v1/scenarios/00000000-0000-0000-0000-000000000099
+WARN 404  GET    /api/v1/scenarios/templates
+WARN 404  GET    /api/v1/scenarios/12eb9e11-3b2d-44d5-9f59-877a76344c18/events
+
+── RISK ROUTES (not mounted — expect 4xx) ──
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099/supply
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099/demand
+WARN 404  GET    /api/v1/risk/deal/12eb9e11-3b2d-44d5-9f59-877a76344c18
+WARN 404  GET    /api/v1/risk/history/00000000-0000-0000-0000-000000000001
+WARN 404  GET    /api/v1/risk/events
+WARN 404  POST   /api/v1/risk/threshold
+WARN 404  POST   /api/v1/risk/calculate/00000000-0000-0000-0000-000000000001
+WARN 404  POST   /api/v1/risk/escalation/supply
+WARN 404  POST   /api/v1/risk/escalation/demand
+WARN 404  POST   /api/v1/risk/de-escalation/supply
+WARN 404  POST   /api/v1/risk/de-escalation/demand
+WARN 404  GET    /api/v1/risk/categories
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099/regulatory
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099/market
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099/execution
+WARN 404  GET    /api/v1/risk/trade-area/00000000-0000-0000-0000-000000000099/climate
+WARN 404  GET    /api/v1/risk/comprehensive/12eb9e11-3b2d-44d5-9f59-877a76344c18
+
+── ANALYSIS ROUTES (not mounted — expect 4xx) ──
+WARN 404  POST   /api/v1/analysis/demand-signal
+WARN 404  POST   /api/v1/analysis/carrying-capacity
+WARN 404  POST   /api/v1/analysis/imbalance
+WARN 404  POST   /api/v1/analysis/market-signal
+WARN 404  GET    /api/v1/analysis/costar/submarkets
+WARN 404  POST   /api/v1/analysis/costar/analyze
+
+── LLM ROUTES (not mounted — expect 4xx) ──
+WARN 404  GET    /api/v1/llm/status
+WARN 404  POST   /api/v1/llm/complete
+WARN 404  POST   /api/v1/llm/analyze-property
+WARN 404  POST   /api/v1/llm/analyze-market
+WARN 404  GET    /api/v1/llm/analysis-history
+
+── QWEN ROUTES (not mounted — expect 4xx) ──
+WARN 404  POST   /api/v1/qwen/analyze-compliance
+WARN 404  POST   /api/v1/qwen/analyze-aerial
+WARN 404  POST   /api/v1/qwen/owner-disposition
+WARN 404  POST   /api/v1/qwen/negotiation-strategy
+WARN 404  GET    /api/v1/qwen/status
+
+
+No 5xx failures.

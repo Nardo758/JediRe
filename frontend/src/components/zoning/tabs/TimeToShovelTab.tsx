@@ -1,4 +1,3 @@
-import { T as BT } from '../../deal/bloomberg-tokens';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
 import { apiClient } from '../../../services/api.client';
@@ -14,25 +13,23 @@ function formatCurrency(val: number): string {
 }
 
 function TrendArrow({ trend }: { trend: 'improving' | 'stable' | 'worsening' }) {
-  if (trend === 'improving') return <span className="font-bold" style={{ color: BT.green }}>↓</span>;
-  if (trend === 'worsening') return <span className="font-bold" style={{ color: BT.redL }}>↑</span>;
-  return <span className="font-bold" style={{ color: BT.td }}>→</span>;
+  if (trend === 'improving') return <span className="text-green-600 font-bold">{'\u2193'}</span>;
+  if (trend === 'worsening') return <span className="text-red-600 font-bold">{'\u2191'}</span>;
+  return <span className="text-gray-400 font-bold">{'\u2192'}</span>;
 }
 
 function DataSourceBadge({ source, count }: { source: 'real' | 'synthetic'; count?: number }) {
   if (source === 'real') {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5"
-        style={{ background: BT.greenBg, color: BT.greenL, border: `1px solid ${BT.green}50` }}>
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: BT.green }} />
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+        <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
         Real Data{count ? ` (${count})` : ''}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-2 py-0.5"
-      style={{ background: BT.amberBg, color: BT.amberL, border: `1px solid ${BT.amber}50` }}>
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: BT.amber }} />
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+      <span className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
       Estimated
     </span>
   );
@@ -83,17 +80,17 @@ function DealContextBar({ deal, developmentPath, unitCount, municipality, onSele
     { id: 'rezone', label: 'Rezone' },
   ];
   return (
-    <div className="rounded-lg border p-4" style={{ background: BT.bgCard, borderColor: BT.border }}>
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
-          <label className="block text-[10px] font-medium uppercase tracking-wide mb-1" style={{ color: BT.td }}>Deal</label>
-          <div className="text-sm border rounded-md px-3 py-2 truncate" style={{ color: BT.text, borderColor: BT.border, background: BT.bgPanel }}>
+          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Deal</label>
+          <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50 truncate">
             {deal?.name || deal?.address || 'No deal selected'}
           </div>
         </div>
         <div className="md:col-span-2">
-          <label className="block text-[10px] font-medium uppercase tracking-wide mb-1" style={{ color: BT.td }}>Development Path</label>
-          <div className="flex items-center gap-1 border rounded-md p-1" style={{ background: BT.bgPanel, borderColor: BT.border }}>
+          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Development Path</label>
+          <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-md p-1">
             {paths.map(p => (
               <button
                 key={p.id}
@@ -101,7 +98,7 @@ function DealContextBar({ deal, developmentPath, unitCount, municipality, onSele
                 className={`flex-1 text-xs font-semibold px-2 py-1.5 rounded transition-all ${
                   developmentPath === p.id
                     ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-[#9EA8B4] hover:bg-[#1e2a3d] hover:text-[#C8C4BE]'
+                    : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
                 }`}
               >
                 {p.label}
@@ -110,8 +107,8 @@ function DealContextBar({ deal, developmentPath, unitCount, municipality, onSele
           </div>
         </div>
         <div>
-          <label className="block text-[10px] font-medium uppercase tracking-wide mb-1" style={{ color: BT.td }}>Jurisdiction</label>
-          <div className="text-sm border rounded-md px-3 py-2" style={{ color: BT.text, borderColor: BT.border, background: BT.bgPanel }}>
+          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Jurisdiction</label>
+          <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50">
             {municipality || 'Unknown'}
           </div>
         </div>
@@ -130,10 +127,10 @@ function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampl
   const totalSampleSize = totalSampleCount || benchmarks.reduce((sum, b) => sum + b.sampleSize, 0);
 
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
-      <div className="border-b px-5 py-3" style={{ background: BT.bgPanel, borderColor: BT.border }}>
-        <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>Evidence Base</h3>
-        <p className="text-xs mt-0.5" style={{ color: BT.td }}>Raw data from benchmark analysis</p>
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-gray-50 border-b border-gray-200 px-5 py-3">
+        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Evidence Base</h3>
+        <p className="text-xs text-gray-500 mt-0.5">Raw data from benchmark analysis</p>
       </div>
 
       <div className="px-5 py-4 space-y-6">
@@ -142,43 +139,43 @@ function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampl
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wide" style={{ color: BT.ts }}>Historical Processing Timeline</h4>
-                <p className="text-[10px] mt-0.5" style={{ color: BT.td }}>Based on {totalSampleSize} {dataSource === 'real' ? 'real entitlement records' : 'estimated applications'}</p>
+                <h4 className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Historical Processing Timeline</h4>
+                <p className="text-[10px] text-gray-500 mt-0.5">Based on {totalSampleSize} {dataSource === 'real' ? 'real entitlement records' : 'estimated applications'}</p>
               </div>
               <DataSourceBadge source={dataSource} count={totalSampleSize} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b-2" style={{ borderColor: BT.borderL }}>
-                    <th className="text-left py-2 px-2 font-semibold uppercase tracking-wide text-[10px]" style={{ color: BT.tm }}>Step</th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>
-                      <div>P25</div><div className="font-normal" style={{ color: BT.td }}>(Fast)</div>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="text-left py-2 px-2 font-semibold text-gray-700 uppercase tracking-wide text-[10px]">Step</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
+                      <div>P25</div><div className="font-normal text-gray-400">(Fast)</div>
                     </th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>
-                      <div>Median</div><div className="font-normal" style={{ color: BT.td }}>(Expected)</div>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
+                      <div>Median</div><div className="font-normal text-gray-400">(Expected)</div>
                     </th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>
-                      <div>P75</div><div className="font-normal" style={{ color: BT.td }}>(Typical)</div>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
+                      <div>P75</div><div className="font-normal text-gray-400">(Typical)</div>
                     </th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>
-                      <div>P90</div><div className="font-normal" style={{ color: BT.td }}>(Worst)</div>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
+                      <div>P90</div><div className="font-normal text-gray-400">(Worst)</div>
                     </th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>n=</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">n=</th>
                   </tr>
                 </thead>
                 <tbody>
                   {detailedSteps.map((row, idx) => (
-                    <tr key={idx} className={`border-b border-[#1e2a3d] ${row.isSubRow ? '' : 'hover:bg-[#131920]'}`}>
-                      <td className={`py-1.5 px-2 ${row.isSubRow ? 'pl-6 text-[#6B7585] italic' : 'text-[#E8E6E1] font-medium'}`}>
-                        {row.isSubRow && <span className="mr-1" style={{ color: BT.tm }}>{'\u251C\u2500'}</span>}
+                    <tr key={idx} className={`border-b border-gray-100 ${row.isSubRow ? '' : 'hover:bg-gray-50'}`}>
+                      <td className={`py-1.5 px-2 ${row.isSubRow ? 'pl-6 text-gray-500 italic' : 'text-gray-900 font-medium'}`}>
+                        {row.isSubRow && <span className="text-gray-300 mr-1">{'\u251C\u2500'}</span>}
                         {row.step}
                       </td>
-                      <td className="py-1.5 px-2 text-right" style={{ color: BT.tm }}>{row.p25}</td>
-                      <td className="py-1.5 px-2 text-right font-semibold" style={{ color: BT.tm }}>{row.median}</td>
-                      <td className="py-1.5 px-2 text-right" style={{ color: BT.tm }}>{row.p75}</td>
-                      <td className="py-1.5 px-2 text-right text-red-400 font-semibold">{row.p90}</td>
-                      <td className="py-1.5 px-2 text-right" style={{ color: BT.td }}>{row.n}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-600">{row.p25}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-700 font-semibold">{row.median}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-600">{row.p75}</td>
+                      <td className="py-1.5 px-2 text-right text-red-600 font-semibold">{row.p90}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-400">{row.n}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -190,13 +187,13 @@ function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampl
         {/* ENTITLEMENT TYPE SUMMARY */}
         {benchmarks.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.ts }}>Median Time by Entitlement Type</h4>
+            <h4 className="text-xs font-semibold text-gray-800 uppercase tracking-wide mb-2">Median Time by Entitlement Type</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {benchmarks.map((b) => (
-                <div key={b.id || b.entitlementType} className="rounded-lg border p-3" style={{ background: BT.bgPanel, borderColor: BT.border }}>
-                  <p className="text-[10px] font-semibold uppercase" style={{ color: BT.tm }}>{b.entitlementType}</p>
-                  <p className="text-2xl font-bold mt-1" style={{ color: BT.text }}>{b.medianMonths}<span className="text-xs font-normal" style={{ color: BT.td }}> mo</span></p>
-                  <p className="text-[9px] mt-1" style={{ color: BT.td }}>n={b.sampleSize}</p>
+                <div key={b.id || b.entitlementType} className="bg-gray-50 rounded-lg border border-gray-200 p-3">
+                  <p className="text-[10px] font-semibold text-gray-700 uppercase">{b.entitlementType}</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{b.medianMonths}<span className="text-xs font-normal text-gray-500"> mo</span></p>
+                  <p className="text-[9px] text-gray-500 mt-1">n={b.sampleSize}</p>
                 </div>
               ))}
             </div>
@@ -208,30 +205,30 @@ function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampl
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wide" style={{ color: BT.ts }}>Jurisdiction Comparison</h4>
-                <p className="text-[10px] mt-0.5" style={{ color: BT.td }}>Median timeline across markets in this state</p>
+                <h4 className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Jurisdiction Comparison</h4>
+                <p className="text-[10px] text-gray-500 mt-0.5">Median timeline across markets in this state</p>
               </div>
               <DataSourceBadge source={jurisdictionDataSource} count={jurisdictions.length} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b-2" style={{ borderColor: BT.borderL }}>
-                    <th className="text-left py-2 px-2 font-semibold text-[10px] uppercase tracking-wide" style={{ color: BT.tm }}>Jurisdiction</th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>Median TTS</th>
-                    <th className="text-center py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>Rank</th>
-                    <th className="text-right py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>Carry Cost Delta</th>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="text-left py-2 px-2 font-semibold text-gray-700 text-[10px] uppercase tracking-wide">Jurisdiction</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">Median TTS</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Rank</th>
+                    <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">Carry Cost Delta</th>
                   </tr>
                 </thead>
                 <tbody>
                   {jurisdictions.map((j) => {
                     const isSubject = j.carryCostDelta === 0 || (j as any).isSubject;
                     return (
-                      <tr key={j.municipality} className={`border-b border-[#1e2a3d] ${isSubject ? 'bg-[#0d1e3d] border-l-2 border-l-blue-400' : 'hover:bg-[#131920]'}`}>
-                        <td className="py-2 px-2 font-medium" style={{ color: BT.text }}>{j.municipality}</td>
-                        <td className="py-2 px-2 text-right font-semibold" style={{ color: BT.tm }}>{j.medianTts}mo</td>
-                        <td className="py-2 px-2 text-center" style={{ color: BT.tm }}>#{j.rank}</td>
-                        <td className={`py-2 px-2 text-right font-semibold text-[10px] ${j.carryCostDelta < 0 ? 'text-green-600' : j.carryCostDelta > 0 ? 'text-red-400' : 'text-blue-600'}`}>
+                      <tr key={j.municipality} className={`border-b border-gray-100 ${isSubject ? 'bg-blue-50 border-l-2 border-l-blue-400' : 'hover:bg-gray-50'}`}>
+                        <td className="py-2 px-2 font-medium text-gray-900">{j.municipality}</td>
+                        <td className="py-2 px-2 text-right text-gray-700 font-semibold">{j.medianTts}mo</td>
+                        <td className="py-2 px-2 text-center text-gray-600">#{j.rank}</td>
+                        <td className={`py-2 px-2 text-right font-semibold text-[10px] ${j.carryCostDelta < 0 ? 'text-green-600' : j.carryCostDelta > 0 ? 'text-red-600' : 'text-blue-600'}`}>
                           {j.carryCostDeltaLabel || (isSubject ? 'Subject' : '')}
                         </td>
                       </tr>
@@ -256,21 +253,21 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
 
   if (loading) {
     return (
-      <div className="border rounded-lg p-6 flex items-center justify-center gap-3" style={{ background: BT.bgCard, borderColor: BT.border }}>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 flex items-center justify-center gap-3">
         <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-        <span className="text-sm" style={{ color: BT.tm }}>Computing timeline estimate...</span>
+        <span className="text-sm text-gray-600">Computing timeline estimate...</span>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="border border-red-800/50 rounded-lg p-4 flex items-center justify-between" style={{ background: BT.redBg }}>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-red-400">Timeline Analysis Failed</p>
-          <p className="text-xs text-red-400 mt-1">{error}</p>
+          <p className="text-sm font-medium text-red-700">Timeline Analysis Failed</p>
+          <p className="text-xs text-red-600 mt-1">{error}</p>
         </div>
-        <button onClick={onRerun} className="text-xs font-medium rounded px-3 py-1.5" style={{ color: BT.redL, border: `1px solid ${BT.red}50`, background: 'transparent' }}>
+        <button onClick={onRerun} className="text-xs text-red-600 hover:text-red-800 font-medium border border-red-300 rounded px-3 py-1.5 hover:bg-red-100">
           Retry
         </button>
       </div>
@@ -279,9 +276,9 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
 
   if (!mcData && !intelligence) {
     return (
-      <div className="border rounded-lg p-6 text-center" style={{ background: BT.bgCard, borderColor: BT.border }}>
-        <p className="text-sm" style={{ color: BT.td }}>Select a development path above to generate timeline estimates.</p>
-        <p className="text-xs mt-1" style={{ color: BT.td }}>The simulation requires a path selection to compute phase durations.</p>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">Select a development path above to generate timeline estimates.</p>
+        <p className="text-xs text-gray-400 mt-1">The simulation requires a path selection to compute phase durations.</p>
       </div>
     );
   }
@@ -294,38 +291,38 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
   const maxProb = mcData ? Math.max(...mcData.histogram.map(h => h.probability)) : 1;
 
   return (
-    <div className="border rounded-lg overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
-      <div className="px-5 py-3 border-b bg-gradient-to-r from-teal-50 to-cyan-50 flex items-center justify-between" style={{ borderColor: BT.border }}>
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-cyan-50 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>Timeline Estimate</h3>
-          <p className="text-xs mt-0.5" style={{ color: BT.td }}>{pathLabel} path &mdash; Months to first shovel</p>
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Timeline Estimate</h3>
+          <p className="text-xs text-gray-500 mt-0.5">{pathLabel} path &mdash; Months to first shovel</p>
         </div>
         {mcData && <button onClick={onRerun} className="text-xs text-teal-600 hover:text-teal-800 font-medium">Recalculate</button>}
       </div>
 
       <div className="px-5 py-4 space-y-4">
         {/* THE DEFINITIVE ANSWER: ONE ROW WITH THREE NUMBERS */}
-        <div className="grid grid-cols-3 gap-4 rounded-lg border p-4" style={{ background: BT.bgPanel, borderColor: BT.border }}>
+        <div className="grid grid-cols-3 gap-4 bg-gradient-to-b from-gray-50 to-white rounded-lg border border-gray-200 p-4">
           <div className="text-center">
-            <div className="text-sm font-medium uppercase tracking-wide" style={{ color: BT.tm }}>Best Case</div>
+            <div className="text-sm font-medium text-gray-600 uppercase tracking-wide">Best Case</div>
             <div className="text-4xl font-bold text-green-600 mt-2">{bestCase}</div>
-            <div className="text-xs mt-1" style={{ color: BT.td }}>months</div>
+            <div className="text-xs text-gray-500 mt-1">months</div>
           </div>
-          <div className="text-center border-l border-r" style={{ borderColor: BT.borderL }}>
-            <div className="text-sm font-medium uppercase tracking-wide" style={{ color: BT.tm }}>Expected</div>
-            <div className="text-4xl font-bold text-blue-400 mt-2">{expectedCase}</div>
-            <div className="text-xs mt-1" style={{ color: BT.td }}>months</div>
+          <div className="text-center border-l border-r border-gray-300">
+            <div className="text-sm font-medium text-gray-600 uppercase tracking-wide">Expected</div>
+            <div className="text-4xl font-bold text-blue-700 mt-2">{expectedCase}</div>
+            <div className="text-xs text-gray-500 mt-1">months</div>
           </div>
           <div className="text-center">
-            <div className="text-sm font-medium uppercase tracking-wide" style={{ color: BT.tm }}>Worst Case</div>
-            <div className="text-4xl font-bold text-red-400 mt-2">{worstCase}</div>
-            <div className="text-xs mt-1" style={{ color: BT.td }}>months</div>
+            <div className="text-sm font-medium text-gray-600 uppercase tracking-wide">Worst Case</div>
+            <div className="text-4xl font-bold text-red-600 mt-2">{worstCase}</div>
+            <div className="text-xs text-gray-500 mt-1">months</div>
           </div>
         </div>
 
         {/* ATTRIBUTION */}
         {mcData && (
-          <p className="text-[10px] text-center" style={{ color: BT.td }}>Based on Monte Carlo simulation ({mcData.nSimulations.toLocaleString()} iterations)</p>
+          <p className="text-[10px] text-gray-400 text-center">Based on Monte Carlo simulation ({mcData.nSimulations.toLocaleString()} iterations)</p>
         )}
 
         {/* PHASE BREAKDOWN */}
@@ -337,18 +334,18 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
           const entitlementScale = 100 / entitlementMaxEnd;
           return (
             <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Phase Timeline (Best / Expected / Worst)</h4>
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Phase Timeline (Best / Expected / Worst)</h4>
               {entitlementPhases.length > 0 && (
                 <div className="space-y-2 mb-3">
-                  <div className="text-[9px] uppercase tracking-wide mb-1" style={{ color: BT.td }}>Entitlement — {entitlementMaxEnd.toFixed(1)} mo (p90)</div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide mb-1">Entitlement — {entitlementMaxEnd.toFixed(1)} mo (p90)</div>
                   {entitlementPhases.map((phase, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] w-32 text-right truncate font-medium" style={{ color: BT.tm }}>{phase.name}</span>
-                      <div className="flex-1 h-4 rounded relative border overflow-hidden" style={{ background: BT.bgPanel, borderColor: BT.border }}>
-                        <div className="absolute h-full bg-red-700/60 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
+                      <span className="text-[10px] text-gray-600 w-32 text-right truncate font-medium">{phase.name}</span>
+                      <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                        <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
                         <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
                         <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
-                        <span className="absolute text-[8px] font-semibold" style={{ color: BT.tm, left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '1px', transform: 'translateX(-50%)' }}>
+                        <span className="absolute text-[8px] text-gray-700 font-semibold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '1px', transform: 'translateX(-50%)' }}>
                           {phase.p50Duration}mo
                         </span>
                       </div>
@@ -358,11 +355,11 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
               )}
               {constructionPhase && (
                 <div className="space-y-2">
-                  <div className="text-[9px] uppercase tracking-wide mb-1" style={{ color: BT.td }}>Construction</div>
+                  <div className="text-[9px] text-gray-400 uppercase tracking-wide mb-1">Construction</div>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] w-32 text-right truncate font-medium" style={{ color: BT.tm }}>{constructionPhase.name}</span>
-                    <div className="flex-1 h-4 rounded relative border overflow-hidden" style={{ background: BT.bgPanel, borderColor: BT.border }}>
-                      <div className="absolute h-full bg-orange-700/40 rounded" style={{ left: 0, width: '100%' }} />
+                    <span className="text-[10px] text-gray-600 w-32 text-right truncate font-medium">{constructionPhase.name}</span>
+                    <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                      <div className="absolute h-full bg-orange-200 rounded" style={{ left: 0, width: '100%' }} />
                       <div className="absolute h-full bg-orange-400 rounded" style={{ left: 0, width: `${(constructionPhase.p50Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
                       <div className="absolute h-full bg-orange-500 rounded" style={{ left: 0, width: `${(constructionPhase.p10Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
                       <span className="absolute text-[8px] text-white font-semibold" style={{ left: '50%', top: '1px', transform: 'translateX(-50%)' }}>
@@ -372,10 +369,10 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
                   </div>
                 </div>
               )}
-              <div className="flex items-center gap-4 mt-2 justify-center text-[9px] flex-wrap" style={{ color: BT.td }}>
+              <div className="flex items-center gap-4 mt-2 justify-center text-[9px] text-gray-500 flex-wrap">
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-green-400 rounded" />Best</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-blue-300 rounded" />Expected</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-red-700/60 rounded" />Worst</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-red-200 rounded" />Worst</span>
                 {constructionPhase && <span className="flex items-center gap-1"><span className="w-2.5 h-2 bg-orange-400 rounded" />Construction</span>}
               </div>
             </div>
@@ -385,8 +382,8 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
         {/* PROBABILITY DISTRIBUTION */}
         {mcData && mcData.histogram.filter(h => h.probability > 0.001).length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Probability Distribution</h4>
-            <div className="flex items-end gap-px rounded-lg border px-2 pt-2" style={{ background: BT.bgPanel, borderColor: BT.border, height: '80px' }}>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Probability Distribution</h4>
+            <div className="flex items-end gap-px bg-gray-50 rounded-lg border border-gray-200 px-2 pt-2" style={{ height: '80px' }}>
               {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
                 const heightPct = (h.probability / maxProb) * 100;
                 const isExpected = Math.abs(h.monthBucket - expectedCase) < 2;
@@ -400,7 +397,7 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
                 );
               })}
             </div>
-            <div className="flex justify-between text-[8px] mt-1 px-2" style={{ color: BT.td }}>
+            <div className="flex justify-between text-[8px] text-gray-400 mt-1 px-2">
               {(() => {
                 const bars = mcData.histogram.filter(h => h.probability > 0.001);
                 if (bars.length === 0) return null;
@@ -418,17 +415,17 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
         {/* FINANCIAL IMPACT */}
         {mcData && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Financial Impact</h4>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Financial Impact</h4>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: 'Best (P10)', data: mcData.financialImpact.p10, color: 'border-green-800/50 bg-[#022c22]' },
-                { label: 'Expected (P50)', data: mcData.financialImpact.p50, color: 'border-blue-900/50 bg-[#0d1e3d]' },
-                { label: 'Worst (P90)', data: mcData.financialImpact.p90, color: 'border-red-800/50 bg-[#1c0a0a]' },
+                { label: 'Best (P10)', data: mcData.financialImpact.p10, color: 'border-green-200 bg-green-50' },
+                { label: 'Expected (P50)', data: mcData.financialImpact.p50, color: 'border-blue-200 bg-blue-50' },
+                { label: 'Worst (P90)', data: mcData.financialImpact.p90, color: 'border-red-200 bg-red-50' },
               ].map(item => (
                 <div key={item.label} className={`border rounded p-2 ${item.color}`}>
-                  <div className="text-[9px] font-medium" style={{ color: BT.tm }}>{item.label}</div>
-                  <div className="text-xs font-bold mt-0.5" style={{ color: BT.text }}>${(item.data.carryingCost / 1000).toFixed(0)}K</div>
-                  <div className={`text-[9px] font-medium ${item.data.irrImpact < -1 ? 'text-red-400' : 'text-amber-400'}`}>
+                  <div className="text-[9px] font-medium text-gray-600">{item.label}</div>
+                  <div className="text-xs font-bold text-gray-900 mt-0.5">${(item.data.carryingCost / 1000).toFixed(0)}K</div>
+                  <div className={`text-[9px] font-medium ${item.data.irrImpact < -1 ? 'text-red-600' : 'text-amber-600'}`}>
                     {item.data.irrImpact > 0 ? '+' : ''}{item.data.irrImpact}% IRR
                   </div>
                 </div>
@@ -453,71 +450,71 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
 }) {
   if (!developmentPath) {
     return (
-      <div className="border rounded-lg p-6 text-center" style={{ background: BT.bgCard, borderColor: BT.border }}>
-        <p className="text-sm" style={{ color: BT.td }}>Select a development path to see AI timeline analysis.</p>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">Select a development path to see AI timeline analysis.</p>
       </div>
     );
   }
 
   if (intelligenceLoading) {
     return (
-      <div className="border rounded-lg p-6 flex flex-col items-center justify-center" style={{ background: BT.bgCard, borderColor: BT.border }}>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-3"></div>
-        <p className="text-sm" style={{ color: BT.td }}>Generating AI timeline intelligence...</p>
-        <p className="text-xs mt-1" style={{ color: BT.td }}>Analyzing benchmark data and regulatory environment</p>
+        <p className="text-sm text-gray-500">Generating AI timeline intelligence...</p>
+        <p className="text-xs text-gray-400 mt-1">Analyzing benchmark data and regulatory environment</p>
       </div>
     );
   }
 
   if (intelligenceError) {
     return (
-      <div className="border border-red-800/50 rounded-lg p-4" style={{ background: BT.redBg }}>
-        <p className="text-sm font-medium text-red-400">Timeline Intelligence Error</p>
-        <p className="text-xs text-red-400 mt-1">{intelligenceError}</p>
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <p className="text-sm font-medium text-red-700">Timeline Intelligence Error</p>
+        <p className="text-xs text-red-600 mt-1">{intelligenceError}</p>
       </div>
     );
   }
 
   if (!intelligence) {
     return (
-      <div className="border rounded-lg p-6 text-center" style={{ background: BT.bgCard, borderColor: BT.border }}>
-        <p className="text-sm" style={{ color: BT.td }}>AI timeline analysis unavailable for this deal.</p>
-        <p className="text-xs mt-1" style={{ color: BT.td }}>Ensure zoning profile and benchmark data are loaded.</p>
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">AI timeline analysis unavailable for this deal.</p>
+        <p className="text-xs text-gray-400 mt-1">Ensure zoning profile and benchmark data are loaded.</p>
       </div>
     );
   }
 
   const severityColors: Record<string, string> = {
-    low: 'text-green-400 bg-[#022c22] border-green-800/50',
-    moderate: 'text-amber-400 bg-[#1a1200] border-amber-800/50',
-    high: 'text-red-400 bg-[#1c0a0a] border-red-800/50',
+    low: 'text-green-700 bg-green-50 border-green-200',
+    moderate: 'text-yellow-700 bg-yellow-50 border-yellow-200',
+    high: 'text-red-700 bg-red-50 border-red-200',
   };
 
   return (
-    <div className="border rounded-lg overflow-hidden" style={{ background: BT.bgCard, borderColor: BT.border }}>
-      <div className="px-5 py-3 border-b bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between" style={{ borderColor: BT.border }}>
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold uppercase tracking-wide" style={{ color: BT.text }}>AI Timeline Intelligence</h3>
-          <p className="text-xs mt-0.5" style={{ color: BT.td }}>
+          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">AI Timeline Intelligence</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
             Deal-specific analysis from {intelligence.dataLibraryContext.benchmarkCount} benchmarks
             {intelligence.dataLibraryContext.hasCostData && ' + Data Library costs'}
           </p>
         </div>
-        <span className="text-[10px]" style={{ color: BT.td }}>Generated {new Date(intelligence.generatedAt).toLocaleDateString()}</span>
+        <span className="text-[10px] text-gray-400">Generated {new Date(intelligence.generatedAt).toLocaleDateString()}</span>
       </div>
 
       <div className="px-5 py-4 space-y-5">
         {intelligence.pathInsights && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Path Analysis</h4>
-            <p className="text-sm mb-3" style={{ color: BT.tm }}>{intelligence.pathInsights.summary}</p>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Path Analysis</h4>
+            <p className="text-sm text-gray-700 mb-3">{intelligence.pathInsights.summary}</p>
             <div className="grid grid-cols-2 gap-3">
               {intelligence.pathInsights.advantages.length > 0 && (
-                <div className="border border-green-800/50 rounded-lg p-3" style={{ background: BT.greenBg }}>
-                  <p className="text-[10px] font-semibold text-green-300 uppercase mb-1">Advantages</p>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-[10px] font-semibold text-green-800 uppercase mb-1">Advantages</p>
                   <ul className="space-y-1">
                     {intelligence.pathInsights.advantages.map((a, i) => (
-                      <li key={i} className="text-xs text-green-400 flex items-start gap-1">
+                      <li key={i} className="text-xs text-green-700 flex items-start gap-1">
                         <span className="text-green-500 mt-0.5 flex-shrink-0">+</span> {a}
                       </li>
                     ))}
@@ -525,11 +522,11 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
                 </div>
               )}
               {intelligence.pathInsights.challenges.length > 0 && (
-                <div className="border border-amber-800/50 rounded-lg p-3" style={{ background: BT.amberBg }}>
-                  <p className="text-[10px] font-semibold text-amber-300 uppercase mb-1">Challenges</p>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  <p className="text-[10px] font-semibold text-amber-800 uppercase mb-1">Challenges</p>
                   <ul className="space-y-1">
                     {intelligence.pathInsights.challenges.map((c, i) => (
-                      <li key={i} className="text-xs text-amber-400 flex items-start gap-1">
+                      <li key={i} className="text-xs text-amber-700 flex items-start gap-1">
                         <span className="text-amber-500 mt-0.5 flex-shrink-0">!</span> {c}
                       </li>
                     ))}
@@ -538,14 +535,14 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
               )}
             </div>
             {intelligence.pathInsights.alternativePath && (
-              <p className="text-xs mt-2 italic" style={{ color: BT.td }}>{intelligence.pathInsights.alternativePath}</p>
+              <p className="text-xs text-gray-500 mt-2 italic">{intelligence.pathInsights.alternativePath}</p>
             )}
           </div>
         )}
 
         {intelligence.riskFactors.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Timeline Risk Factors</h4>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Timeline Risk Factors</h4>
             <div className="space-y-2">
               {intelligence.riskFactors.map((rf, i) => (
                 <div key={i} className={`border rounded-lg p-3 ${severityColors[rf.severity] || severityColors.moderate}`}>
@@ -563,24 +560,24 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
 
         {intelligence.criticalMilestones.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Critical Milestones</h4>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Critical Milestones</h4>
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b-2" style={{ borderColor: BT.borderL }}>
-                    <th className="text-left py-2 px-2 font-semibold text-[10px] uppercase" style={{ color: BT.tm }}>Milestone</th>
-                    <th className="text-center py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>Month</th>
-                    <th className="text-center py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>Critical Path</th>
-                    <th className="text-left py-2 px-2 font-medium text-[10px]" style={{ color: BT.td }}>Note</th>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="text-left py-2 px-2 font-semibold text-gray-700 text-[10px] uppercase">Milestone</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Month</th>
+                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Critical Path</th>
+                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[10px]">Note</th>
                   </tr>
                 </thead>
                 <tbody>
                   {intelligence.criticalMilestones.map((ms, i) => (
-                    <tr key={i} className="border-b" style={{ borderColor: BT.border }}>
-                      <td className="py-1.5 px-2 font-medium" style={{ color: BT.text }}>{ms.milestone}</td>
-                      <td className="py-1.5 px-2 text-center font-semibold" style={{ color: BT.tm }}>{ms.estimatedMonth}</td>
-                      <td className="py-1.5 px-2 text-center">{ms.criticalPath ? <span className="text-red-400 font-bold">Yes</span> : <span style={{ color: BT.td }}>No</span>}</td>
-                      <td className="py-1.5 px-2" style={{ color: BT.tm }}>{ms.note}</td>
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1.5 px-2 text-gray-900 font-medium">{ms.milestone}</td>
+                      <td className="py-1.5 px-2 text-center text-gray-700 font-semibold">{ms.estimatedMonth}</td>
+                      <td className="py-1.5 px-2 text-center">{ms.criticalPath ? <span className="text-red-600 font-bold">Yes</span> : <span className="text-gray-400">No</span>}</td>
+                      <td className="py-1.5 px-2 text-gray-600">{ms.note}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -590,9 +587,9 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
         )}
 
         {intelligence.benchmarkComparison && intelligence.benchmarkComparison.summary && (
-          <div className="border border-blue-900/50 rounded-lg p-3" style={{ background: BT.blueBg }}>
-            <p className="text-[10px] font-semibold text-blue-300 uppercase mb-1">Benchmark Comparison</p>
-            <p className="text-xs text-blue-400">{intelligence.benchmarkComparison.summary}</p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-[10px] font-semibold text-blue-800 uppercase mb-1">Benchmark Comparison</p>
+            <p className="text-xs text-blue-700">{intelligence.benchmarkComparison.summary}</p>
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
               {intelligence.benchmarkComparison.fastestComparable && (
                 <p className="text-[10px] text-blue-600">Fastest: {intelligence.benchmarkComparison.fastestComparable}</p>
@@ -606,12 +603,12 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
 
         {intelligence.recommendations.length > 0 && (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: BT.tm }}>Recommendations</h4>
+            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Recommendations</h4>
             <ul className="space-y-1.5">
               {intelligence.recommendations.map((rec, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span className="text-blue-500 mt-0.5 flex-shrink-0">&#x2713;</span>
-                  <span className="text-sm" style={{ color: BT.tm }}>{rec}</span>
+                  <span className="text-sm text-gray-700">{rec}</span>
                 </li>
               ))}
             </ul>
@@ -791,8 +788,8 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
 
   if (!dealId) {
     return (
-      <div className="border border-amber-800/50 rounded-lg p-6 text-center" style={{ background: BT.amberBg }}>
-        <p className="text-sm text-amber-400">Select a deal to view Time-to-Shovel analysis.</p>
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-yellow-700">Select a deal to view Time-to-Shovel analysis.</p>
       </div>
     );
   }

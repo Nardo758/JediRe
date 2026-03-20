@@ -73,6 +73,10 @@ export function createZoningLearningRoutes(pool: Pool): Router {
   router.post('/corrections/:id/resolve', async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRe.test(id)) {
+        return res.status(404).json({ success: false, error: 'Correction not found' });
+      }
       const { approved, resolutionNotes } = req.body;
       const resolvedBy = req.user?.userId || 'system';
 
@@ -80,7 +84,8 @@ export function createZoningLearningRoutes(pool: Pool): Router {
       res.json({ success: true });
     } catch (error: any) {
       console.error('Correction resolve error:', error);
-      res.status(500).json({ success: false, error: error.message });
+      const status = error.message && error.message.includes('not found') ? 404 : 500;
+      res.status(status).json({ success: false, error: error.message });
     }
   });
 
@@ -261,8 +266,12 @@ export function createZoningLearningRoutes(pool: Pool): Router {
     try {
       const { userId } = req.params;
       const { tier } = req.body;
+      const validTiers: CredibilityTier[] = ['zoning_attorney', 'developer', 'broker_agent', 'investor', 'new_user'];
       if (!tier) {
         return res.status(400).json({ success: false, error: 'tier is required' });
+      }
+      if (!validTiers.includes(tier as CredibilityTier)) {
+        return res.status(400).json({ success: false, error: `Invalid tier. Must be one of: ${validTiers.join(', ')}` });
       }
       const cred = await credibilityService.updateTier(userId, tier as CredibilityTier);
       res.json({ success: true, data: cred });

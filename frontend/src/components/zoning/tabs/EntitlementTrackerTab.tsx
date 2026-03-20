@@ -1,4 +1,3 @@
-import { T as BT } from '../../deal/bloomberg-tokens';
 import React, { useState } from 'react';
 import { useEntitlements, EntitlementFormData } from '../../../hooks/useEntitlements';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
@@ -34,11 +33,11 @@ const TYPE_LABELS: Record<EntitlementType, string> = {
   other: 'Other',
 };
 
-function getRiskStyle(level: RiskLevel): { color: string; bg: string } {
-  if (level === 'low') return { color: BT.greenL, bg: BT.greenBg };
-  if (level === 'medium') return { color: BT.amberL, bg: BT.amberBg };
-  return { color: BT.redL, bg: BT.redBg };
-}
+const RISK_COLORS: Record<RiskLevel, string> = {
+  low: 'text-green-600 bg-green-50',
+  medium: 'text-yellow-600 bg-yellow-50',
+  high: 'text-red-600 bg-red-50',
+};
 
 const SORT_OPTIONS = [
   { value: 'filedDate', label: 'Filed Date' },
@@ -117,13 +116,13 @@ export default function EntitlementTrackerTab({ dealId, deal }: EntitlementTrack
       />
 
       {error && (
-        <div className="mx-4 mb-2 p-2 rounded text-sm" style={{ background: BT.redBg, border: `1px solid ${BT.red}50`, color: BT.redL }}>
+        <div className="mx-4 mb-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
           {error}
         </div>
       )}
 
       {loading && !selectedEntitlement ? (
-        <div className="flex items-center justify-center flex-1" style={{ color: BT.td }}>
+        <div className="flex items-center justify-center flex-1 text-gray-400">
           <svg className="animate-spin h-6 w-6 mr-2" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -179,19 +178,13 @@ function FilterBar({
   onRefresh: () => void;
   onCreate: () => void;
 }) {
-  const selectStyle: React.CSSProperties = {
-    padding: '6px 12px',
-    borderRadius: 6,
-    fontSize: '0.875rem',
-    background: BT.bgCard,
-    color: BT.text,
-    border: `1px solid ${BT.borderL}`,
-    outline: 'none',
-  };
-
   return (
-    <div className="flex items-center gap-3 px-4 py-3 flex-wrap" style={{ borderBottom: `1px solid ${BT.border}`, background: BT.bgCard }}>
-      <select style={selectStyle} value={filter.market || ''} onChange={(e) => onFilterChange({ market: e.target.value || null })}>
+    <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white flex-wrap">
+      <select
+        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        value={filter.market || ''}
+        onChange={(e) => onFilterChange({ market: e.target.value || null })}
+      >
         <option value="">All Markets</option>
         <option value="atlanta">Atlanta</option>
         <option value="dallas">Dallas</option>
@@ -199,7 +192,11 @@ function FilterBar({
         <option value="tampa">Tampa</option>
       </select>
 
-      <select style={selectStyle} value={filter.status || ''} onChange={(e) => onFilterChange({ status: (e.target.value as EntitlementStatus) || null })}>
+      <select
+        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        value={filter.status || ''}
+        onChange={(e) => onFilterChange({ status: (e.target.value as EntitlementStatus) || null })}
+      >
         <option value="">All Statuses</option>
         {KANBAN_COLUMNS.map((col) => (
           <option key={col.status} value={col.status}>{col.label}</option>
@@ -208,7 +205,11 @@ function FilterBar({
         <option value="withdrawn">Withdrawn</option>
       </select>
 
-      <select style={selectStyle} value={filter.type || ''} onChange={(e) => onFilterChange({ type: (e.target.value as EntitlementType) || null })}>
+      <select
+        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        value={filter.type || ''}
+        onChange={(e) => onFilterChange({ type: (e.target.value as EntitlementType) || null })}
+      >
         <option value="">All Types</option>
         {(Object.keys(TYPE_LABELS) as EntitlementType[]).map((t) => (
           <option key={t} value={t}>{TYPE_LABELS[t]}</option>
@@ -218,12 +219,16 @@ function FilterBar({
       <input
         type="text"
         placeholder="Deal ID…"
-        style={{ ...selectStyle, width: 128 }}
+        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm w-32 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
         value={filter.dealId || ''}
         onChange={(e) => onFilterChange({ dealId: e.target.value || null })}
       />
 
-      <select style={selectStyle} value={filter.sortBy} onChange={(e) => onFilterChange({ sortBy: e.target.value })}>
+      <select
+        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        value={filter.sortBy}
+        onChange={(e) => onFilterChange({ sortBy: e.target.value })}
+      >
         {SORT_OPTIONS.map((s) => (
           <option key={s.value} value={s.value}>{s.label}</option>
         ))}
@@ -232,17 +237,13 @@ function FilterBar({
       <div className="ml-auto flex items-center gap-2">
         <button
           onClick={onRefresh}
-          className="px-3 py-1.5 text-sm rounded-md transition-colors"
-          style={{ color: BT.tm, border: `1px solid ${BT.borderL}`, background: 'transparent' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = BT.text; (e.currentTarget as HTMLElement).style.background = BT.bgPanel; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BT.tm; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+          className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50"
         >
           ↻ Refresh
         </button>
         <button
           onClick={onCreate}
-          className="px-3 py-1.5 text-sm text-white rounded-md transition-colors"
-          style={{ background: BT.blue }}
+          className="px-3 py-1.5 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700"
         >
           + New Entitlement
         </button>
@@ -265,17 +266,16 @@ function KanbanBoard({
       {KANBAN_COLUMNS.map((col) => {
         const items = data[col.key] || [];
         return (
-          <div key={col.key} className="flex flex-col rounded-lg min-w-0" style={{ background: BT.bgPanel }}>
-            <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: `1px solid ${BT.border}` }}>
-              <span className="text-xs font-bold uppercase tracking-wide" style={{ color: BT.tm }}>{col.label}</span>
-              <span className="text-xs rounded-full px-2 py-0.5 font-medium"
-                style={{ color: BT.td, background: BT.border }}>
+          <div key={col.key} className="flex flex-col bg-gray-50 rounded-lg min-w-0">
+            <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-200">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">{col.label}</span>
+              <span className="text-xs text-gray-500 bg-gray-200 rounded-full px-2 py-0.5 font-medium">
                 {items.length}
               </span>
             </div>
             <div className="flex-1 overflow-y-auto p-2 space-y-2">
               {items.length === 0 && (
-                <p className="text-xs text-center py-6" style={{ color: BT.td }}>No entitlements</p>
+                <p className="text-xs text-gray-400 text-center py-6">No entitlements</p>
               )}
               {items.map((ent) => (
                 <EntitlementCard
@@ -309,45 +309,41 @@ function EntitlementCard({
   onClick: () => void;
   selected: boolean;
 }) {
-  const risk = getRiskStyle(entitlement.riskLevel);
   return (
     <div
       onClick={onClick}
-      className="p-3 rounded-lg shadow-sm cursor-pointer transition-all"
-      style={{
-        background: BT.bgCard,
-        border: selected ? `1px solid ${BT.blue}` : `1px solid ${BT.border}`,
-        boxShadow: selected ? `0 0 0 2px ${BT.blue}30` : undefined,
-      }}
+      className={`p-3 bg-white rounded-lg shadow-sm border cursor-pointer hover:shadow-md transition-all ${
+        selected ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200'
+      }`}
     >
-      <p className="text-sm font-semibold truncate" style={{ color: BT.text }}>{entitlement.parcelAddress}</p>
+      <p className="text-sm font-semibold text-gray-900 truncate">{entitlement.parcelAddress}</p>
 
-      <div className="mt-1.5 pt-1.5" style={{ borderTop: `1px solid ${BT.border}` }}>
-        <p className="text-xs font-medium" style={{ color: BT.tm }}>{TYPE_LABELS[entitlement.type]}</p>
+      <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+        <p className="text-xs font-medium text-gray-600">{TYPE_LABELS[entitlement.type]}</p>
         {(entitlement.fromDistrict || entitlement.toDistrict) && (
-          <p className="text-xs mt-0.5" style={{ color: BT.td }}>
+          <p className="text-xs text-gray-500 mt-0.5">
             {entitlement.fromDistrict || '—'} → {entitlement.toDistrict || '—'}
           </p>
         )}
       </div>
 
-      <div className="mt-2 pt-1.5 flex items-center justify-between" style={{ borderTop: `1px solid ${BT.border}` }}>
+      <div className="mt-2 pt-1.5 border-t border-gray-100 flex items-center justify-between">
         {entitlement.nextMilestoneDate ? (
-          <span className="text-xs font-medium" style={{ color: BT.td }}>
+          <span className="text-xs text-gray-500 font-medium">
             Due: {getDaysUntil(entitlement.nextMilestoneDate)}
           </span>
         ) : (
           <span />
         )}
-        <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ color: risk.color, background: risk.bg }}>
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
           Risk: {entitlement.riskLevel === 'low' ? 'Low' : entitlement.riskLevel === 'medium' ? 'Med' : 'High'}
         </span>
         <SourceCitation section="§16-28.007" url="#" sourceType="code" lastVerified="2025-11-14" />
       </div>
 
       {entitlement.dealId && (
-        <div className="mt-1.5 pt-1" style={{ borderTop: `1px solid ${BT.border}` }}>
-          <p className="text-xs font-medium truncate" style={{ color: BT.blueL }}>
+        <div className="mt-1.5 pt-1 border-t border-gray-100">
+          <p className="text-xs text-blue-600 font-medium truncate">
             🔗 Deal #{entitlement.dealId}
           </p>
         </div>
@@ -367,14 +363,12 @@ function DetailPanel({
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const risk = getRiskStyle(entitlement.riskLevel);
   return (
-    <div className="w-[420px] overflow-y-auto flex-shrink-0" style={{ borderLeft: `1px solid ${BT.border}`, background: BT.bgCard }}>
-      <div className="sticky top-0 px-4 py-3 flex items-center justify-between z-10"
-        style={{ background: BT.bgCard, borderBottom: `1px solid ${BT.border}` }}>
+    <div className="w-[420px] border-l border-gray-200 bg-white overflow-y-auto flex-shrink-0">
+      <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between z-10">
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-sm truncate" style={{ color: BT.text }}>{entitlement.parcelAddress}</h3>
-          <p className="text-xs mt-0.5" style={{ color: BT.td }}>
+          <h3 className="font-semibold text-gray-900 text-sm truncate">{entitlement.parcelAddress}</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
             {TYPE_LABELS[entitlement.type]}
             {(entitlement.fromDistrict || entitlement.toDistrict) && (
               <> — {entitlement.fromDistrict || '—'} → {entitlement.toDistrict || '—'}</>
@@ -382,19 +376,13 @@ function DetailPanel({
           </p>
         </div>
         <div className="flex items-center gap-1 ml-2">
-          <button onClick={onEdit} className="p-1 transition-colors" style={{ color: BT.td }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = BT.blueL; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BT.td; }} title="Edit">
+          <button onClick={onEdit} className="p-1 text-gray-400 hover:text-blue-600" title="Edit">
             ✎
           </button>
-          <button onClick={onDelete} className="p-1 transition-colors" style={{ color: BT.td }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = BT.redL; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BT.td; }} title="Delete">
+          <button onClick={onDelete} className="p-1 text-gray-400 hover:text-red-600" title="Delete">
             ✕
           </button>
-          <button onClick={onClose} className="p-1 transition-colors" style={{ color: BT.td }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = BT.tm; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BT.td; }} title="Close">
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-700" title="Close">
             ✖
           </button>
         </div>
@@ -402,20 +390,20 @@ function DetailPanel({
 
       <div className="p-4 space-y-5">
         <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ color: risk.color, background: risk.bg }}>
+          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${RISK_COLORS[entitlement.riskLevel]}`}>
             {entitlement.riskLevel === 'low' ? 'Low Risk' : entitlement.riskLevel === 'medium' ? 'Medium Risk' : 'High Risk'}
           </span>
           <ViewSourceBadge section="§16-28.007" url="#" sourceType="code" lastVerified="2025-11-14" />
           {entitlement.dealId && (
-            <span className="text-xs font-medium" style={{ color: BT.blueL }}>🔗 Deal #{entitlement.dealId}</span>
+            <span className="text-xs text-blue-600 font-medium">🔗 Deal #{entitlement.dealId}</span>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-xs rounded-lg p-3" style={{ color: BT.td, background: BT.bgPanel }}>
-          <div><span className="font-medium" style={{ color: BT.tm }}>Filed:</span> {formatDate(entitlement.filedDate)}</div>
-          <div><span className="font-medium" style={{ color: BT.tm }}>Hearing:</span> {formatDate(entitlement.hearingDate)} <SourceCitation section="§16-30.003" url="#" sourceType="record" lastVerified="2025-11-14" /></div>
-          <div><span className="font-medium" style={{ color: BT.tm }}>Approval:</span> {formatDate(entitlement.approvalDate)}</div>
-          <div><span className="font-medium" style={{ color: BT.tm }}>Next:</span> {entitlement.nextMilestone || '—'} <SourceCitation section="§16-30.010" url="#" sourceType="calculated" lastVerified="2025-11-14" /></div>
+        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+          <div><span className="font-medium text-gray-600">Filed:</span> {formatDate(entitlement.filedDate)}</div>
+          <div><span className="font-medium text-gray-600">Hearing:</span> {formatDate(entitlement.hearingDate)} <SourceCitation section="§16-30.003" url="#" sourceType="record" lastVerified="2025-11-14" /></div>
+          <div><span className="font-medium text-gray-600">Approval:</span> {formatDate(entitlement.approvalDate)}</div>
+          <div><span className="font-medium text-gray-600">Next:</span> {entitlement.nextMilestone || '—'} <SourceCitation section="§16-30.010" url="#" sourceType="calculated" lastVerified="2025-11-14" /></div>
         </div>
 
         <HorizontalTimeline milestones={entitlement.milestones} />
@@ -431,24 +419,21 @@ function DetailPanel({
 
         {entitlement.notes && (
           <div>
-            <h4 className="text-xs font-semibold uppercase mb-1" style={{ color: BT.td }}>Notes</h4>
-            <p className="text-sm" style={{ color: BT.tm }}>{entitlement.notes}</p>
+            <h4 className="text-xs font-semibold text-gray-500 uppercase mb-1">Notes</h4>
+            <p className="text-sm text-gray-700">{entitlement.notes}</p>
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2 pt-2" style={{ borderTop: `1px solid ${BT.border}` }}>
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200">
           {entitlement.dealId && (
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-              style={{ color: BT.blueL, background: BT.blueBg, border: `1px solid ${BT.blue}40` }}>
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors">
               📎 Open Deal Capsule
             </button>
           )}
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-            style={{ color: BT.tm, background: BT.bgCard, border: `1px solid ${BT.borderL}` }}>
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
             📊 Financial Impact Analysis
           </button>
-          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors"
-            style={{ color: BT.tm, background: BT.bgCard, border: `1px solid ${BT.borderL}` }}>
+          <button className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors">
             📧 Share Update
           </button>
         </div>
@@ -462,42 +447,42 @@ function HorizontalTimeline({ milestones }: { milestones: EntitlementMilestone[]
 
   const sorted = [...milestones].sort((a, b) => a.sortOrder - b.sortOrder);
 
-  const statusColor = (status: string): string => {
-    if (status === 'completed') return BT.greenL;
-    if (status === 'in_progress') return BT.blueL;
-    return BT.td;
+  const statusColor = (status: string) => {
+    if (status === 'completed') return 'text-green-600';
+    if (status === 'in_progress') return 'text-blue-600';
+    return 'text-gray-400';
   };
 
-  const dotBg = (status: string): string => {
-    if (status === 'completed') return BT.green;
-    if (status === 'in_progress') return BT.blue;
-    return BT.borderL;
+  const dotBg = (status: string) => {
+    if (status === 'completed') return 'bg-green-500';
+    if (status === 'in_progress') return 'bg-blue-500 ring-4 ring-blue-100';
+    return 'bg-gray-300';
   };
 
-  const lineBg = (status: string): string => {
-    if (status === 'completed') return BT.greenL;
-    return BT.border;
+  const lineBg = (status: string) => {
+    if (status === 'completed') return 'bg-green-400';
+    return 'bg-gray-200';
   };
 
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase mb-3" style={{ color: BT.td }}>Timeline</h4>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-3">Timeline</h4>
       <div className="overflow-x-auto">
         <div className="flex items-start min-w-0">
           {sorted.map((m, idx) => (
             <div key={m.id} className="flex items-start flex-shrink-0" style={{ width: `${100 / sorted.length}%`, minWidth: '60px' }}>
               <div className="flex flex-col items-center w-full">
                 <div className="flex items-center w-full">
-                  {idx > 0 && <div className="h-0.5 flex-1" style={{ background: lineBg(sorted[idx - 1].status) }} />}
+                  {idx > 0 && <div className={`h-0.5 flex-1 ${lineBg(sorted[idx - 1].status)}`} />}
                   {idx === 0 && <div className="flex-1" />}
-                  <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: dotBg(m.status), boxShadow: m.status === 'in_progress' ? `0 0 0 4px ${BT.blueBg}` : undefined }} />
-                  {idx < sorted.length - 1 && <div className="h-0.5 flex-1" style={{ background: lineBg(m.status) }} />}
+                  <div className={`w-3 h-3 rounded-full flex-shrink-0 ${dotBg(m.status)}`} />
+                  {idx < sorted.length - 1 && <div className={`h-0.5 flex-1 ${lineBg(m.status)}`} />}
                   {idx === sorted.length - 1 && <div className="flex-1" />}
                 </div>
-                <p className="text-[10px] font-medium mt-1.5 text-center leading-tight" style={{ color: statusColor(m.status) }}>
+                <p className={`text-[10px] font-medium mt-1.5 text-center leading-tight ${statusColor(m.status)}`}>
                   {m.name}
                 </p>
-                <p className="text-[9px] text-center mt-0.5" style={{ color: BT.td }}>
+                <p className="text-[9px] text-gray-400 text-center mt-0.5">
                   {m.status === 'completed' ? '✅' : m.status === 'in_progress' ? '🔄 NOW' : '⏳'}{' '}
                   {m.actualDate ? formatDate(m.actualDate) : m.scheduledDate ? formatDate(m.scheduledDate) : ''}
                 </p>
@@ -512,15 +497,15 @@ function HorizontalTimeline({ milestones }: { milestones: EntitlementMilestone[]
 
 function NewsIntelligenceSection() {
   return (
-    <div className="rounded-lg p-3" style={{ background: BT.blueBg, border: `1px solid ${BT.blue}40` }}>
-      <h4 className="text-xs font-semibold uppercase mb-2" style={{ color: BT.blueL }}>News Intelligence</h4>
-      <p className="text-xs mb-2" style={{ color: BT.blueL }}>Related articles detected:</p>
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+      <h4 className="text-xs font-semibold text-blue-800 uppercase mb-2">News Intelligence</h4>
+      <p className="text-xs text-blue-600 mb-2">Related articles detected:</p>
       <ul className="space-y-1.5">
-        <li className="text-xs" style={{ color: BT.tm }}>
-          <span style={{ color: BT.blue }}>•</span> "Midtown density debate heats up" — <span style={{ color: BT.td }}>AJC (2/18)</span>
+        <li className="text-xs text-gray-700">
+          <span className="text-blue-500">•</span> "Midtown density debate heats up" — <span className="text-gray-400">AJC (2/18)</span>
         </li>
-        <li className="text-xs" style={{ color: BT.tm }}>
-          <span style={{ color: BT.blue }}>•</span> "Atlanta planning commission approves new density guidelines" — <span style={{ color: BT.td }}>(2/5)</span>
+        <li className="text-xs text-gray-700">
+          <span className="text-blue-500">•</span> "Atlanta planning commission approves new density guidelines" — <span className="text-gray-400">(2/5)</span>
         </li>
       </ul>
     </div>
@@ -532,20 +517,20 @@ function DocumentsList({ documents }: { documents: EntitlementDocument[] }) {
 
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase mb-2" style={{ color: BT.td }}>Documents</h4>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Documents</h4>
       <ul className="space-y-1.5">
         {documents.map((doc, i) => (
           <li key={i} className="flex items-center gap-2 text-sm">
-            <span style={{ color: BT.td }}>📄</span>
+            <span className="text-gray-400">📄</span>
             <div className="flex-1 min-w-0">
               {doc.url ? (
-                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="hover:underline truncate block" style={{ color: BT.blueL }}>
+                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate block">
                   {doc.name}
                 </a>
               ) : (
-                <span className="truncate block" style={{ color: BT.tm }}>{doc.name}</span>
+                <span className="text-gray-700 truncate block">{doc.name}</span>
               )}
-              <span className="text-xs" style={{ color: BT.td }}>{doc.type} · {formatDate(doc.date)}</span>
+              <span className="text-xs text-gray-400">{doc.type} · {formatDate(doc.date)}</span>
             </div>
           </li>
         ))}
@@ -559,13 +544,13 @@ function ContactsList({ contacts }: { contacts: EntitlementContact[] }) {
 
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase mb-2" style={{ color: BT.td }}>Contacts</h4>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">Contacts</h4>
       <ul className="space-y-1.5">
         {contacts.map((c, i) => (
           <li key={i} className="text-sm">
-            <span className="font-medium" style={{ color: BT.text }}>{c.name}</span>
-            <span style={{ color: BT.td }}> · {c.role}</span>
-            {c.organization && <span style={{ color: BT.td }}> · {c.organization}</span>}
+            <span className="font-medium text-gray-800">{c.name}</span>
+            <span className="text-gray-400"> · {c.role}</span>
+            {c.organization && <span className="text-gray-400"> · {c.organization}</span>}
           </li>
         ))}
       </ul>
@@ -578,14 +563,14 @@ function RiskFactorsList({ factors }: { factors: RiskFactor[] }) {
 
   return (
     <div>
-      <h4 className="text-xs font-semibold uppercase mb-2" style={{ color: BT.td }}>AI Risk Factors</h4>
+      <h4 className="text-xs font-semibold text-gray-500 uppercase mb-2">AI Risk Factors</h4>
       <ul className="space-y-1">
         {factors.map((f, i) => (
           <li key={i} className="flex items-start gap-2 text-sm">
-            <span style={{ color: f.type === 'positive' ? BT.green : f.type === 'warning' ? BT.amber : BT.td }}>
+            <span className={f.type === 'positive' ? 'text-green-500' : f.type === 'warning' ? 'text-yellow-500' : 'text-gray-400'}>
               {f.type === 'positive' ? '●' : f.type === 'warning' ? '▲' : '○'}
             </span>
-            <span style={{ color: f.type === 'positive' ? BT.greenL : f.type === 'warning' ? BT.amberL : BT.tm }}>
+            <span className={f.type === 'positive' ? 'text-green-700' : f.type === 'warning' ? 'text-yellow-700' : 'text-gray-600'}>
               {f.text}
             </span>
           </li>
@@ -629,56 +614,48 @@ function EntitlementModal({
     onSave(form);
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '8px 12px',
-    borderRadius: 6,
-    fontSize: '0.875rem',
-    background: BT.bgPanel,
-    color: BT.text,
-    border: `1px solid ${BT.borderL}`,
-    outline: 'none',
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: 'block',
-    fontSize: '0.875rem',
-    fontWeight: 500,
-    marginBottom: 4,
-    color: BT.tm,
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        style={{ background: BT.bgCard }}>
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: `1px solid ${BT.border}` }}>
-          <h2 className="text-lg font-semibold" style={{ color: BT.text }}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-900">
             {entitlement ? 'Edit Entitlement' : 'New Entitlement'}
           </h2>
-          <button onClick={onClose} className="transition-colors" style={{ color: BT.td }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = BT.tm; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = BT.td; }}>✖</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✖</button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           <div>
-            <label style={labelStyle}>Parcel Address *</label>
-            <input type="text" required style={inputStyle} value={form.parcelAddress} onChange={(e) => update('parcelAddress', e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Parcel Address *</label>
+            <input
+              type="text"
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={form.parcelAddress}
+              onChange={(e) => update('parcelAddress', e.target.value)}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label style={labelStyle}>Type</label>
-              <select style={inputStyle} value={form.type} onChange={(e) => update('type', e.target.value)}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                value={form.type}
+                onChange={(e) => update('type', e.target.value)}
+              >
                 {(Object.keys(TYPE_LABELS) as EntitlementType[]).map((t) => (
                   <option key={t} value={t}>{TYPE_LABELS[t]}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label style={labelStyle}>Status</label>
-              <select style={inputStyle} value={form.status} onChange={(e) => update('status', e.target.value)}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+                value={form.status}
+                onChange={(e) => update('status', e.target.value)}
+              >
                 {KANBAN_COLUMNS.map((col) => (
                   <option key={col.status} value={col.status}>{col.label}</option>
                 ))}
@@ -690,18 +667,32 @@ function EntitlementModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label style={labelStyle}>From District</label>
-              <input type="text" style={inputStyle} value={form.fromDistrict || ''} onChange={(e) => update('fromDistrict', e.target.value || null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">From District</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.fromDistrict || ''}
+                onChange={(e) => update('fromDistrict', e.target.value || null)}
+              />
             </div>
             <div>
-              <label style={labelStyle}>To District</label>
-              <input type="text" style={inputStyle} value={form.toDistrict || ''} onChange={(e) => update('toDistrict', e.target.value || null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">To District</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.toDistrict || ''}
+                onChange={(e) => update('toDistrict', e.target.value || null)}
+              />
             </div>
           </div>
 
           <div>
-            <label style={labelStyle}>Risk Level</label>
-            <select style={inputStyle} value={form.riskLevel} onChange={(e) => update('riskLevel', e.target.value)}>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Risk Level</label>
+            <select
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
+              value={form.riskLevel}
+              onChange={(e) => update('riskLevel', e.target.value)}
+            >
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
@@ -709,50 +700,88 @@ function EntitlementModal({
           </div>
 
           <div>
-            <label style={labelStyle}>Deal ID</label>
-            <input type="text" style={inputStyle} value={form.dealId || ''} onChange={(e) => update('dealId', e.target.value || null)} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Deal ID</label>
+            <input
+              type="text"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+              value={form.dealId || ''}
+              onChange={(e) => update('dealId', e.target.value || null)}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label style={labelStyle}>Filed Date</label>
-              <input type="date" style={inputStyle} value={form.filedDate || ''} onChange={(e) => update('filedDate', e.target.value || null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Filed Date</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.filedDate || ''}
+                onChange={(e) => update('filedDate', e.target.value || null)}
+              />
             </div>
             <div>
-              <label style={labelStyle}>Hearing Date</label>
-              <input type="date" style={inputStyle} value={form.hearingDate || ''} onChange={(e) => update('hearingDate', e.target.value || null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hearing Date</label>
+              <input
+                type="date"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.hearingDate || ''}
+                onChange={(e) => update('hearingDate', e.target.value || null)}
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label style={labelStyle}>Cost Low ($)</label>
-              <input type="number" style={inputStyle} value={form.estCostLow ?? ''} onChange={(e) => update('estCostLow', e.target.value ? Number(e.target.value) : null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cost Low ($)</label>
+              <input
+                type="number"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.estCostLow ?? ''}
+                onChange={(e) => update('estCostLow', e.target.value ? Number(e.target.value) : null)}
+              />
             </div>
             <div>
-              <label style={labelStyle}>Cost High ($)</label>
-              <input type="number" style={inputStyle} value={form.estCostHigh ?? ''} onChange={(e) => update('estCostHigh', e.target.value ? Number(e.target.value) : null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cost High ($)</label>
+              <input
+                type="number"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.estCostHigh ?? ''}
+                onChange={(e) => update('estCostHigh', e.target.value ? Number(e.target.value) : null)}
+              />
             </div>
             <div>
-              <label style={labelStyle}>Timeline (mo)</label>
-              <input type="number" style={inputStyle} value={form.estTimelineMonths ?? ''} onChange={(e) => update('estTimelineMonths', e.target.value ? Number(e.target.value) : null)} />
+              <label className="block text-sm font-medium text-gray-700 mb-1">Timeline (mo)</label>
+              <input
+                type="number"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={form.estTimelineMonths ?? ''}
+                onChange={(e) => update('estTimelineMonths', e.target.value ? Number(e.target.value) : null)}
+              />
             </div>
           </div>
 
           <div>
-            <label style={labelStyle}>Notes</label>
-            <textarea style={{ ...inputStyle, resize: 'none' }} rows={3} value={form.notes || ''} onChange={(e) => update('notes', e.target.value || null)} />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <textarea
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm resize-none"
+              rows={3}
+              value={form.notes || ''}
+              onChange={(e) => update('notes', e.target.value || null)}
+            />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2" style={{ borderTop: `1px solid ${BT.border}` }}>
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-md transition-colors"
-              style={{ color: BT.tm, border: `1px solid ${BT.borderL}`, background: 'transparent' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = BT.bgPanel; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
+          <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+            >
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 text-sm text-white rounded-md transition-colors"
-              style={{ background: BT.blue }}>
+            <button
+              type="submit"
+              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
               {entitlement ? 'Save Changes' : 'Create'}
             </button>
           </div>

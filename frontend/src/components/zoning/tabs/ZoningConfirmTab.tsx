@@ -10,7 +10,6 @@ import {
   Search,
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
-import { T as BT } from '../../deal/bloomberg-tokens';
 
 interface ZoningConfirmTabProps {
   deal?: any;
@@ -277,8 +276,8 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" style={{ color: BT.blue }} />
-          <p className="text-sm" style={{ color: BT.tm }}>Looking up zoning from property assessor records...</p>
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-600">Looking up zoning from property assessor records...</p>
         </div>
       </div>
     );
@@ -286,14 +285,14 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="rounded-lg border p-6" style={{ background: BT.bgCard, borderColor: BT.border }}>
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
         <div className="flex items-start gap-4">
-          <div className="p-3 rounded-lg" style={{ background: BT.blueBg }}>
-            <Building2 className="w-6 h-6" style={{ color: BT.blue }} />
+          <div className="p-3 bg-blue-50 rounded-lg">
+            <Building2 className="w-6 h-6 text-blue-600" />
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold mb-1" style={{ color: BT.text }}>Confirm Zoning District</h3>
-            <p className="text-sm" style={{ color: BT.tm }}>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">Confirm Zoning District</h3>
+            <p className="text-sm text-gray-600">
               {detectedZoning
                 ? 'We detected available zoning districts from your property boundary. Select the correct one and confirm.'
                 : 'We could not auto-detect the zoning district. You can enter it manually below.'}
@@ -303,97 +302,90 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       </div>
 
       {error && (
-        <div className="rounded-lg p-4 flex items-start gap-3"
-          style={{ background: BT.amberBg, border: `1px solid ${BT.amber}50` }}>
-          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: BT.amberL }} />
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-medium" style={{ color: BT.amberL }}>Could not auto-detect zoning</p>
-            <p className="text-sm mt-1" style={{ color: BT.amber }}>{error}</p>
+            <p className="text-sm font-medium text-amber-900">Could not auto-detect zoning</p>
+            <p className="text-sm text-amber-700 mt-1">{error}</p>
           </div>
         </div>
       )}
 
       {detectedZoning && !manualEntry && (
-        <div className="rounded-lg border p-6" style={{ background: BT.bgCard, borderColor: BT.border }}>
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
           <div className="flex items-start justify-between mb-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <MapPin className="w-4 h-4" style={{ color: BT.td }} />
-                <span className="text-sm" style={{ color: BT.tm }}>Detected Location</span>
+                <MapPin className="w-4 h-4 text-gray-400" />
+                <span className="text-sm text-gray-600">Detected Location</span>
               </div>
-              <p className="text-base font-medium" style={{ color: BT.text }}>
+              <p className="text-base font-medium text-gray-900">
                 {detectedZoning.municipality}, {detectedZoning.state}
               </p>
             </div>
-            <div className="px-2 py-1 text-xs font-medium rounded"
-              style={{ background: BT.greenBg, color: BT.greenL }}>
+            <div className="px-2 py-1 bg-green-50 text-green-700 text-xs font-medium rounded">
               {availableDistricts.length} districts available
             </div>
           </div>
 
-          <div className="border-t pt-4" style={{ borderColor: BT.border }}>
+          <div className="border-t border-gray-100 pt-4">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-xs mb-1" style={{ color: BT.td }}>Selected Zoning District</p>
-                <p className="text-2xl font-bold mb-1" style={{ color: BT.text }}>{detectedZoning.code}</p>
-                <p className="text-sm" style={{ color: BT.tm }}>{detectedZoning.name}</p>
+                <p className="text-xs text-gray-500 mb-1">Selected Zoning District</p>
+                <p className="text-2xl font-bold text-gray-900 mb-1">{detectedZoning.code}</p>
+                <p className="text-sm text-gray-600">{detectedZoning.name}</p>
                 {detectedZoning.source && detectedZoning.source !== 'boundary' && (
-                  <p className="text-xs mt-1" style={{ color: detectedZoning.confidence >= 0.9 ? BT.green : BT.blue }}>
+                  <p className="text-xs mt-1" style={{ color: detectedZoning.confidence >= 0.9 ? '#059669' : '#2563eb' }}>
                     Source: {detectedZoning.source}
                   </p>
                 )}
               </div>
               {detectedZoning.confidence >= 0.9 ? (
-                <CheckCircle2 className="w-6 h-6" style={{ color: BT.green }} />
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
               ) : (
                 <div className="flex flex-col items-center">
-                  <CheckCircle2 className="w-6 h-6" style={{ color: BT.blue }} />
-                  <span className="text-[10px] mt-0.5" style={{ color: BT.blue }}>AI-verified</span>
+                  <CheckCircle2 className="w-6 h-6 text-blue-500" />
+                  <span className="text-[10px] text-blue-500 mt-0.5">AI-verified</span>
                 </div>
               )}
             </div>
           </div>
 
           {availableDistricts.length > 1 && (
-            <div className="mt-4 border-t pt-4" style={{ borderColor: BT.border }}>
-              <p className="text-xs font-medium mb-2" style={{ color: BT.tm }}>
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <p className="text-xs font-medium text-gray-700 mb-2">
                 Not the right district? Select from {availableDistricts.length} available:
               </p>
               <div className="relative mb-2">
-                <Search className="absolute left-2.5 top-2 w-3.5 h-3.5" style={{ color: BT.td }} />
+                <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-gray-400" />
                 <input
                   type="text"
                   value={districtSearch}
                   onChange={(e) => setDistrictSearch(e.target.value)}
                   placeholder="Search districts..."
-                  className="w-full pl-8 pr-3 py-1.5 rounded text-xs focus:outline-none focus:ring-1"
-                  style={{
-                    background: BT.bgPanel,
-                    border: `1px solid ${BT.border}`,
-                    color: BT.text,
-                  }}
+                  className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded text-xs focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
-              <div className="max-h-48 overflow-y-auto rounded" style={{ border: `1px solid ${BT.border}` }}>
+              <div className="max-h-48 overflow-y-auto border border-gray-200 rounded">
                 {filteredDistricts.map(d => (
                   <button
                     key={d.id}
                     onClick={() => handleDistrictSelect(d)}
-                    className="w-full text-left px-3 py-2 text-xs border-b last:border-0 transition-colors"
-                    style={selectedDistrictId === d.id
-                      ? { background: BT.blueBg, color: BT.blueL, borderColor: BT.border }
-                      : { background: 'transparent', color: BT.tm, borderColor: BT.border }
-                    }
+                    className={`w-full text-left px-3 py-2 text-xs border-b border-gray-100 last:border-0 transition-colors ${
+                      selectedDistrictId === d.id
+                        ? 'bg-blue-50 text-blue-900'
+                        : 'hover:bg-gray-50 text-gray-700'
+                    }`}
                   >
                     <span className="font-medium">{d.zoning_code}</span>
-                    <span className="ml-2" style={{ color: BT.td }}>{d.district_name}</span>
+                    <span className="text-gray-500 ml-2">{d.district_name}</span>
                     {d.max_height && (
-                      <span className="ml-2" style={{ color: BT.td }}>({d.max_height}ft max)</span>
+                      <span className="text-gray-400 ml-2">({d.max_height}ft max)</span>
                     )}
                   </button>
                 ))}
                 {filteredDistricts.length === 0 && (
-                  <p className="px-3 py-2 text-xs" style={{ color: BT.td }}>No matching districts</p>
+                  <p className="px-3 py-2 text-xs text-gray-500">No matching districts</p>
                 )}
               </div>
             </div>
@@ -402,16 +394,14 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
           <div className="mt-6 flex items-center justify-between">
             <button
               onClick={() => setManualEntry(true)}
-              className="text-sm underline"
-              style={{ color: BT.tm }}
+              className="text-sm text-gray-600 hover:text-gray-900 underline"
             >
               Enter manually instead
             </button>
             <button
               onClick={handleConfirm}
               disabled={analyzing}
-              className="flex items-center gap-2 px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: BT.blue }}
+              className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {analyzing ? (
                 <>
@@ -431,11 +421,11 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
       )}
 
       {(manualEntry || (!detectedZoning && !loading)) && (
-        <div className="rounded-lg border p-6" style={{ background: BT.bgCard, borderColor: BT.border }}>
-          <h4 className="text-base font-semibold mb-4" style={{ color: BT.text }}>Enter Zoning Manually</h4>
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h4 className="text-base font-semibold text-gray-900 mb-4">Enter Zoning Manually</h4>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: BT.tm }}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Zoning District Code *
               </label>
               <input
@@ -443,14 +433,9 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                 placeholder="e.g. MRC-3, R-4, C-2"
-                className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2"
-                style={{
-                  background: BT.bgPanel,
-                  border: `1px solid ${BT.borderL}`,
-                  color: BT.text,
-                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
-              <p className="text-xs mt-1" style={{ color: BT.td }}>
+              <p className="text-xs text-gray-500 mt-1">
                 Find this on your municipality's zoning map or planning department website
               </p>
             </div>
@@ -462,8 +447,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
                     setManualEntry(false);
                     setManualCode('');
                   }}
-                  className="px-4 py-2 text-sm rounded-lg"
-                  style={{ color: BT.tm, border: `1px solid ${BT.borderL}`, background: 'transparent' }}
+                  className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
                   Cancel
                 </button>
@@ -471,8 +455,7 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
               <button
                 onClick={handleConfirm}
                 disabled={!manualCode.trim() || analyzing}
-                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ background: BT.blue }}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {analyzing ? (
                   <>
@@ -491,9 +474,9 @@ export default function ZoningConfirmTab({ deal, dealId, onConfirm }: ZoningConf
         </div>
       )}
 
-      <div className="border rounded-lg p-4" style={{ background: BT.bgCard, borderColor: BT.border }}>
-        <p className="text-xs" style={{ color: BT.tm }}>
-          <strong style={{ color: BT.text }}>What happens next:</strong> Once confirmed, our AI agent will analyze the zoning code and calculate your maximum development capacity based on your <strong>{deal?.strategy || 'investment'}</strong> strategy.
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <p className="text-xs text-gray-600">
+          <strong className="text-gray-900">What happens next:</strong> Once confirmed, our AI agent will analyze the zoning code and calculate your maximum development capacity based on your <strong>{deal?.strategy || 'investment'}</strong> strategy.
         </p>
       </div>
     </div>
