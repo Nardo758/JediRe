@@ -1460,8 +1460,11 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
   const [gatedExpanded, setGatedExpanded] = useState(false);
 
   const allSorted = [...scores].sort((a, b) => b.overall_score - a.overall_score);
-  const winner = allSorted.find(s => s.gate_result === 'PASS') ?? allSorted[0];
+  // Primary matrix: only strategies that have not been gated (N/A excluded)
+  const primaryScores = allSorted.filter(s => s.gate_result !== 'N/A');
+  // Gated (N/A) strategies shown only in the collapsed section below
   const gatedScores = allSorted.filter(s => s.gate_result === 'N/A');
+  const winner = primaryScores[0] ?? allSorted[0];
 
   const STRATEGY_COLORS: Record<number, string> = {
     0: '#A78BFA', 1: '#00BCD4', 2: '#00D26A', 3: '#F5A623', 4: '#FF8C42',
@@ -1469,6 +1472,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
   const scoreColor = (s: number) =>
     s >= 75 ? '#00D26A' : s >= 50 ? '#F5A623' : '#FF4757';
 
+  // Derive top-5 signals from all strategies (for stability), display against primary only
   const signalKeys = top5Signals(allSorted);
   const signalLabel = (k: string) => k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -1511,7 +1515,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
           <thead>
             <tr className="border-b-2 border-[#1e2a3d]">
               <th className="text-left py-2 px-3 font-mono text-[#5a6a7a] w-28">METRIC</th>
-              {allSorted.map((s, idx) => {
+              {primaryScores.map((s, idx) => {
                 const isWin = winner && s.strategy_id === winner.strategy_id;
                 const col = STRATEGY_COLORS[idx] ?? '#8B95A5';
                 return (
@@ -1536,7 +1540,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
             {/* Overall Score row */}
             <tr className="border-b border-[#1e2a3d] bg-[#0a1628]/50">
               <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">OVERALL</td>
-              {allSorted.map(s => (
+              {primaryScores.map(s => (
                 <td key={s.strategy_id} className="py-2 px-3 text-center">
                   <span className="text-lg font-bold font-mono" style={{ color: scoreColor(s.overall_score) }}>
                     {s.overall_score.toFixed(0)}
@@ -1548,14 +1552,12 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
             {/* Gate row */}
             <tr className="border-b border-[#1e2a3d]">
               <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">GATE</td>
-              {allSorted.map(s => (
+              {primaryScores.map(s => (
                 <td key={s.strategy_id} className="py-2 px-3 text-center">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-bold border ${
                     s.gate_result === 'PASS'
                       ? 'bg-emerald-900/20 text-emerald-300 border-emerald-400/30'
-                      : s.gate_result === 'FAIL'
-                        ? 'bg-red-900/20 text-red-400 border-red-400/30'
-                        : 'bg-[#1e2a3d] text-[#5a6a7a] border-[#2a3a4d]'
+                      : 'bg-red-900/20 text-red-400 border-red-400/30'
                   }`}>
                     {s.gate_result}
                   </span>
@@ -1563,23 +1565,28 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
               ))}
             </tr>
 
-            {/* 5 signal rows */}
+            {/* 5 signal rows — weighted contribution: signal_score × strategy_weight */}
             {signalKeys.map((key, i) => (
               <tr key={key} className={`border-b border-[#1a2a3a] ${i % 2 === 0 ? '' : 'bg-[#0a1628]/30'}`}>
                 <td className="py-1.5 px-3 font-medium text-[#8B95A5] text-[10px] max-w-[7rem] truncate" title={signalLabel(key)}>
                   {signalLabel(key)}
                 </td>
-                {allSorted.map((s, idx) => {
-                  const val = s.sub_scores?.[key] ?? 0;
+                {primaryScores.map((s, idx) => {
+                  const signalScore = s.sub_scores?.[key] ?? 0;
+                  const weight = s.signal_weights?.[key] ?? 1;
+                  const contribution = signalScore * weight;
                   const col = STRATEGY_COLORS[idx] ?? '#A78BFA';
                   return (
                     <td key={s.strategy_id} className="py-1.5 px-3 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
+                      <div
+                        className="flex flex-col items-center gap-0.5"
+                        title={`${key}: signal=${signalScore.toFixed(1)} × weight=${weight.toFixed(2)} = ${contribution.toFixed(1)}`}
+                      >
                         <span className="font-mono font-semibold text-[11px]" style={{ color: col }}>
-                          {val.toFixed(0)}
+                          {contribution.toFixed(0)}
                         </span>
                         <div className="w-10 bg-[#1e2a3d] rounded-full h-0.5">
-                          <div className="h-0.5 rounded-full" style={{ width: `${Math.min(val, 100)}%`, background: col }} />
+                          <div className="h-0.5 rounded-full" style={{ width: `${Math.min(contribution, 100)}%`, background: col }} />
                         </div>
                       </div>
                     </td>
@@ -1591,7 +1598,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
             {/* Confidence row */}
             <tr className="border-t-2 border-[#2a3a4d]">
               <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">CONF %</td>
-              {allSorted.map(s => (
+              {primaryScores.map(s => (
                 <td key={s.strategy_id} className="py-2 px-3 text-center font-mono text-[11px] text-[#8B95A5]">
                   {s.confidence != null ? `${s.confidence.toFixed(0)}%` : '—'}
                 </td>
