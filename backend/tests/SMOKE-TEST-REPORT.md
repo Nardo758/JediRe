@@ -14,10 +14,10 @@ Test IDs: deal=`12eb9e11-3b2d-44d5-9f59-877a76344c18`, user=`6253ba3f-d40d-4597-
 | 2 | smoke-test-zoning.sh | Zoning, Supply & Property | 196 | 110 | 86 | 0 |
 | 3 | smoke-test-financial.sh | Financial & Strategy | 186 | 64 | 122 | 0 |
 | 4 | smoke-test-market.sh | Market Intel & Analytics | 219 | 155 | 64 | 0 |
-| 5 | smoke-test-misc.sh | Module Wiring & Misc | 357 | 118 | 239 | 0 |
-| **TOTAL** | | | **1,236** | **577 (47%)** | **659 (53%)** | **0 (0%)** |
+| 5 | smoke-test-misc.sh | Module Wiring & Misc | 382 | 118 | 264 | 0 |
+| **TOTAL** | | | **1,261** | **577 (46%)** | **684 (54%)** | **0 (0%)** |
 
-**Zero server errors (5xx) across all 1,236 endpoints tested.**
+**Zero server errors (5xx) across all 1,261 endpoints tested.**
 
 ---
 
@@ -85,7 +85,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 ## Phase 5 — Module Wiring & Misc (`smoke-test-misc.sh`)
 
-**353 endpoints** covering all remaining mounted route groups:
+**382 endpoints** covering all remaining mounted route groups:
 
 - Dashboard, Gmail, Microsoft (inline + full oauth router — 18 endpoints, all 15 from `microsoft.routes.ts` + 3 from `inline-microsoft.routes.ts`), contacts sync, emails (AI actions), email extractions, news, intelligence
 - Orgs/RBAC, context tracker, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences
@@ -103,7 +103,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 | Status | Count | Meaning |
 |--------|-------|---------|
 | PASS   | 118   | HTTP 200 response |
-| SKIP   | 235   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds |
+| SKIP   | 264   | 404 (unmounted/no-collection-GET), 400 (validation), external-creds |
 | FAIL   | 0     | — |
 
 ### Route File Coverage (Phase 5 Additions)
@@ -115,6 +115,11 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 | `microsoft.routes.ts` | 15 | 15 | check_optional (5xx=FAIL, 4xx=SKIP) |
 | `inline-microsoft.routes.ts` | 3 | 3 | check_strict/lenient |
 | `visibility.routes.ts` | 5 | 5 (correct paths) | check_lenient |
+| `maps.routes.ts` | 9 | 9 | check_lenient |
+| `layers.routes.ts` | 7 | 7 | check_lenient |
+| `mapAnnotations.routes.ts` | 6 | 6 | check_lenient |
+| `m22-archive.routes.ts` | 11 | 11 | check_lenient |
+| `audit.routes.ts` | 11 | 11 | check_lenient |
 | `extractions.routes.ts` | 6 | 6 | check_lenient |
 | `assetNews.routes.ts` | 5 | 5 | check_lenient |
 | `assetNotes.routes.ts` | 7 | 7 | check_lenient |

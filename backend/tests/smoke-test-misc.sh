@@ -523,45 +523,86 @@ check_lenient "Capsules: GET /api/capsules/:id"             GET  "$BASE/api/caps
 check_lenient "Capsules v1: POST /api/v1/capsules"          POST "$BASE/api/v1/capsules" \
   -d '{"dealId":"'"$DEAL_ID"'","name":"smoke capsule"}'
 
-# ── Maps ──────────────────────────────────────────────────
+# ── Maps (maps.routes.ts — 9 routes) ─────────────────────
 echo "── maps ──"
-check_lenient "Maps: GET /maps"                             GET  "$BASE/api/v1/maps"
-check_lenient "Maps: POST /maps"                            POST "$BASE/api/v1/maps" \
+check_lenient "Maps: GET /maps"                                       GET  "$BASE/api/v1/maps"
+check_lenient "Maps: POST /maps"                                      POST "$BASE/api/v1/maps" \
   -d '{"name":"Smoke Map","center":{"lat":33.7,"lng":-84.4}}'
-check_lenient "Maps: GET /maps/:id"                         GET  "$BASE/api/v1/maps/$FAKE_ID"
-check_lenient "Maps: GET /maps/:id/pins"                    GET  "$BASE/api/v1/maps/$FAKE_ID/pins"
+check_lenient "Maps: GET /maps/:id"                                   GET  "$BASE/api/v1/maps/$FAKE_ID"
+check_lenient "Maps: PUT /maps/:id"                                   PUT  "$BASE/api/v1/maps/$FAKE_ID" \
+  -d '{"name":"Updated Map"}'
+check_lenient "Maps: DELETE /maps/:id"                                DELETE "$BASE/api/v1/maps/$FAKE_ID"
+check_lenient "Maps: GET /maps/:id/pins"                              GET  "$BASE/api/v1/maps/$FAKE_ID/pins"
+check_lenient "Maps: POST /maps/:id/pins"                             POST "$BASE/api/v1/maps/$FAKE_ID/pins" \
+  -d '{"lat":33.7,"lng":-84.4,"label":"Smoke Pin"}'
+check_lenient "Maps: PUT /maps/:id/pins/:pin_id"                      PUT  "$BASE/api/v1/maps/$FAKE_ID/pins/$FAKE_ID" \
+  -d '{"label":"Updated Pin"}'
+check_lenient "Maps: DELETE /maps/:id/pins/:pin_id"                   DELETE "$BASE/api/v1/maps/$FAKE_ID/pins/$FAKE_ID"
 
-# ── Layers ────────────────────────────────────────────────
+# ── Layers (layers.routes.ts — 7 routes) ──────────────────
 echo "── layers ──"
-check_lenient "Layers: GET /layers/map/:id"                 GET  "$BASE/api/v1/layers/map/$FAKE_ID"
-check_lenient "Layers: GET /layers/sources/market"          GET  "$BASE/api/v1/layers/sources/market"
-check_lenient "Layers: POST /layers"                        POST "$BASE/api/v1/layers" \
+check_lenient "Layers: GET /layers/map/:map_id"                       GET  "$BASE/api/v1/layers/map/$FAKE_ID"
+check_lenient "Layers: GET /layers/:id"                               GET  "$BASE/api/v1/layers/$FAKE_ID"
+check_lenient "Layers: POST /layers"                                  POST "$BASE/api/v1/layers" \
   -d '{"mapId":"'"$FAKE_ID"'","name":"smoke layer","type":"geojson"}'
+check_lenient "Layers: PUT /layers/:id"                               PUT  "$BASE/api/v1/layers/$FAKE_ID" \
+  -d '{"name":"Updated Layer"}'
+check_lenient "Layers: DELETE /layers/:id"                            DELETE "$BASE/api/v1/layers/$FAKE_ID"
+check_lenient "Layers: POST /layers/reorder"                          POST "$BASE/api/v1/layers/reorder" \
+  -d '{"mapId":"'"$FAKE_ID"'","layerIds":[]}'
+check_lenient "Layers: GET /layers/sources/:source_type"              GET  "$BASE/api/v1/layers/sources/market"
 
-# ── Map Annotations ───────────────────────────────────────
+# ── Map Annotations (mapAnnotations.routes.ts — 6 routes) ─
 echo "── map-annotations ──"
-check_lenient "MapAnnot: GET /map-annotations"              GET  "$BASE/api/v1/map-annotations"
-check_lenient "MapAnnot: GET /map-annotations?mapId=:id"    GET  "$BASE/api/v1/map-annotations?mapId=$FAKE_ID"
-check_lenient "MapAnnot: POST /map-annotations"             POST "$BASE/api/v1/map-annotations" \
+check_lenient "MapAnnot: GET /map-annotations"                        GET  "$BASE/api/v1/map-annotations"
+check_lenient "MapAnnot: GET /map-annotations/:id"                    GET  "$BASE/api/v1/map-annotations/$FAKE_ID"
+check_lenient "MapAnnot: POST /map-annotations"                       POST "$BASE/api/v1/map-annotations" \
   -d '{"mapId":"'"$FAKE_ID"'","type":"note","lat":33.7,"lng":-84.4,"content":"smoke"}'
+check_lenient "MapAnnot: PUT /map-annotations/:id"                    PUT  "$BASE/api/v1/map-annotations/$FAKE_ID" \
+  -d '{"content":"updated"}'
+check_lenient "MapAnnot: DELETE /map-annotations/:id"                 DELETE "$BASE/api/v1/map-annotations/$FAKE_ID"
+check_lenient "MapAnnot: POST /map-annotations/:id/share"             POST "$BASE/api/v1/map-annotations/$FAKE_ID/share" \
+  -d '{"userId":"'"$FAKE_ID"'"}'
 
-# ── M22 Archive ───────────────────────────────────────────
+# ── M22 Archive (m22-archive.routes.ts — 11 routes) ───────
 echo "── m22-archive ──"
-check_lenient "M22: GET /m22-archive/actuals/:id"           GET  "$BASE/api/v1/m22-archive/actuals/$DEAL_ID"
-check_lenient "M22: GET /m22-archive/snapshots/:id"         GET  "$BASE/api/v1/m22-archive/snapshots/$DEAL_ID"
-check_lenient "M22: GET /m22-archive/actuals/:id/summary"   GET  "$BASE/api/v1/m22-archive/actuals/$DEAL_ID/summary"
-check_lenient "M22: GET /m22-archive/actuals/:id/variance"  GET  "$BASE/api/v1/m22-archive/actuals/$DEAL_ID/variance"
-check_lenient "M22: POST /m22-archive/snapshot"             POST "$BASE/api/v1/m22-archive/snapshot" \
+check_lenient "M22: POST /m22-archive/snapshot"                       POST "$BASE/api/v1/m22-archive/snapshot" \
   -d '{"dealId":"'"$DEAL_ID"'","label":"Q1 2026"}'
-check_lenient "M22: POST /m22-archive/benchmarks/query"     POST "$BASE/api/v1/m22-archive/benchmarks/query" \
+check_lenient "M22: GET /m22-archive/snapshots/:dealId"               GET  "$BASE/api/v1/m22-archive/snapshots/$DEAL_ID"
+check_lenient "M22: GET /m22-archive/snapshot/:dealId/latest"         GET  "$BASE/api/v1/m22-archive/snapshot/$DEAL_ID/latest"
+check_lenient "M22: POST /m22-archive/actuals"                        POST "$BASE/api/v1/m22-archive/actuals" \
+  -d '{"dealId":"'"$DEAL_ID"'","period":"2026-Q1","value":100000}'
+check_lenient "M22: POST /m22-archive/actuals/bulk"                   POST "$BASE/api/v1/m22-archive/actuals/bulk" \
+  -d '{"dealId":"'"$DEAL_ID"'","actuals":[]}'
+check_lenient "M22: GET /m22-archive/actuals/:dealId"                 GET  "$BASE/api/v1/m22-archive/actuals/$DEAL_ID"
+check_lenient "M22: GET /m22-archive/actuals/:dealId/summary"         GET  "$BASE/api/v1/m22-archive/actuals/$DEAL_ID/summary"
+check_lenient "M22: GET /m22-archive/actuals/:dealId/variance"        GET  "$BASE/api/v1/m22-archive/actuals/$DEAL_ID/variance"
+check_lenient "M22: PUT /m22-archive/actuals/:id/verify"              PUT  "$BASE/api/v1/m22-archive/actuals/$FAKE_ID/verify" \
+  -d '{"verified":true}'
+check_lenient "M22: POST /m22-archive/benchmarks/query"               POST "$BASE/api/v1/m22-archive/benchmarks/query" \
   -d '{"marketId":"atlanta-ga"}'
+check_lenient "M22: POST /m22-archive/benchmarks/compute"             POST "$BASE/api/v1/m22-archive/benchmarks/compute" \
+  -d '{"dealId":"'"$DEAL_ID"'"}'
 
-# ── Audit ─────────────────────────────────────────────────
+# ── Audit (audit.routes.ts — 11 routes) ───────────────────
 echo "── audit ──"
-check_lenient "Audit: GET /audit/deal/:id"                  GET  "$BASE/api/v1/audit/deal/$DEAL_ID"
-check_lenient "Audit: GET /audit/confidence/:id"            GET  "$BASE/api/v1/audit/confidence/$DEAL_ID"
-check_lenient "Audit: POST /audit/chain-link"               POST "$BASE/api/v1/audit/chain-link" \
+check_lenient "Audit: GET /audit/assumption/:id"                      GET  "$BASE/api/v1/audit/assumption/$FAKE_ID"
+check_lenient "Audit: GET /audit/deal/:id"                            GET  "$BASE/api/v1/audit/deal/$DEAL_ID"
+check_lenient "Audit: GET /audit/event/:id"                           GET  "$BASE/api/v1/audit/event/$FAKE_ID"
+check_lenient "Audit: GET /audit/confidence/:id"                      GET  "$BASE/api/v1/audit/confidence/$DEAL_ID"
+check_lenient "Audit: POST /audit/export/:dealId"                     POST "$BASE/api/v1/audit/export/$DEAL_ID" \
+  -d '{"format":"json"}'
+check_lenient "Audit: POST /audit/chain-link"                         POST "$BASE/api/v1/audit/chain-link" \
   -d '{"dealId":"'"$DEAL_ID"'","source":"comp","target":"proforma"}'
+check_lenient "Audit: POST /audit/assumption-evidence"                POST "$BASE/api/v1/audit/assumption-evidence" \
+  -d '{"assumptionId":"'"$FAKE_ID"'","evidence":"smoke"}'
+check_lenient "Audit: POST /audit/calculation-log"                    POST "$BASE/api/v1/audit/calculation-log" \
+  -d '{"dealId":"'"$DEAL_ID"'","module":"noi","inputs":{}}'
+check_lenient "Audit: POST /audit/corroboration"                      POST "$BASE/api/v1/audit/corroboration" \
+  -d '{"assumptionId":"'"$FAKE_ID"'","source":"market"}'
+check_lenient "Audit: PUT /audit/source-credibility/:sourceName"      PUT  "$BASE/api/v1/audit/source-credibility/costar" \
+  -d '{"score":0.9}'
+check_lenient "Audit: GET /audit/export-status/:exportId"             GET  "$BASE/api/v1/audit/export-status/$FAKE_ID"
 
 # ── Kafka Events ──────────────────────────────────────────
 echo "── kafka-events ──"
