@@ -1,15 +1,6 @@
 import React from 'react';
+import { Pencil } from 'lucide-react';
 import { GeographicScope } from '../../types/trade-area';
-
-const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
-
-const AMBER       = '#F5A623';
-const AMBER_DIM   = '#C48A1F';
-const TEXT_DIM    = '#A0AABA';
-const TEXT_SEC    = '#BCC5D0';
-const TEXT_ACTIVE = '#F5A623';
-const BORDER      = '#1E2538';
-const BG_HOVER    = 'rgba(245,166,35,0.06)';
 
 interface GeographicScopeTabsProps {
   activeScope: GeographicScope;
@@ -25,9 +16,9 @@ interface GeographicScopeTabsProps {
 }
 
 const scopeLabels: Record<GeographicScope, string> = {
-  trade_area: 'TRADE AREA',
-  submarket:  'SUBMARKET',
-  msa:        'MSA',
+  trade_area: 'Trade Area',
+  submarket: 'Submarket',
+  msa: 'MSA',
 };
 
 const scopeIcons: Record<GeographicScope, string> = {
@@ -35,14 +26,6 @@ const scopeIcons: Record<GeographicScope, string> = {
   submarket: '\uD83C\uDFD9\uFE0F',
   msa: '\uD83D\uDDFA\uFE0F',
 };
-
-function fmtStats(s?: { occupancy?: number; avg_rent?: number }): string | null {
-  if (!s) return null;
-  const parts: string[] = [];
-  if (s.occupancy !== undefined) parts.push(`${s.occupancy.toFixed(1)}%`);
-  if (s.avg_rent  !== undefined) parts.push(`$${s.avg_rent.toLocaleString()}`);
-  return parts.length ? parts.join('  ·  ') : null;
-}
 
 export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
   activeScope,
@@ -56,129 +39,73 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
 
   if (compact) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'stretch',
-        height: '100%',
-        borderLeft: `1px solid ${BORDER}`,
-      }}>
-        {/* Define trade area — shown when trade_area not enabled */}
-        {!tradeAreaEnabled && (
-          <button
-            onClick={() => onDefineTradeArea?.()}
-            title="Define a trade area boundary for this deal"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '0 10px',
-              background: 'none',
-              border: 'none',
-              borderRight: `1px solid ${BORDER}`,
-              cursor: 'pointer',
-              fontFamily: MONO,
-              fontSize: 8,
-              letterSpacing: '0.08em',
-              color: AMBER_DIM,
-              whiteSpace: 'nowrap',
-              transition: 'color 0.15s, background 0.15s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = AMBER; (e.currentTarget as HTMLElement).style.background = BG_HOVER; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = AMBER_DIM; (e.currentTarget as HTMLElement).style.background = 'none'; }}
-          >
-            <span style={{ fontSize: 7, opacity: 0.7 }}>+</span>
-            <span>TRADE AREA</span>
-          </button>
-        )}
+      <div className="flex items-center gap-1">
+        {scopes.map((scope) => {
+          const isActive = activeScope === scope;
+          const isDisabled = scope === 'trade_area' && !tradeAreaEnabled;
+          const scopeStats = stats?.[scope];
 
-        {/* Scope selector items */}
-        {scopes.filter(s => s !== 'trade_area' || tradeAreaEnabled).map((scope, idx, arr) => {
-          const isActive   = activeScope === scope;
-          const statLine   = fmtStats(stats?.[scope]);
-          const isLast     = idx === arr.length - 1;
+          if (isDisabled) {
+            return (
+              <button
+                key={scope}
+                onClick={() => onDefineTradeArea?.()}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-dashed border-amber-300 text-amber-600 hover:bg-amber-50 transition-colors"
+              >
+                <span className="text-sm">{scopeIcons[scope]}</span>
+                <span>+ Define</span>
+              </button>
+            );
+          }
+
+          const hasStats = scopeStats && (scopeStats.occupancy !== undefined || scopeStats.avg_rent !== undefined);
+          const tooltipParts: string[] = [];
+          if (scopeStats?.occupancy !== undefined) tooltipParts.push(`Occupancy: ${scopeStats.occupancy.toFixed(1)}%`);
+          if (scopeStats?.avg_rent !== undefined) tooltipParts.push(`Avg Rent: $${scopeStats.avg_rent.toLocaleString()}`);
 
           return (
-            <button
-              key={scope}
-              onClick={() => onChange(scope)}
-              title={statLine ?? undefined}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '0 10px',
-                background: isActive ? 'rgba(245,166,35,0.07)' : 'none',
-                border: 'none',
-                borderRight: isLast ? 'none' : `1px solid ${BORDER}`,
-                borderBottom: isActive ? `2px solid ${AMBER}` : '2px solid transparent',
-                cursor: 'pointer',
-                fontFamily: MONO,
-                whiteSpace: 'nowrap',
-                transition: 'background 0.12s, border-color 0.12s',
-              }}
-              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = BG_HOVER; }}
-              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'none'; }}
-            >
-              {/* Scope label */}
-              <span style={{
-                fontSize: 8,
-                fontWeight: 700,
-                letterSpacing: '0.1em',
-                color: isActive ? TEXT_ACTIVE : TEXT_SEC,
-              }}>
-                {scopeLabels[scope]}
-              </span>
-
-              {/* Stat line */}
-              {statLine && (
-                <span style={{
-                  fontSize: 8,
-                  letterSpacing: '0.04em',
-                  color: isActive ? '#C8922A' : TEXT_DIM,
-                  fontWeight: 400,
-                }}>
-                  {statLine}
-                </span>
+            <div key={scope} className="flex items-center gap-1">
+              <button
+                onClick={() => onChange(scope)}
+                title={hasStats ? tooltipParts.join('  |  ') : undefined}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium rounded-lg transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-transparent'
+                }`}
+              >
+                <span className="text-sm">{scopeIcons[scope]}</span>
+                <span>{scopeLabels[scope]}</span>
+                {hasStats && (
+                  <span className={`text-xs font-normal ml-0.5 ${isActive ? 'text-blue-500' : 'text-slate-400'}`}>
+                    {scopeStats.occupancy !== undefined && `${scopeStats.occupancy.toFixed(1)}%`}
+                    {scopeStats.occupancy !== undefined && scopeStats.avg_rent !== undefined && ' \u00B7 '}
+                    {scopeStats.avg_rent !== undefined && `$${scopeStats.avg_rent.toLocaleString()}`}
+                  </span>
+                )}
+              </button>
+              {scope === 'trade_area' && onDefineTradeArea && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDefineTradeArea(); }}
+                  title="Edit trade area boundary"
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-md bg-slate-100 text-slate-500 hover:bg-blue-100 hover:text-blue-700 transition-colors border border-slate-200 hover:border-blue-300"
+                >
+                  <Pencil size={10} />
+                  <span>Edit</span>
+                </button>
               )}
-            </button>
+            </div>
           );
         })}
-
-        {/* Edit trade area — shown alongside tabs when trade_area is enabled */}
-        {tradeAreaEnabled && onDefineTradeArea && (
-          <button
-            onClick={() => onDefineTradeArea()}
-            title="Edit trade area boundary"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 8px',
-              background: 'none',
-              border: 'none',
-              borderLeft: `1px solid ${BORDER}`,
-              cursor: 'pointer',
-              fontFamily: MONO,
-              fontSize: 7,
-              letterSpacing: '0.1em',
-              color: TEXT_DIM,
-              transition: 'color 0.12s, background 0.12s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = AMBER; (e.currentTarget as HTMLElement).style.background = BG_HOVER; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = TEXT_DIM; (e.currentTarget as HTMLElement).style.background = 'none'; }}
-          >
-            EDIT
-          </button>
-        )}
       </div>
     );
   }
 
-  /* ── Full (non-compact) mode — unchanged ── */
   return (
     <div className="bg-white border border-gray-200 rounded-lg shadow-sm">
       <div className="flex border-b border-gray-200">
         {scopes.map((scope) => {
-          const isActive   = activeScope === scope;
+          const isActive = activeScope === scope;
           const isDisabled = scope === 'trade_area' && !tradeAreaEnabled;
 
           return (
@@ -221,19 +148,24 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
         <div className="grid grid-cols-3 divide-x divide-gray-200">
           {scopes.map((scope) => {
             const scopeStats = stats[scope];
-            const isActive   = activeScope === scope;
+            const isActive = activeScope === scope;
             const isDisabled = scope === 'trade_area' && !tradeAreaEnabled;
 
             if (isDisabled) {
               return (
                 <div key={scope} className="p-3 bg-gray-50">
-                  <div className="text-xs text-gray-400 text-center">No trade area defined</div>
+                  <div className="text-xs text-gray-400 text-center">
+                    No trade area defined
+                  </div>
                 </div>
               );
             }
 
             return (
-              <div key={scope} className={`p-3 ${isActive ? 'bg-blue-50' : 'bg-white'}`}>
+              <div
+                key={scope}
+                className={`p-3 ${isActive ? 'bg-blue-50' : 'bg-white'}`}
+              >
                 {scopeStats && (scopeStats.occupancy !== undefined || scopeStats.avg_rent !== undefined) ? (
                   <div className="space-y-1">
                     {scopeStats.occupancy !== undefined && (
@@ -254,7 +186,9 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-400 text-center">No stats available</div>
+                  <div className="text-xs text-gray-400 text-center">
+                    No stats available
+                  </div>
                 )}
               </div>
             );

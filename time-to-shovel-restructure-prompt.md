@@ -1,0 +1,126 @@
+# Claude Code Prompt: Restructure Time-to-Shovel Tab
+
+Read `frontend/src/components/zoning/tabs/TimeToShovelTab.tsx` (729 lines). Read the entire file.
+
+This tab currently has 4 sections that display overlapping timeline estimates:
+1. Monte Carlo Simulation — shows P10/P25/P50/P75/P90 month cards + histogram + Gantt phases + financial impact
+2. AI Timeline Intelligence — shows optimistic/expected/worstCase month cards + path analysis + risk factors + milestones + recommendations
+3. Municipal Benchmarks — shows P25/median/P75/P90 by entitlement step + by-type summary cards
+4. Jurisdiction Comparison — shows median TTS + rank per jurisdiction
+
+The problem: all three of the first sections display their OWN set of "how many months" in nearly identical colored card layouts. A user sees three sets of similar-but-not-identical month numbers and doesn't know which to trust.
+
+Restructure into 3 sections with clear hierarchy. Don't delete any data or functionality — reorganize it.
+
+## Section 1: "Timeline Estimate" (the primary answer)
+
+This section gives the user ONE authoritative answer. Use the Monte Carlo results as the source since they're statistically derived from the benchmarks.
+
+Layout:
+- Keep the DealContextBar at the very top (path selector + jurisdiction) — unchanged
+- Hero cards row: P10 / P50 / P90 only (drop P25 and P75 — three numbers is enough for the hero display)
+- Below cards: the Gantt phase breakdown chart (P10/P50/P90 stacked bars per phase) — move this directly under the hero cards, not buried below the histogram
+- Below Gantt: the probability distribution histogram
+- Below histogram: Financial Impact of Timeline Uncertainty (the 3 carrying cost cards)
+
+Changes to MonteCarloSection:
+- Remove the P25 and P75 cards from the hero row. Keep P10, P50, P90 only (3 cards, not 5). Relabel them: "Best Case (P10)" / "Expected (P50)" / "Worst Case (P90)"
+- Move the Gantt phase breakdown ABOVE the histogram (phases are more useful than the distribution curve for most users)
+- Keep the histogram
+- Keep the financial impact section
+- Add a one-line attribution below the hero cards: "Based on {sampleSize} benchmark projects × {nSimulations} simulations"
+
+## Section 2: "Evidence Base" (what feeds the estimate)
+
+This section shows the raw benchmark data that the Monte Carlo simulation uses as input. Rename the header from "Municipal Benchmarks" to "Evidence Base — Historical Processing Times".
+
+Layout:
+- Keep the detailed steps table (step-by-step P25/median/P75/P90 with sample sizes) — this is the most valuable table in the section
+- Keep the "By Entitlement Type" summary cards below the table
+- Move the Jurisdiction Comparison INTO this section as a sub-section below the entitlement type cards. Add a divider and sub-header: "Jurisdiction Comparison — How fast can you break ground in different markets?"
+- Keep the DataSourceBadge (Real Data vs Estimated) — this is important for trust
+
+Changes to MunicipalBenchmarkSection:
+- Rename header: "Evidence Base — Historical Processing Times"
+- Add subtitle: "Raw benchmark data feeding the Monte Carlo simulation above"
+
+Changes to JurisdictionComparisonSection:
+- Don't render as a separate top-level section. Instead, render it inside the evidence base section after the entitlement type cards
+- Remove its own card wrapper (it's now inside the evidence base card)
+- Keep the table and DataSourceBadge
+
+## Section 3: "AI Analysis" (qualitative intelligence)
+
+This section is the AI Timeline Intelligence — but WITHOUT the duplicate month estimate cards.
+
+Changes to TimelineIntelligenceSection:
+- REMOVE the 3 hero cards (optimistic/expected/worstCase months with shovel dates). These duplicate the Monte Carlo P10/P50/P90 that are already shown in Section 1. The numbers are slightly different because the AI uses a different method, which creates confusion.
+- KEEP everything else:
+  - Path Analysis (summary + advantages/challenges grid + alternative path note)
+  - Timeline Risk Factors (severity-coded cards with factor/impact/mitigation)
+  - Critical Milestones (table with milestone/month/criticalPath/note)
+  - Benchmark Comparison (summary card with fastest/slowest comparable)
+  - Recommendations (checklist)
+- Rename header from "AI Timeline Intelligence" to "AI Timeline Analysis"
+- Update subtitle: remove "Deal-specific analysis" phrasing, use "Qualitative risk assessment and path-specific insights"
+- If the AI response DOES include estimated months, show them as a subtle inline reference in the Path Analysis summary text, NOT as hero cards. For example: "The AI estimates this path at approximately {expected} months" as a sentence within the summary paragraph — not as a separate visual block.
+
+## Implementation steps
+
+Step 1: In the main `TimeToShovelTab` render (the return statement at the bottom of the file), reorder the sections:
+```tsx
+return (
+  <div className="space-y-4">
+    <DealContextBar ... />
+    
+    {/* Section 1: Timeline Estimate (Monte Carlo) */}
+    <MonteCarloSection ... />
+    
+    {/* Section 2: Evidence Base (Benchmarks + Jurisdiction) */}
+    {(benchmarks.length > 0 || detailedSteps.length > 0) && (
+      <EvidenceBaseSection
+        benchmarks={benchmarks}
+        detailedSteps={detailedSteps}
+        dataSource={...}
+        totalSampleCount={totalSampleCount}
+        jurisdictions={jurisdictions}
+        jurisdictionDataSource={jurisdictionDataSource}
+      />
+    )}
+    
+    {/* Section 3: AI Analysis (no duplicate month cards) */}
+    <TimelineIntelligenceSection ... />
+  </div>
+);
+```
+
+Step 2: Modify MonteCarloSection:
+- Change the hero cards grid from `grid-cols-5` to `grid-cols-3`
+- Remove P25 and P75 entries from the cards array, keep only P10, P50, P90
+- Relabel: "Best Case (P10)" / "Expected (P50)" / "Worst Case (P90)"
+- Reorder the content blocks: hero cards → attribution line → Gantt phases → histogram → financial impact
+- Add attribution line between cards and Gantt: `<p className="text-[10px] text-gray-400 text-center">Based on {mcData.sampleSize} benchmark projects × {mcData.nSimulations.toLocaleString()} simulations</p>`
+
+Step 3: Create EvidenceBaseSection (or rename MunicipalBenchmarkSection). This wraps the existing Municipal Benchmarks content AND the Jurisdiction Comparison into one section:
+- Outer card with header "Evidence Base — Historical Processing Times"
+- Inside: the existing detailed steps table + entitlement type cards
+- Then a divider: `<div className="border-t border-gray-200 mt-4 pt-4">`
+- Then the jurisdiction comparison table (extracted from JurisdictionComparisonSection, remove its outer card wrapper)
+- Accept `jurisdictions` and `jurisdictionDataSource` as additional props
+
+Step 4: Modify TimelineIntelligenceSection:
+- Find the grid-cols-3 block that renders the three month estimate cards (optimistic/expected/worstCase with shovelDateRange). Remove that entire block.
+- Keep everything below it (pathInsights, riskFactors, criticalMilestones, benchmarkComparison, recommendations)
+- In the pathInsights summary paragraph, if `intelligence.estimatedMonths.expected` exists, append: ` AI estimates approximately ${intelligence.estimatedMonths.expected} months for this path.` to the end of `intelligence.pathInsights.summary` text.
+- Change the header from "AI Timeline Intelligence" to "AI Timeline Analysis"
+- Change subtitle to: "Qualitative risk assessment and path-specific insights from {intelligence.dataLibraryContext.benchmarkCount} benchmarks"
+
+Step 5: Clean up. The standalone `JurisdictionComparisonSection` function is no longer rendered as a top-level section. You can either:
+- Delete it and inline its table rendering into EvidenceBaseSection, OR
+- Keep it as a helper component but remove its outer card wrapper and header (since EvidenceBaseSection provides those)
+
+Build and verify:
+1. Section 1 shows exactly 3 month cards (P10/P50/P90), then Gantt, then histogram, then financial impact
+2. Section 2 shows the historical processing times table + entitlement type cards + jurisdiction comparison — all in one card
+3. Section 3 shows path analysis, risk factors, milestones, recommendations — NO month estimate cards
+4. The user sees ONE set of authoritative timeline numbers (Monte Carlo), not three competing sets

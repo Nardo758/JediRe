@@ -10,14 +10,13 @@ import {
   AnalysisStatus,
   StrategyResults,
 } from '@/services/dealAnalysis.service';
-import apiClient, { api } from '@/services/api.client';
+import { apiClient } from '@/services/api.client';
 import {
   type JEDIScoreData,
   type SignalScore,
   type StrategyVerdictData,
   type RiskAlertData,
 } from '@/data/enhancedOverviewMockData';
-import { T as BT, mono as bMono, sans as bSans, UnderwritingComparison } from '../bloomberg-tokens';
 
 function scoreToVerdict(score: number): { verdict: string; verdictColor: string } {
   if (score >= 85) return { verdict: 'STRONG BUY', verdictColor: 'text-emerald-400' };
@@ -28,11 +27,11 @@ function scoreToVerdict(score: number): { verdict: string; verdictColor: string 
 
 function buildSignalsFromBreakdown(breakdown: any): SignalScore[] {
   const signalDefs = [
-    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-900/10', moduleLink: 'market-intelligence' },
-    { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-900/10', moduleLink: 'supply' },
-    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-900/10', moduleLink: 'market-intelligence' },
-    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-900/10', moduleLink: 'market-intelligence' },
-    { id: 'risk', name: 'Risk', color: 'bg-[#4B5563]', bgColor: 'bg-[#131920]', moduleLink: 'risk-management' },
+    { id: 'demand', name: 'Demand', color: 'bg-emerald-500', bgColor: 'bg-emerald-50', moduleLink: 'supply' },
+    { id: 'supply', name: 'Supply', color: 'bg-amber-500', bgColor: 'bg-amber-50', moduleLink: 'supply' },
+    { id: 'momentum', name: 'Momentum', color: 'bg-blue-500', bgColor: 'bg-blue-50', moduleLink: 'market' },
+    { id: 'position', name: 'Position', color: 'bg-violet-500', bgColor: 'bg-violet-50', moduleLink: 'market' },
+    { id: 'risk', name: 'Risk', color: 'bg-stone-500', bgColor: 'bg-stone-50', moduleLink: 'risk' },
   ];
 
   return signalDefs.map(def => {
@@ -66,7 +65,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 }) => {
   const { 
     capitalStructure, strategy: strategyCtx, financial, market, design3D, 
-    activeScenario, zoningProfile, updateZoningProfile, siteData, dealInputs, canonicalData,
+    activeScenario, zoningProfile, siteData, dealInputs, canonicalData,
     assumptions, computedReturns, fullContext, assumptionsLoading 
   } = useDealModule();
 
@@ -110,7 +109,6 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     loadEntitlements();
     loadCapitalStack();
     loadEntitlementBenchmarks();
-    loadZoningProfile();
     return () => { stopPolling?.(); };
   }, [deal?.id]);
 
@@ -122,7 +120,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const loadEntitlements = async () => {
     if (!deal?.id) return;
     try {
-      const res = await api.entitlements.getEntitlementsByDeal(deal.id);
+      const res = await apiClient.entitlements.getEntitlementsByDeal(deal.id);
       if (res.data?.data && Array.isArray(res.data.data)) {
         setEntitlements(res.data.data);
       } else if (Array.isArray(res.data)) {
@@ -135,14 +133,28 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
 
   const loadCapitalStack = async () => {
     if (!deal?.id) return;
+    const strategy = deal.strategyType || deal.strategy || 'value_add';
+    const totalCost = deal.purchasePrice || deal.budget || 0;
+    const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
+    if (!totalCost) return;
     try {
-      const res = await api.proforma.getCapitalStructure(deal.id);
-      const data = res.data;
-      if (data?.exists && data?.stack) {
-        setCapitalStackData(data.stack);
+      const res = await apiClient.proforma.calculateCapitalStack({
+        dealId: deal.id,
+        strategy,
+        layers: [
+          { type: 'senior_debt', amount: totalCost * 0.65 },
+          { type: 'equity', amount: totalCost * 0.35 },
+        ],
+        uses: { acquisition: totalCost },
+        noi,
+      });
+      if (res.data?.data) {
+        setCapitalStackData(res.data.data);
+      } else if (res.data?.stack || res.data?.layers) {
+        setCapitalStackData(res.data);
       }
     } catch (err) {
-      console.warn('Could not load capital structure:', err);
+      console.warn('Could not load capital stack:', err);
     }
   };
 
@@ -160,7 +172,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     const state = deal?.state || deal?.tradeArea?.state || '';
     if (!county || !state) return;
     try {
-      const res = await api.entitlements.getBenchmarkTimeline(county, state);
+      const res = await apiClient.entitlements.getBenchmarkTimeline(county, state);
       const summaries = res.data?.summaries || [];
       if (summaries.length > 0) {
         const primary = summaries[0];
@@ -179,33 +191,11 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
     }
   };
 
-  const loadZoningProfile = async () => {
-    if (!deal?.id) return;
-    try {
-      const res = await apiClient.get(`/api/v1/deals/${deal.id}/zoning-profile`);
-      const data = res.data;
-      if (data?.exists && data?.profile) {
-        const p = data.profile;
-        updateZoningProfile({
-          baseDistrictCode: p.base_district_code ?? null,
-          municipality: p.municipality ?? null,
-          appliedFar: p.applied_far ?? null,
-          lotAreaSf: p.lot_area_sf ?? null,
-          buildableAreaSf: p.buildable_area_sf ?? null,
-          constraintSource: p.constraint_source ?? 'api',
-          lastUpdated: Date.now(),
-        });
-      }
-    } catch (err) {
-      console.warn('Could not load zoning profile:', err);
-    }
-  };
-
   const loadJediScore = async () => {
     if (!deal?.id) return;
     setScoreLoading(true);
     try {
-      const response = await api.jedi.getScore(deal.id);
+      const response = await apiClient.jedi.getScore(deal.id);
       const scoreData = response.data?.data;
       if (scoreData?.score) {
         const s = scoreData.score;
@@ -289,8 +279,34 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
         roiLabel: 'Projected ROI',
         insight: recommended.description || `${recommended.name} scores highest with ${Math.round(recommended.confidence)}/100 confidence.`,
       });
+    } else if (deal) {
+      const strategyType = deal.strategyType || deal.strategy || 'value_add';
+      const strategyLabels: Record<string, string> = {
+        'value_add': 'Value-Add',
+        'core': 'Core',
+        'core_plus': 'Core Plus',
+        'opportunistic': 'Opportunistic',
+        'development': 'Ground-Up Development',
+        'ground_up': 'Ground-Up Development',
+        'stabilized': 'Stabilized Hold',
+        'distressed': 'Distressed / Turnaround',
+      };
+      const label = strategyLabels[strategyType] || strategyType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      setStrategyVerdict({
+        recommended: strategyType,
+        recommendedLabel: label,
+        score: 0,
+        secondBest: '',
+        secondBestLabel: '',
+        secondBestScore: 0,
+        arbitrageGap: 0,
+        isArbitrage: false,
+        roiEstimate: '—',
+        roiLabel: 'Projected ROI',
+        insight: `Based on deal classification. Run full strategy analysis for detailed scoring.`,
+      });
     }
-  }, [strategyResults]);
+  }, [strategyResults, deal]);
 
   useEffect(() => {
     if (dataSource !== 'live' || !signals.length) return;
@@ -321,29 +337,30 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   }, [onTabChange]);
 
   return (
-    <div style={{ background: BT.bg, minHeight: '100%', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="space-y-5">
       {dataSource !== 'loading' && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <span style={{
-              padding: '4px 12px', fontSize: 9, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', borderRadius: 6,
-              color: isDev ? (isRedevelopment ? BT.amberL : BT.violL) : BT.blueL,
-              background: isDev ? (isRedevelopment ? BT.amberBg : BT.violBg) : BT.blueBg,
-              border: `1px solid ${isDev ? (isRedevelopment ? BT.amber : BT.violet) : BT.blue}40`,
-              ...bMono,
-            }}>
+        <div className="flex items-center justify-between">
+          {/* Deal type badge - read-only, set at deal creation */}
+          <div className="inline-flex items-center gap-2">
+            <span className={`px-3 py-1.5 text-[10px] font-mono font-bold tracking-wider rounded-lg border ${
+              isDev
+                ? isRedevelopment
+                  ? 'bg-amber-50 text-amber-700 border-amber-200'
+                  : 'bg-violet-50 text-violet-700 border-violet-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200'
+            }`}>
               {isRedevelopment ? 'REDEVELOPMENT' : isDev ? 'GROUND-UP DEVELOPMENT' : 'ACQUISITION'}
             </span>
-            <span style={{ fontSize: 9, color: BT.td, ...bSans }}>Set at deal creation</span>
+            <span className="text-[9px] text-stone-400 font-medium">Set at deal creation</span>
           </div>
           {dataSource === 'live' ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 20, fontSize: 9, fontWeight: 700, color: BT.greenL, background: BT.greenBg, border: `1px solid ${BT.green}40`, ...bMono }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: BT.green }} />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-emerald-100 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               LIVE DATA
             </span>
           ) : (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 20, fontSize: 9, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, ...bMono }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: BT.amber }} />
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-amber-100 text-amber-700 border border-amber-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               SAMPLE DATA
             </span>
           )}
@@ -380,7 +397,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
       )}
 
       {viewMode === 'existing'
-        ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} capitalStackData={capitalStackData} marketCapRate={marketCapRate} computedReturns={computedReturns} />
+        ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} capitalStackData={capitalStackData} marketCapRate={marketCapRate} />
         : <DevOverview deal={deal} navigateToTab={navigateToTab} financial={financial} design3D={design3D} activeScenario={activeScenario} zoningProfile={zoningProfile} entitlements={entitlements} entitlementBenchmarks={entitlementBenchmarks} />
       }
     </div>
@@ -413,11 +430,10 @@ const SectionHead: React.FC<{
   title: string;
   right?: string;
   accentColor?: string;
-  accent?: string;
-}> = ({ title, right, accent = BT.amber }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px', background: BT.bgPanel, borderTop: `1px solid ${BT.border}`, borderBottom: `1px solid ${BT.border}`, borderLeft: `3px solid ${accent}` }}>
-    <span style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 2, textTransform: 'uppercase', ...bMono }}>{title}</span>
-    {right && <span style={{ fontSize: 9, color: BT.td, ...bMono }}>{right}</span>}
+}> = ({ title, right, accentColor = 'border-amber-500' }) => (
+  <div className={`flex items-center justify-between px-4 py-2.5 bg-stone-50 border-y border-stone-200 border-l-[3px] ${accentColor}`}>
+    <span className="text-[10px] font-mono text-stone-500 tracking-widest font-bold uppercase">{title}</span>
+    {right && <span className="text-[10px] text-stone-400">{right}</span>}
   </div>
 );
 
@@ -428,18 +444,18 @@ const KVCard: React.FC<{
   valueColor?: string;
   noteColor?: string;
   compact?: boolean;
-}> = ({ label, value, note, compact = false }) => (
-  <div style={{ background: BT.bgCard, padding: compact ? '8px 12px' : '12px 14px' }}>
-    <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{label}</div>
-    <div style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: BT.amberL, ...bMono }}>{value}</div>
-    {note && <div style={{ fontSize: 9, color: BT.td, marginTop: 3, ...bMono }}>{note}</div>}
+}> = ({ label, value, note, valueColor = 'text-amber-600', noteColor = 'text-stone-400', compact = false }) => (
+  <div className={`bg-white ${compact ? 'p-2' : 'p-3'}`}>
+    <div className="text-[9px] font-mono text-stone-400 tracking-widest uppercase mb-1">{label}</div>
+    <div className={`${compact ? 'text-base' : 'text-lg'} font-bold font-mono ${valueColor}`}>{value}</div>
+    {note && <div className={`text-[10px] ${compact ? 'mt-0.5' : 'mt-1'} ${noteColor}`}>{note}</div>}
   </div>
 );
 
 const DDItem: React.FC<{ label: string; done: boolean }> = ({ label, done }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
-    <span style={{ fontSize: 13, flexShrink: 0, color: done ? BT.greenL : BT.borderX }}>{done ? '✓' : '○'}</span>
-    <span style={{ fontSize: 11, color: done ? BT.tm : BT.td, ...bSans }}>{label}</span>
+  <div className="flex items-center gap-2.5 py-2 border-b border-stone-100 last:border-0">
+    <span className={`text-sm flex-shrink-0 ${done ? 'text-emerald-500' : 'text-stone-300'}`}>{done ? '✓' : '○'}</span>
+    <span className={`text-xs ${done ? 'text-stone-700' : 'text-stone-400'}`}>{label}</span>
   </div>
 );
 
@@ -461,47 +477,52 @@ const DealHeader: React.FC<DealHeaderProps> = ({
   const ddTotal = ddItems.length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-        {/* JEDI Score Panel */}
-        <div style={{ background: BT.bgCard, borderRadius: 10, border: `1px solid ${BT.border}`, padding: '18px 20px' }}>
+    <div className="space-y-0">
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2 bg-stone-900 rounded-xl p-5 text-white">
           {jediScore ? (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+          <div className="flex items-start gap-5">
             <JEDIScoreGauge score={jediScore.score} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: jediScore.score >= 85 ? BT.greenL : jediScore.score >= 70 ? BT.amberL : jediScore.score >= 55 ? BT.tm : BT.redL, ...bSans }}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-3 mb-1">
+                <span className={`text-sm font-bold tracking-wide ${jediScore.verdictColor}`}>
                   {jediScore.verdict}
                 </span>
                 {jediScore.delta30d !== 0 && (
-                  <span style={{ fontSize: 10, color: jediScore.delta30d > 0 ? BT.greenL : BT.redL, background: jediScore.delta30d > 0 ? BT.greenBg : BT.redBg, border: `1px solid ${jediScore.delta30d > 0 ? BT.green : BT.red}30`, borderRadius: 4, padding: '2px 7px', ...bMono }}>
+                  <span className={`text-xs font-mono px-2 py-0.5 rounded ${
+                    jediScore.delta30d > 0 ? 'bg-emerald-900/50 text-emerald-400' : 'bg-red-900/50 text-red-400'
+                  }`}>
                     {jediScore.delta30d > 0 ? '+' : ''}{jediScore.delta30d} pts (30d)
                   </span>
                 )}
               </div>
-              <p style={{ fontSize: 10, color: BT.td, marginBottom: 12, ...bSans }}>
+              <p className="text-stone-400 text-xs mb-3">
                 Confidence: {jediScore.confidenceLabel} ({jediScore.confidence}%)
               </p>
 
               {signals.length > 0 ? (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>5 MASTER SIGNALS</div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className="mb-3">
+                <div className="text-[9px] font-mono text-stone-500 tracking-wider mb-1.5">5 MASTER SIGNALS</div>
+                <div className="space-y-1.5">
                   {signals.map((s) => {
-                    const sc = s.score >= 80 ? BT.greenL : s.score >= 60 ? BT.amberL : BT.redL;
-                    const tc = s.trendDelta > 0 ? BT.greenL : s.trendDelta < 0 ? BT.redL : BT.td;
+                    const barColor = s.score >= 80 ? 'bg-emerald-500' : s.score >= 60 ? 'bg-amber-500' : 'bg-red-500';
                     return (
-                      <button key={s.id} onClick={() => navigateToTab(s.moduleLink)} style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 8, color: BT.td, width: 72, textAlign: 'left', ...bMono }}>
-                            {s.name.toUpperCase()} <span style={{ color: BT.borderX }}>({s.weight}%)</span>
+                      <button key={s.id} onClick={() => navigateToTab(s.moduleLink)} className="w-full group">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-mono text-stone-500 w-20 text-left group-hover:text-stone-300 transition-colors">
+                            {s.name.toUpperCase()} <span className="text-stone-600">({s.weight}%)</span>
                           </span>
-                          <div style={{ flex: 1, height: 5, background: BT.border, borderRadius: 3, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${s.score}%`, background: sc, borderRadius: 3 }} />
+                          <div className="flex-1 h-1.5 bg-stone-800 rounded-full overflow-hidden">
+                            <div className={`h-full ${barColor} rounded-full transition-all duration-500`}
+                              style={{ width: `${s.score}%` }} />
                           </div>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: sc, width: 22, textAlign: 'right', ...bMono }}>{s.score}</span>
-                          <span style={{ fontSize: 9, color: tc, width: 22, textAlign: 'right', ...bMono }}>
-                            {s.trendDelta > 0 ? `+${s.trendDelta}` : s.trendDelta < 0 ? `${s.trendDelta}` : '—'}
+                          <span className={`text-xs font-bold font-mono w-6 text-right ${
+                            s.score >= 80 ? 'text-emerald-400' : s.score >= 60 ? 'text-amber-400' : 'text-red-400'
+                          }`}>{s.score}</span>
+                          <span className={`text-[9px] font-mono w-6 text-right ${
+                            s.trendDelta > 0 ? 'text-emerald-400' : s.trendDelta < 0 ? 'text-red-400' : 'text-stone-600'
+                          }`}>
+                            {s.trendDelta > 0 ? `+${s.trendDelta}` : s.trendDelta < 0 ? `${s.trendDelta}` : '--'}
                           </span>
                         </div>
                       </button>
@@ -510,108 +531,113 @@ const DealHeader: React.FC<DealHeaderProps> = ({
                 </div>
               </div>
               ) : (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>5 MASTER SIGNALS</div>
-                <p style={{ fontSize: 10, color: BT.td, ...bSans }}>Signal breakdown not yet available. Run analysis to populate.</p>
+              <div className="mb-3">
+                <div className="text-[9px] font-mono text-stone-500 tracking-wider mb-1.5">5 MASTER SIGNALS</div>
+                <p className="text-xs text-stone-500">Signal breakdown not yet available. Run analysis to populate.</p>
               </div>
               )}
             </div>
           </div>
           ) : (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 0' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: BT.td, marginBottom: 6, ...bMono }}>—</div>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>JEDI SCORE</div>
-              <p style={{ fontSize: 10, color: BT.td, ...bSans }}>Score will populate after analysis completes</p>
+          <div className="flex items-center justify-center py-8">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-stone-500 mb-2">—</div>
+              <div className="text-[10px] font-mono text-stone-500 tracking-wider">JEDI SCORE</div>
+              <p className="text-xs text-stone-400 mt-2">Score will populate after analysis completes</p>
             </div>
           </div>
           )}
         </div>
 
-        {/* Strategy Verdict Panel */}
-        <div style={{ background: BT.bgCard, borderRadius: 10, border: `1px solid ${BT.border}`, padding: '16px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>STRATEGY VERDICT</div>
+        <div className="bg-white rounded-xl border border-stone-200 p-4 flex flex-col">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest mb-2">STRATEGY VERDICT</div>
           {strategyVerdict ? (
           <>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>{strategyVerdict.recommendedLabel}</span>
-            {strategyVerdict.score > 0 && <span style={{ fontSize: 12, color: BT.amberL, ...bMono }}>{strategyVerdict.score}</span>}
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-lg font-bold text-stone-900">{strategyVerdict.recommendedLabel}</span>
+            {strategyVerdict.score > 0 && <span className="text-sm font-mono text-amber-600">{strategyVerdict.score}</span>}
           </div>
           {strategyVerdict.secondBestLabel ? (
-          <div style={{ fontSize: 10, color: BT.td, marginBottom: 8, ...bSans }}>
+          <div className="text-xs text-stone-500 mb-2">
             vs {strategyVerdict.secondBestLabel}: {strategyVerdict.secondBestScore}
           </div>
           ) : (
-          <div style={{ fontSize: 10, color: BT.td, marginBottom: 8, ...bSans }}>{strategyVerdict.insight}</div>
+          <div className="text-xs text-stone-400 mb-2">{strategyVerdict.insight}</div>
           )}
 
           {strategyVerdict.isArbitrage && (
-            <div style={{ background: BT.amberBg, border: `1px solid ${BT.amber}30`, borderRadius: 6, padding: '8px 12px', marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <span style={{ fontSize: 8, fontWeight: 700, color: BT.amber, letterSpacing: 1, ...bMono }}>ARBITRAGE</span>
-                <span style={{ fontSize: 10, color: BT.amberL, ...bMono }}>+{strategyVerdict.arbitrageGap}pt gap</span>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className="text-amber-600 font-bold text-[10px] tracking-wider">ARBITRAGE</span>
+                <span className="text-amber-700 text-xs font-mono">+{strategyVerdict.arbitrageGap}pt gap</span>
               </div>
-              <p style={{ fontSize: 9, color: BT.amberL, lineHeight: 1.5, margin: 0, ...bSans }}>{strategyVerdict.insight}</p>
+              <p className="text-[10px] text-amber-800 leading-relaxed">{strategyVerdict.insight}</p>
             </div>
           )}
 
-          <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: `1px solid ${BT.border}`, paddingTop: 10 }}>
-            <div style={{ fontSize: 10, color: BT.td, ...bSans }}>
-              {strategyVerdict.roiLabel}: <span style={{ fontWeight: 700, color: BT.amberL }}>{strategyVerdict.roiEstimate}</span>
+          <div className="mt-auto flex items-center justify-between text-xs border-t border-stone-100 pt-2">
+            <div>
+              <span className="text-stone-400">{strategyVerdict.roiLabel}: </span>
+              <span className="font-bold text-stone-700">{strategyVerdict.roiEstimate}</span>
             </div>
-            <button style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}
+            <button className="text-amber-600 hover:text-amber-700 font-medium text-[10px]"
               onClick={() => navigateToTab('strategy')}>
-              Compare All →
+              Compare All &rarr;
             </button>
           </div>
           </>
           ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 0' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: BT.td, marginBottom: 6, ...bMono }}>—</div>
-            <p style={{ fontSize: 10, color: BT.td, marginBottom: 8, textAlign: 'center', ...bSans }}>No strategy data yet. Run analysis to generate a recommendation.</p>
-            <button style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}
+          <div className="flex-1 flex flex-col items-center justify-center py-4">
+            <p className="text-xs text-stone-400 mb-2">Analysis in progress...</p>
+            <button className="text-amber-600 hover:text-amber-700 font-medium text-[10px]"
               onClick={() => navigateToTab('strategy')}>
-              Run Strategy Analysis →
+              View Strategy Tab &rarr;
             </button>
           </div>
           )}
 
           {ddTotal > 0 && (
-            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BT.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5, ...bMono }}>
+            <div className="mt-3 pt-2 border-t border-stone-100">
+              <div className="flex justify-between text-[9px] font-mono text-stone-400 tracking-wider mb-1">
                 <span>DUE DILIGENCE</span>
-                <span style={{ color: ddDone === ddTotal ? BT.greenL : BT.amberL }}>{ddDone}/{ddTotal}</span>
+                <span className={ddDone === ddTotal ? 'text-emerald-500' : 'text-amber-500'}>{ddDone}/{ddTotal}</span>
               </div>
-              <div style={{ height: 4, background: BT.border, borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${(ddDone / ddTotal) * 100}%`, background: ddDone === ddTotal ? BT.green : BT.amber, borderRadius: 2, transition: 'all 0.3s' }} />
+              <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${ddDone === ddTotal ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                  style={{ width: `${(ddDone / ddTotal) * 100}%` }} />
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {riskAlert?.show && (() => {
-        const alertColor = riskAlert.severity === 'high' ? BT.redL : riskAlert.severity === 'medium' ? BT.amberL : BT.tm;
-        const alertBg = riskAlert.severity === 'high' ? BT.redBg : riskAlert.severity === 'medium' ? BT.amberBg : BT.bgPanel;
-        const alertBorder = riskAlert.severity === 'high' ? BT.red : riskAlert.severity === 'medium' ? BT.amber : BT.border;
-        return (
-          <div style={{ background: alertBg, border: `1px solid ${alertBorder}30`, borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: alertColor, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>
+      {riskAlert?.show && (
+        <div className={`mt-4 rounded-lg border px-4 py-3 flex items-center justify-between ${
+          riskAlert.severity === 'high' ? 'bg-red-50 border-red-200' :
+          riskAlert.severity === 'medium' ? 'bg-amber-50 border-amber-200' :
+          'bg-stone-50 border-stone-200'
+        }`}>
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className={`text-[10px] font-bold font-mono tracking-wider ${
+                riskAlert.severity === 'high' ? 'text-red-600' : riskAlert.severity === 'medium' ? 'text-amber-600' : 'text-stone-600'
+              }`}>
                 {riskAlert.severity === 'high' ? 'HIGH RISK' : 'RISK ALERT'} · {riskAlert.category} {riskAlert.score}/{riskAlert.maxScore}
-              </div>
-              <p style={{ fontSize: 11, color: alertColor, margin: 0, ...bSans }}>{riskAlert.detail}</p>
-              {riskAlert.mitigationAvailable && (
-                <p style={{ fontSize: 9, color: BT.td, marginTop: 3, ...bSans }}>Offset: {riskAlert.mitigationText}</p>
-              )}
+              </span>
             </div>
-            <button style={{ fontSize: 9, fontWeight: 700, color: alertColor, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, marginLeft: 16, ...bMono }}
-              onClick={() => navigateToTab('risk-management')}>
-              Risk Dashboard →
-            </button>
+            <p className={`text-xs ${
+              riskAlert.severity === 'high' ? 'text-red-800' : riskAlert.severity === 'medium' ? 'text-amber-800' : 'text-stone-700'
+            }`}>{riskAlert.detail}</p>
+            {riskAlert.mitigationAvailable && (
+              <p className="text-[10px] text-stone-500 mt-0.5">Offset: {riskAlert.mitigationText}</p>
+            )}
           </div>
-        );
-      })()}
+          <button className="text-[10px] font-medium text-stone-500 hover:text-stone-700 flex-shrink-0 ml-4"
+            onClick={() => navigateToTab('risk')}>
+            Risk Dashboard &rarr;
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -624,10 +650,9 @@ interface ExistingOverviewProps {
   market?: any;
   capitalStackData?: any;
   marketCapRate?: number | null;
-  computedReturns?: any;
 }
 
-const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab, capitalStructure, financial, market, capitalStackData, marketCapRate, computedReturns }) => {
+const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab, capitalStructure, financial, market, capitalStackData, marketCapRate }) => {
   const price = deal.purchasePrice ? `$${(deal.purchasePrice / 1_000_000).toFixed(1)}M` : deal.budget ? `$${(deal.budget / 1_000_000).toFixed(1)}M` : '—';
   const units = deal.units || deal.targetUnits || 0;
   const ppu = units > 0 && deal.purchasePrice ? `$${Math.round(deal.purchasePrice / units).toLocaleString()}` : '—';
@@ -645,56 +670,56 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
     : '—';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="space-y-0">
       <SectionHead
         title="Acquisition Metrics"
         right={`${deal.propertyTypeKey || 'Multifamily'} · ${units > 0 ? `${units}u` : '—'} · ${deal.address ? deal.address.split(',')[1]?.trim() || '' : ''}`}
-        accent={BT.cyan}
+        accentColor="border-cyan-500"
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
-        <KVCard label="Ask Price" value={price} />
+      <div className="grid grid-cols-6 gap-px bg-stone-200">
+        <KVCard label="Ask Price" value={price} valueColor="text-stone-900" />
         <KVCard label="Price / Unit" value={ppu} note={units > 0 ? `${units} units` : undefined} />
         <KVCard label="Cap Rate (Going-In)" value={capRate} note="Market: —" />
-        <KVCard label="DSCR" value={dscrValue} note="Min: 1.25x" />
-        <KVCard label="Yield on Cost" value={yocValue} note="BTS scenario" />
-        <KVCard label="Days in Pipeline" value={deal.daysInStage ? `${deal.daysInStage}d` : deal.daysInStation ? `${deal.daysInStation}d` : '—'} note={deal.state || deal.stage || ''} />
+        <KVCard label="DSCR" value={dscrValue} valueColor={dscrColor} note="Min: 1.25x" noteColor="text-emerald-500" />
+        <KVCard label="Yield on Cost" value={yocValue} valueColor="text-amber-600" note="BTS scenario" />
+        <KVCard label="Days in Pipeline" value={deal.daysInStage ? `${deal.daysInStage}d` : deal.daysInStation ? `${deal.daysInStation}d` : '—'} valueColor="text-cyan-600" note={deal.state || deal.stage || ''} />
       </div>
 
-      <SectionHead title="Operating Intelligence" right="M05 Market · M09 ProForma" accent={BT.green} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>OCCUPANCY & RENT</div>
+      <SectionHead title="Operating Intelligence" right="M05 Market · M09 ProForma" accentColor="border-emerald-500" />
+      <div className="grid grid-cols-2 gap-px bg-stone-200">
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">OCCUPANCY & RENT</div>
           {[
-            { l: 'Physical Occupancy', v: occ, c: BT.greenL },
-            { l: 'Economic Occupancy', v: occ !== '—' ? occ : '—', c: BT.greenL },
-            { l: 'Effective Rent / Unit', v: effectiveRent, c: BT.amberL },
-            { l: 'Submarket Market Rent', v: market?.avgRent ? `$${Math.round(market.avgRent * 1.03).toLocaleString()}` : '—', c: BT.tm },
-            { l: 'Rent vs Market', v: market?.avgRent ? `${((market.avgRent / (market.avgRent * 1.03) - 1) * 100).toFixed(1)}%` : '—', c: BT.orangeL, note: market?.avgRent ? 'Upside capture opportunity' : undefined },
-            { l: 'Expense Ratio', v: expenseRatio, c: BT.tm },
+            { l: 'Physical Occupancy', v: occ, c: 'text-emerald-600' },
+            { l: 'Economic Occupancy', v: occ !== '—' ? occ : '—', c: 'text-emerald-600' },
+            { l: 'Effective Rent / Unit', v: effectiveRent, c: 'text-amber-600' },
+            { l: 'Submarket Market Rent', v: market?.avgRent ? `$${Math.round(market.avgRent * 1.03).toLocaleString()}` : '—', c: 'text-stone-600' },
+            { l: 'Rent vs Market', v: market?.avgRent ? `${((market.avgRent / (market.avgRent * 1.03) - 1) * 100).toFixed(1)}%` : '—', c: 'text-orange-500', note: market?.avgRent ? 'Upside capture opportunity' : undefined },
+            { l: 'Expense Ratio', v: expenseRatio, c: 'text-stone-600' },
           ].map((r, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: `1px solid ${BT.border}` }}>
-              <span style={{ fontSize: 11, color: BT.tm, ...bSans }}>{r.l}</span>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: r.c, ...bMono }}>{r.v}</span>
-                {r.note && <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.note}</div>}
+            <div key={i} className="flex justify-between items-start py-1.5 border-b border-stone-100 last:border-0">
+              <span className="text-xs text-stone-600">{r.l}</span>
+              <div className="text-right">
+                <span className={`text-sm font-bold ${r.c}`}>{r.v}</span>
+                {r.note && <div className="text-[9px] text-stone-400">{r.note}</div>}
               </div>
             </div>
           ))}
         </div>
 
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>NOI INTELLIGENCE</div>
-          <div style={{ background: BT.orangeBg, border: `1px solid ${BT.orange}30`, borderRadius: 6, padding: '10px 12px', marginBottom: 10 }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: BT.orangeL, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>PLATFORM ADJUSTMENT ACTIVE</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: BT.td, ...bSans }}>Broker NOI</span>
-              <span style={{ fontSize: 11, color: BT.td, textDecoration: 'line-through', ...bMono }}>{noiValue !== '—' ? noiValue : '—'}</span>
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">NOI INTELLIGENCE</div>
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-3">
+            <div className="text-[9px] font-bold text-orange-600 tracking-wider mb-2">PLATFORM ADJUSTMENT ACTIVE</div>
+            <div className="flex justify-between mb-1">
+              <span className="text-xs text-stone-500">Broker NOI</span>
+              <span className="text-xs text-stone-400 line-through">{noiValue !== '—' ? noiValue : '—'}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>Platform NOI</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: BT.amberL, ...bMono }}>{noiValue}</span>
+            <div className="flex justify-between mb-2">
+              <span className="text-xs font-semibold text-stone-800">Platform NOI</span>
+              <span className="text-sm font-bold text-amber-600">{noiValue}</span>
             </div>
-            <div style={{ fontSize: 9, color: BT.td, paddingTop: 8, borderTop: `1px solid ${BT.orange}20`, ...bSans }}>
+            <div className="text-[9px] text-stone-400 pt-2 border-t border-orange-200 leading-relaxed">
               {noiValue !== '—' ? 'Platform adjustments applied to broker underwriting' : 'Upload an OM to see NOI adjustments'}
             </div>
           </div>
@@ -707,118 +732,94 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
               ? `${(((financial.noi / (marketCapRate / 100)) / deal.purchasePrice - 1) * 100).toFixed(1)}% vs ask`
               : undefined;
             return [
-              { l: 'Going-In Cap Rate', v: capRate, c: BT.amberL },
-              { l: 'Market Cap Rate', v: mktCap, c: BT.tm },
-              { l: 'Implied Value at Mkt Cap', v: impliedVal, c: BT.greenL, note: impliedVsAsk },
+              { l: 'Going-In Cap Rate', v: capRate, c: 'text-amber-600' },
+              { l: 'Market Cap Rate', v: mktCap, c: 'text-stone-600' },
+              { l: 'Implied Value at Mkt Cap', v: impliedVal, c: 'text-emerald-600', note: impliedVsAsk },
             ];
           })().map((r, i) => (
-            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '6px 0', borderBottom: `1px solid ${BT.border}` }}>
-              <span style={{ fontSize: 11, color: BT.tm, ...bSans }}>{r.l}</span>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: r.c, ...bMono }}>{r.v}</span>
-                {r.note && <div style={{ fontSize: 9, color: BT.greenL, ...bSans }}>{r.note}</div>}
+            <div key={i} className="flex justify-between items-start py-1.5 border-b border-stone-100 last:border-0">
+              <span className="text-xs text-stone-600">{r.l}</span>
+              <div className="text-right">
+                <span className={`text-sm font-bold ${r.c}`}>{r.v}</span>
+                {r.note && <div className="text-[9px] text-emerald-500">{r.note}</div>}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <SectionHead title="Capital Structure" right="M11 · Exit target" accent={BT.violet} />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: BT.border }}>
+      <SectionHead title="Capital Structure" right="M11 · Exit target" accentColor="border-violet-500" />
+      <div className="grid grid-cols-3 gap-px bg-stone-200">
         {(() => {
           const stack = capitalStackData?.stack || capitalStackData?.layers || [];
           const senior = stack.find?.((l: any) => l.type === 'senior_debt' || l.name?.toLowerCase().includes('senior'));
           const mezz = stack.find?.((l: any) => l.type === 'mezzanine' || l.name?.toLowerCase().includes('mezz'));
           const equity = stack.find?.((l: any) => l.type === 'equity' || l.name?.toLowerCase().includes('equity'));
           return [
-            { tier: 'Senior Debt', tc: BT.blueL, border: BT.blue,
-              amt: senior?.amount ? `$${(senior.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.loanBalance?.[0] ? `$${(capitalStructure.loanBalance[0] / 1_000_000).toFixed(1)}M` : '—',
-              ltc: senior?.ltc ? `${senior.ltc}%` : capitalStructure?.ltc ? `${capitalStructure.ltc}%` : '—',
-              rate: senior?.rate ? `${senior.rate}%` : capitalStructure?.interestRate ? `${capitalStructure.interestRate}%` : '—' },
-            { tier: 'Mezzanine', tc: BT.cyanL, border: BT.cyan,
-              amt: mezz?.amount ? `$${(mezz.amount / 1_000_000).toFixed(1)}M` : '—',
-              ltc: mezz?.ltc ? `${mezz.ltc}%` : '—', rate: mezz?.rate ? `${mezz.rate}%` : '—' },
-            { tier: 'Equity', tc: BT.greenL, border: BT.green,
-              amt: equity?.amount ? `$${(equity.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.totalEquity ? `$${(capitalStructure.totalEquity / 1_000_000).toFixed(1)}M` : '—',
-              ltc: equity?.ltc ? `${equity.ltc}%` : capitalStructure?.ltc ? `${100 - capitalStructure.ltc}%` : '—',
-              rate: equity?.targetReturn ? `${equity.targetReturn}%` : '—' },
+            { 
+              tier: 'Senior Debt', c: 'border-blue-400', tc: 'text-blue-600', 
+              amt: senior?.amount ? `$${(senior.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.loanBalance?.[0] ? `$${(capitalStructure.loanBalance[0] / 1_000_000).toFixed(1)}M` : '—', 
+              ltc: senior?.ltc ? `${senior.ltc}%` : capitalStructure?.ltc ? `${capitalStructure.ltc}%` : '—', 
+              rate: senior?.rate ? `${senior.rate}%` : capitalStructure?.interestRate ? `${capitalStructure.interestRate}%` : '—' 
+            },
+            { 
+              tier: 'Mezzanine', c: 'border-cyan-400', tc: 'text-cyan-600', 
+              amt: mezz?.amount ? `$${(mezz.amount / 1_000_000).toFixed(1)}M` : '—', 
+              ltc: mezz?.ltc ? `${mezz.ltc}%` : '—', 
+              rate: mezz?.rate ? `${mezz.rate}%` : '—' 
+            },
+            { 
+              tier: 'Equity', c: 'border-emerald-400', tc: 'text-emerald-600', 
+              amt: equity?.amount ? `$${(equity.amount / 1_000_000).toFixed(1)}M` : capitalStructure?.totalEquity ? `$${(capitalStructure.totalEquity / 1_000_000).toFixed(1)}M` : '—', 
+              ltc: equity?.ltc ? `${equity.ltc}%` : capitalStructure?.ltc ? `${100 - capitalStructure.ltc}%` : '—', 
+              rate: equity?.targetReturn ? `${equity.targetReturn}%` : '—' 
+            },
           ];
         })().map((t, i) => (
-          <div key={i} style={{ background: BT.bgCard, padding: '12px 14px', borderTop: `3px solid ${t.border}` }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: t.tc, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>
-              {t.tier} <span style={{ color: BT.td, fontWeight: 400 }}>({t.ltc} LTC)</span>
+          <div key={i} className={`bg-white p-4 border-t-2 ${t.c}`}>
+            <div className={`text-[10px] font-bold tracking-wider mb-2 ${t.tc}`}>
+              {t.tier} <span className="text-stone-400 font-normal">({t.ltc} LTC)</span>
             </div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: BT.text, marginBottom: 4, ...bMono }}>{t.amt}</div>
-            <div style={{ fontSize: 9, color: BT.td, ...bMono }}>{t.rate}</div>
+            <div className="text-xl font-bold text-stone-900 font-mono mb-1">{t.amt}</div>
+            <div className="text-[10px] text-stone-400">{t.rate}</div>
           </div>
         ))}
       </div>
 
-      {/* Underwriting Comparison — Broker · Platform · User */}
-      {(() => {
-        // Layer 1 — Broker: raw deal fields from the OM/listing
-        const brokerCapRateNum = deal.capRate ? parseFloat(String(deal.capRate)) : deal.deal_data?.broker_cap_rate ?? null;
-        const brokerNOI = deal.deal_data?.noi ?? deal.noi ?? null;
-        const brokerPrice = deal.purchasePrice ?? deal.deal_data?.asking_price ?? null;
-        const brokerCapRateStr = brokerCapRateNum ? `${brokerCapRateNum.toFixed(2)}%` : null;
-        // Layer 2 — Platform: computed/assumed values from the analysis engine
-        const platCapRate = (marketCapRate && !isNaN(marketCapRate)) ? `${marketCapRate.toFixed(2)}%` : null;
-        const platNOI = financial?.noi ? `$${Math.round(financial.noi).toLocaleString()}` : null;
-        const platDscr = capitalStructure?.dscr ? `${capitalStructure.dscr.toFixed(2)}x` : null;
-        const platPrice = computedReturns?.purchasePrice ?? null;
-        // Layer 3 — User: user-editable overrides from strategyDefaults/assumptions
-        const userCapRate = deal.strategyDefaults?.assumptions?.capRate ? `${parseFloat(String(deal.strategyDefaults.assumptions.capRate)).toFixed(2)}%` : null;
-        const userNOI = deal.strategyDefaults?.assumptions?.noi ? `$${Math.round(deal.strategyDefaults.assumptions.noi).toLocaleString()}` : null;
-        const uwRows = [
-          { label: 'Purchase Price', broker: brokerPrice ? `$${(brokerPrice / 1_000_000).toFixed(1)}M` : null, platform: platPrice ? `$${(platPrice / 1_000_000).toFixed(1)}M` : null, user: null },
-          { label: 'Going-In Cap Rate', broker: brokerCapRateStr, platform: platCapRate, user: userCapRate },
-          { label: 'NOI (T-12)', broker: brokerNOI ? `$${Math.round(brokerNOI).toLocaleString()}` : null, platform: platNOI, user: userNOI },
-          { label: 'Price / Unit', broker: ppu !== '—' ? ppu : null, platform: null, user: null },
-          { label: 'DSCR', broker: null, platform: platDscr, user: null },
-        ].filter(r => r.broker || r.platform || r.user);
-        if (uwRows.length === 0) return null;
-        return (
-          <>
-            <SectionHead title="Underwriting Comparison" right="Broker · Platform · User" accent={BT.violet} />
-            <UnderwritingComparison rows={uwRows} />
-          </>
-        );
-      })()}
-
-      <SectionHead title="Due Diligence + Module Access" accent={BT.amber} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>DD CHECKLIST</div>
+      <SectionHead title="Due Diligence + Module Access" accentColor="border-amber-500" />
+      <div className="grid grid-cols-2 gap-px bg-stone-200">
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">DD CHECKLIST</div>
           {deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0 ? (
             deal.stateData.ddItems.map((item: any, i: number) => (
               <DDItem key={i} label={item.l} done={item.done} />
             ))
           ) : (
-            <div style={{ textAlign: 'center', padding: '16px 0' }}>
-              <p style={{ fontSize: 11, color: BT.td, marginBottom: 6, ...bSans }}>No checklist items added yet</p>
-              <button onClick={() => navigateToTab('due-diligence')} style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}>
-                Add DD Items →
+            <div className="text-center py-4">
+              <p className="text-xs text-stone-400 mb-1">No checklist items added yet</p>
+              <button onClick={() => navigateToTab('risk')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium">
+                Add DD Items &rarr;
               </button>
             </div>
           )}
         </div>
-        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>MODULE ACCESS</div>
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">MODULE ACCESS</div>
           {[
             { key: 'F2', label: 'PROPERTY & ZONING', hint: 'Parcels · Entitlement · Setbacks', tab: 'zoning' },
-            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market-intelligence' },
+            { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market' },
             { key: 'F4', label: 'SUPPLY PIPELINE', hint: 'Pipeline · Threat level · Capacity', tab: 'supply' },
             { key: 'F6', label: 'STRATEGY & DESIGN', hint: '4-strategy arbitrage · 3D massing', tab: 'strategy' },
             { key: 'F8', label: 'PRO FORMA', hint: '3-layer NOI model · Sensitivity', tab: 'proforma' },
-            { key: 'F9', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'debt' },
-            { key: 'F10', label: 'RISK & DUE DILIGENCE', hint: 'Monte Carlo · Insurance · DD checklist', tab: 'risk-management' },
+            { key: 'F9', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'capital' },
+            { key: 'F10', label: 'RISK & DUE DILIGENCE', hint: 'Monte Carlo · Insurance · DD checklist', tab: 'risk' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } satisfies React.CSSProperties}>
-              <span style={{ fontSize: 8, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3, padding: '2px 5px', flexShrink: 0, ...bMono }}>{m.key}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>{m.label}</div>
-                <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{m.hint}</div>
+              className="w-full flex items-center gap-3 py-2 px-2 border-b border-stone-100 last:border-0 hover:bg-stone-50 transition-colors text-left group">
+              <span className="text-[9px] font-mono font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">{m.key}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-stone-800 group-hover:text-amber-700 transition-colors">{m.label}</div>
+                <div className="text-[9px] text-stone-400">{m.hint}</div>
               </div>
             </button>
           ))}
@@ -927,8 +928,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
     if (unitMixProgram?.units && Object.keys(unitMixProgram.units).length > 0) {
       const totalU = unitMixProgram.totalUnits || buildingConfig.units;
       return Object.entries(unitMixProgram.units).map(([key, u]) => {
-        const pctNum = Math.round(u.mix || 0);
-        const unitCount = Math.round(totalU * ((u.mix || 0) / 100));
+        const pctNum = Math.round((u.mix || 0) * 100);
+        const unitCount = Math.round(totalU * (u.mix || 0));
         const psf = u.sf > 0 ? u.rent / u.sf : 0;
         return {
           type: labels[key] || key,
@@ -940,6 +941,28 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
           ...(colors[key] || { color: 'text-stone-600', bg: 'bg-stone-500' }),
         };
       });
+    }
+
+    if (design3D?.unitMix) {
+      const dm = design3D.unitMix;
+      const totalU = design3D.totalUnits || buildingConfig.units;
+      const entries = [
+        { key: 'studio', count: dm.studio, sf: 548, rent: 1595 },
+        { key: 'oneBR', count: dm.oneBed, sf: 768, rent: 1875 },
+        { key: 'twoBR', count: dm.twoBed, sf: 1082, rent: 2295 },
+        { key: 'threeBR', count: dm.threeBed, sf: 1344, rent: 2695 },
+      ].filter(e => e.count > 0);
+      if (entries.length > 0) {
+        return entries.map(e => ({
+          type: labels[e.key],
+          units: e.count,
+          pct: `${Math.round((e.count / totalU) * 100)}%`,
+          sqft: e.sf,
+          targetRent: e.rent,
+          rentPsf: parseFloat((e.rent / e.sf).toFixed(2)),
+          ...(colors[e.key] || { color: 'text-stone-600', bg: 'bg-stone-500' }),
+        }));
+      }
     }
 
     return [];
@@ -1017,54 +1040,54 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
   })();
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="space-y-0">
       <SectionHead
         title="Site + Zoning Constraints"
         right={`${lotSize} · ${deal.address ? deal.address.split(',').slice(1, 3).join(',').trim() : ''}`}
-        accent={BT.cyanL}
+        accentColor="border-cyan-500"
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
+      <div className="grid grid-cols-6 gap-px bg-stone-200">
         <KVCard label="Max Units (Zoned)" value={maxUnits > 0 ? `${maxUnits}u` : '—'} valueColor="text-cyan-600" note={`${lotSize}`} compact />
         <KVCard label="FAR" value={farValue} note={maxUnits > 0 && activeScenario?.parkingRequired ? `Parking: ${(activeScenario.parkingRequired / maxUnits).toFixed(1)} / unit` : undefined} compact />
-        <KVCard label="Entitlement ETA" value={entitlementBenchmarks?.p50 ? `${entitlementBenchmarks.p50}-${entitlementBenchmarks.p75 || entitlementBenchmarks.p50 + 2} mo` : '—'} valueColor="text-amber-400" note={entitlementBenchmarks?.p50 ? `Based on ${entitlementBenchmarks.municipality || 'local'} benchmarks` : 'No benchmark data'} compact />
+        <KVCard label="Entitlement ETA" value={entitlementBenchmarks?.p50 ? `${entitlementBenchmarks.p50}-${entitlementBenchmarks.p75 || entitlementBenchmarks.p50 + 2} mo` : '—'} valueColor="text-amber-600" note={entitlementBenchmarks?.p50 ? `Based on ${entitlementBenchmarks.municipality || 'local'} benchmarks` : 'No benchmark data'} compact />
         <KVCard label="Target IRR (BTS)" value={buildingConfig.btsIrr} valueColor="text-emerald-600" note={`${buildingConfig.btsEm} equity multiple`} noteColor="text-emerald-500" compact />
         <KVCard label="TDC / Unit" value={buildingConfig.tdcUnit} note={`${buildingConfig.units} planned units`} compact />
         <KVCard label="Zoning" value={zoningProfile?.baseDistrictCode || '—'} valueColor="text-stone-700" compact />
       </div>
 
-      <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accent={BT.amber} />
-      <div style={{ background: BT.bgCard, padding: '16px 20px' }}>
+      <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accentColor="border-amber-500" />
+      <div className="bg-white p-5">
         {hasEntitlements ? (
-        <div style={{ display: 'flex', alignItems: 'flex-start', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: 14, left: '10%', right: '10%', height: 1, background: BT.border, zIndex: 0 }} />
+        <div className="flex items-center relative">
+          <div className="absolute top-3 left-[10%] right-[10%] h-0.5 bg-stone-200 z-0" />
           {entitlementSteps.map((step, i) => {
-            const dotColor = step.done ? BT.greenL : step.active ? BT.amber : BT.border;
-            const textColor = step.done ? BT.greenL : step.active ? BT.amber : BT.td;
+            const c = step.done ? 'border-emerald-500 bg-emerald-50' : step.active ? 'border-amber-500 bg-amber-50' : 'border-stone-300 bg-stone-50';
+            const tc = step.done ? 'text-emerald-600' : step.active ? 'text-amber-600' : 'text-stone-400';
             return (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 1 }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${dotColor}`, background: step.done ? `${BT.green}20` : step.active ? `${BT.amber}20` : BT.bgPanel, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: step.active ? `0 0 8px ${BT.amber}60` : 'none' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: textColor, ...bMono }}>{step.done ? '✓' : i + 1}</span>
+              <div key={i} className="flex-1 flex flex-col items-center z-10">
+                <div className={`w-7 h-7 rounded-full border-2 ${c} flex items-center justify-center ${step.active ? 'ring-2 ring-amber-200 ring-offset-1' : ''}`}>
+                  <span className={`text-xs font-bold ${tc}`}>{step.done ? '✓' : i + 1}</span>
                 </div>
-                <div style={{ fontSize: 8, marginTop: 6, textAlign: 'center', lineHeight: 1.3, maxWidth: 70, color: textColor, fontWeight: 600, ...bSans }}>{step.n}</div>
+                <div className={`text-[9px] mt-2 text-center leading-tight max-w-[70px] ${tc} font-medium`}>{step.n}</div>
               </div>
             );
           })}
         </div>
         ) : (
-        <div style={{ textAlign: 'center', padding: '10px 0' }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+        <div className="text-center py-3">
+          <div className="flex items-center justify-center gap-2 mb-2">
             {entitlementSteps.map((step, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${BT.border}`, background: BT.bgPanel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: BT.td, ...bMono }}>{i + 1}</span>
+              <div key={i} className="flex-1 flex flex-col items-center">
+                <div className="w-7 h-7 rounded-full border-2 border-stone-200 bg-stone-50 flex items-center justify-center">
+                  <span className="text-xs font-bold text-stone-300">{i + 1}</span>
                 </div>
-                <div style={{ fontSize: 8, marginTop: 4, color: BT.td, fontWeight: 500, ...bSans }}>{step.n}</div>
+                <div className="text-[9px] mt-1 text-stone-300 font-medium">{step.n}</div>
               </div>
             ))}
           </div>
-          <p style={{ fontSize: 10, color: BT.td, marginBottom: 6, ...bSans }}>No entitlements filed yet</p>
-          <button onClick={() => navigateToTab('zoning')} style={{ fontSize: 10, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
-            Start Entitlement Process →
+          <p className="text-xs text-stone-400 mt-2">No entitlements filed yet</p>
+          <button onClick={() => navigateToTab('zoning')} className="text-[10px] text-amber-600 hover:text-amber-700 font-medium mt-1">
+            Start Entitlement Process &rarr;
           </button>
         </div>
         )}
@@ -1075,134 +1098,134 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         right={
           <button
             onClick={() => navigateToTab('strategy')}
-            className="text-[10px] text-violet-600 hover:text-violet-400 font-medium"
+            className="text-[10px] text-violet-600 hover:text-violet-700 font-medium"
           >
             Edit in 3D Design →
           </button>
-        } 
-        accent={BT.violL} 
+        }
+        accentColor="border-violet-500"
       />
       
       {/* Selected configuration from Dev Capacity + 3D Module */}
-      <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${BT.border}`, background: BT.bgPanel }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: BT.tm, ...bSans }}>{buildingConfig.label}</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: BT.violL, background: `${BT.violet}25`, border: `1px solid ${BT.violet}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>
+      <div className="bg-white border border-stone-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-stone-100 bg-stone-50">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-bold text-stone-900">{buildingConfig.label}</span>
+            <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-violet-100 text-violet-700 border border-violet-200">
               {buildingConfig.units} UNITS
             </span>
           </div>
           {buildingConfig.design3DStatus === 'configured' ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 9, fontWeight: 600, color: BT.greenL, ...bSans }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: BT.greenL }} />
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-emerald-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
               3D Design Configured
             </span>
           ) : (
-            <button onClick={() => navigateToTab('3d-design')} style={{ fontSize: 9, fontWeight: 600, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', ...bSans }}>
+            <button
+              onClick={() => navigateToTab('strategy')}
+              className="text-[10px] font-medium text-amber-600 hover:text-amber-700"
+            >
               Configure 3D Design →
             </button>
           )}
         </div>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
+        <div className="grid grid-cols-4 gap-px bg-stone-200">
           {[
-            { l: 'Floors', v: `${buildingConfig.floors} stories`, c: BT.tm },
-            { l: 'Height', v: buildingConfig.height, c: BT.tm },
-            { l: 'Construction', v: buildingConfig.constructionType, c: BT.ts, small: true },
-            { l: 'Parking', v: `${buildingConfig.parkingSpaces} spaces`, c: BT.ts },
+            { l: 'Floors', v: `${buildingConfig.floors} stories`, c: 'text-stone-700' },
+            { l: 'Height', v: buildingConfig.height, c: 'text-stone-700' },
+            { l: 'Construction', v: buildingConfig.constructionType, c: 'text-stone-600', small: true },
+            { l: 'Parking', v: `${buildingConfig.parkingSpaces} spaces`, c: 'text-stone-600' },
           ].map((m, i) => (
-            <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
-              <div style={{ fontSize: m.small ? 11 : 13, fontWeight: 700, color: m.c, ...bSans }}>{m.v}</div>
+            <div key={i} className="bg-white p-3">
+              <div className="text-[9px] font-mono text-stone-400 tracking-wider uppercase">{m.l}</div>
+              <div className={`${m.small ? 'text-xs' : 'text-sm'} font-bold ${m.c}`}>{m.v}</div>
             </div>
           ))}
         </div>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
+        <div className="grid grid-cols-4 gap-px bg-stone-200">
           {[
-            { l: 'Total Dev Cost', v: buildingConfig.tdc, c: BT.amber },
-            { l: 'TDC / Unit', v: buildingConfig.tdcUnit, c: BT.amber },
-            { l: 'BTS IRR', v: buildingConfig.btsIrr, c: BT.greenL },
-            { l: 'BTS EM', v: buildingConfig.btsEm, c: BT.greenL },
+            { l: 'Total Dev Cost', v: buildingConfig.tdc, c: 'text-amber-600' },
+            { l: 'TDC / Unit', v: buildingConfig.tdcUnit, c: 'text-amber-600' },
+            { l: 'BTS IRR', v: buildingConfig.btsIrr, c: 'text-emerald-600' },
+            { l: 'BTS EM', v: buildingConfig.btsEm, c: 'text-emerald-600' },
           ].map((m, i) => (
-            <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
+            <div key={i} className="bg-white p-3">
+              <div className="text-[9px] font-mono text-stone-400 tracking-wider uppercase">{m.l}</div>
+              <div className={`text-sm font-bold font-mono ${m.c}`}>{m.v}</div>
             </div>
           ))}
         </div>
         
         {(buildingConfig.grossSqft || buildingConfig.efficiency) && (
-          <div style={{ padding: '6px 14px', background: BT.bgPanel, borderTop: `1px solid ${BT.border}`, display: 'flex', alignItems: 'center', gap: 16, fontSize: 9, color: BT.td, ...bMono }}>
-            {buildingConfig.grossSqft && <span>Gross SF: <strong style={{ color: BT.tm }}>{buildingConfig.grossSqft.toLocaleString()}</strong></span>}
-            {buildingConfig.efficiency && <span>Efficiency: <strong style={{ color: BT.tm }}>{(buildingConfig.efficiency * 100).toFixed(0)}%</strong></span>}
+          <div className="px-4 py-2 bg-stone-50 border-t border-stone-100 flex items-center gap-4 text-[10px] text-stone-500">
+            {buildingConfig.grossSqft && <span>Gross SF: <strong className="text-stone-700">{buildingConfig.grossSqft.toLocaleString()}</strong></span>}
+            {buildingConfig.efficiency && <span>Efficiency: <strong className="text-stone-700">{(buildingConfig.efficiency * 100).toFixed(0)}%</strong></span>}
           </div>
         )}
       </div>
 
-      <SectionHead title="Unit Mix Program" right={unitMix.length > 0 ? `${buildingConfig.units} units · Based on ${buildingConfig.label}` : 'No data yet'} accent={BT.cyanL} />
-      <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}` }}>
+      <SectionHead title="Unit Mix Program" right={unitMix.length > 0 ? `${buildingConfig.units} units · Based on ${buildingConfig.label}` : 'No data yet'} accentColor="border-cyan-500" />
+      <div className="bg-white border border-stone-200">
         {unitMix.length > 0 ? (
         <>
-        <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border}` }}>
+        <div className="flex border-b border-stone-200">
           {unitMix.map((u, i) => (
-            <div key={i} style={{ flex: parseInt(u.pct), padding: '8px 10px', textAlign: 'center', borderRight: i < unitMix.length - 1 ? `1px solid ${BT.border}` : 'none' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: BT.cyanL, ...bSans }}>{u.type}</div>
-              <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{u.pct} · {u.units}u</div>
+            <div key={i} className="flex-1 py-2 px-3 text-center border-r border-stone-200 last:border-r-0" style={{ flex: parseInt(u.pct) }}>
+              <div className={`text-[10px] font-bold ${u.color}`}>{u.type}</div>
+              <div className="text-xs text-stone-500">{u.pct} · {u.units}u</div>
             </div>
           ))}
         </div>
-        <div style={{ display: 'flex', height: 3 }}>
-          {(() => {
-            const colors = [BT.violL, BT.cyanL, BT.greenL, BT.orangeL];
-            return unitMix.map((u, i) => (
-              <div key={i} style={{ flex: parseInt(u.pct), background: colors[i % colors.length], opacity: 0.6 }} />
-            ));
-          })()}
+        <div className="flex h-2">
+          {unitMix.map((u, i) => (
+            <div key={i} className={`${u.bg} opacity-40`} style={{ flex: parseInt(u.pct) }} />
+          ))}
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', ...bMono }}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
             <thead>
-              <tr style={{ background: BT.bgPanel, borderBottom: `1px solid ${BT.border}` }}>
+              <tr className="bg-stone-50 border-b border-stone-200">
                 {['UNIT TYPE', 'COUNT', 'MIX %', 'AVG SQFT', 'TARGET RENT', 'RENT PSF', 'MONTHLY REV', 'ANN. REVENUE'].map((h, i) => (
-                  <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 8, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
+                  <th key={i} className="px-3 py-2 text-left text-[9px] font-mono text-stone-400 tracking-wider font-bold">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {unitMix.map((u, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${BT.border}`, background: i % 2 === 0 ? BT.bgCard : BT.bgPanel }}>
-                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.cyanL }}>{u.type}</td>
-                  <td style={{ padding: '6px 10px', color: BT.tm }}>{u.units}</td>
-                  <td style={{ padding: '6px 10px', color: BT.ts }}>{u.pct}</td>
-                  <td style={{ padding: '6px 10px', color: BT.ts }}>{u.sqft > 0 ? u.sqft.toLocaleString() : '—'}</td>
-                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.amber }}>{u.targetRent > 0 ? `$${u.targetRent.toLocaleString()}` : '—'}</td>
-                  <td style={{ padding: '6px 10px', color: BT.ts }}>{u.rentPsf > 0 ? `$${u.rentPsf.toFixed(2)}` : '—'}</td>
-                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.tm }}>{u.targetRent > 0 ? `$${(u.targetRent * u.units).toLocaleString()}` : '—'}</td>
-                  <td style={{ padding: '6px 10px', fontWeight: 700, color: BT.greenL }}>{u.targetRent > 0 ? `$${(u.targetRent * u.units * 12).toLocaleString()}` : '—'}</td>
+                <tr key={i} className={`border-b border-stone-100 ${i % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`}>
+                  <td className={`px-3 py-2 font-bold ${u.color}`}>{u.type}</td>
+                  <td className="px-3 py-2 text-stone-600">{u.units}</td>
+                  <td className="px-3 py-2 text-stone-600">{u.pct}</td>
+                  <td className="px-3 py-2 text-stone-600">{u.sqft.toLocaleString()}</td>
+                  <td className="px-3 py-2 font-bold text-amber-600">${u.targetRent.toLocaleString()}</td>
+                  <td className="px-3 py-2 text-stone-500">${u.rentPsf.toFixed(2)}</td>
+                  <td className="px-3 py-2 font-bold text-stone-700">${(u.targetRent * u.units).toLocaleString()}</td>
+                  <td className="px-3 py-2 font-bold text-stone-700">${(u.targetRent * u.units * 12).toLocaleString()}</td>
                 </tr>
               ))}
-              <tr style={{ background: BT.bgPanel, borderTop: `2px solid ${BT.border}`, fontWeight: 700 }}>
-                <td style={{ padding: '6px 10px', color: BT.ts, fontSize: 9, letterSpacing: 1 }}>TOTAL / AVG</td>
-                <td style={{ padding: '6px 10px', color: BT.tm }}>{totalUnitCount}</td>
-                <td style={{ padding: '6px 10px', color: BT.tm }}>100%</td>
-                <td style={{ padding: '6px 10px', color: BT.tm }}>{avgSqft.toLocaleString()}</td>
-                <td style={{ padding: '6px 10px', color: BT.amber }}>${avgRent.toLocaleString()}</td>
-                <td style={{ padding: '6px 10px', color: BT.ts }}>${avgPsf}</td>
-                <td style={{ padding: '6px 10px', color: BT.amber }}>${totalRevMo.toLocaleString()}</td>
-                <td style={{ padding: '6px 10px', color: BT.amber }}>${(totalRevMo * 12).toLocaleString()}</td>
+              <tr className="bg-stone-100 border-t-2 border-stone-300 font-bold">
+                <td className="px-3 py-2 text-stone-800">TOTAL / AVG</td>
+                <td className="px-3 py-2 text-stone-800">{totalUnitCount}</td>
+                <td className="px-3 py-2 text-stone-800">100%</td>
+                <td className="px-3 py-2 text-stone-800">{avgSqft.toLocaleString()}</td>
+                <td className="px-3 py-2 text-amber-600">${avgRent.toLocaleString()}</td>
+                <td className="px-3 py-2 text-stone-500">${avgPsf}</td>
+                <td className="px-3 py-2 text-amber-600">${totalRevMo.toLocaleString()}</td>
+                <td className="px-3 py-2 text-amber-600">${(totalRevMo * 12).toLocaleString()}</td>
               </tr>
             </tbody>
           </table>
         </div>
         </>
         ) : (
-        <div style={{ textAlign: 'center', padding: '24px 0' }}>
-          <p style={{ fontSize: 11, color: BT.ts, marginBottom: 4, ...bSans }}>No unit mix data available</p>
-          <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
-          <button onClick={() => navigateToTab('unit-mix-intelligence')} style={{ fontSize: 10, color: BT.cyanL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
-            Configure Unit Mix →
+        <div className="text-center py-6">
+          <p className="text-xs text-stone-400 mb-1">No unit mix data available</p>
+          <p className="text-[10px] text-stone-300 mb-2">Run the Development Capacity Builder or upload a proforma to generate unit mix</p>
+          <button onClick={() => navigateToTab('market')} className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium">
+            Configure Unit Mix &rarr;
           </button>
         </div>
         )}
@@ -1246,15 +1269,15 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
 
         const subjectRank = allRows.findIndex(r => r.isSubject) + 1;
 
-        if (rentComps.length === 0) {
+        if (rentComps.length === 0 && unitMix.length === 0) {
           return (
             <>
-              <SectionHead title="Competitive Set" right="No comps" accent={BT.greenL} />
-              <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, textAlign: 'center', padding: '20px 0' }}>
-                <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>No rent comps data available</p>
-                <p style={{ fontSize: 9, color: BT.td, marginBottom: 8, ...bSans }}>Build your competitive set from Trade Area, Submarket, and MSA comps</p>
-                <button onClick={() => navigateToTab('competition')} style={{ fontSize: 10, color: BT.greenL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
-                  Analyze Rent Comps →
+              <SectionHead title="Competitive Set" right="No comps" accentColor="border-emerald-500" />
+              <div className="bg-white border border-stone-200 text-center py-6">
+                <p className="text-xs text-stone-400 mb-1">No rent comps data available</p>
+                <p className="text-[10px] text-stone-300 mb-2">Build your competitive set from Trade Area, Submarket, and MSA comps</p>
+                <button onClick={() => navigateToTab('competition')} className="text-[10px] text-emerald-600 hover:text-emerald-700 font-medium">
+                  Analyze Rent Comps &rarr;
                 </button>
               </div>
             </>
@@ -1263,62 +1286,66 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
 
         return (
           <>
-            <SectionHead title="Competitive Set · Ranked by $/SF" right={`#${subjectRank} of ${allRows.length} · ${rentComps.length} comps`} accent={BT.greenL} />
-            <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, overflowX: 'auto' }}>
-              <table style={{ width: '100%', fontSize: 11, borderCollapse: 'collapse', ...bMono }}>
+            <SectionHead title="Competitive Set · Ranked by $/SF" right={`#${subjectRank} of ${allRows.length} · ${rentComps.length} comps`} accentColor="border-emerald-500" />
+            <div className="bg-white border border-stone-200 overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead>
-                  <tr style={{ background: BT.bgPanel, borderBottom: `1px solid ${BT.border}` }}>
+                  <tr className="bg-stone-50 border-b border-stone-200">
                     {['#', 'PROPERTY', 'DIST', 'UNITS', 'AVG RENT', 'AVG SF', '$/SF', 'OCC', 'ANN. TRAFFIC'].map((h, i) => (
-                      <th key={i} style={{ padding: '7px 10px', fontSize: 9, color: BT.td, fontWeight: 700, letterSpacing: 1.2, textAlign: i <= 1 ? 'left' : 'right', minWidth: i === 1 ? 160 : undefined }}>{h}</th>
+                      <th key={i} className={`px-3 py-2 text-[9px] font-mono text-stone-400 tracking-wider font-bold ${i <= 1 ? 'text-left' : 'text-right'} ${i === 1 ? 'min-w-[160px]' : ''}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {allRows.map((row, ri) => (
-                    <tr key={ri} style={{
-                      borderBottom: `1px solid ${BT.border}`,
-                      borderLeft: row.isSubject ? `3px solid ${BT.blueL}` : undefined,
-                      background: row.isSubject ? BT.blueBg : ri % 2 === 0 ? BT.bgCard : BT.bgPanel,
-                    }}>
-                      <td style={{ padding: '6px 10px', fontWeight: 700, color: row.isSubject ? BT.blueL : BT.td }}>{ri + 1}</td>
-                      <td style={{ padding: '6px 10px' }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: row.isSubject ? BT.blueL : BT.tm }}>{row.name}</div>
-                        {row.isSubject ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                            <span style={{ fontSize: 7, fontWeight: 700, color: BT.blueL, background: `${BT.blue}25`, border: `1px solid ${BT.blue}50`, borderRadius: 2, padding: '1px 4px', letterSpacing: 1 }}>SUBJECT</span>
-                            <span style={{ fontSize: 8, color: BT.ts }}>{row.note}</span>
+                    <tr key={ri} className={row.isSubject
+                      ? 'bg-blue-50/70 border-b border-blue-200 border-l-2 border-l-blue-500'
+                      : `border-b border-stone-100 ${ri % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`
+                    }>
+                      <td className={`px-3 py-2 font-bold font-mono ${row.isSubject ? 'text-blue-700' : 'text-stone-400'}`}>{ri + 1}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <div className={`text-xs font-semibold ${row.isSubject ? 'text-blue-800' : 'text-stone-800'}`}>{row.name}</div>
+                            {row.isSubject ? (
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[7px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded tracking-wider">SUBJECT</span>
+                                <span className="text-[8px] text-blue-500">{row.note}</span>
+                              </div>
+                            ) : (
+                              <div className="text-[9px] text-stone-400">{row.units}u · {row.vintage}{row.note ? ` · ${row.note}` : ''}</div>
+                            )}
                           </div>
-                        ) : (
-                          <div style={{ fontSize: 9, color: BT.td }}>{row.units}u · {row.vintage}{row.note ? ` · ${row.note}` : ''}</div>
-                        )}
+                        </div>
                       </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.ts }}>{row.dist}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.tm, fontWeight: row.isSubject ? 700 : 400 }}>{row.units}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: row.isSubject ? BT.blueL : BT.amber }}>${row.avgRent.toLocaleString()}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.ts }}>{row.avgSf.toLocaleString()}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 700, color: row.isSubject ? BT.tm : BT.tm }}>${row.psf.toFixed(2)}</td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right' }}>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-500'}`}>{row.dist}</td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-700 font-bold' : 'text-stone-600'}`}>{row.units}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${row.isSubject ? 'text-blue-700' : 'text-amber-600'}`}>${row.avgRent.toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-600'}`}>{row.avgSf.toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right font-bold ${row.isSubject ? 'text-blue-800' : 'text-stone-800'}`}>${row.psf.toFixed(2)}</td>
+                      <td className="px-3 py-2 text-right">
                         {row.occ === '—' ? (
-                          <span style={{ color: BT.td }}>—</span>
+                          <span className={row.isSubject ? 'text-blue-400' : 'text-stone-300'}>—</span>
                         ) : (
-                          <span style={{ fontWeight: 700, color: parseFloat(row.occ) >= 95 ? BT.greenL : parseFloat(row.occ) >= 90 ? BT.amber : BT.orangeL }}>{row.occ}</span>
+                          <span className={`font-bold ${parseFloat(row.occ) >= 95 ? 'text-emerald-600' : parseFloat(row.occ) >= 90 ? 'text-amber-600' : 'text-orange-500'}`}>{row.occ}</span>
                         )}
                       </td>
-                      <td style={{ padding: '6px 10px', textAlign: 'right', color: row.isSubject ? BT.blueL : BT.ts }}>{row.traffic.toLocaleString()}</td>
+                      <td className={`px-3 py-2 text-right ${row.isSubject ? 'text-blue-600' : 'text-stone-500'}`}>{row.traffic.toLocaleString()}</td>
                     </tr>
                   ))}
-                  <tr style={{ background: BT.bgPanel, borderTop: `2px solid ${BT.border}`, fontWeight: 700 }}>
-                    <td style={{ padding: '6px 10px' }} />
-                    <td style={{ padding: '6px 10px', color: BT.ts, fontSize: 9, letterSpacing: 1 }}>COMP AVERAGE</td>
-                    <td style={{ padding: '6px 10px' }} />
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{compAvgUnits}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.amber }}>${compAvgRent.toLocaleString()}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>{compAvgSf.toLocaleString()}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.tm }}>${compAvgPsf.toFixed(2)}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right' }}>
-                      {compAvgOcc === '—' ? <span style={{ color: BT.td }}>—</span> : <span style={{ color: BT.ts }}>{compAvgOcc}</span>}
+
+                  <tr className="bg-stone-100 border-t-2 border-stone-300 font-bold">
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-stone-700">COMP AVERAGE</td>
+                    <td className="px-3 py-2" />
+                    <td className="px-3 py-2 text-right text-stone-600">{compAvgUnits}</td>
+                    <td className="px-3 py-2 text-right text-amber-600">${compAvgRent.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-stone-600">{compAvgSf.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-stone-800">${compAvgPsf.toFixed(2)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {compAvgOcc === '—' ? <span className="text-stone-300">—</span> : <span className="text-stone-600">{compAvgOcc}</span>}
                     </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: BT.ts }}>{compAvgTraffic.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-stone-500">{compAvgTraffic.toLocaleString()}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1327,10 +1354,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         );
       })()}
 
-      <SectionHead title="Development Budget + Timeline" right={hasTimelineData ? `TDC ${buildingConfig.tdc} · ${constructionDur}mo build · ${absorptionDur}mo absorption` : `TDC ${buildingConfig.tdc}`} accent={BT.amber} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
-        <div style={{ background: BT.bgCard, padding: 16 }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 14, ...bMono }}>BUDGET STACK</div>
+      <SectionHead title="Development Budget + Timeline" right={hasTimelineData ? `TDC ${buildingConfig.tdc} · ${constructionDur}mo build · ${absorptionDur}mo absorption` : `TDC ${buildingConfig.tdc}`} accentColor="border-amber-500" />
+      <div className="grid grid-cols-2 gap-px bg-stone-200">
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">BUDGET STACK</div>
           {(() => {
             const landAmt = financial?.landCost || deal.purchasePrice || 0;
             const hardAmt = financial?.hardCosts || 0;
@@ -1339,128 +1366,127 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             const contingency = tdc > 0 && hardAmt > 0 ? Math.round(tdc * 0.08) : 0;
             const hasReal = tdc > 0 && hardAmt > 0;
             const items = hasReal ? [
-              { l: 'Land / Acquisition', v: `$${(landAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((landAmt / tdc) * 100), c: BT.violL },
-              { l: 'Hard Costs', v: `$${(hardAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((hardAmt / tdc) * 100), c: BT.amber },
-              { l: 'Soft Costs', v: `$${(softAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((softAmt / tdc) * 100), c: BT.cyanL },
-              { l: 'Contingency (8%)', v: `$${(contingency / 1_000_000).toFixed(1)}M`, pct: 8, c: BT.orangeL },
+              { l: 'Land / Acquisition', v: `$${(landAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((landAmt / tdc) * 100), c: 'bg-violet-500' },
+              { l: 'Hard Costs', v: `$${(hardAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((hardAmt / tdc) * 100), c: 'bg-amber-500' },
+              { l: 'Soft Costs', v: `$${(softAmt / 1_000_000).toFixed(1)}M`, pct: Math.round((softAmt / tdc) * 100), c: 'bg-cyan-500' },
+              { l: 'Contingency (8%)', v: `$${(contingency / 1_000_000).toFixed(1)}M`, pct: 8, c: 'bg-orange-500' },
             ] : [
-              { l: 'Land / Acquisition', v: landCost !== '—' ? landCost : '—', pct: 25, c: BT.violL },
-              { l: 'Hard Costs', v: '—', pct: 25, c: BT.amber },
-              { l: 'Soft Costs', v: '—', pct: 25, c: BT.cyanL },
-              { l: 'Contingency', v: '—', pct: 25, c: BT.orangeL },
+              { l: 'Land / Acquisition', v: landCost !== '—' ? landCost : '—', pct: 25, c: 'bg-violet-500' },
+              { l: 'Hard Costs', v: '—', pct: 25, c: 'bg-amber-500' },
+              { l: 'Soft Costs', v: '—', pct: 25, c: 'bg-cyan-500' },
+              { l: 'Contingency', v: '—', pct: 25, c: 'bg-orange-500' },
             ];
             return items;
           })().map((r, i) => (
-            <div key={i} style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 10, color: BT.ts, ...bSans }}>{r.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: BT.tm, ...bMono }}>{r.v}</span>
+            <div key={i} className="mb-3">
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-stone-600">{r.l}</span>
+                <span className="text-xs font-bold text-stone-800">{r.v}</span>
               </div>
-              <div style={{ height: 3, background: BT.bgPanel, borderRadius: 2, overflow: 'hidden' }}>
-                <div style={{ height: '100%', background: r.c, width: `${r.pct}%`, opacity: 0.8 }} />
+              <div className="h-1 bg-stone-100 rounded-full overflow-hidden">
+                <div className={`h-full ${r.c} rounded-full`} style={{ width: `${r.pct}%` }} />
               </div>
             </div>
           ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, borderTop: `1px solid ${BT.border}`, marginTop: 6 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL DEV COST</span>
-            <span style={{ fontSize: 16, fontWeight: 700, color: BT.amber, ...bMono }}>
+          <div className="flex justify-between pt-3 border-t border-stone-200 mt-2">
+            <span className="text-xs font-bold text-stone-800">TOTAL DEV COST</span>
+            <span className="text-lg font-bold text-amber-600 font-mono">
               {financial?.totalDevelopmentCost ? `$${(financial.totalDevelopmentCost / 1_000_000).toFixed(1)}M` : buildingConfig.tdc}
             </span>
           </div>
-          <div style={{ fontSize: 9, color: BT.td, marginTop: 4, ...bMono }}>{buildingConfig.tdcUnit}/unit{constructionDur > 0 ? ` · ${constructionDur}mo construction` : ''}</div>
+          <div className="text-[10px] text-stone-400 mt-1">{buildingConfig.tdcUnit}/unit{constructionDur > 0 ? ` · ${constructionDur}mo construction` : ''}</div>
         </div>
 
-        <div style={{ background: BT.bgCard, padding: 16 }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 14, ...bMono }}>DEVELOPMENT TIMELINE</div>
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-4">DEVELOPMENT TIMELINE</div>
           {hasTimelineData ? timeline.map((ph, i) => {
             const left = (ph.start / TOTAL_MO) * 100;
             const width = (ph.dur / TOTAL_MO) * 100;
-            const barColor = ph.status === 'done' ? BT.greenL : ph.status === 'active' ? BT.amber : BT.border;
-            const textColor = ph.status === 'done' ? BT.greenL : ph.status === 'active' ? BT.amber : BT.td;
+            const barColor = ph.status === 'done' ? 'bg-emerald-500' : ph.status === 'active' ? 'bg-amber-500' : 'bg-stone-300';
+            const textColor = ph.status === 'done' ? 'text-emerald-600' : ph.status === 'active' ? 'text-amber-600' : 'text-stone-400';
             return (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 9, color: BT.ts, width: 100, textAlign: 'right', flexShrink: 0, ...bSans }}>{ph.phase}</span>
-                <div style={{ flex: 1, height: 16, background: BT.bgPanel, position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ position: 'absolute', height: '100%', background: barColor, opacity: 0.25, left: `${left}%`, width: `${width}%` }} />
-                  <div style={{ position: 'absolute', height: '100%', borderLeft: `2px solid ${barColor}`, display: 'flex', alignItems: 'center', paddingLeft: 4, left: `${left}%`, width: `${width}%` }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: textColor, ...bMono }}>{ph.dur}mo</span>
+              <div key={i} className="flex items-center gap-3 mb-2">
+                <span className="text-[10px] text-stone-600 w-28 text-right flex-shrink-0">{ph.phase}</span>
+                <div className="flex-1 h-5 bg-stone-100 relative rounded overflow-hidden">
+                  <div className={`absolute h-full ${barColor} opacity-30 rounded`}
+                    style={{ left: `${left}%`, width: `${width}%` }} />
+                  <div className={`absolute h-full border-l-2 ${ph.status === 'done' ? 'border-emerald-500' : ph.status === 'active' ? 'border-amber-500' : 'border-stone-300'} flex items-center pl-1.5`}
+                    style={{ left: `${left}%`, width: `${width}%` }}>
+                    <span className={`text-[8px] font-bold ${textColor}`}>{ph.dur}mo</span>
                   </div>
                 </div>
-                <span style={{ fontSize: 8, fontWeight: 700, width: 40, textAlign: 'right', color: textColor, ...bMono }}>
+                <span className={`text-[8px] font-bold w-12 text-right ${textColor}`}>
                   {ph.status === 'done' ? '✓' : ph.status === 'active' ? 'ACTIVE' : ''}
                 </span>
               </div>
             );
           }) : (
-            <div style={{ textAlign: 'center', padding: '14px 0' }}>
-              <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>Timeline data not available</p>
-              <p style={{ fontSize: 9, color: BT.td, ...bSans }}>Add entitlement benchmarks and deal assumptions to generate timeline</p>
+            <div className="text-center py-4">
+              <p className="text-xs text-stone-400 mb-1">Timeline data not available</p>
+              <p className="text-[10px] text-stone-300">Add entitlement benchmarks and deal assumptions to generate timeline</p>
             </div>
           )}
           {hasTimelineData && (
-          <div style={{ display: 'flex', marginTop: 8, borderTop: `1px solid ${BT.border}`, paddingTop: 6, paddingLeft: 108, paddingRight: 48 }}>
+          <div className="flex gap-0 mt-3 border-t border-stone-100 pt-2 pl-[124px] pr-12">
             {[0, 6, 12, 18, 24, 30, 36, 42, 48].filter(m => m <= TOTAL_MO + 6).map(m => (
-              <div key={m} style={{ flex: 1, fontSize: 8, color: BT.td, ...bMono }}>M{m}</div>
+              <div key={m} className="flex-1 text-[8px] text-stone-400 font-mono">M{m}</div>
             ))}
           </div>
           )}
         </div>
       </div>
 
-      <SectionHead title="Returns Comparison + Site Diligence" right="M09 ProForma · M11 Capital" accent={BT.amber} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
-        <div style={{ background: BT.bgCard, padding: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div style={{ padding: '10px 12px', background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, letterSpacing: 1, ...bMono }}>BUILD-TO-SELL</span>
-                <span style={{ fontSize: 7, fontWeight: 700, color: BT.greenL, background: `${BT.green}25`, border: `1px solid ${BT.greenL}50`, padding: '1px 5px', borderRadius: 2, letterSpacing: 1 }}>WIN</span>
+      <SectionHead title="Returns Comparison + Site Diligence" right="M09 ProForma · M11 Capital" accentColor="border-amber-500" />
+      <div className="grid grid-cols-2 gap-px bg-stone-200">
+        <div className="bg-white p-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-[10px] font-bold text-amber-700 tracking-wider">BUILD-TO-SELL</span>
+                <span className="text-[8px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">WIN</span>
               </div>
               {[
-                { l: 'Revenue', v: computedReturns?.totalRevenue ? `$${(computedReturns.totalRevenue / 1_000_000).toFixed(1)}M` : assumptions?.totalRevenue ? `$${(assumptions.totalRevenue / 1_000_000).toFixed(1)}M` : '—' },
-                { l: 'Margin', v: computedReturns?.profitMargin ? `${(computedReturns.profitMargin * 100).toFixed(1)}%` : '—' },
-                { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : buildingConfig.btsIrr, c: BT.greenL },
-                { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : buildingConfig.btsEm, c: BT.greenL },
+                { l: 'Revenue', v: '$52.8M' },
+                { l: 'Margin', v: '30.4%' },
+                { l: 'IRR', v: financial?.irr ? `${financial.irr.toFixed(1)}%` : buildingConfig.btsIrr, c: 'text-emerald-600' },
+                { l: 'EM', v: financial?.equityMultiple ? `${financial.equityMultiple.toFixed(1)}x` : buildingConfig.btsEm, c: 'text-emerald-600' },
               ].map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                  <span style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.l}</span>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: ('c' in r ? r.c : undefined) || BT.amber, ...bMono }}>{r.v}</span>
+                <div key={i} className="flex justify-between py-1">
+                  <span className="text-[10px] text-stone-500">{r.l}</span>
+                  <span className={`text-xs font-bold ${r.c || 'text-amber-600'}`}>{r.v}</span>
                 </div>
               ))}
             </div>
-            <div style={{ padding: '10px 12px', background: BT.bgPanel, border: `1px solid ${BT.border}`, borderRadius: 3 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, marginBottom: 10, ...bMono }}>HOLD AS RENTAL</div>
+            <div className="p-3 bg-stone-50 border border-stone-200 rounded-lg">
+              <div className="text-[10px] font-semibold text-stone-500 tracking-wider mb-3">HOLD AS RENTAL</div>
               {[
-                { l: 'Stab. NOI', v: financial?.noi ? `$${financial.noi.toLocaleString()}` : computedReturns?.stabilizedNoi ? `$${computedReturns.stabilizedNoi.toLocaleString()}` : '—' },
-                { l: 'YOC', v: buildingConfig.yoc || (computedReturns?.yieldOnCost ? `${(computedReturns.yieldOnCost * 100).toFixed(1)}%` : '—') },
-                { l: 'Hold IRR', v: computedReturns?.irrLevered ? `${(computedReturns.irrLevered * 100).toFixed(1)}%` : assumptions?.targetIRR ? `${assumptions.targetIRR.toFixed(1)}%` : '—' },
+                { l: 'Stab. NOI', v: financial?.noi ? `$${financial.noi.toLocaleString()}` : '$2,890,000' },
+                { l: 'YOC', v: buildingConfig.yoc || "—" },
+                { l: 'Hold IRR', v: '18.4%' },
               ].map((r, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-                  <span style={{ fontSize: 9, color: BT.td, ...bSans }}>{r.l}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: BT.ts, ...bMono }}>{r.v}</span>
+                <div key={i} className="flex justify-between py-1">
+                  <span className="text-[10px] text-stone-500">{r.l}</span>
+                  <span className="text-xs font-semibold text-stone-600">{r.v}</span>
                 </div>
               ))}
-              <div style={{ fontSize: 8, color: BT.td, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BT.border}`, lineHeight: 1.5, ...bSans }}>
+              <div className="text-[9px] text-stone-400 mt-3 leading-relaxed border-t border-stone-200 pt-2">
                 BTS outperforms · Exit cap 5.0%
               </div>
             </div>
           </div>
         </div>
-        <div style={{ background: BT.bgCard, padding: 14 }}>
-          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 10, ...bMono }}>SITE DILIGENCE ITEMS</div>
-          {deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0
-            ? deal.stateData.ddItems.map((item: any, i: number) => (
-                <DDItem key={i} label={item.l} done={item.done} />
-              ))
-            : (
-              <div style={{ textAlign: 'center', padding: '12px 0' }}>
-                <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>No diligence items added</p>
-                <button onClick={() => navigateToTab('due-diligence')} style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: 'none', border: 'none', cursor: 'pointer', ...bMono }}>
-                  Add Site Diligence Items →
-                </button>
-              </div>
-            )
-          }
+        <div className="bg-white p-4">
+          <div className="text-[10px] font-mono text-stone-400 tracking-widest font-bold mb-3">SITE DILIGENCE ITEMS</div>
+          {(deal?.stateData?.ddItems || [
+            { l: 'Site Control / Title', done: true },
+            { l: 'Zoning Pre-Application', done: true },
+            { l: 'Geotech / Survey', done: false },
+            { l: 'HOA / CDD Review', done: false },
+            { l: 'Utility Capacity Confirm', done: true },
+            { l: 'Soft Cost Budget', done: false },
+          ]).map((item: any, i: number) => (
+            <DDItem key={i} label={item.l} done={item.done} />
+          ))}
         </div>
       </div>
     </div>

@@ -1,28 +1,39 @@
+/**
+ * Loading fallback for lazy-loaded pages
+ */
+
 import React from 'react';
 
-export const PageLoadingFallback: React.FC = () => (
-  <div style={{
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100vh',
-    background: '#050810',
-    flexDirection: 'column',
-    gap: 16,
-  }}>
+export function PageLoadingFallback() {
+  return (
     <div style={{
-      width: 40,
-      height: 40,
-      border: '3px solid #1e2a45',
-      borderTop: '3px solid #00b4d8',
-      borderRadius: '50%',
-      animation: 'spin 0.8s linear infinite',
-    }} />
-    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    <div style={{ color: '#4a5568', fontSize: 11, letterSpacing: 2, fontFamily: 'monospace', textTransform: 'uppercase' }}>
-      Loading…
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '400px',
+      width: '100%',
+    }}>
+      <div style={{
+        textAlign: 'center',
+        color: '#666',
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid #f3f3f3',
+          borderTop: '3px solid #3498db',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          margin: '0 auto 16px',
+        }}></div>
+        <div style={{ fontSize: '14px' }}>Loading...</div>
+        <style>{`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
     </div>
-  </div>
-);
-
-export default PageLoadingFallback;
+  );
+}

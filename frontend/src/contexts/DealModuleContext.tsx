@@ -155,18 +155,6 @@ export interface ModuleStatus {
   design3d: ModuleStatusValue;
 }
 
-export interface AbsorptionData {
-  monthsToStabilization: number;
-  totalAbsorbed: number;
-  avgMonthlyVelocity: number;
-  concessionPeriodMonths: number;
-  eligibleUnitsPct: number;
-  marketAbsorptionRate: number;
-  supplyPressureFactor: number;
-  breakEvenOccupancy: number;
-  dealType: string;
-}
-
 export type DealModuleEventType =
   | 'design-updated'
   | 'financial-updated'
@@ -182,8 +170,7 @@ export type DealModuleEventType =
   | 'strategy-selected'
   | 'risk-updated'
   | 'debt-terms-selected'
-  | 'market-intelligence-updated'
-  | 'absorption-updated';
+  | 'market-intelligence-updated';
 
 export interface DealModuleEvent {
   source: string;
@@ -238,9 +225,6 @@ interface DealModuleContextValue {
   marketIntelligence: MarketIntelligenceState | null;
   updateMarketIntelligence: (updates: Partial<MarketIntelligenceState>) => void;
 
-  absorptionData: AbsorptionData | null;
-  updateAbsorptionData: (data: AbsorptionData) => void;
-
   emitEvent: (event: Omit<DealModuleEvent, 'timestamp'>) => void;
   lastEvent: DealModuleEvent | null;
 
@@ -276,7 +260,6 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
   const [strategy, setStrategy] = useState<StrategyState | null>(null);
   const [debtTerms, setDebtTerms] = useState<DebtTermsState | null>(null);
   const [marketIntelligence, setMarketIntelligence] = useState<MarketIntelligenceState | null>(null);
-  const [absorptionData, setAbsorptionData] = useState<AbsorptionData | null>(null);
   const [lastEvent, setLastEvent] = useState<DealModuleEvent | null>(null);
 
   // Canonical data state
@@ -480,10 +463,6 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     }));
   }, []);
 
-  const updateAbsorptionData = useCallback((data: AbsorptionData) => {
-    setAbsorptionData(data);
-  }, []);
-
   const emitEvent = useCallback((event: Omit<DealModuleEvent, 'timestamp'>) => {
     const fullEvent: DealModuleEvent = { ...event, timestamp: Date.now() };
     setLastEvent(fullEvent);
@@ -542,14 +521,12 @@ export const DealModuleProvider: React.FC<DealModuleProviderProps> = ({
     updateDebtTerms,
     marketIntelligence,
     updateMarketIntelligence,
-    absorptionData,
-    updateAbsorptionData,
     emitEvent,
     lastEvent,
     moduleStatus,
     navigateToTab,
     activeTab,
-  }), [dealId, deal, canonicalData, siteData, dealInputs, updateSiteDataLocal, refreshCanonicalData, assumptions, computedReturns, fullContext, updateAssumptions, computeReturnsFromApi, assumptionsLoading, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, absorptionData, updateAbsorptionData, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
+  }), [dealId, deal, canonicalData, siteData, dealInputs, updateSiteDataLocal, refreshCanonicalData, assumptions, computedReturns, fullContext, updateAssumptions, computeReturnsFromApi, assumptionsLoading, design3D, updateDesign3D, financial, updateFinancial, market, updateMarket, zoningProfile, updateZoningProfile, activeScenario, updateActiveScenario, capitalStructure, updateCapitalStructure, strategy, updateStrategy, debtTerms, updateDebtTerms, marketIntelligence, updateMarketIntelligence, emitEvent, lastEvent, moduleStatus, navigateToTab, activeTab]);
 
   return (
     <DealModuleContext.Provider value={value}>
@@ -596,8 +573,6 @@ export const useDealModule = (): DealModuleContextValue => {
       updateDebtTerms: () => {},
       marketIntelligence: null,
       updateMarketIntelligence: () => {},
-      absorptionData: null,
-      updateAbsorptionData: () => {},
       emitEvent: () => {},
       lastEvent: null,
       moduleStatus: { strategy: 'none', traffic: 'none', proforma: 'none', debt: 'none', exit: 'none', marketIntelligence: 'none', zoning: 'none', design3d: 'none' },

@@ -3,16 +3,31 @@ set -e
 
 echo "=== Post-merge setup ==="
 
-echo "--- Installing root dependencies ---"
-npm install --no-fund --no-audit
+cd /home/runner/workspace
 
-echo "--- Installing backend dependencies ---"
-npm install --no-fund --no-audit --prefix backend
+if [ -f backend/package.json ]; then
+  echo "Installing backend dependencies..."
+  cd backend && npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+  cd /home/runner/workspace
+fi
 
-echo "--- Installing frontend dependencies ---"
-npm install --no-fund --no-audit --prefix frontend
+if [ -f frontend/package.json ]; then
+  echo "Installing frontend dependencies..."
+  cd frontend && npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+  cd /home/runner/workspace
+fi
 
-echo "--- Running database migrations ---"
-cd backend && npx ts-node --transpile-only src/scripts/run-migrations.ts && cd ..
+if [ -f package.json ]; then
+  echo "Installing root dependencies..."
+  npm install --prefer-offline --no-audit --no-fund 2>&1 | tail -3
+fi
+
+echo "Running pending migrations..."
+for f in backend/src/db/migrations/*.sql; do
+  if [ -f "$f" ]; then
+    echo "  Applying $(basename $f)..."
+    psql "$DATABASE_URL" -f "$f" 2>&1 | tail -1 || true
+  fi
+done
 
 echo "=== Post-merge setup complete ==="

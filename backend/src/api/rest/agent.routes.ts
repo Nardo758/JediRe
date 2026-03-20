@@ -45,11 +45,6 @@ router.get('/tasks/:taskId', requireAuthOrApiKey, async (req: AuthenticatedReque
   try {
     const { taskId } = req.params;
 
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!UUID_RE.test(taskId)) {
-      return res.status(404).json({ success: false, error: 'Task not found' });
-    }
-
     const result = await query(
       'SELECT * FROM agent_tasks WHERE id = $1 AND user_id = $2',
       [taskId, req.user!.userId]

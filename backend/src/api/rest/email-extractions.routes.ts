@@ -21,34 +21,28 @@ router.get('/:emailId', requireAuth, async (req: Request, res: Response) => {
   const { emailId } = req.params;
 
   try {
-    // Check email belongs to user - emails.id is integer, emailId may be UUID or integer
-    let emailCheck: any = { rows: [] };
-    try {
-      emailCheck = await query(
-        'SELECT id FROM emails WHERE id = $1 AND user_id = $2',
-        [emailId, userId]
-      );
-    } catch (typeErr: any) {
-      // Type mismatch (e.g. uuid vs integer) means email doesn't exist
-    }
+    // Check email belongs to user
+    const emailCheck = await query(
+      'SELECT id FROM emails WHERE id = $1 AND user_id = $2',
+      [emailId, userId]
+    );
 
     if (emailCheck.rows.length === 0) {
       throw new AppError(404, 'Email not found');
     }
 
-    // Get property extractions - email_id is integer, use safe cast
-    let propertyExtractions: any = { rows: [] };
-    try {
-      propertyExtractions = await query(
-        `SELECT pq.*
-        FROM property_extraction_queue pq
-        WHERE pq.email_id = $1 AND pq.user_id = $2
-        ORDER BY pq.created_at DESC`,
-        [emailId, userId]
-      );
-    } catch (typeErr: any) {
-      // Type mismatch - no extractions
-    }
+    // Get property extractions
+    const propertyExtractions = await query(
+      `SELECT pq.*, 
+        mp.id as pin_id,
+        mp.property_name,
+        mp.address as pin_address
+      FROM property_extraction_queue pq
+      LEFT JOIN map_pins mp ON pq.created_pin_id = mp.id
+      WHERE pq.email_id = $1 AND pq.user_id = $2
+      ORDER BY pq.created_at DESC`,
+      [emailId, userId]
+    );
 
     // Get news extractions (linked via raw_data)
     const email = await query(
@@ -83,7 +77,7 @@ router.get('/:emailId', requireAuth, async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Error fetching email extractions:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -109,9 +103,13 @@ router.get('/list/properties', requireAuth, async (req: Request, res: Response) 
         pq.*,
         e.subject as email_subject,
         e.from_address as email_from,
-        e.received_at as email_received_at
+        e.received_at as email_received_at,
+        mp.id as pin_id,
+        mp.property_name,
+        mp.address as pin_address
       FROM property_extraction_queue pq
       LEFT JOIN emails e ON pq.email_id = e.id
+      LEFT JOIN map_pins mp ON pq.created_pin_id = mp.id
       ${whereClause}
       ORDER BY pq.created_at DESC
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -137,7 +135,7 @@ router.get('/list/properties', requireAuth, async (req: Request, res: Response) 
     });
   } catch (error) {
     logger.error('Error listing property extractions:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -153,19 +151,29 @@ router.get('/list/news', requireAuth, async (req: Request, res: Response) => {
     // Find news items that came from email source
     const result = await query(
       `SELECT 
-        ni.*
+        ni.*,
+        m.name as market_name,
+        m.city as market_city,
+        m.state_code as market_state
       FROM news_items ni
-      WHERE ni.source_name IS NOT NULL
-      ORDER BY ni.published_at DESC
-      LIMIT $1 OFFSET $2`,
-      [limit, offset]
+      LEFT JOIN markets m ON ni.market_id = m.id
+      WHERE ni.source = 'email_private'
+      AND ni.raw_data->>'emailId' IN (
+        SELECT id::text FROM emails WHERE user_id = $1
+      )
+      ORDER BY ni.published_date DESC
+      LIMIT $2 OFFSET $3`,
+      [userId, limit, offset]
     );
 
     const countResult = await query(
       `SELECT COUNT(*) as total
        FROM news_items ni
-       WHERE ni.source_name IS NOT NULL`,
-      []
+       WHERE ni.source = 'email_private'
+       AND ni.raw_data->>'emailId' IN (
+         SELECT id::text FROM emails WHERE user_id = $1
+       )`,
+      [userId]
     );
 
     res.json({
@@ -179,7 +187,7 @@ router.get('/list/news', requireAuth, async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Error listing news extractions:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -207,7 +215,7 @@ router.post('/properties/:extractionId/approve', requireAuth, async (req: Reques
     });
   } catch (error) {
     logger.error('Error approving extraction:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -248,7 +256,7 @@ router.post('/properties/:extractionId/reject', requireAuth, async (req: Request
     });
   } catch (error) {
     logger.error('Error rejecting extraction:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -283,7 +291,7 @@ router.delete('/properties/:extractionId', requireAuth, async (req: Request, res
     });
   } catch (error) {
     logger.error('Error deleting extraction:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -301,8 +309,11 @@ router.delete('/news/:newsItemId', requireAuth, async (req: Request, res: Respon
       `SELECT ni.id
        FROM news_items ni
        WHERE ni.id = $1
-       AND ni.source_name IS NOT NULL`,
-      [newsItemId]
+       AND ni.source = 'email_private'
+       AND ni.raw_data->>'emailId' IN (
+         SELECT id::text FROM emails WHERE user_id = $2
+       )`,
+      [newsItemId, userId]
     );
 
     if (check.rows.length === 0) {
@@ -321,7 +332,7 @@ router.delete('/news/:newsItemId', requireAuth, async (req: Request, res: Respon
     });
   } catch (error) {
     logger.error('Error deleting news item:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 
@@ -339,7 +350,8 @@ router.get('/stats/summary', requireAuth, async (req: Request, res: Response) =>
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE status = 'auto-created') as auto_created,
         COUNT(*) FILTER (WHERE status = 'requires-review') as pending_review,
-        COUNT(*) FILTER (WHERE status = 'rejected') as rejected
+        COUNT(*) FILTER (WHERE status = 'rejected') as rejected,
+        AVG(preference_match_score) as avg_match_score
       FROM property_extraction_queue
       WHERE user_id = $1`,
       [userId]
@@ -349,8 +361,11 @@ router.get('/stats/summary', requireAuth, async (req: Request, res: Response) =>
     const newsStats = await query(
       `SELECT COUNT(*) as total
        FROM news_items ni
-       WHERE ni.source_name IS NOT NULL`,
-      []
+       WHERE ni.source = 'email_private'
+       AND ni.raw_data->>'emailId' IN (
+         SELECT id::text FROM emails WHERE user_id = $1
+       )`,
+      [userId]
     );
 
     // Recent extractions (last 7 days)
@@ -376,7 +391,7 @@ router.get('/stats/summary', requireAuth, async (req: Request, res: Response) =>
     });
   } catch (error) {
     logger.error('Error fetching extraction stats:', error);
-    const statusCode = (error as any).statusCode || 500; res.status(statusCode).json({ error: (error as any).message || "Internal server error" });
+    throw error;
   }
 });
 

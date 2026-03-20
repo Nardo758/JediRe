@@ -1,115 +1,511 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import api from '../../lib/api';
+import { T } from '../../styles/terminal-tokens';
+
+interface Strategy {
+  id: string;
+  name: string;
+  type: 'preset' | 'custom';
+  description?: string;
+  last_match_count?: number;
+}
+
+interface StrategyResult {
+  geography_name: string;
+  score: number;
+}
+
+interface RunningStrategy {
+  id: string;
+  loading: boolean;
+  results?: StrategyResult[];
+  matchCount?: number;
+  error?: string;
+}
 
 interface CommandPanelProps {
-  open: boolean;
+  isOpen: boolean;
   onClose: () => void;
 }
 
-const COMMANDS = [
-  { label: 'Go to Dashboard', action: '/', shortcut: 'G D' },
-  { label: 'Go to Market Intelligence', action: '/markets', shortcut: 'G M' },
-  { label: 'Go to Settings', action: '/settings', shortcut: 'G S' },
-];
-
-export const CommandPanel: React.FC<CommandPanelProps> = ({ open, onClose }) => {
+export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
-  const [query, setQuery] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const location = useLocation();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [strategiesLoading, setStrategiesLoading] = useState(false);
+  const [runningStrategies, setRunningStrategies] = useState<Record<string, RunningStrategy>>({});
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setTimeout(() => inputRef.current?.focus(), 50);
+    if (isOpen) {
+      loadStrategies();
+      searchInputRef.current?.focus();
     }
-  }, [open]);
+  }, [isOpen]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    onClose();
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
-  if (!open) return null;
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen, onClose]);
 
-  const filtered = COMMANDS.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));
+  const loadStrategies = async () => {
+    setStrategiesLoading(true);
+    try {
+      const response = await api.get('/strategies');
+      setStrategies(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to load strategies:', error);
+    } finally {
+      setStrategiesLoading(false);
+    }
+  };
+
+  const runStrategy = async (strategyId: string) => {
+    setRunningStrategies(prev => ({
+      ...prev,
+      [strategyId]: { id: strategyId, loading: true }
+    }));
+
+    try {
+      const response = await api.post(`/strategies/${strategyId}/run`);
+      const data = response.data.data;
+
+      const topResults = (data.results || []).slice(0, 3);
+      const matchCount = data.match_count || data.results?.length || 0;
+
+      setRunningStrategies(prev => ({
+        ...prev,
+        [strategyId]: {
+          id: strategyId,
+          loading: false,
+          results: topResults,
+          matchCount
+        }
+      }));
+    } catch (error) {
+      console.error('Failed to run strategy:', error);
+      setRunningStrategies(prev => ({
+        ...prev,
+        [strategyId]: {
+          id: strategyId,
+          loading: false,
+          error: 'Failed to run strategy'
+        }
+      }));
+    }
+  };
+
+  const navigationItems = [
+    { label: 'Dashboard',         path: '/dashboard',                icon: '📊' },
+    { label: 'Pipeline',          path: '/deals',                    icon: '📋' },
+    { label: 'Portfolio Assets',  path: '/assets-owned',             icon: '🏢' },
+    { label: 'Market Intelligence', path: '/market-intelligence',    icon: '📈' },
+    { label: 'Compete',           path: '/competitive-intelligence', icon: '🎯' },
+    { label: 'News Intelligence', path: '/news-intel',               icon: '📰' },
+    { label: 'Opportunities',     path: '/opportunities',            icon: '⚡' },
+    { label: 'Reports',           path: '/reports',                  icon: '📄' },
+    { label: 'Settings',          path: '/settings',                 icon: '⚙️' },
+    { label: 'Email',             path: '/dashboard/email',          icon: '📧' },
+    { label: 'Tasks',             path: '/tasks',                    icon: '✅' },
+    { label: 'Team Management',   path: '/team',                     icon: '👥' },
+    { label: 'Strategy Builder',  path: '/strategy-builder',         icon: '🔬' },
+    { label: 'Create New Deal',   path: '/deals/create',             icon: '➕' },
+  ];
+
+  const filteredStrategies = strategies.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredNavItems = navigationItems.filter(item =>
+    !searchQuery || item.label.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (!isOpen) return null;
 
   return (
     <>
       <div
+        className="fixed inset-0 z-40"
+        style={{ background: 'rgba(0,0,0,0.6)' }}
         onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, background: 'rgba(5,8,16,0.8)', zIndex: 9998,
-          backdropFilter: 'blur(4px)',
-        }}
       />
-      <div style={{
-        position: 'fixed',
-        top: '20%',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 560,
-        maxWidth: '90vw',
-        background: '#0d1326',
-        border: '1px solid #1e2a45',
-        borderRadius: 8,
-        zIndex: 9999,
-        overflow: 'hidden',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-      }}>
-        <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e2a45', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ color: '#4a5568', fontSize: 14 }}>⌘</span>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Type a command or search…"
+
+      <div
+        ref={panelRef}
+        className="fixed right-0 top-0 bottom-0 w-96 z-50 flex flex-col overflow-hidden"
+        style={{
+          background: T.bg.panel,
+          borderLeft: `1px solid ${T.border.medium}`,
+          boxShadow: '-4px 0 24px rgba(0,0,0,0.5)',
+        }}
+      >
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '12px 16px',
+          borderBottom: `1px solid ${T.border.subtle}`,
+          background: T.bg.header,
+        }}>
+          <h2 style={{
+            fontSize: T.fontSize.md,
+            fontFamily: T.font.mono,
+            fontWeight: 700,
+            color: T.text.amber,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+          }}>Commands</h2>
+          <button
+            onClick={onClose}
             style={{
-              flex: 1,
-              background: 'transparent',
               border: 'none',
-              outline: 'none',
-              color: '#e8eaf0',
-              fontSize: 14,
-              fontFamily: 'inherit',
+              background: 'transparent',
+              color: T.text.muted,
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontFamily: T.font.mono,
             }}
+            title="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border.subtle}` }}>
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search strategies, navigation..."
+            style={{
+              width: '100%',
+              padding: '8px 12px',
+              background: T.bg.input,
+              border: `1px solid ${T.border.medium}`,
+              borderRadius: 6,
+              color: T.text.primary,
+              fontSize: T.fontSize.base,
+              fontFamily: T.font.mono,
+              outline: 'none',
+            }}
+            onFocus={e => { e.currentTarget.style.borderColor = T.text.amber; }}
+            onBlur={e => { e.currentTarget.style.borderColor = T.border.medium; }}
           />
-          <kbd style={{ fontSize: 10, color: '#4a5568', background: '#111827', padding: '2px 6px', borderRadius: 3, border: '1px solid #1e2a45' }}>ESC</kbd>
         </div>
-        <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-          {filtered.length === 0 && (
-            <div style={{ padding: '24px 16px', textAlign: 'center', color: '#4a5568', fontSize: 12 }}>No commands found</div>
+
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ padding: 16 }}>
+            <h3 style={{
+              fontSize: T.fontSize.xs,
+              fontFamily: T.font.mono,
+              fontWeight: 700,
+              color: T.text.muted,
+              letterSpacing: 1.5,
+              textTransform: 'uppercase',
+              marginBottom: 12,
+            }}>
+              Strategies
+            </h3>
+
+            {strategiesLoading ? (
+              <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: '16px 0', fontFamily: T.font.mono }}>
+                Loading strategies...
+              </div>
+            ) : filteredStrategies.length === 0 && searchQuery ? (
+              <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: '16px 0', fontFamily: T.font.mono }}>
+                No strategies found
+              </div>
+            ) : filteredStrategies.length === 0 ? (
+              <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: '16px 0', fontFamily: T.font.mono }}>
+                <p>No strategies yet.</p>
+                <button
+                  onClick={() => { navigate('/strategies?tab=builder'); onClose(); }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: T.text.amber,
+                    fontFamily: T.font.mono,
+                    fontSize: T.fontSize.sm,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    marginTop: 8,
+                  }}
+                >
+                  + Create New
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {filteredStrategies.map(strategy => {
+                  const running = runningStrategies[strategy.id];
+                  const hasResults = running?.results && running.results.length > 0;
+
+                  return (
+                    <div
+                      key={strategy.id}
+                      style={{
+                        border: `1px solid ${T.border.subtle}`,
+                        borderRadius: 6,
+                        padding: 12,
+                        background: T.bg.panelAlt,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <h4 style={{
+                            fontSize: T.fontSize.base,
+                            fontWeight: 600,
+                            color: T.text.primary,
+                            fontFamily: T.font.mono,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {strategy.name}
+                          </h4>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              fontSize: T.fontSize.xs,
+                              fontFamily: T.font.mono,
+                              fontWeight: 700,
+                              borderRadius: 3,
+                              border: `1px solid ${strategy.type === 'preset' ? T.text.cyan : T.text.purple}`,
+                              background: `${strategy.type === 'preset' ? T.text.cyan : T.text.purple}22`,
+                              color: strategy.type === 'preset' ? T.text.cyan : T.text.purple,
+                            }}>
+                              {strategy.type}
+                            </span>
+                            {strategy.last_match_count != null && (
+                              <span style={{ fontSize: T.fontSize.xs, color: T.text.muted, fontFamily: T.font.mono }}>
+                                {strategy.last_match_count} matches
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {!hasResults ? (
+                        <button
+                          onClick={() => runStrategy(strategy.id)}
+                          disabled={running?.loading}
+                          style={{
+                            width: '100%',
+                            padding: '6px 0',
+                            borderRadius: 4,
+                            border: `1px solid ${T.text.amber}44`,
+                            background: `${T.text.amber}15`,
+                            color: T.text.amber,
+                            fontSize: T.fontSize.sm,
+                            fontFamily: T.font.mono,
+                            fontWeight: 600,
+                            cursor: running?.loading ? 'not-allowed' : 'pointer',
+                            opacity: running?.loading ? 0.5 : 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                          }}
+                        >
+                          {running?.loading ? (
+                            <>
+                              <span style={{
+                                display: 'inline-block',
+                                width: 10,
+                                height: 10,
+                                borderRadius: '50%',
+                                border: `2px solid ${T.text.amber}`,
+                                borderTopColor: 'transparent',
+                                animation: 'spin 1s linear infinite',
+                              }} />
+                              Running...
+                            </>
+                          ) : (
+                            <>▶ Run</>
+                          )}
+                        </button>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <div style={{
+                            fontSize: T.fontSize.sm,
+                            fontWeight: 600,
+                            color: T.text.green,
+                            background: `${T.text.green}15`,
+                            padding: '4px 8px',
+                            borderRadius: 4,
+                            fontFamily: T.font.mono,
+                          }}>
+                            ✓ {running!.matchCount} matches
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {running!.results!.map((result, idx) => (
+                              <div
+                                key={idx}
+                                style={{
+                                  fontSize: T.fontSize.xs,
+                                  background: T.bg.header,
+                                  padding: '4px 8px',
+                                  borderRadius: 4,
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  fontFamily: T.font.mono,
+                                }}
+                              >
+                                <span style={{ color: T.text.primary, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                  {result.geography_name}
+                                </span>
+                                <span style={{ color: T.text.secondary, marginLeft: 8, flexShrink: 0 }}>
+                                  {(result.score * 100).toFixed(0)}%
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => { navigate(`/strategies/${strategy.id}`); onClose(); }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: T.text.amber,
+                              fontSize: T.fontSize.xs,
+                              fontFamily: T.font.mono,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              padding: '4px 0',
+                              textAlign: 'center',
+                            }}
+                          >
+                            View All →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {filteredStrategies.length > 0 && (
+                  <button
+                    onClick={() => { navigate('/strategies?tab=builder'); onClose(); }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: T.text.amber,
+                      fontSize: T.fontSize.xs,
+                      fontFamily: T.font.mono,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: '8px 0',
+                      textAlign: 'center',
+                    }}
+                  >
+                    + Create New Strategy
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {filteredNavItems.length > 0 && (
+            <div style={{
+              padding: '16px',
+              borderTop: `1px solid ${T.border.subtle}`,
+            }}>
+              <h3 style={{
+                fontSize: T.fontSize.xs,
+                fontFamily: T.font.mono,
+                fontWeight: 700,
+                color: T.text.muted,
+                letterSpacing: 1.5,
+                textTransform: 'uppercase',
+                marginBottom: 12,
+              }}>
+                Navigation
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {filteredNavItems.map(item => (
+                  <button
+                    key={item.path}
+                    onClick={() => { navigate(item.path); onClose(); }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: 'none',
+                      background: 'transparent',
+                      color: T.text.secondary,
+                      fontSize: T.fontSize.base,
+                      fontFamily: T.font.mono,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      transition: 'all 0.1s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.background = T.bg.hover;
+                      e.currentTarget.style.color = T.text.amber;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = T.text.secondary;
+                    }}
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
-          {filtered.map((cmd, i) => (
-            <button
-              key={i}
-              onClick={() => { navigate(cmd.action); onClose(); }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                width: '100%',
-                padding: '10px 16px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: '1px solid #111827',
-                color: '#e8eaf0',
-                fontSize: 13,
-                cursor: 'pointer',
-                textAlign: 'left',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#111827'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
-            >
-              <span>{cmd.label}</span>
-              <kbd style={{ fontSize: 10, color: '#4a5568', background: '#0a0e1a', padding: '2px 6px', borderRadius: 3, border: '1px solid #1e2a45', fontFamily: 'monospace' }}>
-                {cmd.shortcut}
-              </kbd>
-            </button>
-          ))}
         </div>
+
+        <div style={{
+          padding: '10px 16px',
+          borderTop: `1px solid ${T.border.subtle}`,
+          background: T.bg.header,
+          fontSize: T.fontSize.xs,
+          fontFamily: T.font.mono,
+          color: T.text.muted,
+        }}>
+          <div>
+            Press <kbd style={{
+              padding: '2px 6px',
+              background: T.bg.active,
+              border: `1px solid ${T.border.medium}`,
+              borderRadius: 3,
+              color: T.text.amber,
+              fontFamily: T.font.mono,
+              fontSize: T.fontSize.xs,
+            }}>Esc</kbd> to close
+          </div>
+        </div>
+        <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       </div>
     </>
   );

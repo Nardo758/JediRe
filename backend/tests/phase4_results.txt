@@ -1,0 +1,142 @@
+PASS | GET    | 200 | deal-comp-sets: GET comp-set                                 | 
+PASS | POST   | 200 | deal-comp-sets: POST discover                                | 
+WARN | POST   | 400 | deal-comp-sets: POST add                                     | {"success":false,"error":"Address is required"}
+PASS | GET    | 200 | deal-context: GET context                                    | 
+PASS | PATCH  | 200 | deal-context: PATCH context                                  | 
+PASS | POST   | 200 | deal-context: POST recompute                                 | 
+PASS | GET    | 200 | deal-market-intel: GET                                       | 
+PASS | GET    | 200 | deal-photos: GET all                                         | 
+PASS | POST   | 200 | deal-validation: POST validate                               | 
+PASS | GET    | 200 | deal-validation: GET status                                  | 
+PASS | POST   | 200 | deal-validation: POST validate-all                           | 
+WARN | GET    | 404 | deal-actuals: GET actuals                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | deal-actuals: POST actuals                                   | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | GET    | 404 | deal-actuals: GET traffic                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | deal-actuals: POST traffic                                   | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | GET    | 404 | deal-actuals: GET flywheel-feeds                             | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | deal-actuals: POST flywheel-feeds                            | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | GET    | 404 | deal-actuals: GET summary                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+PASS | GET    | 200 | deal-assumptions: GET assumptions                            | 
+PASS | PUT    | 200 | deal-assumptions: PUT assumptions                            | 
+PASS | POST   | 200 | deal-assumptions: POST compute-returns                       | 
+PASS | PUT    | 200 | deal-assumptions: PUT site-data                              | 
+PASS | GET    | 200 | deal-assumptions: GET full-context                           | 
+WARN | POST   | 400 | geo-context: POST                                            | {"success":false,"message":"At least one of trade_area_id, submarket_id, msa_id, or active_scope is required"}
+PASS | GET    | 200 | geo-context: GET                                             | 
+PASS | PUT    | 200 | geo-context: PUT                                             | 
+PASS | GET    | 200 | geo-context: GET submarkets lookup                           | 
+PASS | GET    | 200 | geo-context: GET msas lookup                                 | 
+PASS | GET    | 200 | grid: GET pipeline                                           | 
+PASS | GET    | 200 | grid: GET owned                                              | 
+WARN | GET    | 404 | grid: GET owned report                                       | {"success":false,"error":"Property not found"}
+WARN | POST   | 400 | grid: POST export                                            | {"error":"No data to export"}
+PASS | GET    | 200 | rankings: GET by market                                      | 
+PASS | GET    | 200 | rankings: GET performance                                    | 
+PASS | GET    | 200 | rankings: GET owned                                          | 
+PASS | GET    | 200 | rankings: GET pipeline                                       | 
+WARN | GET    | 404 | portfolio: GET summary                                       | {"success":false,"error":"Deal not found"}
+WARN | GET    | 404 | portfolio: GET financials                                    | {"success":false,"error":"Deal not found"}
+WARN | GET    | 404 | portfolio: GET leasing                                       | {"success":false,"error":"Deal not found"}
+WARN | GET    | 404 | portfolio: GET traffic                                       | {"success":false,"error":"Deal not found"}
+WARN | GET    | 404 | proforma: GET                                                | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | proforma: POST initialize                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | GET    | 404 | proforma: GET history                                        | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | proforma: GET adjustments                                    | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | POST   | 404 | proforma: POST recalculate                                   | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot POST /api
+WARN | PATCH  | 404 | proforma: PATCH override                                     | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot PATCH /ap
+WARN | GET    | 404 | proforma: GET comparison                                     | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+WARN | GET    | 404 | proforma: GET export                                         | <!DOCTYPE html> <html lang="en"> <head> <meta charset="utf-8"> <title>Error</title> </head> <body> <pre>Cannot GET /api/
+PASS | GET    | 200 | proforma-gen: GET templates                                  | 
+WARN | GET    | 404 | proforma-gen: GET snapshot                                   | {"error":"Snapshot not found"}
+PASS | GET    | 200 | map-configs: GET all                                         | 
+PASS | GET    | 200 | map-configs: GET default                                     | 
+WARN | POST   | 400 | map-configs: POST create                                     | {"success":false,"error":"name and layer_config are required"}
+PASS | GET    | 200 | module-libs: GET files                                       | 
+PASS | GET    | 200 | module-libs: GET learning-status                             | 
+PASS | GET    | 200 | modules: GET all                                             | 
+PASS | GET    | 200 | modules: GET enabled                                         | 
+PASS | GET    | 200 | site-intel: GET                                              | 
+PASS | POST   | 200 | site-intel: POST                                             | 
+PASS | GET    | 200 | dev-scenarios: GET HBU                                       | 
+PASS | GET    | 200 | dev-scenarios: GET regulatory risk                           | 
+PASS | GET    | 200 | dev-scenarios: GET recommendations                           | 
+PASS | GET    | 200 | dev-scenarios: GET all                                       | 
+WARN | GET    | 400 | dev-scenarios: GET lookup-district                           | {"error":"code query parameter is required"}
+PASS | POST   | 201 | dev-scenarios: POST create                                   | 
+PASS | POST   | 200 | dev-scenarios: POST deactivate-all                           | 
+PASS | GET    | 200 | prop-boundary: GET                                           | 
+PASS | GET    | 200 | prop-boundary: GET export                                    | 
+PASS | GET    | 200 | prop-boundary: GET dev capacity                              | 
+PASS | GET    | 200 | prop-boundary: GET zoning confirm                            | 
+PASS | POST   | 200 | prop-boundary: POST zoning confirm                           | 
+PASS | GET    | 200 | unit-mix-prop: GET status                                    | 
+WARN | POST   | 400 | unit-mix-prop: POST set                                      | {"success":false,"error":"Unit mix data required"}
+PASS | POST   | 200 | unit-mix-prop: POST apply                                    | 
+WARN | POST   | 400 | unit-mix-prop: POST dev-path select                          | {"success":false,"error":"Path ID required"}
+WARN | POST   | 400 | visibility: POST assess                                      | {"error":"property_id is required"}
+PASS | POST   | 200 | visibility: POST preview                                     | 
+PASS | GET    | 200 | zoning-cap: GET                                              | 
+PASS | POST   | 200 | zoning-cap: POST                                             | 
+PASS | GET    | 200 | zoning-cap: GET district lookup                              | 
+PASS | GET    | 200 | zoning-cap: GET by-code                                      | 
+PASS | GET    | 200 | zoning-cap: GET municipalities                               | 
+WARN | GET    | 400 | zoning-cap: GET zoning lookup                                | {"error":"Must provide city or address"}
+PASS | POST   | 200 | zoning-cap: POST auto-fill                                   | 
+PASS | GET    | 200 | zoning-profile: GET                                          | 
+PASS | POST   | 200 | zoning-profile: POST resolve                                 | 
+WARN | PUT    | 400 | zoning-profile: PUT overrides                                | {"error":"Must provide overrides object"}
+WARN | POST   | 400 | zoning-profile: POST overlays                                | {"error":"Must provide overlay name and modifications"}
+PASS | GET    | 200 | zoning-tri: GET parcels stats                                | 
+PASS | GET    | 200 | zoning-tri: GET nearby                                       | 
+WARN | POST   | 400 | zoning-tri: POST triangulate                                 | {"error":"municipality and state are required"}
+WARN | GET    | 404 | zoning-tri: GET triangulation                                | {"error":"No triangulation found for this deal"}
+WARN | POST   | 400 | zoning-tri: POST outcome                                     | {"error":"triangulationId, actualOutcome, and reportedBy are required"}
+PASS | GET    | 200 | context: GET notes                                           | 
+PASS | POST   | 200 | context: POST note                                           | 
+PASS | GET    | 200 | context: GET activity                                        | 
+PASS | POST   | 200 | context: POST activity                                       | 
+PASS | GET    | 200 | context: GET contacts                                        | 
+PASS | POST   | 200 | context: POST contact                                        | 
+PASS | GET    | 200 | settings-ai: GET                                             | 
+WARN | PUT    | 400 | settings-ai: PUT                                             | {"success":false,"error":"Invalid preference. Must be one of: auto, fast, balanced, powerful"}
+PASS | GET    | 200 | mod-wiring: GET registry                                     | 
+PASS | GET    | 200 | mod-wiring: GET build-order                                  | 
+PASS | GET    | 200 | mod-wiring: GET formulas                                     | 
+PASS | GET    | 200 | mod-wiring: GET data-flow matrix                             | 
+PASS | GET    | 200 | mod-wiring: GET data-flow cycles                             | 
+PASS | GET    | 200 | mod-wiring: GET strategy weights                             | 
+PASS | GET    | 200 | mod-wiring: GET orch status                                  | 
+PASS | POST   | 200 | mod-wiring: POST orch init                                   | 
+PASS | GET    | 200 | mod-wiring: GET orch pipelines                               | 
+PASS | GET    | 200 | mod-wiring: GET orch validate                                | 
+PASS | GET    | 200 | mod-wiring: GET deal-readiness                               | 
+PASS | GET    | 200 | mod-wiring: GET data readiness                               | 
+PASS | POST   | 200 | mod-wiring: POST strategy analyze                            | 
+WARN | POST   | 400 | mod-wiring: POST strategy compare                            | {"error":"strategyA, strategyB, and signals are required"}
+PASS | POST   | 200 | mod-wiring: POST wire p0                                     | 
+PASS | POST   | 200 | mod-wiring: POST wire jedi-score                             | 
+PASS | POST   | 200 | mod-wiring: POST wire news                                   | 
+PASS | POST   | 200 | mod-wiring: POST wire zoning                                 | 
+WARN | POST   | 400 | mod-wiring: POST wire risk                                   | {"error":"tradeAreaId is required"}
+PASS | POST   | 200 | mod-wiring: POST wire strategy                               | 
+PASS | POST   | 200 | mod-wiring: POST wire p1                                     | 
+PASS | POST   | 200 | mod-wiring: POST wire proforma sync                          | 
+PASS | POST   | 200 | mod-wiring: POST wire proforma init                          | 
+PASS | POST   | 200 | mod-wiring: POST wire scenarios                              | 
+WARN | POST   | 400 | mod-wiring: POST wire competition                            | {"error":"latitude and longitude are required"}
+WARN | POST   | 400 | mod-wiring: POST wire debt                                   | {"error":"purchasePrice, loanAmount, and interestRate are required"}
+PASS | POST   | 200 | mod-wiring: POST wire p2                                     | 
+WARN | POST   | 400 | mod-wiring: POST wire traffic                                | {"error":"propertyId is required"}
+WARN | POST   | 400 | mod-wiring: POST wire traffic forecast                       | {"error":"propertyId is required"}
+WARN | POST   | 400 | mod-wiring: POST wire exit                                   | {"error":"purchasePrice is required"}
+WARN | POST   | 400 | mod-wiring: POST wire portfolio                              | {"error":"assets array is required with at least one entry"}
+PASS | POST   | 200 | mod-wiring: POST wire subs setup                             | 
+PASS | POST   | 200 | mod-wiring: POST wire subs p1                                | 
+PASS | POST   | 200 | mod-wiring: POST wire subs p2                                | 
+PASS | POST   | 200 | mod-wiring: POST wire subs all                               | 
+WARN | POST   | 400 | mod-wiring: POST cap-struct stack                            | {"error":"Missing required fields"}
+WARN | POST   | 400 | mod-wiring: POST cap-struct waterfall                        | {"error":"Missing required fields"}
+WARN | POST   | 400 | mod-wiring: POST cap-struct scenarios                        | {"error":"Missing required fields"}
+WARN | POST   | 400 | mod-wiring: POST cap-struct rates                            | {"error":"Missing required fields"}
+WARN | POST   | 400 | mod-wiring: POST cap-struct pipeline                         | {"error":"Capital structure pipeline failed","detail":"Missing required fields: strategy, layers, noi, propertyValue"}
+PASS | POST   | 200 | mod-wiring: POST cap-struct subs                             | 

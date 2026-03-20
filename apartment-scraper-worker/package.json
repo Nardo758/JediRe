@@ -1,0 +1,21 @@
+{
+  "name": "apartment-scraper-worker",
+  "version": "2.0.0",
+  "description": "Apartment scraper with SERP integration",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260305.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.69.0"
+  },
+  "dependencies": {
+    "puppeteer-core": "^24.37.5"
+  }
+}

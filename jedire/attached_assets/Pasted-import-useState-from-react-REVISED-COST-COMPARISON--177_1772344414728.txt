@@ -1,0 +1,698 @@
+import { useState } from "react";
+
+// ─── REVISED COST COMPARISON ──────────────────────────────────
+const COST_COMPARISON = {
+  old: {
+    label: "ORIGINAL: Google Polling",
+    perProperty: "$63.90/mo",
+    tenProperties: "$639/mo",
+    annual: "$7,668/yr",
+    items: [
+      { item: "Primary road polling (15min)", cost: "$28.80/mo" },
+      { item: "Cross street polling (30min)", cost: "$14.40/mo" },
+      { item: "Highway on-ramp (1hr)", cost: "$7.20/mo" },
+      { item: "5× competitor frontage (2hr)", cost: "$13.50/mo" },
+    ],
+  },
+  new: {
+    label: "REVISED: FDOT Free Data",
+    perProperty: "$0",
+    tenProperties: "$0",
+    annual: "$0",
+    items: [
+      { item: "FDOT AADT counts", cost: "FREE" },
+      { item: "FDOT K-factors (hourly curves)", cost: "FREE" },
+      { item: "FDOT seasonal adjustment factors", cost: "FREE" },
+      { item: "FDOT D-factors (directional split)", cost: "FREE" },
+      { item: "One-time Google calibration (optional)", cost: "~$5 once" },
+    ],
+  },
+};
+
+// ─── FDOT DATA SOURCES ──────────────────────────────────
+const FDOT_SOURCES = [
+  {
+    name: "Florida Traffic Online (FTO)",
+    url: "https://tdaappsprod.dot.state.fl.us/fto/",
+    description: "Interactive map showing every traffic count site in Florida with historical AADT data. Click any point to get counts going back 10+ years. This is your primary lookup tool for any property.",
+    dataYouGet: ["AADT by road segment", "Historical trend (year-over-year)", "Count station location + ID", "Road functional classification"],
+    howToUse: "Search by address → find nearest count station → pull AADT + station ID → use station ID to get K/D factors",
+    format: "Web app + downloadable CSV",
+    icon: "🗺️",
+  },
+  {
+    name: "FDOT Open Data Hub (GIS)",
+    url: "https://gis-fdot.opendata.arcgis.com/",
+    description: "GIS shapefiles with AADT for every road segment in Florida. Download the entire state's traffic data as a shapefile, load into PostGIS, and query programmatically by lat/lng proximity.",
+    dataYouGet: ["AADT shapefile (statewide)", "Truck AADT shapefile", "Road functional class", "Combination truck volumes"],
+    howToUse: "Download AADT shapefile → import to PostGIS → spatial query: SELECT aadt FROM fdot_traffic WHERE ST_DWithin(geom, property_point, 500)",
+    format: "Shapefile / GeoJSON / REST API",
+    icon: "📊",
+  },
+  {
+    name: "Continuous Count Stations (300+)",
+    url: "https://www.fdot.gov/statistics/trafficinfo/default.shtm",
+    description: "~300 permanent stations collecting 24/7/365 with hourly volume breakdowns. These stations produce the K-factors, D-factors, and seasonal curves. FDOT publishes the raw hourly data AND the computed factors.",
+    dataYouGet: ["Hourly volume distribution (24hr curve)", "K-factor (peak hour % of daily)", "D-factor (directional split)", "Seasonal adjustment factors by month", "Day-of-week patterns"],
+    howToUse: "Find nearest continuous station to your road's functional class → apply its hourly curve to your AADT → instant temporal distribution",
+    format: "CSV download (guest login, no password)",
+    icon: "📡",
+  },
+  {
+    name: "FTI Database (Access/SQL)",
+    url: "https://www.fdot.gov/statistics/trafficinfo/default.shtm",
+    description: "Complete Microsoft Access database with every traffic count in Florida. Contains the TMSDESC table with station descriptions including lat/lng coordinates. This is the bulk download for building your PostgreSQL traffic table.",
+    dataYouGet: ["All count stations + coordinates", "All AADT values", "Seasonal factor categories", "Functional classification codes", "County/district/section identifiers"],
+    howToUse: "Download FTI.mdb → convert to PostgreSQL → join with your property table on nearest station → automated AADT lookup",
+    format: "MDB (108 MB ZIP) — importable to PostgreSQL",
+    icon: "🗄️",
+  },
+];
+
+// ─── REVISED THREE LAYERS ──────────────────────────────────
+const LAYERS = {
+  dot_static: {
+    id: "dot_static",
+    label: "LAYER 1: FDOT AADT BASELINE",
+    tag: "ANNUAL AVERAGE · FREE",
+    color: "#60a5fa",
+    icon: "▣",
+    cost: "$0",
+    description: "State DOT Annual Average Daily Traffic — your anchor number. Florida has ~16,000 count sites on the State Highway System alone, plus thousands more on county/local roads. Data is validated, government-sourced, and includes road functional class. You query by proximity to your property's lat/lng.",
+    formula: "base_adt = FDOT_AADT(nearest_station) × distance_decay × road_class_weight × frontage_factor",
+    example: {
+      raw: "FDOT station 0934 on US-1: AADT = 24,500",
+      adjusted: "24,500 × 0.96 (0.3mi away) × 0.7 (urban arterial) × 1.4 (corner lot) = 23,049 effective ADT",
+    },
+    adjustments: [
+      {
+        name: "Distance Decay",
+        formula: "decay = 1 - (distance_to_station × 0.15)",
+        values: "0.1mi = 0.985 | 0.3mi = 0.955 | 0.5mi = 0.925 | 1.0mi = 0.850",
+        note: "Count station may not be at the property. Discount proportionally.",
+      },
+      {
+        name: "Road Class Weight",
+        formula: "weight = class_map[functional_class]",
+        values: "Interstate: 0.3 | Expressway: 0.4 | Arterial: 0.7 | Collector: 0.9 | Local: 1.0",
+        note: "Interstate traffic is 70% pass-through — only 30% is 'available' to a property. Local road traffic is nearly all relevant.",
+      },
+      {
+        name: "Frontage Factor",
+        formula: "frontage = property_type_map[exposure]",
+        values: "Corner lot (2 roads): 1.4 | Main frontage: 1.0 | Side street only: 0.7 | Interior/no road: 0.4",
+        note: "Corner lots capture traffic from two road segments. Apply highest ADT road as primary.",
+      },
+      {
+        name: "Multi-Segment Aggregation",
+        formula: "total_exposure = Σ(segment_adt × decay × weight) for each adjacent road",
+        values: "Primary road: 23,049 + Cross street: 8,200 × 0.98 × 0.9 = 30,273 combined exposure",
+        note: "Properties near multiple roads aggregate exposure from all adjacent segments.",
+      },
+    ],
+  },
+  dot_temporal: {
+    id: "dot_temporal",
+    label: "LAYER 2: FDOT HOURLY FACTORS",
+    tag: "TEMPORAL DISTRIBUTION · FREE",
+    color: "#22c55e",
+    icon: "◉",
+    cost: "$0",
+    description: "FDOT's 300+ continuous count stations collect 24/7/365 and publish hourly distribution curves, K-factors, D-factors, and seasonal adjustments — all broken out by road functional class and geographic region. This is the EXACT temporal data you were going to spend $64/mo per property polling Google for. It's already computed from years of actual vehicle counts, making it MORE reliable than 30 days of Google congestion ratio sampling.",
+    formula: "hourly_volume = base_adt × hourly_pct(hour, road_class, region) × seasonal_factor(month) × dow_factor(day)",
+    example: {
+      raw: "Urban arterial in SE Florida, Tuesday 5pm in January",
+      adjusted: "23,049 × 0.088 (8.8% of daily at 5pm) × 1.12 (Jan seasonal in FL) × 1.04 (Tue factor) = 2,362 vehicles this hour",
+    },
+    adjustments: [
+      {
+        name: "Hourly Distribution (from K-factors)",
+        formula: "hourly_pct = continuous_station_hourly_curve[functional_class][hour]",
+        values: "6am: 4.2% | 8am: 7.8% | 12pm: 6.5% | 3pm: 7.2% | 5pm: 8.8% | 8pm: 4.1% | 12am: 1.2%",
+        note: "FDOT continuous stations publish these curves. Urban arterials peak at 5pm (~8.8% of daily). Rural roads peak differently. Match your road's functional class to the right curve.",
+      },
+      {
+        name: "Seasonal Adjustment Factor",
+        formula: "seasonal = FDOT_seasonal_factor[category][month]",
+        values: "Jan: 1.12 | Mar: 1.18 | Jun: 0.94 | Aug: 0.91 | Oct: 0.97 | Dec: 1.08 (SE Florida example)",
+        note: "Florida has extreme seasonality — snowbird surge Oct-Apr, summer dip. FDOT publishes seasonal factor CATEGORIES and assigns each station to a category. Your station's category tells you the exact monthly multiplier.",
+      },
+      {
+        name: "Day-of-Week Factor",
+        formula: "dow = continuous_station_dow_curve[functional_class][day]",
+        values: "Mon: 1.02 | Tue: 1.04 | Wed: 1.05 | Thu: 1.06 | Fri: 1.12 | Sat: 0.92 | Sun: 0.79",
+        note: "Commercial corridors peak Thu-Fri. Residential areas are more even. Apartment-relevant traffic often peaks Sat (searchers browsing).",
+      },
+      {
+        name: "D-Factor (Directional Split)",
+        formula: "directional_volume = hourly_volume × D_factor(direction, hour)",
+        values: "AM inbound: 0.62 | AM outbound: 0.38 | PM inbound: 0.42 | PM outbound: 0.58 | Midday: 0.52/0.48",
+        note: "Which direction matters for property visibility. Morning commuters see properties on the RIGHT side of the road going inbound. Flip for PM. D-factor tells you which direction carries more traffic at each hour.",
+      },
+    ],
+  },
+  digital_leading: {
+    id: "digital_leading",
+    label: "LAYER 3: DIGITAL LEADING INDICATORS",
+    tag: "PREDICTIVE SIGNAL · $89/MO",
+    color: "#f59e0b",
+    icon: "△",
+    cost: "$89/mo",
+    description: "SpyFu API and Google Trends provide the leading indicator — where demand is GOING before physical traffic responds. This layer doesn't adjust today's traffic count. It predicts the trajectory 2-6 months out and feeds the T-07 trend signal and T-04 correlation matrix.",
+    formula: "trend_momentum = (current_period_volume / prior_period_volume) - 1",
+    example: {
+      raw: "SpyFu: 'apartments port st lucie' keyword volume",
+      adjusted: "Q4: 6,200/mo → Q1: 8,400/mo = +35.5% momentum → DEMAND SURGE pattern detected",
+    },
+    adjustments: [
+      {
+        name: "Keyword Search Momentum (SpyFu)",
+        formula: "momentum = (current_quarter_vol / prior_quarter_vol) - 1",
+        values: "> +25%: Demand Surge | +10-25%: Growing | -10 to +10%: Stable | < -10%: Declining",
+        note: "Track '[property name]', 'apartments [submarket]', 'apartments for rent [city]'. QoQ smooths out monthly noise.",
+      },
+      {
+        name: "Google Trends Interest (pytrends)",
+        formula: "trend_index = interest_over_time(keyword, geo='US-FL', timeframe='today 12-m')",
+        values: "Returns 0-100 relative index. Compare submarket vs submarket to rank demand.",
+        note: "Free. Weekly resolution. Best for market-level demand comparison, not property-level. Pair with SpyFu for domain-specific data.",
+      },
+      {
+        name: "Origin Geography Signal",
+        formula: "migration_signal = out_of_state_interest / total_interest",
+        values: "High out-of-state (>30%): Migration inflow | Low (<10%): Local demand only",
+        note: "Google Trends shows interest by region. If 40% of searches for 'apartments Port St Lucie' come from NY/NJ, that's a migration pipeline signal.",
+      },
+      {
+        name: "Competitive Digital Share (SpyFu)",
+        formula: "share = property_organic_clicks / Σ(submarket_property_clicks)",
+        values: "Track all apartment community domains in submarket. Your share rising = capturing demand. Falling = losing to competitors.",
+        note: "Uses getLatestDomainStats for each property domain → rank by monthlyOrganicClicks → calculate share.",
+      },
+    ],
+  },
+};
+
+// ─── FUSION PIPELINE ──────────────────────────────────
+const PIPELINE = [
+  {
+    step: 1,
+    title: "PULL: FDOT AADT for Property Location",
+    formula: "SELECT aadt, func_class, station_id FROM fdot_stations\nWHERE ST_DWithin(geom, property_point, 1609)\nORDER BY ST_Distance(geom, property_point) LIMIT 3",
+    example: "Nearest station: 0934 (0.3mi) → AADT 24,500 | Urban Minor Arterial",
+    source: "FDOT Open Data Hub shapefile → PostGIS",
+    color: "#60a5fa",
+    cost: "FREE",
+  },
+  {
+    step: 2,
+    title: "ADJUST: Distance + Road Class + Frontage",
+    formula: "effective_adt = 24,500 × 0.955 × 0.7 × 1.4 = 22,918",
+    example: "0.3mi decay (0.955) × arterial weight (0.7) × corner lot (1.4) = 22,918 effective ADT",
+    source: "Property attributes from M01 Deal Capsule",
+    color: "#60a5fa",
+    cost: "FREE",
+  },
+  {
+    step: 3,
+    title: "DISTRIBUTE: Apply FDOT Hourly Curve",
+    formula: "hourly_volumes[0..23] = effective_adt × hourly_pct[func_class][hour]\n  → 5pm: 22,918 × 0.088 = 2,017 vehicles/hr\n  → 8am: 22,918 × 0.078 = 1,788 vehicles/hr\n  → 2am: 22,918 × 0.012 = 275 vehicles/hr",
+    example: "Full 24-hour curve from single AADT number using FDOT continuous station patterns",
+    source: "FDOT continuous count station hourly distribution",
+    color: "#22c55e",
+    cost: "FREE",
+  },
+  {
+    step: 4,
+    title: "SEASON: Apply Monthly + Day-of-Week Factors",
+    formula: "adjusted_hourly = hourly_volume × seasonal[Jan=1.12] × dow[Tue=1.04]\n  → 5pm Tuesday January: 2,017 × 1.12 × 1.04 = 2,349 vehicles/hr",
+    example: "Florida January = snowbird peak (+12%). Tuesday = slight weekday premium (+4%).",
+    source: "FDOT seasonal factor category + published DOW curves",
+    color: "#22c55e",
+    cost: "FREE",
+  },
+  {
+    step: 5,
+    title: "CONVERT: Vehicles → Walk-In Potential",
+    formula: "walkins_hr = adjusted_hourly × visibility_rate × seeker_pct × stop_prob\n  → 2,349 × 0.04 × 0.02 × 0.15 = 0.28 walk-ins/hr (peak)\n  → Over 10hr leasing day: ~2.1 walk-ins on this Tuesday",
+    example: "Conversion rates calibrated from your 290-unit actual leasing logs. These rates are the SECRET SAUCE — trained on YOUR data.",
+    source: "Calibration from owned asset actuals (T-10)",
+    color: "#8b5cf6",
+    cost: "FREE (your data)",
+  },
+  {
+    step: 6,
+    title: "AGGREGATE: Weekly Walk-In Prediction (T-01)",
+    formula: "weekly = Σ(daily_walkins)\n  Mon:1.8 + Tue:2.1 + Wed:2.0 + Thu:2.3 + Fri:2.8 + Sat:4.2 + Sun:1.5\n  = ~16.7 walk-ins/week from physical traffic alone",
+    example: "Saturday peaks because apartment seekers have time to browse. Add digital-sourced leads separately.",
+    source: "Aggregation across hourly × daily × seasonal",
+    color: "#f59e0b",
+    cost: "FREE",
+  },
+  {
+    step: 7,
+    title: "SCORE: Physical Traffic Score (T-02)",
+    formula: "T02 = normalize(effective_adt, submarket_percentile) × 0.6\n     + normalize(weekly_walkins, submarket_percentile) × 0.4\n  → percentile(22,918 in submarket) = 78th × 0.6 = 46.8\n  → percentile(16.7/wk) = 72nd × 0.4 = 28.8\n  → T-02 = 76 (Y-axis of Correlation Matrix)",
+    example: "Score is RELATIVE to submarket — a 76 in Miami means different absolute numbers than 76 in Port St Lucie.",
+    source: "Submarket comp set from M05 Market Intelligence",
+    color: "#ef4444",
+    cost: "FREE",
+  },
+  {
+    step: 8,
+    title: "PROJECT: Trajectory Signal (T-07)",
+    formula: "trajectory = digital_momentum × 0.5\n           + yoy_aadt_growth × 0.3\n           + seasonal_deviation × 0.2\n  → SpyFu(+35%) × 0.5 + AADT_growth(+4%) × 0.3 + seasonal_dev(+2%) × 0.2\n  → trajectory = +19.1% → DEMAND SURGE pattern",
+    example: "Digital signal leads. AADT YoY confirms physical trend. Seasonal deviation catches anomalies outside normal range.",
+    source: "Layer 3 digital + Layer 1 YoY trend + Layer 2 seasonal",
+    color: "#a855f7",
+    cost: "$89/mo (SpyFu)",
+  },
+];
+
+// ─── GOOGLE FALLBACK SCENARIOS ──────────────────────────────────
+const GOOGLE_FALLBACK = [
+  {
+    scenario: "No FDOT station within 1 mile",
+    solution: "One-time Google Routes poll: run 96 calls over 24 hours (every 15 min) on a weekday to build the hourly curve for that specific segment.",
+    cost: "~$1.44 once",
+    frequency: "Never again — curve is stable",
+  },
+  {
+    scenario: "New road / recent construction",
+    solution: "FDOT won't have data for 1-2 years. Poll Google Routes for one week (672 calls) to establish baseline hourly pattern + volume proxy.",
+    cost: "~$10 once",
+    frequency: "Re-check in 6 months as traffic stabilizes",
+  },
+  {
+    scenario: "Validating FDOT data accuracy for key deal",
+    solution: "Run a 48-hour Google comparison against FDOT curve. If congestion ratios align with predicted hourly percentages within 15%, FDOT data is confirmed. If off, create a local correction factor.",
+    cost: "~$3 once",
+    frequency: "Once per submarket — correction factor applies to all properties",
+  },
+  {
+    scenario: "Special event / anomaly detection",
+    solution: "If a property is near a stadium, festival venue, or seasonal attraction, FDOT averages won't capture event spikes. Brief Google polling during events to quantify the delta.",
+    cost: "~$2 per event",
+    frequency: "Only when investigating specific anomalies",
+  },
+];
+
+// ─── TREND PATTERNS ──────────────────────────────────
+const PATTERNS = [
+  { name: "DEMAND SURGE", icon: "🔥", color: "#22c55e", condition: "Digital momentum > +25% QoQ AND AADT YoY stable", action: "Acquire NOW — physical traffic increase follows in 2-4 months" },
+  { name: "MOMENTUM CONFIRMED", icon: "✅", color: "#3b82f6", condition: "Digital > +15% AND AADT YoY > +5%", action: "High-confidence buy — both signals confirm demand" },
+  { name: "DIGITAL DIVERGENCE", icon: "⚠️", color: "#f59e0b", condition: "Digital declining AND AADT stable", action: "Early warning — investigate within 60 days" },
+  { name: "MARKET EXHAUSTION", icon: "🔴", color: "#ef4444", condition: "Digital < -15% AND AADT YoY declining", action: "SELL SIGNAL — structural demand shift" },
+  { name: "SEASONAL NOISE", icon: "📊", color: "#64748b", condition: "Both within ±10% of seasonal norms", action: "Hold — normal market cycle, no action" },
+];
+
+function CodeBlock({ children, color = "#94a3b8" }) {
+  return (
+    <pre style={{
+      fontFamily: "'JetBrains Mono', monospace", fontSize: 11.5,
+      color, background: "rgba(0,0,0,0.35)", padding: "10px 14px",
+      borderRadius: 8, overflowX: "auto", lineHeight: 1.7, margin: 0,
+      whiteSpace: "pre-wrap", wordBreak: "break-word",
+    }}>{children}</pre>
+  );
+}
+
+export default function TrafficFusionV2() {
+  const [activeLayer, setActiveLayer] = useState("dot_static");
+  const [showComparison, setShowComparison] = useState(true);
+
+  const layer = LAYERS[activeLayer];
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#0a0e17",
+      color: "#e2e8f0",
+      fontFamily: "'Inter', -apple-system, sans-serif",
+      padding: "32px 24px",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+      `}</style>
+
+      {/* Header */}
+      <div style={{ maxWidth: 1200, margin: "0 auto 24px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 8,
+            background: "linear-gradient(135deg, #60a5fa, #22c55e, #f59e0b)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 14, fontWeight: 800, color: "#fff",
+            fontFamily: "'JetBrains Mono', monospace",
+          }}>3L</div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#64748b", letterSpacing: "0.1em" }}>
+              M07 TRAFFIC ENGINE · REVISED FORMULA · v2
+            </div>
+            <h1 style={{ fontSize: 24, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+              Three-Layer Traffic Fusion
+            </h1>
+          </div>
+          <div style={{
+            marginLeft: "auto", background: "rgba(34,197,94,0.1)",
+            border: "1px solid rgba(34,197,94,0.3)", borderRadius: 8,
+            padding: "6px 14px", fontSize: 12, fontWeight: 700, color: "#22c55e",
+          }}>
+            TOTAL: $89/mo flat (was $89 + $64/property)
+          </div>
+        </div>
+        <p style={{ fontSize: 14, color: "#94a3b8", maxWidth: 800, lineHeight: 1.6 }}>
+          FDOT publishes hourly distribution curves, seasonal factors, and directional splits from 300+ continuous count stations — the exact temporal data you'd pay Google $64/property/month to approximate. Use the government data. It's free, more accurate, and based on years of continuous measurement.
+        </p>
+      </div>
+
+      {/* COST SAVINGS BANNER */}
+      {showComparison && (
+        <div style={{ maxWidth: 1200, margin: "0 auto 24px" }}>
+          <div style={{
+            background: "linear-gradient(135deg, rgba(239,68,68,0.06), rgba(34,197,94,0.06))",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16, padding: 20,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em" }}>
+                COST COMPARISON — TEMPORAL DATA LAYER
+              </span>
+              <button
+                onClick={() => setShowComparison(false)}
+                style={{ background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14 }}
+              >✕</button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 1fr", gap: 0, alignItems: "center" }}>
+              {/* OLD */}
+              <div style={{
+                background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)",
+                borderRadius: 12, padding: 16,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", marginBottom: 10 }}>
+                  ✕ {COST_COMPARISON.old.label}
+                </div>
+                {COST_COMPARISON.old.items.map((item, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                    <span>{item.item}</span>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#ef4444" }}>{item.cost}</span>
+                  </div>
+                ))}
+                <div style={{ borderTop: "1px solid rgba(239,68,68,0.2)", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#ef4444" }}>Per property/mo</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#ef4444", fontFamily: "'JetBrains Mono', monospace" }}>{COST_COMPARISON.old.perProperty}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>10 properties/yr</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", fontFamily: "'JetBrains Mono', monospace" }}>{COST_COMPARISON.old.annual}</span>
+                </div>
+              </div>
+
+              <div style={{ textAlign: "center", fontSize: 20, color: "#475569" }}>→</div>
+
+              {/* NEW */}
+              <div style={{
+                background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.2)",
+                borderRadius: 12, padding: 16,
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", marginBottom: 10 }}>
+                  ✓ {COST_COMPARISON.new.label}
+                </div>
+                {COST_COMPARISON.new.items.map((item, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>
+                    <span>{item.item}</span>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", color: "#22c55e" }}>{item.cost}</span>
+                  </div>
+                ))}
+                <div style={{ borderTop: "1px solid rgba(34,197,94,0.2)", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e" }}>Per property/mo</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#22c55e", fontFamily: "'JetBrains Mono', monospace" }}>{COST_COMPARISON.new.perProperty}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                  <span style={{ fontSize: 11, color: "#64748b" }}>10 properties/yr</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#22c55e", fontFamily: "'JetBrains Mono', monospace" }}>$0</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ textAlign: "center", marginTop: 12, fontSize: 13, fontWeight: 700, color: "#22c55e" }}>
+              Savings: $7,668/yr for 10 properties — same accuracy, better data source
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UNIFIED EQUATION */}
+      <div style={{
+        maxWidth: 1200, margin: "0 auto 24px",
+        background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 14, padding: "16px 24px",
+      }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", marginBottom: 8 }}>THE UNIFIED EQUATION</div>
+        <div style={{
+          fontSize: 13, fontWeight: 500, color: "#f8fafc",
+          fontFamily: "'JetBrains Mono', monospace", lineHeight: 2.2,
+          overflowX: "auto", display: "flex", flexWrap: "wrap", gap: "4px 0",
+        }}>
+          <span style={{ color: "#60a5fa" }}>AADT</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#60a5fa" }}>decay</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#60a5fa" }}>road_wt</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#60a5fa" }}>frontage</span><span style={{ color: "#475569" }}> → </span>
+          <span style={{ color: "#22c55e" }}>hourly_pct[h]</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#22c55e" }}>seasonal[m]</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#22c55e" }}>dow[d]</span><span style={{ color: "#475569" }}> → </span>
+          <span style={{ color: "#8b5cf6" }}>capture</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#8b5cf6" }}>seeker%</span><span style={{ color: "#475569" }}> × </span>
+          <span style={{ color: "#8b5cf6" }}>stop_prob</span><span style={{ color: "#475569" }}> → </span>
+          <span style={{ color: "#f59e0b", fontWeight: 800 }}>walk-ins/week</span>
+        </div>
+        <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>
+          <span style={{ color: "#60a5fa" }}>■</span> L1: FDOT Static &nbsp;
+          <span style={{ color: "#22c55e" }}>■</span> L2: FDOT Temporal &nbsp;
+          <span style={{ color: "#8b5cf6" }}>■</span> Conversion &nbsp;
+          <span style={{ color: "#f59e0b" }}>■</span> Output
+          <span style={{ color: "#64748b", marginLeft: 16 }}>All sourced from free government data + your owned asset calibration</span>
+        </div>
+      </div>
+
+      {/* LAYER DETAIL GRID */}
+      <div style={{ maxWidth: 1200, margin: "0 auto", display: "grid", gridTemplateColumns: "260px 1fr", gap: 20 }}>
+        {/* Layer selector */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {Object.values(LAYERS).map(l => (
+            <div
+              key={l.id}
+              onClick={() => setActiveLayer(l.id)}
+              style={{
+                background: activeLayer === l.id ? `${l.color}08` : "rgba(255,255,255,0.02)",
+                border: `1px solid ${activeLayer === l.id ? `${l.color}40` : "rgba(255,255,255,0.06)"}`,
+                borderRadius: 12, padding: 14, cursor: "pointer",
+                transition: "all 0.2s", borderLeft: `3px solid ${activeLayer === l.id ? l.color : "transparent"}`,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 15, color: l.color }}>{l.icon}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: activeLayer === l.id ? l.color : "#94a3b8" }}>{l.label}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 700, color: l.color, background: `${l.color}15`,
+                  padding: "2px 8px", borderRadius: 4, letterSpacing: "0.05em",
+                }}>{l.tag}</span>
+                <span style={{
+                  fontSize: 12, fontWeight: 800, color: l.cost === "$0" ? "#22c55e" : "#f59e0b",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>{l.cost}</span>
+              </div>
+            </div>
+          ))}
+
+          {/* FDOT Source Links */}
+          <div style={{
+            background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.15)",
+            borderRadius: 12, padding: 14, marginTop: 8,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#60a5fa", letterSpacing: "0.06em", marginBottom: 10 }}>
+              📡 FDOT DATA SOURCES
+            </div>
+            {FDOT_SOURCES.map((s, i) => (
+              <div key={i} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#e2e8f0", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span>{s.icon}</span> {s.name}
+                </div>
+                <div style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.5, marginTop: 2 }}>{s.description.slice(0, 100)}...</div>
+                <div style={{ fontSize: 9, color: "#60a5fa", fontFamily: "'JetBrains Mono', monospace", marginTop: 2, wordBreak: "break-all" }}>
+                  {s.url}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Detail panel */}
+        <div>
+          <div style={{
+            background: `${layer.color}06`, border: `1px solid ${layer.color}25`,
+            borderRadius: 14, padding: 20, marginBottom: 16,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ fontSize: 24, color: layer.color }}>{layer.icon}</span>
+              <div>
+                <h2 style={{ fontSize: 18, fontWeight: 800, color: layer.color }}>{layer.label}</h2>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>{layer.cost === "$0" ? "100% free government data" : "SpyFu Pro + AI plan"}</span>
+              </div>
+            </div>
+            <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7, marginBottom: 12 }}>{layer.description}</p>
+            <CodeBlock color={layer.color}>{layer.formula}</CodeBlock>
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 9, color: "#475569" }}>RAW INPUT</div>
+                <div style={{ fontSize: 11, color: "#94a3b8" }}>{layer.example.raw}</div>
+              </div>
+              <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 9, color: "#475569" }}>AFTER ADJUSTMENT</div>
+                <div style={{ fontSize: 11, color: layer.color }}>{layer.example.adjusted}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Adjustments */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {layer.adjustments.map((adj, i) => (
+              <div key={i} style={{
+                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 10, padding: 14, borderLeft: `3px solid ${layer.color}`,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc", marginBottom: 6 }}>{adj.name}</div>
+                <CodeBlock color={layer.color}>{adj.formula}</CodeBlock>
+                <div style={{
+                  marginTop: 6, fontSize: 11, color: "#22c55e",
+                  fontFamily: "'JetBrains Mono', monospace",
+                  background: "rgba(34,197,94,0.06)", padding: "6px 10px", borderRadius: 6,
+                }}>
+                  {adj.values}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8", lineHeight: 1.5 }}>{adj.note}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 8-STEP PIPELINE */}
+      <div style={{ maxWidth: 1200, margin: "32px auto 0" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", marginBottom: 16 }}>
+          8-STEP PIPELINE — FDOT PULL → ADJUST → DISTRIBUTE → SEASON → CONVERT → AGGREGATE → SCORE → PROJECT
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {PIPELINE.map((step) => (
+            <div key={step.step} style={{
+              display: "grid", gridTemplateColumns: "44px 1fr", gap: 14,
+            }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 10,
+                background: `${step.color}12`, border: `1px solid ${step.color}30`,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              }}>
+                <span style={{ fontSize: 16, fontWeight: 800, color: step.color, fontFamily: "'JetBrains Mono', monospace" }}>{step.step}</span>
+              </div>
+              <div style={{
+                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+                borderRadius: 10, padding: 14, borderLeft: `3px solid ${step.color}`,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc" }}>{step.title}</span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4,
+                    color: step.cost === "FREE" || step.cost === "FREE (your data)" ? "#22c55e" : "#f59e0b",
+                    background: step.cost === "FREE" || step.cost === "FREE (your data)" ? "rgba(34,197,94,0.1)" : "rgba(245,158,11,0.1)",
+                  }}>{step.cost}</span>
+                </div>
+                <CodeBlock color={step.color}>{step.formula}</CodeBlock>
+                <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8", lineHeight: 1.5 }}>
+                  {step.example} <span style={{ color: "#475569" }}>— Source: {step.source}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* GOOGLE FALLBACK */}
+      <div style={{ maxWidth: 1200, margin: "32px auto 0" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", marginBottom: 16 }}>
+          GOOGLE ROUTES API — FALLBACK ONLY (NOT ONGOING)
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {GOOGLE_FALLBACK.map((fb, i) => (
+            <div key={i} style={{
+              background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: 10, padding: 14,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#f59e0b", marginBottom: 6 }}>
+                {fb.scenario}
+              </div>
+              <div style={{ fontSize: 11, color: "#cbd5e1", lineHeight: 1.6, marginBottom: 6 }}>{fb.solution}</div>
+              <div style={{ display: "flex", gap: 12, fontSize: 10 }}>
+                <span style={{ color: "#22c55e", fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>{fb.cost}</span>
+                <span style={{ color: "#64748b" }}>{fb.frequency}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* TREND PATTERNS */}
+      <div style={{ maxWidth: 1200, margin: "32px auto 0" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: "0.1em", marginBottom: 16 }}>
+          CROSS-LAYER TREND PATTERNS — BUY / SELL / HOLD SIGNALS
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          {PATTERNS.map((p, i) => (
+            <div key={i} style={{
+              background: `${p.color}06`, border: `1px solid ${p.color}20`,
+              borderRadius: 10, padding: 14,
+              gridColumn: i >= 3 ? "span 1" : undefined,
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: p.color, marginBottom: 6 }}>
+                {p.icon} {p.name}
+              </div>
+              <div style={{
+                fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+                color: "#94a3b8", background: "rgba(0,0,0,0.25)",
+                padding: "4px 8px", borderRadius: 4, marginBottom: 6,
+              }}>
+                {p.condition}
+              </div>
+              <div style={{ fontSize: 11, color: p.color, fontWeight: 600 }}>▸ {p.action}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* BOTTOM LINE */}
+      <div style={{
+        maxWidth: 1200, margin: "32px auto 0",
+        background: "linear-gradient(135deg, rgba(34,197,94,0.08), rgba(96,165,250,0.08))",
+        border: "1px solid rgba(34,197,94,0.2)",
+        borderRadius: 14, padding: 20, textAlign: "center",
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
+          Total Platform Cost: $89/mo
+        </div>
+        <div style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.7, maxWidth: 700, margin: "0 auto" }}>
+          Layer 1 (FDOT AADT): $0 · Layer 2 (FDOT Hourly/Seasonal): $0 · Layer 3 (SpyFu Digital): $89/mo
+          <br />
+          Google Routes API: one-time fallback only, ~$5–15 per edge case. Not recurring.
+          <br />
+          <span style={{ color: "#22c55e", fontWeight: 600 }}>
+            Same formula. Same outputs. Same accuracy. 92% cost reduction.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}

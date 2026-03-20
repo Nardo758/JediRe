@@ -11,13 +11,6 @@ import { DataLibraryContextService } from '../../services/data-library-context.s
 
 const router = Router();
 const pool = getPool();
-
-function withAiTimeout<T>(promise: Promise<T>, ms = 4000): Promise<T | null> {
-  return Promise.race([
-    promise,
-    new Promise<null>(resolve => setTimeout(() => resolve(null), ms)),
-  ]);
-}
 const profileService = new ZoningProfileService(pool);
 const envelopeService = new BuildingEnvelopeService();
 const rezoneService = new RezoneAnalysisService(pool);
@@ -373,14 +366,13 @@ router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) =
           benchmarkContext, lotAreaSf, constraintSource
         );
 
-        const msg = await withAiTimeout(anthropic.messages.create({
+        const msg = await anthropic.messages.create({
           model: 'claude-sonnet-4-6',
           max_tokens: 2000,
           messages: [{ role: 'user', content: prompt }],
-        }), 3500) as any;
-        if (!msg) { console.log('[HBU] AI call timed out, skipping'); }
+        });
 
-        const text = msg ? (msg.content[0]?.type === 'text' ? msg.content[0].text : '') : '';
+        const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
         let parsed: any = null;
         try {
           parsed = JSON.parse(text);
@@ -496,9 +488,7 @@ router.get('/deals/:dealId/regulatory-risk-analysis', async (req: Request, res: 
       console.log(`[RegRisk] Cache HIT for ${districtCode}`);
       return res.json((cached.constraints as any).riskAnalysis);
     }
-    console.log(`[RegRisk] Cache MISS for ${districtCode}, queuing background analysis...`);
-    res.status(202).json({ message: 'Regulatory risk analysis queued. Check back shortly.' });
-    (async () => { try {
+    console.log(`[RegRisk] Cache MISS for ${districtCode}, generating...`);
 
     const dealResult = await pool.query('SELECT * FROM deals WHERE id = $1', [dealId]);
     const deal = dealResult.rows[0] || {};
@@ -594,13 +584,13 @@ router.get('/deals/:dealId/regulatory-risk-analysis', async (req: Request, res: 
         confidence: 'medium',
       });
       console.log(`[RegRisk] Analysis complete and cached`);
+      return res.json(result);
     }
-  } catch (bgError: any) {
-    console.error('Error generating regulatory risk analysis (background):', bgError);
-  }})();
+
+    res.status(500).json({ error: 'AI analysis failed to produce valid results' });
   } catch (error: any) {
-    console.error('Error in regulatory risk analysis route:', error);
-    if (!res.headersSent) res.status(500).json({ error: error.message || 'Failed to generate regulatory risk analysis' });
+    console.error('Error generating regulatory risk analysis:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate regulatory risk analysis' });
   }
 });
 
@@ -778,9 +768,7 @@ router.get('/deals/:dealId/timeline-intelligence', async (req: Request, res: Res
       console.log(`[TTS-AI] Cache HIT for ${dealId}:${districtCode}:${developmentPath}`);
       return res.json((cached.constraints as any).timelineIntelligence);
     }
-    console.log(`[TTS-AI] Cache MISS for ${dealId}:${districtCode}:${developmentPath}, queuing background analysis...`);
-    res.status(202).json({ message: 'Timeline intelligence analysis queued. Check back shortly.' });
-    (async () => { try {
+    console.log(`[TTS-AI] Cache MISS for ${dealId}:${districtCode}:${developmentPath}, generating...`);
 
     const dealResult = await pool.query('SELECT * FROM deals WHERE id = $1', [dealId]);
     const deal = dealResult.rows[0] || {};
@@ -952,13 +940,13 @@ Respond with ONLY valid JSON (no markdown, no code fences):
         confidence: 'medium',
       });
       console.log(`[TTS-AI] Analysis complete and cached`);
+      return res.json(result);
     }
-  } catch (bgError: any) {
-    console.error('Error generating timeline intelligence (background):', bgError);
-  }})();
+
+    res.status(500).json({ error: 'AI timeline analysis failed to produce valid results' });
   } catch (error: any) {
-    console.error('Error in timeline intelligence route:', error);
-    if (!res.headersSent) res.status(500).json({ error: error.message || 'Failed to generate timeline intelligence' });
+    console.error('Error generating timeline intelligence:', error);
+    res.status(500).json({ error: error.message || 'Failed to generate timeline intelligence' });
   }
 });
 
@@ -980,10 +968,7 @@ router.get('/deals/:dealId/scenarios/recommendations', async (req: Request, res:
     } else {
       console.log(`[Recommendations] Deduped in-flight request for deal ${dealId}`);
     }
-    const result = await withAiTimeout(inFlight, 4000);
-    if (!result) {
-      return res.status(202).json({ message: 'Recommendations analysis in progress. Check back shortly.' });
-    }
+    const result = await inFlight;
 
     const cellNum = (key: string, field: string) => {
       const v = result.cells[key]?.[field];

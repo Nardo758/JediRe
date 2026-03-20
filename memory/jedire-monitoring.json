@@ -1,0 +1,159 @@
+{
+  "lastRun": "2026-03-04T03:41:19.515Z",
+  "analysis": {
+    "timestamp": "2026-03-04T03:41:19.443Z",
+    "unusedCode": {
+      "unusedImports": [
+        {
+          "file": "frontend/src/App.tsx",
+          "import": "CompetitiveIntelligencePage"
+        },
+        {
+          "file": "frontend/src/components/AuditReport.tsx",
+          "import": "Calendar"
+        },
+        {
+          "file": "frontend/src/components/AuditReport.tsx",
+          "import": "TrendingUp"
+        },
+        {
+          "file": "frontend/src/components/AuditReport.tsx",
+          "import": "TrendingDown"
+        },
+        {
+          "file": "frontend/src/components/AuditReport.tsx",
+          "import": "Filter"
+        },
+        {
+          "file": "frontend/src/components/agent/deals/DealDetailModal.tsx",
+          "import": "MapPin"
+        },
+        {
+          "file": "frontend/src/components/agent/deals/DealForm.tsx",
+          "import": "useEffect"
+        },
+        {
+          "file": "frontend/src/components/agent/deals/DealPipeline.tsx",
+          "import": "arrayMove"
+        },
+        {
+          "file": "frontend/src/components/assets/AssetsMapView.tsx",
+          "import": "useEffect"
+        }
+      ],
+      "unusedExports": []
+    },
+    "duplicates": [
+      {
+        "block": "return (\n    <>\n      <Routes>\n        <Route path=\"/login\" element={<AuthPage /...",
+        "files": [
+          "frontend/src/App.tsx",
+          "frontend/src/App.tsx"
+        ]
+      },
+      {
+        "block": "{/* Market Research Redirects */}\n          <Route path=\"/market-research\" eleme...",
+        "files": [
+          "frontend/src/App.tsx",
+          "frontend/src/App.tsx"
+        ]
+      },
+      {
+        "block": "const url = `/deals/${dealId}/design-3d${params.toString() ? `?${params.toString...",
+        "files": [
+          "frontend/src/api/building-design-3d.ts",
+          "frontend/src/api/building-design-3d.ts"
+        ]
+      },
+      {
+        "block": "const params = new URLSearchParams();\n  if (scenarioId) {\n    params.set('scenar...",
+        "files": [
+          "frontend/src/api/building-design-3d.ts",
+          "frontend/src/api/building-design-3d.ts"
+        ]
+      },
+      {
+        "block": "if (scenarioId) {\n    params.set('scenarioId', scenarioId);\n  }\n  \n  const url =...",
+        "files": [
+          "frontend/src/api/building-design-3d.ts",
+          "frontend/src/api/building-design-3d.ts"
+        ]
+      },
+      {
+        "block": "getWebGLInfo() {\n    try {\n      const canvas = document.createElement('canvas')...",
+        "files": [
+          "frontend/src/components/3DErrorBoundary.tsx",
+          "frontend/src/components/3DErrorBoundary.tsx"
+        ]
+      },
+      {
+        "block": "if (this.props.onReset) {\n      this.props.onReset();\n    }\n  };...",
+        "files": [
+          "frontend/src/components/3DErrorBoundary.tsx",
+          "frontend/src/components/3DErrorBoundary.tsx"
+        ]
+      },
+      {
+        "block": "<h2 className=\"text-2xl font-bold mb-2\">3D Viewer Unavailable</h2>\n            <...",
+        "files": [
+          "frontend/src/components/3DErrorBoundary.tsx",
+          "frontend/src/components/3DErrorBoundary.tsx"
+        ]
+      },
+      {
+        "block": "import React, { Component, ReactNode, ErrorInfo } from 'react';\nimport { logErro...",
+        "files": [
+          "frontend/src/components/3DErrorBoundary.tsx",
+          "frontend/src/components/APIErrorBoundary.tsx"
+        ]
+      },
+      {
+        "block": "}\n\ninterface State {\n  hasError: boolean;\n  error: Error | null;...",
+        "files": [
+          "frontend/src/components/3DErrorBoundary.tsx",
+          "frontend/src/components/APIErrorBoundary.tsx"
+        ]
+      }
+    ],
+    "bundleSize": {
+      "totalSize": 2733036,
+      "largeFiles": [
+        {
+          "file": "assets/index-DMudImDZ.js",
+          "size": "705KB"
+        },
+        {
+          "file": "assets/map-vendor-BqO3EUEh.js",
+          "size": "1641KB"
+        }
+      ],
+      "breakdown": {
+        ".css": 122237,
+        ".js": 2609509,
+        ".html": 1290
+      }
+    },
+    "apiAnalysis": {
+      "potentialIssues": []
+    },
+    "recommendations": [
+      "Remove unused imports to reduce bundle size",
+      "Extract duplicate code into shared utilities",
+      "Optimize or lazy-load large assets"
+    ]
+  },
+  "trends": [
+    {
+      "metric": "bundleSize",
+      "previous": 2733036,
+      "current": 2733036,
+      "change": 0
+    },
+    {
+      "metric": "unusedImports",
+      "previous": 9,
+      "current": 9,
+      "change": 0
+    }
+  ]
+}

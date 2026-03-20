@@ -381,9 +381,6 @@ export async function wireCapitalStructurePipeline(
     if (!params.strategy || !params.layers || !params.noi || !params.propertyValue) {
       throw new Error('Missing required fields: strategy, layers, noi, propertyValue');
     }
-    if (!params.uses) {
-      params = { ...params, uses: { acquisitionPrice: params.propertyValue, closingCosts: 0, renovationBudget: 0, carryingCosts: 0, reserves: 0, developerFee: 0, total: params.propertyValue } };
-    }
 
     // Step 1: Capital Stack
     await wireCapitalStack(

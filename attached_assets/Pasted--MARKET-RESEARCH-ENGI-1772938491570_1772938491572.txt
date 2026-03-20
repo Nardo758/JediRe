@@ -1,0 +1,48 @@
+┌─────────────────────────────────────────────────────────────┐
+│              MARKET RESEARCH ENGINE (Existing)               │
+│  • Demand predictions at Trade Area/Submarket level         │
+│  • Population growth, employment trends                      │
+│  • Supply-demand ratios                                      │
+│  • Foot traffic index by submarket                          │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          │ Macro Demand Signals
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│            DEMAND-TO-TRAFFIC TRANSLATOR (New)                │
+│  • Converts submarket demand → property share                │
+│  • Market traffic multipliers                                │
+│  • Competitive dynamics adjustments                          │
+│  • Supply-demand scarcity premiums                          │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          │ Property-Specific Demand Component
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  TRAFFIC PREDICTION ENGINE                   │
+│  • Physical location factors (ADT, corner, transit)          │
+│  • Market demand factors (from translator)                   │
+│  • Competitive concentration adjustments                     │
+│  • Temporal patterns (weekday/weekend, seasonal)            │
+│  OUTPUT: Weekly walk-ins prediction per property             │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          │ Predictions
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    VALIDATION LAYER (New)                    │
+│  • Actual traffic measurements from owned assets             │
+│  • Prediction vs actual comparison                           │
+│  • Error analysis and pattern detection                      │
+│  • Confidence scoring based on validation data              │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          │ Errors & Insights
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    FEEDBACK LOOP (New)                       │
+│  • Weekly error analysis                                     │
+│  • Coefficient adjustments                                   │
+│  • Monthly model retraining                                  │
+│  • Continuous accuracy improvement                           │
+└──────────────────────────────────────────────────────────────┘

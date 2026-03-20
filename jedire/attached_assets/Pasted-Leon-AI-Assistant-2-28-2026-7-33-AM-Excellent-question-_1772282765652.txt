@@ -1,0 +1,165 @@
+Leon AI Assistant, [2/28/2026 7:33 AM]
+Excellent question! Let me map out how to synthesize these three layers for maximum accuracy:
+
+🎯 The Three Pillars
+
+1. Project Data - Ground truth (lot size, address, parcel boundaries)
+2. Municode - Legal rules (FAR, height, setbacks, parking ratios)
+3. Claude Agent - Intelligence layer (interpretation, precedent analysis, strategy)
+📊 Tab-by-Tab Strategy
+
+Tab 1: Boundary & Zoning
+
+Current State: Gets zoning code via geocoding
+Enhanced Flow:
+
+1. Project Data → lat/lng, parcel boundaries
+2. Municode → exact zoning code + district rules
+3. Claude Agent → 
+   - Cross-validate if parcel boundaries match tax records
+   - Identify overlays/special districts
+   - Flag discrepancies between sources
+   - Suggest which code applies if there's ambiguity
+
+Key Innovation: Claude validates Municode data against project reality
+
+
+Tab 2: Development Capacity
+
+Current State: Calculates envelopes for by-right/variance/rezone
+Enhanced Flow:
+
+1. Project Data → lot area, existing structures, topography
+2. Municode → FAR, height, parking, setbacks for each path
+3. Claude Agent →
+   - Interpret ambiguous rules (e.g., "habitable space" definitions)
+   - Calculate realistic buildable area (not just theoretical max)
+   - Identify constraint interactions (e.g., parking limits FAR)
+   - Suggest variance strategies based on precedent
+   - Recommend optimal rezone target with reasoning
+
+Key Innovation: Claude interprets "gray area" rules and suggests strategy
+
+
+Tab 3: Highest & Best Use ⚠️ Most Underdeveloped
+
+Current State: Skeletal (249 lines)
+Enhanced Flow:
+
+1. Project Data → location, demographics, market data
+2. Municode → what uses are permitted/conditional
+3. Claude Agent →
+   - Analyze permitted uses vs market demand
+   - Score each use by: profitability, approval likelihood, timeline
+   - Compare to nearby successful projects (from benchmark data)
+   - Generate HBU recommendation with financial projections
+   - Identify synergistic mixed-use combinations
+
+Key Innovation: Claude becomes the HBU strategist using all available data
+
+
+Tab 4: Regulatory Risk
+
+Current State: Alerts/monitoring
+Enhanced Flow:
+
+1. Project Data → deal specifics, proposed use
+2. Municode → code compliance requirements
+3. Claude Agent →
+   - Scan for code violations or gaps in data
+   - Identify political/community risks (from news, precedent)
+   - Rate approval probability based on similar projects
+   - Generate mitigation strategies for high-risk items
+   - Monitor Municode for rule changes affecting this deal
+
+Key Innovation: Claude predicts approval likelihood using precedent analysis
+
+
+Tab 5: Time-to-Shovel
+
+Current State: Timeline phases + carrying costs
+Enhanced Flow:
+
+1. Project Data → deal size, complexity, financing
+2. Municode → required approval steps, public hearing schedules
+3. Claude Agent →
+   - Build realistic timeline using benchmark precedents
+   - Identify bottlenecks (e.g., traffic study required)
+   - Adjust for municipality workload/efficiency
+   - Suggest acceleration strategies (pre-app meetings, etc.)
+   - Calculate financial impact of delays with scenarios
+
+Key Innovation: Claude builds data-driven timelines, not generic estimates
+
+
+🔗 The Integration Pattern
+
+// For each tab calculation:
+async function calculateWithIntelligence(tab: TabId, dealId: string) {
+  // 1. Get project facts (immutable)
+  const projectData = await getProjectData(dealId);
+  
+  // 2. Get Municode rules (canonical)
+  const zoningRules = await getMunicodeRules(
+    projectData.municipality,
+    projectData.zoningCode
+  );
+  
+  // 3. Let Claude interpret & strategize
+  const claudeAnalysis = await claudeAgent.analyze({
+    context: { projectData, zoningRules },
+    task: `Analyze ${tab} considering:
+      - Real project constraints
+      - Official zoning rules
+      - Precedent from similar projects
+      - Market conditions
+    `,
+    outputFormat: 'structured',
+    citations: true
+  });
+  
+  // 4. Merge into unified output
+  return {
+    facts: projectData,
+
+Leon AI Assistant, [2/28/2026 7:33 AM]
+rules: zoningRules,
+    analysis: claudeAnalysis,
+    confidence: calculateConfidence(sources),
+    citations: mergeCitations(zoningRules, claudeAnalysis)
+  };
+}
+
+
+🎨 UI Pattern: Three-Layer Display
+
+For each metric, show:
+
+┌─────────────────────────────────────┐
+│ Max Height: 45 ft                   │
+│ ├─ 📏 Municode: §27-4.2.1 (45 ft)  │ ← Official rule
+│ ├─ 🏢 Realistic: 42 ft              │ ← Claude adjustment
+│ └─ 💡 Why: 3ft buffer for MEP       │ ← Claude reasoning
+└─────────────────────────────────────┘
+
+
+🚀 Implementation Priority
+
+1. Tab 3 (HBU) - Build this from scratch with full integration
+2. Tab 2 (Capacity) - Enhance with Claude reasoning on constraints
+3. Tab 5 (Timeline) - Use precedent data for realistic estimates
+4. Tabs 1 & 4 - Add validation/risk layers
+
+💡 The Key Insight
+
+Project Data = Facts
+Municode = Rules
+Claude = Strategy + Interpretation
+
+Claude shouldn't replace hard rules - it should:
+
+• Interpret ambiguous rules
+• Validate data consistency
+• Predict outcomes using precedent
+• Recommend strategies based on analysis
+Want me to start building this for Tab 3 (HBU) as a prototype?

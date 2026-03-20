@@ -1,29 +1,28 @@
 import React from 'react';
+import { T } from '../../styles/terminal-tokens';
 
 interface BadgeProps {
   label: string;
   color?: string;
-  bg?: string;
   style?: React.CSSProperties;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ label, color = '#8892a4', bg = 'transparent', style }) => (
+export const Badge: React.FC<BadgeProps> = ({ label, color = T.text.amber, style }) => (
   <span style={{
-    display: 'inline-block',
-    padding: '2px 8px',
-    fontSize: 9,
+    display: 'inline-flex',
+    alignItems: 'center',
+    fontSize: T.fontSize.xs,
+    fontFamily: T.font.mono,
     fontWeight: 700,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    fontFamily: 'monospace',
-    color,
-    background: bg,
+    letterSpacing: 0.8,
+    padding: '2px 6px',
+    border: `1px solid ${color}`,
     borderRadius: 3,
-    border: `1px solid ${color}44`,
+    background: `${color}30`,
+    color,
+    whiteSpace: 'nowrap',
     ...style,
   }}>
     {label}
   </span>
 );
-
-export default Badge;

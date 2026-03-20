@@ -1,0 +1,40 @@
+All changes are committed and pushed. Here's a summary of what was built and the key issues I identified:
+
+## What Was Missing (Why It Wasn't Working)
+
+The Zoning Recommendation Orchestrator described in the task **had not been implemented at all**. The branch `claude/fix-zoning-orchestrator-awSon` was identical to `master` with zero changes. There was no:
+- Orchestrator service file
+- Database table for caching recommendations
+- API endpoints for triggering/retrieving recommendations
+- Section 3 in the Boundary & Zoning tab
+- Orchestrator integration in the Development Capacity tab
+
+## What Was Built
+
+### 1. New Service: `backend/src/services/zoning-recommendation-orchestrator.service.ts`
+5-step pipeline:
+- **Step 1** — Fetches confirmed zoning code from `deal_zoning_confirmations` and loads district rules from `zoning_districts`
+- **Step 2** — Scans nearby parcels within 500m using PostGIS queries on `zoning_district_boundaries` and confirmed deals
+- **Step 3** — Identifies higher-density/FAR candidate districts in the same municipality
+- **Step 4** — Checks rezone precedent for each candidate via `RezoneAnalysisService.getRezoneEvidence()`
+- **Step 5** — Scores using weighted composite: density uplift (40%) + proximity evidence (30%) + approval precedent (30%)
+
+### 2. New Migration: `062_zoning_recommendations.sql`
+Cache table with `deal_id` (unique), `result_json` (JSONB), and `expires_at` (24h TTL).
+
+### 3. New API Routes: `zoning-recommendations.routes.ts`
+- `POST /api/v1/zoning/recommendations/:dealId/analyze` — Triggers full pipeline
+- `GET /api/v1/zoning/recommendations/:dealId` — Retrieves cached result
+
+### 4. Updated `BoundaryAndZoningTab.tsx`
+New **Section 3: Upzoning Recommendations** with:
+- Nearby property analysis summary (parcels scanned, unique codes, area pattern)
+- Zoning code distribution bar chart (500m radius)
+- Top recommendation card (score, density uplift, FAR uplift, nearby evidence, approval rate)
+- Additional candidates ranked by score
+
+### 5. Updated `DevelopmentCapacityTab.tsx`
+Rezone scenario now checks the orchestrator first (`GET /zoning/recommendations/:dealId`) for the target code, falling back to `RezoneAnalysisService` if no orchestrator result exists.
+
+### 6. Updated `development-scenarios.routes.ts`
+The `/recommendations` endpoint now queries the orchestrator cache first to align the rezone target across both tabs.

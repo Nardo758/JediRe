@@ -95,7 +95,7 @@ const DealPageContent: React.FC<DealPageContentProps> = ({ deal, activeTab }) =>
         return <FilesSection deal={deal} />;
       
       case 'exit':
-        return <div className="p-6 text-center text-[#6B7585]">See Debt, Equity & Exit module</div>;
+        return <div className="p-6 text-center text-gray-500">See Debt, Equity & Exit module</div>;
       
       default:
         return <OverviewSection deal={deal} />;
@@ -121,18 +121,18 @@ const SimpleDealPage: React.FC<SimpleDealPageProps> = ({ deal }) => {
   const [activeTab, setActiveTab] = useState('overview');
 
   return (
-    <div className="h-screen flex flex-col bg-[#0F1319]">
+    <div className="h-screen flex flex-col bg-gray-50">
       
       {/* Header */}
-      <div className="bg-[#0F1319] border-b border-[#1e2a3d] px-6 py-4">
-        <h1 className="text-2xl font-bold text-[#E8E6E1]">{deal.name}</h1>
-        <div className="text-sm text-[#6B7585] mt-1">
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <h1 className="text-2xl font-bold text-gray-900">{deal.name}</h1>
+        <div className="text-sm text-gray-500 mt-1">
           {deal.address} • {deal.projectType}
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-[#0F1319] border-b border-[#1e2a3d] px-6 overflow-x-auto">
+      <div className="bg-white border-b border-gray-200 px-6 overflow-x-auto">
         <div className="flex gap-1">
           {DEAL_TABS.map((tab) => (
             <button
@@ -142,7 +142,7 @@ const SimpleDealPage: React.FC<SimpleDealPageProps> = ({ deal }) => {
                 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
                 ${activeTab === tab.id
                   ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-[#9EA8B4] hover:text-[#E8E6E1] hover:border-[#253347]'
+                  : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
                 }
               `}
               title={tab.description}
@@ -184,7 +184,7 @@ const AIAgentFloatingButton: React.FC<{ deal: Deal }> = ({ deal }) => {
       {/* AI Agent Modal */}
       {isOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0F1319] rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
             
             {/* Modal Header */}
             <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-6 py-4 flex items-center justify-between">
@@ -231,22 +231,22 @@ const AIAgentPage: React.FC = () => {
   if (!deal) return <div>Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0F1319]">
+    <div className="min-h-screen bg-gray-50">
       
       {/* Page Header */}
-      <div className="bg-[#0F1319] border-b border-[#1e2a3d] px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate(`/deals/${dealId}`)}
-            className="text-[#9EA8B4] hover:text-[#E8E6E1]"
+            className="text-gray-600 hover:text-gray-900"
           >
             ← Back to Deal
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-[#E8E6E1]">
+            <h1 className="text-2xl font-bold text-gray-900">
               🧠 AI Agent Analysis
             </h1>
-            <p className="text-sm text-[#6B7585] mt-1">{deal.name}</p>
+            <p className="text-sm text-gray-500 mt-1">{deal.name}</p>
           </div>
         </div>
       </div>
@@ -292,15 +292,15 @@ const AIAgentQuickPreview: React.FC<{ deal: Deal }> = ({ deal }) => {
   }
 
   return (
-    <div className="bg-[#0F1319] rounded-lg border border-[#1e2a3d] p-4">
+    <div className="bg-white rounded-lg border border-gray-200 p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className="text-2xl">🧠</span>
-          <span className="font-semibold text-[#E8E6E1]">AI Recommendation</span>
+          <span className="font-semibold text-gray-900">AI Recommendation</span>
         </div>
         <button
           onClick={() => navigate(`/deals/${deal.id}?tab=ai-agent`)}
-          className="text-sm text-blue-600 hover:text-blue-400"
+          className="text-sm text-blue-600 hover:text-blue-700"
         >
           View Full Analysis →
         </button>
@@ -308,33 +308,33 @@ const AIAgentQuickPreview: React.FC<{ deal: Deal }> = ({ deal }) => {
 
       <div className={`px-4 py-2 rounded-lg text-center font-bold text-lg ${
         analysis.recommendation === 'buy' || analysis.recommendation === 'strong-buy'
-          ? 'bg-[#022c22] text-green-400'
+          ? 'bg-green-100 text-green-700'
           : analysis.recommendation === 'hold'
           ? 'bg-yellow-100 text-yellow-700'
-          : 'bg-[#1c0a0a] text-red-400'
+          : 'bg-red-100 text-red-700'
       }`}>
         {analysis.recommendation.toUpperCase().replace('-', ' ')}
       </div>
 
       <div className="mt-3 flex justify-between text-sm">
         <div>
-          <span className="text-[#6B7585]">Score:</span>
-          <span className="ml-2 font-semibold text-[#E8E6E1]">
+          <span className="text-gray-500">Score:</span>
+          <span className="ml-2 font-semibold text-gray-900">
             {analysis.score.toFixed(1)}/10
           </span>
         </div>
         <div>
-          <span className="text-[#6B7585]">Confidence:</span>
-          <span className="ml-2 font-semibold text-[#E8E6E1]">
+          <span className="text-gray-500">Confidence:</span>
+          <span className="ml-2 font-semibold text-gray-900">
             {analysis.confidence}%
           </span>
         </div>
       </div>
 
       {analysis.keyInsights.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-[#1e2a3d]">
-          <div className="text-xs font-semibold text-[#6B7585] mb-2">TOP INSIGHT</div>
-          <div className="text-sm text-[#9EA8B4]">{analysis.keyInsights[0]}</div>
+        <div className="mt-3 pt-3 border-t border-gray-200">
+          <div className="text-xs font-semibold text-gray-500 mb-2">TOP INSIGHT</div>
+          <div className="text-sm text-gray-700">{analysis.keyInsights[0]}</div>
         </div>
       )}
     </div>

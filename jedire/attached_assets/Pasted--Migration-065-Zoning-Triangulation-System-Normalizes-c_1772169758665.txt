@@ -1,0 +1,470 @@
+-- Migration 065: Zoning Triangulation System
+-- Normalizes column names, adds parcel records + county zoning categories,
+-- and creates the three-source feedback loop:
+--   Source A: County Parcel Records (authoritative designation)
+--   Source B: County Zoning Categories (category-level rules)
+--   Source C: Municode Ordinance (specific dimensional standards)
+--
+-- The feedback loop confirms: CODE → PROCESS → TIMELINE → MATH
+-- Outcomes feed back to calibrate confidence per jurisdiction.
+
+-- ============================================================================
+-- PHASE 1: Fix municipalities table (resolve merge conflict in 048)
+-- ============================================================================
+
+-- Ensure all columns from both branches exist
+ALTER TABLE municipalities ADD COLUMN IF NOT EXISTS population INTEGER;
+ALTER TABLE municipalities ADD COLUMN IF NOT EXISTS planning_url TEXT;
+ALTER TABLE municipalities ADD COLUMN IF NOT EXISTS scraping_enabled BOOLEAN DEFAULT TRUE;
+ALTER TABLE municipalities ADD COLUMN IF NOT EXISTS data_quality VARCHAR(50) DEFAULT 'none';
+ALTER TABLE municipalities ADD COLUMN IF NOT EXISTS priority VARCHAR(10) DEFAULT 'MEDIUM';
+
+-- Backfill: unify the two variant columns
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'municipalities' AND column_name = 'zoning_data_quality') THEN
+    UPDATE municipalities SET data_quality = zoning_data_quality 
+    WHERE data_quality IS NULL AND zoning_data_quality IS NOT NULL;
+  END IF;
+END $$;
+
+
+-- ============================================================================
+-- PHASE 2: Normalize zoning_districts column names
+-- ============================================================================
+
+-- Add canonical columns if they don't exist, backfill from variants
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS zoning_code VARCHAR(50);
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS max_building_height_ft INTEGER;
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS max_units_per_acre DECIMAL(10,2);
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS min_front_setback_ft INTEGER;
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS min_side_setback_ft INTEGER;
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS min_rear_setback_ft INTEGER;
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS max_lot_coverage DECIMAL(5,4);
+ALTER TABLE zoning_districts ADD COLUMN IF NOT EXISTS parking_per_unit DECIMAL(5,2);
+
+-- Backfill canonical from variants where canonical is null
+UPDATE zoning_districts SET zoning_code = district_code
+  WHERE zoning_code IS NULL AND district_code IS NOT NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'zoning_districts' AND column_name = 'max_height_feet') THEN
+    UPDATE zoning_districts SET max_building_height_ft = max_height_feet
+      WHERE max_building_height_ft IS NULL AND max_height_feet IS NOT NULL;
+  END IF;
+  
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'zoning_districts' AND column_name = 'max_density_per_acre') THEN
+    UPDATE zoning_districts SET max_units_per_acre = max_density_per_acre
+      WHERE max_units_per_acre IS NULL AND max_density_per_acre IS NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'zoning_districts' AND column_name = 'setback_front_ft') THEN
+    UPDATE zoning_districts SET min_front_setback_ft = setback_front_ft
+      WHERE min_front_setback_ft IS NULL AND setback_front_ft IS NOT NULL;
+    UPDATE zoning_districts SET min_side_setback_ft = setback_side_ft
+      WHERE min_side_setback_ft IS NULL AND setback_side_ft IS NOT NULL;
+    UPDATE zoning_districts SET min_rear_setback_ft = setback_rear_ft
+      WHERE min_rear_setback_ft IS NULL AND setback_rear_ft IS NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'zoning_districts' AND column_name = 'max_lot_coverage_percent') THEN
+    UPDATE zoning_districts SET max_lot_coverage = max_lot_coverage_percent / 100.0
+      WHERE max_lot_coverage IS NULL AND max_lot_coverage_percent IS NOT NULL;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+             WHERE table_name = 'zoning_districts' AND column_name = 'min_parking_per_unit') THEN
+    UPDATE zoning_districts SET parking_per_unit = min_parking_per_unit
+      WHERE parking_per_unit IS NULL AND min_parking_per_unit IS NOT NULL;
+  END IF;
+END $$;
+
+-- Create a view so all services can use canonical names regardless of which column exists
+CREATE OR REPLACE VIEW zoning_districts_canonical AS
+SELECT
+  id,
+  municipality_id,
+  COALESCE(zoning_code, district_code) AS zoning_code,
+  district_code,
+  district_name,
+  municipality,
+  state,
+  description,
+  category,
+  
+  -- Dimensional standards (canonical names)
+  COALESCE(max_building_height_ft, max_height_feet) AS max_height_ft,
+  max_stories,
+  COALESCE(max_units_per_acre, max_density_per_acre) AS max_density_per_acre,
+  max_far,
+  residential_far,
+  nonresidential_far,
+  density_method,
+  COALESCE(max_lot_coverage, max_lot_coverage_percent / 100.0) AS max_lot_coverage,
+  COALESCE(min_front_setback_ft, setback_front_ft) AS setback_front_ft,
+  COALESCE(min_side_setback_ft, setback_side_ft) AS setback_side_ft,
+  COALESCE(min_rear_setback_ft, setback_rear_ft) AS setback_rear_ft,
+  min_lot_size_sqft,
+  min_lot_per_unit_sqft,
+  height_buffer_ft,
+  height_beyond_buffer_ft,
+  
+  -- Parking
+  COALESCE(parking_per_unit, min_parking_per_unit) AS parking_per_unit,
+  parking_per_1000_sqft,
+  
+  -- Uses
+  permitted_uses,
+  conditional_uses,
+  
+  -- Structured profile
+  district_profile,
+  confidence_score,
+  code_section,
+  
+  -- Metadata
+  created_at,
+  updated_at
+FROM zoning_districts;
+
+
+-- ============================================================================
+-- PHASE 3: County Parcel Records (Source A - authoritative)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS county_parcels (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Parcel identity
+  parcel_id VARCHAR(100) NOT NULL,          -- county-assigned parcel number (APN/PIN)
+  county VARCHAR(255) NOT NULL,
+  state CHAR(2) NOT NULL,
+  municipality VARCHAR(255),
+  
+  -- Zoning from county records
+  county_zoning_code VARCHAR(50),            -- code as it appears on the parcel record
+  county_zoning_desc VARCHAR(500),           -- county's description of that code
+  land_use_code VARCHAR(50),                 -- county land use classification
+  
+  -- Parcel geometry + dimensions
+  geometry JSONB,                            -- GeoJSON polygon from county GIS
+  lot_area_sf DECIMAL(12,2),
+  lot_width_ft DECIMAL(8,2),
+  lot_depth_ft DECIMAL(8,2),
+  frontage_ft DECIMAL(8,2),
+  is_corner_lot BOOLEAN DEFAULT FALSE,
+  
+  -- Address
+  site_address TEXT,
+  
+  -- Centroid (for fast spatial queries)
+  centroid_lat DECIMAL(12,8),
+  centroid_lng DECIMAL(12,8),
+  
+  -- County metadata
+  county_last_updated DATE,                  -- when county last updated this record
+  county_source_url TEXT,                    -- link to county GIS or parcel viewer
+  
+  -- Ingestion metadata
+  ingested_at TIMESTAMPTZ DEFAULT NOW(),
+  ingestion_batch_id VARCHAR(100),
+  raw_record JSONB,                          -- full county record as received
+  
+  -- Dedup
+  CONSTRAINT uq_county_parcel UNIQUE (parcel_id, county, state),
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_county_parcels_zoning ON county_parcels(county_zoning_code);
+CREATE INDEX IF NOT EXISTS idx_county_parcels_municipality ON county_parcels(municipality);
+CREATE INDEX IF NOT EXISTS idx_county_parcels_location ON county_parcels(centroid_lat, centroid_lng);
+CREATE INDEX IF NOT EXISTS idx_county_parcels_county_state ON county_parcels(county, state);
+
+
+-- ============================================================================
+-- PHASE 4: County Zoning Categories (Source B - category-level rules)
+-- ============================================================================
+-- Counties publish their own zoning categories with base rules.
+-- These are less detailed than Municode but are the county's official interpretation.
+
+CREATE TABLE IF NOT EXISTS county_zoning_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  county VARCHAR(255) NOT NULL,
+  state CHAR(2) NOT NULL,
+  municipality VARCHAR(255),                  -- null = county-wide
+  
+  -- Category identity
+  category_code VARCHAR(50) NOT NULL,         -- e.g., "MRC-3", "R-4A"
+  category_name VARCHAR(500),                 -- e.g., "Mixed Residential Commercial 3"
+  description TEXT,
+  
+  -- County-published rules (often incomplete vs Municode)
+  county_max_density_per_acre DECIMAL(10,2),
+  county_max_height_ft INTEGER,
+  county_max_far DECIMAL(10,2),
+  county_max_lot_coverage DECIMAL(5,4),
+  county_min_lot_size_sf INTEGER,
+  county_parking_per_unit DECIMAL(5,2),
+  county_setback_front_ft INTEGER,
+  county_setback_side_ft INTEGER,
+  county_setback_rear_ft INTEGER,
+  
+  -- Permitted use categories (coarser than Municode)
+  permitted_use_categories TEXT[],            -- e.g., {"residential", "retail", "office"}
+  requires_special_permit BOOLEAN DEFAULT FALSE,
+  
+  -- Source
+  source_url TEXT,
+  source_document TEXT,                       -- e.g., "Fulton County Zoning Ordinance"
+  last_verified DATE,
+  
+  CONSTRAINT uq_county_zoning_cat UNIQUE (county, state, category_code, municipality),
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_county_zoning_cat_code ON county_zoning_categories(category_code);
+CREATE INDEX IF NOT EXISTS idx_county_zoning_cat_county ON county_zoning_categories(county, state);
+
+
+-- ============================================================================
+-- PHASE 5: Triangulation Records
+-- ============================================================================
+-- Each triangulation cross-references all three sources for a specific parcel+deal
+-- and produces a reconciled result with per-field confidence.
+
+CREATE TABLE IF NOT EXISTS zoning_triangulations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- What we're triangulating
+  deal_id UUID REFERENCES deals(id) ON DELETE CASCADE,
+  parcel_id VARCHAR(100),                     -- references county_parcels.parcel_id
+  county_parcel_uuid UUID REFERENCES county_parcels(id),
+  
+  -- Source A: County Parcel Record
+  source_a_zoning_code VARCHAR(50),           -- code from parcel record
+  source_a_available BOOLEAN DEFAULT FALSE,
+  source_a_retrieved_at TIMESTAMPTZ,
+  
+  -- Source B: County Zoning Category
+  source_b_category_code VARCHAR(50),
+  source_b_category_uuid UUID REFERENCES county_zoning_categories(id),
+  source_b_available BOOLEAN DEFAULT FALSE,
+  source_b_retrieved_at TIMESTAMPTZ,
+  
+  -- Source C: Municode Ordinance
+  source_c_district_uuid UUID,               -- references zoning_districts.id
+  source_c_available BOOLEAN DEFAULT FALSE,
+  source_c_retrieved_at TIMESTAMPTZ,
+  source_c_municode_url TEXT,
+  
+  -- Reconciled code
+  reconciled_zoning_code VARCHAR(50),
+  code_agreement BOOLEAN,                     -- do all sources agree on the code?
+  code_discrepancy_detail TEXT,
+  
+  -- Reconciled dimensional standards (the "math")
+  reconciled_max_density DECIMAL(10,2),
+  reconciled_max_height_ft INTEGER,
+  reconciled_max_far DECIMAL(10,2),
+  reconciled_max_lot_coverage DECIMAL(5,4),
+  reconciled_setback_front_ft INTEGER,
+  reconciled_setback_side_ft INTEGER,
+  reconciled_setback_rear_ft INTEGER,
+  reconciled_parking_per_unit DECIMAL(5,2),
+  
+  -- Per-field source winner + confidence
+  field_reconciliation JSONB DEFAULT '{}'::jsonb,
+  -- Structure: { "max_height_ft": { "value": 225, "source": "municode", "county_value": 220, "municode_value": 225, "confidence": 0.95, "discrepancy": false } }
+  
+  -- Process confirmation
+  entitlement_path_confirmed VARCHAR(30),     -- by_right, variance, rezone, cup, sap
+  process_source VARCHAR(30),                 -- county_records, municode, precedent
+  process_confidence DECIMAL(3,2),
+  
+  -- Timeline confirmation
+  predicted_timeline_months DECIMAL(5,1),
+  timeline_source VARCHAR(30),                -- precedent, county_avg, municode_stated
+  timeline_confidence DECIMAL(3,2),
+  
+  -- Overall triangulation status
+  triangulation_status VARCHAR(30) NOT NULL DEFAULT 'pending'
+    CHECK (triangulation_status IN (
+      'pending',          -- not yet run
+      'partial',          -- some sources available
+      'complete',         -- all 3 sources checked
+      'confirmed',        -- user confirmed
+      'conflict',         -- sources disagree, needs resolution
+      'stale'             -- data older than 90 days
+    )),
+  
+  overall_confidence DECIMAL(3,2) DEFAULT 0.00,
+  
+  -- User actions
+  user_confirmed BOOLEAN DEFAULT FALSE,
+  user_confirmed_at TIMESTAMPTZ,
+  user_override_fields JSONB DEFAULT '{}'::jsonb,
+  
+  -- Audit
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  triangulated_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_zoning_tri_deal ON zoning_triangulations(deal_id);
+CREATE INDEX IF NOT EXISTS idx_zoning_tri_parcel ON zoning_triangulations(parcel_id);
+CREATE INDEX IF NOT EXISTS idx_zoning_tri_status ON zoning_triangulations(triangulation_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_zoning_tri_deal_parcel 
+  ON zoning_triangulations(deal_id, parcel_id) WHERE deal_id IS NOT NULL;
+
+
+-- ============================================================================
+-- PHASE 6: Outcome Feedback Loop
+-- ============================================================================
+-- When entitlements are actually approved/denied, record the outcome
+-- and compute calibration deltas for each data source.
+
+CREATE TABLE IF NOT EXISTS triangulation_outcomes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  triangulation_id UUID NOT NULL REFERENCES zoning_triangulations(id),
+  deal_id UUID REFERENCES deals(id),
+  
+  -- What was predicted
+  predicted_zoning_code VARCHAR(50),
+  predicted_entitlement_path VARCHAR(30),
+  predicted_timeline_months DECIMAL(5,1),
+  predicted_max_units INTEGER,
+  predicted_max_far DECIMAL(10,2),
+  
+  -- What actually happened
+  actual_zoning_code VARCHAR(50),             -- code confirmed at approval
+  actual_entitlement_path VARCHAR(30),
+  actual_timeline_months DECIMAL(5,1),
+  actual_approved_units INTEGER,
+  actual_approved_far DECIMAL(10,2),
+  actual_outcome VARCHAR(30) NOT NULL
+    CHECK (actual_outcome IN (
+      'approved_as_predicted',
+      'approved_with_conditions',
+      'approved_different_path',
+      'denied',
+      'withdrawn',
+      'pending'
+    )),
+  
+  -- Deltas (positive = we over-predicted, negative = under-predicted)
+  delta_timeline_months DECIMAL(5,1),
+  delta_units INTEGER,
+  delta_far DECIMAL(10,2),
+  
+  -- Which source was most accurate?
+  most_accurate_source VARCHAR(30),           -- county_parcel, county_category, municode
+  source_accuracy_scores JSONB DEFAULT '{}'::jsonb,
+  -- Structure: { "county_parcel": 0.90, "county_category": 0.85, "municode": 0.95 }
+  
+  -- Metadata
+  reported_by VARCHAR(100),
+  reported_at TIMESTAMPTZ DEFAULT NOW(),
+  approval_document_url TEXT,
+  notes TEXT,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tri_outcomes_tri ON triangulation_outcomes(triangulation_id);
+CREATE INDEX IF NOT EXISTS idx_tri_outcomes_deal ON triangulation_outcomes(deal_id);
+CREATE INDEX IF NOT EXISTS idx_tri_outcomes_outcome ON triangulation_outcomes(actual_outcome);
+
+
+-- ============================================================================
+-- PHASE 7: Per-jurisdiction calibration cache
+-- ============================================================================
+-- Aggregated accuracy stats per jurisdiction, refreshed after each outcome
+
+CREATE TABLE IF NOT EXISTS jurisdiction_calibration (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  municipality VARCHAR(255) NOT NULL,
+  county VARCHAR(255),
+  state CHAR(2) NOT NULL,
+  
+  -- Sample sizes
+  total_triangulations INTEGER DEFAULT 0,
+  total_outcomes INTEGER DEFAULT 0,
+  
+  -- Code accuracy
+  code_match_rate DECIMAL(5,2) DEFAULT 0,     -- % of times all 3 sources agreed
+  county_parcel_accuracy DECIMAL(5,2) DEFAULT 0,
+  county_category_accuracy DECIMAL(5,2) DEFAULT 0,
+  municode_accuracy DECIMAL(5,2) DEFAULT 0,
+  
+  -- Timeline calibration
+  avg_timeline_bias_months DECIMAL(5,1) DEFAULT 0,  -- positive = we predict too slow
+  timeline_std_dev_months DECIMAL(5,1),
+  
+  -- Math calibration
+  avg_density_bias DECIMAL(5,1) DEFAULT 0,    -- positive = we predict too many units
+  avg_far_bias DECIMAL(5,2) DEFAULT 0,
+  
+  -- Derived source weights (updated by calibration)
+  weight_county_parcel DECIMAL(3,2) DEFAULT 0.40,
+  weight_county_category DECIMAL(3,2) DEFAULT 0.25,
+  weight_municode DECIMAL(3,2) DEFAULT 0.35,
+  
+  -- Maturity
+  maturity_level VARCHAR(20) DEFAULT 'novice',
+  confidence_cap DECIMAL(3,2) DEFAULT 0.75,
+  
+  last_calibrated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  CONSTRAINT uq_jurisdiction_cal UNIQUE (municipality, state)
+);
+
+CREATE INDEX IF NOT EXISTS idx_jurisdiction_cal_muni ON jurisdiction_calibration(municipality, state);
+
+
+-- ============================================================================
+-- Triggers
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION update_timestamp_065()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER county_parcels_updated_at
+  BEFORE UPDATE ON county_parcels FOR EACH ROW EXECUTE FUNCTION update_timestamp_065();
+CREATE TRIGGER county_zoning_cat_updated_at
+  BEFORE UPDATE ON county_zoning_categories FOR EACH ROW EXECUTE FUNCTION update_timestamp_065();
+CREATE TRIGGER zoning_triangulations_updated_at
+  BEFORE UPDATE ON zoning_triangulations FOR EACH ROW EXECUTE FUNCTION update_timestamp_065();
+CREATE TRIGGER jurisdiction_calibration_updated_at
+  BEFORE UPDATE ON jurisdiction_calibration FOR EACH ROW EXECUTE FUNCTION update_timestamp_065();
+
+
+-- ============================================================================
+-- Comments
+-- ============================================================================
+
+COMMENT ON TABLE county_parcels IS 'Source A: County parcel records with authoritative zoning designations';
+COMMENT ON TABLE county_zoning_categories IS 'Source B: County-published zoning category definitions and base rules';
+COMMENT ON VIEW zoning_districts_canonical IS 'Unified view over zoning_districts normalizing all column name variants to canonical names';
+COMMENT ON TABLE zoning_triangulations IS 'Cross-references all 3 sources (parcel, county category, municode) per deal/parcel';
+COMMENT ON TABLE triangulation_outcomes IS 'Actual entitlement outcomes that feed back into source accuracy calibration';
+COMMENT ON TABLE jurisdiction_calibration IS 'Aggregated accuracy stats per jurisdiction, drives dynamic source weighting';

@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState, useCallback, useRef } from "react";
+import axios from "axios";
 
-export interface UnitTypeData {
+interface CompUnit {
   mix: number;
   sf: number;
   rent: number;
-  vac?: number;
-  dom?: number;
-  conc?: number;
+  vac: number;
+  dom: number;
+  conc: number;
 }
 
 export interface CompProperty {
@@ -15,8 +16,8 @@ export interface CompProperty {
   cls: string;
   built: number;
   total: number;
-  sourceUrl?: string;
-  units: Record<string, UnitTypeData>;
+  sourceUrl: string | null;
+  units: Record<string, CompUnit>;
 }
 
 export interface DemandScore {
@@ -28,6 +29,26 @@ export interface DemandScore {
   avgConc: number;
 }
 
+export interface TrendPoint {
+  mo: string;
+  vac: number;
+  dom: number;
+  rent: number;
+  conc: number;
+}
+
+export interface ZoningData {
+  zoningCode: string | null;
+  maxUnits: number | null;
+  maxNetSF: number | null;
+  excludesParking: boolean | null;
+  maxHeight: number | null;
+  maxLotCoverage: number | null;
+  source: string | null;
+  sourceUrl: string | null;
+  confidence: number | null;
+}
+
 export interface UnitProgram {
   totalUnits: number;
   units: Record<string, { mix: number; sf: number; rent: number }>;
@@ -35,66 +56,62 @@ export interface UnitProgram {
   grossRevPA?: number;
 }
 
-export interface ZoningForUnitMix {
-  zoningCode: string | null;
-  maxUnits: number | null;
-  maxNetSF: number | null;
-  excludesParking: null;
-  maxHeight: number | null;
-  maxLotCoverage: number | null;
-  source: null;
-  sourceUrl: null;
-  confidence: null;
-}
-
-interface UseUnitMixResult {
-  comps: CompProperty[];
-  demandScores: DemandScore[];
-  program: UnitProgram | null;
-  zoning: ZoningForUnitMix | null;
-  loading: boolean;
-  error: string | null;
-  refetchProgram: () => void;
-}
-
-export function useUnitMixIntelligence(
-  dealId: string | undefined,
-  tradeAreaId?: string
-): UseUnitMixResult {
-  const [comps, setComps] = useState<CompProperty[]>([]);
-  const [demandScores, setDemandScores] = useState<DemandScore[]>([]);
+export function useUnitMixIntelligence(dealId: string | undefined, tradeAreaId: string | undefined) {
+  const [comps, setComps] = useState<CompProperty[] | null>(null);
+  const [demandScores, setDemandScores] = useState<DemandScore[] | null>(null);
+  const [trends, setTrends] = useState<Record<string, TrendPoint[]> | null>(null);
+  const [zoning, setZoning] = useState<ZoningData | null>(null);
   const [program, setProgram] = useState<UnitProgram | null>(null);
-  const [zoning, setZoning] = useState<ZoningForUnitMix | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [programVersion, setProgramVersion] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!dealId) return;
-    setLoading(true);
-    setError(null);
 
-    const compsUrl = tradeAreaId
-      ? `/api/v1/unit-mix/${dealId}/comps?tradeAreaId=${tradeAreaId}`
-      : `/api/v1/unit-mix/${dealId}/comps`;
+    let cancelled = false;
 
-    Promise.all([
-      fetch(compsUrl).then(r => r.json()).catch(() => ({ comps: [], demandScores: [] })),
-      fetch(`/api/v1/unit-mix/${dealId}/program`).then(r => r.json()).catch(() => ({ program: null })),
-      fetch(`/api/v1/unit-mix/${dealId}/zoning`).then(r => r.json()).catch(() => ({ zoning: null })),
-    ]).then(([compsData, programData, zoningData]) => {
-      setComps(compsData.comps || []);
-      setDemandScores(compsData.demandScores || []);
-      setProgram(programData.program || null);
-      setZoning(zoningData.zoning || null);
-    }).catch(err => {
-      setError(err.message || 'Failed to load unit mix data');
-    }).finally(() => {
-      setLoading(false);
-    });
-  }, [dealId, tradeAreaId, programVersion]);
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const tradeAreaParam = tradeAreaId ? `?tradeAreaId=${tradeAreaId}` : "";
+        const [compsRes, trendsRes, zoningRes, programRes] = await Promise.all([
+          axios.get(`/api/v1/unit-mix/${dealId}/comps${tradeAreaParam}`).then(r => r.data).catch(() => ({ comps: null, demandScores: null })),
+          axios.get(`/api/v1/unit-mix/${dealId}/trends${tradeAreaParam}`).then(r => r.data).catch(() => ({ trends: null })),
+          axios.get(`/api/v1/unit-mix/${dealId}/zoning`).then(r => r.data).catch(() => ({ zoning: null })),
+          axios.get(`/api/v1/unit-mix/${dealId}/program`).then(r => r.data).catch(() => ({ program: null })),
+        ]);
 
-  const refetchProgram = () => setProgramVersion(v => v + 1);
+        if (cancelled) return;
 
-  return { comps, demandScores, program, zoning, loading, error, refetchProgram };
+        setComps(compsRes.comps);
+        setDemandScores(compsRes.demandScores);
+        setTrends(trendsRes.trends);
+        setZoning(zoningRes.zoning);
+        setProgram(programRes.program);
+      } catch (e: any) {
+        if (!cancelled) setError(e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [dealId, tradeAreaId]);
+
+  const handleProgramChange = useCallback((newProgram: UnitProgram) => {
+    setProgram(newProgram);
+    if (!dealId) return;
+
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      axios.post(`/api/v1/unit-mix/${dealId}/program`, newProgram).catch(err => {
+        console.error("Failed to save unit program:", err);
+      });
+    }, 1500);
+  }, [dealId]);
+
+  return { comps, demandScores, trends, zoning, program, loading, error, handleProgramChange };
 }

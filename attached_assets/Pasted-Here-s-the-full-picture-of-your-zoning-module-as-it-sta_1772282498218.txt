@@ -1,0 +1,30 @@
+Here's the full picture of your zoning module as it stands:
+
+~26,000 lines total across backend services (13.5K), frontend components (6.4K), API routes (3.2K), types (477), migrations (11 files), and supporting files.
+Architecture
+5-Tab Flow (gated — Tab 1 must complete to unlock 2-5):
+TabComponentLinesStatus1. Boundary & ZoningBoundaryAndZoningTab790Gate — draws boundary, confirms zoning code2. Dev CapacityDevelopmentCapacityTab1,213Calculates envelopes across by-right/variance/rezone paths3. Highest & Best UseHighestBestUseTab249Lighter — likely placeholder4. Regulatory RiskRegulatoryRiskTab314Alerts, monitoring5. Time-to-ShovelTimeToShovelTab1,199Timeline phases, carrying costs, financial impact
+Backend Intelligence Stack (17 services)
+The heavy hitters:
+
+Recommendation Orchestrator (975 lines) — scans nearby parcels, entitlement patterns, scores rezone candidates with weighted formula (40% density uplift, 30% proximity, 30% approval precedent)
+Triangulation (893 lines) — cross-references multiple data sources for confidence
+Application Pipeline (740 lines) — manages entitlement workflow stages
+Verification (493 lines) — confirms zoning against multiple sources
+Profile (473 lines) — builds zoning district profiles
+Knowledge (346 lines) — district lookup and rules engine
+Precedent (317 lines) — historical approval patterns
+Supporting: confidence scoring, corrections, reasoning, query routing, event bus, interpretation cache, comparator
+
+Key Data Types
+Your type system is well-structured with clear downstream connections:
+
+BuildingEnvelope → feeds M03 (3D model)
+ZoningForFinance → feeds M09 (ProForma) with FAR, parking, overlay costs
+DevCapacityOutput → compares all 4 development paths with IRR, risk, approval probability
+DealTimeline → expected/delayed/worst scenarios with carrying costs and financial impact
+
+The Agent
+The ZoningAgent itself is a thin 52-line wrapper — it delegates to ZoningService which does geocoding (Google → Mapbox fallback) and PostGIS point-in-polygon queries. The real intelligence lives in the service layer.
+What's Notable
+The module has strong bones but some unevenness — Tab 2 (Dev Capacity) and Tab 5 (Time-to-Shovel) are fully fleshed out at ~1,200 lines each, while Tab 3 (HBU) at 249 lines looks more skeletal. The backend intelligence (recommendation orchestrator, triangulation, precedent analysis) is significantly more mature than the frontend surfaces them.

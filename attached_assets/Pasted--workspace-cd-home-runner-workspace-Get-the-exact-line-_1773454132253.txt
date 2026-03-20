@@ -1,0 +1,43 @@
+~/workspace$ cd /home/runner/workspace
+
+# Get the exact line numbers
+grep -n "import type { ModuleId }" frontend/src/pages/DealDetailPage.tsx
+
+# Remove the second one
+sed -i '0,/import type { ModuleId }/!{/import type { ModuleId }/d;}' frontend/src/pages/DealDetailPage.tsx
+
+# Verify
+grep -n "import type { ModuleId }" frontend/src/pages/DealDetailPage.tsx
+
+# Build
+cd frontend && npm run build
+18:import type { ModuleId } from '../shared/config/deal-type-visibility';
+18:import type { ModuleId } from '../shared/config/deal-type-visibility';
+
+> jedire-frontend@1.0.0 build
+> vite build
+
+vite v5.4.21 building for production...
+✓ 4918 modules transformed.
+[plugin:vite:reporter] [plugin vite:reporter] 
+(!) /home/runner/workspace/frontend/src/components/trade-area/TradeAreaDefinitionPanel.tsx is dynamically imported by /home/runner/workspace/frontend/src/components/deal/sections/TrafficModule.tsx but also statically imported by /home/runner/workspace/frontend/src/components/trade-area/index.ts, dynamic import will not move module into another chunk.
+
+dist/index.html                                    0.83 kB │ gzip:     0.43 kB
+dist/assets/index--BdFThX5.css                   180.60 kB │ gzip:    25.56 kB
+dist/assets/MapPage-BWhZ0-H9.js                    1.53 kB │ gzip:     0.62 kB
+dist/assets/TradeAreaDrawMap-D9_0x7HF.js           1.74 kB │ gzip:     0.89 kB
+dist/assets/BuildingDiagram3D-BGVJ1rb4.js          6.11 kB │ gzip:     2.20 kB
+dist/assets/IntelligenceDashboard-D4i6IKSf.js     11.29 kB │ gzip:     2.69 kB
+dist/assets/Design3DPage.updated-GLRW6s0B.js      32.49 kB │ gzip:     8.88 kB
+dist/assets/AssetsOwnedPage-BKqE1df8.js           34.06 kB │ gzip:     7.69 kB
+dist/assets/ui-vendor-RfSDk9bs.js                 40.78 kB │ gzip:    16.24 kB
+dist/assets/react-vendor-eSNlySlf.js             163.24 kB │ gzip:    53.27 kB
+dist/assets/map-vendor-CpcSTrIQ.js             1,761.44 kB │ gzip:   483.86 kB
+dist/assets/index-Bc1w4SI2.js                  5,235.92 kB │ gzip: 1,274.28 kB
+
+(!) Some chunks are larger than 2000 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 25.64s
+~/workspace/frontend$ 

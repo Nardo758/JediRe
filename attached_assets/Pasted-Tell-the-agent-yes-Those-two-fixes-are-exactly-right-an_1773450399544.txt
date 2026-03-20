@@ -1,0 +1,20 @@
+Tell the agent yes. Those two fixes are exactly right and they unblock everything downstream.
+But give it this specific guidance so it doesn't over-engineer it:
+"Yes, implement both fixes. Here are the exact requirements:
+Fix 1 — dealStore projectType hydration:
+In the fetchDealContext success handler, after the spread, explicitly set projectType from whatever field the API returns. Try these field paths in order: data.identity?.project_type, data.project_type, data.projectType, data.identity?.development_type, then fall back to 'existing'. The database column is likely project_type (snake_case) since Drizzle uses snake_case by default, but the API serializer might camelCase it — so check both. Add a console.log temporarily: console.log('[DealStore] projectType resolved to:', resolvedType) so we can verify it's working.
+Fix 2 — DealDetailPage tab arrays:
+Don't delete the existing tab group arrays yet. Instead, wrap each one in a filter. Import isModuleVisible from the config, get dealType from useDealTypeConfig(), then filter each tab group:
+typescriptconst visibleOverviewTabs = overviewSetupTabs.filter(tab => 
+  isModuleVisible(tab.moduleId, dealType)
+);
+Do this for every tab group array: overviewSetupTabs, marketResearchTabs, dueDiligenceTabs, executionTabs, aiAssistantTabs. This preserves the existing tab definitions (labels, icons, ordering) while adding the visibility gate. The moduleId on each tab object should match the ModuleId type from deal-type-visibility.ts (M01, M02, M03, etc).
+If the tab objects don't have a moduleId field, add one to each. Map them from the tab label/key to the correct module: Overview=M01, Zoning=M02, Development/3D=M03, Supply=M04, Market=M05, Traffic=M07, Strategy=M08, ProForma=M09, Scenarios=M10, Debt=M11, Exit=M12, DD=M13, Risk=M14, Competition=M15, Team=M17, Documents=M18, Portfolio=M22.
+After both fixes, build and test: create a new deal as 'development', navigate to it, confirm M03 tab appears. Create one as 'existing', confirm M03 is hidden. Check the console log to verify projectType is resolving correctly.
+Do not refactor the tab rendering architecture. Do not move tabs into a new data structure. Just add the filter and the moduleId mapping. Minimal changes, maximum impact."
+The reason I'm saying to filter the existing arrays rather than replace them with getNavigationTabs() is that your current tab objects carry UI metadata — icons, labels, ordering, component references — that the config system doesn't know about. Replacing the arrays wholesale would lose all of that and you'd need to rebuild the tab-to-component mapping from scratch. Filtering is the safe path: your existing tabs define what they are, the config system just decides which ones show.
+Once the agent confirms both fixes are in and the build passes, test these three scenarios:
+Test 1: Create a deal as "Existing Acquisition." The sidebar should show all modules except M03 (Development Capacity). Zoning should show simplified (3 sub-tabs if that wiring is in place).
+Test 2: Create a deal as "Development." M03 should appear. Strategy Arbitrage should hide the Flip column (if Phase 2 wiring is active). ProForma should show the Development template badge.
+Test 3: Open an old deal that was created before the migration. The console should log projectType resolved to: existing — confirming the fallback works and old deals don't break.
+If Test 3 fails with undefined, the API isn't returning the field at all. That means you also need to check the backend API route that serves /api/v1/deals/:id/context — it needs to include project_type in its SELECT query and response serialization. That's a one-line fix in the route handler but the agent should check it.

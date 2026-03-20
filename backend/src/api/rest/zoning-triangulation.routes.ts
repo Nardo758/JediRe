@@ -141,10 +141,6 @@ router.get('/zoning/triangulation/:dealId', async (req: Request, res: Response) 
 router.post('/zoning/triangulation/:id/confirm', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRe.test(id)) {
-      return res.status(404).json({ error: 'Triangulation not found' });
-    }
     const { overrides } = req.body;
 
     await triangulationService.userConfirm(id, overrides);
@@ -185,8 +181,7 @@ router.post('/zoning/outcome', async (req: Request, res: Response) => {
     res.json({ success: true, data: { outcomeId } });
   } catch (error: any) {
     console.error('Outcome recording error:', error);
-    const isNotFound = error.message && error.message.includes('not found');
-    res.status(isNotFound ? 404 : 500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -280,11 +275,7 @@ router.post('/zoning/recommendations/:dealId/analyze', async (req: Request, res:
     res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Recommendation analysis error:', error);
-    const msg = error.message || '';
-    if (msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('no zoning')) {
-      return res.status(404).json({ error: msg });
-    }
-    res.status(500).json({ error: msg });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -300,9 +291,7 @@ router.get('/zoning/recommendations/:dealId', async (req: Request, res: Response
     res.json({ success: true, data: result });
   } catch (error: any) {
     console.error('Recommendation fetch error:', error);
-    const isNotFound = error.message &&
-      (error.message.includes('not found') || error.message.includes('no zoning'));
-    res.status(isNotFound ? 404 : 500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -584,9 +573,7 @@ router.post('/deals/:dealId/properties/:propertyId/link', async (req: Request, r
     res.json({ success: true, message: 'Property linked to deal' });
   } catch (error: any) {
     console.error('Link property error:', error);
-    const msg = error.message || '';
-    const status = msg.includes('foreign key') || msg.includes('not found') || msg.includes('violates') ? 400 : 500;
-    res.status(status).json({ error: msg });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -612,11 +599,14 @@ router.post('/admin/deal-property-autolink', async (req: Request, res: Response)
 });
 
 router.post('/admin/benchmark-enrichment/run', async (req: Request, res: Response) => {
-  const { county } = req.query;
-  res.status(202).json({ success: true, message: 'Benchmark enrichment queued' });
-  enrichmentService.enrichBenchmarkProjects(county as string | undefined).catch((error: any) => {
-    console.error('Benchmark enrichment error:', error.message);
-  });
+  try {
+    const { county } = req.query;
+    const result = await enrichmentService.enrichBenchmarkProjects(county as string | undefined);
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Benchmark enrichment error:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.post('/properties/:id/enrich', async (req: Request, res: Response) => {

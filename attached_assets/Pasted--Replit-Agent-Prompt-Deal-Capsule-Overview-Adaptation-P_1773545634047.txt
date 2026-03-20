@@ -1,0 +1,221 @@
+# Replit Agent Prompt — Deal Capsule Overview Adaptation
+
+Paste this entire block into Replit's agent:
+
+---
+
+I have 5 new files to add to the codebase that create a project-type-based routing system for the Deal Capsule overview page. The system makes the Deal Overview tab render a different page layout depending on whether the deal is an Existing Acquisition (4 sections), Ground-Up Development (7 sections), or Redevelopment (9 sections). Currently there is only one overview page (`OverviewSection.tsx`) which serves as the Existing variant. I need you to add the new files and wire them in.
+
+**Do NOT rewrite any existing files from scratch. Make surgical edits only. Read each file before editing it.**
+
+## Task 1: Create the ProjectType type definition
+
+Create file `src/shared/types/project-type.ts` with this content:
+
+```typescript
+export type ProjectType = 'existing' | 'development' | 'redevelopment';
+
+export const PROJECT_TYPE_META: Record<ProjectType, {
+  label: string;
+  shortLabel: string;
+  icon: string;
+  description: string;
+  sectionCount: number;
+}> = {
+  existing: {
+    label: 'Existing Acquisition',
+    shortLabel: 'Existing',
+    icon: '🏢',
+    description: 'Stabilized or value-add property with in-place tenants',
+    sectionCount: 4,
+  },
+  development: {
+    label: 'Ground-Up Development',
+    shortLabel: 'Development',
+    icon: '🏗️',
+    description: 'Vacant land or teardown — new construction',
+    sectionCount: 7,
+  },
+  redevelopment: {
+    label: 'Redevelopment',
+    shortLabel: 'Redevelopment',
+    icon: '🔄',
+    description: 'Existing property with renovation or expansion scope',
+    sectionCount: 9,
+  },
+};
+
+export function resolveProjectType(deal: any): ProjectType {
+  const raw: string | undefined =
+    deal?.project_type || deal?.projectType ||
+    deal?.development_type || deal?.developmentType;
+  if (!raw) return 'existing';
+  const n = raw.toLowerCase().trim();
+  if (n === 'existing' || n === 'acquisition') return 'existing';
+  if (n === 'development' || n === 'ground-up' || n === 'ground_up') return 'development';
+  if (n === 'redevelopment' || n === 'renovation' || n === 'value-add' || n === 'value_add') return 'redevelopment';
+  if (n.includes('dev') && !n.includes('redev')) return 'development';
+  if (n.includes('redev') || n.includes('renov') || n.includes('expand')) return 'redevelopment';
+  return 'existing';
+}
+```
+
+Create the directory `src/shared/types/` if it doesn't exist.
+
+## Task 2: Create the OverviewRouter
+
+Create file `src/components/deal/sections/OverviewRouter.tsx`:
+
+```typescript
+import React, { useMemo } from 'react';
+import { resolveProjectType, PROJECT_TYPE_META } from '@/shared/types/project-type';
+import type { ProjectType } from '@/shared/types/project-type';
+import { OverviewSection } from './OverviewSection';
+import { DevelopmentOverview } from './DevelopmentOverview';
+import { RedevelopmentOverview } from './RedevelopmentOverview';
+
+export interface OverviewVariantProps {
+  deal: any;
+  dealId?: string;
+  embedded?: boolean;
+  onUpdate?: () => void;
+  onBack?: () => void;
+  onTabChange?: (tabId: string) => void;
+  onStrategySelected?: (strategyId: string) => void;
+}
+
+const OVERVIEW_COMPONENTS: Record<ProjectType, React.ComponentType<any>> = {
+  existing: OverviewSection,
+  development: DevelopmentOverview,
+  redevelopment: RedevelopmentOverview,
+};
+
+export const OverviewRouter: React.FC<any> = (props) => {
+  const { deal } = props;
+  const projectType = useMemo(() => resolveProjectType(deal), [
+    deal?.project_type, deal?.projectType,
+    deal?.development_type, deal?.developmentType,
+  ]);
+  const Component = OVERVIEW_COMPONENTS[projectType];
+  const meta = PROJECT_TYPE_META[projectType];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide bg-slate-100 text-slate-600 border border-slate-200">
+          <span>{meta.icon}</span>
+          {meta.label}
+        </span>
+        <span className="text-[10px] text-slate-400 font-mono">{meta.sectionCount} sections</span>
+      </div>
+      <Component {...props} />
+    </div>
+  );
+};
+
+export default OverviewRouter;
+```
+
+## Task 3: Create DevelopmentOverview
+
+Create file `src/components/deal/sections/DevelopmentOverview.tsx`. This is the 7-section ground-up development overview.
+
+Read the existing `OverviewSection.tsx` first to understand the props pattern and imports. The DevelopmentOverview should:
+
+1. Accept the same props as OverviewSection: `{ deal, dealId, onStrategySelected, onTabChange, embedded, onUpdate, onBack }`
+2. Use the same imports: `useDealModule` from DealModuleContext, `apiClient` from services
+3. Have these 7 sections as a `div className="space-y-8"`:
+
+**§1 Site + Zoning Constraints** — 4-card grid showing: Lot Size (deal.acres), Zoning (deal.zoning), Max Density (from zoning store or deal), Max Height. Plus an entitled/not-entitled badge.
+
+**§2 Building Configuration** — 4-card grid: Proposed Units (deal.units or deal.target_units), Total SF (deal.sqft), Building Type (deal.property_type), Parking (deal.parking_spaces).
+
+**§3 Entitlement Pipeline** — Load entitlements from `GET /api/v1/entitlements/deal/${dealId}` with useEffect. Render as a list of permit records with status badges (approved/submitted/in-review/pending). If empty, show "No entitlement records found" with a button to open the Zoning module via `onTabChange?.('zoning')`. Also load timeline benchmarks from `GET /api/v1/benchmark-timeline/benchmarks?county=${deal.county}&state=${deal.state || 'FL'}` and display p25/p50/p75/p90 months.
+
+**§4 Unit Mix Program** — If deal.unit_mix or deal.unitMix exists, render a table with columns: Type, Count, Avg SF, Target Rent, % of Total. Otherwise show placeholder with link to unit-mix module.
+
+**§5 Competitive Set** — Placeholder section with link to competition module via `onTabChange?.('competition')`.
+
+**§6 Development Budget + Timeline** — Two-column layout. Left: cost stack table (Land, Hard Costs, Soft Costs, Contingency → Total Dev Cost, plus Cost/Unit and Cost/SF). Right: Timeline cards (Construction months, Lease-Up months, Total months). Read capitalStructure from useDealModule() and show structureSummary if available.
+
+**§7 Returns Comparison + Site Diligence** — 4-card grid: Yield on Cost, Proj. IRR, Equity Multiple, Profit Margin. Plus a 3×2 module access grid with buttons that call onTabChange for: Pro Forma, Capital Structure, Risk Management, Due Diligence, Property & Zoning, Environmental & ESG.
+
+For all deal field access, handle both snake_case and camelCase: `deal?.hard_costs || deal?.hardCosts || 0`. Use a helper:
+```typescript
+const f = (snake: string, camel: string, fallback: any = 0) => deal?.[snake] ?? deal?.[camel] ?? fallback;
+```
+
+Style everything with Tailwind matching the existing OverviewSection patterns: white cards with `bg-white rounded-xl border border-slate-200 p-5`, section headers with mono tracking, metric cards with `text-xl font-bold`.
+
+## Task 4: Create RedevelopmentOverview
+
+Create file `src/components/deal/sections/RedevelopmentOverview.tsx`. This is the 9-section redevelopment overview. Same props pattern as above. Sections:
+
+**§1 Acquisition + As-Is Metrics** — 4-card grid: Going-In Cap Rate, Current NOI, Occupancy, Avg Rent/Unit.
+
+**§2 NOI Transformation** — This is the hero section. A gradient card (`bg-gradient-to-br from-white to-emerald-50`) with 5-column grid showing: As-Is NOI → Stabilized NOI = NOI Uplift. The delta should be calculated as `stabilizedNoi - existingNoi`. Show unit counts, occupancy, and rent per unit under each. Use `text-3xl font-bold` for the NOI numbers.
+
+**§3 Site + Zoning Capacity** — Two-column layout. Left: density analysis with a visual progress bar showing existing units vs expansion capacity, plus data rows for Current Zoning, Lot Size, Existing Units, Expansion Units, Post-Expansion Total. Right: zoning envelope parameters (Max Density, Max Height, Max Lot Coverage) plus a warning banner if expansion requires variance.
+
+**§4 Renovation + Expansion Scope** — Two-column, each with a colored left border. Left card (blue border): Renovation — unit count, total budget, cost/unit, and a rent uplift callout. Right card (violet border): Expansion — new units, total cost, cost/unit, post-expansion total.
+
+**§5 Unit Mix Program** — Table showing existing units with Current Rent → Target Rent → Delta, plus expansion units below. Blended total row at bottom.
+
+**§6 Development Budget + Timeline** — Two columns: investment breakdown (Acquisition + Renovation + Expansion + Other = Total) and timeline (Renovation months, Lease-Up months, Total months).
+
+**§7 Capital Structure** — Two columns: Sources (Senior Debt, Sponsor Equity, Total) and platform capital structure from useDealModule().
+
+**§8 Value Bridge + Returns** — Green value creation banner showing `exitValue - totalInvestment`, then 4-card grid: Proj. IRR, Equity Multiple, Renovation ROI (noiDelta / totalRenovCost), Cash-on-Cash.
+
+**§9 Due Diligence + Module Access** — 3×3 grid of module buttons: Property & Zoning (M02), Market Intelligence (M05), Traffic Intelligence (M07), Pro Forma (M09), Capital Structure (M11), Risk Management (M14), Competition (M15), Environmental & ESG (M16), DD Checklist (M20). Each calls `onTabChange?.()` with the tab ID.
+
+## Task 5: Wire OverviewRouter into DealDetailPage
+
+Read `src/pages/DealDetailPage.tsx`. Make these 3 surgical changes:
+
+**Change 1 — Import (around line 19):**
+Replace `import OverviewSection from '../components/deal/sections/OverviewSection';`
+With `import { OverviewRouter } from '../components/deal/sections/OverviewRouter';`
+
+**Change 2 — Tab definition (around line 209):**
+In the `overviewSetupTabs` array, change the overview tab's component:
+Replace `component: OverviewSection`
+With `component: OverviewRouter`
+
+**Change 3 — Fallback (around line 430):**
+Replace `const ActiveComponent = activeTabData?.component || OverviewSection;`
+With `const ActiveComponent = activeTabData?.component || OverviewRouter;`
+
+Do NOT change any other imports or tab definitions. The existing OverviewSection.tsx stays untouched.
+
+## Task 6: Add project_type to deal creation
+
+Read the current deal creation flow. There is likely a form in `src/components/agent/deals/DealForm.tsx` that currently has dealType as buyer/seller/both. Do NOT modify that form. Instead, find where deals are created via the API (look for POST calls to `/api/v1/deals` in the frontend) and ensure `project_type` is included in the payload. If the deals table doesn't have a `project_type` column, check the migration files in `src/database/migrations/` and create one:
+
+```sql
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS project_type VARCHAR(20) DEFAULT 'existing';
+```
+
+The dealStore.ts transform function on line 26 already maps this field:
+`projectType: deal.project_type || deal.projectType`
+
+So no store changes are needed.
+
+## Verification
+
+After all changes, run `npm run build` and verify:
+1. No TypeScript errors
+2. Navigate to any existing deal — should see the "🏢 Existing Acquisition" badge above the current overview (backward compatible)
+3. The OverviewSection.tsx content renders exactly as before underneath the badge
+4. If you manually set a deal's project_type to 'development' or 'redevelopment' in the database, the corresponding variant should render instead
+
+## Rules
+- Read each file before editing it
+- Do NOT rewrite files from scratch — make minimal surgical changes
+- Do NOT delete OverviewSection.tsx — it's the Existing Acquisition variant
+- Do NOT modify the Tab interface or TabGroup component
+- The `@/` path alias maps to `src/` — use it for imports
+- All new components use Tailwind CSS matching the existing codebase style (bg-white, rounded-xl, border-slate-200, etc.)
+- Handle both snake_case and camelCase field names on the deal object
+
+---

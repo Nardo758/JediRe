@@ -710,8 +710,7 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
         p.renewal_status
       FROM properties p
       JOIN deals d ON d.id = $1
-      WHERE d.boundary IS NOT NULL
-        AND ST_Contains(d.boundary, ST_SetSRID(ST_Point(p.lng, p.lat), 4326))
+      WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
     `, [dealId]);
 
     const properties = result.rows;

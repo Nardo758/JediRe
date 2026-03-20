@@ -7,6 +7,6 @@ sleep 1
 export MAPBOX_ACCESS_TOKEN="${MAPBOX_ACCESS_TOKEN:-$VITE_MAPBOX_TOKEN}"
 export MAPBOX_TOKEN="${MAPBOX_TOKEN:-$VITE_MAPBOX_TOKEN}"
 
-cd /home/runner/workspace/backend && node dist/index.replit.js &
+cd /home/runner/workspace/backend && npx ts-node --transpile-only src/index.replit.ts &
 cd /home/runner/workspace/frontend && npx vite --host 0.0.0.0 --port 5000 &
 wait

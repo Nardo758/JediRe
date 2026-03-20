@@ -1,0 +1,605 @@
+import React, { useState, useMemo } from 'react';
+import { ArrowDown, ArrowRight, TrendingUp, TrendingDown, Building, DollarSign, Calendar, AlertTriangle, ChevronDown, ChevronUp, Lock, Unlock } from 'lucide-react';
+
+// ═══════════════════════════════════════════════════════════════
+// JEDI RE — EXIT WINDOW → CAPITAL STRUCTURE
+// The exit window drives everything. Two inputs, one output.
+// ═══════════════════════════════════════════════════════════════
+
+const QUARTERS = ['Q1 25','Q2 25','Q3 25','Q4 25','Q1 26','Q2 26','Q3 26','Q4 26','Q1 27','Q2 27','Q3 27','Q4 27','Q1 28','Q2 28'];
+
+// ── Supply data (units delivering per quarter in submarket)
+const SUPPLY_DELIVERING = [0, 0, 185, 0, 0, 0, 350, 280, 0, 185, 0, 0, 0, 0];
+const CUMULATIVE_SUPPLY =  SUPPLY_DELIVERING.reduce((acc, v) => {
+  acc.push((acc.length ? acc[acc.length-1] : 0) + v);
+  return acc;
+}, []);
+
+// ── Projected rent growth (% YoY) as supply impacts absorption
+const RENT_GROWTH = [8.7, 7.8, 6.2, 5.4, 4.8, 4.1, 2.1, 0.8, -0.4, -1.2, 0.3, 1.1, 2.0, 2.8];
+
+// ── Rate environment (10yr Treasury projection)
+const RATES = [4.35, 4.28, 4.15, 4.05, 3.92, 3.78, 3.65, 3.55, 3.50, 3.48, 3.45, 3.50, 3.55, 3.60];
+
+// Window: sweet spot where rent growth is still positive AND rates are dropping
+const WINDOW_START = 4; // Q1 26
+const WINDOW_END = 6;   // Q3 26
+
+export default function ExitDrivesCapital() {
+  const [expandedSection, setExpandedSection] = useState('window');
+  const [selectedScenario, setSelectedScenario] = useState(1); // 0=early, 1=optimal, 2=late
+
+  const scenarios = [
+    {
+      label: 'Early Exit',
+      quarter: 'Q4 2025',
+      qIdx: 3,
+      exitCap: 4.85,
+      noi: 2840000,
+      grossValue: 58556701,
+      prepayPenalty: 345600,
+      netProceeds: 38811101,
+      irr: 25.1,
+      multiple: 3.85,
+      debtMatch: '3yr Bridge → Exit at Month 30',
+      equityNote: 'Below promote threshold for some waterfalls',
+      color: '#f59e0b',
+      risk: 'Prepay penalty still at 1.8% ($345K). Rates haven\'t dropped yet.',
+    },
+    {
+      label: 'Optimal Window',
+      quarter: 'Q3 2026',
+      qIdx: 6,
+      exitCap: 4.72,
+      noi: 2960000,
+      grossValue: 62711864,
+      prepayPenalty: 0,
+      netProceeds: 43511864,
+      irr: 28.4,
+      multiple: 4.30,
+      debtMatch: '5yr Fixed → Exit at Year 3.5 (no penalty after Month 36)',
+      equityNote: 'Clears 20% pref + first promote tier. GP effective ownership ~32%.',
+      color: '#10b981',
+      risk: 'Must close before 350-unit competitor delivers Q3 2026.',
+    },
+    {
+      label: 'Late Exit',
+      quarter: 'Q2 2027',
+      qIdx: 9,
+      exitCap: 5.25,
+      noi: 2890000,
+      grossValue: 55047619,
+      prepayPenalty: 0,
+      netProceeds: 35847619,
+      irr: 21.2,
+      multiple: 3.52,
+      debtMatch: '5yr Fixed → Early payoff OK but left money on table',
+      equityNote: 'Below top promote tier. GP effective ownership ~24%.',
+      color: '#ef4444',
+      risk: '630 new units delivered. Rent growth negative. Cap rates expanding.',
+    }
+  ];
+
+  const sel = scenarios[selectedScenario];
+
+  const toggle = (s) => setExpandedSection(expandedSection === s ? null : s);
+
+  // ── Chart dimensions
+  const chartW = 700, chartH = 180, padL = 44, padR = 16, padT = 20, padB = 28;
+  const innerW = chartW - padL - padR;
+  const innerH = chartH - padT - padB;
+  const barW = innerW / QUARTERS.length;
+
+  const maxSupply = Math.max(...SUPPLY_DELIVERING) * 1.2;
+  const rentMin = Math.min(...RENT_GROWTH) - 1;
+  const rentMax = Math.max(...RENT_GROWTH) + 1;
+  const rateMin = Math.min(...RATES) - 0.2;
+  const rateMax = Math.max(...RATES) + 0.2;
+
+  const scaleY = (val, min, max) => padT + innerH - ((val - min) / (max - min)) * innerH;
+  const scaleX = (i) => padL + i * barW + barW / 2;
+
+  const rentPath = RENT_GROWTH.map((v, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i)},${scaleY(v, rentMin, rentMax)}`).join(' ');
+  const ratePath = RATES.map((v, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i)},${scaleY(v, rateMin, rateMax)}`).join(' ');
+
+  return (
+    <div style={{ background: '#0a0f1a', minHeight: '100vh', color: '#e2e8f0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+      {/* ── HEADER ── */}
+      <div style={{ padding: '24px 32px 16px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: 1.5, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>
+              Exit Strategy & Capital Structure
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: '#f8fafc' }}>
+              Park Vista Apartments
+              <span style={{ fontSize: 14, fontWeight: 400, color: '#94a3b8', marginLeft: 12 }}>200 units · Tampa, FL · Acquired Mar 2020</span>
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 }}>Optimal Close</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#10b981' }}>Q3 2026</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: '20px 32px', maxWidth: 1100 }}>
+
+        {/* ═══════════════════════════════════════════════════
+            THESIS BANNER
+        ═══════════════════════════════════════════════════ */}
+        <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', border: '1px solid #334155', borderRadius: 10, padding: '20px 24px', marginBottom: 24 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#38bdf8', letterSpacing: 0.5, marginBottom: 8 }}>THE EXIT THESIS</div>
+          <div style={{ fontSize: 15, lineHeight: 1.6, color: '#cbd5e1' }}>
+            Two forces define the exit window: <span style={{ color: '#f59e0b', fontWeight: 700 }}>supply trough</span> (rent growth peaks before new units deliver) 
+            and <span style={{ color: '#38bdf8', fontWeight: 700 }}>falling rates</span> (buyer affordability expands, cap rates compress).
+            The window where both align dictates everything downstream — which debt to originate, how to structure equity, and when to list.
+          </div>
+          <div style={{ display: 'flex', gap: 32, marginTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 2, background: '#f59e0b' }} />
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>Supply trough → Rent growth peaks → <strong style={{ color: '#f59e0b' }}>sell before deliveries</strong></span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 12, height: 12, borderRadius: 2, background: '#38bdf8' }} />
+              <span style={{ fontSize: 12, color: '#94a3b8' }}>Rates falling → Buyers afford more → <strong style={{ color: '#38bdf8' }}>cap rates compress</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════
+            DRIVER 1: SUPPLY TIMELINE
+        ═══════════════════════════════════════════════════ */}
+        <SectionHeader 
+          icon={<Building size={16} />}
+          title="DRIVER 1 — Supply Pipeline vs Rent Growth" 
+          subtitle="Sell while rent growth is positive — before the supply wave kills it"
+          expanded={expandedSection === 'supply'}
+          onToggle={() => toggle('supply')}
+          color="#f59e0b"
+        />
+        {expandedSection === 'supply' && (
+          <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '20px 24px', marginBottom: 8 }}>
+            <svg width={chartW} height={chartH + 10} style={{ display: 'block', margin: '0 auto' }}>
+              {/* Window highlight */}
+              <rect 
+                x={padL + WINDOW_START * barW} 
+                y={padT - 4} 
+                width={(WINDOW_END - WINDOW_START + 1) * barW} 
+                height={innerH + 8} 
+                fill="#10b98120" stroke="#10b981" strokeWidth={1} strokeDasharray="4,3" rx={4}
+              />
+              <text x={padL + ((WINDOW_START + WINDOW_END + 1) / 2) * barW} y={padT - 8} textAnchor="middle" fill="#10b981" fontSize={10} fontWeight={700}>EXIT WINDOW</text>
+
+              {/* Supply bars */}
+              {SUPPLY_DELIVERING.map((v, i) => {
+                if (v === 0) return null;
+                const h = (v / maxSupply) * innerH;
+                return (
+                  <g key={`bar-${i}`}>
+                    <rect x={scaleX(i) - barW * 0.3} y={padT + innerH - h} width={barW * 0.6} height={h} fill="#f59e0b40" stroke="#f59e0b" strokeWidth={1} rx={2} />
+                    <text x={scaleX(i)} y={padT + innerH - h - 5} textAnchor="middle" fill="#f59e0b" fontSize={9} fontWeight={600}>{v}</text>
+                  </g>
+                );
+              })}
+
+              {/* Rent growth line */}
+              <path d={rentPath} fill="none" stroke="#10b981" strokeWidth={2.5} />
+              {RENT_GROWTH.map((v, i) => (
+                <circle key={`rg-${i}`} cx={scaleX(i)} cy={scaleY(v, rentMin, rentMax)} r={3} fill={v >= 0 ? '#10b981' : '#ef4444'} />
+              ))}
+
+              {/* Zero line for rent growth */}
+              <line x1={padL} y1={scaleY(0, rentMin, rentMax)} x2={chartW - padR} y2={scaleY(0, rentMin, rentMax)} stroke="#475569" strokeWidth={1} strokeDasharray="3,3" />
+              <text x={padL - 4} y={scaleY(0, rentMin, rentMax) + 3} textAnchor="end" fill="#64748b" fontSize={9}>0%</text>
+
+              {/* X axis labels */}
+              {QUARTERS.map((q, i) => (
+                <text key={q} x={scaleX(i)} y={chartH + 4} textAnchor="middle" fill="#64748b" fontSize={9}>{q}</text>
+              ))}
+
+              {/* Selected scenario marker */}
+              <line x1={scaleX(sel.qIdx)} y1={padT} x2={scaleX(sel.qIdx)} y2={padT + innerH} stroke={sel.color} strokeWidth={2} strokeDasharray="5,3" />
+              <circle cx={scaleX(sel.qIdx)} cy={padT - 2} r={4} fill={sel.color} />
+
+              {/* Legend */}
+              <rect x={chartW - 200} y={padT + 2} width={10} height={10} fill="#f59e0b40" stroke="#f59e0b" strokeWidth={1} rx={1} />
+              <text x={chartW - 186} y={padT + 11} fill="#94a3b8" fontSize={9}>Units Delivering</text>
+              <line x1={chartW - 200} y1={padT + 22} x2={chartW - 190} y2={padT + 22} stroke="#10b981" strokeWidth={2.5} />
+              <text x={chartW - 186} y={padT + 25} fill="#94a3b8" fontSize={9}>Rent Growth %</text>
+            </svg>
+            <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
+              <MiniStat label="Units Delivering 12mo" value="350" sublabel="Q3 26 = biggest wave" color="#f59e0b" />
+              <MiniStat label="Current Rent Growth" value="4.1%" sublabel="Decelerating from 8.7% peak" color="#10b981" />
+              <MiniStat label="Months Until Negative" value="~18" sublabel="Rent growth goes negative Q1 27" color="#ef4444" />
+              <MiniStat label="Absorption Rate" value="42/mo" sublabel="504 annually vs 920 delivering" color="#64748b" />
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════
+            DRIVER 2: RATE ENVIRONMENT
+        ═══════════════════════════════════════════════════ */}
+        <SectionHeader 
+          icon={<TrendingDown size={16} />}
+          title="DRIVER 2 — Rate Trajectory" 
+          subtitle="Falling rates expand buyer pool and compress cap rates"
+          expanded={expandedSection === 'rates'}
+          onToggle={() => toggle('rates')}
+          color="#38bdf8"
+        />
+        {expandedSection === 'rates' && (
+          <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '20px 24px', marginBottom: 8 }}>
+            <svg width={chartW} height={chartH + 10} style={{ display: 'block', margin: '0 auto' }}>
+              {/* Window highlight */}
+              <rect 
+                x={padL + WINDOW_START * barW} 
+                y={padT - 4} 
+                width={(WINDOW_END - WINDOW_START + 1) * barW} 
+                height={innerH + 8} 
+                fill="#10b98120" stroke="#10b981" strokeWidth={1} strokeDasharray="4,3" rx={4}
+              />
+              <text x={padL + ((WINDOW_START + WINDOW_END + 1) / 2) * barW} y={padT - 8} textAnchor="middle" fill="#10b981" fontSize={10} fontWeight={700}>EXIT WINDOW</text>
+
+              {/* Rate line */}
+              <path d={ratePath} fill="none" stroke="#38bdf8" strokeWidth={2.5} />
+              {RATES.map((v, i) => (
+                <circle key={`r-${i}`} cx={scaleX(i)} cy={scaleY(v, rateMin, rateMax)} r={3} fill="#38bdf8" />
+              ))}
+
+              {/* Y axis */}
+              {[rateMin, (rateMin + rateMax) / 2, rateMax].map((v) => (
+                <g key={v}>
+                  <line x1={padL} y1={scaleY(v, rateMin, rateMax)} x2={chartW - padR} y2={scaleY(v, rateMin, rateMax)} stroke="#1f2937" strokeWidth={1} />
+                  <text x={padL - 4} y={scaleY(v, rateMin, rateMax) + 3} textAnchor="end" fill="#64748b" fontSize={9}>{v.toFixed(1)}%</text>
+                </g>
+              ))}
+
+              {/* X axis */}
+              {QUARTERS.map((q, i) => (
+                <text key={q} x={scaleX(i)} y={chartH + 4} textAnchor="middle" fill="#64748b" fontSize={9}>{q}</text>
+              ))}
+
+              {/* Scenario marker */}
+              <line x1={scaleX(sel.qIdx)} y1={padT} x2={scaleX(sel.qIdx)} y2={padT + innerH} stroke={sel.color} strokeWidth={2} strokeDasharray="5,3" />
+            </svg>
+            <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
+              <MiniStat label="Current 10yr Treasury" value="4.15%" sublabel="Down from 4.35% peak" color="#38bdf8" />
+              <MiniStat label="Projected at Exit" value="3.65%" sublabel="50bps drop = more buyer leverage" color="#10b981" />
+              <MiniStat label="Cap Spread" value="77 bps" sublabel="vs 185 bps historical avg" color="#f59e0b" />
+              <MiniStat label="Refi Rate (Agency)" value="5.85%" sublabel="vs 4.25% current loan" color="#ef4444" />
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════
+            THE EXIT WINDOW (convergence)
+        ═══════════════════════════════════════════════════ */}
+        <SectionHeader 
+          icon={<Calendar size={16} />}
+          title="EXIT WINDOW — Where Both Drivers Converge" 
+          subtitle="The overlap zone dictates everything downstream"
+          expanded={expandedSection === 'window'}
+          onToggle={() => toggle('window')}
+          color="#10b981"
+          active
+        />
+        {expandedSection === 'window' && (
+          <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '20px 24px', marginBottom: 8 }}>
+            {/* Scenario selector */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+              {scenarios.map((s, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSelectedScenario(i)}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    background: selectedScenario === i ? `${s.color}18` : '#0f172a',
+                    border: `2px solid ${selectedScenario === i ? s.color : '#1e293b'}`,
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, color: s.color, letterSpacing: 0.5, marginBottom: 4 }}>{s.label}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>{s.quarter}</div>
+                  <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>{s.irr}% IRR · {s.multiple}x</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Selected scenario detail */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {/* Left: Financial outcome */}
+              <div style={{ background: '#0f172a', borderRadius: 8, padding: 16, border: '1px solid #1e293b' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' }}>Financial Outcome</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <NumBlock label="Exit Cap Rate" value={`${sel.exitCap}%`} />
+                  <NumBlock label="Gross Value" value={`$${(sel.grossValue / 1e6).toFixed(1)}M`} />
+                  <NumBlock label="Net Proceeds" value={`$${(sel.netProceeds / 1e6).toFixed(1)}M`} highlight />
+                  <NumBlock label="Prepay Penalty" value={sel.prepayPenalty ? `$${(sel.prepayPenalty / 1e3).toFixed(0)}K` : 'None'} good={!sel.prepayPenalty} />
+                </div>
+                <div style={{ marginTop: 12, display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1, background: `${sel.color}15`, borderRadius: 6, padding: '8px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: sel.color }}>{sel.irr}%</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>IRR</div>
+                  </div>
+                  <div style={{ flex: 1, background: `${sel.color}15`, borderRadius: 6, padding: '8px 12px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: sel.color }}>{sel.multiple}x</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>Equity Multiple</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: What this means for capital structure */}
+              <div style={{ background: '#0f172a', borderRadius: 8, padding: 16, border: '1px solid #1e293b' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' }}>Capital Structure Implication</div>
+                
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <Lock size={13} color="#38bdf8" />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#38bdf8' }}>DEBT MATCH</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>{sel.debtMatch}</div>
+                </div>
+                
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                    <DollarSign size={13} color="#a78bfa" />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#a78bfa' }}>EQUITY IMPACT</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>{sel.equityNote}</div>
+                </div>
+
+                <div style={{ background: `${sel.color}10`, border: `1px solid ${sel.color}30`, borderRadius: 6, padding: '10px 12px', marginTop: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <AlertTriangle size={12} color={sel.color} />
+                    <span style={{ fontSize: 11, fontWeight: 700, color: sel.color }}>KEY RISK</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>{sel.risk}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════
+            CAUSAL FLOW: Window → Debt → Equity
+        ═══════════════════════════════════════════════════ */}
+        <SectionHeader 
+          icon={<ArrowDown size={16} />}
+          title="CAPITAL STRUCTURE — Driven by Exit Window" 
+          subtitle="Debt term and equity waterfall are consequences, not inputs"
+          expanded={expandedSection === 'capital'}
+          onToggle={() => toggle('capital')}
+          color="#a78bfa"
+        />
+        {expandedSection === 'capital' && (
+          <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '20px 24px', marginBottom: 8 }}>
+            {/* Causal chain visual */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 24, justifyContent: 'center' }}>
+              <CausalBox color="#f59e0b" label="Low Supply" sublabel="Rent growth still positive" />
+              <ChainArrow />
+              <CausalBox color="#10b981" label="Exit Q3 2026" sublabel="3.5 year hold" />
+              <ChainArrow />
+              <CausalBox color="#38bdf8" label="5yr Fixed Debt" sublabel="Penalty-free at Month 36" />
+              <ChainArrow />
+              <CausalBox color="#a78bfa" label="20% Pref + 2-Tier" sublabel="GP promotes at 4.3x" />
+            </div>
+
+            {/* Capital stack */}
+            <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 20 }}>
+              {/* Stack visual */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' }}>Capital Stack</div>
+                <StackBar label="Senior Debt" pct={65} amount="$18.5M" color="#38bdf8" sublabel="5yr Fixed, 4.25%" />
+                <StackBar label="LP Equity" pct={28} amount="$8.0M" color="#a78bfa" sublabel="20% Pref, 80/20 split" />
+                <StackBar label="GP Equity" pct={7} amount="$2.0M" color="#10b981" sublabel="Co-invest + promote" />
+              </div>
+
+              {/* Why this structure */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' }}>Why This Structure Matches the Exit Window</div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <ReasonRow 
+                    icon={<Lock size={14} color="#38bdf8" />}
+                    title="5yr fixed-rate agency debt"
+                    reason="Prepayment penalty burns off at Month 36 → exit at Month 42 is penalty-free. Shorter term (3yr bridge) would have saved 15bps but carried refi risk if window shifts. Longer term (7yr) wastes rate lock you won't use."
+                  />
+                  <ReasonRow 
+                    icon={<DollarSign size={14} color="#a78bfa" />}
+                    title="20% pref with 2-tier promote"
+                    reason="3.5yr hold at 28.4% IRR clears the 20% pref + first promote tier (8% → 20% hurdle). A longer hold (5yr+) at lower IRR might not clear the second tier — equity terms should match the projected hold period."
+                  />
+                  <ReasonRow 
+                    icon={<TrendingUp size={14} color="#10b981" />}
+                    title="65% LTV (not 75%)"
+                    reason="Lower leverage preserves DSCR through the rent growth deceleration period. If supply delivers faster than expected and rent growth drops 200bps, 65% LTV stays above 1.25x DSCR. At 75%, you'd breach covenants."
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Mismatch warnings */}
+            <div style={{ marginTop: 20, background: '#1c1917', border: '1px solid #78350f', borderRadius: 8, padding: '14px 16px' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', letterSpacing: 1, marginBottom: 8 }}>
+                STRUCTURE MISMATCHES TO AVOID
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <MismatchCard 
+                  bad="10yr Fixed" 
+                  why="6.5 years of unused rate lock = ~$180K in wasted spread. Defeasance penalty at Year 3.5 could exceed $400K."
+                />
+                <MismatchCard 
+                  bad="3yr Bridge at 8.75%" 
+                  why="If exit window shifts 6 months, you're refinancing into a higher rate. Bridge saves 15bps/yr but adds refi risk worth ~$240K NPV."
+                />
+                <MismatchCard 
+                  bad="15% Pref Waterfall" 
+                  why="At 28.4% IRR the promote tiers are worth $1.2M to GP. A 15% pref (vs 20%) gives LPs less protection if returns compress to 22%."
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════
+            DECISION TRIGGERS (simplified)
+        ═══════════════════════════════════════════════════ */}
+        <SectionHeader 
+          icon={<AlertTriangle size={16} />}
+          title="MONITORING — What Changes the Window" 
+          subtitle="Only track what could shift the exit timing"
+          expanded={expandedSection === 'triggers'}
+          onToggle={() => toggle('triggers')}
+          color="#ef4444"
+        />
+        {expandedSection === 'triggers' && (
+          <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 8, padding: '20px 24px', marginBottom: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#10b981', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+                  ACCELERATE EXIT IF:
+                </div>
+                <TriggerRow text="Major competitor (350-unit) pulls delivery forward to Q2 2026" />
+                <TriggerRow text="Rent growth drops below 2% for 2 consecutive months" />
+                <TriggerRow text="Permit activity spikes (new 200+ unit project in 2-mile radius)" />
+                <TriggerRow text="10yr Treasury drops below 3.5% (pull forward to capture pricing)" />
+              </div>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+                  DELAY OR HOLD IF:
+                </div>
+                <TriggerRow text="Transaction velocity drops >30% QoQ (no buyer pool)" />
+                <TriggerRow text="10yr Treasury reverses above 4.5% (buyer affordability collapses)" />
+                <TriggerRow text="Competitor delivery delays push supply wave past Q1 2028" />
+                <TriggerRow text="Rent growth re-accelerates above 6% (more upside to capture)" />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-components ──────────────────────────────────────────
+
+function SectionHeader({ icon, title, subtitle, expanded, onToggle, color, active }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '14px 16px', marginTop: 8, marginBottom: expanded ? 0 : 0,
+        background: expanded ? '#111827' : '#0f172a',
+        border: `1px solid ${expanded ? color + '40' : '#1e293b'}`,
+        borderBottom: expanded ? 'none' : `1px solid ${expanded ? color + '40' : '#1e293b'}`,
+        borderRadius: expanded ? '8px 8px 0 0' : 8,
+        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ color }}>{icon}</div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>{title}</div>
+          <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>{subtitle}</div>
+        </div>
+      </div>
+      {expanded ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+    </button>
+  );
+}
+
+function MiniStat({ label, value, sublabel, color }) {
+  return (
+    <div style={{ flex: 1, background: '#0f172a', borderRadius: 6, padding: '10px 12px', border: '1px solid #1e293b' }}>
+      <div style={{ fontSize: 10, color: '#64748b', letterSpacing: 0.5, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{sublabel}</div>
+    </div>
+  );
+}
+
+function NumBlock({ label, value, highlight, good }) {
+  return (
+    <div style={{ background: highlight ? '#10b98115' : '#111827', borderRadius: 6, padding: '8px 10px', border: `1px solid ${highlight ? '#10b98130' : '#1f2937'}` }}>
+      <div style={{ fontSize: 10, color: '#64748b', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: highlight ? '#10b981' : good ? '#10b981' : '#f8fafc' }}>{value}</div>
+    </div>
+  );
+}
+
+function CausalBox({ color, label, sublabel }) {
+  return (
+    <div style={{ 
+      background: `${color}10`, border: `1px solid ${color}40`, borderRadius: 8, 
+      padding: '10px 14px', textAlign: 'center', minWidth: 140 
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color }}>{label}</div>
+      <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2 }}>{sublabel}</div>
+    </div>
+  );
+}
+
+function ChainArrow() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', padding: '0 4px' }}>
+      <ArrowRight size={18} color="#475569" />
+    </div>
+  );
+}
+
+function StackBar({ label, pct, amount, color, sublabel }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+        <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{label} ({pct}%)</span>
+        <span style={{ color: '#94a3b8' }}>{amount}</span>
+      </div>
+      <div style={{ background: '#1e293b', borderRadius: 4, height: 22, overflow: 'hidden', position: 'relative' }}>
+        <div style={{ 
+          width: `${pct}%`, height: '100%', background: `${color}40`, borderRadius: 4,
+          display: 'flex', alignItems: 'center', paddingLeft: 8
+        }}>
+          <span style={{ fontSize: 10, color, fontWeight: 600 }}>{sublabel}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReasonRow({ icon, title, reason }) {
+  return (
+    <div style={{ background: '#0f172a', borderRadius: 6, padding: '10px 12px', border: '1px solid #1e293b' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        {icon}
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>{title}</span>
+      </div>
+      <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>{reason}</div>
+    </div>
+  );
+}
+
+function MismatchCard({ bad, why }) {
+  return (
+    <div style={{ background: '#0f172a', borderRadius: 6, padding: '10px 12px', border: '1px solid #78350f40' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <AlertTriangle size={12} /> {bad}
+      </div>
+      <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>{why}</div>
+    </div>
+  );
+}
+
+function TriggerRow({ text }) {
+  return (
+    <div style={{ fontSize: 12, color: '#cbd5e1', padding: '6px 0', borderBottom: '1px solid #1f2937', lineHeight: 1.4 }}>
+      {text}
+    </div>
+  );
+}

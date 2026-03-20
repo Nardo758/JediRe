@@ -185,20 +185,6 @@ interface DealStoreActions {
    */
   updateZoningOutput: (output: DealContext['zoningOutput']) => void;
 
-  // ─── CORPORATE HEALTH (M33) ──────────────────────────────
-  corporateHealth: {
-    schi: number | null;
-    divergence: number | null;
-    signal: string | null;
-    reHealth: number | null;
-    herfindahl: number | null;
-    minChs: number | null;
-    topEmployerShare: number | null;
-    loading: boolean;
-  };
-  fetchCorporateHealth: (dealId: string) => Promise<void>;
-  fetchSubmarketHealth: (submarketId: number) => Promise<void>;
-
   // ─── DEAL STAGE ───────────────────────────────────────────
   /** Advance deal to next stage */
   setStage: (stage: DealStage) => void;
@@ -811,71 +797,6 @@ export const useDealStore = create<DealStore>()(
     updateRisk: (updates) => set((s) => ({ risk: { ...s.risk, ...updates } })),
     updateZoning: (updates) => set((s) => ({ zoning: { ...s.zoning, ...updates } })),
     updateZoningOutput: (output) => set({ zoningOutput: output }),
-
-    // ─── CORPORATE HEALTH (M33) ─────────────────────────────
-
-    corporateHealth: {
-      schi: null,
-      divergence: null,
-      signal: null,
-      reHealth: null,
-      herfindahl: null,
-      minChs: null,
-      topEmployerShare: null,
-      loading: false,
-    },
-
-    fetchCorporateHealth: async (dealId: string) => {
-      set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: true } }));
-      try {
-        const res = await apiClient.get(`/api/v1/corporate-health/deal/${dealId}`);
-        const d = res.data?.data;
-        if (d) {
-          set({
-            corporateHealth: {
-              schi: d.weightedSCHI ?? null,
-              divergence: d.divergence ?? null,
-              signal: d.submarkets?.[0]?.signal ?? null,
-              reHealth: null,
-              herfindahl: d.herfindahl ?? null,
-              minChs: d.minChs ?? null,
-              topEmployerShare: d.topEmployerShare ?? null,
-              loading: false,
-            },
-          });
-        } else {
-          set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
-        }
-      } catch {
-        set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
-      }
-    },
-
-    fetchSubmarketHealth: async (submarketId: number) => {
-      set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: true } }));
-      try {
-        const res = await apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`);
-        const d = res.data?.data;
-        if (d) {
-          set({
-            corporateHealth: {
-              schi: d.schi ?? null,
-              divergence: d.divergence ?? null,
-              signal: d.signal ?? null,
-              reHealth: d.reHealth ?? null,
-              herfindahl: d.herfindahl ?? null,
-              minChs: null,
-              topEmployerShare: null,
-              loading: false,
-            },
-          });
-        } else {
-          set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
-        }
-      } catch {
-        set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
-      }
-    },
 
     // ─── STAGE MANAGEMENT ───────────────────────────────────
 

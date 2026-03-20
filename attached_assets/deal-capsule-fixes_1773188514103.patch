@@ -1,0 +1,272 @@
+diff --git a/frontend/src/components/deal/sections/DebtTab.tsx b/frontend/src/components/deal/sections/DebtTab.tsx
+index 849ce5d0..b32db851 100644
+--- a/frontend/src/components/deal/sections/DebtTab.tsx
++++ b/frontend/src/components/deal/sections/DebtTab.tsx
+@@ -123,7 +123,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
+   const stack = liveStack || defaultCapitalStack;
+ 
+   const exitConfig = useMemo<ExitStrategyConfig>(() => ({
+-    baseNOI: financial?.noi || 3000000,
++    baseNOI: financial?.noi || 0,
+     equityInvested: capitalStructure?.totalEquity || stack?.metrics?.totalEquity || 8000000,
+     loanBalance: capitalStructure?.loanBalance?.[0] ?? stack?.metrics?.totalDebt ?? 19200000,
+     dealStatus: dealStatus || 'pipeline',
+@@ -148,7 +148,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
+           strategy: selectedStrategy,
+           layers: defaultCapitalStack.layers,
+           uses: defaultCapitalStack.uses,
+-          noi: financial?.noi || 3000000,
++          noi: financial?.noi || 0,
+           propertyValue: defaultCapitalStack.uses.acquisitionPrice,
+         });
+         if (res.data?.stack) {
+@@ -508,7 +508,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
+       const res = await apiClient.post(`${API_BASE}/optimal-strategy`, {
+         propertyType: deal.propertyType || 'multifamily',
+         propertyValue: defaultCapitalStack.uses.acquisitionPrice,
+-        noi: financial?.noi || 3000000,
++        noi: financial?.noi || 0,
+         holdPeriod: template.holdPeriod,
+         strategy: selectedStrategy,
+         loanAmount: totalDebt,
+diff --git a/frontend/src/components/deal/sections/FinancialDashboard.tsx b/frontend/src/components/deal/sections/FinancialDashboard.tsx
+index 7d8f15e4..2d6d2169 100644
+--- a/frontend/src/components/deal/sections/FinancialDashboard.tsx
++++ b/frontend/src/components/deal/sections/FinancialDashboard.tsx
+@@ -128,16 +128,16 @@ function buildModelFromSummary(summary: any): any {
+   const marketContext = summary?.marketContext || {};
+   const capitalStructure = summary?.capitalOptions || summary?.capitalStructure || {};
+ 
+-  const budget = deal.budget || deal.deal_data?.budget || 15000000;
+-  const units = deal.target_units || deal.deal_data?.target_units || 200;
++  const budget = deal.budget || deal.deal_data?.budget || deal.purchasePrice || deal.purchase_price || 0;
++  const units = deal.target_units || deal.deal_data?.target_units || deal.units || deal.targetUnits || 0;
+   const city = deal.city || '';
+   const state = deal.state || '';
+ 
+   const assumptions = latestModel?.assumptions || {};
+   const results = latestModel?.results || {};
+ 
+-  const avgRent = marketContext?.avg_rent || assumptions?.revenue?.rentGrowth?.[0] ? undefined : 1800;
+-  const monthlyRent = (assumptions?.dealInfo?.totalUnits || units) * (avgRent || assumptions?.unitMix?.[0]?.marketRent || 1970);
++  const avgRent = marketContext?.avg_rent || assumptions?.unitMix?.[0]?.marketRent || 0;
++  const monthlyRent = (assumptions?.dealInfo?.totalUnits || units) * (avgRent || 0);
+ 
+   const holdYears = strategy?.hold_period || assumptions?.holdPeriod || 7;
+   const exitCap = strategy?.exit_cap || assumptions?.disposition?.exitCapRate || 0.055;
+@@ -217,7 +217,7 @@ function buildModelFromSummary(summary: any): any {
+     },
+     revenue: {
+       currentMonthlyRent: monthlyRent,
+-      currentAvgRentOccupied: avgRent || 1970,
++      currentAvgRentOccupied: avgRent || 0,
+       currentAvgMarketRent: marketContext?.avg_rent || (avgRent ? avgRent * 1.05 : 2076),
+       currentOccupancy: marketContext?.occupancy_rate || 0.93,
+       stabilizedOccupancy: 0.95,
+diff --git a/frontend/src/components/deal/sections/OverviewSection.tsx b/frontend/src/components/deal/sections/OverviewSection.tsx
+index f1a71a65..53724ea8 100644
+--- a/frontend/src/components/deal/sections/OverviewSection.tsx
++++ b/frontend/src/components/deal/sections/OverviewSection.tsx
+@@ -76,8 +76,8 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
+   const [analysisComplete, setAnalysisComplete] = useState(false);
+   const [jediScoreData, setJediScoreData] = useState<JEDIScoreData>(mockJediScore);
+   const [signals, setSignals] = useState<SignalScore[]>(mockSignalScores);
+-  const [strategyVerdict] = useState<StrategyVerdictData>(mockStrategyVerdict);
+-  const [riskAlert] = useState<RiskAlertData>(mockRiskAlert);
++  const [strategyVerdict, setStrategyVerdict] = useState<StrategyVerdictData>(mockStrategyVerdict);
++  const [riskAlert, setRiskAlert] = useState<RiskAlertData>(mockRiskAlert);
+   const [scoreLoading, setScoreLoading] = useState(false);
+   const [dataSource, setDataSource] = useState<'loading' | 'live' | 'sample'>('loading');
+   const [viewMode, setViewMode] = useState<'existing' | 'development'>('existing');
+@@ -164,6 +164,58 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
+     onStrategySelected?.(strategyId);
+   }, [onStrategySelected]);
+ 
++  // Derive strategyVerdict from live analysis results
++  useEffect(() => {
++    if (!strategyResults?.strategies?.length) return;
++    const strategies = strategyResults.strategies;
++    const recId = strategyResults.recommendedStrategyId;
++    const recommended = strategies.find(s => s.id === recId) || strategies[0];
++    const sorted = [...strategies].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
++    const secondBest = sorted.find(s => s.id !== recommended.id);
++    const gap = secondBest ? Math.round(recommended.confidence - secondBest.confidence) : 0;
++
++    setStrategyVerdict({
++      recommended: recommended.id,
++      recommendedLabel: recommended.name,
++      score: Math.round(recommended.confidence),
++      secondBest: secondBest?.id || '',
++      secondBestLabel: secondBest?.name || '',
++      secondBestScore: secondBest ? Math.round(secondBest.confidence) : 0,
++      arbitrageGap: gap,
++      isArbitrage: gap >= 10,
++      roiEstimate: recommended.projectedROI ? `${recommended.projectedROI.toFixed(1)}%` : '—',
++      roiLabel: 'Projected ROI',
++      insight: recommended.description || `${recommended.name} scores highest with ${Math.round(recommended.confidence)}/100 confidence.`,
++    });
++  }, [strategyResults]);
++
++  // Derive riskAlert from live signal scores (supply signal = risk proxy)
++  useEffect(() => {
++    if (dataSource !== 'live' || !signals.length) return;
++    const supplySignal = signals.find(s => s.id === 'supply');
++    const riskSignal = signals.find(s => s.id === 'risk');
++    const worstSignal = [...signals].sort((a, b) => a.score - b.score)[0];
++    if (!worstSignal) return;
++
++    const score = worstSignal.score;
++    const severity: 'low' | 'medium' | 'high' = score < 40 ? 'high' : score < 60 ? 'medium' : 'low';
++
++    setRiskAlert({
++      show: score < 70,
++      category: worstSignal.name,
++      score: Math.round(score),
++      maxScore: 100,
++      detail: worstSignal.description,
++      mitigationAvailable: severity !== 'high',
++      mitigationText: severity === 'medium'
++        ? `${worstSignal.name} signal at ${Math.round(score)}/100 — monitor closely.`
++        : severity === 'high'
++        ? `Critical: ${worstSignal.name} signal below threshold.`
++        : '',
++      severity,
++    });
++  }, [signals, dataSource]);
++
+   const navigateToTab = useCallback((tabId: string) => {
+     onTabChange?.(tabId);
+   }, [onTabChange]);
+diff --git a/frontend/src/components/deal/sections/ProFormaTab.tsx b/frontend/src/components/deal/sections/ProFormaTab.tsx
+index 6e6c505d..39e998ef 100644
+--- a/frontend/src/components/deal/sections/ProFormaTab.tsx
++++ b/frontend/src/components/deal/sections/ProFormaTab.tsx
+@@ -136,30 +136,29 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
+ 
+   const [dealName, setDealName] = useState(deal?.name || 'Untitled Deal');
+   const [totalUnitsManual, setTotalUnitsManual] = useState<number | null>(null);
+-  const [netRentableSF, setNetRentableSF] = useState(180000);
+-  const [vintage, setVintage] = useState(2020);
+-  const [address, setAddress] = useState(deal?.address || '');
+-  const [city, setCity] = useState(deal?.city || '');
+-  const [state, setState] = useState(deal?.state || '');
++  const [netRentableSF, setNetRentableSF] = useState(deal?.netRentableSF || deal?.total_sqft || deal?.deal_data?.total_sqft || 0);
++  const [vintage, setVintage] = useState(deal?.yearBuilt || deal?.year_built || deal?.deal_data?.year_built || 0);
++  const [address, setAddress] = useState(deal?.address || deal?.property_address || '');
++  const [city, setCity] = useState(deal?.city || deal?.deal_data?.city || '');
++  const [state, setState] = useState(deal?.state || deal?.deal_data?.state || '');
+ 
++  // Initialize unit mix — empty rows that user must fill, not fake data
+   const [unitMix, setUnitMix] = useState<UnitMixRow[]>([
+-    { floorPlan: 'Studio', unitSize: 550, beds: 0, units: 30, occupied: 28, vacant: 2, marketRent: 1350, inPlaceRent: 1300 },
+-    { floorPlan: '1BR/1BA', unitSize: 750, beds: 1, units: 80, occupied: 75, vacant: 5, marketRent: 1550, inPlaceRent: 1480 },
+-    { floorPlan: '2BR/2BA', unitSize: 1050, beds: 2, units: 70, occupied: 65, vacant: 5, marketRent: 1900, inPlaceRent: 1820 },
+-    { floorPlan: '3BR/2BA', unitSize: 1350, beds: 3, units: 20, occupied: 18, vacant: 2, marketRent: 2400, inPlaceRent: 2300 },
++    { floorPlan: '1BR/1BA', unitSize: 0, beds: 1, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
++    { floorPlan: '2BR/2BA', unitSize: 0, beds: 2, units: 0, occupied: 0, vacant: 0, marketRent: 0, inPlaceRent: 0 },
+   ]);
+ 
+   const totalUnits = totalUnitsManual ?? unitMix.reduce((s, u) => s + u.units, 0);
+   const setTotalUnits = (v: number) => setTotalUnitsManual(v);
+ 
+-  const [purchasePrice, setPurchasePrice] = useState(30000000);
+-  const [capRate, setCapRate] = useState(0.05);
++  const [purchasePrice, setPurchasePrice] = useState(deal?.purchasePrice || deal?.purchase_price || deal?.budget || deal?.deal_data?.asking_price || 0);
++  const [capRate, setCapRate] = useState(deal?.capRate ? deal.capRate / 100 : deal?.deal_data?.broker_cap_rate ? deal.deal_data.broker_cap_rate / 100 : 0);
+   const [closingCosts, setClosingCosts] = useState<Record<string, number>>({
+-    'Misc/Broker': 50000,
+-    'Transfer Tax': 75000,
+-    'Escrows': 100000,
+-    'Rate Cap': 150000,
+-    'Legal/Title': 125000,
++    'Misc/Broker': 0,
++    'Transfer Tax': 0,
++    'Escrows': 0,
++    'Rate Cap': 0,
++    'Legal/Title': 0,
+   });
+   const [exitCapRate, setExitCapRate] = useState(0.055);
+   const [sellingCosts, setSellingCosts] = useState(0.02);
+@@ -173,18 +172,26 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
+ 
+   const [expenses, setExpenses] = useState<Record<string, ExpenseItem>>({ ...DEFAULT_EXPENSES });
+ 
+-  const [loanAmount, setLoanAmount] = useState(21000000);
++  const [loanAmount, setLoanAmount] = useState(deal?.loanAmount || deal?.loan_amount || 0);
+   const [loanType, setLoanType] = useState('Fixed');
+-  const [interestRate, setInterestRate] = useState(0.055);
++  const [interestRate, setInterestRate] = useState(0);
+   const [spread, setSpread] = useState(0);
+   const [loanTerm, setLoanTerm] = useState(10);
+   const [amortization, setAmortization] = useState(30);
+-  const [ioPeriod, setIoPeriod] = useState(24);
++  const [ioPeriod, setIoPeriod] = useState(0);
+   const [originationFee, setOriginationFee] = useState(0.01);
+   const [rateCapCost, setRateCapCost] = useState(0);
+   const [prepayPenalty, setPrepayPenalty] = useState(0.01);
+   const [debtSource, setDebtSource] = useState<string | null>(null);
+ 
++  // Initialize total units from deal if available
++  useEffect(() => {
++    const dealUnits = deal?.units || deal?.targetUnits || deal?.target_units || deal?.deal_data?.units || 0;
++    if (dealUnits > 0 && totalUnitsManual === null) {
++      setTotalUnitsManual(dealUnits);
++    }
++  }, [deal]);
++
+   useEffect(() => {
+     if (debtTerms && debtTerms.source && debtTerms.lastUpdated > lastAppliedTimestamp.current) {
+       lastAppliedTimestamp.current = debtTerms.lastUpdated;
+@@ -445,12 +452,29 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
+           landCost: summary.landCost ?? (modelType === 'development' ? landCost : 0),
+           hardCosts: summary.hardCosts ?? hardCostsVal,
+           softCosts: summary.softCosts ?? softCostsVal,
+-          noi: summary.noi ?? summary.year1NOI ?? 0,
++          noi: summary.noi ?? summary.year1NOI ?? summary.noiYear1 ?? 0,
+           irr: summary.irr ?? 0,
+           equityMultiple: summary.equityMultiple ?? 0,
+-          cashOnCash: summary.cashOnCash ?? 0,
++          cashOnCash: summary.cashOnCash ?? (Array.isArray(summary.cashOnCash) ? summary.cashOnCash[0] : 0),
++          purchasePrice,
++          totalUnits,
++          goingInCapRate: capRate,
++          exitCapRate,
++          stabilizedOccupancy,
++          dscr: summary.dscr ?? (Array.isArray(summary.dscr) ? summary.dscr[0] : 0),
++          debtService: summary.debtService ?? summary.annualDebtService ?? 0,
++          yieldOnCost: summary.yieldOnCost ?? 0,
+         });
+-        emitEvent({ source: 'ProFormaTab', type: 'financial-updated', payload: { dealId: id } });
++        emitEvent({ source: 'ProFormaTab', type: 'financial-updated', payload: {
++          dealId: id,
++          noi: summary.noi ?? summary.year1NOI ?? summary.noiYear1 ?? 0,
++          purchasePrice,
++          capRate,
++          exitCapRate,
++          stabilizedOccupancy,
++          totalUnits,
++          dscr: summary.dscr ?? 0,
++        } });
+       }
+     } catch (err: any) {
+       console.error('Model build failed:', err);
+diff --git a/frontend/src/contexts/DealModuleContext.tsx b/frontend/src/contexts/DealModuleContext.tsx
+index a1307c06..da3430ee 100644
+--- a/frontend/src/contexts/DealModuleContext.tsx
++++ b/frontend/src/contexts/DealModuleContext.tsx
+@@ -20,6 +20,15 @@ export interface FinancialState {
+   irr: number;
+   equityMultiple: number;
+   cashOnCash: number;
++  // Added: fields downstream tabs need
++  purchasePrice: number;
++  totalUnits: number;
++  goingInCapRate: number;
++  exitCapRate: number;
++  stabilizedOccupancy: number;
++  dscr: number;
++  debtService: number;
++  yieldOnCost: number;
+   lastUpdated: number;
+ }
+ 

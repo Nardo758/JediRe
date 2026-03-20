@@ -178,7 +178,6 @@ export const DealView: React.FC = () => {
             <OverviewSection 
               deal={deal} 
               onStrategySelected={handleStrategySelection}
-              geographicContext={geographicStats}
             />
           </div>
         );

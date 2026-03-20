@@ -1,67 +1,341 @@
-import type { DealType, StrategyId } from './deal-type-visibility';
+// ═══════════════════════════════════════════════════════════════════════════════
+// JEDI RE — Product Type Strategy Adaptation
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// For a given DealType × ProductType combination, determines which strategy
+// columns are available in the Strategy Arbitrage module (M08).
+//
+// Strategy availability is driven by the feasibility of each strategy for
+// the specific product type and deal type.
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import { DealType, StrategyId } from './deal-type-visibility';
+
+// ─── Product Types ──────────────────────────────────────────────────────────
 
 export type ProductType =
-  | 'mf_garden'
-  | 'mf_midrise'
-  | 'mf_highrise'
-  | 'mf_mixed_use'
-  | 'sfr'
-  | 'btrs'
-  | 'student'
-  | 'senior'
-  | 'affordable';
+  | 'mf_garden'       // Garden-style multifamily
+  | 'mf_wrap'         // Wrap parking multifamily
+  | 'mf_midrise'      // Mid-rise multifamily
+  | 'mf_highrise'     // High-rise multifamily
+  | 'mf_townhome'     // Townhomes
+  | 'office'          // Office
+  | 'retail'          // Retail
+  | 'industrial'      // Industrial/Warehouse
+  | 'hospitality'     // Hotels/Lodging
+  | 'mixed_use';      // Mixed-use
 
-interface StrategyProfile {
-  strategy: StrategyId;
-  strength: number;
-  available: boolean;
+// ─── Strategy Strength Assessment ───────────────────────────────────────────
+
+export type StrategyStrength = 'na' | 'weak' | 'moderate' | 'strong';
+
+export interface StrategyProductFit {
+  strength: StrategyStrength;
+  description: string;
 }
 
-const MATRIX: Partial<Record<DealType, Partial<Record<ProductType, Partial<Record<StrategyId, number>>>>>> = {
-  existing_acquisition: {
-    mf_garden: { value_add: 0.9, core_plus: 0.75, core: 0.6 },
-    mf_midrise: { value_add: 0.8, core_plus: 0.85, core: 0.7 },
-    mf_highrise: { core_plus: 0.8, core: 0.9, value_add: 0.6 },
-    mf_mixed_use: { value_add: 0.8, core_plus: 0.8, core: 0.65 },
-    sfr: { value_add: 0.85, core_plus: 0.6, core: 0.5 },
-    btrs: { value_add: 0.8, core_plus: 0.7, core: 0.6 },
-    student: { value_add: 0.85, core_plus: 0.7, core: 0.5 },
-    senior: { value_add: 0.75, core_plus: 0.8, core: 0.7 },
-    affordable: { value_add: 0.7, core_plus: 0.6, core: 0.8 },
+// ─── Strategy Availability by Deal Type × Product Type ──────────────────────
+
+/**
+ * Defines which strategies are available and how strong they are for each
+ * DealType × ProductType combination.
+ *
+ * Strategy strength:
+ *   - 'na': Strategy not applicable for this combination (hidden from UI)
+ *   - 'weak': Technically possible but not commonly pursued
+ *   - 'moderate': Common approach for this product type
+ *   - 'strong': Primary strategy for this product type
+ */
+export const STRATEGY_PRODUCT_MATRIX: Record<
+  DealType,
+  Record<ProductType, Record<StrategyId, StrategyProductFit>>
+> = {
+  existing: {
+    mf_garden: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'strong', description: 'Value-add play: renovate + stabilize + sell' },
+      RENTAL: { strength: 'moderate', description: 'Stabilized hold for cash flow' },
+      STR: { strength: 'weak', description: 'Less common for garden product in most markets' },
+    },
+    mf_wrap: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'strong', description: 'Value-add play: renovate + stabilize + sell' },
+      RENTAL: { strength: 'strong', description: 'Premium stabilized hold with parking upside' },
+      STR: { strength: 'weak', description: 'Possible but less common' },
+    },
+    mf_midrise: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'strong', description: 'Value-add play: renovate + stabilize + sell' },
+      RENTAL: { strength: 'strong', description: 'Stabilized hold for cash flow' },
+      STR: { strength: 'weak', description: 'Less common for midrise' },
+    },
+    mf_highrise: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'moderate', description: 'Value-add possible but capital intensive' },
+      RENTAL: { strength: 'strong', description: 'Institutional quality hold' },
+      STR: { strength: 'weak', description: 'Not suitable for highrise' },
+    },
+    mf_townhome: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'strong', description: 'Unit-by-unit or community flip' },
+      RENTAL: { strength: 'moderate', description: 'Hold for cash flow' },
+      STR: { strength: 'strong', description: 'High STR conversion potential' },
+    },
+    office: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'moderate', description: 'Value-add office repositioning' },
+      RENTAL: { strength: 'strong', description: 'Stabilized office hold' },
+      STR: { strength: 'na', description: 'Not applicable for office' },
+    },
+    retail: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'moderate', description: 'Value-add retail repositioning' },
+      RENTAL: { strength: 'strong', description: 'Net lease or stabilized hold' },
+      STR: { strength: 'na', description: 'Not applicable for retail' },
+    },
+    industrial: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'weak', description: 'Industrial flips less common' },
+      RENTAL: { strength: 'strong', description: 'Industrial holds for yield' },
+      STR: { strength: 'na', description: 'Not applicable for industrial' },
+    },
+    hospitality: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'moderate', description: 'Possible but complex repositioning' },
+      RENTAL: { strength: 'strong', description: 'Stabilized hospitality hold' },
+      STR: { strength: 'weak', description: 'Managed hotels less suitable for STR' },
+    },
+    mixed_use: {
+      BTS: { strength: 'na', description: 'Cannot build-to-sell an existing structure' },
+      FLIP: { strength: 'moderate', description: 'Mixed-use repositioning complex but possible' },
+      RENTAL: { strength: 'strong', description: 'Stabilized mixed-use hold' },
+      STR: { strength: 'weak', description: 'Residential component only' },
+    },
   },
-  new_development: {
-    mf_garden: { development: 0.9, opportunistic: 0.75 },
-    mf_midrise: { development: 0.85, opportunistic: 0.8 },
-    mf_highrise: { development: 0.75, opportunistic: 0.85 },
-    mf_mixed_use: { development: 0.8, opportunistic: 0.9 },
-    sfr: { development: 0.85, opportunistic: 0.7 },
-    btrs: { development: 0.85, opportunistic: 0.75 },
-    student: { development: 0.8, opportunistic: 0.7 },
-    senior: { development: 0.8, opportunistic: 0.7 },
-    affordable: { development: 0.9, opportunistic: 0.6 },
+
+  development: {
+    mf_garden: {
+      BTS: { strength: 'strong', description: 'Build and sell to institutional buyers' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'moderate', description: 'Build and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Less common for garden product' },
+    },
+    mf_wrap: {
+      BTS: { strength: 'strong', description: 'Build and sell to institutional buyers' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build-to-hold with premium positioning' },
+      STR: { strength: 'weak', description: 'Less common for wrap product' },
+    },
+    mf_midrise: {
+      BTS: { strength: 'strong', description: 'Build and sell to institutional buyers' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Less common for midrise' },
+    },
+    mf_highrise: {
+      BTS: { strength: 'strong', description: 'Build and sell to institutional buyer' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and stabilize for long-term hold' },
+      STR: { strength: 'na', description: 'Not suitable for highrise' },
+    },
+    mf_townhome: {
+      BTS: { strength: 'strong', description: 'Build and sell to portfolio buyers' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'moderate', description: 'Build and hold for cash flow' },
+      STR: { strength: 'strong', description: 'High STR conversion potential' },
+    },
+    office: {
+      BTS: { strength: 'strong', description: 'Build and sell office to institutional buyer' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and stabilize for hold' },
+      STR: { strength: 'na', description: 'Not applicable for office' },
+    },
+    retail: {
+      BTS: { strength: 'strong', description: 'Build and sell retail to institutional buyer' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and stabilize for hold' },
+      STR: { strength: 'na', description: 'Not applicable for retail' },
+    },
+    industrial: {
+      BTS: { strength: 'strong', description: 'Build and sell industrial to investor' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and hold for yield' },
+      STR: { strength: 'na', description: 'Not applicable for industrial' },
+    },
+    hospitality: {
+      BTS: { strength: 'strong', description: 'Build and sell hotel to institutional buyer' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Less common for new hotels' },
+    },
+    mixed_use: {
+      BTS: { strength: 'strong', description: 'Build and sell mixed-use project' },
+      FLIP: { strength: 'na', description: 'No existing asset to flip' },
+      RENTAL: { strength: 'strong', description: 'Build and stabilize mixed-use hold' },
+      STR: { strength: 'weak', description: 'Residential component only' },
+    },
   },
+
   redevelopment: {
-    mf_garden: { value_add: 0.8, opportunistic: 0.85, development: 0.75 },
-    mf_midrise: { value_add: 0.75, opportunistic: 0.9, development: 0.8 },
-    mf_highrise: { value_add: 0.7, opportunistic: 0.85, development: 0.85 },
-    mf_mixed_use: { value_add: 0.8, opportunistic: 0.9, development: 0.85 },
-    sfr: { value_add: 0.8, opportunistic: 0.75, development: 0.7 },
-    btrs: { value_add: 0.75, opportunistic: 0.8, development: 0.75 },
-    student: { value_add: 0.75, opportunistic: 0.8, development: 0.75 },
-    senior: { value_add: 0.75, opportunistic: 0.75, development: 0.8 },
-    affordable: { value_add: 0.7, opportunistic: 0.7, development: 0.85 },
+    mf_garden: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned product' },
+      FLIP: { strength: 'strong', description: 'Tear-down and rebuild for sale' },
+      RENTAL: { strength: 'moderate', description: 'Redevelop and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Less common for garden product' },
+    },
+    mf_wrap: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned product' },
+      FLIP: { strength: 'strong', description: 'Gut-rehab and sell for premium' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Less common for wrap product' },
+    },
+    mf_midrise: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned product' },
+      FLIP: { strength: 'strong', description: 'Gut-rehab and sell for premium' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Less common for midrise' },
+    },
+    mf_highrise: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned product' },
+      FLIP: { strength: 'moderate', description: 'Gut-rehab complex but possible' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize for long-term hold' },
+      STR: { strength: 'na', description: 'Not suitable for highrise' },
+    },
+    mf_townhome: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned product' },
+      FLIP: { strength: 'strong', description: 'Unit-by-unit rehab and sale' },
+      RENTAL: { strength: 'moderate', description: 'Redevelop and hold for cash flow' },
+      STR: { strength: 'strong', description: 'High STR conversion potential' },
+    },
+    office: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned office' },
+      FLIP: { strength: 'moderate', description: 'Office repositioning complex' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize for hold' },
+      STR: { strength: 'na', description: 'Not applicable for office' },
+    },
+    retail: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned retail' },
+      FLIP: { strength: 'moderate', description: 'Retail repositioning complex' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize for hold' },
+      STR: { strength: 'na', description: 'Not applicable for retail' },
+    },
+    industrial: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned industrial' },
+      FLIP: { strength: 'moderate', description: 'Industrial redevelopment possible' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and hold for yield' },
+      STR: { strength: 'na', description: 'Not applicable for industrial' },
+    },
+    hospitality: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned hotel' },
+      FLIP: { strength: 'strong', description: 'Complex but possible repositioning' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize for hold' },
+      STR: { strength: 'weak', description: 'Redeveloped hotels less suitable for STR' },
+    },
+    mixed_use: {
+      BTS: { strength: 'strong', description: 'Redevelop and sell repositioned mixed-use' },
+      FLIP: { strength: 'moderate', description: 'Mixed-use redevelopment complex' },
+      RENTAL: { strength: 'strong', description: 'Redevelop and stabilize mixed-use hold' },
+      STR: { strength: 'weak', description: 'Residential component only' },
+    },
   },
 };
 
-export function getStrategyStrength(dealType: DealType, productType: ProductType, strategy: StrategyId): number {
-  return MATRIX[dealType]?.[productType]?.[strategy] ?? 0.5;
+// ─── Strategy Availability Function ──────────────────────────────────────────
+
+/**
+ * Get the available strategies for a given DealType × ProductType.
+ *
+ * Returns only strategies where strength !== 'na'.
+ *
+ * @param dealType - The deal type (existing, development, redevelopment)
+ * @param productType - The product type (mf_garden, office, etc.)
+ * @returns Array of strategy IDs available for this combination
+ *
+ * @example
+ * getStrategyAvailability('existing', 'mf_garden')
+ * // returns ['FLIP', 'RENTAL', 'STR']
+ *
+ * getStrategyAvailability('development', 'mf_garden')
+ * // returns ['BTS', 'RENTAL', 'STR']
+ */
+export function getStrategyAvailability(
+  dealType: DealType,
+  productType: ProductType
+): StrategyId[] {
+  const matrix = STRATEGY_PRODUCT_MATRIX[dealType][productType];
+  if (!matrix) return ['FLIP', 'RENTAL', 'STR']; // Safe default
+
+  return (['BTS', 'FLIP', 'RENTAL', 'STR'] as StrategyId[]).filter(
+    (strategy) => matrix[strategy].strength !== 'na'
+  );
 }
 
-export function getStrategyAvailability(dealType: DealType, productType: ProductType): StrategyProfile[] {
-  const row = MATRIX[dealType]?.[productType] ?? {};
-  return Object.entries(row).map(([s, strength]) => ({
-    strategy: s as StrategyId,
-    strength: strength as number,
-    available: (strength as number) > 0.5,
-  }));
+/**
+ * Get the strength assessment for a specific strategy in a DealType × ProductType.
+ *
+ * @param dealType - The deal type
+ * @param productType - The product type
+ * @param strategy - The strategy ID
+ * @returns Strategy strength and description, or { strength: 'na', description: '' } if not found
+ */
+export function getStrategyStrength(
+  dealType: DealType,
+  productType: ProductType,
+  strategy: StrategyId
+): StrategyProductFit {
+  const matrix = STRATEGY_PRODUCT_MATRIX[dealType][productType];
+  if (!matrix || !matrix[strategy]) {
+    return { strength: 'na', description: '' };
+  }
+  return matrix[strategy];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UNIT MIX MODE & CONFIGURATION (M03 Unit Program Router)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Determines which unit mix component(s) should be rendered for a given deal type.
+ *
+ * - 'analyzer': Existing deals — unit-mix-positioning-v5 (read-only competitive analysis)
+ * - 'designer': Development deals — development-program-builder (design mode, cost modeling)
+ * - 'analyzer_designer': Redevelopment deals — both stacked vertically
+ *   Shows "Current" (analyzer) + "Target" (designer) with section divider
+ * - 'hidden': Module not applicable (returns null)
+ */
+export type UnitMixMode = 'analyzer' | 'designer' | 'analyzer_designer' | 'hidden';
+
+/**
+ * Unit mix configuration per deal type.
+ * Controls which UI components render in the Unit Program (M03) tab.
+ */
+export interface UnitMixConfig {
+  mode: UnitMixMode;
+  description: string;
+}
+
+/**
+ * Unit mix mode mapping by deal type.
+ */
+export const UNIT_MIX_CONFIG: Record<DealType, UnitMixConfig> = {
+  existing: {
+    mode: 'analyzer',
+    description: 'Current unit mix with competitive positioning analysis',
+  },
+  development: {
+    mode: 'designer',
+    description: 'Design new unit program from market demand and zoning constraints',
+  },
+  redevelopment: {
+    mode: 'analyzer_designer',
+    description: 'Analyze current units, design target program post-repositioning',
+  },
+};
+
+/**
+ * Get the unit mix mode for a given deal type.
+ */
+export function getUnitMixMode(dealType: DealType): UnitMixMode {
+  return UNIT_MIX_CONFIG[dealType].mode;
 }

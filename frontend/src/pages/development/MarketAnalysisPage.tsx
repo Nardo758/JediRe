@@ -95,41 +95,41 @@ export const MarketAnalysisPage: React.FC = () => {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-500" />
-          <p className="text-[#9EA8B4]">Loading market analysis...</p>
+          <p className="text-gray-600">Loading market analysis...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0E17]">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-[#0F1319] border-b border-[#1e2a3d] sticky top-0 z-10">
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate(`/deals/${dealId}`)}
-                className="p-2 hover:bg-[#1a2233] rounded-lg transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <ArrowLeft className="w-5 h-5 text-[#9EA8B4]" />
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
               </button>
               <div>
                 <div className="flex items-center gap-3">
-                  <h1 className="text-2xl font-bold text-[#E8E6E1]">
+                  <h1 className="text-2xl font-bold text-gray-900">
                     Market Analysis
                   </h1>
                   {dataSource === 'live' ? (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#022c22] text-green-300 border border-green-800/50">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
                       LIVE
                     </span>
                   ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-[#1a1200] text-amber-300 border border-amber-800/50">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
                       SAMPLE
                     </span>
                   )}
                 </div>
-                <p className="text-sm text-[#6B7585] mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Development Intelligence • Atlanta Market
                 </p>
               </div>

@@ -1,0 +1,17 @@
+name = "apartment-scraper"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Browser binding for scraping
+browser = { binding = "MYBROWSER" }
+
+# Durable Objects
+[[durable_objects.bindings]]
+name = "SCRAPER_JOBS"
+class_name = "ScraperJobQueue"
+
+# Secrets (set via: wrangler secret put <NAME>)
+# - SERP_API_KEY (already set ✅)
+# - JEDI_INGEST_URL (your Replit backend URL)
+# - JEDI_API_KEY (optional, for auth)

@@ -1,0 +1,990 @@
+import { useState } from "react";
+
+/*
+  DEAL CAPSULE — MARKET INTELLIGENCE PAGE REDESIGN
+  
+  Keeps: Demand Heat Map, Unit Mix Optimizer, Demographic Insights
+  Adds: Local Economy narrative (news + OM extraction + structured data)
+  
+  Design: The page tells a STORY about the market, not just displays data.
+  Flow: Economy → Demographics → Demand → Supply Context → Unit Mix → Verdict
+*/
+
+// ═══════════════════════════════════════════════════════════════
+// PAGE ARCHITECTURE
+// ═══════════════════════════════════════════════════════════════
+
+const PAGE_ARCHITECTURE = {
+  current_title: "Market Analysis",
+  proposed_title: "Market Intelligence",
+  subtitle: "Economic drivers, demand signals, and competitive landscape for this trade area",
+  
+  // The page has 4 major zones, each answering a different question
+  zones: [
+    {
+      id: "economy",
+      name: "Local Economy & Demand Drivers",
+      question: "WHY do people live/move here? What economic engine drives demand?",
+      is_new: true,
+      position: "TOP — this sets the narrative before anything else",
+      sections: [
+        {
+          name: "Economy Snapshot Bar",
+          layout: "Horizontal metrics strip across full width — the first thing users see",
+          widgets: [
+            {
+              name: "Economic Health Score",
+              description: "Single 0-100 score synthesizing all economic indicators for this trade area. Color-coded gauge with trend arrow.",
+              formula: "economic_health = job_growth_norm × 0.25 + wage_growth_norm × 0.20 + biz_formation_norm × 0.20 + pop_growth_norm × 0.15 + income_growth_norm × 0.10 + diversification_score × 0.10",
+              data_sources: ["BLS QCEW", "Census ACS", "Census BFS", "IRS SOI"],
+              example: "78/100 ↑ (+4 from 6mo ago)",
+              insight: "Economy strengthening — job growth accelerating in healthcare and tech sectors",
+            },
+            {
+              name: "Jobs Added (12mo)",
+              description: "Net new jobs in the MSA/county over trailing 12 months",
+              formula: "BLS CES: employment_current - employment_12mo_ago",
+              example: "+4,200 jobs (↑ 2.8% YoY)",
+            },
+            {
+              name: "Wage Growth",
+              description: "Average weekly wage growth YoY from BLS QCEW",
+              formula: "BLS QCEW: (avg_weekly_wage_current / avg_weekly_wage_prior) - 1",
+              example: "+4.2% YoY",
+              context: "vs rent growth of +3.1% → runway exists",
+            },
+            {
+              name: "Net Migration",
+              description: "Net household inflows from IRS SOI data",
+              formula: "IRS: inflows - outflows by county, with AGI brackets",
+              example: "+3,200 HH/yr (avg AGI: $72K)",
+            },
+            {
+              name: "Affordability Ratio",
+              description: "Rent as % of median household income — the ceiling function",
+              formula: "(avg_rent × 12) / median_HH_income",
+              example: "28% (below 30% ceiling → room to push)",
+              threshold_colors: { green: "<28%", yellow: "28-32%", red: ">32%" },
+            },
+          ],
+        },
+        {
+          name: "Major Employers & Economic Anchors",
+          layout: "Left 60% of the economy zone — the NARRATIVE section",
+          is_new: true,
+          description: "This is where the platform becomes unique. Instead of just showing statistics, it tells the STORY of the local economy using three data sources combined: structured government data (BLS, Census), news intelligence (platform news agent), and document extraction (from uploaded OMs, broker packages, market reports).",
+          
+          sub_sections: [
+            {
+              name: "Top Employers Table",
+              description: "Ranked list of major employers within the trade area/MSA. Each row shows employer name, industry, estimated employee count, distance from property, recent news (expanding/contracting), and demand impact estimate.",
+              columns: ["Employer", "Industry", "Employees", "Distance", "Status", "Demand Impact"],
+              data_sources: {
+                structured: "BLS QCEW establishment data (employer size class by NAICS)",
+                news: "Platform news agent: company announcements, expansion/contraction events, hiring/layoff signals",
+                documents: "OM extraction: brokers always list top employers in their market narratives — extract and verify",
+              },
+              example_rows: [
+                {
+                  employer: "Piedmont Healthcare",
+                  industry: "Healthcare",
+                  employees: "4,200",
+                  distance: "1.2 mi",
+                  status: "🟢 Expanding (+600 jobs announced)",
+                  demand_impact: "+240 renter HH (est.)",
+                  source_badge: "NEWS — Atlanta Business Chronicle, Jan 15 2026",
+                },
+                {
+                  employer: "Georgia Tech",
+                  industry: "Education",
+                  employees: "12,000",
+                  distance: "0.8 mi",
+                  status: "🟢 Stable (new research center funded)",
+                  demand_impact: "Anchor — perpetual demand driver",
+                  source_badge: "OM + NEWS — verified by both sources",
+                },
+                {
+                  employer: "Amazon Distribution",
+                  industry: "Logistics",
+                  employees: "2,100",
+                  distance: "3.1 mi",
+                  status: "🟡 Watch (national restructuring news)",
+                  demand_impact: "+840 renter HH (existing)",
+                  source_badge: "OM — broker listed, NEWS flagged risk",
+                },
+              ],
+              collision_analysis: "When an OM lists an employer and the news agent has conflicting info, SHOW THE COLLISION. 'OM says Amazon expanding with 500 new jobs. Platform news: Amazon announced 8% workforce reduction nationally. VERIFY: Is this location affected?'",
+            },
+            {
+              name: "Economic Development Pipeline",
+              description: "Upcoming projects, infrastructure investments, and development initiatives that will impact demand. Sourced from news, county commission minutes, economic development authority announcements.",
+              layout: "Timeline view — projects sorted by expected completion date",
+              data_sources: {
+                news: "Platform news agent: development announcements, groundbreaking events, zoning approvals, infrastructure projects",
+                documents: "OM extraction: brokers often cite upcoming projects as demand catalysts",
+                government: "County economic development authority press releases, TIF district records, enterprise zone designations",
+              },
+              example_items: [
+                {
+                  project: "BeltLine Extension — Southside Trail",
+                  type: "Infrastructure",
+                  timeline: "Completion Q4 2027",
+                  impact: "Property values +15-25% within 0.5mi of trail (per BeltLine Inc research). Subject property: 0.3mi from planned trail.",
+                  confidence: "HIGH — funded, under construction",
+                  source: "NEWS: Atlanta Journal-Constitution + City of Atlanta capital budget",
+                },
+                {
+                  project: "Microsoft Atlanta Campus Phase 2",
+                  type: "Corporate Expansion",
+                  timeline: "Hiring begins Q2 2026",
+                  impact: "+1,200 tech jobs within 2mi. Median salary: $115K. Demand for Class A and high-end B.",
+                  confidence: "HIGH — permits filed, construction visible",
+                  source: "NEWS: TechCrunch + building permits (property records intelligence)",
+                },
+                {
+                  project: "Midtown Union Mixed-Use",
+                  type: "Mixed-Use Development",
+                  timeline: "Delivering Q1 2027",
+                  impact: "350 residential units (SUPPLY) + 150K SF retail/office (DEMAND). Net impact depends on absorption.",
+                  confidence: "MEDIUM — developer hasn't started pre-leasing",
+                  source: "OM mentioned as 'area transformation' + NEWS confirmed zoning",
+                },
+              ],
+            },
+            {
+              name: "Industry Composition & Trends",
+              description: "What industries drive this local economy? How is the mix changing? Which sectors are growing vs declining?",
+              layout: "Stacked bar chart showing industry % of employment, with YoY change arrows",
+              data_sources: {
+                structured: "BLS QCEW: employment by NAICS sector, quarterly update",
+                news: "Industry trend articles affecting local sectors",
+                correlation: "COR-18: Business Formation by NAICS → Rent Growth by property class",
+              },
+              display: {
+                chart: "Horizontal stacked bar — each segment is an industry, colored by growth rate (green = growing, red = shrinking)",
+                insight: "AUTO-GENERATED: 'Healthcare (+15% YoY) and Tech (+12%) are driving growth. Retail (-3%) and Manufacturing (-5%) declining. Net: economy shifting toward higher-income employment, supporting Class B+ rents.'",
+                renter_impact: "Link industry composition to renter profile: 'Growing industries employ workers earning $65-120K median → supports rents of $1,600-2,400/unit (28-30% of income)'",
+              },
+            },
+          ],
+        },
+        {
+          name: "Document Intelligence Panel",
+          layout: "Right 40% of the economy zone — the VERIFICATION engine",
+          is_new: true,
+          description: "This is the killer feature. When a user uploads an OM or broker package, the platform EXTRACTS the market narrative, identifies every claim, and VERIFIES each one against platform data. No other tool does this.",
+          
+          sub_sections: [
+            {
+              name: "OM Market Claims Extraction",
+              description: "LLM reads the uploaded OM and extracts every market-related claim as a structured list. Each claim gets a verification status.",
+              how_it_works: [
+                "1. User uploads OM (PDF) to deal documents",
+                "2. LLM extracts market section, identifies individual claims",
+                "3. Each claim classified: employer, demographic, economic, infrastructure, supply, demand",
+                "4. Platform cross-references each claim against its own data sources",
+                "5. Each claim gets: ✅ VERIFIED, ⚠️ PARTIALLY TRUE, ❌ CONTRADICTED, ❓ UNVERIFIABLE",
+              ],
+              example_extractions: [
+                {
+                  claim: "Midtown Atlanta has experienced 12% population growth over 5 years",
+                  category: "Demographic",
+                  verification: "⚠️ PARTIALLY TRUE",
+                  platform_data: "Census ACS shows 9.4% growth over 5 years (2021-2026). OM overstates by 2.6%. Still strong growth — top 15% nationally.",
+                  source: "Census ACS 5-year estimates",
+                },
+                {
+                  claim: "Average household income in the trade area is $95,000",
+                  category: "Economic",
+                  verification: "✅ VERIFIED",
+                  platform_data: "Census ACS median HH income: $92,400. OM's $95K figure is plausible (may use mean, not median, which skews higher).",
+                  source: "Census ACS + IRS SOI",
+                },
+                {
+                  claim: "Piedmont Healthcare is adding 600 jobs at their Midtown campus",
+                  category: "Employer",
+                  verification: "✅ VERIFIED",
+                  platform_data: "Atlanta Business Chronicle (Jan 15, 2026) confirmed 600-position expansion. Construction permits filed Dec 2025.",
+                  source: "News Intelligence + Building Permits",
+                },
+                {
+                  claim: "No new supply is planned within 1 mile of the property",
+                  category: "Supply",
+                  verification: "❌ CONTRADICTED",
+                  platform_data: "Platform identifies 2 projects within 1 mile: Midtown Union (350 units, delivering Q1 2027) and 14th Street Residences (180 units, permitted). Broker either missed these or intentionally excluded.",
+                  source: "M04 Supply Pipeline + County Permits",
+                },
+                {
+                  claim: "The property is located near MARTA transit",
+                  category: "Infrastructure",
+                  verification: "✅ VERIFIED (with context)",
+                  platform_data: "Midtown MARTA station is 0.3mi walk. However, platform adds: MARTA ridership at this station up 22% YoY — transit demand is increasing.",
+                  source: "MARTA ridership data + geospatial",
+                },
+              ],
+              display: "Scrollable list of claim cards. Each card: broker claim (quoted), category badge, verification badge, platform finding, source link. Summary at top: '12 claims extracted. 7 verified, 3 partially true, 1 contradicted, 1 unverifiable.'",
+              why_this_matters: "Every RE professional has read an OM and wondered 'is this actually true?' The platform answers that question automatically. This alone could justify the subscription for serious investors.",
+            },
+            {
+              name: "Platform vs Broker Gap Analysis",
+              description: "Summary widget showing where the platform's market assessment DIFFERS from the broker's narrative",
+              layout: "Gap analysis card with three categories",
+              categories: [
+                {
+                  label: "Broker says ↑ — Platform agrees ↑",
+                  color: "green",
+                  meaning: "Aligned — both see strength. High confidence in positive narrative.",
+                  example: "Both cite healthcare employment growth and population gains.",
+                },
+                {
+                  label: "Broker says ↑ — Platform says ↓ or →",
+                  color: "red",
+                  meaning: "DIVERGENCE — broker may be overselling. Investigate further.",
+                  example: "Broker claims 'no new supply' but platform sees 530 units in pipeline within 1mi.",
+                },
+                {
+                  label: "Platform sees ↑ — Broker doesn't mention",
+                  color: "blue",
+                  meaning: "HIDDEN UPSIDE — broker missed or didn't know about this positive signal.",
+                  example: "Platform detects BeltLine trail extension 0.3mi from property. OM doesn't mention it. This is a significant value driver the broker either missed or is saving for negotiation.",
+                },
+              ],
+              verdict: "AUTO-GENERATED: 'Broker narrative is 72% aligned with platform data. Key divergence: supply claims are contradicted. Key hidden upside: BeltLine proximity not mentioned in OM. Net: deal economics likely BETTER than OM suggests if supply absorption holds.'",
+            },
+            {
+              name: "News Intelligence Feed (Trade Area Filtered)",
+              description: "Real-time news feed filtered to events within or affecting this property's trade area",
+              layout: "Compact scrollable feed — most recent first",
+              data_source: "Platform news agent → classified events → geographic filter to trade area",
+              event_types: [
+                { type: "DEMAND", icon: "📈", color: "green", example: "Piedmont Healthcare announces 600-job expansion — 1.2mi from property" },
+                { type: "SUPPLY", icon: "🏗️", color: "orange", example: "14th Street Residences receives building permit — 0.6mi, 180 units" },
+                { type: "INFRASTRUCTURE", icon: "🚇", color: "blue", example: "BeltLine Southside Trail funding approved — 0.3mi from property" },
+                { type: "ECONOMIC", icon: "💼", color: "purple", example: "Atlanta tech sector hiring up 18% QoQ per LinkedIn data" },
+                { type: "RISK", icon: "⚠️", color: "red", example: "Amazon announces national restructuring — local distribution center 3.1mi" },
+                { type: "REGULATORY", icon: "⚖️", color: "gray", example: "Atlanta City Council approves inclusionary zoning overlay for Midtown" },
+              ],
+              features: [
+                "Each event shows: headline, source, date, distance from property, demand/supply impact estimate, confidence score",
+                "Events auto-link to JEDI Score adjustments: 'This event adjusted Demand sub-score by +3 points'",
+                "Toggle: 'Show only events since last underwrite' — see what's changed since you last looked at this deal",
+                "Export: 'Include in Investment Memo' button adds event to deal documents with source attribution",
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "demographics_enhanced",
+      name: "Demographics & Demand Profile",
+      question: "WHO lives here, and how is that changing?",
+      is_new: false,
+      position: "SECOND ZONE — below economy, keeps existing widgets + enhancements",
+      sections: [
+        {
+          name: "Demand Heat Map (KEEP)",
+          status: "EXISTS — keep as-is",
+          enhancement: "Add toggle for 'Demand Drivers' overlay: pin icons showing major employers, transit, universities, and economic development projects from the Economy zone above. Connect the narrative to the map.",
+        },
+        {
+          name: "Demographic Insights (KEEP + ENHANCE)",
+          status: "EXISTS — keep renter profile, growth trends, lifestyle indicators",
+          enhancements: [
+            "Add migration origin chart: 'Where are new residents coming from?' pie chart from IRS SOI data. '38% NY/NJ, 22% Chicago, 15% DC, 25% other.' Each origin segment shows avg AGI.",
+            "Add income trend line: median HH income over 5 years, with rent overlay to show the affordability trajectory",
+            "Add '% renter vs owner' metric with trend — rising renter % = demand for apartments",
+            "Link lifestyle indicators to amenity recommendations: 'Pet Owners: 62% → dog park is a priority amenity. Gym Membership: 68% → fitness center is table stakes.'",
+          ],
+        },
+        {
+          name: "Renter Demand Quantification (NEW)",
+          is_new: true,
+          description: "Translate demographic data into NUMBERS. Not just 'young professionals' but 'estimated 2,400 renter households earning $65-120K within 1mi seeking 1BR/2BR units at $1,600-2,200/mo.'",
+          formula: "demand_pool = population_within_radius × renter_pct × income_qualified_pct × age_qualified_pct",
+          display: "Funnel visualization: Total population (1mi) → Renters → Income-qualified → Age-appropriate → Unit-type match → YOUR demand pool",
+          example: {
+            total_pop: "18,400 within 1mi",
+            renters: "11,040 (60% renter)",
+            income_qualified: "7,728 (70% earn $50-150K)",
+            age_match: "5,410 (70% age 22-45)",
+            unit_match: "3,787 (70% seeking 1BR/2BR)",
+            your_units: "180 units = you're capturing 4.8% of qualified demand pool",
+            insight: "Healthy — you don't need more than 5-8% capture rate. Demand pool 21x your unit count.",
+          },
+        },
+      ],
+    },
+    {
+      id: "supply_context",
+      name: "Supply & Competitive Context",
+      question: "What competition exists and what's coming?",
+      is_new: true,
+      position: "THIRD ZONE — contextualizes demand against supply before unit mix",
+      sections: [
+        {
+          name: "Supply-Demand Equilibrium Widget",
+          description: "The one visualization that answers 'is demand absorbing supply?' Uses the absorption rate vs pipeline formula from the correlation engine.",
+          display: "Stacked timeline: quarterly bars showing projected deliveries vs projected absorption. Shaded area between = surplus or deficit. Green when absorption > delivery, red when not.",
+          data: "M04 Supply Pipeline (delivery schedule) + M06 Demand Signals (absorption projection from traffic + economic data)",
+          correlation: "COR-07: Absorption Rate vs Pipeline % — the equilibrium check",
+        },
+        {
+          name: "Competitive Pressure Summary",
+          description: "Compressed version of the Competitive Position Section (T005). Shows top 3 competitive threats with rent comparison, traffic share, and whether they're gaining or losing position.",
+          note: "This is a SUMMARY view. Full comp analysis lives in the Competitive Position Section on the deal page. This widget shows just enough to contextualize the unit mix decision below.",
+        },
+      ],
+    },
+    {
+      id: "unit_mix",
+      name: "Unit Mix & Pricing Intelligence",
+      question: "Given the demand profile, what should this property look like?",
+      is_new: false,
+      position: "FOURTH ZONE — bottom, keeps existing Unit Mix Optimizer + enhancements",
+      sections: [
+        {
+          name: "Unit Mix Optimizer (KEEP + ENHANCE)",
+          status: "EXISTS — keep the demand distribution bars and optimize button",
+          enhancements: [
+            "Connect to demographic data above: 'Market demands 45% 1BR because 68% of qualified renters are singles/couples earning $75-125K. Your current 35% 1BR is underweight by 10%.'",
+            "Add rent optimization per unit type: 'Optimal 1BR rent for this demand profile: $1,825 (28% of median income for target renter). Current asking: $1,650. Upside: $175/unit.'",
+            "Add competitor unit mix comparison: 'Your mix: 5/35/40/20. Top performer mix: 10/45/35/10. Gap analysis suggests more 1BR, fewer 3BR.'",
+            "Add strategy-specific recommendations: 'For FLIP strategy: convert 10 3BR → 1BR units. Cost: $180K. Revenue lift: $2,100/mo. Payback: 7.1 months.'",
+          ],
+        },
+      ],
+    },
+  ],
+  
+  // ═══════════════════════════════════════════════════════════
+  // DATA SOURCE ARCHITECTURE
+  // ═══════════════════════════════════════════════════════════
+  data_sources: {
+    structured: {
+      name: "Government & API Data",
+      always_available: true,
+      sources: [
+        { name: "BLS QCEW", provides: "Employment, wages, establishment counts by NAICS/county", update: "Quarterly", cost: "Free" },
+        { name: "BLS CES", provides: "Monthly employment by sector", update: "Monthly", cost: "Free" },
+        { name: "Census ACS", provides: "Demographics, income, housing, commute patterns", update: "Annual (5yr estimates)", cost: "Free" },
+        { name: "Census BFS", provides: "New business formation applications", update: "Monthly", cost: "Free" },
+        { name: "IRS SOI", provides: "Migration flows with income brackets", update: "Annual (18mo lag)", cost: "Free" },
+        { name: "FDOT/Google", provides: "Traffic volumes and surge data", update: "Daily/Realtime", cost: "$89/mo" },
+        { name: "SpyFu", provides: "Search volumes, digital traffic share", update: "Monthly", cost: "$89/mo" },
+      ],
+    },
+    news_intelligence: {
+      name: "News Agent",
+      always_available: true,
+      description: "Platform continuously scrapes and classifies local news for tracked markets",
+      sources: [
+        { name: "NewsAPI.org", provides: "National + local news articles", classification: "LLM classifies as demand/supply/economic/infrastructure/risk/regulatory" },
+        { name: "User email sync", provides: "Broker emails, market reports, deal alerts", classification: "email-news-extraction.service extracts structured events", premium: true },
+        { name: "RSS feeds", provides: "Local business journals (e.g., Atlanta Business Chronicle)", classification: "Same LLM pipeline" },
+      ],
+      extraction_pipeline: "Article → LLM → { event_type, entities, location, magnitude, timeline, confidence } → geographic tagging → demand-signal.service OR supply-signal.service → JEDI Score adjustment",
+    },
+    document_intelligence: {
+      name: "Document Upload Extraction",
+      available_when: "User uploads OM, broker package, or market report to deal documents",
+      description: "LLM reads uploaded documents and extracts structured market claims for verification",
+      supported_documents: [
+        { type: "Offering Memorandum (OM)", extracts: "Market narrative, employer list, demographic claims, supply claims, infrastructure projects, rent comp claims, cap rate assertions" },
+        { type: "Broker Opinion of Value (BOV)", extracts: "Comp selection and adjustments, market assumptions, cap rate justification" },
+        { type: "Market Report (CBRE, JLL, etc.)", extracts: "Market statistics, forecast assumptions, submarket rankings, pipeline data" },
+        { type: "Appraisal", extracts: "Comp adjustments, market data used, highest-and-best-use analysis" },
+      ],
+      verification_pipeline: "Document → LLM extraction → structured claims list → cross-reference against platform data per claim → verification status per claim → gap analysis summary → collision report",
+      unique_value: "Nobody else does this. Brokers spend weeks writing OM market sections. Investors spend hours reading them and wondering what's true. The platform reads, extracts, and verifies in seconds.",
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // THE THREE-SOURCE COLLISION MODEL
+  // ═══════════════════════════════════════════════════════════
+  collision_model: {
+    description: "Every data point on this page can come from 1-3 sources. When they agree, confidence is high. When they disagree, that's where the intelligence lives.",
+    sources: [
+      { id: "S", name: "Structured Data", icon: "📊", description: "Government APIs, Census, BLS — slow to update but authoritative" },
+      { id: "N", name: "News Intelligence", icon: "📰", description: "News agent — fast but requires verification, may have bias" },
+      { id: "D", name: "Document Extraction", icon: "📄", description: "OM/broker claims — deal-specific but inherently biased toward seller" },
+    ],
+    collision_scenarios: [
+      {
+        scenario: "All three agree",
+        display: "✅✅✅ — Triple confirmation",
+        confidence: "Very High",
+        example: "BLS says +4.2% wage growth, news reports salary increases at major employers, OM cites income growth. All aligned.",
+      },
+      {
+        scenario: "Structured + News agree, Document disagrees",
+        display: "✅✅❌ — Broker likely overselling",
+        confidence: "High (trust platform over broker)",
+        example: "BLS shows flat employment, news reports layoffs, but OM claims 'robust job growth.' OM is stale or misleading.",
+      },
+      {
+        scenario: "Only Document claims, no other confirmation",
+        display: "❓❓📄 — Unverified broker claim",
+        confidence: "Low — needs investigation",
+        example: "OM says 'new corporate campus planned 0.5mi away.' No news coverage, no permits in records. Could be real but early, or could be speculation.",
+      },
+      {
+        scenario: "News says something Documents don't mention",
+        display: "📰 — Hidden signal (broker missed or omitted)",
+        confidence: "Medium-High — news is usually reliable",
+        example: "News reports major employer restructuring. OM (written 3 months ago) still lists that employer as 'expanding.' Market has shifted since OM was written.",
+      },
+    ],
+  },
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════════════════════
+
+const fonts = "'Instrument Sans', 'DM Sans', -apple-system, sans-serif";
+const mono = "'JetBrains Mono', 'Fira Code', monospace";
+
+const colors = {
+  bg: "#0B0F1A",
+  card: "rgba(255,255,255,0.025)",
+  cardBorder: "rgba(255,255,255,0.06)",
+  text: "#E2E8F0",
+  muted: "#64748B",
+  dim: "#334155",
+  accent: "#3B82F6",
+  green: "#22C55E",
+  yellow: "#F59E0B",
+  red: "#EF4444",
+  purple: "#8B5CF6",
+  cyan: "#06B6D4",
+  pink: "#EC4899",
+  orange: "#F97316",
+};
+
+function Pill({ children, color = colors.muted }) {
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 5,
+      color, background: `${color}14`, border: `1px solid ${color}22`,
+      letterSpacing: "0.05em", whiteSpace: "nowrap",
+    }}>{children}</span>
+  );
+}
+
+function SourceBadge({ type }) {
+  const map = {
+    S: { label: "STRUCTURED", color: colors.accent, icon: "📊" },
+    N: { label: "NEWS", color: colors.orange, icon: "📰" },
+    D: { label: "DOCUMENT", color: colors.purple, icon: "📄" },
+  };
+  const s = map[type] || map.S;
+  return <Pill color={s.color}>{s.icon} {s.label}</Pill>;
+}
+
+function VerificationBadge({ status }) {
+  const map = {
+    verified: { label: "✅ VERIFIED", color: colors.green },
+    partial: { label: "⚠️ PARTIAL", color: colors.yellow },
+    contradicted: { label: "❌ CONTRADICTED", color: colors.red },
+    unverifiable: { label: "❓ UNVERIFIABLE", color: colors.muted },
+  };
+  const s = map[status] || map.unverifiable;
+  return <Pill color={s.color}>{s.label}</Pill>;
+}
+
+function SectionHeader({ icon, title, subtitle, badge, isNew }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+      <span style={{ fontSize: 18 }}>{icon}</span>
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "#F8FAFC" }}>{title}</span>
+          {isNew && <Pill color={colors.green}>NEW</Pill>}
+          {badge && <Pill color={colors.accent}>{badge}</Pill>}
+        </div>
+        {subtitle && <div style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Card({ children, style = {}, highlight }) {
+  return (
+    <div style={{
+      background: colors.card, border: `1px solid ${highlight || colors.cardBorder}`,
+      borderRadius: 12, padding: 18, ...style,
+    }}>{children}</div>
+  );
+}
+
+// Mock data
+const ECONOMY_METRICS = [
+  { label: "Economic Health", value: "78", unit: "/100", trend: "+4", color: colors.green, icon: "💪" },
+  { label: "Jobs Added (12mo)", value: "+4,200", unit: "", trend: "+2.8% YoY", color: colors.green, icon: "👔" },
+  { label: "Wage Growth", value: "+4.2%", unit: "YoY", trend: "vs rent +3.1%", color: colors.green, icon: "💵" },
+  { label: "Net Migration", value: "+3,200", unit: "HH/yr", trend: "avg AGI $72K", color: colors.accent, icon: "🚚" },
+  { label: "Affordability", value: "28%", unit: "rent/income", trend: "below 30% ceiling", color: colors.green, icon: "🎯" },
+];
+
+const EMPLOYERS = [
+  { name: "Piedmont Healthcare", industry: "Healthcare", employees: "4,200", distance: "1.2 mi", status: "expanding", statusText: "+600 jobs announced", impact: "+240 renter HH", sources: ["N"], newsDate: "Jan 15, 2026" },
+  { name: "Georgia Tech", industry: "Education", employees: "12,000", distance: "0.8 mi", status: "stable", statusText: "New research center funded", impact: "Anchor — perpetual", sources: ["D", "N"], newsDate: "Verified both" },
+  { name: "Microsoft Atlanta", industry: "Tech", employees: "2,800", distance: "1.5 mi", status: "expanding", statusText: "Phase 2 hiring Q2 2026", impact: "+480 renter HH", sources: ["N"], newsDate: "Dec 2025" },
+  { name: "Amazon Distribution", industry: "Logistics", employees: "2,100", distance: "3.1 mi", status: "watch", statusText: "National restructuring", impact: "+840 HH (existing)", sources: ["D", "N"], newsDate: "⚠️ Conflict" },
+  { name: "Emory Healthcare", industry: "Healthcare", employees: "3,400", distance: "2.8 mi", status: "stable", statusText: "Steady hiring", impact: "+680 renter HH", sources: ["S"], newsDate: "BLS data" },
+];
+
+const OM_CLAIMS = [
+  { claim: "Midtown Atlanta has experienced 12% population growth over 5 years", category: "Demographic", status: "partial", finding: "Census ACS shows 9.4% growth (2021-2026). OM overstates by 2.6%. Still strong — top 15% nationally.", source: "Census ACS" },
+  { claim: "Average household income in the trade area is $95,000", category: "Economic", status: "verified", finding: "Census ACS median HH income: $92,400. OM's figure is plausible (may use mean vs median).", source: "Census ACS + IRS" },
+  { claim: "Piedmont Healthcare is adding 600 jobs at their Midtown campus", category: "Employer", status: "verified", finding: "Confirmed by Atlanta Business Chronicle (Jan 15). Construction permits filed Dec 2025.", source: "News + Permits" },
+  { claim: "No new supply is planned within 1 mile of the property", category: "Supply", status: "contradicted", finding: "Platform identifies 2 projects within 1mi: Midtown Union (350u, Q1 2027) + 14th St Residences (180u, permitted).", source: "M04 + Permits" },
+  { claim: "Property is located near MARTA transit", category: "Infrastructure", status: "verified", finding: "Midtown MARTA station 0.3mi walk. Platform adds: ridership up 22% YoY at this station.", source: "MARTA data" },
+  { claim: "Strong rent growth trend of 5% annually expected", category: "Financial", status: "partial", finding: "Trailing 12mo rent growth: 3.1%. 5% would require acceleration. Wage growth supports 3.5-4.0% at current affordability ratios.", source: "M05 + COR-04" },
+];
+
+const NEWS_EVENTS = [
+  { type: "DEMAND", icon: "📈", headline: "Piedmont Healthcare announces 600-job expansion at Midtown campus", distance: "1.2mi", date: "Jan 15", impact: "+240 renter HH estimated", color: colors.green },
+  { type: "INFRASTRUCTURE", icon: "🚇", headline: "BeltLine Southside Trail funding approved — construction begins Q2", distance: "0.3mi", date: "Jan 8", impact: "Property values +15-25% within 0.5mi", color: colors.accent },
+  { type: "SUPPLY", icon: "🏗️", headline: "14th Street Residences receives building permit — 180 units", distance: "0.6mi", date: "Dec 28", impact: "+180 competing units, delivering 2027", color: colors.orange },
+  { type: "RISK", icon: "⚠️", headline: "Amazon announces 8% workforce reduction nationally", distance: "3.1mi", date: "Dec 20", impact: "Local center: status unknown — monitoring", color: colors.red },
+  { type: "ECONOMIC", icon: "💼", headline: "Atlanta tech sector hiring up 18% QoQ per LinkedIn Workforce Report", distance: "MSA", date: "Dec 15", impact: "Supports Class A/B+ demand in Midtown", color: colors.purple },
+];
+
+const DEVELOPMENT_PIPELINE = [
+  { project: "BeltLine Southside Trail", type: "Infrastructure", timeline: "Q4 2027", confidence: "HIGH", icon: "🚲", impact: "Property values +15-25% within 0.5mi" },
+  { project: "Microsoft Atlanta Phase 2", type: "Corporate", timeline: "Q2 2026", confidence: "HIGH", icon: "🏢", impact: "+1,200 tech jobs, median $115K" },
+  { project: "Midtown Union Mixed-Use", type: "Mixed-Use", timeline: "Q1 2027", confidence: "MED", icon: "🏗️", impact: "350 res units (supply) + 150K SF office (demand)" },
+];
+
+export default function MarketIntelRedesign() {
+  const [activeSection, setActiveSection] = useState("economy");
+  const [expandedClaim, setExpandedClaim] = useState(null);
+
+  const sectionTabs = [
+    { id: "economy", label: "Local Economy", icon: "💼" },
+    { id: "documents", label: "Document Intelligence", icon: "📄" },
+    { id: "demographics", label: "Demographics & Demand", icon: "👥" },
+    { id: "news", label: "News Feed", icon: "📰" },
+  ];
+
+  return (
+    <div style={{
+      minHeight: "100vh", background: colors.bg, color: colors.text,
+      fontFamily: fonts, padding: "0",
+    }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+      `}</style>
+
+      {/* PAGE HEADER */}
+      <div style={{
+        padding: "20px 28px 0", borderBottom: `1px solid ${colors.cardBorder}`,
+        background: "linear-gradient(180deg, rgba(59,130,246,0.04) 0%, transparent 100%)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: colors.muted, letterSpacing: "0.12em", marginBottom: 4 }}>
+              DEAL CAPSULE · MARKET INTELLIGENCE · REDESIGNED
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#F8FAFC", letterSpacing: "-0.02em" }}>
+              Pines at Midtown — Market Intelligence
+            </h1>
+            <div style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>
+              180 units · Class B · 1992 · Midtown Atlanta · 1mi trade area
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Pill color={colors.green}>Economic Health: 78/100 ↑</Pill>
+            <Pill color={colors.accent}>3 data sources active</Pill>
+            <Pill color={colors.purple}>OM uploaded + verified</Pill>
+          </div>
+        </div>
+
+        {/* SECTION TABS */}
+        <div style={{ display: "flex", gap: 4 }}>
+          {sectionTabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveSection(tab.id)} style={{
+              padding: "10px 18px", border: "none", cursor: "pointer",
+              background: activeSection === tab.id ? "rgba(59,130,246,0.08)" : "transparent",
+              borderBottom: activeSection === tab.id ? `2px solid ${colors.accent}` : "2px solid transparent",
+              color: activeSection === tab.id ? colors.accent : colors.muted,
+              fontSize: 12, fontWeight: 600, borderRadius: "8px 8px 0 0",
+              display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
+            }}>
+              <span>{tab.icon}</span> {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ padding: "24px 28px", maxWidth: 1400, margin: "0 auto" }}>
+
+        {/* ════════════════════════════════════════════════ */}
+        {/* ECONOMY TAB */}
+        {/* ════════════════════════════════════════════════ */}
+        {activeSection === "economy" && (
+          <div>
+            {/* ECONOMY SNAPSHOT BAR */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 24 }}>
+              {ECONOMY_METRICS.map((m, i) => (
+                <Card key={i} style={{ textAlign: "center", padding: 14 }}>
+                  <div style={{ fontSize: 14, marginBottom: 4 }}>{m.icon}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: m.color, fontFamily: mono }}>{m.value}</div>
+                  <div style={{ fontSize: 9, color: colors.muted, fontWeight: 600, letterSpacing: "0.06em" }}>{m.label}</div>
+                  <div style={{ fontSize: 10, color: m.color, marginTop: 4, fontWeight: 500 }}>{m.trend}</div>
+                </Card>
+              ))}
+            </div>
+
+            {/* TWO-COLUMN: EMPLOYERS + DEV PIPELINE */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
+              {/* MAJOR EMPLOYERS */}
+              <Card>
+                <SectionHeader icon="🏢" title="Major Employers & Economic Anchors" subtitle="Within trade area · ranked by employee count" isNew badge="5 employers tracked" />
+                <div style={{ display: "grid", gap: 6 }}>
+                  {EMPLOYERS.map((emp, i) => (
+                    <div key={i} style={{
+                      background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "10px 12px",
+                      borderLeft: `3px solid ${emp.status === "expanding" ? colors.green : emp.status === "watch" ? colors.yellow : colors.accent}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#F8FAFC" }}>{emp.name}</span>
+                          <Pill color={colors.cyan}>{emp.industry}</Pill>
+                        </div>
+                        <div style={{ display: "flex", gap: 4 }}>
+                          {emp.sources.map(s => <SourceBadge key={s} type={s} />)}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 16, fontSize: 10, color: colors.muted }}>
+                        <span>👥 {emp.employees}</span>
+                        <span>📍 {emp.distance}</span>
+                        <span style={{ color: emp.status === "expanding" ? colors.green : emp.status === "watch" ? colors.yellow : colors.text }}>
+                          {emp.status === "expanding" ? "🟢" : emp.status === "watch" ? "🟡" : "🔵"} {emp.statusText}
+                        </span>
+                        <span style={{ color: colors.green }}>→ {emp.impact}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(34,197,94,0.06)", borderRadius: 6, border: `1px solid rgba(34,197,94,0.15)` }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: colors.green }}>
+                    💡 INSIGHT: Healthcare + Tech dominate employment anchors. Combined +2,520 renter HH demand from active expansions alone. OM lists 4 of 5 correctly — missed Emory Healthcare (BLS data only).
+                  </div>
+                </div>
+              </Card>
+
+              {/* DEVELOPMENT PIPELINE */}
+              <Card>
+                <SectionHeader icon="🚀" title="Economic Development Pipeline" subtitle="Projects impacting trade area demand" isNew badge="3 projects tracked" />
+                <div style={{ display: "grid", gap: 8 }}>
+                  {DEVELOPMENT_PIPELINE.map((proj, i) => (
+                    <div key={i} style={{
+                      background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "12px 14px",
+                      display: "grid", gridTemplateColumns: "40px 1fr 90px", gap: 12, alignItems: "center",
+                    }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 10,
+                        background: "rgba(59,130,246,0.08)", border: `1px solid rgba(59,130,246,0.2)`,
+                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                      }}>{proj.icon}</div>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#F8FAFC" }}>{proj.project}</div>
+                        <div style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>{proj.impact}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: colors.accent }}>{proj.timeline}</div>
+                        <Pill color={proj.confidence === "HIGH" ? colors.green : colors.yellow}>{proj.confidence}</Pill>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* INDUSTRY COMPOSITION */}
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#F8FAFC", marginBottom: 8 }}>Industry Composition (Employment %)</div>
+                  {[
+                    { name: "Healthcare", pct: 28, growth: "+15%", color: colors.green },
+                    { name: "Technology", pct: 22, growth: "+12%", color: colors.accent },
+                    { name: "Education", pct: 18, growth: "+3%", color: colors.cyan },
+                    { name: "Professional Svcs", pct: 15, growth: "+8%", color: colors.purple },
+                    { name: "Retail/Food", pct: 10, growth: "-3%", color: colors.red },
+                    { name: "Other", pct: 7, growth: "+1%", color: colors.muted },
+                  ].map((ind, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 10, color: colors.muted, width: 100, textAlign: "right" }}>{ind.name}</span>
+                      <div style={{ flex: 1, height: 14, background: "rgba(255,255,255,0.04)", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{ width: `${ind.pct}%`, height: "100%", background: `${ind.color}50`, borderRadius: 3, transition: "width 0.5s" }} />
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: "#F8FAFC", width: 30, fontFamily: mono }}>{ind.pct}%</span>
+                      <span style={{ fontSize: 9, fontWeight: 600, color: ind.growth.startsWith("+") ? colors.green : colors.red, width: 36, fontFamily: mono }}>{ind.growth}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 8, fontSize: 10, color: colors.muted, lineHeight: 1.5, background: "rgba(0,0,0,0.15)", padding: 8, borderRadius: 6 }}>
+                    Economy shifting toward higher-income employment (Healthcare + Tech = 50%, both growing). Supports Class B+ rents at $1,600-2,400/unit range for target income bracket.
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* WAGE-RENT CORRELATION STRIP */}
+            <Card style={{ marginBottom: 16 }}>
+              <SectionHeader icon="📊" title="Wage-Rent-Traffic Alignment" subtitle="COR-04: Wage growth sets the ceiling for sustainable rent growth" badge="CORRELATION ENGINE" />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                {[
+                  { label: "Wage Growth", value: "+4.2%", sub: "BLS QCEW", color: colors.green, bar: 84 },
+                  { label: "Rent Growth", value: "+3.1%", sub: "Apartments.com", color: colors.accent, bar: 62 },
+                  { label: "Traffic Surge", value: "+0.28", sub: "Google vs DOT baseline", color: colors.yellow, bar: 56 },
+                  { label: "Search Momentum", value: "+22%", sub: "SpyFu QoQ", color: colors.orange, bar: 44 },
+                ].map((m, i) => (
+                  <div key={i} style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: m.color, fontFamily: mono }}>{m.value}</div>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#F8FAFC", marginBottom: 2 }}>{m.label}</div>
+                    <div style={{ height: 4, background: "rgba(255,255,255,0.04)", borderRadius: 2, marginBottom: 4 }}>
+                      <div style={{ width: `${m.bar}%`, height: "100%", background: m.color, borderRadius: 2 }} />
+                    </div>
+                    <div style={{ fontSize: 9, color: colors.muted }}>{m.sub}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, padding: "8px 10px", background: "rgba(34,197,94,0.06)", borderRadius: 6, border: `1px solid rgba(34,197,94,0.12)` }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: colors.green }}>
+                  ✅ HEALTHY ALIGNMENT: Wages (+4.2%) growing faster than rents (+3.1%) → rent runway exists. Traffic surge (+28% above baseline) confirms demand. Affordability at 28% leaves room before 30% ceiling. Forward rent growth assumption of 3.5-4.0% is SUPPORTED.
+                </span>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════ */}
+        {/* DOCUMENT INTELLIGENCE TAB */}
+        {/* ════════════════════════════════════════════════ */}
+        {activeSection === "documents" && (
+          <div>
+            {/* GAP ANALYSIS SUMMARY */}
+            <Card style={{ marginBottom: 16, background: "rgba(139,92,246,0.04)", borderColor: "rgba(139,92,246,0.15)" }}>
+              <SectionHeader icon="📄" title="OM Verification Report" subtitle="Offering Memorandum uploaded Jan 20, 2026 · 6 market claims extracted" isNew badge="DOCUMENT INTELLIGENCE" />
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+                {[
+                  { label: "Verified", count: 3, color: colors.green, icon: "✅" },
+                  { label: "Partially True", count: 2, color: colors.yellow, icon: "⚠️" },
+                  { label: "Contradicted", count: 1, color: colors.red, icon: "❌" },
+                  { label: "Unverifiable", count: 0, color: colors.muted, icon: "❓" },
+                ].map((s, i) => (
+                  <div key={i} style={{
+                    textAlign: "center", padding: "10px 8px",
+                    background: `${s.color}08`, borderRadius: 8, border: `1px solid ${s.color}18`,
+                  }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: s.color, fontFamily: mono }}>{s.count}</div>
+                    <div style={{ fontSize: 10, color: s.color, fontWeight: 600 }}>{s.icon} {s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* VERDICT */}
+              <div style={{
+                padding: "12px 14px", borderRadius: 8,
+                background: "rgba(59,130,246,0.06)", border: `1px solid rgba(59,130,246,0.15)`,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: colors.accent, letterSpacing: "0.06em", marginBottom: 4 }}>PLATFORM vs BROKER VERDICT</div>
+                <div style={{ fontSize: 11, color: "#CBD5E1", lineHeight: 1.7 }}>
+                  Broker narrative is <strong style={{ color: colors.yellow }}>72% aligned</strong> with platform data.
+                  <strong style={{ color: colors.red }}> Key divergence:</strong> Supply claims are contradicted — OM says no new supply within 1mi, platform identifies 530 units in pipeline.
+                  <strong style={{ color: colors.accent }}> Hidden upside:</strong> BeltLine trail proximity (0.3mi) not mentioned in OM — significant value driver broker either missed or is saving for negotiation.
+                  <strong style={{ color: colors.green }}> Net:</strong> Deal economics likely better than OM suggests IF supply absorption holds.
+                </div>
+              </div>
+            </Card>
+
+            {/* INDIVIDUAL CLAIMS */}
+            <Card>
+              <SectionHeader icon="🔍" title="Claim-by-Claim Verification" subtitle="Each broker claim extracted and checked against platform data" />
+              <div style={{ display: "grid", gap: 8 }}>
+                {OM_CLAIMS.map((claim, i) => {
+                  const isExpanded = expandedClaim === i;
+                  return (
+                    <div key={i} onClick={() => setExpandedClaim(isExpanded ? null : i)} style={{
+                      background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "12px 14px",
+                      cursor: "pointer", transition: "all 0.15s",
+                      borderLeft: `3px solid ${claim.status === "verified" ? colors.green : claim.status === "partial" ? colors.yellow : claim.status === "contradicted" ? colors.red : colors.muted}40`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <Pill color={colors.purple}>{claim.category}</Pill>
+                          <span style={{ fontSize: 12, color: "#F8FAFC", fontWeight: 500 }}>"{claim.claim}"</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <VerificationBadge status={claim.status} />
+                          <span style={{ fontSize: 10, color: colors.muted }}>{isExpanded ? "▲" : "▼"}</span>
+                        </div>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ marginTop: 8, padding: "10px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 6 }}>
+                          <div style={{ fontSize: 11, color: "#CBD5E1", lineHeight: 1.7, marginBottom: 6 }}>
+                            <strong style={{ color: colors.accent }}>Platform Finding:</strong> {claim.finding}
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <SourceBadge type="S" />
+                            <Pill color={colors.muted}>Source: {claim.source}</Pill>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════ */}
+        {/* DEMOGRAPHICS TAB */}
+        {/* ════════════════════════════════════════════════ */}
+        {activeSection === "demographics" && (
+          <div>
+            {/* DEMAND FUNNEL */}
+            <Card style={{ marginBottom: 16 }}>
+              <SectionHeader icon="🎯" title="Renter Demand Quantification" subtitle="Translating demographics into actual demand numbers" isNew badge="DEMAND FUNNEL" />
+              <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 0" }}>
+                {[
+                  { label: "Total Pop (1mi)", value: "18,400", pct: 100, color: colors.muted },
+                  { label: "Renters (60%)", value: "11,040", pct: 60, color: colors.accent },
+                  { label: "Income Qualified", value: "7,728", pct: 42, color: colors.cyan },
+                  { label: "Age Match", value: "5,410", pct: 29, color: colors.purple },
+                  { label: "Unit Match", value: "3,787", pct: 21, color: colors.green },
+                ].map((step, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{
+                      height: Math.max(30, step.pct * 0.8), background: `${step.color}20`,
+                      border: `1px solid ${step.color}30`, borderRadius: 6,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginBottom: 6, transition: "height 0.5s",
+                    }}>
+                      <span style={{ fontSize: 14, fontWeight: 800, color: step.color, fontFamily: mono }}>{step.value}</span>
+                    </div>
+                    <div style={{ fontSize: 9, color: colors.muted, fontWeight: 600 }}>{step.label}</div>
+                    {i < 4 && <span style={{ position: "absolute", color: colors.dim, fontSize: 12 }}>→</span>}
+                  </div>
+                ))}
+              </div>
+              <div style={{ textAlign: "center", marginTop: 10, padding: "8px 12px", background: "rgba(34,197,94,0.06)", borderRadius: 6, border: `1px solid rgba(34,197,94,0.12)` }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: colors.green }}>
+                  Your 180 units = 4.8% of qualified demand pool (3,787). Healthy — you don't need more than 5-8% capture. Demand pool is 21× your unit count.
+                </span>
+              </div>
+            </Card>
+
+            {/* EXISTING WIDGETS PLACEHOLDER */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+              <Card style={{ minHeight: 280 }}>
+                <SectionHeader icon="🗺️" title="Demand Heat Map" subtitle="EXISTING — keep as-is + add employer pins overlay" />
+                <div style={{ height: 200, background: "rgba(59,130,246,0.04)", borderRadius: 8, border: `1px dashed rgba(59,130,246,0.2)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 14, color: colors.accent, marginBottom: 4 }}>🗺️</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>Existing Mapbox heat map</div>
+                    <div style={{ fontSize: 9, color: colors.green, marginTop: 4 }}>+ NEW: Toggle employer pins,<br/>transit stops, dev pipeline projects</div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card style={{ minHeight: 280 }}>
+                <SectionHeader icon="📊" title="Unit Mix Optimizer" subtitle="EXISTING — enhanced with demand funnel connection" />
+                <div style={{ height: 200, background: "rgba(139,92,246,0.04)", borderRadius: 8, border: `1px dashed rgba(139,92,246,0.2)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 14, color: colors.purple, marginBottom: 4 }}>📊</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>Existing unit mix bars</div>
+                    <div style={{ fontSize: 9, color: colors.green, marginTop: 4 }}>+ NEW: Competitor mix comparison,<br/>rent optimization per type,<br/>strategy-specific recommendations</div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card style={{ minHeight: 280 }}>
+                <SectionHeader icon="👥" title="Demographic Insights" subtitle="EXISTING — enhanced with migration + income trends" />
+                <div style={{ height: 200, background: "rgba(236,72,153,0.04)", borderRadius: 8, border: `1px dashed rgba(236,72,153,0.2)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 14, color: colors.pink, marginBottom: 4 }}>👥</div>
+                    <div style={{ fontSize: 11, color: colors.muted }}>Existing renter profile + lifestyle</div>
+                    <div style={{ fontSize: 9, color: colors.green, marginTop: 4 }}>+ NEW: Migration origin chart,<br/>income trend line vs rent,<br/>renter % trend, amenity recs<br/>from lifestyle data</div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════════════ */}
+        {/* NEWS FEED TAB */}
+        {/* ════════════════════════════════════════════════ */}
+        {activeSection === "news" && (
+          <div>
+            <Card>
+              <SectionHeader icon="📰" title="Trade Area News Intelligence" subtitle="Events within or affecting this property's trade area · filtered from platform news agent" isNew badge="LIVE FEED" />
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                {["All", "📈 Demand", "🏗️ Supply", "🚇 Infra", "💼 Economic", "⚠️ Risk"].map((filter, i) => (
+                  <button key={i} style={{
+                    padding: "5px 12px", borderRadius: 6, border: `1px solid ${colors.cardBorder}`,
+                    background: i === 0 ? "rgba(59,130,246,0.08)" : "transparent",
+                    color: i === 0 ? colors.accent : colors.muted, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                  }}>{filter}</button>
+                ))}
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {NEWS_EVENTS.map((event, i) => (
+                  <div key={i} style={{
+                    background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "12px 14px",
+                    borderLeft: `3px solid ${event.color}40`,
+                    display: "grid", gridTemplateColumns: "40px 1fr 100px", gap: 12, alignItems: "center",
+                  }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 10,
+                      background: `${event.color}10`, border: `1px solid ${event.color}22`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
+                    }}>{event.icon}</div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#F8FAFC", marginBottom: 2 }}>{event.headline}</div>
+                      <div style={{ display: "flex", gap: 8, fontSize: 10, color: colors.muted }}>
+                        <span>📍 {event.distance}</span>
+                        <span style={{ color: event.color }}>→ {event.impact}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <Pill color={event.color}>{event.type}</Pill>
+                      <div style={{ fontSize: 9, color: colors.muted, marginTop: 4 }}>{event.date}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: colors.muted }}>
+                  Showing 5 most recent events · <span style={{ color: colors.accent, cursor: "pointer" }}>View all 23 events since deal creation →</span>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* THREE-SOURCE COLLISION LEGEND */}
+      <div style={{
+        position: "fixed", bottom: 16, right: 16, padding: "10px 14px",
+        background: "rgba(11,15,26,0.95)", border: `1px solid ${colors.cardBorder}`,
+        borderRadius: 10, display: "flex", gap: 10, alignItems: "center", zIndex: 10,
+        backdropFilter: "blur(8px)",
+      }}>
+        <span style={{ fontSize: 9, color: colors.muted, fontWeight: 700, letterSpacing: "0.08em" }}>DATA SOURCES:</span>
+        <SourceBadge type="S" />
+        <SourceBadge type="N" />
+        <SourceBadge type="D" />
+        <span style={{ fontSize: 9, color: colors.dim }}>|</span>
+        <span style={{ fontSize: 9, color: colors.muted }}>Collisions shown when sources disagree</span>
+      </div>
+    </div>
+  );
+}

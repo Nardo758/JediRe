@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JEDI RE - Bloomberg Terminal (Full Interactive Demo)</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
+    .loading { 
+      position: fixed; 
+      inset: 0; 
+      background: #0A0E17; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      color: #F5A623;
+      font-family: monospace;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div class="loading">Loading Bloomberg Terminal...</div>
+  
+  <script type="text/babel" src="./BloombergTerminal.jsx"></script>
+  <script type="text/babel">
+    // Render the component
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<JEDITerminal />);
+    // Hide loading screen
+    document.querySelector('.loading').style.display = 'none';
+  </script>
+</body>
+</html>

@@ -1,0 +1,361 @@
+import { Pool } from 'pg';
+import { logger } from '../utils/logger';
+
+export interface ParcelRecord {
+  parcelId: string;
+  county: string;
+  state: string;
+  municipality?: string;
+  zoningCode?: string;
+  zoningDescription?: string;
+  landUseCode?: string;
+  geometry?: any;
+  lotAreaSf?: number;
+  lotWidthFt?: number;
+  lotDepthFt?: number;
+  frontageFt?: number;
+  isCornerLot?: boolean;
+  siteAddress?: string;
+  centroidLat?: number;
+  centroidLng?: number;
+  countyLastUpdated?: string;
+  countySourceUrl?: string;
+  rawRecord?: any;
+}
+
+export interface IngestionResult {
+  batchId: string;
+  totalRecords: number;
+  inserted: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ parcelId: string; error: string }>;
+  duration_ms: number;
+}
+
+interface FieldMapping {
+  parcelId: string;
+  zoningCode?: string;
+  zoningDescription?: string;
+  landUseCode?: string;
+  lotAreaSf?: string;
+  siteAddress?: string;
+  municipality?: string;
+}
+
+const KNOWN_MAPPINGS: Record<string, FieldMapping> = {
+  'fulton_county_ga': {
+    parcelId: 'PARCEL_ID',
+    zoningCode: 'ZONING',
+    zoningDescription: 'ZONE_DESC',
+    landUseCode: 'LAND_USE_CD',
+    lotAreaSf: 'LOT_SIZE',
+    siteAddress: 'SITUS_ADDR',
+    municipality: 'CITY',
+  },
+  'dekalb_county_ga': {
+    parcelId: 'PIN',
+    zoningCode: 'ZONING_CLASS',
+    zoningDescription: 'ZONING_DESC',
+    landUseCode: 'LU_CODE',
+    lotAreaSf: 'ACRES',
+    siteAddress: 'PROP_ADDR',
+    municipality: 'MUNICIPALITY',
+  },
+  'generic': {
+    parcelId: 'parcel_id',
+    zoningCode: 'zoning_code',
+    zoningDescription: 'zoning_desc',
+    landUseCode: 'land_use',
+    lotAreaSf: 'lot_area_sf',
+    siteAddress: 'address',
+    municipality: 'municipality',
+  },
+};
+
+export class ParcelIngestionService {
+  constructor(private pool: Pool) {}
+
+  async ingestGeoJSON(
+    geojson: any,
+    county: string,
+    state: string,
+    mappingKey: string = 'generic',
+    sourceUrl?: string,
+  ): Promise<IngestionResult> {
+    const start = Date.now();
+    const batchId = `${county.toLowerCase()}_${state.toLowerCase()}_${Date.now()}`;
+    const mapping = KNOWN_MAPPINGS[mappingKey] || KNOWN_MAPPINGS['generic'];
+
+    if (!geojson?.features || !Array.isArray(geojson.features)) {
+      throw new Error('Invalid GeoJSON: expected FeatureCollection with features array');
+    }
+
+    const records: ParcelRecord[] = geojson.features
+      .filter((f: any) => f.properties && this.resolveField(f.properties, mapping.parcelId))
+      .map((feature: any) => this.featureToRecord(feature, county, state, mapping, sourceUrl));
+
+    return this.ingestBatch(records, batchId);
+  }
+
+  async ingestBatch(records: ParcelRecord[], batchId?: string): Promise<IngestionResult> {
+    const start = Date.now();
+    batchId = batchId || `batch_${Date.now()}`;
+
+    const result: IngestionResult = {
+      batchId,
+      totalRecords: records.length,
+      inserted: 0,
+      updated: 0,
+      skipped: 0,
+      errors: [],
+      duration_ms: 0,
+    };
+
+    const chunkSize = 100;
+    for (let i = 0; i < records.length; i += chunkSize) {
+      const chunk = records.slice(i, i + chunkSize);
+      await this.processChunk(chunk, batchId, result);
+    }
+
+    result.duration_ms = Date.now() - start;
+    logger.info(`Parcel ingestion complete: ${result.inserted} inserted, ${result.updated} updated, ${result.errors.length} errors in ${result.duration_ms}ms`);
+
+    return result;
+  }
+
+  async getParcel(parcelId: string, county: string, state: string): Promise<any | null> {
+    const result = await this.pool.query(
+      `SELECT * FROM county_parcels 
+       WHERE parcel_id = $1 AND LOWER(county) = LOWER($2) AND state = $3`,
+      [parcelId, county, state.toUpperCase()]
+    );
+    return result.rows[0] || null;
+  }
+
+  async findNearby(lat: number, lng: number, radiusMeters: number = 50): Promise<any[]> {
+    const degOffset = radiusMeters / 111320;
+
+    const result = await this.pool.query(
+      `SELECT *, 
+        SQRT(POW((centroid_lat - $1) * 111320, 2) + POW((centroid_lng - $2) * 111320 * COS(RADIANS($1)), 2)) AS distance_m
+       FROM county_parcels
+       WHERE centroid_lat BETWEEN $1 - $3 AND $1 + $3
+         AND centroid_lng BETWEEN $2 - $3 AND $2 + $3
+       ORDER BY distance_m
+       LIMIT 10`,
+      [lat, lng, degOffset]
+    );
+    return result.rows;
+  }
+
+  async matchDealToParcel(dealId: string): Promise<any | null> {
+    const existingLink = await this.pool.query(
+      `SELECT cp.* FROM county_parcels cp
+       JOIN zoning_triangulations zt ON zt.county_parcel_uuid = cp.id
+       WHERE zt.deal_id = $1
+       LIMIT 1`,
+      [dealId]
+    );
+    if (existingLink.rows.length > 0) return existingLink.rows[0];
+
+    const dealCoords = await this.pool.query(
+      `SELECT 
+         COALESCE(pb.centroid->>'lat', pb.centroid->>'latitude', pb.centroid->>1) AS lat,
+         COALESCE(pb.centroid->>'lng', pb.centroid->>'longitude', pb.centroid->>0) AS lng,
+         d.address
+       FROM deals d
+       LEFT JOIN property_boundaries pb ON pb.deal_id = d.id
+       WHERE d.id = $1`,
+      [dealId]
+    );
+
+    if (dealCoords.rows.length === 0) return null;
+
+    const row = dealCoords.rows[0];
+    const lat = parseFloat(row.lat);
+    const lng = parseFloat(row.lng);
+
+    if (!isNaN(lat) && !isNaN(lng)) {
+      const nearby = await this.findNearby(lat, lng, 30);
+      if (nearby.length > 0) return nearby[0];
+    }
+
+    if (row.address) {
+      const addrMatch = await this.pool.query(
+        `SELECT * FROM county_parcels
+         WHERE site_address ILIKE $1
+         LIMIT 1`,
+        [`%${this.normalizeAddress(row.address)}%`]
+      );
+      if (addrMatch.rows.length > 0) return addrMatch.rows[0];
+    }
+
+    return null;
+  }
+
+  async getIngestionStats(): Promise<any[]> {
+    const result = await this.pool.query(
+      `SELECT county, state, 
+         COUNT(*) as total_parcels,
+         COUNT(county_zoning_code) as parcels_with_zoning,
+         COUNT(DISTINCT county_zoning_code) as unique_zoning_codes,
+         MIN(ingested_at) as first_ingested,
+         MAX(ingested_at) as last_ingested,
+         MAX(county_last_updated) as most_recent_county_update
+       FROM county_parcels
+       GROUP BY county, state
+       ORDER BY county, state`
+    );
+    return result.rows;
+  }
+
+  private async processChunk(
+    records: ParcelRecord[],
+    batchId: string,
+    result: IngestionResult,
+  ): Promise<void> {
+    for (const record of records) {
+      try {
+        if (!record.parcelId) {
+          result.skipped++;
+          continue;
+        }
+
+        const upsertResult = await this.pool.query(
+          `INSERT INTO county_parcels (
+            parcel_id, county, state, municipality,
+            county_zoning_code, county_zoning_desc, land_use_code,
+            geometry, lot_area_sf, lot_width_ft, lot_depth_ft, frontage_ft, is_corner_lot,
+            site_address, centroid_lat, centroid_lng,
+            county_last_updated, county_source_url,
+            ingestion_batch_id, raw_record
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+          ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+            municipality = COALESCE(EXCLUDED.municipality, county_parcels.municipality),
+            county_zoning_code = COALESCE(EXCLUDED.county_zoning_code, county_parcels.county_zoning_code),
+            county_zoning_desc = COALESCE(EXCLUDED.county_zoning_desc, county_parcels.county_zoning_desc),
+            land_use_code = COALESCE(EXCLUDED.land_use_code, county_parcels.land_use_code),
+            geometry = COALESCE(EXCLUDED.geometry, county_parcels.geometry),
+            lot_area_sf = COALESCE(EXCLUDED.lot_area_sf, county_parcels.lot_area_sf),
+            site_address = COALESCE(EXCLUDED.site_address, county_parcels.site_address),
+            centroid_lat = COALESCE(EXCLUDED.centroid_lat, county_parcels.centroid_lat),
+            centroid_lng = COALESCE(EXCLUDED.centroid_lng, county_parcels.centroid_lng),
+            county_last_updated = COALESCE(EXCLUDED.county_last_updated, county_parcels.county_last_updated),
+            raw_record = EXCLUDED.raw_record,
+            updated_at = NOW()
+          RETURNING (xmax = 0) AS is_insert`,
+          [
+            record.parcelId,
+            record.county,
+            record.state.toUpperCase(),
+            record.municipality || null,
+            record.zoningCode || null,
+            record.zoningDescription || null,
+            record.landUseCode || null,
+            record.geometry ? JSON.stringify(record.geometry) : null,
+            record.lotAreaSf || null,
+            record.lotWidthFt || null,
+            record.lotDepthFt || null,
+            record.frontageFt || null,
+            record.isCornerLot || false,
+            record.siteAddress || null,
+            record.centroidLat || null,
+            record.centroidLng || null,
+            record.countyLastUpdated || null,
+            record.countySourceUrl || null,
+            batchId,
+            record.rawRecord ? JSON.stringify(record.rawRecord) : null,
+          ]
+        );
+
+        if (upsertResult.rows[0]?.is_insert) {
+          result.inserted++;
+        } else {
+          result.updated++;
+        }
+      } catch (error: any) {
+        result.errors.push({ parcelId: record.parcelId, error: error.message });
+      }
+    }
+  }
+
+  private featureToRecord(
+    feature: any,
+    county: string,
+    state: string,
+    mapping: FieldMapping,
+    sourceUrl?: string,
+  ): ParcelRecord {
+    const props = feature.properties || {};
+    const geom = feature.geometry;
+
+    let centroidLat: number | undefined;
+    let centroidLng: number | undefined;
+    if (geom?.type === 'Polygon' && geom.coordinates?.[0]) {
+      const ring = geom.coordinates[0];
+      let sumLat = 0, sumLng = 0;
+      for (const [lng, lat] of ring) {
+        sumLat += lat;
+        sumLng += lng;
+      }
+      centroidLat = sumLat / ring.length;
+      centroidLng = sumLng / ring.length;
+    }
+
+    let lotAreaSf = this.parseNumber(this.resolveField(props, mapping.lotAreaSf));
+    if (lotAreaSf && lotAreaSf < 100) {
+      lotAreaSf = lotAreaSf * 43560;
+    }
+
+    return {
+      parcelId: String(this.resolveField(props, mapping.parcelId)),
+      county,
+      state,
+      municipality: this.resolveField(props, mapping.municipality) || undefined,
+      zoningCode: this.resolveField(props, mapping.zoningCode) || undefined,
+      zoningDescription: this.resolveField(props, mapping.zoningDescription) || undefined,
+      landUseCode: this.resolveField(props, mapping.landUseCode) || undefined,
+      geometry: geom,
+      lotAreaSf,
+      siteAddress: this.resolveField(props, mapping.siteAddress) || undefined,
+      centroidLat,
+      centroidLng,
+      countySourceUrl: sourceUrl,
+      rawRecord: props,
+    };
+  }
+
+  private resolveField(obj: any, fieldName?: string): any {
+    if (!fieldName || !obj) return null;
+
+    if (obj[fieldName] !== undefined) return obj[fieldName];
+
+    const lower = fieldName.toLowerCase();
+    for (const key of Object.keys(obj)) {
+      if (key.toLowerCase() === lower) return obj[key];
+    }
+
+    return null;
+  }
+
+  private parseNumber(val: any): number | undefined {
+    if (val === null || val === undefined || val === '') return undefined;
+    const n = parseFloat(String(val).replace(/[,$]/g, ''));
+    return isNaN(n) ? undefined : n;
+  }
+
+  private normalizeAddress(addr: string): string {
+    return addr
+      .toUpperCase()
+      .replace(/\b(STREET|ST\.?)\b/g, 'ST')
+      .replace(/\b(AVENUE|AVE\.?)\b/g, 'AVE')
+      .replace(/\b(BOULEVARD|BLVD\.?)\b/g, 'BLVD')
+      .replace(/\b(DRIVE|DR\.?)\b/g, 'DR')
+      .replace(/\b(ROAD|RD\.?)\b/g, 'RD')
+      .replace(/\b(SUITE|STE\.?)\b/g, 'STE')
+      .replace(/[.,#]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+}

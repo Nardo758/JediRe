@@ -30,8 +30,7 @@ router.post('/predict/:propertyId', async (req, res) => {
     
   } catch (error: any) {
     console.error('Traffic prediction error:', error);
-    const status = (error.message && (error.message.includes('not found') || error.message.includes('Not found'))) ? 404 : 500;
-    res.status(status).json({
+    res.status(500).json({
       error: error.message,
       details: 'Failed to generate traffic prediction'
     });
@@ -118,8 +117,8 @@ router.post('/validation/record', async (req, res) => {
     } = req.body;
     
     // Calculate week/year
-    const date = measurement_date ? new Date(measurement_date) : new Date();
-    const week = Math.ceil((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)) || 1;
+    const date = new Date(measurement_date);
+    const week = Math.ceil((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
     const year = date.getFullYear();
     
     // Insert actual measurement
@@ -139,11 +138,11 @@ router.post('/validation/record', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING id
     `, [
-      property_id || '00000000-0000-0000-0000-000000000000',
-      measurement_date || new Date().toISOString().split('T')[0],
+      property_id,
+      measurement_date,
       week,
       year,
-      total_walk_ins || 0,
+      total_walk_ins,
       measurement_method,
       measurement_confidence || 0.85,
       weather,
@@ -336,9 +335,9 @@ router.post('/calibration/apply', async (req, res) => {
       ) VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id
     `, [
-      factor_type || 'general',
-      factor_key || 'default',
-      multiplier || 1.0,
+      factor_type,
+      factor_key,
+      multiplier,
       reason,
       effective_until || null,
       (req as any).user?.email || 'system'

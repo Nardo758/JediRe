@@ -112,9 +112,9 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
   };
 
   return (
-    <div className="w-64 bg-[#0F1319] border-r border-[#1e2a3d] flex flex-col">
+    <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
       <div className="flex-1 overflow-y-auto p-4">
-        <h3 className="text-xs font-semibold text-[#6B7585] uppercase tracking-wider mb-3">
+        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
           {isOwned ? 'Asset Modules' : 'Deal Modules'}
         </h3>
         
@@ -135,9 +135,9 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
                 className={`
                   w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition
                   ${isActive 
-                    ? 'bg-[#0d1e3d] text-blue-400 font-semibold' 
+                    ? 'bg-blue-50 text-blue-700 font-semibold' 
                     : enabled && unlocked
-                      ? 'text-[#9EA8B4] hover:bg-[#0F1319]'
+                      ? 'text-gray-700 hover:bg-gray-50'
                       : 'text-gray-400 cursor-not-allowed'
                   }
                 `}
@@ -154,7 +154,7 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
                     </div>
                   </div>
                   {!enabled && upgradeMsg && (
-                    <span className="text-xs text-[#6B7585]">{upgradeMsg}</span>
+                    <span className="text-xs text-gray-500">{upgradeMsg}</span>
                   )}
                 </div>
               </button>
@@ -163,11 +163,11 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
         </div>
       </div>
 
-      <div className="p-4 border-t border-[#1e2a3d] bg-[#0F1319]">
-        <div className="text-xs text-[#9EA8B4] space-y-1">
+      <div className="p-4 border-t border-gray-200 bg-gray-50">
+        <div className="text-xs text-gray-600 space-y-1">
           {isOwned && (
             <div className="flex justify-between mb-2">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#022c22] text-green-300">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                 Owned Asset
               </span>
             </div>

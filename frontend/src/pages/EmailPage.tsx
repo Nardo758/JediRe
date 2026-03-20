@@ -1286,15 +1286,15 @@ export function EmailPage() {
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
                   {[
-                    { label: "Link to Deal", icon: "\uD83D\uDD17", color: T.accent.blue, action: handleLinkToDeal },
-                    { label: "Create Task", icon: "\u2713", color: T.accent.cyan, action: () => {} },
-                    { label: "Extract Data", icon: "\uD83D\uDCCA", color: T.accent.purple, action: () => {} },
-                    { label: "AI Summary", icon: "\u2728", color: T.accent.amber, action: () => {} },
-                    { label: "Draft Response", icon: "\u270D\uFE0F", color: T.accent.green,
-                      action: () => { setComposeMode('reply'); } },
-                    { label: "Set Follow-up", icon: "\u23F0", color: T.accent.red, action: () => {} },
-                    { label: "Add to Deal Bible", icon: "\uD83D\uDCD8", color: T.accent.blue, action: () => {} },
-                    { label: "Log Activity", icon: "\uD83D\uDCDD", color: T.accent.cyan, action: () => {} },
+                    { label: "Create / Update Deal", icon: "\uD83C\uDFE2", color: T.accent.blue, action: handleLinkToDeal },
+                    { label: "Schedule Tour", icon: "\uD83D\uDCCD", color: T.accent.cyan, action: () => {} },
+                    { label: "Draft Offer Letter", icon: "\u270D\uFE0F", color: T.accent.purple, action: () => { setComposeMode('reply'); } },
+                    { label: "Research Comps", icon: "\uD83D\uDD0D", color: T.accent.amber, action: () => {} },
+                    { label: "Flag for Review", icon: "\u26A0\uFE0F", color: T.accent.red,
+                      action: () => { if (selectedEmail) inboxService.flagEmail(selectedEmail.id, !selectedEmail.is_flagged).then(() => loadInbox()); } },
+                    { label: "Property Report", icon: "\uD83D\uDCCB", color: T.accent.green, action: () => {} },
+                    { label: "Schedule Follow-up", icon: "\u23F0", color: T.accent.blue, action: () => {} },
+                    { label: "Add to Campaign", icon: "\uD83D\uDCE3", color: T.accent.cyan, action: () => {} },
                   ].map((act, i) => (
                     <button key={i} onClick={act.action} style={{
                       display: "flex", flexDirection: "column" as const, alignItems: "flex-start",
@@ -1509,9 +1509,9 @@ export function EmailPage() {
                     {teamMembers.length === 0 && selectedEmail.deal_id && (
                       <div style={{ padding: "12px", textAlign: "center" as const, color: T.text.tertiary, fontSize: 11 }}>No team members yet</div>
                     )}
-                    {(['Broker', 'Attorney', 'Lender', 'Appraiser', 'Property Mgr'].map((role, i) => {
-                      const member = teamMembers.find((m: any) => (m.role || '').toLowerCase().includes(role.toLowerCase()));
-                      if (member) return null;
+                    {(['Lead Buyer', 'Legal', 'Finance', 'Broker'].map((role, i) => {
+                      const hasMember = teamMembers.some((m: any) => (m.role || '').toLowerCase().includes(role.toLowerCase()));
+                      if (hasMember) return null;
                       return (
                         <div key={i} style={{
                           display: "flex", alignItems: "center", gap: 10, padding: "9px 11px",
@@ -1524,7 +1524,7 @@ export function EmailPage() {
                           }}>+</div>
                           <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 11, color: T.text.tertiary }}>{role}</div>
-                            <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>Unassigned</div>
+                            <div style={{ fontSize: 9, color: T.text.tertiary, fontFamily: FONTS.mono }}>Open slot</div>
                           </div>
                         </div>
                       );

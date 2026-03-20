@@ -1,0 +1,1098 @@
+import { useState } from "react";
+
+// ═══════════════════════════════════════════════════════════════════
+// JEDI RE — DEAL OVERVIEW v3
+// Lighter slate theme · Full deal flow propagation
+// Two modes: Existing Acquisition · Ground-Up Development
+// Dev mode adds: Zoning Path Selector · Unit Mix Program · Comp Alignment
+// ═══════════════════════════════════════════════════════════════════
+
+const T = {
+  bg: {
+    page:      "#0E1B2E",
+    panel:     "#152030",
+    panelAlt:  "#1A2840",
+    header:    "#1F304D",
+    hover:     "#243758",
+    active:    "#2A4066",
+    input:     "#111F32",
+    topBar:    "#0A1422",
+    stripe:    "#162540",
+  },
+  text: {
+    primary:     "#EDF2FA",
+    secondary:   "#A8BBCF",
+    muted:       "#5D7A96",
+    dim:         "#3D5572",
+    amber:       "#F5A623",
+    amberBright: "#FFD166",
+    green:       "#27D98C",
+    greenDim:    "#1A8F5C",
+    red:         "#FF4D5E",
+    cyan:        "#22D3EE",
+    orange:      "#FB923C",
+    purple:      "#B197FC",
+    white:       "#FFFFFF",
+    blue:        "#60A5FA",
+  },
+  border: { subtle: "#1E3450", medium: "#2A4A6E", bright: "#3B6090" },
+  font: {
+    mono:    "'JetBrains Mono','Fira Code','SF Mono',monospace",
+    display: "'IBM Plex Mono',monospace",
+    label:   "'IBM Plex Sans',sans-serif",
+  },
+};
+
+const css = `
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@keyframes glow   {0%,100%{box-shadow:0 0 6px #27D98C44}50%{box-shadow:0 0 16px #27D98C77}}
+@keyframes glowA  {0%,100%{box-shadow:0 0 6px #F5A62344}50%{box-shadow:0 0 16px #F5A62388}}
+@keyframes glowR  {0%,100%{box-shadow:0 0 4px #FF4D5E44}50%{box-shadow:0 0 10px #FF4D5E77}}
+@keyframes fadeIn {from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse  {0%,100%{opacity:1}50%{opacity:0.5}}
+@keyframes slide  {from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+*{scrollbar-width:thin;scrollbar-color:#2A4A6E #0E1B2E;box-sizing:border-box;margin:0;padding:0}
+*::-webkit-scrollbar{width:4px;height:4px}
+*::-webkit-scrollbar-track{background:#0E1B2E}
+*::-webkit-scrollbar-thumb{background:#2A4A6E;border-radius:2px}
+.row-hover:hover{background:#1F304D !important;cursor:pointer}
+.mod-link:hover{background:#243758 !important;cursor:pointer}
+.tab-btn:hover{opacity:0.8}
+.mode-btn{transition:all 0.15s}
+.anim-fade{animation:fadeIn 0.2s ease-out}
+.anim-slide{animation:slide 0.25s ease-out}
+`;
+
+// ─── MOCK DATA ─────────────────────────────────────────────────────
+const EXISTING_DEAL = {
+  id: "WC-001", type: "EXISTING",
+  name: "Westshore Commons",
+  addr: "4201 W Boy Scout Blvd",
+  city: "Tampa, FL 33607",
+  market: "Tampa MSA", submarket: "Westshore",
+  assetClass: "Multifamily — Garden Style",
+  units: 248, builtYear: 2019, renovated: null,
+  price: "$38,500,000", ppu: "$155,242",
+  stage: "DD", stageColor: T.text.cyan,
+  daysInPipeline: 23, daysToDeadline: 37,
+  lotSize: "4.2 ac", zoning: "PD-C",
+  score: 82, delta: "+4", confidence: 87,
+  trend: [72,74,73,76,78,77,79,80,82],
+  signals: [
+    { l:"DEMAND",   v:88, d:"+5", w:"30%", note:"Amazon 2,000-job expansion confirmed" },
+    { l:"SUPPLY",   v:72, d:"-3", w:"25%", note:"1,240 units pipeline 3mi radius" },
+    { l:"MOMENTUM", v:85, d:"+2", w:"20%", note:"Rent +3.0% YoY, vacancy tightening" },
+    { l:"POSITION", v:79, d:"--", w:"15%", note:"78th pctl submarket rank" },
+    { l:"RISK",     v:81, d:"+3", w:"10%", note:"Low demand risk; supply offset by absorption" },
+  ],
+  verdict: { winner:"BTS", wScore:84, gap:15, runner:"RENTAL", rScore:69 },
+  arbitrage: "Zoning allows 3x current density. Most brokers pitch Rental — you'd miss the development upside.",
+  // Financials
+  occupancy: "94.2%", economicOcc: "92.8%",
+  effectiveRent: "$1,908", marketRent: "$1,944", rentPremium: "-1.8%",
+  noi: "$2,680,000", brokerNoi: "$2,840,000", noiBridge: "-5.6%",
+  noiAdjReasons: ["Rent growth: broker +4.0% vs market +3.0%","Insurance understated by 22%"],
+  capGoingIn: "6.0%", capMarket: "5.8%", impliedValue: "$46.2M", impliedUplift: "+$7.7M",
+  dscr: "1.32x", dscrMin: "1.25x", yoc: "7.2%", expenseRatio: "38.4%",
+  // Capital
+  seniorDebt: "$28.8M", seniorLtc: "75%", seniorRate: "SOFR +275bps",
+  mezzDebt: "$3.8M", mezzLtc: "10%", mezzRate: "12% fixed",
+  equity: "$5.9M", equityLtc: "15%", wacc: "8.2%",
+  targetIrr: "24%", targetEm: "2.8x", holdPeriod: "24mo",
+  // Risk
+  riskScore: 32, riskLevel: "LOW",
+  riskBanner: "1,200 units delivering 2026-2027 within 3mi. Demand absorption 1.3x pipeline.",
+  riskInsurance: 38,
+  // Comps
+  comps: [
+    { name:"Harbor Bay Apts",      ppu:"$162K", cap:"5.9%", date:"45d",  delta:"+4.3%", units:220, rent:"$1,954" },
+    { name:"Channel District Lofts", ppu:"$148K", cap:"6.2%", date:"78d",  delta:"-4.7%", units:180, rent:"$1,879" },
+    { name:"Midtown Heights",      ppu:"$171K", cap:"5.5%", date:"103d", delta:"+10.2%", units:312, rent:"$2,044" },
+    { name:"Westport Commons",     ppu:"$155K", cap:"6.1%", date:"112d", delta:"0.0%",  units:248, rent:"$1,908" },
+  ],
+  // DD
+  ddItems:[
+    {l:"Phase I Environmental",      done:true},
+    {l:"Structural Inspection",      done:true},
+    {l:"Lease Audit (248 units)",    done:false},
+    {l:"Insurance Binder",           done:false},
+    {l:"Zoning Confirmation Letter", done:true},
+    {l:"Debt Term Sheet",            done:false},
+  ],
+};
+
+const DEV_DEAL = {
+  id: "NP-002", type: "DEVELOPMENT",
+  name: "Nocatee Parcels",
+  addr: "Parcel 7-A Nocatee Pkwy",
+  city: "Jacksonville, FL 32081",
+  market: "Jacksonville MSA", submarket: "Nocatee / St Johns",
+  assetClass: "Ground-Up Multifamily",
+  units: 0, plannedUnits: 186, builtYear: null,
+  price: "$4,200,000", ppu: "LAND",
+  stage: "LOI", stageColor: T.text.amber,
+  daysInPipeline: 11, daysToDeadline: 52,
+  lotSize: "3.5 ac", zoning: "PD-R / MF-18",
+  score: 88, delta: "+7", confidence: 91,
+  trend: [71,73,76,78,80,82,84,86,88],
+  signals: [
+    { l:"DEMAND",   v:92, d:"+6", w:"30%", note:"Nocatee #2 top-selling MPC nationally" },
+    { l:"SUPPLY",   v:78, d:"--", w:"25%", note:"Pipeline thin for new MF construction" },
+    { l:"MOMENTUM", v:88, d:"+4", w:"20%", note:"Rent +4.1% YoY, absorption accelerating" },
+    { l:"POSITION", v:85, d:"+2", w:"15%", note:"Employment corridor, major retail node" },
+    { l:"RISK",     v:74, d:"--", w:"10%", note:"Entitlement risk 72% confidence; FL CAT low" },
+  ],
+  verdict: { winner:"BTS", wScore:91, gap:22, runner:"RENTAL", rScore:69 },
+  arbitrage: "BTS outscores Rental by 22pts. Pipeline thin, absorption window 2027-2028 trough. Move now.",
+  // Site & zoning
+  maxDensity: "18 DU/ac", maxUnits: 186, maxHeight: "65 ft",
+  far: "2.0", parkingRatio: "1.5 / unit",
+  entitlementStage: 2,
+  entitlementSteps: [
+    {n:"Pre-Application",  done:true,  active:false},
+    {n:"Application Filed",done:false, active:true},
+    {n:"Staff Review",     done:false, active:false},
+    {n:"Public Hearing",   done:false, active:false},
+    {n:"Approved",         done:false, active:false},
+  ],
+  entitlementEta: "8-10 mo", entitlementConf: "72%",
+  // Development paths
+  devPaths: [
+    {
+      id:"P1", label:"5-Over-1 Mid-Rise", recommended:true,
+      desc:"5 wood-frame residential floors over 1-story concrete podium. Optimal for FL Class B+ suburban markets.",
+      units:186, floors:6, height:"63 ft", parking:"Tuck-under + surface (280 stalls)",
+      tdc:"$40.5M", tdcUnit:"$217,742", btsIrr:"28.1%", btsEm:"3.2x", yoc:"7.1%",
+      pros:["Highest unit count at max density","Cost-efficient wood frame above podium","Proven absorption in Nocatee corridor"],
+      cons:["Podium concrete cost premium vs garden","Elevator / corridor required"],
+      fitScore: 91,
+    },
+    {
+      id:"P2", label:"Garden Style (3-Story)",
+      desc:"3-story walk-up, surface parking. Lower construction cost but significantly fewer units at this density.",
+      units:138, floors:3, height:"38 ft", parking:"Surface (208 stalls)",
+      tdc:"$26.8M", tdcUnit:"$194,203", btsIrr:"21.4%", btsEm:"2.6x", yoc:"6.2%",
+      pros:["Lower hard cost / unit","Simpler construction timeline","No elevator maintenance"],
+      cons:["18% fewer units vs zoning max","Lower revenue ceiling","Surface parking consumes lot area"],
+      fitScore: 67,
+    },
+    {
+      id:"P3", label:"Urban Mid-Rise (8-Story)",
+      desc:"Concrete construction 8-story tower. Requires density waiver; suburban market may not support premium.",
+      units:210, floors:8, height:"88 ft", parking:"Structured garage (320 stalls)",
+      tdc:"$58.2M", tdcUnit:"$277,143", btsIrr:"18.8%", btsEm:"2.1x", yoc:"5.8%",
+      pros:["Maximum unit count","Premium positioning","Future infill option"],
+      cons:["Requires density variance (+13%","Concrete cost 40% premium","Market may not support $2,400+ rents"],
+      fitScore: 42,
+    },
+  ],
+  // Unit Mix Program (based on recommended path P1)
+  unitMix: [
+    { type:"Studio",  units:19, pct:"10%", sqft:548,  targetRent:1595, rentPsf:2.91, totalRevMo:30305 },
+    { type:"1 BR",    units:75, pct:"40%", sqft:768,  targetRent:1875, rentPsf:2.44, totalRevMo:140625 },
+    { type:"2 BR",    units:74, pct:"40%", sqft:1082, targetRent:2295, rentPsf:2.12, totalRevMo:169830 },
+    { type:"3 BR",    units:18, pct:"10%", sqft:1344, targetRent:2695, rentPsf:2.01, totalRevMo:48510 },
+  ],
+  // Top 5 rent comps for unit mix alignment
+  rentComps: [
+    {
+      name:"Nocatee Town Center Apts", dist:"0.4mi", units:232, vintage:2021, occ:"96%",
+      mix:{ Studio:{rent:1565,sqft:540,avail:true}, "1 BR":{rent:1845,sqft:760,avail:true}, "2 BR":{rent:2250,sqft:1070,avail:true}, "3 BR":{rent:2640,sqft:1330,avail:false} },
+      note:"Lease-up stabilized 11mo. Premium for amenity deck.",
+    },
+    {
+      name:"Crossing at Durbin Park", dist:"1.2mi", units:288, vintage:2022, occ:"94%",
+      mix:{ Studio:{rent:1580,sqft:552,avail:false}, "1 BR":{rent:1860,sqft:775,avail:true}, "2 BR":{rent:2275,sqft:1095,avail:true}, "3 BR":{rent:2670,sqft:1355,avail:true} },
+      note:"2BR demand strongest; 3BR units lease fastest.",
+    },
+    {
+      name:"Rivertown Commons", dist:"2.1mi", units:196, vintage:2020, occ:"97%",
+      mix:{ Studio:{rent:1490,sqft:530,avail:false}, "1 BR":{rent:1780,sqft:745,avail:false}, "2 BR":{rent:2190,sqft:1055,avail:false}, "3 BR":{rent:2580,sqft:1310,avail:false} },
+      note:"Fully leased. Waitlisted 1BR/2BR. Rent growth +4.8% YoY.",
+    },
+    {
+      name:"Oakleaf Town Center", dist:"3.4mi", units:340, vintage:2019, occ:"93%",
+      mix:{ Studio:{rent:1450,sqft:515,avail:true}, "1 BR":{rent:1720,sqft:730,avail:true}, "2 BR":{rent:2120,sqft:1035,avail:true}, "3 BR":{rent:2490,sqft:1285,avail:true} },
+      note:"Older vintage. Below-market operator. Value-add candidate.",
+    },
+    {
+      name:"Heritage Landing", dist:"4.1mi", units:174, vintage:2023, occ:"89%",
+      mix:{ Studio:{rent:1640,sqft:565,avail:true}, "1 BR":{rent:1920,sqft:790,avail:true}, "2 BR":{rent:2340,sqft:1110,avail:true}, "3 BR":{rent:2750,sqft:1370,avail:true} },
+      note:"Newest product, still in lease-up. Sets market ceiling.",
+    },
+  ],
+  // Budget
+  landCost:"$4.2M", hardCosts:"$28.4M", softCosts:"$4.6M", contingency:"$3.3M",
+  tdc:"$40.5M", tdcUnit:"$217,742",
+  constructionMo: 22, absorptionMo: 14,
+  // Returns
+  btsRevenue:"$52.8M", btsMargin:"30.4%", btsIrr:"28.1%", btsEm:"3.2x",
+  rentalNoi:"$2,890,000", rentalYoc:"7.1%", rentalIrr:"18.4%",
+  exitWindow:"Q2 2028", exitCapRate:"5.0%",
+  exitRationale:"Rate cycle trough convergence + post-supply-trough absorption window.",
+  // Supply
+  pipelineUnits: 420, pipelineDelivery:"Q4 2026",
+  absorptionTrough:"Q3 2027", supplyThreat:"MANAGED",
+  // Timeline
+  timeline:[
+    {phase:"LOI / Contract",     start:0,  dur:2,  status:"active"},
+    {phase:"Entitlement",        start:2,  dur:9,  status:"pending"},
+    {phase:"Permits + GMP",      start:11, dur:3,  status:"pending"},
+    {phase:"Construction",       start:14, dur:22, status:"pending"},
+    {phase:"Absorption / Sale",  start:36, dur:14, status:"pending"},
+  ],
+  // DD
+  ddItems:[
+    {l:"Site Control / Title",       done:true},
+    {l:"Zoning Pre-Application",     done:true},
+    {l:"Geotech / Survey",           done:false},
+    {l:"HOA / CDD Review",           done:false},
+    {l:"Utility Capacity Confirm",   done:true},
+    {l:"Soft Cost Budget",           done:false},
+  ],
+  riskScore:24, riskLevel:"LOW",
+  riskBanner:"Nocatee top-selling MPC nationally. Employment corridor intact. Entitlement confidence 72%.",
+};
+
+// ─── UTILITIES ─────────────────────────────────────────────────────
+function Spark({ data, color = T.text.green, w = 64, h = 20 }) {
+  const mx = Math.max(...data), mn = Math.min(...data), rng = mx - mn || 1;
+  const pts = data.map((v,i) =>
+    `${(i/(data.length-1))*w},${h - ((v-mn)/rng)*(h-3) - 1.5}`
+  ).join(" ");
+  const last = pts.split(" ").pop();
+  const [lx,ly] = last.split(",");
+  return (
+    <svg width={w} height={h} style={{display:"block",overflow:"visible"}}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx={parseFloat(lx)} cy={parseFloat(ly)} r={2.5} fill={color} />
+    </svg>
+  );
+}
+
+function Bd({children,c,bg}) {
+  return (
+    <span style={{
+      fontFamily:T.font.mono, fontSize:7, fontWeight:700, color:c,
+      background:bg||c+"1A", border:`1px solid ${c}40`,
+      padding:"2px 6px", letterSpacing:0.8, textTransform:"uppercase",
+      whiteSpace:"nowrap", display:"inline-block",
+    }}>{children}</span>
+  );
+}
+
+function StageBd({stage,color}) {
+  const map = {DD:T.text.cyan, LOI:T.text.amber, PROSPECT:T.text.secondary, LEAD:T.text.muted};
+  return <Bd c={color||map[stage]||T.text.muted}>{stage}</Bd>;
+}
+
+function RiskBd({level}) {
+  const c = level==="HIGH"?T.text.red:level==="MED"?T.text.orange:T.text.green;
+  return (
+    <span style={{display:"flex",alignItems:"center",gap:4,fontSize:8,fontFamily:T.font.mono,fontWeight:700,color:c}}>
+      <span style={{width:6,height:6,borderRadius:"50%",background:c,flexShrink:0}} />
+      {level} RISK
+    </span>
+  );
+}
+
+function KV({label,value,color,note,noteColor,small}) {
+  return (
+    <div style={{background:T.bg.panel,padding:"10px 12px"}}>
+      <div style={{fontSize:7,color:T.text.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:3}}>{label}</div>
+      <div style={{fontSize:small?15:20,fontWeight:800,color:color||T.text.amberBright,fontFamily:T.font.mono,lineHeight:1}}>{value}</div>
+      {note && <div style={{fontSize:7.5,color:noteColor||T.text.muted,marginTop:3,lineHeight:1.4}}>{note}</div>}
+    </div>
+  );
+}
+
+function SectionHead({title,right,accent}) {
+  return (
+    <div style={{
+      display:"flex",justifyContent:"space-between",alignItems:"center",
+      padding:"5px 14px",background:T.bg.header,
+      borderTop:`1px solid ${T.border.subtle}`,
+      borderBottom:`1px solid ${T.border.subtle}`,
+      borderLeft:`3px solid ${accent||T.text.amber}`,
+    }}>
+      <span style={{fontSize:8,color:T.text.secondary,letterSpacing:1.5,fontWeight:700,textTransform:"uppercase"}}>{title}</span>
+      {right && <span style={{fontSize:7.5,color:T.text.muted}}>{right}</span>}
+    </div>
+  );
+}
+
+function TableHead({cols}) {
+  return (
+    <div style={{display:"grid",gridTemplateColumns:cols.map(c=>c.w||"1fr").join(" "),background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+      {cols.map((c,i) => (
+        <div key={i} style={{padding:"5px 10px",fontSize:7,color:T.text.muted,fontWeight:700,letterSpacing:0.8,borderRight:i<cols.length-1?`1px solid ${T.border.subtle}`:"none"}}>{c.label}</div>
+      ))}
+    </div>
+  );
+}
+
+function DDItem({l,done}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:7,padding:"5px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+      <span style={{fontSize:11,color:done?T.text.green:T.text.dim,lineHeight:1,flexShrink:0}}>{done?"✓":"○"}</span>
+      <span style={{fontSize:9,color:done?T.text.secondary:T.text.muted}}>{l}</span>
+    </div>
+  );
+}
+
+// ─── SHARED HEADER ─────────────────────────────────────────────────
+function DealHeader({deal}) {
+  const sc = deal.score>=80?T.text.green:deal.score>=65?T.text.amber:T.text.red;
+  const ringAnim = deal.score>=80?"glow":"glowA";
+  const ddDone = deal.ddItems.filter(i=>i.done).length;
+  const ddTotal = deal.ddItems.length;
+
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"164px 1fr 258px",gap:1,background:T.border.subtle,flexShrink:0}}>
+
+      {/* JEDI Score */}
+      <div style={{background:T.bg.panel,padding:"14px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+        <div style={{fontSize:7,color:T.text.muted,letterSpacing:1.5}}>JEDI SCORE</div>
+        <div style={{
+          width:84,height:84,borderRadius:"50%",border:`3px solid ${sc}`,
+          display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",
+          animation:`${ringAnim} 3s infinite`,
+        }}>
+          <span style={{fontSize:28,fontWeight:800,color:sc,fontFamily:T.font.mono,lineHeight:1}}>{deal.score}</span>
+          <span style={{fontSize:8,color:deal.delta.startsWith("+")?T.text.green:T.text.red,fontWeight:600}}>{deal.delta} 30d</span>
+        </div>
+        <Spark data={deal.trend} color={sc} w={120} h={20} />
+        <div style={{fontSize:7,color:T.text.muted}}>
+          Confidence <span style={{color:sc,fontWeight:700}}>{deal.confidence}%</span>
+        </div>
+      </div>
+
+      {/* 5 Master Signals */}
+      <div style={{background:T.bg.panel,padding:"12px 14px"}}>
+        <div style={{fontSize:8,color:T.text.muted,letterSpacing:1.5,marginBottom:9,fontWeight:700}}>5 MASTER SIGNALS</div>
+        {deal.signals.map((s,i) => {
+          const c = s.v>=80?T.text.green:s.v>=60?T.text.amber:T.text.red;
+          const dc = s.d.startsWith("+")?T.text.green:s.d==="--"?T.text.dim:T.text.red;
+          return (
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:i<4?6:0}}>
+              <div style={{minWidth:80}}>
+                <div style={{fontSize:8,color:T.text.muted,fontWeight:700,letterSpacing:0.3}}>{s.l} <span style={{fontSize:7,color:T.text.dim}}>({s.w})</span></div>
+                <div style={{fontSize:7,color:T.text.dim,lineHeight:1.3,marginTop:1}}>{s.note}</div>
+              </div>
+              <div style={{flex:1,height:5,background:T.bg.page,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${s.v}%`,background:c,transition:"width 0.5s ease"}} />
+              </div>
+              <span style={{fontSize:10,fontWeight:800,color:c,minWidth:22,textAlign:"right"}}>{s.v}</span>
+              <span style={{fontSize:8,fontWeight:600,color:dc,minWidth:22,textAlign:"right"}}>{s.d}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Strategy Verdict */}
+      <div style={{background:T.bg.panel,padding:"12px 14px",display:"flex",flexDirection:"column",gap:4}}>
+        <div style={{fontSize:7,color:T.text.muted,letterSpacing:1.5,fontWeight:700}}>STRATEGY VERDICT</div>
+
+        <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:2}}>
+          <span style={{fontSize:13,fontWeight:800,color:T.text.amberBright,letterSpacing:1}}>{deal.verdict.winner}</span>
+          <span style={{fontSize:26,fontWeight:800,color:T.text.amberBright,fontFamily:T.font.mono,lineHeight:1}}>{deal.verdict.wScore}</span>
+        </div>
+        <div style={{fontSize:8,color:T.text.muted,marginBottom:4}}>vs {deal.verdict.runner}: {deal.verdict.rScore}</div>
+
+        <div style={{
+          padding:"7px 9px",background:T.text.amber+"0E",border:`1px solid ${T.text.amber}40`,
+          animation:"glowA 3s infinite",marginBottom:6,
+        }}>
+          <div style={{fontSize:7,color:T.text.amber,fontWeight:700,letterSpacing:0.8,marginBottom:3}}>
+            ARBITRAGE +{deal.verdict.gap}pt GAP
+          </div>
+          <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.5}}>{deal.arbitrage}</div>
+        </div>
+
+        {/* Stage + Risk row */}
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}>
+          <StageBd stage={deal.stage} color={deal.stageColor} />
+          <RiskBd level={deal.riskLevel} />
+          <Bd c={T.text.muted}>{deal.daysInPipeline}d pipeline</Bd>
+        </div>
+
+        {/* DD Bar */}
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:7,color:T.text.muted,marginBottom:3,letterSpacing:0.8}}>
+            <span>DUE DILIGENCE</span>
+            <span style={{color:ddDone===ddTotal?T.text.green:T.text.amber}}>{ddDone}/{ddTotal}</span>
+          </div>
+          <div style={{height:4,background:T.bg.page}}>
+            <div style={{height:"100%",width:`${(ddDone/ddTotal)*100}%`,background:ddDone===ddTotal?T.text.green:T.text.amber,transition:"width 0.5s"}} />
+          </div>
+        </div>
+        <div style={{fontSize:7,color:T.text.muted}}>
+          Deadline in <span style={{color:deal.daysToDeadline<=30?T.text.orange:T.text.secondary,fontWeight:600}}>{deal.daysToDeadline} days</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// EXISTING DEAL OVERVIEW
+// ══════════════════════════════════════════════════════════════════
+function ExistingOverview({deal}) {
+  return (
+    <div style={{flex:1,overflow:"auto"}} className="anim-fade">
+      <DealHeader deal={deal} />
+
+      {/* Risk Banner */}
+      <div style={{
+        padding:"6px 14px",background:T.text.orange+"0C",
+        borderLeft:`3px solid ${T.text.orange}`,
+        display:"flex",justifyContent:"space-between",alignItems:"center",
+      }}>
+        <span style={{fontSize:8,color:T.text.orange,fontWeight:700,letterSpacing:0.6}}>SUPPLY RISK {deal.riskScore}/100 · </span>
+        <span style={{fontSize:8,color:T.text.secondary}}>{deal.riskBanner}</span>
+        <Bd c={T.text.green}>{deal.riskLevel} RISK</Bd>
+      </div>
+
+      {/* ── Acquisition Metrics ─────────────────────── */}
+      <SectionHead title="Acquisition Metrics" right={`${deal.assetClass} · ${deal.units}u · Built ${deal.builtYear} · ${deal.submarket}`} accent={T.text.cyan} />
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:1,background:T.border.subtle}}>
+        <KV label="Ask Price"        value={deal.price}        color={T.text.primary} small />
+        <KV label="Price / Unit"     value={deal.ppu}          note="12% above submarket median" noteColor={T.text.orange} />
+        <KV label="Cap Rate (Gng-In)" value={deal.capGoingIn}  note={`Market: ${deal.capMarket}`} />
+        <KV label="DSCR"             value={deal.dscr}         color={T.text.green} note={`Min: ${deal.dscrMin} ✓`} noteColor={T.text.green} />
+        <KV label="Yield on Cost"    value={deal.yoc}          color={T.text.amber} note="BTS scenario" />
+        <KV label="Days to Deadline" value={`${deal.daysToDeadline}d`} color={T.text.cyan} note={`${deal.stage} stage`} />
+      </div>
+
+      {/* ── Operating Intelligence + NOI ──────────── */}
+      <SectionHead title="Operating Intelligence" right="M05 Market · M09 ProForma" accent={T.text.green} />
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle}}>
+        {/* Occupancy & Rent */}
+        <div style={{background:T.bg.panel,padding:"10px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:9,fontWeight:700}}>OCCUPANCY & RENT</div>
+          {[
+            {l:"Physical Occupancy",         v:deal.occupancy,      c:T.text.green},
+            {l:"Economic Occupancy",         v:deal.economicOcc,    c:T.text.green},
+            {l:"Effective Rent / Unit",      v:deal.effectiveRent,  c:T.text.amberBright},
+            {l:"Submarket Market Rent",      v:deal.marketRent,     c:T.text.secondary},
+            {l:"Rent vs Market",             v:deal.rentPremium,    c:T.text.orange, note:"Upside capture opportunity"},
+            {l:"Expense Ratio",              v:deal.expenseRatio,   c:T.text.secondary},
+          ].map((r,i) => (
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+              <span style={{fontSize:8.5,color:T.text.secondary}}>{r.l}</span>
+              <div style={{textAlign:"right"}}>
+                <span style={{fontSize:10,fontWeight:700,color:r.c}}>{r.v}</span>
+                {r.note && <div style={{fontSize:7,color:T.text.muted}}>{r.note}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* NOI Intelligence */}
+        <div style={{background:T.bg.panel,padding:"10px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:9,fontWeight:700}}>NOI INTELLIGENCE</div>
+          <div style={{padding:"8px 10px",background:T.text.orange+"0C",border:`1px solid ${T.text.orange}35`,marginBottom:10}}>
+            <div style={{fontSize:7,color:T.text.orange,fontWeight:700,letterSpacing:0.8,marginBottom:6}}>⚠ PLATFORM ADJUSTMENT ACTIVE</div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:8.5,color:T.text.muted}}>Broker NOI</span>
+              <span style={{fontSize:8.5,color:T.text.muted,textDecoration:"line-through"}}>{deal.brokerNoi}</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:9,color:T.text.primary,fontWeight:600}}>Platform NOI</span>
+              <span style={{fontSize:11,fontWeight:800,color:T.text.amberBright}}>{deal.noi}</span>
+            </div>
+            <div style={{fontSize:7,color:T.text.dim,marginTop:4,lineHeight:1.5,borderTop:`1px solid ${T.border.subtle}`,paddingTop:4}}>
+              {deal.noiAdjReasons.map((r,i)=><div key={i}>· {r}</div>)}
+            </div>
+          </div>
+          {[
+            {l:"Going-In Cap Rate",       v:deal.capGoingIn,    c:T.text.amber},
+            {l:"Market Cap Rate",         v:deal.capMarket,     c:T.text.secondary},
+            {l:"Implied Value at Mkt Cap",v:deal.impliedValue,  c:T.text.green, note:deal.impliedUplift+" vs ask"},
+          ].map((r,i) => (
+            <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
+              <span style={{fontSize:8.5,color:T.text.secondary}}>{r.l}</span>
+              <div style={{textAlign:"right"}}>
+                <span style={{fontSize:10,fontWeight:700,color:r.c}}>{r.v}</span>
+                {r.note && <div style={{fontSize:7,color:T.text.green}}>{r.note}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Capital Structure ──────────────────────── */}
+      <SectionHead title="Capital Structure" right="M11 · Exit target 24mo" accent={T.text.purple} />
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle}}>
+        {[
+          {tier:"Senior Debt", amt:deal.seniorDebt, ltc:deal.seniorLtc, rate:deal.seniorRate, c:T.text.blue},
+          {tier:"Mezzanine",   amt:deal.mezzDebt,   ltc:deal.mezzLtc,   rate:deal.mezzRate,   c:T.text.cyan},
+          {tier:"Equity",      amt:deal.equity,     ltc:deal.equityLtc, rate:`${deal.targetIrr} IRR target`, c:T.text.green},
+        ].map((t,i) => (
+          <div key={i} style={{background:T.bg.panel,padding:"10px 14px",borderTop:`2px solid ${t.c}`}}>
+            <div style={{fontSize:8,color:t.c,fontWeight:700,letterSpacing:0.8,marginBottom:6}}>{t.tier} <span style={{color:T.text.muted,fontSize:7}}>({t.ltc} LTC)</span></div>
+            <div style={{fontSize:18,fontWeight:800,color:T.text.primary,marginBottom:3,fontFamily:T.font.mono}}>{t.amt}</div>
+            <div style={{fontSize:8,color:T.text.muted}}>{t.rate}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Comparable Sales ──────────────────────── */}
+      <SectionHead title="Recent Comparable Sales" right={`M27 Comp Intelligence · ${deal.comps.length} comps`} accent={T.text.amber} />
+      <div style={{background:T.border.subtle}}>
+        <TableHead cols={[
+          {label:"PROPERTY",w:"2.2fr"},{label:"UNITS",w:"0.6fr"},{label:"PPU",w:"0.9fr"},
+          {label:"CAP",w:"0.7fr"},{label:"AVG RENT",w:"0.9fr"},{label:"CLOSED",w:"0.7fr"},{label:"vs SUBJECT",w:"0.8fr"},
+        ]} />
+        {deal.comps.map((c,i) => {
+          const isPos = c.delta.startsWith("+");
+          return (
+            <div key={i} className="row-hover" style={{
+              display:"grid",gridTemplateColumns:"2.2fr 0.6fr 0.9fr 0.7fr 0.9fr 0.7fr 0.8fr",
+              background:i%2===0?T.bg.panel:T.bg.stripe,borderBottom:`1px solid ${T.border.subtle}`,
+            }}>
+              <div style={{padding:"7px 10px",fontSize:9.5,color:T.text.primary,fontWeight:500,borderRight:`1px solid ${T.border.subtle}`}}>{c.name}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.units}</div>
+              <div style={{padding:"7px 10px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{c.ppu}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.cap}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{c.rent}</div>
+              <div style={{padding:"7px 10px",fontSize:8,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{c.date} ago</div>
+              <div style={{padding:"7px 10px",fontSize:9.5,fontWeight:700,color:isPos?T.text.green:T.text.red}}>{c.delta}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── DD + Module Nav ──────────────────────── */}
+      <SectionHead title="Due Diligence + Module Access" right="F-key navigation" />
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle}}>
+        <div style={{background:T.bg.panel,padding:"10px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:8,fontWeight:700}}>DD CHECKLIST</div>
+          {deal.ddItems.map((item,i)=><DDItem key={i} {...item} />)}
+        </div>
+        <div style={{background:T.bg.panel,padding:"10px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:8,fontWeight:700}}>MODULE ACCESS</div>
+          {[
+            {key:"F2",label:"PROPERTY & ZONING",  mod:"M02",hint:"Parcels · Entitlement · Setbacks"},
+            {key:"F3",label:"MARKET & DEMAND",    mod:"M05",hint:"Trade area · Absorption · Rents"},
+            {key:"F4",label:"SUPPLY PIPELINE",    mod:"M04",hint:"Pipeline · Threat level · Capacity"},
+            {key:"F6",label:"PRO FORMA",          mod:"M09",hint:"3-layer NOI model · Sensitivity"},
+            {key:"F7",label:"CAPITAL STRUCTURE",  mod:"M11",hint:"Debt · Equity waterfall"},
+            {key:"F8",label:"RISK ASSESSMENT",    mod:"M14",hint:"Monte Carlo · Insurance · Supply"},
+            {key:"F9",label:"SALE COMPS",         mod:"M27",hint:"Transaction intelligence"},
+          ].map((m,i) => (
+            <div key={i} className="mod-link" style={{
+              display:"flex",alignItems:"center",gap:9,padding:"5px 8px",
+              borderBottom:`1px solid ${T.border.subtle}`,transition:"background 0.1s",
+            }}>
+              <Bd c={T.text.amber}>{m.key}</Bd>
+              <div style={{flex:1}}>
+                <div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{m.label}</div>
+                <div style={{fontSize:7,color:T.text.muted}}>{m.hint}</div>
+              </div>
+              <Bd c={T.text.dim}>{m.mod}</Bd>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// DEVELOPMENT DEAL OVERVIEW
+// ══════════════════════════════════════════════════════════════════
+function DevOverview({deal}) {
+  const [selectedPath, setSelectedPath] = useState("P1");
+  const activePath = deal.devPaths.find(p=>p.id===selectedPath);
+  const TOTAL_MO = 50;
+
+  return (
+    <div style={{flex:1,overflow:"auto"}} className="anim-fade">
+      <DealHeader deal={deal} />
+
+      {/* Exit Alignment Banner */}
+      <div style={{
+        padding:"6px 14px",background:T.text.green+"0A",
+        borderLeft:`3px solid ${T.text.green}`,
+        display:"flex",justifyContent:"space-between",alignItems:"center",
+      }}>
+        <div>
+          <span style={{fontSize:8,color:T.text.green,fontWeight:700,letterSpacing:0.6}}>SUPPLY TROUGH ALIGNMENT · </span>
+          <span style={{fontSize:8,color:T.text.secondary}}>{deal.exitRationale}</span>
+        </div>
+        <Bd c={T.text.green}>EXIT WINDOW {deal.exitWindow}</Bd>
+      </div>
+
+      {/* ── Site & Entitlement Metrics ───────────── */}
+      <SectionHead title="Site + Zoning Constraints" right={`${deal.zoning} · ${deal.lotSize} · ${deal.market}`} accent={T.text.cyan} />
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:1,background:T.border.subtle}}>
+        <KV label="Land Cost"         value={deal.price}             color={T.text.primary} small />
+        <KV label="Max Units (Zoned)" value={`${deal.maxUnits}u`}    color={T.text.cyan} note={`${deal.maxDensity} · ${deal.maxHeight}`} />
+        <KV label="FAR"               value={deal.far}               note={`Parking: ${deal.parkingRatio}`} />
+        <KV label="Entitlement ETA"   value={deal.entitlementEta}    color={T.text.amber} note={`${deal.entitlementConf} confidence`} />
+        <KV label="Target IRR (BTS)"  value={deal.btsIrr}            color={T.text.green} note={`${deal.btsEm} equity multiple`} />
+        <KV label="TDC / Unit"        value={deal.tdcUnit}           note="186 planned units" />
+      </div>
+
+      {/* ── Entitlement Progress ─────────────────── */}
+      <SectionHead title="Entitlement Pipeline" right="M02 Zoning Intelligence" accent={T.text.amber} />
+      <div style={{background:T.bg.panel,padding:"14px 20px"}}>
+        <div style={{display:"flex",gap:0,position:"relative"}}>
+          <div style={{position:"absolute",top:11,left:"5%",right:"5%",height:2,background:T.border.medium,zIndex:0}} />
+          {deal.entitlementSteps.map((step,i) => {
+            const c = step.done?T.text.green:step.active?T.text.amber:T.text.dim;
+            return (
+              <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",zIndex:1}}>
+                <div style={{
+                  width:24,height:24,borderRadius:"50%",
+                  background:step.done?T.text.green+"22":step.active?T.text.amber+"22":T.bg.page,
+                  border:`2px solid ${c}`,display:"flex",alignItems:"center",justifyContent:"center",
+                  ...(step.active?{animation:"glowA 2.5s infinite"}:{}),
+                }}>
+                  <span style={{fontSize:9,color:c,fontWeight:800}}>{step.done?"✓":i+1}</span>
+                </div>
+                <div style={{fontSize:7,color:c,marginTop:5,textAlign:"center",lineHeight:1.4,maxWidth:80}}>{step.n}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Recommended Development Path ─────────── */}
+      <SectionHead title="Recommended Development Path" right={`${deal.devPaths.length} paths evaluated · AI recommendation active`} accent={T.text.purple} />
+      {/* Path selector tabs */}
+      <div style={{display:"flex",gap:1,background:T.border.subtle}}>
+        {deal.devPaths.map(p => (
+          <button key={p.id} onClick={()=>setSelectedPath(p.id)} className="tab-btn" style={{
+            flex:1,padding:"8px 10px",border:"none",cursor:"pointer",fontFamily:T.font.mono,
+            borderTop:`3px solid ${selectedPath===p.id?(p.recommended?T.text.green:T.text.amber):T.border.subtle}`,
+            background:selectedPath===p.id?T.bg.hover:T.bg.panel,
+            transition:"all 0.15s",
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:6,justifyContent:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:9,fontWeight:700,color:selectedPath===p.id?T.text.primary:T.text.secondary}}>{p.label}</span>
+              {p.recommended && <Bd c={T.text.green}>AI PICK</Bd>}
+              <span style={{
+                fontSize:10,fontWeight:800,fontFamily:T.font.mono,
+                color:p.fitScore>=80?T.text.green:p.fitScore>=60?T.text.amber:T.text.muted,
+              }}>{p.fitScore}</span>
+            </div>
+          </button>
+        ))}
+      </div>
+      {/* Path detail */}
+      {activePath && (
+        <div style={{background:T.bg.panel,padding:"12px 14px"}} className="anim-slide">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+            <div>
+              <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.6,marginBottom:10}}>{activePath.desc}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                {[
+                  {l:"Units",          v:activePath.units,    c:T.text.cyan},
+                  {l:"Floors",         v:`${activePath.floors} stories`,c:T.text.secondary},
+                  {l:"Height",         v:activePath.height,   c:T.text.secondary},
+                  {l:"Parking",        v:activePath.parking,  c:T.text.muted, small:true},
+                  {l:"Total Dev Cost", v:activePath.tdc,      c:T.text.amberBright},
+                  {l:"TDC / Unit",     v:activePath.tdcUnit,  c:T.text.amber},
+                  {l:"BTS IRR",        v:activePath.btsIrr,   c:T.text.green},
+                  {l:"BTS EM",         v:activePath.btsEm,    c:T.text.green},
+                ].map((m,i) => (
+                  <div key={i} style={{padding:"6px 8px",background:T.bg.panelAlt,borderLeft:`2px solid ${m.c}40`}}>
+                    <div style={{fontSize:7,color:T.text.muted,letterSpacing:0.8}}>{m.l}</div>
+                    <div style={{fontSize:m.small?8:11,fontWeight:700,color:m.c,fontFamily:T.font.mono}}>{m.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:8,color:T.text.green,fontWeight:700,letterSpacing:0.8,marginBottom:5}}>ADVANTAGES</div>
+              {activePath.pros.map((p,i) => (
+                <div key={i} style={{display:"flex",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,alignItems:"flex-start"}}>
+                  <span style={{color:T.text.green,fontSize:9,flexShrink:0}}>+</span>
+                  <span style={{fontSize:8.5,color:T.text.secondary}}>{p}</span>
+                </div>
+              ))}
+              <div style={{fontSize:8,color:T.text.red,fontWeight:700,letterSpacing:0.8,marginTop:10,marginBottom:5}}>TRADE-OFFS</div>
+              {activePath.cons.map((c,i) => (
+                <div key={i} style={{display:"flex",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,alignItems:"flex-start"}}>
+                  <span style={{color:T.text.orange,fontSize:9,flexShrink:0}}>—</span>
+                  <span style={{fontSize:8.5,color:T.text.muted}}>{c}</span>
+                </div>
+              ))}
+              {/* Compare all paths mini-table */}
+              <div style={{marginTop:12}}>
+                <div style={{fontSize:7,color:T.text.muted,letterSpacing:1,marginBottom:6,fontWeight:700}}>PATH COMPARISON</div>
+                {deal.devPaths.map(p => (
+                  <div key={p.id} onClick={()=>setSelectedPath(p.id)} style={{
+                    display:"flex",alignItems:"center",gap:8,padding:"4px 7px",marginBottom:1,
+                    background:selectedPath===p.id?T.bg.active:T.bg.panelAlt,cursor:"pointer",
+                    border:`1px solid ${selectedPath===p.id?T.border.medium:T.border.subtle}`,
+                  }}>
+                    <span style={{fontSize:8,color:T.text.secondary,flex:1}}>{p.label}</span>
+                    <span style={{fontSize:8,color:T.text.muted}}>{p.units}u</span>
+                    <span style={{fontSize:8.5,fontWeight:700,color:T.text.green}}>{p.btsIrr}</span>
+                    <span style={{fontSize:9,fontWeight:800,fontFamily:T.font.mono,color:p.fitScore>=80?T.text.green:p.fitScore>=60?T.text.amber:T.text.muted}}>{p.fitScore}</span>
+                    {p.recommended && <Bd c={T.text.green}>✓</Bd>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unit Mix Program ─────────────────────── */}
+      <SectionHead title="Unit Mix Program" right={`${activePath?.units || deal.plannedUnits} units · Based on ${activePath?.label}`} accent={T.text.cyan} />
+      <div style={{background:T.border.subtle}}>
+        {/* Summary bar */}
+        <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+          {deal.unitMix.map((u,i) => {
+            const c = [T.text.purple,T.text.cyan,T.text.green,T.text.orange][i];
+            return (
+              <div key={i} style={{flex:parseInt(u.pct),padding:"6px 10px",borderRight:i<3?`1px solid ${T.border.subtle}`:"none",textAlign:"center"}}>
+                <div style={{fontSize:8,color:c,fontWeight:700}}>{u.type}</div>
+                <div style={{fontSize:9,color:T.text.secondary}}>{u.pct} · {u.units}u</div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Proportion bar */}
+        <div style={{display:"flex",height:8}}>
+          {deal.unitMix.map((u,i) => {
+            const c = [T.text.purple,T.text.cyan,T.text.green,T.text.orange][i];
+            return <div key={i} style={{flex:parseInt(u.pct),background:c+"55",borderRight:i<3?`1px solid ${T.bg.page}`:"none"}} />;
+          })}
+        </div>
+        {/* Detail table */}
+        <TableHead cols={[
+          {label:"UNIT TYPE",w:"1fr"},{label:"COUNT",w:"0.6fr"},{label:"MIX %",w:"0.6fr"},
+          {label:"AVG SQFT",w:"0.7fr"},{label:"TARGET RENT",w:"1fr"},{label:"RENT PSF",w:"0.7fr"},
+          {label:"MONTHLY REV",w:"1fr"},{label:"ANN. REVENUE",w:"1fr"},
+        ]} />
+        {deal.unitMix.map((u,i) => {
+          const c = [T.text.purple,T.text.cyan,T.text.green,T.text.orange][i];
+          return (
+            <div key={i} style={{
+              display:"grid",gridTemplateColumns:"1fr 0.6fr 0.6fr 0.7fr 1fr 0.7fr 1fr 1fr",
+              background:i%2===0?T.bg.panel:T.bg.stripe,borderBottom:`1px solid ${T.border.subtle}`,
+            }}>
+              <div style={{padding:"7px 10px",fontSize:9.5,fontWeight:700,color:c,borderRight:`1px solid ${T.border.subtle}`}}>{u.type}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{u.units}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{u.pct}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{u.sqft.toLocaleString()}</div>
+              <div style={{padding:"7px 10px",fontSize:10,fontWeight:700,color:T.text.amberBright,borderRight:`1px solid ${T.border.subtle}`}}>${u.targetRent.toLocaleString()}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>${u.rentPsf.toFixed(2)}</div>
+              <div style={{padding:"7px 10px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>${u.totalRevMo.toLocaleString()}</div>
+              <div style={{padding:"7px 10px",fontSize:9,fontWeight:600,color:T.text.amber}}>${(u.totalRevMo*12).toLocaleString()}</div>
+            </div>
+          );
+        })}
+        {/* Totals row */}
+        <div style={{
+          display:"grid",gridTemplateColumns:"1fr 0.6fr 0.6fr 0.7fr 1fr 0.7fr 1fr 1fr",
+          background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,
+        }}>
+          <div style={{padding:"7px 10px",fontSize:9,fontWeight:800,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>TOTAL / AVG</div>
+          <div style={{padding:"7px 10px",fontSize:10,fontWeight:800,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>186</div>
+          <div style={{padding:"7px 10px",fontSize:9,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>100%</div>
+          <div style={{padding:"7px 10px",fontSize:9,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>
+            {Math.round(deal.unitMix.reduce((a,u)=>a+u.sqft*u.units,0)/186).toLocaleString()}
+          </div>
+          <div style={{padding:"7px 10px",fontSize:10,fontWeight:800,color:T.text.amberBright,borderRight:`1px solid ${T.border.subtle}`}}>
+            ${Math.round(deal.unitMix.reduce((a,u)=>a+u.targetRent*u.units,0)/186).toLocaleString()}
+          </div>
+          <div style={{padding:"7px 10px",fontSize:9,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>
+            ${(deal.unitMix.reduce((a,u)=>a+u.rentPsf*u.units,0)/186).toFixed(2)}
+          </div>
+          <div style={{padding:"7px 10px",fontSize:10,fontWeight:800,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>
+            ${deal.unitMix.reduce((a,u)=>a+u.totalRevMo,0).toLocaleString()}
+          </div>
+          <div style={{padding:"7px 10px",fontSize:10,fontWeight:800,color:T.text.amber}}>
+            ${(deal.unitMix.reduce((a,u)=>a+u.totalRevMo*12,0)).toLocaleString()}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Unit Mix vs Top 5 Rent Comps ─────────── */}
+      <SectionHead title="Unit Mix Program vs Top 5 Rent Comps" right="M15 Competition · M27 Comps · Rent gap analysis" accent={T.text.green} />
+      <div style={{background:T.border.subtle}}>
+        {/* Header */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns:"1.8fr 0.5fr 0.5fr " + deal.unitMix.map(()=>"0.85fr").join(" "),
+          background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,
+        }}>
+          <div style={{padding:"5px 10px",fontSize:7,color:T.text.muted,fontWeight:700,letterSpacing:0.8,borderRight:`1px solid ${T.border.subtle}`}}>PROPERTY</div>
+          <div style={{padding:"5px 10px",fontSize:7,color:T.text.muted,fontWeight:700,borderRight:`1px solid ${T.border.subtle}`}}>DIST</div>
+          <div style={{padding:"5px 10px",fontSize:7,color:T.text.muted,fontWeight:700,borderRight:`1px solid ${T.border.subtle}`}}>OCC</div>
+          {deal.unitMix.map((u,i) => {
+            const c = [T.text.purple,T.text.cyan,T.text.green,T.text.orange][i];
+            return (
+              <div key={i} style={{padding:"5px 10px",borderRight:i<3?`1px solid ${T.border.subtle}`:"none",textAlign:"center"}}>
+                <div style={{fontSize:8,color:c,fontWeight:700}}>{u.type}</div>
+                <div style={{fontSize:7,color:T.text.muted}}>({u.sqft} sf)</div>
+                <div style={{fontSize:8,color:T.text.amberBright,fontWeight:700}}>${u.targetRent.toLocaleString()} <span style={{fontSize:6,color:T.text.dim}}>SUBJ</span></div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Comp rows */}
+        {deal.rentComps.map((comp,ci) => (
+          <div key={ci} style={{
+            display:"grid",
+            gridTemplateColumns:"1.8fr 0.5fr 0.5fr " + deal.unitMix.map(()=>"0.85fr").join(" "),
+            background:ci%2===0?T.bg.panel:T.bg.stripe,
+            borderBottom:`1px solid ${T.border.subtle}`,
+          }}>
+            <div style={{padding:"7px 10px",borderRight:`1px solid ${T.border.subtle}`}}>
+              <div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{comp.name}</div>
+              <div style={{fontSize:7,color:T.text.muted}}>{comp.units}u · {comp.vintage} vintage</div>
+              <div style={{fontSize:7,color:T.text.dim,marginTop:1,lineHeight:1.4}}>{comp.note}</div>
+            </div>
+            <div style={{padding:"7px 10px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{comp.dist}</div>
+            <div style={{padding:"7px 10px",borderRight:`1px solid ${T.border.subtle}`}}>
+              <span style={{fontSize:9,fontWeight:700,color:parseFloat(comp.occ)>=95?T.text.green:parseFloat(comp.occ)>=90?T.text.amber:T.text.orange}}>{comp.occ}</span>
+            </div>
+            {deal.unitMix.map((u,ui) => {
+              const cm = comp.mix[u.type];
+              const subjectRent = u.targetRent;
+              const diff = cm ? cm.rent - subjectRent : null;
+              const diffPct = cm ? ((diff / subjectRent) * 100).toFixed(1) : null;
+              const c = [T.text.purple,T.text.cyan,T.text.green,T.text.orange][ui];
+              return (
+                <div key={ui} style={{padding:"5px 8px",borderRight:ui<3?`1px solid ${T.border.subtle}`:"none",textAlign:"center"}}>
+                  {cm ? (
+                    <>
+                      <div style={{fontSize:10,fontWeight:700,color:c}}>${cm.rent.toLocaleString()}</div>
+                      <div style={{fontSize:7,color:T.text.muted}}>{cm.sqft} sf</div>
+                      <div style={{
+                        fontSize:7.5,fontWeight:600,marginTop:2,
+                        color:diff>=0?T.text.green:T.text.orange,
+                      }}>
+                        {`${diff>=0?"+":""}${diff?.toLocaleString()} (${diff>=0?"+":""}${diffPct}%)`}
+                      </div>
+                      <div style={{
+                        fontSize:6.5,color:cm.avail?T.text.green:T.text.dim,
+                        marginTop:1,
+                      }}>{cm.avail?"AVAIL":"LEASED"}</div>
+                    </>
+                  ) : (
+                    <div style={{fontSize:8,color:T.text.dim}}>—</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Avg rent row */}
+        <div style={{
+          display:"grid",
+          gridTemplateColumns:"1.8fr 0.5fr 0.5fr " + deal.unitMix.map(()=>"0.85fr").join(" "),
+          background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,
+        }}>
+          <div style={{padding:"6px 10px",fontSize:8,fontWeight:700,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>COMP AVERAGE RENT</div>
+          <div style={{padding:"6px 10px",borderRight:`1px solid ${T.border.subtle}`}} />
+          <div style={{padding:"6px 10px",borderRight:`1px solid ${T.border.subtle}`}} />
+          {deal.unitMix.map((u,ui) => {
+            const rents = deal.rentComps.map(c=>c.mix[u.type]?.rent).filter(Boolean);
+            const avg = Math.round(rents.reduce((a,b)=>a+b,0)/rents.length);
+            const diff = u.targetRent - avg;
+            const c = [T.text.purple,T.text.cyan,T.text.green,T.text.orange][ui];
+            return (
+              <div key={ui} style={{padding:"6px 8px",borderRight:ui<3?`1px solid ${T.border.subtle}`:"none",textAlign:"center"}}>
+                <div style={{fontSize:10,fontWeight:800,color:c}}>${avg.toLocaleString()}</div>
+                <div style={{fontSize:7.5,fontWeight:600,color:diff>=0?T.text.green:T.text.orange,marginTop:1}}>
+                  {`Subject ${diff>=0?"+":""}${diff} vs avg`}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ── Dev Budget + Timeline ─────────────────── */}
+      <SectionHead title="Development Budget + Timeline" right={`TDC ${deal.tdc} · ${deal.constructionMo}mo build · ${deal.absorptionMo}mo absorption`} accent={T.text.amber} />
+      <div style={{display:"grid",gridTemplateColumns:"320px 1fr",gap:1,background:T.border.subtle}}>
+        {/* Budget */}
+        <div style={{background:T.bg.panel,padding:"12px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:10,fontWeight:700}}>BUDGET STACK</div>
+          {[
+            {l:"Land / Acquisition", v:deal.landCost,   pct:10, c:T.text.purple},
+            {l:"Hard Costs",         v:deal.hardCosts,  pct:70, c:T.text.amber},
+            {l:"Soft Costs",         v:deal.softCosts,  pct:11, c:T.text.cyan},
+            {l:"Contingency (10%)", v:deal.contingency, pct:8,  c:T.text.orange},
+          ].map((r,i) => (
+            <div key={i} style={{marginBottom:9}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                <span style={{fontSize:8,color:T.text.secondary}}>{r.l}</span>
+                <span style={{fontSize:9.5,fontWeight:700,color:r.c}}>{r.v}</span>
+              </div>
+              <div style={{height:3,background:T.bg.page}}>
+                <div style={{height:"100%",width:`${r.pct}%`,background:r.c}} />
+              </div>
+            </div>
+          ))}
+          <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:`1px solid ${T.border.medium}`,marginTop:4}}>
+            <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>TOTAL DEV COST</span>
+            <span style={{fontSize:13,fontWeight:800,color:T.text.amberBright}}>{deal.tdc}</span>
+          </div>
+          <div style={{fontSize:7.5,color:T.text.muted,marginTop:3}}>{deal.tdcUnit}/unit · {deal.constructionMo}mo construction</div>
+        </div>
+
+        {/* Timeline Gantt */}
+        <div style={{background:T.bg.panel,padding:"12px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:10,fontWeight:700}}>DEVELOPMENT TIMELINE</div>
+          {deal.timeline.map((ph,i) => {
+            const left = (ph.start/TOTAL_MO)*100;
+            const width = (ph.dur/TOTAL_MO)*100;
+            const c = ph.status==="active"?T.text.amber:ph.status==="done"?T.text.green:T.text.dim;
+            return (
+              <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:7}}>
+                <span style={{fontSize:8,color:T.text.secondary,minWidth:130,textAlign:"right"}}>{ph.phase}</span>
+                <div style={{flex:1,height:20,background:T.bg.page,position:"relative",overflow:"hidden"}}>
+                  <div style={{
+                    position:"absolute",left:`${left}%`,width:`${width}%`,height:"100%",
+                    background:c+"22",borderLeft:`2px solid ${c}`,
+                    display:"flex",alignItems:"center",paddingLeft:6,
+                  }}>
+                    <span style={{fontSize:7,color:c,fontWeight:700,whiteSpace:"nowrap"}}>{ph.dur}mo</span>
+                  </div>
+                </div>
+                <span style={{fontSize:7,color:c,minWidth:40,textAlign:"right"}}>
+                  {ph.status==="active"?"▶ ACTIVE":""}
+                </span>
+              </div>
+            );
+          })}
+          {/* Month ruler */}
+          <div style={{display:"flex",paddingLeft:140,paddingRight:50,marginTop:4,borderTop:`1px solid ${T.border.subtle}`,paddingTop:4}}>
+            {[0,6,12,18,24,30,36,42,48].map(m=>(
+              <div key={m} style={{flex:6/TOTAL_MO*100,textAlign:"left",fontSize:7,color:T.text.dim}}>M{m}</div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Returns + DD ─────────────────────────── */}
+      <SectionHead title="Returns Comparison + Site Diligence" right="M09 ProForma · M11 Capital" />
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:1,background:T.border.subtle}}>
+        {/* Returns */}
+        <div style={{background:T.bg.panel,padding:"10px 14px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div style={{padding:"10px 12px",background:T.text.amber+"0E",border:`1px solid ${T.text.amber}40`}}>
+              <div style={{fontSize:8,fontWeight:800,color:T.text.amberBright,marginBottom:6,letterSpacing:0.8}}>BUILD-TO-SELL <Bd c={T.text.green}>WIN</Bd></div>
+              {[{l:"Revenue",v:deal.btsRevenue},{l:"Margin",v:deal.btsMargin},{l:"IRR",v:deal.btsIrr,c:T.text.green},{l:"EM",v:deal.btsEm,c:T.text.green}].map((r,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
+                  <span style={{fontSize:8,color:T.text.muted}}>{r.l}</span>
+                  <span style={{fontSize:9.5,fontWeight:700,color:r.c||T.text.amber}}>{r.v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:"10px 12px",background:T.bg.panelAlt,border:`1px solid ${T.border.medium}`}}>
+              <div style={{fontSize:8,fontWeight:600,color:T.text.secondary,marginBottom:6,letterSpacing:0.8}}>HOLD AS RENTAL</div>
+              {[{l:"Stab. NOI",v:deal.rentalNoi},{l:"YOC",v:deal.rentalYoc},{l:"Hold IRR",v:deal.rentalIrr}].map((r,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0"}}>
+                  <span style={{fontSize:8,color:T.text.muted}}>{r.l}</span>
+                  <span style={{fontSize:9.5,fontWeight:600,color:T.text.secondary}}>{r.v}</span>
+                </div>
+              ))}
+              <div style={{fontSize:7,color:T.text.dim,marginTop:6,lineHeight:1.5}}>BTS outperforms by {deal.verdict.gap}pts · Exit cap {deal.exitCapRate}</div>
+            </div>
+          </div>
+        </div>
+        {/* DD */}
+        <div style={{background:T.bg.panel,padding:"10px 14px"}}>
+          <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:8,fontWeight:700}}>SITE DILIGENCE ITEMS</div>
+          {deal.ddItems.map((item,i)=><DDItem key={i} {...item} />)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ROOT
+// ══════════════════════════════════════════════════════════════════
+export default function DealOverviewV3() {
+  const [mode, setMode] = useState("existing");
+  const deal = mode==="existing"?EXISTING_DEAL:DEV_DEAL;
+
+  return (
+    <div style={{
+      background:T.bg.page, minHeight:"100vh",
+      fontFamily:T.font.mono, color:T.text.primary,
+      display:"flex", flexDirection:"column",
+    }}>
+      <style>{css}</style>
+
+      {/* Top Nav */}
+      <div style={{
+        background:T.bg.topBar, borderBottom:`1px solid ${T.border.medium}`,
+        padding:"0 14px", display:"flex", alignItems:"center",
+        justifyContent:"space-between", height:36, flexShrink:0,
+      }}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:10,fontWeight:800,color:T.text.amber,letterSpacing:1.5}}>JEDI RE</span>
+          <span style={{color:T.border.medium}}>│</span>
+          <span style={{fontSize:8,color:T.text.dim}}>F1</span>
+          <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>OVERVIEW</span>
+          <span style={{color:T.border.medium}}>·</span>
+          <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}>{deal.name}</span>
+          <span style={{fontSize:8,color:T.text.muted}}>{deal.addr}, {deal.city}</span>
+        </div>
+
+        {/* Mode toggle */}
+        <div style={{display:"flex",gap:1,background:T.bg.input,border:`1px solid ${T.border.medium}`,padding:2}}>
+          {[
+            {id:"existing",    label:"EXISTING DEAL"},
+            {id:"development", label:"DEVELOPMENT DEAL"},
+          ].map(o => (
+            <button key={o.id} onClick={()=>setMode(o.id)} className="mode-btn" style={{
+              padding:"4px 14px", fontSize:8, fontWeight:700, letterSpacing:0.8,
+              fontFamily:T.font.mono, border:"none", cursor:"pointer",
+              color:mode===o.id?T.bg.topBar:T.text.muted,
+              background:mode===o.id?T.text.amber:"transparent",
+            }}>{o.label}</button>
+          ))}
+        </div>
+
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <Bd c={T.text.green}>● LIVE</Bd>
+          <Bd c={T.text.muted}>M01 OVERVIEW</Bd>
+          <span style={{fontSize:7.5,color:T.text.dim}}>Updated 2m ago</span>
+        </div>
+      </div>
+
+      {/* Amber Deal Bar */}
+      <div style={{
+        background:T.text.amber+"18", borderBottom:`1px solid ${T.text.amber}50`,
+        padding:"5px 14px", display:"flex", gap:14, alignItems:"center", flexShrink:0,
+      }}>
+        <Bd c={T.text.amber}>{deal.id}</Bd>
+        <span style={{fontSize:10.5,fontWeight:700,color:T.text.white}}>{deal.name}</span>
+        <span style={{fontSize:8.5,color:T.text.secondary}}>{deal.price}</span>
+        <span style={{fontSize:8,color:T.border.medium}}>·</span>
+        <span style={{fontSize:8.5,color:T.text.secondary}}>
+          {deal.type==="DEVELOPMENT" ? `${deal.plannedUnits} planned units · ${deal.lotSize}` : `${deal.units} units · Built ${deal.builtYear}`}
+        </span>
+        <span style={{fontSize:8,color:T.border.medium}}>·</span>
+        <span style={{fontSize:8.5,color:T.text.secondary}}>{deal.submarket}</span>
+        <StageBd stage={deal.stage} color={deal.stageColor} />
+        <Bd c={deal.type==="DEVELOPMENT"?T.text.purple:T.text.cyan}>{deal.type}</Bd>
+        <span style={{marginLeft:"auto",fontSize:8,color:T.text.muted}}>{deal.daysToDeadline}d to deadline</span>
+        <Bd c={deal.riskLevel==="LOW"?T.text.green:deal.riskLevel==="MED"?T.text.orange:T.text.red}>RISK {deal.riskScore}</Bd>
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        {mode==="existing"
+          ? <ExistingOverview deal={EXISTING_DEAL} />
+          : <DevOverview deal={DEV_DEAL} />
+        }
+      </div>
+    </div>
+  );
+}

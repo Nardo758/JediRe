@@ -1,0 +1,52 @@
+~/workspace$ git pull origin master
+From https://github.com/Nardo758/JediRe
+ * branch              master     -> FETCH_HEAD
+Performing inexact rename detection: 100% (2976/2976), done.
+Performing inexact rename detection: 100% (3504/3504), done.
+Auto-merging .replit
+CONFLICT (content): Merge conflict in .replit
+Auto-merging backend/package.json
+CONFLICT (content): Merge conflict in backend/package.json
+Auto-merging backend/src/api/rest/clawdbot-webhooks.routes.ts
+Auto-merging backend/src/api/rest/dashboard.routes.ts
+Auto-merging backend/src/api/rest/development-scenarios.routes.ts
+Auto-merging backend/src/api/rest/financial-models.routes.ts
+Auto-merging backend/src/index.replit.ts
+CONFLICT (content): Merge conflict in backend/src/index.replit.ts
+Auto-merging frontend/src/App.tsx
+CONFLICT (content): Merge conflict in frontend/src/App.tsx
+Auto-merging frontend/src/components/deal/sections/OverviewSection.tsx
+CONFLICT (content): Merge conflict in frontend/src/components/deal/sections/OverviewSection.tsx
+Auto-merging frontend/src/components/zoning/tabs/DevelopmentCapacityTab.tsx
+CONFLICT (content): Merge conflict in frontend/src/components/zoning/tabs/DevelopmentCapacityTab.tsx
+Auto-merging frontend/src/contexts/DealModuleContext.tsx
+Auto-merging frontend/src/pages/DealDetailPage.tsx
+CONFLICT (content): Merge conflict in frontend/src/pages/DealDetailPage.tsx
+Auto-merging frontend/src/pages/DealView.tsx
+CONFLICT (content): Merge conflict in frontend/src/pages/DealView.tsx
+Auto-merging frontend/src/pages/PropertyDetailsPage.tsx
+CONFLICT (add/add): Merge conflict in frontend/src/pages/PropertyDetailsPage.tsx
+Auto-merging frontend/src/pages/deal/DealFlywheelDashboard.tsx
+CONFLICT (add/add): Merge conflict in frontend/src/pages/deal/DealFlywheelDashboard.tsx
+CONFLICT (rename/delete): attached_assets/Pasted--Trade-Area-Implementation-Guide-JEDI-RE-All-four-metho_1772371894753.txt renamed to jedire/attached_assets/Pasted--Trade-Area-Implementation-Guide-JEDI-RE-All-four-metho_1772371894753.txt in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): attached_assets/Pasted-import-useState-from-react--1772392573055_1772392573056.txt renamed to jedire/attached_assets/Pasted-import-useState-from-react--1772392573055_1772392573056.txt in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): attached_assets/ci-engine-frontend-integration-map_1772383121973.jsx renamed to jedire/attached_assets/ci-engine-frontend-integration-map_1772383121973.jsx in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/api/rest/apartmentMarket.routes.ts renamed to jedire/backend/src/api/rest/apartmentMarket.routes.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/api/rest/inline-apartment-sync.routes.ts renamed to jedire/backend/src/api/rest/inline-apartment-sync.routes.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/api/rest/marketIntel.routes.ts renamed to jedire/backend/src/api/rest/marketIntel.routes.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+Auto-merging jedire/backend/src/index.replit.ts
+CONFLICT (rename/delete): backend/src/scripts/scrape-via-worker.ts renamed to jedire/backend/src/scripts/scrape-via-worker.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/services/apartment-sync-scheduler.ts renamed to jedire/backend/src/services/apartment-sync-scheduler.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/services/apartmentDataSync.ts renamed to jedire/backend/src/services/apartmentDataSync.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/services/apartmentLocatorIntegration.ts renamed to jedire/backend/src/services/apartmentLocatorIntegration.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): backend/src/services/apartmentMarketService.ts renamed to jedire/backend/src/services/apartmentMarketService.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): frontend/src/services/apartmentMarketApi.ts renamed to jedire/frontend/src/services/apartmentMarketApi.ts in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): workers/README.md renamed to jedire/workers/README.md in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): workers/municode-scraper.js renamed to jedire/workers/municode-scraper.js in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+CONFLICT (rename/delete): workers/wrangler.toml renamed to jedire/workers/wrangler.toml in 1a86ae3eb4cae9064e603ac0a7827b3adea006cc, but deleted in HEAD.
+Auto-merging package-lock.json
+Auto-merging package.json
+Auto-merging replit.md
+CONFLICT (content): Merge conflict in replit.md
+Automatic merge failed; fix conflicts and then commit the result.
+~/workspace$ 

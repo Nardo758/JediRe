@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
@@ -34,7 +34,6 @@ import { ModuleShowcasePage } from './pages/ModuleShowcasePage';
 import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureContext';
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
-import { ThemeProvider } from './contexts/ThemeContext';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { DataTrackerPage } from './pages/admin/DataTrackerPage';
@@ -50,10 +49,7 @@ import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
-  BloombergMarketDetail,
-  BloombergMarketsLanding,
 } from './pages/MarketIntelligence';
-import WatchlistPage from './pages/MarketIntelligence/WatchlistPage';
 import {
   CompetitiveIntelligencePage,
   PerformanceRankingsPage,
@@ -62,9 +58,9 @@ import {
   OpportunityAlertsPage,
 } from './pages/CompetitiveIntelligence';
 import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
-import M08StrategyControlPanel from './pages/M08StrategyControlPanel';
 import TerminalPage from './pages/TerminalPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { useParams } from 'react-router-dom';
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
@@ -94,11 +90,6 @@ const RedirectDealViewToTab: React.FC = () => {
   return <Navigate to={`/deals/${id}/detail?tab=${tab}`} replace />;
 };
 
-function DealIdRedirect() {
-  const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/deals/${id}/detail`} replace />;
-}
-
 function AppContent() {
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
 
@@ -113,14 +104,8 @@ function AppContent() {
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
-        {/* Terminal — full-page, no MainLayout; :section gives each F-key a bookmarkable URL */}
+        {/* Terminal — full-page, no MainLayout */}
         <Route path="/terminal" element={<TerminalPage />} />
-        <Route path="/terminal/:section" element={<TerminalPage />} />
-
-        {/* Bloomberg Market Intelligence — full-page, no MainLayout */}
-        <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
-        <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
-        <Route path="/market-intelligence/watchlist" element={<WatchlistPage />} />
         
         <Route element={<MainLayout />}>
           <Route path="/" element={<Navigate to="/terminal" replace />} />
@@ -131,22 +116,26 @@ function AppContent() {
           } />
           <Route path="/dashboard" element={<Navigate to="/terminal" replace />} />
           <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
-          <Route path="/dashboard/email" element={<Navigate to="/terminal" replace />} />
-          <Route path="/dashboard/email/sent" element={<Navigate to="/terminal" replace />} />
-          <Route path="/dashboard/email/drafts" element={<Navigate to="/terminal" replace />} />
-          <Route path="/dashboard/email/flagged" element={<Navigate to="/terminal" replace />} />
-          <Route path="/strategy-builder" element={<Navigate to="/terminal" replace />} />
-          <Route path="/strategy-builder/:id" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel/dashboard" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel/network" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel/alerts" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/terminal" replace />} />
+          <Route path="/dashboard/email" element={<EmailPage />} />
+          <Route path="/dashboard/email/sent" element={<EmailPage />} />
+          <Route path="/dashboard/email/drafts" element={<EmailPage />} />
+          <Route path="/dashboard/email/flagged" element={<EmailPage />} />
+          <Route path="/strategy-builder" element={<StrategyBuilderPage />} />
+          <Route path="/strategy-builder/:id" element={<StrategyBuilderPage />} />
+          <Route path="/news-intel" element={<NewsIntelligencePage />} />
+          <Route path="/news-intel/dashboard" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/news-intel/network" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/news-intel/alerts" element={<Navigate to="/news-intel" replace />} />
+          <Route path="/market-data" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/market-intelligence" replace />} />
           <Route path="/news" element={<NewsPage />} />
-          <Route path="/assets-owned" element={<Navigate to="/terminal" replace />} />
+          <Route path="/assets-owned" element={
+            <Suspense fallback={<PageLoadingFallback />}>
+              <AssetsOwnedPage />
+            </Suspense>
+          } />
           <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
           <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
           <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
@@ -166,24 +155,26 @@ function AppContent() {
           } />
           
           {/* Market Research Redirects */}
-          <Route path="/market-research" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-research/active-owners" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-research/future-supply" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-research" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-research/active-owners" element={<Navigate to="/market-intelligence/owners" replace />} />
+          <Route path="/market-research/future-supply" element={<Navigate to="/market-intelligence/supply" replace />} />
           
-          {/* Market Intelligence redirects → terminal */}
+          {/* Market Intelligence */}
+          <Route path="/market-intelligence" element={<MarketIntelligencePage />} />
+          <Route path="/market-intelligence/markets/:marketId" element={<MyMarketsDashboard />} />
           <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
-          <Route path="/market-intelligence/compare" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/owners" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/supply" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-intelligence/compare" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/owners" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/supply" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/market-intelligence" replace />} />
+          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/market-intelligence" replace />} />
 
           {/* Competitive Intelligence */}
-          <Route path="/competitive-intelligence" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/performance" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/acquisition" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/comps" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/alerts" element={<Navigate to="/terminal" replace />} />
+          <Route path="/competitive-intelligence" element={<Navigate to="/competitive-intelligence/performance" replace />} />
+          <Route path="/competitive-intelligence/performance" element={<PerformanceRankingsPage />} />
+          <Route path="/competitive-intelligence/acquisition" element={<AcquisitionIntelPage />} />
+          <Route path="/competitive-intelligence/comps" element={<CompAnalysisPage />} />
+          <Route path="/competitive-intelligence/alerts" element={<OpportunityAlertsPage />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
@@ -208,9 +199,9 @@ function AppContent() {
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
           <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
-          <Route path="/tasks" element={<Navigate to="/terminal" replace />} />
-          <Route path="/reports" element={<Navigate to="/terminal" replace />} />
-          <Route path="/team" element={<Navigate to="/terminal" replace />} />
+          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/team" element={<TeamPage />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/modules" element={<ModulesPage />} />
@@ -219,8 +210,8 @@ function AppContent() {
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
 
-          {/* M08 Strategy Control Panel */}
-          <Route path="/strategies" element={<M08StrategyControlPanel />} />
+          {/* Strategy Builder */}
+          <Route path="/strategies" element={<Navigate to="/deals" replace />} />
           <Route path="/strategies/:id" element={<StrategyBuilderPage />} />
 
           {/* Opportunities (F7) */}
@@ -248,13 +239,11 @@ function AppContent() {
 function App() {
   return (
     <ErrorBoundary fallback={<ErrorFallback />}>
-      <ThemeProvider>
-        <ArchitectureProvider>
-          <MapLayersProvider>
-            <AppContent />
-          </MapLayersProvider>
-        </ArchitectureProvider>
-      </ThemeProvider>
+      <ArchitectureProvider>
+        <MapLayersProvider>
+          <AppContent />
+        </MapLayersProvider>
+      </ArchitectureProvider>
     </ErrorBoundary>
   );
 }
