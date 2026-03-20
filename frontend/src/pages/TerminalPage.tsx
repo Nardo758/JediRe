@@ -7,6 +7,8 @@ import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
+import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
+import WatchlistPage from "./MarketIntelligence/WatchlistPage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
