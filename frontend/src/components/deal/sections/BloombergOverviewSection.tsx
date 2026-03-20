@@ -146,15 +146,15 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         if (res.data?.data?.breakdown) {
           setSignals(buildSignalsFromBreakdown(res.data.data.breakdown));
         } else {
-          setSignals(buildSignalsFromBreakdown(null));
+          setSignals([]);
         }
       } else {
         setJediScoreData(null);
-        setSignals(buildSignalsFromBreakdown(null));
+        setSignals([]);
       }
     } catch {
       setJediScoreData(null);
-      setSignals(buildSignalsFromBreakdown(null));
+      setSignals([]);
     } finally {
       setScoreLoading(false);
     }
@@ -163,24 +163,15 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   // Load Capital Stack
   const loadCapitalStack = useCallback(async () => {
     if (!deal?.id) return;
-    const strategy = deal.strategyType || deal.strategy || 'value_add';
-    const totalCost = deal.purchasePrice || deal.budget || 0;
-    const noi = deal.noi || deal.strategyDefaults?.assumptions?.noi || 0;
-    if (!totalCost) return;
     try {
-      const res = await apiClient.post('/api/v1/capital-structure/stack', {
-        dealId: deal.id, strategy,
-        layers: [
-          { type: 'senior_debt', amount: totalCost * 0.65 },
-          { type: 'equity', amount: totalCost * 0.35 },
-        ],
-        uses: { acquisition: totalCost }, noi,
-      });
-      if (res.data?.data || res.data?.stack || res.data?.layers) {
-        setCapitalStackData(res.data?.data ?? res.data);
+      const res = await apiClient.get(`/api/v1/capital-structure/${deal.id}`);
+      if (res.data?.exists && res.data?.stack) {
+        setCapitalStackData(res.data.stack);
+      } else {
+        setCapitalStackData(null);
       }
-    } catch { /* silent */ }
-  }, [deal?.id, deal?.strategyType, deal?.strategy, deal?.purchasePrice, deal?.budget, deal?.noi, deal?.strategyDefaults]);
+    } catch { setCapitalStackData(null); }
+  }, [deal?.id]);
 
   // Restore full strategy analysis lifecycle (trigger + poll if no cached result)
   const loadStrategy = useCallback(async (): Promise<(() => void) | undefined> => {
@@ -477,6 +468,11 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
           {scoreLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[0,1,2,3,4].map(i => <Skel key={i} w="100%" h={12} />)}
+            </div>
+          ) : signals.length === 0 ? (
+            <div style={{ padding: '12px 0', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BTV.text.muted, ...MONO, marginBottom: 4 }}>NO SIGNAL DATA</div>
+              <div style={{ fontSize: 8, color: BTV.text.muted, ...MONO }}>Run JEDI analysis to populate signals</div>
             </div>
           ) : (
             <>

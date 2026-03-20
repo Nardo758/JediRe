@@ -445,7 +445,6 @@ router.get('/rate-sheet/:dealId/latest', async (req: Request, res: Response) => 
 // ============================================================================
 
 router.post('/optimal-strategy', async (req: Request, res: Response) => {
-  res.status(202).json({ success: true, message: 'Optimal strategy computation queued' });
   try {
     const { noi, debtService, acquisitionPrice } = req.body;
 
@@ -469,9 +468,10 @@ router.post('/optimal-strategy', async (req: Request, res: Response) => {
     };
 
     const result = await getOptimalStrategy(requestPayload, liveRates);
-    res.json(result);
+    return res.json(result);
   } catch (error: any) {
     logger.error('[CapStructure Routes] Optimal strategy failed', { error: error.message });
+    return res.status(500).json({ error: 'Optimal strategy computation failed', detail: error.message });
   }
 });
 
