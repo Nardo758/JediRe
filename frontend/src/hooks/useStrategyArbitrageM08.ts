@@ -6,12 +6,13 @@ export interface UseStrategyArbitrageM08Result {
   scores: M08StrategyScore[];
   arbitrage: M08ArbitrageResult | null;
   loading: boolean;
-  recalculate: () => void;
+  recalculate: () => Promise<void>;
 }
 
 /**
  * M08 Strategy Arbitrage hook — fetches live scores + arbitrage for a deal on mount.
  * Auto-recalculates if no scores are present.
+ * recalculate() triggers recalc and syncs arbitrage from the response.
  */
 export function useStrategyArbitrageM08(dealId: string): UseStrategyArbitrageM08Result {
   const strategyScores = useDealStore((s) => s.strategyScores);
@@ -26,16 +27,25 @@ export function useStrategyArbitrageM08(dealId: string): UseStrategyArbitrageM08
     fetchStrategyScores(dealId).then(() => {
       const currentScores = useDealStore.getState().strategyScores;
       if (!currentScores || currentScores.length === 0) {
-        recalculateStrategyScores(dealId);
+        recalculateStrategyScores(dealId).then(() => {
+          // recalculate already syncs arbitrage from response
+        });
       }
     });
     fetchArbitrage(dealId);
   }, [dealId]);
 
+  const recalculate = async (): Promise<void> => {
+    await recalculateStrategyScores(dealId);
+    // arbitrage already updated from recalculate response
+    // additionally re-fetch in case backend returns fresher arbitrage
+    await fetchArbitrage(dealId);
+  };
+
   return {
     scores: strategyScores,
     arbitrage: arbitrageResult,
     loading: strategyScoresLoading,
-    recalculate: () => recalculateStrategyScores(dealId),
+    recalculate,
   };
 }

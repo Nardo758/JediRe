@@ -416,7 +416,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
       )}
 
       {/* ======== SIGNALS TAB: M08 Live Strategy Intelligence ======== */}
-      {isPipeline && activeTab === 'signals' && (
+      {activeTab === 'signals' && (
         <>
           {/* M08 Arbitrage Banner */}
           {m08Arbitrage?.arbitrage_detected && (
@@ -1382,24 +1382,38 @@ const M08ArbitrageBanner: React.FC<{ arbitrage: M08ArbitrageResult }> = ({ arbit
     <div className="flex items-start gap-4">
       <div className="text-3xl flex-shrink-0">⚡</div>
       <div className="flex-1">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <span className="text-xs font-bold text-[#F5A623] tracking-widest font-mono">STRATEGY ARBITRAGE DETECTED</span>
           <span className="text-xs font-mono bg-[#F5A623]/20 text-[#F5A623] px-2 py-0.5 rounded border border-[#F5A623]/30">
             +{arbitrage.delta.toFixed(1)}pt gap
           </span>
           <span className="text-[9px] font-mono text-[#8B95A5] tracking-widest">F24 CONFIDENCE SIGNAL</span>
         </div>
-        <p className="text-sm text-[#E8ECF1] mb-1">
+        <p className="text-sm text-[#E8ECF1] mb-2">
           <span className="font-semibold text-[#A78BFA]">{arbitrage.winning_strategy_name ?? 'Recommended'}</span>
           {' '}outscores{' '}
           <span className="font-semibold text-[#8B95A5]">{arbitrage.runner_up_strategy_name ?? 'Current'}</span>
           {' '}by <span className="font-bold text-[#F5A623]">{arbitrage.delta.toFixed(1)} points</span>.
           {' '}Most investors would default to the lower-scoring strategy — the platform sees the arbitrage.
         </p>
+        <div className="text-[10px] font-mono text-[#5a6a7a] border-t border-[#F5A623]/20 pt-2 mt-1">
+          ROI ESTIMATE: requires pro forma inputs (see Pro Forma module for IRR/yield projections)
+        </div>
       </div>
-      <div className="flex-shrink-0 flex flex-col gap-1 text-right">
-        <span className="text-xs font-mono text-[#F5A623] font-bold">{arbitrage.winning_score.toFixed(1)}</span>
-        <span className="text-[10px] text-[#8B95A5]">winner score</span>
+      {/* Side-by-side winner vs runner-up scores */}
+      <div className="flex-shrink-0 flex gap-4 text-right">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-lg font-bold font-mono text-[#A78BFA]">{arbitrage.winning_score.toFixed(1)}</span>
+          <span className="text-[9px] text-[#5a6a7a] font-mono">
+            {arbitrage.winning_strategy_name?.split(' ')[0] ?? 'WINNER'}
+          </span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <span className="text-lg font-bold font-mono text-[#8B95A5]">{arbitrage.runner_up_score?.toFixed(1) ?? '—'}</span>
+          <span className="text-[9px] text-[#5a6a7a] font-mono">
+            {arbitrage.runner_up_strategy_name?.split(' ')[0] ?? 'RUNNER-UP'}
+          </span>
+        </div>
       </div>
     </div>
   </div>
@@ -1561,10 +1575,10 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
     );
   }
 
+  // Spec thresholds: green ≥ 80, amber 50–79, red < 50
   const cellColor = (val: number) => {
-    if (val >= 75) return { bg: 'rgba(0, 210, 106, 0.15)', text: '#00D26A' };
+    if (val >= 80) return { bg: 'rgba(0, 210, 106, 0.15)', text: '#00D26A' };
     if (val >= 50) return { bg: 'rgba(245, 166, 35, 0.12)', text: '#F5A623' };
-    if (val >= 25) return { bg: 'rgba(139, 149, 165, 0.08)', text: '#8B95A5' };
     return { bg: 'rgba(255, 71, 87, 0.10)', text: '#FF4757' };
   };
 
@@ -1630,10 +1644,9 @@ const M08SignalHeatmap: React.FC<{ scores: M08StrategyScore[]; signalNames: stri
       </div>
 
       <div className="mt-3 flex gap-4 text-[10px] font-mono text-[#5a6a7a]">
-        <span className="text-[#00D26A]">■</span> Strong (≥75)
-        <span className="text-[#F5A623]">■</span> Moderate (50–74)
-        <span className="text-[#8B95A5]">■</span> Weak (25–49)
-        <span className="text-[#FF4757]">■</span> Low (&lt;25)
+        <span className="text-[#00D26A]">■</span> Strong (≥80)
+        <span className="text-[#F5A623]">■</span> Moderate (50–79)
+        <span className="text-[#FF4757]">■</span> Weak (&lt;50)
       </div>
     </div>
   );

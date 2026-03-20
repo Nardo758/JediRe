@@ -463,9 +463,10 @@ export const useDealStore = create<DealStore>()(
       set({ strategyScoresLoading: true });
       try {
         const res = await apiClient.post(`/api/v1/deals/${dealId}/strategy-scores/recalculate`);
-        // Backend returns { success, scores: M08StrategyScore[], freshlyCalculated }
+        // Backend returns { success, scores: M08StrategyScore[], arbitrage?, freshlyCalculated }
         const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
-        set({ strategyScores: scores, strategyScoresLoading: false });
+        const arbitrageResult: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
+        set({ strategyScores: scores, arbitrageResult, strategyScoresLoading: false });
       } catch (err) {
         console.error('[dealStore] recalculateStrategyScores failed:', err);
         set({ strategyScoresLoading: false });
@@ -536,7 +537,7 @@ export const useDealStore = create<DealStore>()(
     },
 
     clearDeal: () => {
-      set(INITIAL_CONTEXT);
+      set({ ...INITIAL_CONTEXT, strategyScores: [], arbitrageResult: null, strategyScoresLoading: false });
     },
 
     // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────
