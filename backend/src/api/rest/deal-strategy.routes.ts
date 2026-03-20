@@ -51,6 +51,7 @@ router.get('/:dealId/strategy-scores', requireAuth, async (req: AuthenticatedReq
        FROM strategy_scores ss
        JOIN strategies s ON s.id = ss.strategy_id
        WHERE ss.deal_id = $1
+         AND s.is_active = true
          AND (s.is_system_template = true OR s.created_by = $2 OR ($3::uuid IS NOT NULL AND s.org_id = $3))
        ORDER BY ss.overall_score DESC NULLS LAST`,
       [dealId, userId, orgId]
