@@ -7,9 +7,6 @@ import { PageLoadingFallback } from './components/fallbacks/PageLoadingFallback'
 import { Dashboard } from './pages/Dashboard';
 import { PropertiesPage } from './pages/PropertiesPage';
 import { DealsPage } from './pages/DealsPage';
-import { DealView } from './pages/DealView';
-import { DealPage } from './pages/DealPage';
-import { DealPageEnhanced } from './pages/DealPageEnhanced';
 import { CreateDealPage } from './pages/CreateDealPage';
 import { EmailPage } from './pages/EmailPage';
 import { NewsPage } from './pages/NewsPage';
@@ -63,7 +60,35 @@ import {
 import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 import TerminalPage from './pages/TerminalPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
+import { useParams } from 'react-router-dom';
 
+/**
+ * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
+ * Maps old module names to tab equivalents for backward compatibility
+ */
+const RedirectDealViewToTab: React.FC = () => {
+  const { id, module } = useParams<{ id: string; module: string }>();
+  if (!id || !module) return <Navigate to="/deals" replace />;
+
+  // Map old module names to tab names (if needed)
+  const tabMap: Record<string, string> = {
+    'map': 'map',
+    'overview': 'overview',
+    'property': 'property',
+    'market': 'market',
+    'supply': 'supply',
+    'strategy': 'strategy',
+    'proforma': 'proforma',
+    'capital': 'capital',
+    'risk': 'risk',
+    'comps': 'comps',
+    'traffic': 'traffic',
+    'documents': 'documents',
+  };
+
+  const tab = tabMap[module] || module;
+  return <Navigate to={`/deals/${id}/detail?tab=${tab}`} replace />;
+};
 
 function AppContent() {
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
@@ -163,11 +188,14 @@ function AppContent() {
           <Route path="/deals/active" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/closed" element={<Navigate to="/deals" replace />} />
           <Route path="/deals/:dealId/detail" element={<DealDetailPage />} />
-          <Route path="/deals/:dealId/view" element={<DealPage />} />
-          <Route path="/deals/:dealId/enhanced" element={<DealPageEnhanced />} />
+          <Route path="/deals/:dealId/view" element={<Navigate to="/deals/:dealId/detail" replace />} />
+          <Route path="/deals/:dealId/enhanced" element={<Navigate to="/deals/:dealId/detail" replace />} />
           <Route path="/deals/:dealId/flywheel" element={<DealFlywheelDashboard />} />
-          <Route path="/deals/:id" element={<DealView />} />
-          <Route path="/deals/:id/:module" element={<DealView />} />
+          {/* Legacy deal view routes — redirect to canonical DealDetailPage */}
+          <Route path="/deals/:id" element={<Navigate to="/deals/:id/detail?tab=map" replace />} />
+          <Route path="/deals/:id/:module" element={
+            <RedirectDealViewToTab />
+          } />
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
           <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />

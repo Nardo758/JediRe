@@ -1,33 +1,34 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import Decimal from 'decimal.js';
 
 interface ProformaLayer {
-  rentGrowth: number;
-  vacancyRate: number;
-  concessionPct: number;
-  badDebtPct: number;
-  otherIncomePerUnit: number;
-  opexRatio: number;
-  opexGrowth: number;
-  managementFeePct: number;
-  capexPerUnit: number;
-  ltv: number;
-  interestRate: number;
-  exitCapRate: number;
+  rentGrowth: string;
+  vacancyRate: string;
+  concessionPct: string;
+  badDebtPct: string;
+  otherIncomePerUnit: string;
+  opexRatio: string;
+  opexGrowth: string;
+  managementFeePct: string;
+  capexPerUnit: string;
+  ltv: string;
+  interestRate: string;
+  exitCapRate: string;
   confidence: number;
   source: string;
 }
 
 interface AnnualProjection {
   year: number;
-  gpr: number;
-  vacancy: number;
-  egi: number;
-  opex: number;
-  noi: number;
-  debtService: number;
-  cashFlow: number;
-  cumulativeCF: number;
+  gpr: string;
+  vacancy: string;
+  egi: string;
+  opex: string;
+  noi: string;
+  debtService: string;
+  cashFlow: string;
+  cumulativeCF: string;
 }
 
 interface GenerateResult {
@@ -36,17 +37,17 @@ interface GenerateResult {
   layers: { baseline: ProformaLayer; adjusted: ProformaLayer; user: ProformaLayer };
   activeLayer: string;
   returns: {
-    year1Noi: number;
-    goingInCap: number;
-    cocReturn: number;
-    irr: number;
-    equityMultiple: number;
-    dscr: number;
-    debtYield: number;
+    year1Noi: string;
+    goingInCap: string;
+    cocReturn: string;
+    irr: string;
+    equityMultiple: string;
+    dscr: string;
+    debtYield: string;
   };
   annualProjections: AnnualProjection[];
   optimalExitYear: number;
-  exitValue: number;
+  exitValue: string;
 }
 
 function calculateMonthlyPayment(principal: number, annualRate: number, amortYears: number): number {
@@ -98,35 +99,35 @@ class ProformaGeneratorService {
     let layer3 = { ...layer2 };
 
     let holdYears = 5;
-    let rentGrowthYr2_5 = layer2.rentGrowth;
-    let rentGrowthYr6_10 = layer2.rentGrowth * 0.8;
+    let rentGrowthYr2_5 = new Decimal(layer2.rentGrowth);
+    let rentGrowthYr6_10 = new Decimal(layer2.rentGrowth).times(0.8);
     let amortizationYears = 30;
-    let sellingCostsPct = 0.02;
-    let exitCapSpread = 0.001;
+    let sellingCostsPct = new Decimal(0.02);
+    let exitCapSpread = new Decimal(0.001);
 
     if (templateId) {
       const tplResult = await query('SELECT * FROM proforma_templates WHERE id = $1', [templateId]);
       if (tplResult.rows.length > 0) {
         const tpl = tplResult.rows[0];
         holdYears = parseInt(tpl.hold_years) || 5;
-        rentGrowthYr2_5 = parseFloat(tpl.rent_growth_yr2_5) || rentGrowthYr2_5;
-        rentGrowthYr6_10 = parseFloat(tpl.rent_growth_yr6_10) || rentGrowthYr6_10;
+        rentGrowthYr2_5 = new Decimal(tpl.rent_growth_yr2_5 || layer2.rentGrowth);
+        rentGrowthYr6_10 = new Decimal(tpl.rent_growth_yr6_10 || layer2.rentGrowth);
         amortizationYears = parseInt(tpl.amortization_years) || 30;
-        sellingCostsPct = parseFloat(tpl.selling_costs_pct) || 0.02;
-        exitCapSpread = parseFloat(tpl.exit_cap_spread) || 0.001;
+        sellingCostsPct = new Decimal(tpl.selling_costs_pct || 0.02);
+        exitCapSpread = new Decimal(tpl.exit_cap_spread || 0.001);
         layer3 = {
-          rentGrowth: parseFloat(tpl.rent_growth_yr1) || layer2.rentGrowth,
-          vacancyRate: parseFloat(tpl.vacancy_rate) || layer2.vacancyRate,
-          concessionPct: parseFloat(tpl.concession_pct) || layer2.concessionPct,
-          badDebtPct: parseFloat(tpl.bad_debt_pct) || layer2.badDebtPct,
-          otherIncomePerUnit: parseFloat(tpl.other_income_per_unit) || layer2.otherIncomePerUnit,
-          opexRatio: parseFloat(tpl.opex_ratio) || layer2.opexRatio,
-          opexGrowth: parseFloat(tpl.opex_growth) || layer2.opexGrowth,
-          managementFeePct: parseFloat(tpl.management_fee_pct) || layer2.managementFeePct,
-          capexPerUnit: parseFloat(tpl.capex_per_unit) || layer2.capexPerUnit,
-          ltv: parseFloat(tpl.ltv) || layer2.ltv,
-          interestRate: parseFloat(tpl.interest_rate) || layer2.interestRate,
-          exitCapRate: parseFloat(tpl.exit_cap_rate) || layer2.exitCapRate,
+          rentGrowth: (tpl.rent_growth_yr1 || layer2.rentGrowth).toString(),
+          vacancyRate: (tpl.vacancy_rate || layer2.vacancyRate).toString(),
+          concessionPct: (tpl.concession_pct || layer2.concessionPct).toString(),
+          badDebtPct: (tpl.bad_debt_pct || layer2.badDebtPct).toString(),
+          otherIncomePerUnit: (tpl.other_income_per_unit || layer2.otherIncomePerUnit).toString(),
+          opexRatio: (tpl.opex_ratio || layer2.opexRatio).toString(),
+          opexGrowth: (tpl.opex_growth || layer2.opexGrowth).toString(),
+          managementFeePct: (tpl.management_fee_pct || layer2.managementFeePct).toString(),
+          capexPerUnit: (tpl.capex_per_unit || layer2.capexPerUnit).toString(),
+          ltv: (tpl.ltv || layer2.ltv).toString(),
+          interestRate: (tpl.interest_rate || layer2.interestRate).toString(),
+          exitCapRate: (tpl.exit_cap_rate || layer2.exitCapRate).toString(),
           confidence: 0.9,
           source: `template:${tpl.name}`,
         };
@@ -138,10 +139,11 @@ class ProformaGeneratorService {
     }
 
     const active = layer3;
-    const acquisitionPrice = parseFloat(prop.acquisition_price) || totalUnits * 150000;
-    const loanAmount = acquisitionPrice * active.ltv;
-    const equityInvested = acquisitionPrice - loanAmount;
-    const annualDebtService = calculateMonthlyPayment(loanAmount, active.interestRate, amortizationYears) * 12;
+    const acquisitionPrice = new Decimal(prop.acquisition_price || totalUnits * 150000);
+    const activeLayerLtv = new Decimal(active.ltv);
+    const loanAmount = acquisitionPrice.times(activeLayerLtv).toNumber();
+    const equityInvested = acquisitionPrice.minus(loanAmount).toNumber();
+    const annualDebtService = calculateMonthlyPayment(loanAmount, parseFloat(active.interestRate), amortizationYears) * 12;
 
     const actualsResult = await query(
       `SELECT avg_effective_rent, occupancy_rate, noi, effective_gross_income, total_opex
@@ -150,78 +152,79 @@ class ProformaGeneratorService {
       [propertyId]
     );
 
-    let baseRent = 1200;
+    let baseRent = new Decimal(1200);
     let baseOccupancy = 0.93;
-    let baseOtherIncome = active.otherIncomePerUnit * totalUnits * 12;
+    let baseOtherIncome = new Decimal(active.otherIncomePerUnit).times(totalUnits).times(12);
 
     if (actualsResult.rows.length > 0) {
       const latest = actualsResult.rows[0];
-      baseRent = parseFloat(latest.avg_effective_rent) || baseRent;
+      baseRent = new Decimal(latest.avg_effective_rent || 1200);
       baseOccupancy = parseFloat(latest.occupancy_rate) || baseOccupancy;
     }
 
     const projections: AnnualProjection[] = [];
-    let cumulativeCF = 0;
+    let cumulativeCF = new Decimal(0);
     const cashFlows: number[] = [-equityInvested];
 
     for (let year = 1; year <= holdYears; year++) {
-      const yearRentGrowth = year === 1 ? active.rentGrowth : (year <= 5 ? rentGrowthYr2_5 : rentGrowthYr6_10);
+      const yearRentGrowth = year === 1 ? new Decimal(active.rentGrowth) : (year <= 5 ? rentGrowthYr2_5 : rentGrowthYr6_10);
       const rentGrowthFactor = year === 1
-        ? (1 + active.rentGrowth)
-        : (1 + active.rentGrowth) * Math.pow(1 + (year <= 5 ? rentGrowthYr2_5 : rentGrowthYr6_10), year - 1);
-      const projectedRent = baseRent * rentGrowthFactor;
-      const gpr = projectedRent * totalUnits * 12;
-      const vacancy = gpr * active.vacancyRate;
-      const concessions = gpr * active.concessionPct;
-      const badDebt = gpr * active.badDebtPct;
-      const netRental = gpr - vacancy - concessions - badDebt;
-      const otherIncome = baseOtherIncome * Math.pow(1 + active.rentGrowth * 0.5, year);
-      const egi = netRental + otherIncome;
-      const opexGrowthFactor = Math.pow(1 + active.opexGrowth, year);
-      const opex = egi * active.opexRatio * opexGrowthFactor;
-      const noi = egi - opex;
-      const cashFlow = noi - annualDebtService - (active.capexPerUnit * totalUnits);
-      cumulativeCF += cashFlow;
+        ? new Decimal(1).plus(new Decimal(active.rentGrowth))
+        : new Decimal(1).plus(new Decimal(active.rentGrowth)).times(new Decimal(1).plus(year <= 5 ? rentGrowthYr2_5 : rentGrowthYr6_10).pow(year - 1));
+
+      const projectedRent = baseRent.times(rentGrowthFactor);
+      const gpr = projectedRent.times(totalUnits).times(12);
+      const vacancy = gpr.times(active.vacancyRate);
+      const concessions = gpr.times(active.concessionPct);
+      const badDebt = gpr.times(active.badDebtPct);
+      const netRental = gpr.minus(vacancy).minus(concessions).minus(badDebt);
+      const otherIncome = baseOtherIncome.times(new Decimal(1).plus(new Decimal(active.rentGrowth).times(0.5)).pow(year));
+      const egi = netRental.plus(otherIncome);
+      const opexGrowthFactor = new Decimal(1).plus(new Decimal(active.opexGrowth)).pow(year);
+      const opex = egi.times(active.opexRatio).times(opexGrowthFactor);
+      const noi = egi.minus(opex);
+      const cashFlow = noi.minus(annualDebtService).minus(new Decimal(active.capexPerUnit).times(totalUnits));
+      cumulativeCF = cumulativeCF.plus(cashFlow);
 
       projections.push({
         year,
-        gpr: Math.round(gpr),
-        vacancy: Math.round(vacancy),
-        egi: Math.round(egi),
-        opex: Math.round(opex),
-        noi: Math.round(noi),
-        debtService: Math.round(annualDebtService),
-        cashFlow: Math.round(cashFlow),
-        cumulativeCF: Math.round(cumulativeCF),
+        gpr: gpr.toFixed(2),
+        vacancy: vacancy.toFixed(2),
+        egi: egi.toFixed(2),
+        opex: opex.toFixed(2),
+        noi: noi.toFixed(2),
+        debtService: new Decimal(annualDebtService).toFixed(2),
+        cashFlow: cashFlow.toFixed(2),
+        cumulativeCF: cumulativeCF.toFixed(2),
       });
 
-      cashFlows.push(cashFlow);
+      cashFlows.push(cashFlow.toNumber());
     }
 
-    const year1Noi = projections[0].noi;
-    const finalYearNoi = projections[holdYears - 1].noi;
-    const exitCapRateActual = active.exitCapRate + (exitCapSpread * holdYears);
-    const exitValue = finalYearNoi / exitCapRateActual;
-    const sellingCosts = exitValue * sellingCostsPct;
-    const netExitProceeds = exitValue - sellingCosts - loanAmount;
+    const year1Noi = new Decimal(projections[0].noi);
+    const finalYearNoi = new Decimal(projections[holdYears - 1].noi);
+    const exitCapRateActual = new Decimal(active.exitCapRate).plus(exitCapSpread.times(holdYears));
+    const exitValue = finalYearNoi.dividedBy(exitCapRateActual);
+    const sellingCosts = exitValue.times(sellingCostsPct);
+    const netExitProceeds = exitValue.minus(sellingCosts).minus(loanAmount);
 
-    cashFlows[cashFlows.length - 1] += netExitProceeds;
+    cashFlows[cashFlows.length - 1] += netExitProceeds.toNumber();
 
-    const goingInCap = year1Noi / acquisitionPrice;
-    const cocReturn = (projections[0].cashFlow) / equityInvested;
+    const goingInCap = year1Noi.dividedBy(acquisitionPrice);
+    const cocReturn = new Decimal(projections[0].cashFlow).dividedBy(equityInvested);
     const irr = calculateIRR(cashFlows);
-    const equityMultiple = (cumulativeCF + netExitProceeds) / equityInvested;
-    const dscr = year1Noi / annualDebtService;
-    const debtYield = year1Noi / loanAmount;
+    const equityMultiple = cumulativeCF.plus(netExitProceeds).dividedBy(equityInvested);
+    const dscr = year1Noi.dividedBy(annualDebtService);
+    const debtYield = year1Noi.dividedBy(loanAmount);
 
     let optimalExitYear = holdYears;
     let bestIRR = irr;
     for (let testYear = 2; testYear <= holdYears; testYear++) {
-      const testExitNoi = projections[testYear - 1].noi;
-      const testExitVal = testExitNoi / (active.exitCapRate + exitCapSpread * testYear);
-      const testNetProceeds = testExitVal * (1 - sellingCostsPct) - loanAmount;
-      const testFlows = [-equityInvested, ...projections.slice(0, testYear).map(p => p.cashFlow)];
-      testFlows[testFlows.length - 1] += testNetProceeds;
+      const testExitNoi = new Decimal(projections[testYear - 1].noi);
+      const testExitVal = testExitNoi.dividedBy(new Decimal(active.exitCapRate).plus(exitCapSpread.times(testYear)));
+      const testNetProceeds = testExitVal.times(new Decimal(1).minus(sellingCostsPct)).minus(loanAmount);
+      const testFlows = [-equityInvested, ...projections.slice(0, testYear).map(p => new Decimal(p.cashFlow).toNumber())];
+      testFlows[testFlows.length - 1] += testNetProceeds.toNumber();
       const testIRR = calculateIRR(testFlows);
       if (testIRR > bestIRR) {
         bestIRR = testIRR;
@@ -240,16 +243,16 @@ class ProformaGeneratorService {
         propertyId, templateId || null, strategy,
         JSON.stringify(layer1), JSON.stringify(layer2), JSON.stringify(layer3),
         templateId ? 'layer3' : 'layer2',
-        Math.round(year1Noi * 100) / 100,
-        Math.round(goingInCap * 10000) / 10000,
-        Math.round(cocReturn * 10000) / 10000,
-        Math.round(irr * 10000) / 10000,
-        Math.round(equityMultiple * 100) / 100,
-        Math.round(dscr * 100) / 100,
-        Math.round(debtYield * 10000) / 10000,
+        year1Noi.toFixed(2),
+        goingInCap.toFixed(4),
+        cocReturn.toFixed(4),
+        new Decimal(irr).toFixed(4),
+        equityMultiple.toFixed(2),
+        dscr.toFixed(4),
+        debtYield.toFixed(4),
         JSON.stringify(projections),
         optimalExitYear,
-        Math.round(exitValue * 100) / 100,
+        exitValue.toFixed(2),
       ]
     );
 
@@ -259,30 +262,30 @@ class ProformaGeneratorService {
       layers: { baseline: layer1, adjusted: layer2, user: layer3 },
       activeLayer: templateId ? 'layer3' : 'layer2',
       returns: {
-        year1Noi: Math.round(year1Noi),
-        goingInCap: Math.round(goingInCap * 10000) / 10000,
-        cocReturn: Math.round(cocReturn * 10000) / 10000,
-        irr: Math.round(irr * 10000) / 10000,
-        equityMultiple: Math.round(equityMultiple * 100) / 100,
-        dscr: Math.round(dscr * 100) / 100,
-        debtYield: Math.round(debtYield * 10000) / 10000,
+        year1Noi: year1Noi.toFixed(2),
+        goingInCap: goingInCap.toFixed(4),
+        cocReturn: cocReturn.toFixed(4),
+        irr: new Decimal(irr).toFixed(4),
+        equityMultiple: equityMultiple.toFixed(2),
+        dscr: dscr.toFixed(4),
+        debtYield: debtYield.toFixed(4),
       },
       annualProjections: projections,
       optimalExitYear,
-      exitValue: Math.round(exitValue),
+      exitValue: exitValue.toFixed(2),
     };
   }
 
   private async buildBaselineLayer(propertyId: string, prop: any): Promise<ProformaLayer> {
     const actualsResult = await query(
-      `SELECT 
+      `SELECT
         AVG(occupancy_rate) AS avg_occ,
         AVG(opex_ratio) AS avg_opex_ratio,
         AVG(management_fee_pct) AS avg_mgmt_fee,
         AVG(noi_per_unit) AS avg_noi_per_unit,
         AVG(avg_effective_rent) AS avg_rent,
         COUNT(*) AS months
-       FROM deal_monthly_actuals 
+       FROM deal_monthly_actuals
        WHERE property_id = $1 AND is_budget = FALSE AND is_proforma = FALSE
        AND report_month >= CURRENT_DATE - INTERVAL '12 months'`,
       [propertyId]
@@ -298,20 +301,20 @@ class ProformaGeneratorService {
     const submarket = submarketResult.rows[0] || {};
 
     return {
-      rentGrowth: hasData ? 0.03 : (parseFloat(submarket.rent_growth_yoy) || 0.03),
+      rentGrowth: hasData ? '0.0300' : new Decimal(submarket.rent_growth_yoy || 0.03).toFixed(4),
       vacancyRate: hasData
-        ? (1 - (parseFloat(actuals.avg_occ) || 0.93))
-        : (parseFloat(submarket.vacancy_rate) || 0.05),
-      concessionPct: 0.01,
-      badDebtPct: 0.015,
-      otherIncomePerUnit: 150,
-      opexRatio: hasData ? (parseFloat(actuals.avg_opex_ratio) || 0.45) : 0.45,
-      opexGrowth: 0.025,
-      managementFeePct: hasData ? (parseFloat(actuals.avg_mgmt_fee) || 0.05) : 0.05,
-      capexPerUnit: 300,
-      ltv: 0.70,
-      interestRate: 0.065,
-      exitCapRate: 0.055,
+        ? new Decimal(1).minus(new Decimal(actuals.avg_occ || 0.93)).toFixed(4)
+        : new Decimal(submarket.vacancy_rate || 0.05).toFixed(4),
+      concessionPct: '0.0100',
+      badDebtPct: '0.0150',
+      otherIncomePerUnit: '150.00',
+      opexRatio: hasData ? new Decimal(actuals.avg_opex_ratio || 0.45).toFixed(4) : '0.4500',
+      opexGrowth: '0.0250',
+      managementFeePct: hasData ? new Decimal(actuals.avg_mgmt_fee || 0.05).toFixed(4) : '0.0500',
+      capexPerUnit: '300.00',
+      ltv: '0.7000',
+      interestRate: '0.0650',
+      exitCapRate: '0.0550',
       confidence: hasData ? 0.85 : 0.5,
       source: hasData ? 'trailing_12_actuals' : 'market_defaults',
     };
@@ -322,8 +325,8 @@ class ProformaGeneratorService {
 
     try {
       const supplyResult = await query(
-        `SELECT units_planned, units_under_construction 
-         FROM apartment_supply_pipeline 
+        `SELECT units_planned, units_under_construction
+         FROM apartment_supply_pipeline
          WHERE submarket_id::text = $1 LIMIT 5`,
         [prop.submarket_id || '']
       );
@@ -331,8 +334,8 @@ class ProformaGeneratorService {
         const totalPipeline = supplyResult.rows.reduce((sum: number, r: any) =>
           sum + (parseInt(r.units_planned) || 0) + (parseInt(r.units_under_construction) || 0), 0);
         if (totalPipeline > 1000) {
-          adjusted.vacancyRate = Math.min(adjusted.vacancyRate + 0.01, 0.12);
-          adjusted.rentGrowth = Math.max(adjusted.rentGrowth - 0.005, 0.005);
+          adjusted.vacancyRate = new Decimal(adjusted.vacancyRate).plus(0.01).min(new Decimal(0.12)).toFixed(4);
+          adjusted.rentGrowth = new Decimal(adjusted.rentGrowth).minus(0.005).max(new Decimal(0.005)).toFixed(4);
         }
       }
     } catch {
