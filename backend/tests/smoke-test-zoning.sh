@@ -462,9 +462,10 @@ hit GET    "/api/v1/deals/$DEAL_ID/zoning-confirmation" jwt
 # SITE INTELLIGENCE (siteIntelligenceRouter → /api/v1, requires JWT)
 # ============================================================
 section "SITE INTELLIGENCE"
-hit GET  "/api/v1/deals/$DEAL_ID/site-intelligence"   jwt
-hit POST "/api/v1/deals/$DEAL_ID/site-intelligence"   jwt \
+hit GET    "/api/v1/deals/$DEAL_ID/site-intelligence"   jwt
+hit POST   "/api/v1/deals/$DEAL_ID/site-intelligence"   jwt \
   '{"environmental":{"soilType":"clay","score":75},"infrastructure":{"waterCapacity":"adequate","score":80}}'
+hit DELETE "/api/v1/deals/$DEAL_ID/site-intelligence"   jwt
 
 # ============================================================
 # DESIGN REFERENCES (designReferencesRouter → /api/v1/design-references, requires JWT)
@@ -531,6 +532,21 @@ hit POST "/api/v1/properties/$PROP_ID/neighbors/ai-analysis" jwt \
 #   design-assistant.routes.ts, design.routes.ts,
 #   zoning.routes.ts, zoning-comparator.routes.ts
 # ============================================================
+
+section "PROPERTY ROUTES (property.routes.ts — not mounted; /api/v1/properties is unified router)"
+# property.routes.ts is NOT imported in index.replit.ts.
+# /api/v1/properties IS mounted via createUnifiedPropertiesRoutes — so responses are from that.
+# These calls verify no 5xx from any handler on these paths.
+hit GET    "/api/v1/properties"                                         jwt
+hit GET    "/api/v1/properties/$PROP_ID"                               jwt
+hit POST   "/api/v1/properties"                                         jwt \
+  '{"address":"456 Oak Ave","city":"Atlanta","state":"GA","zip":"30301","propertyType":"multifamily"}'
+hit PUT    "/api/v1/properties/$PROP_ID"                               jwt \
+  '{"notes":"smoke-test-update"}'
+hit DELETE "/api/v1/properties/$PROP_ID"                               jwt
+hit GET    "/api/v1/properties/nearby/33.749/-84.388"                  jwt
+hit POST   "/api/v1/properties/scrape/fulton"                          jwt \
+  '{"parcelId":"12345678","county":"Fulton"}'
 
 section "ZONING LEGACY ROUTES (zoning.routes.ts — not mounted — expect 404)"
 # POST /lookup, GET /districts/:muni/:state, GET /rules/:districtId, POST /analyze

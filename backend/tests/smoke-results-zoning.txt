@@ -1,11 +1,11 @@
 JediRe Zoning/Property/Design Smoke Test Results (Phase 2)
-Run: Fri Mar 20 01:55:02 AM UTC 2026
+Run: Fri Mar 20 01:58:34 AM UTC 2026
 BASE_URL: http://localhost:4000
 DEAL_ID : 12eb9e11-3b2d-44d5-9f59-877a76344c18
 PROP_ID : 750a68ce-d0cf-4d3e-b184-82335a774b9c
 MUNI_ID : montgomery-al
 
-PASS=108  WARN=80  FAIL=0  TOTAL=188
+PASS=110  WARN=86  FAIL=0  TOTAL=196
 
 
 ── INLINE ZONING ANALYZE ──
@@ -205,6 +205,7 @@ PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/zoning-confi
 ── SITE INTELLIGENCE ──
 PASS 200  GET    /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/site-intelligence
 PASS 200  POST   /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/site-intelligence
+PASS 200  DELETE /api/v1/deals/12eb9e11-3b2d-44d5-9f59-877a76344c18/site-intelligence
 
 ── DESIGN REFERENCES ──
 WARN 404  GET    /api/v1/design-references/file/nonexistent-file.jpg
@@ -235,6 +236,15 @@ WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbo
 WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbors?includeNearby=true
 WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/assemblage-scenarios
 WARN 404  POST   /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c/neighbors/ai-analysis
+
+── PROPERTY ROUTES (property.routes.ts — not mounted; /api/v1/properties is unified router) ──
+PASS 200  GET    /api/v1/properties
+WARN 404  GET    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c
+WARN 404  POST   /api/v1/properties
+WARN 404  PUT    /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c
+WARN 404  DELETE /api/v1/properties/750a68ce-d0cf-4d3e-b184-82335a774b9c
+WARN 404  GET    /api/v1/properties/nearby/33.749/-84.388
+WARN 404  POST   /api/v1/properties/scrape/fulton
 
 ── ZONING LEGACY ROUTES (zoning.routes.ts — not mounted — expect 404) ──
 WARN 404  POST   /api/v1/zoning-info/lookup
