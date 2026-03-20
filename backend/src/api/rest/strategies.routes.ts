@@ -14,7 +14,7 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query, getPool } from '../../database/connection';
-import { scoreAndPersist, detectArbitrage, calculateStrategyScore } from '../../services/strategyArbitrage.service';
+import { scoreAndPersist, detectArbitrage, calculateStrategyScore, ScoreContext } from '../../services/strategyArbitrage.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -70,8 +70,17 @@ router.put('/reorder', requireAuth, async (req: AuthenticatedRequest, res: Respo
   try {
     const { order } = req.body;
     if (!Array.isArray(order)) return res.status(400).json({ success: false, error: 'order must be array of ids' });
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+    // Only allow reordering non-system-template strategies visible to this caller
     for (let i = 0; i < order.length; i++) {
-      await query(`UPDATE strategies SET sort_order = $1, updated_at = NOW() WHERE id = $2`, [i, order[i]]);
+      await query(
+        `UPDATE strategies SET sort_order = $1, updated_at = NOW()
+         WHERE id = $2
+           AND is_system_template = false
+           AND (created_by = $3 OR ($4::uuid IS NOT NULL AND org_id = $4))`,
+        [i, order[i], userId, orgId]
+      );
     }
     res.json({ success: true });
   } catch (error: any) {
@@ -83,7 +92,18 @@ router.put('/reorder', requireAuth, async (req: AuthenticatedRequest, res: Respo
 router.post('/score-deal/:dealId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const scores = await scoreAndPersist(dealId);
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+    // Verify deal access
+    const dealCheck = await query(
+      `SELECT id FROM deals WHERE id = $1 AND (user_id = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+      [dealId, userId, orgId]
+    );
+    if (dealCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    const ctx = { userId, orgId };
+    const scores = await scoreAndPersist(dealId, ctx);
     const arbitrage = detectArbitrage(scores);
     res.json({ success: true, data: scores, arbitrage });
   } catch (error: any) {
