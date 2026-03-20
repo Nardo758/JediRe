@@ -87,7 +87,7 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const [entitlementBenchmarks, setEntitlementBenchmarks] = useState<any>(null);
   const [scoreLoading, setScoreLoading] = useState(false);
   const [dataSource, setDataSource] = useState<'loading' | 'live' | 'sample'>('loading');
-  const [viewMode, setViewMode] = useState<'existing' | 'development'>('existing');
+  const [viewMode, setViewMode] = useState<'existing' | 'development' | 'redevelopment'>('existing');
 
   const isDev = deal?.developmentType === 'Ground-Up' ||
     deal?.developmentType === 'new' ||
@@ -98,8 +98,9 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
   const isRedevelopment = deal?.developmentType === 'Redevelopment';
 
   useEffect(() => {
-    setViewMode(isDev ? 'development' : 'existing');
-  }, [isDev]);
+    if (isRedevelopment) setViewMode('redevelopment');
+    else setViewMode(isDev ? 'development' : 'existing');
+  }, [isDev, isRedevelopment]);
 
   useEffect(() => {
     if (!deal?.id) return;
@@ -396,7 +397,9 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
         />
       )}
 
-      {viewMode === 'existing'
+      {viewMode === 'redevelopment'
+        ? <RedevelopmentOverview deal={deal} navigateToTab={navigateToTab} financial={financial} capitalStructure={capitalStructure} computedReturns={computedReturns} />
+        : viewMode === 'existing'
         ? <ExistingOverview deal={deal} navigateToTab={navigateToTab} capitalStructure={capitalStructure} financial={financial} market={market} capitalStackData={capitalStackData} marketCapRate={marketCapRate} computedReturns={computedReturns} />
         : <DevOverview deal={deal} navigateToTab={navigateToTab} financial={financial} design3D={design3D} activeScenario={activeScenario} zoningProfile={zoningProfile} entitlements={entitlements} entitlementBenchmarks={entitlementBenchmarks} />
       }
@@ -1501,6 +1504,330 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
           }
         </div>
       </div>
+    </div>
+  );
+};
+
+interface RedevelopmentOverviewProps {
+  deal: any;
+  navigateToTab: (tab: string) => void;
+  financial?: any;
+  capitalStructure?: any;
+  computedReturns?: any;
+}
+
+const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, navigateToTab, financial, capitalStructure, computedReturns }) => {
+  const askPrice = deal.purchasePrice || deal.budget || 0;
+  const existingUnits = deal.units || deal.existingUnits || 0;
+  const targetUnits = deal.targetUnits || existingUnits;
+  const expansionUnits = Math.max(0, targetUnits - existingUnits);
+
+  const currentNoi = financial?.currentNoi || deal.noi || 0;
+  const stabilizedNoi = financial?.noi || financial?.stabilizedNoi || computedReturns?.stabilizedNoi || 0;
+  const noiDelta = stabilizedNoi - currentNoi;
+
+  const renovationBudget = financial?.renovationBudget || deal.renovationBudget || 0;
+  const expansionCost = financial?.expansionCost || deal.expansionCost || 0;
+  const softCosts = financial?.softCosts || 0;
+  const totalInvestment = financial?.totalDevelopmentCost || (askPrice + renovationBudget + expansionCost + softCosts) || 0;
+
+  const irr = financial?.irr || computedReturns?.irrLevered
+    ? `${((financial?.irr || computedReturns?.irrLevered * 100) as number).toFixed(1)}%`
+    : '—';
+  const equityMultiple = financial?.equityMultiple || computedReturns?.equityMultiple
+    ? `${(financial?.equityMultiple || computedReturns?.equityMultiple).toFixed(2)}x`
+    : '—';
+
+  const seniorDebt = capitalStructure?.seniorDebt || (totalInvestment * 0.65) || 0;
+  const equityRequired = capitalStructure?.equity || (totalInvestment * 0.35) || 0;
+  const ltv = totalInvestment > 0 ? seniorDebt / totalInvestment : 0;
+
+  const exitCapRate = financial?.exitCapRate || 0.055;
+  const exitValue = stabilizedNoi > 0 ? stabilizedNoi / exitCapRate : 0;
+  const valueCreation = exitValue > 0 && totalInvestment > 0 ? exitValue - totalInvestment : 0;
+  const renovROI = (renovationBudget + expansionCost) > 0 && noiDelta > 0
+    ? (noiDelta / exitCapRate) / (renovationBudget + expansionCost)
+    : 0;
+
+  const ppu = existingUnits > 0 && askPrice > 0 ? Math.round(askPrice / existingUnits) : 0;
+  const currentCapRate = askPrice > 0 && currentNoi > 0 ? currentNoi / askPrice : 0;
+
+  const renovBudgetPerUnit = existingUnits > 0 && renovationBudget > 0 ? Math.round(renovationBudget / existingUnits) : 0;
+
+  const ddItems: { l: string; done: boolean }[] = deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0
+    ? deal.stateData.ddItems
+    : [
+      { l: 'Phase I Environmental Assessment', done: false },
+      { l: 'Property Condition Report (PCR)', done: false },
+      { l: 'Existing Lease Audit', done: false },
+      { l: 'Renovation Scope + GMP Contractor', done: false },
+      { l: 'Zoning Confirmation (Expansion)', done: false },
+      { l: 'Rent Comparables Analysis', done: false },
+      { l: 'Bridge Lender Term Sheet', done: false },
+      { l: 'Title + Survey', done: false },
+    ];
+
+  const phases = [
+    { phase: 'Acquisition / Close', dur: 2, status: 'active' as const },
+    { phase: 'Renovation Phase 1', dur: 7, status: 'pending' as const },
+    { phase: 'Expansion Construction', dur: 12, status: 'pending' as const },
+    { phase: 'Renovation Phase 2', dur: 5, status: 'pending' as const },
+    { phase: 'Lease-Up / Stabilization', dur: 6, status: 'pending' as const },
+  ];
+  let cursor = 0;
+  const timeline = phases.map(p => { const s = cursor; cursor += p.dur; return { ...p, start: s }; });
+  const TOTAL_MO = cursor || 1;
+
+  const budgetRows = [
+    { l: 'Acquisition', v: askPrice, c: BT.amber },
+    { l: 'Renovation', v: renovationBudget, c: BT.blue },
+    { l: 'Expansion', v: expansionCost, c: BT.violL },
+    { l: 'Soft + Closing', v: softCosts || (totalInvestment - askPrice - renovationBudget - expansionCost), c: BT.td },
+  ].filter(r => r.v > 0);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+
+      {/* §1 — Acquisition Summary */}
+      <SectionHead title="Acquisition Summary" right={`${existingUnits} existing units · Redevelopment`} accent={BT.amberL} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 1, background: BT.border }}>
+        <KVCard label="Ask Price" value={askPrice > 0 ? `$${(askPrice / 1_000_000).toFixed(1)}M` : '—'} note={ppu > 0 ? `$${ppu.toLocaleString()}/unit` : undefined} />
+        <KVCard label="Existing Units" value={existingUnits > 0 ? `${existingUnits}u` : '—'} note={expansionUnits > 0 ? `+${expansionUnits}u planned` : 'No expansion'} />
+        <KVCard label="Current NOI" value={currentNoi > 0 ? `$${(currentNoi / 1_000_000).toFixed(2)}M` : '—'} note={currentCapRate > 0 ? `${(currentCapRate * 100).toFixed(1)}% in-place cap` : undefined} />
+        <KVCard label="Stabilized NOI" value={stabilizedNoi > 0 ? `$${(stabilizedNoi / 1_000_000).toFixed(2)}M` : '—'} note={noiDelta > 0 ? `+$${(noiDelta / 1_000).toFixed(0)}K uplift` : undefined} valueColor="text-emerald-500" />
+        <KVCard label="Total Investment" value={totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—'} note={existingUnits > 0 && totalInvestment > 0 ? `$${Math.round(totalInvestment / Math.max(targetUnits, existingUnits)).toLocaleString()}/unit (stab.)` : undefined} />
+        <KVCard label="Exit Value" value={exitValue > 0 ? `$${(exitValue / 1_000_000).toFixed(1)}M` : '—'} note={exitValue > 0 && totalInvestment > 0 ? `${((exitValue / totalInvestment - 1) * 100).toFixed(0)}% value creation` : undefined} valueColor="text-emerald-500" />
+      </div>
+
+      {/* §2 — NOI Bridge */}
+      <SectionHead title="NOI Bridge — Renovation Upside" right="Renovation ROI Analysis" accent={BT.greenL} />
+      <div style={{ background: BT.bgCard, padding: '14px 16px', border: `1px solid ${BT.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 0, flexWrap: 'wrap', marginBottom: 14 }}>
+          {[
+            { label: 'In-Place NOI', value: currentNoi, color: BT.td },
+            { op: '+' },
+            { label: 'Renovation Uplift', value: noiDelta > 0 ? noiDelta : null, color: BT.greenL },
+            { op: '=' },
+            { label: 'Stabilized NOI', value: stabilizedNoi, color: BT.amberL, bold: true },
+            { op: '÷' },
+            { label: 'Exit Cap Rate', value: null, raw: exitCapRate > 0 ? `${(exitCapRate * 100).toFixed(2)}%` : '—', color: BT.tm },
+            { op: '=' },
+            { label: 'Exit Value', value: exitValue, color: BT.greenL, bold: true },
+          ].map((step, i) => {
+            if ('op' in step) {
+              return <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '0 8px', fontSize: 18, color: BT.td }}>{step.op}</div>;
+            }
+            const displayVal = step.raw ?? (step.value != null && step.value > 0 ? `$${(step.value / 1_000_000).toFixed(2)}M` : '—');
+            return (
+              <div key={i} style={{ textAlign: 'center', padding: '8px 10px', minWidth: 90 }}>
+                <div style={{ fontSize: 8, color: BT.td, marginBottom: 3, letterSpacing: 1, textTransform: 'uppercase', ...bMono }}>{step.label}</div>
+                <div style={{ fontSize: step.bold ? 16 : 13, fontWeight: 700, color: step.color, ...bMono }}>{displayVal}</div>
+              </div>
+            );
+          })}
+        </div>
+        {valueCreation > 0 && (
+          <div style={{ background: BT.greenBg, border: `1px solid ${BT.green}30`, borderRadius: 6, padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: BT.greenL, ...bSans }}>Value Creation</span>
+            <span style={{ fontSize: 18, fontWeight: 700, color: BT.greenL, ...bMono }}>+${(valueCreation / 1_000_000).toFixed(1)}M</span>
+          </div>
+        )}
+        {renovROI > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', gap: 16, fontSize: 9, color: BT.td, ...bMono }}>
+            <span>Renovation ROI: <strong style={{ color: BT.greenL }}>{(renovROI * 100).toFixed(0)}%</strong></span>
+            {renovBudgetPerUnit > 0 && <span>Reno $/Unit: <strong style={{ color: BT.amber }}>${renovBudgetPerUnit.toLocaleString()}</strong></span>}
+            {exitCapRate > 0 && <span>Exit Cap: <strong style={{ color: BT.tm }}>{(exitCapRate * 100).toFixed(2)}%</strong></span>}
+          </div>
+        )}
+      </div>
+
+      {/* §3 — Renovation Plan */}
+      <SectionHead title="Renovation + Expansion Plan" right="Scope of Work Summary" accent={BT.amber} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 12, ...bMono }}>RENOVATION SCOPE</div>
+          {[
+            { l: 'Unit Interiors', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.55 / 1_000).toLocaleString()}K` : '—', note: 'Kitchens, baths, flooring, fixtures' },
+            { l: 'Common Areas', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.20 / 1_000).toLocaleString()}K` : '—', note: 'Lobby, corridors, amenities' },
+            { l: 'Exterior + Landscaping', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.15 / 1_000).toLocaleString()}K` : '—', note: 'Curb appeal, signage' },
+            { l: 'MEP / Infrastructure', v: renovationBudget > 0 ? `$${Math.round(renovationBudget * 0.10 / 1_000).toLocaleString()}K` : '—', note: 'HVAC, plumbing, electrical' },
+          ].map((r, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
+              <div>
+                <div style={{ fontSize: 11, color: BT.ts, ...bSans }}>{r.l}</div>
+                <div style={{ fontSize: 9, color: BT.td, marginTop: 1, ...bSans }}>{r.note}</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: BT.amber, ...bMono, flexShrink: 0, marginLeft: 12 }}>{r.v}</span>
+            </div>
+          ))}
+          {renovationBudget > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, marginTop: 4 }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL RENOVATION</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: BT.amber, ...bMono }}>${(renovationBudget / 1_000_000).toFixed(1)}M</span>
+            </div>
+          )}
+        </div>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 12, ...bMono }}>EXPANSION SCOPE</div>
+          {expansionUnits > 0 ? (
+            <>
+              {[
+                { l: 'New Units', v: `+${expansionUnits} units`, note: 'New construction or conversion' },
+                { l: 'Expansion Budget', v: expansionCost > 0 ? `$${(expansionCost / 1_000_000).toFixed(1)}M` : '—', note: `$${expansionCost > 0 && expansionUnits > 0 ? Math.round(expansionCost / expansionUnits).toLocaleString() : '—'}/unit` },
+                { l: 'Stabilized Portfolio', v: `${targetUnits} units`, note: `${existingUnits} renovated + ${expansionUnits} new` },
+              ].map((r, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: BT.ts, ...bSans }}>{r.l}</div>
+                    <div style={{ fontSize: 9, color: BT.td, marginTop: 1, ...bSans }}>{r.note}</div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: BT.violL, ...bMono, flexShrink: 0, marginLeft: 12 }}>{r.v}</span>
+                </div>
+              ))}
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <p style={{ fontSize: 10, color: BT.ts, marginBottom: 4, ...bSans }}>Renovation only — no expansion planned</p>
+              <p style={{ fontSize: 9, color: BT.td, ...bSans }}>All {existingUnits} existing units will be renovated</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* §4 — Development Budget + Timeline */}
+      <SectionHead title="Budget Breakdown + Execution Timeline" right="M09 ProForma · M08 Strategy" accent={BT.amber} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 12, ...bMono }}>TOTAL INVESTMENT</div>
+          {budgetRows.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', height: 20, borderRadius: 4, overflow: 'hidden', marginBottom: 14 }}>
+                {budgetRows.map((b, i) => {
+                  const w = totalInvestment > 0 ? (b.v / totalInvestment) * 100 : 25;
+                  return <div key={i} style={{ width: `${w}%`, background: b.c, opacity: 0.7 }} title={`${b.l}: $${(b.v / 1_000_000).toFixed(1)}M`} />;
+                })}
+              </div>
+              {budgetRows.map((r, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: `1px solid ${BT.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 2, background: r.c, opacity: 0.8 }} />
+                    <span style={{ fontSize: 11, color: BT.ts, ...bSans }}>{r.l}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bMono }}>${(r.v / 1_000_000).toFixed(1)}M</span>
+                    <span style={{ fontSize: 9, color: BT.td, ...bMono }}>{totalInvestment > 0 ? `${((r.v / totalInvestment) * 100).toFixed(0)}%` : ''}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, marginTop: 4 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: BT.ts, letterSpacing: 1, ...bMono }}>TOTAL INVESTMENT</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: BT.amber, ...bMono }}>${(totalInvestment / 1_000_000).toFixed(1)}M</span>
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <p style={{ fontSize: 10, color: BT.ts, ...bSans }}>Budget data not available</p>
+              <button onClick={() => navigateToTab('proforma')} style={{ fontSize: 9, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>Build ProForma →</button>
+            </div>
+          )}
+        </div>
+        <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
+          <div style={{ fontSize: 9, color: BT.td, letterSpacing: 2, fontWeight: 700, marginBottom: 14, ...bMono }}>EXECUTION TIMELINE</div>
+          {timeline.map((ph, i) => {
+            const left = (ph.start / TOTAL_MO) * 100;
+            const width = (ph.dur / TOTAL_MO) * 100;
+            const colors = [BT.amber, BT.blue, BT.violL, BT.cyanL, BT.greenL];
+            const c = colors[i % colors.length];
+            const textColor = ph.status === 'active' ? c : BT.td;
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                <span style={{ fontSize: 9, color: BT.ts, width: 110, textAlign: 'right', flexShrink: 0, ...bSans }}>{ph.phase}</span>
+                <div style={{ flex: 1, height: 16, background: BT.bgPanel, position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ position: 'absolute', height: '100%', background: c, opacity: 0.2, left: `${left}%`, width: `${width}%` }} />
+                  <div style={{ position: 'absolute', height: '100%', borderLeft: `2px solid ${c}`, display: 'flex', alignItems: 'center', paddingLeft: 4, left: `${left}%`, width: `${width}%` }}>
+                    <span style={{ fontSize: 8, fontWeight: 700, color: c, ...bMono }}>{ph.dur}mo</span>
+                  </div>
+                </div>
+                <span style={{ fontSize: 8, width: 36, textAlign: 'right', color: textColor, ...bMono }}>{ph.status === 'active' ? 'NOW' : ''}</span>
+              </div>
+            );
+          })}
+          <div style={{ display: 'flex', marginTop: 8, borderTop: `1px solid ${BT.border}`, paddingTop: 6, paddingLeft: 118, paddingRight: 36 }}>
+            {[0, 6, 12, 18, 24, 30].filter(m => m <= TOTAL_MO + 4).map(m => (
+              <div key={m} style={{ flex: 1, fontSize: 8, color: BT.td, ...bMono }}>M{m}</div>
+            ))}
+          </div>
+          <div style={{ fontSize: 9, color: BT.td, marginTop: 8, ...bMono }}>
+            Total execution: <strong style={{ color: BT.amber }}>~{TOTAL_MO} months</strong> to stabilization
+          </div>
+        </div>
+      </div>
+
+      {/* §5 — Capital Structure */}
+      <SectionHead title="Capital Structure" right="M11 Capital Stack" accent={BT.violL} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
+        {[
+          { l: 'Senior Debt (Bridge)', v: seniorDebt > 0 ? `$${(seniorDebt / 1_000_000).toFixed(1)}M` : '—', c: BT.amber },
+          { l: 'LTV', v: ltv > 0 ? `${(ltv * 100).toFixed(0)}%` : '—', c: BT.amber },
+          { l: 'Sponsor Equity', v: equityRequired > 0 ? `$${(equityRequired / 1_000_000).toFixed(1)}M` : '—', c: BT.violL },
+          { l: 'Total Capitalization', v: totalInvestment > 0 ? `$${(totalInvestment / 1_000_000).toFixed(1)}M` : '—', c: BT.ts },
+        ].map((m, i) => (
+          <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
+            <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: BT.bgCard, padding: '10px 16px', borderTop: `1px solid ${BT.border}`, display: 'flex', gap: 24, alignItems: 'center' }}>
+        <button onClick={() => navigateToTab('capital')} style={{ fontSize: 10, color: BT.violL, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+          Configure Capital Stack →
+        </button>
+        <span style={{ fontSize: 9, color: BT.td, ...bSans }}>Bridge-to-perm with renovation draw schedule</span>
+      </div>
+
+      {/* §6 — Returns */}
+      <SectionHead title="Returns Summary" right="Levered Returns · 5-Year Hold" accent={BT.greenL} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT.border }}>
+        {[
+          { l: 'Proj. IRR', v: irr, c: BT.greenL, sub: 'Levered, 5-yr hold' },
+          { l: 'Equity Multiple', v: equityMultiple, c: BT.greenL, sub: equityRequired > 0 ? `On $${(equityRequired / 1_000_000).toFixed(1)}M equity` : undefined },
+          { l: 'Renovation ROI', v: renovROI > 0 ? `${(renovROI * 100).toFixed(0)}%` : '—', c: renovROI > 1 ? BT.greenL : BT.amber, sub: 'Value add / cost' },
+          { l: 'Exit Value', v: exitValue > 0 ? `$${(exitValue / 1_000_000).toFixed(1)}M` : '—', c: BT.amberL, sub: exitCapRate > 0 ? `${(exitCapRate * 100).toFixed(2)}% cap` : undefined },
+        ].map((m, i) => (
+          <div key={i} style={{ background: BT.bgCard, padding: '12px 14px' }}>
+            <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>{m.l}</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
+            {m.sub && <div style={{ fontSize: 9, color: BT.td, marginTop: 4, ...bMono }}>{m.sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* §7 — Site Diligence */}
+      <SectionHead title="Due Diligence Tracker" right="M13 Risk · M17 Execution" accent={BT.amber} />
+      <div style={{ background: BT.bgCard, border: `1px solid ${BT.border}`, padding: '4px 0' }}>
+        {(() => {
+          const done = ddItems.filter(d => d.done).length;
+          const total = ddItems.length;
+          return (
+            <div style={{ padding: '8px 14px 12px', borderBottom: `1px solid ${BT.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 9, color: BT.td, letterSpacing: 1, ...bMono }}>COMPLETION</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: done === total ? BT.greenL : BT.amber, ...bMono }}>{done}/{total} items</span>
+              </div>
+              <div style={{ height: 3, background: BT.bgPanel, borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${total > 0 ? (done / total) * 100 : 0}%`, background: done === total ? BT.green : BT.amber, borderRadius: 2, transition: 'all 0.3s' }} />
+              </div>
+            </div>
+          );
+        })()}
+        {ddItems.map((item, i) => <DDItem key={i} label={item.l} done={item.done} />)}
+        <div style={{ padding: '8px 14px' }}>
+          <button onClick={() => navigateToTab('risk-management')} style={{ fontSize: 9, color: BT.amber, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, ...bSans }}>
+            Open Due Diligence Dashboard →
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 };
