@@ -87,7 +87,7 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 
 **385 endpoints** covering all remaining mounted route groups (including 1 security negative-test for forged OAuth state):
 
-- Dashboard, Gmail, Microsoft (inline + full oauth router — 18 endpoints, all 15 from `microsoft.routes.ts` + 3 from `inline-microsoft.routes.ts`), contacts sync, emails (AI actions), email extractions, news, intelligence
+- Dashboard, Gmail, Microsoft (inline + full oauth router — 18 endpoint checks; mount order: `inline-microsoft.routes.ts` first handles `/auth/init`, `/auth/callback`, `/status`; `microsoft.routes.ts` handles the remaining 13 unique routes; 2 paths overlap but inline takes precedence as first-mounted), contacts sync, emails (AI actions), email extractions, news, intelligence
 - Orgs/RBAC, context tracker, trade areas, isochrone, traffic AI, leasing traffic, preferences, AI preferences
 - Property types/strategies, custom strategies, strategies, zoning intelligence/learning/verification/profile
 - Development scenarios, team management (**all 12 routes**), collaboration, notarize, data upload, entitlements, regulatory alerts, municode, scrape
@@ -112,8 +112,8 @@ Key coverage: market intelligence enhanced, supply/demand analytics, cycle phase
 |------------|--------|--------|--------|
 | `team-management.routes.ts` | 12 | 12 | check_strict/lenient |
 | `module-libraries.routes.ts` | 7 | 7 | check_lenient |
-| `microsoft.routes.ts` | 15 | 15 | check_optional (5xx=FAIL, 4xx=SKIP) |
-| `inline-microsoft.routes.ts` | 3 | 3 | check_strict/lenient |
+| `microsoft.routes.ts` | 15 defined; 13 effectively served | 15 tested | check_optional (5xx=FAIL, 4xx=SKIP); mounted second — `/auth/callback` and `/status` shadowed by inline router |
+| `inline-microsoft.routes.ts` | 3 | 3 | check_strict/lenient; mounted first — handles `/auth/init`, `/auth/callback`, `/status` |
 | `visibility.routes.ts` | 5 | 5 (correct paths) | check_lenient |
 | `maps.routes.ts` | 9 | 9 | check_lenient |
 | `layers.routes.ts` | 7 | 7 | check_lenient |
@@ -180,7 +180,9 @@ Key module-wiring coverage (all 55 route endpoints):
 
 **Fix:** Added `import microsoftRouter from './api/rest/microsoft.routes'` and `app.use('/api/v1/microsoft', microsoftRouter)` in `index.replit.ts`.
 
-**Result:** All 15 Microsoft Integration routes now routed (tested as `check_optional` since they require real Microsoft OAuth credentials).
+**Mount order:** `inline-microsoft.routes.ts` is mounted first (line 242), `microsoft.routes.ts` second (line 243). Express first-match semantics mean `/auth/callback` and `/status` are handled by the inline router; the full router handles the remaining 13 unique routes. This is intentional: the inline router provides a lightweight, config-less handler for the OAuth flow and status check.
+
+**Result:** All 15 Microsoft Integration route paths are tested (`check_optional`). 13 are exclusively handled by `microsoft.routes.ts`; 2 are shadowed by the inline router. Effective unique handler coverage: 16 routes across both files.
 
 ---
 

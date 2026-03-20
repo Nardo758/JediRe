@@ -239,6 +239,10 @@ const microsoftConfig = {
   redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4000/api/v1/microsoft/auth/callback',
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
+// Inline router mounted first: handles /auth/init, /auth/callback, /status
+// with a lightweight config-less implementation.
+// Full microsoftRouter mounted second: handles the remaining 13 unique routes.
+// Express first-match means /auth/callback and /status go to inline router.
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
 app.use('/api/v1/microsoft', microsoftRouter);
 
