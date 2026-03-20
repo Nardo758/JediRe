@@ -127,7 +127,11 @@ export const StrategyBuilderPage: React.FC = () => {
         ]);
 
         const raw = strategiesRes.data;
-        setStrategies(Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []);
+        setStrategies(
+          Array.isArray(raw?.strategies) ? raw.strategies :
+          Array.isArray(raw?.data) ? raw.data :
+          Array.isArray(raw) ? raw : []
+        );
 
         if (catalogRes.data) {
           setMetrics(catalogRes.data.metrics || []);
