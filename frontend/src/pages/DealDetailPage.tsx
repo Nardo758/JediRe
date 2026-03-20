@@ -252,7 +252,7 @@ const StrategyScreen = (props: ScreenProps) => (
     ]}
     tabs={[
       { id: 'strategy',  label: 'Strategy',   component: (p: ScreenProps) => <M08StrategyScoring dealId={p.dealId} /> },
-      { id: 'design-3d', label: '3D Design',  component: (p: ScreenProps) => (
+      { id: 'design-3d', label: '3D Design',  moduleId: 'M03' as ModuleId, component: (p: ScreenProps) => (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
             <Design3DPageEnhanced {...p} dealId={p.dealId} />

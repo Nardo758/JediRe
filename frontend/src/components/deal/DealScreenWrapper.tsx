@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { BT, BT_CSS, PanelHeader } from './bloomberg-ui';
+import { useDealTypeConfig } from '../../stores/dealStore';
+import type { ModuleId } from '../../shared/config/deal-type-visibility';
 
 export interface DealScreenTab {
   id: string;
   label: string;
   component: React.ComponentType<any>;
+  moduleId?: ModuleId;
 }
 
 interface DealScreenWrapperProps {
@@ -30,18 +33,25 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({
   moduleRight,
   accentColor,
 }) => {
-  const [active, setActive] = useState(initialTab || tabs[0]?.id || '');
+  const config = useDealTypeConfig();
 
-  if (tabs.length === 0) return null;
+  const visibleTabs = tabs.filter(tab => {
+    if (!tab.moduleId) return true;
+    return config.isModuleVisible(tab.moduleId);
+  });
+
+  const [active, setActive] = useState(initialTab || visibleTabs[0]?.id || '');
+
+  if (visibleTabs.length === 0) return null;
 
   const ac = accentColor ?? BT.text.amber;
 
-  if (tabs.length === 1 && !moduleTitle) {
-    const C = tabs[0].component;
+  if (visibleTabs.length === 1 && !moduleTitle) {
+    const C = visibleTabs[0].component;
     return <C {...passProps} />;
   }
 
-  const activeTab = tabs.find(t => t.id === active) || tabs[0];
+  const activeTab = visibleTabs.find(t => t.id === active) || visibleTabs[0];
   const C = activeTab.component;
 
   return (
@@ -61,7 +71,7 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({
         />
       )}
 
-      {tabs.length > 1 && (
+      {visibleTabs.length > 1 && (
         <div style={{
           display: 'flex',
           background: BT.bg.header,
@@ -71,7 +81,7 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({
           height: 28,
           alignItems: 'stretch',
         }}>
-          {tabs.map(tab => {
+          {visibleTabs.map(tab => {
             const isActive = active === tab.id;
             return (
               <button
