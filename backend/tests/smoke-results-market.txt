@@ -1,12 +1,13 @@
 ========================================
   JediRe Smoke Test — Phase 4 (Market)
-  Fri Mar 20 04:38:31 AM UTC 2026
+  Fri Mar 20 04:49:18 AM UTC 2026
 ========================================
 
 ▶ Health
   PASS [200] Health check
 
 ▶ Market Intelligence /api/v1/markets — GET collection & stats
+  PASS [200] Markets: list (GET /)
   PASS [200] Markets: overview
   PASS [200] Markets: available
   PASS [200] Markets: preferences GET
@@ -62,6 +63,7 @@
   PASS [200] F40: market
   PASS [200] F40: rankings
   PASS [200] F40: comp-set
+  PASS [200] F40: POST calculate
 
 ▶ Opportunities /api/v1/opportunities
   PASS [200] Opportunities: detect
@@ -74,6 +76,8 @@
   PASS [200] Intelligence: docs flagged
   PASS [200] Intelligence: user/stats
   PASS [200] Intelligence: user/preferences
+  PASS [200] Intelligence: PUT user/preferences
+  PASS [200] Intelligence: POST user/generate-embeddings
 
 ▶ Supply Routes — actual paths at /api/v1 (supply.routes.ts)
   PASS [200] Supply: /events (list)
@@ -134,7 +138,7 @@
   PASS [200] JEDI: POST alerts/:id/dismiss
   PASS [200] JEDI: PATCH alerts/settings
 
-▶ Traffic Prediction /api/v1/traffic
+▶ Traffic Prediction /api/v1/traffic (trafficPrediction.routes.ts)
   PASS [200] Traffic: model/performance
   PASS [200] Traffic: calibration/active
   PASS [200] Traffic: validation/errors
@@ -144,20 +148,28 @@
   SKIP [404] Traffic: POST predict/:id — no data for test ID (OK)
   PASS [200] Traffic: POST calibration/apply
   PASS [200] Traffic: POST batch-predict
+  PASS [200] Traffic: POST validation/record
 
 ▶ Traffic AI /api/v1/traffic-ai
   SKIP [400] Traffic-AI: POST generate — validation/minimal-payload (OK)
 
 ▶ Traffic Data /api/v1/traffic-data
   PASS [200] Traffic-data: adt/stations
+  PASS [200] Traffic-data: adt/nearest
   PASS [200] Traffic-data: realtime
-  SKIP [404] Traffic-data: context/:dealId — no data for test ID (OK)
+  SKIP [404] Traffic-data: context/:propertyId — no data for test ID (OK)
+  SKIP [404] Traffic-data: POST context/:id/link — no data for test ID (OK)
+  PASS [200] Traffic-data: POST bulk-link
+  SKIP [400] Traffic-data: POST adt/upload — validation/minimal-payload (OK)
 
 ▶ Traffic Comps /api/v1/traffic-comps
   PASS [200] Traffic-comps: deal
   PASS [200] Traffic-comps: averages
-  PASS [200] Traffic-comps: selections
+  PASS [200] Traffic-comps: selections GET
   PASS [200] Traffic-comps: proxy-candidates
+  PASS [200] Traffic-comps: deals-with-data
+  SKIP [400] Traffic-comps: POST snapshot — validation/minimal-payload (OK)
+  SKIP [400] Traffic-comps: PUT selections — validation/minimal-payload (OK)
 
 ▶ Leasing Traffic /api/v1/leasing-traffic
   PASS [200] Leasing: dot-profiles/summary
@@ -173,6 +185,12 @@
   PASS [200] Leasing: data-sources/:dealId
   PASS [200] Leasing: trend-patterns/:dealId
   SKIP [400] Leasing: POST lease-up-timeline — validation/minimal-payload (OK)
+  SKIP [400] Leasing: PATCH deal-trade-area — validation/minimal-payload (OK)
+  SKIP [400] Leasing: PUT weekly-report snapshot — validation/minimal-payload (OK)
+  PASS [200] Leasing: POST dot-profiles/seed
+  SKIP [404] Leasing: POST dot-profiles/google-cal — no data for test ID (OK)
+  SKIP [400] Leasing: POST dot-profiles/ingest — validation/minimal-payload (OK)
+  SKIP [400] Leasing: POST weekly-report/upload — validation/minimal-payload (OK)
 
 ▶ Benchmark Timeline /api/v1/benchmark-timeline
   PASS [200] Benchmark: benchmarks
@@ -180,12 +198,20 @@
   PASS [200] Benchmark: jurisdiction-comparison
   SKIP [400] Benchmark: POST simulate — validation/minimal-payload (OK)
   SKIP [400] Benchmark: POST compare-paths — validation/minimal-payload (OK)
+  PASS [202] Benchmark: POST ingest/atlanta
+  SKIP [400] Benchmark: POST ingest/florida — validation/minimal-payload (OK)
+  PASS [202] Benchmark: POST ingest/florida/all
 
 ▶ Property Analytics /api/v1/property-analytics
+  SKIP [400] Property-analytics: POST connect — validation/minimal-payload (OK)
+  SKIP [400] Property-analytics: POST disconnect — validation/minimal-payload (OK)
+  PASS [200] Property-analytics: connection/:id
   PASS [200] Property-analytics: property/:id
   PASS [200] Property-analytics: score
   PASS [200] Property-analytics: history
   SKIP [400] Property-analytics: digital-share — validation/minimal-payload (OK)
+  SKIP [400] Property-analytics: POST comp-proxy — validation/minimal-payload (OK)
+  PASS [200] Property-analytics: POST sync
 
 ▶ Trade Areas /api/v1/trade-areas
   PASS [200] Trade-areas: list
@@ -197,6 +223,18 @@
   SKIP [400] Trade-areas: POST radius — validation/minimal-payload (OK)
   PASS [200] Trade-areas: PUT :id
   PASS [200] Trade-areas: DELETE :id
+
+▶ Deals CRUD /api/v1/deals (inline-deals.routes.ts)
+  PASS [200] Deals: GET list
+  PASS [200] Deals: GET /:id
+  PASS [200] Deals: GET /:id/modules
+  PASS [200] Deals: GET /:id/properties
+  PASS [200] Deals: GET /:id/activity
+  PASS [200] Deals: GET /:id/timeline
+  SKIP [400] Deals: POST create — validation/minimal-payload (OK)
+  PASS [200] Deals: PATCH /:id
+  SKIP [400] Deals: PATCH /:id/property — validation/minimal-payload (OK)
+  SKIP [404] Deals: DELETE /:id — no data for test ID (OK)
 
 ▶ Deal Market Intelligence /api/v1/deals (deal-market-intelligence.routes.ts)
   PASS [200] Deal: market-intelligence
@@ -243,10 +281,16 @@
   PASS [200] Comp-sets: POST discover
   SKIP [400] Comp-sets: POST create — validation/minimal-payload (OK)
   SKIP [400] Comp-sets: POST add-to-set — validation/minimal-payload (OK)
+  SKIP [404] Comp-sets: DELETE /:dealId/comp-set/:compId — no data for test ID (OK)
+  SKIP [400] Comp-sets: PATCH /:dealId/comp-set/:compId — validation/minimal-payload (OK)
 
 ▶ Market (basic) /api/v1/market
   PASS [200] Market: inventory/:city/:state
   PASS [200] Market: trends/:city/:state
+
+▶ Properties /api/v1/properties (unified-properties.routes.ts)
+  PASS [200] Properties: GET /unified
+  PASS [200] Properties: POST /unified/refresh
 
 ========================================
   UNMOUNTED ROUTE FILES — PHASE 4 MATRIX
@@ -273,9 +317,9 @@
 ========================================
   RESULTS
 ========================================
-  PASS: 133
-  SKIP: 46  (404=no data, 400=validation/minimal-payload, 403=restriction)
+  PASS: 155
+  SKIP: 64  (404=no data, 400=validation/minimal-payload, 403=restriction)
   FAIL: 0
 
 
-Completed: Fri Mar 20 04:38:39 AM UTC 2026
+Completed: Fri Mar 20 04:49:31 AM UTC 2026

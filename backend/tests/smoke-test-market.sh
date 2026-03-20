@@ -105,6 +105,7 @@ echo ""
 echo "▶ Market Intelligence /api/v1/markets — GET collection & stats"
 # Always-available: these return empty objects/arrays, never 404
 # -------------------------------------------------------
+check_strict  "Markets: list (GET /)"               GET "$BASE/api/v1/markets"
 check_strict "Markets: overview"                 GET "$BASE/api/v1/markets/overview"
 check_strict "Markets: available"                GET "$BASE/api/v1/markets/available"
 check_strict "Markets: preferences GET"          GET "$BASE/api/v1/markets/preferences"
@@ -177,9 +178,11 @@ check_lenient "Cycle: phase-optimal-strategy"     GET "$BASE/api/v1/cycle-intell
 echo ""
 echo "▶ F40 Performance /api/v1/f40"
 # -------------------------------------------------------
-check_strict "F40: market"                        GET "$BASE/api/v1/f40/market?city=Atlanta&state=GA"
-check_strict "F40: rankings"                      GET "$BASE/api/v1/f40/rankings?city=Atlanta&state=GA"
-check_strict "F40: comp-set"                      GET "$BASE/api/v1/f40/comp-set?city=Atlanta&state=GA&submarket=Midtown"
+check_strict  "F40: market"                        GET "$BASE/api/v1/f40/market?city=Atlanta&state=GA"
+check_strict  "F40: rankings"                     GET "$BASE/api/v1/f40/rankings?city=Atlanta&state=GA"
+check_strict  "F40: comp-set"                     GET "$BASE/api/v1/f40/comp-set?city=Atlanta&state=GA&submarket=Midtown"
+check_lenient "F40: POST calculate"               POST "$BASE/api/v1/f40/calculate" \
+  -d '{"city":"Atlanta","state":"GA","propertyType":"multi_family"}'
 
 # -------------------------------------------------------
 echo ""
@@ -192,12 +195,16 @@ check_strict "Opportunities: rankings"            GET "$BASE/api/v1/opportunitie
 echo ""
 echo "▶ Intelligence Layer /api/v1/intelligence"
 # -------------------------------------------------------
-check_strict "Intelligence: stats"                GET "$BASE/api/v1/intelligence/stats"
-check_strict "Intelligence: patterns"             GET "$BASE/api/v1/intelligence/patterns"
-check_strict "Intelligence: docs pending"         GET "$BASE/api/v1/intelligence/documents/pending"
-check_strict "Intelligence: docs flagged"         GET "$BASE/api/v1/intelligence/documents/flagged"
-check_strict "Intelligence: user/stats"           GET "$BASE/api/v1/intelligence/user/stats"
-check_strict "Intelligence: user/preferences"     GET "$BASE/api/v1/intelligence/user/preferences"
+check_strict  "Intelligence: stats"                GET "$BASE/api/v1/intelligence/stats"
+check_strict  "Intelligence: patterns"            GET "$BASE/api/v1/intelligence/patterns"
+check_strict  "Intelligence: docs pending"        GET "$BASE/api/v1/intelligence/documents/pending"
+check_strict  "Intelligence: docs flagged"        GET "$BASE/api/v1/intelligence/documents/flagged"
+check_strict  "Intelligence: user/stats"          GET "$BASE/api/v1/intelligence/user/stats"
+check_strict  "Intelligence: user/preferences"    GET "$BASE/api/v1/intelligence/user/preferences"
+check_lenient "Intelligence: PUT user/preferences" PUT "$BASE/api/v1/intelligence/user/preferences" \
+  -d '{"theme":"dark","notifications":true}'
+check_lenient "Intelligence: POST user/generate-embeddings" POST "$BASE/api/v1/intelligence/user/generate-embeddings" \
+  -d '{}'
 
 # -------------------------------------------------------
 echo ""
@@ -300,20 +307,22 @@ check_lenient "JEDI: PATCH alerts/settings"       PATCH "$BASE/api/v1/jedi/alert
 
 # -------------------------------------------------------
 echo ""
-echo "▶ Traffic Prediction /api/v1/traffic"
+echo "▶ Traffic Prediction /api/v1/traffic (trafficPrediction.routes.ts)"
 # -------------------------------------------------------
-check_strict "Traffic: model/performance"         GET "$BASE/api/v1/traffic/model/performance"
-check_strict "Traffic: calibration/active"        GET "$BASE/api/v1/traffic/calibration/active"
-check_strict "Traffic: validation/errors"         GET "$BASE/api/v1/traffic/validation/errors"
-check_lenient "Traffic: prediction/:id"           GET "$BASE/api/v1/traffic/prediction/$PROPERTY_ID"
-check_lenient "Traffic: intelligence/:id"         GET "$BASE/api/v1/traffic/intelligence/$PROPERTY_ID"
-check_lenient "Traffic: validation/summary/:id"   GET "$BASE/api/v1/traffic/validation/summary/$PROPERTY_ID"
-check_lenient "Traffic: POST predict/:id"         POST "$BASE/api/v1/traffic/predict/$PROPERTY_ID" \
+check_strict  "Traffic: model/performance"         GET "$BASE/api/v1/traffic/model/performance"
+check_strict  "Traffic: calibration/active"        GET "$BASE/api/v1/traffic/calibration/active"
+check_strict  "Traffic: validation/errors"         GET "$BASE/api/v1/traffic/validation/errors"
+check_lenient "Traffic: prediction/:id"            GET "$BASE/api/v1/traffic/prediction/$PROPERTY_ID"
+check_lenient "Traffic: intelligence/:id"          GET "$BASE/api/v1/traffic/intelligence/$PROPERTY_ID"
+check_lenient "Traffic: validation/summary/:id"    GET "$BASE/api/v1/traffic/validation/summary/$PROPERTY_ID"
+check_lenient "Traffic: POST predict/:id"          POST "$BASE/api/v1/traffic/predict/$PROPERTY_ID" \
   -d '{"propertyType":"multi_family"}'
-check_lenient "Traffic: POST calibration/apply"   POST "$BASE/api/v1/traffic/calibration/apply" \
+check_lenient "Traffic: POST calibration/apply"    POST "$BASE/api/v1/traffic/calibration/apply" \
   -d '{"calibrationFactor":1.0}'
-check_lenient "Traffic: POST batch-predict"       POST "$BASE/api/v1/traffic/batch-predict" \
+check_lenient "Traffic: POST batch-predict"        POST "$BASE/api/v1/traffic/batch-predict" \
   -d '{"propertyIds":["'"$PROPERTY_ID"'"]}'
+check_lenient "Traffic: POST validation/record"    POST "$BASE/api/v1/traffic/validation/record" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'","predicted":100,"actual":95}'
 
 # -------------------------------------------------------
 echo ""
@@ -326,9 +335,16 @@ check_lenient "Traffic-AI: POST generate"         POST "$BASE/api/v1/traffic-ai/
 echo ""
 echo "▶ Traffic Data /api/v1/traffic-data"
 # -------------------------------------------------------
-check_strict  "Traffic-data: adt/stations"         GET "$BASE/api/v1/traffic-data/adt/stations"
+check_strict  "Traffic-data: adt/stations"          GET "$BASE/api/v1/traffic-data/adt/stations"
+check_strict  "Traffic-data: adt/nearest"          GET "$BASE/api/v1/traffic-data/adt/nearest?lat=33.749&lng=-84.388"
 check_strict  "Traffic-data: realtime"             GET "$BASE/api/v1/traffic-data/realtime?lat=33.749&lng=-84.388"
-check_lenient "Traffic-data: context/:dealId"     GET "$BASE/api/v1/traffic-data/context/$DEAL_ID"
+check_lenient "Traffic-data: context/:propertyId"  GET "$BASE/api/v1/traffic-data/context/$PROPERTY_ID"
+check_lenient "Traffic-data: POST context/:id/link" POST "$BASE/api/v1/traffic-data/context/$PROPERTY_ID/link" \
+  -d '{"stationId":1}'
+check_lenient "Traffic-data: POST bulk-link"       POST "$BASE/api/v1/traffic-data/bulk-link" \
+  -d '{"links":[{"propertyId":"'"$PROPERTY_ID"'","stationId":1}]}'
+check_lenient "Traffic-data: POST adt/upload"      POST "$BASE/api/v1/traffic-data/adt/upload" \
+  -F "file=@/dev/null;type=text/csv"
 
 # -------------------------------------------------------
 echo ""
@@ -336,8 +352,13 @@ echo "▶ Traffic Comps /api/v1/traffic-comps"
 # -------------------------------------------------------
 check_lenient "Traffic-comps: deal"               GET "$BASE/api/v1/traffic-comps/$DEAL_ID"
 check_lenient "Traffic-comps: averages"           GET "$BASE/api/v1/traffic-comps/$DEAL_ID/averages"
-check_lenient "Traffic-comps: selections"         GET "$BASE/api/v1/traffic-comps/$DEAL_ID/selections"
+check_lenient "Traffic-comps: selections GET"     GET "$BASE/api/v1/traffic-comps/$DEAL_ID/selections"
 check_lenient "Traffic-comps: proxy-candidates"   GET "$BASE/api/v1/traffic-comps/$DEAL_ID/proxy-candidates"
+check_lenient "Traffic-comps: deals-with-data"    GET "$BASE/api/v1/traffic-comps/$DEAL_ID/deals-with-data"
+check_lenient "Traffic-comps: POST snapshot"      POST "$BASE/api/v1/traffic-comps/$DEAL_ID/snapshot" \
+  -d '{}'
+check_lenient "Traffic-comps: PUT selections"     PUT "$BASE/api/v1/traffic-comps/$DEAL_ID/selections" \
+  -d '{"propertyIds":[]}'
 
 # -------------------------------------------------------
 echo ""
@@ -357,6 +378,18 @@ check_lenient "Leasing: data-sources/:dealId"     GET "$BASE/api/v1/leasing-traf
 check_lenient "Leasing: trend-patterns/:dealId"   GET "$BASE/api/v1/leasing-traffic/trend-patterns/$DEAL_ID"
 check_lenient "Leasing: POST lease-up-timeline"   POST "$BASE/api/v1/leasing-traffic/lease-up-timeline" \
   -d '{"dealId":"'"$DEAL_ID"'","targetOccupancy":0.95}'
+check_lenient "Leasing: PATCH deal-trade-area"    PATCH "$BASE/api/v1/leasing-traffic/deal-trade-area/$DEAL_ID" \
+  -d '{"tradeAreaId":"'"$TRADE_AREA_ID"'"}'
+check_lenient "Leasing: PUT weekly-report snapshot" PUT "$BASE/api/v1/leasing-traffic/weekly-report/$DEAL_ID/snapshot" \
+  -d '{"week":"2026-W01"}'
+check_lenient "Leasing: POST dot-profiles/seed"   POST "$BASE/api/v1/leasing-traffic/dot-profiles/seed" \
+  -d '{}'
+check_lenient "Leasing: POST dot-profiles/google-cal" POST "$BASE/api/v1/leasing-traffic/dot-profiles/google-calibrate/$PROPERTY_ID" \
+  -d '{"placeId":"ChIJtest123"}'
+check_lenient "Leasing: POST dot-profiles/ingest" POST "$BASE/api/v1/leasing-traffic/dot-profiles/ingest" \
+  -F "file=@/dev/null;type=text/csv"
+check_lenient "Leasing: POST weekly-report/upload" POST "$BASE/api/v1/leasing-traffic/weekly-report/upload" \
+  -F "file=@/dev/null;type=text/csv"
 
 # -------------------------------------------------------
 echo ""
@@ -369,15 +402,30 @@ check_lenient "Benchmark: POST simulate"          POST "$BASE/api/v1/benchmark-t
   -d '{"city":"Atlanta","state":"GA","projectType":"multifamily","units":200}'
 check_lenient "Benchmark: POST compare-paths"     POST "$BASE/api/v1/benchmark-timeline/compare-paths" \
   -d '{"jurisdictions":["Atlanta, GA"]}'
+check_lenient "Benchmark: POST ingest/atlanta"    POST "$BASE/api/v1/benchmark-timeline/ingest/atlanta" \
+  -d '{}'
+check_lenient "Benchmark: POST ingest/florida"    POST "$BASE/api/v1/benchmark-timeline/ingest/florida" \
+  -d '{}'
+check_lenient "Benchmark: POST ingest/florida/all" POST "$BASE/api/v1/benchmark-timeline/ingest/florida/all" \
+  -d '{}'
 
 # -------------------------------------------------------
 echo ""
 echo "▶ Property Analytics /api/v1/property-analytics"
 # -------------------------------------------------------
+check_lenient "Property-analytics: POST connect"  POST "$BASE/api/v1/property-analytics/connect" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'","externalId":"ext-001"}'
+check_lenient "Property-analytics: POST disconnect" POST "$BASE/api/v1/property-analytics/disconnect" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'"}'
+check_lenient "Property-analytics: connection/:id" GET "$BASE/api/v1/property-analytics/connection/$PROPERTY_ID"
 check_lenient "Property-analytics: property/:id"  GET "$BASE/api/v1/property-analytics/$PROPERTY_ID"
 check_lenient "Property-analytics: score"         GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/score"
 check_lenient "Property-analytics: history"       GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/history"
 check_lenient "Property-analytics: digital-share" GET "$BASE/api/v1/property-analytics/$PROPERTY_ID/digital-share"
+check_lenient "Property-analytics: POST comp-proxy" POST "$BASE/api/v1/property-analytics/$PROPERTY_ID/comp-proxy" \
+  -d '{"radius":5}'
+check_lenient "Property-analytics: POST sync"     POST "$BASE/api/v1/property-analytics/sync" \
+  -d '{"propertyIds":["'"$PROPERTY_ID"'"]}'
 
 # -------------------------------------------------------
 echo ""
@@ -397,6 +445,24 @@ check_lenient "Trade-areas: POST radius"          POST "$BASE/api/v1/trade-areas
 check_lenient "Trade-areas: PUT :id"              PUT "$BASE/api/v1/trade-areas/$TRADE_AREA_ID" \
   -d '{"name":"Updated Trade Area"}'
 check_lenient "Trade-areas: DELETE :id"           DELETE "$BASE/api/v1/trade-areas/00000000-0000-0000-0000-000000000001"
+
+# -------------------------------------------------------
+echo ""
+echo "▶ Deals CRUD /api/v1/deals (inline-deals.routes.ts)"
+# -------------------------------------------------------
+check_strict  "Deals: GET list"                   GET "$BASE/api/v1/deals"
+check_lenient "Deals: GET /:id"                   GET "$BASE/api/v1/deals/$DEAL_ID"
+check_lenient "Deals: GET /:id/modules"           GET "$BASE/api/v1/deals/$DEAL_ID/modules"
+check_lenient "Deals: GET /:id/properties"        GET "$BASE/api/v1/deals/$DEAL_ID/properties"
+check_lenient "Deals: GET /:id/activity"          GET "$BASE/api/v1/deals/$DEAL_ID/activity"
+check_lenient "Deals: GET /:id/timeline"          GET "$BASE/api/v1/deals/$DEAL_ID/timeline"
+check_lenient "Deals: POST create"                POST "$BASE/api/v1/deals" \
+  -d '{"name":"Test Deal","propertyType":"multi_family","city":"Atlanta","state":"GA"}'
+check_lenient "Deals: PATCH /:id"                 PATCH "$BASE/api/v1/deals/$DEAL_ID" \
+  -d '{"name":"Updated Deal Name"}'
+check_lenient "Deals: PATCH /:id/property"        PATCH "$BASE/api/v1/deals/$DEAL_ID/property" \
+  -d '{"propertyId":"'"$PROPERTY_ID"'"}'
+check_lenient "Deals: DELETE /:id"                DELETE "$BASE/api/v1/deals/00000000-0000-0000-0000-000000000001"
 
 # -------------------------------------------------------
 echo ""
@@ -484,6 +550,9 @@ check_lenient "Comp-sets: POST create"            POST "$BASE/api/v1/deals/$DEAL
   -d '{"name":"My Comp Set","propertyIds":[]}'
 check_lenient "Comp-sets: POST add-to-set"        POST "$BASE/api/v1/deals/$DEAL_ID/comp-set/add-to-set" \
   -d '{"propertyId":"'"$PROPERTY_ID"'"}'
+check_lenient "Comp-sets: DELETE /:dealId/comp-set/:compId" DELETE "$BASE/api/v1/deals/$DEAL_ID/comp-set/00000000-0000-0000-0000-000000000001"
+check_lenient "Comp-sets: PATCH /:dealId/comp-set/:compId"  PATCH "$BASE/api/v1/deals/$DEAL_ID/comp-set/00000000-0000-0000-0000-000000000001" \
+  -d '{"weight":1.5}'
 
 # -------------------------------------------------------
 echo ""
@@ -491,6 +560,14 @@ echo "▶ Market (basic) /api/v1/market"
 # -------------------------------------------------------
 check_strict  "Market: inventory/:city/:state"    GET "$BASE/api/v1/market/inventory/Atlanta/GA"
 check_strict  "Market: trends/:city/:state"       GET "$BASE/api/v1/market/trends/Atlanta/GA"
+
+# -------------------------------------------------------
+echo ""
+echo "▶ Properties /api/v1/properties (unified-properties.routes.ts)"
+# -------------------------------------------------------
+check_strict  "Properties: GET /unified"          GET "$BASE/api/v1/properties/unified"
+check_lenient "Properties: POST /unified/refresh" POST "$BASE/api/v1/properties/unified/refresh" \
+  -d '{}'
 
 # -------------------------------------------------------
 echo ""
