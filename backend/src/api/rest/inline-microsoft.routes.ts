@@ -31,7 +31,9 @@ function verifyState(state: string): string {
   const payload = state.slice(0, dot);
   const sig = state.slice(dot + 1);
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
     throw new Error('OAuth state signature invalid');
   }
   let parsed: { userId: string; nonce: string; exp: number };
