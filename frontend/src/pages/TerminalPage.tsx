@@ -7,7 +7,6 @@ import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
-import F4MarketsView from "./terminal/F4MarketsView";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -486,7 +485,7 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsTab, setMarketsTab] = useState<"overview"|"submarkets"|"supply"|"trends"|"comps">("overview");
+  const [marketsView, setMarketsView] = useState<"detail"|"watchlist">("detail");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1565,19 +1564,21 @@ export default function TerminalPage() {
   );
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
-  const corpHealthData = {
+  const MSA_OPTIONS = [
+    { id: "atlanta-ga",    name: "Atlanta, GA" },
+    { id: "raleigh-nc",    name: "Raleigh, NC" },
+    { id: "charlotte-nc",  name: "Charlotte, NC" },
+    { id: "tampa-fl",      name: "Tampa, FL" },
+    { id: "orlando-fl",    name: "Orlando, FL" },
+    { id: "miami-fl",      name: "Miami, FL" },
+    { id: "jacksonville-fl", name: "Jacksonville, FL" },
+  ];
+
+  const viewMarketsCorpHealthData = {
     schi: corpHealthLive.schi ?? DEMO_SCHI,
     reHealth: corpHealthLive.reHealth ?? DEMO_RE_HEALTH,
     divergence: corpHealthLive.divergence ?? DEMO_DIVERGENCE,
     herfindahl: corpHealthLive.herfindahl ?? DEMO_HERFINDAHL,
-    employers: corpHealthLive.employers.length > 0 ? corpHealthLive.employers.map((e: {company_name?:string;company?:string;employees?:number;sector?:string;share?:number;chs?:number;delta?:string}) => ({
-      company: e.company_name || e.company || "—",
-      sector: e.sector || "—",
-      employees: e.employees || 0,
-      share: e.share || 0,
-      chs: e.chs || 0,
-      delta: e.delta || "+0",
-    })) : undefined,
     portfolioSubmarkets: corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
       {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,employerCount:24,publicCount:8},
       {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,employerCount:18,publicCount:6},
@@ -1591,13 +1592,44 @@ export default function TerminalPage() {
   };
 
   const ViewMarkets = () => (
-    <F4MarketsView
-      selectedMsaId={selectedMsaId}
-      setSelectedMsaId={setSelectedMsaId}
-      corpHealthData={corpHealthData}
-      marketsTab={marketsTab}
-      setMarketsTab={setMarketsTab}
-    />
+    <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
+      {/* MSA selector / view toggle bar */}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+        {marketsView === "detail" && <>
+          <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
+          <select
+            value={selectedMsaId}
+            onChange={e => setSelectedMsaId(e.target.value)}
+            style={{background:T.bg.input||T.bg.panel,color:T.text.amber,border:`1px solid ${T.border.medium}`,fontSize:10,fontFamily:T.font.mono,fontWeight:700,padding:"2px 6px",cursor:"pointer",outline:"none"}}
+          >
+            {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </>}
+        {marketsView === "watchlist" && (
+          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>WATCHLIST</span>
+        )}
+        <div style={{flex:1}}/>
+        <div style={{display:"flex",gap:2}}>
+          {([["detail","MARKET DETAIL"],["watchlist","WATCHLIST"]] as ["detail"|"watchlist", string][]).map(([v,label]) => (
+            <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
+              {label}
+            </button>
+          ))}
+          <button onClick={() => navigate("/market-intelligence")} style={{background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,fontSize:8,fontFamily:T.font.mono,fontWeight:700,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
+            FULL INTEL →
+          </button>
+        </div>
+      </div>
+      {/* Content */}
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+        {marketsView === "detail" && (
+          <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
+        )}
+        {marketsView === "watchlist" && (
+          <WatchlistPage embedded />
+        )}
+      </div>
+    </div>
   );
   // ─── VIEW: F5 COMPETE (CompetitiveIntelligencePage) ──────
   const ViewCompete = () => (
