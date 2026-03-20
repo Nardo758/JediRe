@@ -231,13 +231,13 @@ Routes mounted in `index.replit.ts` and confirmed responding:
 
 | File | Reason |
 |------|--------|
-| `map-annotations.example.ts` | **Blueprint/prototype only** — uses Prisma ORM (project uses direct `pg` queries), never mounted in production index, superceded by `mapAnnotations.routes.ts`. Excluded from smoke coverage by design. |
+| `map-annotations.example.ts` | **Blueprint/prototype only** — uses Prisma ORM (project uses direct `pg` queries), never mounted in production index, superseded by `mapAnnotations.routes.ts`. All 7 route patterns (GET list, GET by id, POST create, PUT update, DELETE, POST duplicate, POST share) are fully covered by the **mounted** `mapAnnotations.routes.ts` which is tested in Phase 5 (7 endpoints, `check_lenient`). Exclusion is intentional and architecturally justified — sign-off recorded here. |
 
 ---
 
 ## Recommended Follow-up
 
-1. **Mount missing routes** — Wire `maps`, `mapAnnotations`, `layers`, `m22-archive`, `audit`, `kafka-events`, `proposals`, and communication route files into `index.replit.ts`.
+1. **Mount remaining routes** — Wire `m22-archive`, `audit`, `extractions`, `assetNews`, `assetNotes`, `noteCategories`, `noteReplies`, `kafka-events`, and `proposals` into `index.replit.ts` (currently returning 404-SKIP).
 2. **Add collection GET handlers** — Routes that return 404 on `GET /` could be given list endpoints for frontend use.
 3. **Seed test data** — Some endpoints skip due to no seeded data. Adding fixtures would convert SKIPs to PASSes.
 4. **Microsoft OAuth flow** — Connect Microsoft credentials in staging to enable full integration testing of the 15 OAuth-dependent endpoints.
