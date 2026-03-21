@@ -371,77 +371,96 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
       {/* Styles */}
       <style jsx>{`
         .documents-files-section {
-          padding: 24px;
-          background: #ffffff;
-          border-radius: 12px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          padding: 20px;
+          background: #0F1319;
+          border-radius: 0;
+          box-shadow: none;
+          color: #C8D8E8;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
         }
 
         .section-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 24px;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #1E2D3D;
         }
 
         .header-left h2 {
-          margin: 0 0 4px 0;
-          font-size: 24px;
+          margin: 0 0 2px 0;
+          font-size: 13px;
           font-weight: 700;
-          color: #1a1a1a;
+          color: #C8D8E8;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
         }
 
         .context-label {
           margin: 0;
-          font-size: 14px;
-          color: #666;
+          font-size: 10px;
+          color: #5A6A7A;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
         }
 
         .btn-primary {
-          padding: 10px 20px;
-          background: #2563eb;
-          color: white;
-          border: none;
-          border-radius: 8px;
+          padding: 6px 14px;
+          background: transparent;
+          color: #4A9EFF;
+          border: 1px solid #4A9EFF;
+          border-radius: 2px;
           font-weight: 600;
+          font-size: 10px;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
           cursor: pointer;
-          transition: all 0.2s;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
+          transition: all 0.15s;
         }
 
         .btn-primary:hover {
-          background: #1d4ed8;
-          transform: translateY(-1px);
+          background: #4A9EFF22;
         }
 
         .view-mode-selector {
           display: flex;
-          gap: 8px;
-          margin: 20px 0;
-          padding: 4px;
-          background: #f3f4f6;
-          border-radius: 8px;
+          gap: 2px;
+          margin: 12px 0;
+          padding: 0;
+          background: transparent;
+          border-radius: 0;
           width: fit-content;
+          border-bottom: 1px solid #1E2D3D;
         }
 
         .view-mode-selector button {
-          padding: 8px 16px;
+          padding: 6px 14px;
           background: transparent;
           border: none;
-          border-radius: 6px;
-          font-weight: 500;
-          color: #6b7280;
+          border-bottom: 2px solid transparent;
+          border-radius: 0;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: #5A6A7A;
           cursor: pointer;
-          transition: all 0.2s;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
+          transition: all 0.15s;
+          margin-bottom: -1px;
         }
 
         .view-mode-selector button.active {
-          background: white;
-          color: #2563eb;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          background: transparent;
+          color: #C8D8E8;
+          border-bottom: 2px solid #4A9EFF;
         }
 
         .view-mode-selector button:hover:not(.active) {
-          color: #374151;
+          color: #8A9EAE;
         }
 
         .loading-state,
@@ -456,41 +475,43 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
         }
 
         .spinner {
-          width: 40px;
-          height: 40px;
-          border: 4px solid #e5e7eb;
-          border-top-color: #2563eb;
+          width: 32px;
+          height: 32px;
+          border: 2px solid #1E2D3D;
+          border-top-color: #4A9EFF;
           border-radius: 50%;
           animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
+          to { transform: rotate(360deg); }
         }
 
         .empty-icon {
-          font-size: 64px;
-          margin-bottom: 16px;
-          opacity: 0.5;
+          font-size: 48px;
+          margin-bottom: 12px;
+          opacity: 0.3;
         }
 
         .empty-state h3 {
           margin: 0 0 8px 0;
-          font-size: 20px;
-          color: #1a1a1a;
+          font-size: 12px;
+          color: #C8D8E8;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
         }
 
         .empty-state p {
-          margin: 0 0 24px 0;
-          color: #6b7280;
+          margin: 0 0 20px 0;
+          color: #5A6A7A;
           max-width: 400px;
+          font-size: 11px;
         }
 
         .error-state p {
-          color: #dc2626;
+          color: #E85555;
           margin-bottom: 16px;
+          font-size: 11px;
         }
       `}</style>
     </div>

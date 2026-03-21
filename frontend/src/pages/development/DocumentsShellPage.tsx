@@ -8,7 +8,7 @@ import { DocumentsFilesSection } from '../../components/deal/sections/DocumentsF
 import { DueDiligencePage } from './DueDiligencePage';
 import { apiClient } from '../../services/api.client';
 
-const TABS = ['FILES & ASSETS', 'DD CHECKLIST'];
+const TABS = ['FILES', 'DEAL LIFECYCLE'];
 
 interface DocumentsShellPageProps {
   dealId?: string;
