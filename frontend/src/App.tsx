@@ -118,8 +118,8 @@ function AppContent() {
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/terminal/:section" element={<TerminalPage />} />
 
-        {/* Bloomberg Market Intelligence — full-page, no MainLayout */}
-        <Route path="/market-intelligence" element={<BloombergMarketsLanding />} />
+        {/* Bloomberg Market Intelligence — base route redirects to terminal; sub-routes kept for embedded use */}
+        <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
         <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
         <Route path="/market-intelligence/watchlist" element={<WatchlistPage />} />
         

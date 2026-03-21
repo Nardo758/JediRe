@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
@@ -582,6 +582,16 @@ export default function TerminalPage() {
   const [rawCatalogMetricsT, setRawCatalogMetricsT] = useState<Array<Record<string,unknown>>>([]);
   const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
+  // F3 Portfolio state
+  const [f3Tab, setF3Tab] = useState<"rankings"|"grid"|"performance"|"comps">("rankings");
+  const [portfolioAssets, setPortfolioAssets] = useState<any[]>([]);
+  const [portfolioRankings, setPortfolioRankings] = useState<any[]>([]);
+  const [portfolioLoaded, setPortfolioLoaded] = useState(false);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioComps, setPortfolioComps] = useState<Record<string,any[]>>({});
+  const [portfolioCompsLoading, setPortfolioCompsLoading] = useState<Set<string>>(new Set());
+  const [portfolioExpanded, setPortfolioExpanded] = useState<Set<string>>(new Set());
+
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
 
@@ -695,6 +705,21 @@ export default function TerminalPage() {
       setMetricsTicker(rawCatalogMetricsT.map(m => fmtMetric(m.id as string, m.exampleValue as string, m.higherIsBetter as boolean, metricsScope)));
     }
   }, [rawCatalogMetricsT, metricsScope]);
+
+  // Lazy-load portfolio data when user first opens F3
+  useEffect(() => {
+    if (fkey !== "F3" || portfolioLoaded) return;
+    setPortfolioLoading(true);
+    Promise.all([
+      apiClient.get("/api/v1/grid/owned").catch(() => ({ data: { assets: [] } })),
+      apiClient.get("/api/v1/rankings/owned/atlanta").catch(() => ({ data: {} })),
+    ]).then(([assetsRes, rankRes]) => {
+      setPortfolioAssets(assetsRes.data?.assets || assetsRes.data?.data || []);
+      const rankData = rankRes.data?.data || rankRes.data;
+      if (rankData?.rankedAssets?.length > 0) setPortfolioRankings(rankData.rankedAssets);
+      setPortfolioLoaded(true);
+    }).finally(() => setPortfolioLoading(false));
+  }, [fkey, portfolioLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })
@@ -1516,60 +1541,267 @@ export default function TerminalPage() {
   const tierColor = (tier: string|null) => tier==="healthy"?T.text.green:tier==="stress"?T.text.red:tier==="watch"?T.text.amber:T.text.muted;
 
   // ─── VIEW: F3 PORTFOLIO ────────────────────────────────────
-  const ViewPortfolio = () => (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="OWNED ASSETS" subtitle="Portfolio performance" borderColor={T.text.green} right={<button onClick={()=>setFkey("F3")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW ALL →</button>}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle}}>
-        {[{l:"PORTFOLIO VALUE",v:"$312M",c:T.text.amberBright},{l:"WEIGHTED IRR",v:"16.8%",c:T.text.amber},{l:"AVG OCCUPANCY",v:"93.4%",c:T.text.green},{l:"NOI VARIANCE",v:"+2.3%",c:T.text.green}].map((m,i)=>(
-          <div key={i} style={{background:T.bg.panel,padding:"8px 10px"}}>
-            <div style={{fontSize:7,color:T.text.muted,letterSpacing:1}}>{m.l}</div>
-            <div style={{fontSize:16,fontWeight:800,color:m.c}}>{m.v}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{padding:10}}>
-        <div style={{fontSize:9,color:T.text.muted,marginBottom:6}}>Actual vs. projected variance tracking | Monthly actuals upload | Decision timeline</div>
-        {["Midtown Heights (248u)","West End Lofts (180u)","Buckhead Tower (312u)","Downtown Station (156u)"].map((a,i)=>(
-          <div key={i} onClick={()=>setFkey("F3")} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
-            <span style={{fontSize:10,color:T.text.primary,fontWeight:600}}>{a}</span>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <span style={{fontSize:10,fontWeight:700,color:T.text.green}}>{[76,72,81,68][i]}</span>
-              <Spark data={[[72,73,74,75,76],[70,71,71,72,72],[78,79,80,80,81],[70,69,68,68,68]][i]} color={T.text.green} w={40} h={12}/>
-              <span style={{fontSize:8,color:T.text.amber}}>{["$44.2M","$28.1M","$72.6M","$31.5M"][i]}</span>
+  const loadCompSet = (assetId: string) => {
+    setPortfolioCompsLoading(prev => new Set(prev).add(assetId));
+    apiClient.get(`/api/v1/deals/${assetId}/comp-set`)
+      .then(res => setPortfolioComps(prev => ({ ...prev, [assetId]: res.data?.comps || [] })))
+      .catch(() => setPortfolioComps(prev => ({ ...prev, [assetId]: [] })))
+      .finally(() => setPortfolioCompsLoading(prev => { const s = new Set(prev); s.delete(assetId); return s; }));
+  };
+
+  const F3_TABS = ["rankings","grid","performance","comps"] as const;
+  const F3_LABELS: Record<string,string> = {rankings:"RANKINGS",grid:"ASSET GRID",performance:"PERFORMANCE",comps:"COMP SETS"};
+
+  const ViewPortfolio = () => {
+    const avgOcc = portfolioAssets.length > 0
+      ? portfolioAssets.reduce((s,a) => s + parseFloat(a.actual_occupancy||"0"), 0) / portfolioAssets.length
+      : null;
+    const kpis = [
+      {l:"ASSETS",         v: portfolioAssets.length > 0 ? String(portfolioAssets.length) : "—",     c: T.text.amberBright},
+      {l:"AVG OCCUPANCY",  v: avgOcc != null ? `${avgOcc.toFixed(1)}%` : "93.4%",                    c: T.text.green},
+      {l:"WEIGHTED IRR",   v: "16.8%",                                                                c: T.text.amber},
+      {l:"NOI VARIANCE",   v: "+2.3%",                                                                c: T.text.green},
+    ];
+
+    const TH = ({children}: {children: string}) => (
+      <th style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:1,textAlign:"left",padding:"6px 10px",borderBottom:`1px solid ${T.border.medium}`,fontWeight:700,whiteSpace:"nowrap"}}>{children}</th>
+    );
+    const TD = ({children,style}: {children:React.ReactNode,style?:React.CSSProperties}) => (
+      <td style={{padding:"7px 10px",...style}}>{children}</td>
+    );
+
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",animation:"fadeIn 0.15s"}}>
+        {/* Header */}
+        <PanelHeader T={T} title="OWNED ASSETS" subtitle="Portfolio performance · Rankings · Comp Sets" borderColor={T.text.green}/>
+
+        {/* KPI strip */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle,flexShrink:0}}>
+          {kpis.map((m,i) => (
+            <div key={i} style={{background:T.bg.panel,padding:"8px 10px"}}>
+              <div style={{fontSize:7,color:T.text.muted,letterSpacing:1}}>{m.l}</div>
+              <div style={{fontSize:16,fontWeight:800,color:m.c,fontFamily:T.font.mono}}>{m.v}</div>
             </div>
-          </div>
-        ))}
-      </div>
-      <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-          <div style={{width:6,height:6,borderRadius:"50%",background:T.text.cyan}}/>
-          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>CORPORATE HEALTH OVERLAY</span>
+          ))}
         </div>
-        {(() => {
-          const s = corpHealthLive.schi ?? DEMO_SCHI;
-          const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
-          const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
-          const topEmp = corpHealthLive.employers.length>0 ? (corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"\u2014") : CORP_HEALTH_DEMO[0].company;
-          return <div style={{display:"flex",gap:12,alignItems:"center"}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:20,fontWeight:800,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red}}>{s.toFixed(0)}</div>
-              <div style={{fontSize:7,color:T.text.muted}}>SCHI</div>
-            </div>
-            <div style={{width:1,height:30,background:T.border.subtle}}/>
-            <div>
-              <div style={{fontSize:9,color:T.text.secondary}}>Divergence: <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
-              <div style={{fontSize:9,color:T.text.secondary}}>Top Employer: <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
-              <div style={{fontSize:9,color:T.text.secondary}}>HHI: <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
-            </div>
-            <div style={{marginLeft:"auto"}}>
-              <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={60} h={16}/>
-              <div style={{fontSize:7,color:T.text.muted,textAlign:"center"}}>4Q trend</div>
-            </div>
-          </div>;
-        })()}
+
+        {/* Sub-tab bar */}
+        <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          {F3_TABS.map(tab => (
+            <button key={tab} onClick={() => setF3Tab(tab)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,padding:"7px 14px",background:"transparent",color:f3Tab===tab?T.text.green:T.text.muted,borderBottom:f3Tab===tab?`2px solid ${T.text.green}`:"2px solid transparent",border:"none",cursor:"pointer",letterSpacing:0.5}}>
+              {F3_LABELS[tab]}
+            </button>
+          ))}
+          <div style={{flex:1}}/>
+          <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
+        </div>
+
+        {/* Tab content */}
+        <div style={{flex:1,overflow:"auto"}}>
+          {portfolioLoading && (
+            <div style={{padding:30,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9,letterSpacing:1}}>LOADING PORTFOLIO DATA…</div>
+          )}
+          {!portfolioLoading && (
+            <>
+              {/* ── RANKINGS ── */}
+              {f3Tab === "rankings" && (
+                portfolioRankings.length === 0 ? (
+                  <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>
+                    No ranking data available — assets may not yet be scored
+                  </div>
+                ) : (
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead><tr style={{background:T.bg.header}}>
+                      {["ASSET","SUBMARKET","PCS SCORE","RANK","MOVEMENT","TRAJECTORY","ACTION"].map(h => <TH key={h}>{h}</TH>)}
+                    </tr></thead>
+                    <tbody>
+                      {portfolioRankings.map((asset: any, i: number) => (
+                        <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.dealId}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                          <TD><span style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.name}</span></TD>
+                          <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket}</span></TD>
+                          <TD><span style={{fontSize:14,fontWeight:800,color:asset.pcsScore>=70?T.text.green:asset.pcsScore>=50?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{asset.pcsScore}</span></TD>
+                          <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.rank}<span style={{fontSize:8,color:T.text.muted}}>/{asset.totalInSubmarket}</span></span></TD>
+                          <TD><span style={{fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:asset.movement>0?T.text.green:asset.movement<0?T.text.red:T.text.muted}}>{asset.movement>0?`▲ +${asset.movement}`:asset.movement<0?`▼ ${asset.movement}`:"─"}</span></TD>
+                          <TD><span style={{fontSize:7,fontWeight:700,padding:"2px 6px",background:asset.trajectory==="improving"?T.text.green+"22":asset.trajectory==="declining"?T.text.red+"22":T.text.amber+"22",color:asset.trajectory==="improving"?T.text.green:asset.trajectory==="declining"?T.text.red:T.text.amber,border:`1px solid ${asset.trajectory==="improving"?T.text.green+"44":asset.trajectory==="declining"?T.text.red+"44":T.text.amber+"44"}`}}>{(asset.trajectory||"stable").toUpperCase()}</span></TD>
+                          <TD><button onClick={e=>{e.stopPropagation();navigate(`/deals/${asset.dealId}/detail`);}} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW DEAL →</button></TD>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              )}
+
+              {/* ── ASSET GRID ── */}
+              {f3Tab === "grid" && (
+                portfolioAssets.length === 0 ? (
+                  <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No owned assets found — add your first asset above</div>
+                ) : (
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead><tr style={{background:T.bg.header}}>
+                      {["PROPERTY","SUBMARKET","TYPE","UNITS","OCCUPANCY","NOI ACTUAL","NOI PF","IRR"].map(h => <TH key={h}>{h}</TH>)}
+                    </tr></thead>
+                    <tbody>
+                      {portfolioAssets.map((asset: any, i: number) => {
+                        const occ = parseFloat(asset.actual_occupancy||"0");
+                        const noiVar = parseFloat(asset.noi_variance||"0");
+                        return (
+                          <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                            <TD>
+                              <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
+                              <div style={{fontSize:7,color:noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.muted,marginTop:1}}>{noiVar>5?"▲ OUTPERFORMING":noiVar<-10?"▼ UNDERPERFORMING":"● ON TRACK"}</div>
+                            </TD>
+                            <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket||"—"}</span></TD>
+                            <TD><span style={{fontSize:8,color:T.text.amber,fontFamily:T.font.mono}}>{asset.asset_type||"—"}</span></TD>
+                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.units||"—"}</span></TD>
+                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{asset.actual_occupancy?`${occ.toFixed(1)}%`:"—"}</span></TD>
+                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_noi?`$${(parseFloat(asset.actual_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
+                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{asset.proforma_noi?`$${(parseFloat(asset.proforma_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
+                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.purple}}>{asset.irr?`${parseFloat(asset.irr).toFixed(1)}%`:"—"}</span></TD>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )
+              )}
+
+              {/* ── PERFORMANCE ── */}
+              {f3Tab === "performance" && (
+                portfolioAssets.length === 0 ? (
+                  <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No assets found</div>
+                ) : (
+                  <div style={{padding:10,display:"flex",flexDirection:"column",gap:8}}>
+                    {portfolioAssets.map((asset: any, i: number) => {
+                      const noiVar = parseFloat(asset.noi_variance||"0");
+                      const occVar = parseFloat(asset.occupancy_variance||"0");
+                      const status = noiVar>5?"OUTPERFORMING":noiVar<-10?"UNDERPERFORMING":"ON TRACK";
+                      const statusC = noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.amber;
+                      return (
+                        <div key={asset.id||i} style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"10px 12px"}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                            <div>
+                              <div style={{fontSize:11,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"Asset"}</div>
+                              <div style={{fontSize:8,color:T.text.muted}}>{asset.address||""}</div>
+                            </div>
+                            <span style={{fontSize:7,fontWeight:700,padding:"3px 8px",background:statusC+"22",color:statusC,border:`1px solid ${statusC}44`}}>{status}</span>
+                          </div>
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
+                            {[
+                              {l:"NOI ACTUAL",   v: asset.actual_noi   ? `$${(parseFloat(asset.actual_noi)/1000).toFixed(0)}K`    : "—"},
+                              {l:"NOI PROFORMA", v: asset.proforma_noi ? `$${(parseFloat(asset.proforma_noi)/1000).toFixed(0)}K`  : "—"},
+                              {l:"NOI VAR",      v: asset.noi_variance  ? `${noiVar>0?"+":""}${noiVar.toFixed(1)}%`               : "—", c: noiVar>0?T.text.green:noiVar<0?T.text.red:T.text.muted},
+                              {l:"OCC ACTUAL",   v: asset.actual_occupancy   ? `${parseFloat(asset.actual_occupancy).toFixed(1)}%`   : "—"},
+                              {l:"OCC PROFORMA", v: asset.proforma_occupancy ? `${parseFloat(asset.proforma_occupancy).toFixed(1)}%` : "—"},
+                              {l:"OCC VAR",      v: asset.occupancy_variance  ? `${occVar>0?"+":""}${occVar.toFixed(1)}%`            : "—", c: occVar>0?T.text.green:occVar<0?T.text.red:T.text.muted},
+                            ].map((m,j) => (
+                              <div key={j}>
+                                <div style={{fontSize:7,color:T.text.muted,letterSpacing:1,marginBottom:2}}>{m.l}</div>
+                                <div style={{fontSize:11,fontWeight:700,fontFamily:T.font.mono,color:(m as any).c||T.text.primary}}>{m.v}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+
+              {/* ── COMP SETS ── */}
+              {f3Tab === "comps" && (
+                portfolioAssets.length === 0 ? (
+                  <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No assets to show comp sets for</div>
+                ) : (
+                  <table style={{width:"100%",borderCollapse:"collapse"}}>
+                    <thead><tr style={{background:T.bg.header}}>
+                      {["OWNED ASSET","AVG RENT","OCCUPANCY","COMPS",""].map(h => <TH key={h}>{h}</TH>)}
+                    </tr></thead>
+                    <tbody>
+                      {portfolioAssets.map((asset: any, i: number) => {
+                        const comps = portfolioComps[asset.id]||[];
+                        const expanded = portfolioExpanded.has(asset.id);
+                        const loadingComp = portfolioCompsLoading.has(asset.id);
+                        return (
+                          <>
+                            <tr key={asset.id||i} onClick={() => setPortfolioExpanded(prev => { const n=new Set(prev); if(n.has(asset.id)){n.delete(asset.id);}else{n.add(asset.id); if(!portfolioComps[asset.id]) loadCompSet(asset.id);} return n; })}
+                              style={{borderBottom:`1px solid ${T.border.subtle}`,background:expanded?T.bg.hover:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                              <TD><div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{color:T.text.muted,fontSize:8,fontFamily:T.font.mono}}>{expanded?"▼":"▶"}</span>
+                                <div>
+                                  <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
+                                  <div style={{fontSize:7,color:T.text.muted}}>{asset.asset_type||""}</div>
+                                </div>
+                              </div></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent?`$${parseFloat(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy?`${parseFloat(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
+                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.cyan}}>{comps.length||"—"}</span></TD>
+                              <TD onClick={e=>e.stopPropagation()}>
+                                <button onClick={() => loadCompSet(asset.id)} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>
+                                  {loadingComp?"LOADING…":comps.length>0?"REFRESH":"LOAD COMPS"}
+                                </button>
+                              </TD>
+                            </tr>
+                            {expanded && loadingComp && (
+                              <tr style={{background:T.bg.active}}>
+                                <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>Loading comps…</td>
+                              </tr>
+                            )}
+                            {expanded && !loadingComp && comps.length===0 && (
+                              <tr style={{background:T.bg.active}}>
+                                <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>No comps loaded — click LOAD COMPS to discover competitors</td>
+                              </tr>
+                            )}
+                            {expanded && comps.map((comp: any, j: number) => (
+                              <tr key={comp.id||j} style={{background:T.bg.active,borderBottom:`1px solid ${T.border.subtle}`}}>
+                                <td style={{padding:"5px 10px 5px 32px",fontSize:9,color:T.text.secondary}}>{comp.comp_name||comp.comp_property_address||"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent?`$${comp.avg_rent}`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy?`${comp.occupancy}%`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:8,color:T.text.muted}}>{comp.distance_miles?`${comp.distance_miles}mi`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:8,fontWeight:700,fontFamily:T.font.mono,color:comp.match_score>=80?T.text.green:comp.match_score>=60?T.text.amber:T.text.muted}}>{comp.match_score?`${comp.match_score}% match`:"—"}</td>
+                              </tr>
+                            ))}
+                          </>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Corporate Health strip (always pinned at bottom) */}
+        <div style={{padding:"7px 10px",background:T.bg.panel,borderTop:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          {(() => {
+            const s = corpHealthLive.schi ?? DEMO_SCHI;
+            const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
+            const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
+            const topEmp = corpHealthLive.employers.length>0?(corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"—"):CORP_HEALTH_DEMO[0].company;
+            return (
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:5,height:5,borderRadius:"50%",background:T.text.cyan,flexShrink:0}}/>
+                <span style={{fontSize:7,fontWeight:700,color:T.text.white,letterSpacing:0.5,marginRight:4}}>CORP HEALTH</span>
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{s.toFixed(0)}</div>
+                  <div style={{fontSize:6,color:T.text.muted}}>SCHI</div>
+                </div>
+                <div style={{width:1,height:20,background:T.border.subtle}}/>
+                <div style={{display:"flex",gap:12}}>
+                  <div style={{fontSize:8,color:T.text.secondary}}>Divergence <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
+                  <div style={{fontSize:8,color:T.text.secondary}}>Top Employer <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
+                  <div style={{fontSize:8,color:T.text.secondary}}>HHI <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
+                </div>
+                <div style={{marginLeft:"auto"}}>
+                  <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={56} h={14}/>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
   const MSA_OPTIONS = [
