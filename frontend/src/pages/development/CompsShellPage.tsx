@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
-  PanelHeader, SubTabBar, BtTabWrapper, SectionPanel, DataRow, Bd, KpiTile,
+  PanelHeader, SubTabBar, BtTabWrapper, SectionPanel, TableHeader, TableRow, Bd, KpiTile,
 } from '../../components/deal/bloomberg-ui';
 import CompetitionPage from './CompetitionPage';
 import { apiClient } from '../../services/api.client';
 
-const TABS = ['SALE COMPS', 'COMPETITION ANALYSIS'];
+const TABS = ['COMPETITION ANALYSIS', 'SALE COMPS'];
 
 interface CompsShellPageProps {
   dealId?: string;
@@ -31,7 +31,6 @@ interface CompTransaction {
 
 interface CompSet {
   comp_count: number;
-  median_price_per_unit: number;
   avg_price_per_unit: number;
   avg_implied_cap_rate: number | null;
   comps: CompTransaction[];
@@ -39,7 +38,7 @@ interface CompSet {
 
 function fmtUsd(v: number): string {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`;
   return `$${v.toFixed(0)}`;
 }
 
@@ -48,17 +47,25 @@ function fmtPct(v: number | null): string {
 }
 
 function fmtDate(s: string): string {
-  if (!s) return '—';
-  return s.slice(0, 10);
+  return s ? s.slice(0, 10) : '—';
 }
 
 function fmtMi(v: number): string {
   return `${v.toFixed(2)} mi`;
 }
 
-export function CompsShellPage({ dealId: propDealId, deal, onUpdate }: CompsShellPageProps) {
+const COMP_COLS = [
+  { label: 'PROPERTY',   flex: 3, color: BT.text.secondary },
+  { label: 'DATE',       flex: 1, color: BT.text.muted     },
+  { label: 'PRICE',      flex: 1, color: BT.met.financial  },
+  { label: '$/UNIT',     flex: 1, color: BT.text.cyan      },
+  { label: 'CAP RATE',   flex: 1, color: BT.text.amber     },
+  { label: 'DIST',       flex: 1, color: BT.text.muted     },
+];
+
+export function CompsShellPage({ dealId: propDealId, deal }: CompsShellPageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
-  const resolvedDealId = deal?.id as string | undefined ?? propDealId ?? params.dealId ?? params.id ?? '';
+  const resolvedDealId = (deal?.id as string | undefined) ?? propDealId ?? params.dealId ?? params.id ?? '';
 
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -81,13 +88,13 @@ export function CompsShellPage({ dealId: propDealId, deal, onUpdate }: CompsShel
   const avgPpu   = compSet?.avg_price_per_unit ?? 0;
   const avgCap   = compSet?.avg_implied_cap_rate ?? null;
   const compScore = count >= 10 ? 'HIGH' : count >= 5 ? 'MED' : count > 0 ? 'LOW' : 'N/A';
-  const compScoreColor = count >= 10 ? BT.met.financial : count >= 5 ? BT.text.amber : BT.text.muted;
+  const scoreColor = count >= 10 ? BT.met.financial : count >= 5 ? BT.text.amber : BT.text.muted;
 
-  const verdictOk  = count >= 5;
+  const verdictOk = count >= 5;
   const verdictTxt = verdictOk
     ? `COMPS SUPPORTED — ${count} COMPARABLES IN DATABASE`
     : count > 0
-      ? `THIN MARKET — ONLY ${count} COMPS AVAILABLE · MANUAL REVIEW REQUIRED`
+      ? `THIN MARKET — ${count} COMPS ONLY · MANUAL REVIEW REQUIRED`
       : 'NO COMPS LOADED — GENERATE OR IMPORT COMPS TO PROCEED';
   const verdictColor = verdictOk ? BT.met.financial : count > 0 ? BT.text.amber : BT.text.muted;
 
@@ -98,8 +105,8 @@ export function CompsShellPage({ dealId: propDealId, deal, onUpdate }: CompsShel
       <style>{BT_CSS}</style>
 
       <PanelHeader
-        title="COMPS & COMPETITION"
-        subtitle="M15 · SALE COMPS + PEER BENCHMARKING"
+        title="COMPETITION & COMPS"
+        subtitle="M15 · COMPETITION ANALYSIS + SALE COMPS"
         borderColor={BT.text.amber}
         metrics={[
           { l: 'SALE COMPS',  c: BT.text.amber    },
@@ -107,14 +114,14 @@ export function CompsShellPage({ dealId: propDealId, deal, onUpdate }: CompsShel
           { l: 'O_OCC',       c: BT.met.occupancy },
           { l: 'COMP SCORE',  c: BT.text.cyan     },
         ]}
-        right={<Bd c={compScoreColor}>{compScore}</Bd>}
+        right={<Bd c={scoreColor}>{compScore}</Bd>}
       />
 
       <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
-        <div style={{ flex: 1 }}><KpiTile label="COMP COUNT"    value={loading ? '…' : String(count)} color={BT.text.amber} /></div>
-        <div style={{ flex: 1 }}><KpiTile label="AVG $/UNIT"   value={loading ? '…' : (avgPpu > 0 ? fmtUsd(avgPpu) : '—')} color={BT.met.financial} /></div>
-        <div style={{ flex: 1 }}><KpiTile label="AVG CAP RATE" value={loading ? '…' : fmtPct(avgCap)} color={BT.text.cyan} /></div>
-        <div style={{ flex: 1 }}><KpiTile label="COMP SCORE"   value={loading ? '…' : compScore} color={compScoreColor} /></div>
+        <div style={{ flex: 1 }}><KpiTile label="COMP COUNT"    value={loading ? '…' : String(count)}                            color={BT.text.amber}    /></div>
+        <div style={{ flex: 1 }}><KpiTile label="AVG $/UNIT"   value={loading ? '…' : avgPpu > 0 ? fmtUsd(avgPpu) : '—'}       color={BT.met.financial} /></div>
+        <div style={{ flex: 1 }}><KpiTile label="AVG CAP RATE" value={loading ? '…' : fmtPct(avgCap)}                           color={BT.text.cyan}     /></div>
+        <div style={{ flex: 1 }}><KpiTile label="COMP SCORE"   value={loading ? '…' : compScore}                                 color={scoreColor}       /></div>
       </div>
 
       <div style={{
@@ -126,40 +133,48 @@ export function CompsShellPage({ dealId: propDealId, deal, onUpdate }: CompsShel
         ▶ {verdictTxt}
       </div>
 
-      <SubTabBar
-        tabs={TABS}
-        active={activeTab}
-        setActive={setActiveTab}
-        color={BT.text.amber}
-      />
+      <SubTabBar tabs={TABS} active={activeTab} setActive={setActiveTab} color={BT.text.amber} />
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {activeTab === 0 && (
-          <SectionPanel title="SALE COMP TRANSACTIONS" subtitle={`${count} RECORDS · /api/v1/deals/.../comps`} borderColor={BT.text.amber} style={{ minHeight: '100%' }}>
+          <BtTabWrapper>
+            <CompetitionPage />
+          </BtTabWrapper>
+        )}
+
+        {activeTab === 1 && (
+          <SectionPanel
+            title="SALE COMP TRANSACTIONS"
+            subtitle={`${count} RECORDS · PROPERTY / DATE / PRICE / $/UNIT / CAP RATE / DIST`}
+            borderColor={BT.text.amber}
+            style={{ minHeight: '100%' }}
+          >
             {loading && (
               <div style={{ padding: 24, color: BT.text.muted, fontFamily: BT.font.mono, fontSize: 11 }}>LOADING COMPS…</div>
             )}
             {!loading && comps.length === 0 && (
               <div style={{ padding: 24, color: BT.text.muted, fontFamily: BT.font.mono, fontSize: 11 }}>NO COMP DATA — USE GENERATE COMPS ACTION</div>
             )}
-            {!loading && comps.map((c) => (
-              <SectionPanel key={c.id} title={c.property_address || '—'} subtitle={`${fmtDate(c.recording_date)} · ${fmtMi(c.distance_miles)}`} borderColor={BT.border.subtle} style={{ margin: '4px 8px' }}>
-                <DataRow label="SALE PRICE"   value={fmtUsd(c.derived_sale_price)} valueColor={BT.met.financial} />
-                <DataRow label="PRICE / UNIT" value={fmtUsd(c.price_per_unit)}     valueColor={BT.text.cyan}     />
-                <DataRow label="CAP RATE"     value={fmtPct(c.implied_cap_rate)}   valueColor={BT.text.amber}    />
-                <DataRow label="UNITS"        value={String(c.units)}              valueColor={BT.text.secondary} />
-                <DataRow label="YEAR BUILT"   value={String(c.year_built)}         valueColor={BT.text.secondary} />
-                <DataRow label="BUYER TYPE"   value={c.buyer_type || '—'}          valueColor={BT.text.secondary} />
-                <DataRow label="DISTANCE"     value={fmtMi(c.distance_miles)}      valueColor={BT.text.muted}    />
-              </SectionPanel>
-            ))}
+            {!loading && comps.length > 0 && (
+              <div>
+                <TableHeader cols={COMP_COLS} />
+                {comps.map((c, i) => (
+                  <TableRow
+                    key={c.id}
+                    index={i}
+                    cells={[
+                      { value: c.property_address || '—',       flex: 3, color: BT.text.secondary, weight: 600 },
+                      { value: fmtDate(c.recording_date),        flex: 1, color: BT.text.muted                  },
+                      { value: fmtUsd(c.derived_sale_price),     flex: 1, color: BT.met.financial               },
+                      { value: fmtUsd(c.price_per_unit),         flex: 1, color: BT.text.cyan                   },
+                      { value: fmtPct(c.implied_cap_rate),       flex: 1, color: BT.text.amber                  },
+                      { value: fmtMi(c.distance_miles),          flex: 1, color: BT.text.muted                  },
+                    ]}
+                  />
+                ))}
+              </div>
+            )}
           </SectionPanel>
-        )}
-
-        {activeTab === 1 && (
-          <BtTabWrapper>
-            <CompetitionPage dealId={resolvedDealId} deal={deal} dealType={''} onUpdate={onUpdate} />
-          </BtTabWrapper>
         )}
       </div>
     </div>
