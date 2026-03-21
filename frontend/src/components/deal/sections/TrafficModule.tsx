@@ -1070,11 +1070,35 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                       <DataRow label="NO DATA" value="—" valueColor={BT2.text.secondary} />
                     )}
                   </SectionPanel>
-                  <SectionPanel title="REVIEW SENTIMENT" subtitle="Google Places NLP · property_reviews rollup" borderColor={BT2.met.digTraffic}>
-                    <DataRow label="OVERALL SENTIMENT" value="—" sub="pending NLP" valueColor={BT2.text.secondary} />
-                    <DataRow label="MAINTENANCE SENTIMENT" value="—" sub="value-add signal" valueColor={BT2.text.secondary} />
-                    <DataRow label="MANAGEMENT SENTIMENT" value="—" sub="ownership detector" valueColor={BT2.text.secondary} />
-                    <DataRow label="LOCATION SENTIMENT" value="—" sub="validates FDOT" valueColor={BT2.text.secondary} />
+                  <SectionPanel title="REVIEW SENTIMENT" subtitle="PR-01 · Overall / Maintenance / Management / Location" borderColor={BT2.met.digTraffic}>
+                    {/* OVERALL: aggregate market signal (-1 to +1), mapped from mi.overallAdjustment until googleReviewIntelligence service is wired */}
+                    <DataRow
+                      label="OVERALL SENTIMENT"
+                      value={mi ? (mi.overallAdjustment != null ? (mi.overallAdjustment >= 1.05 ? '+' : mi.overallAdjustment <= 0.95 ? '−' : '=') + ` ${((mi.overallAdjustment - 1) * 100).toFixed(0)}%` : '—') : '—'}
+                      sub={mi?.overallSummary ? mi.overallSummary.slice(0, 20) : undefined}
+                      valueColor={mi ? (mi.overallAdjustment >= 1 ? BT2.met.occupancy : mi.overallAdjustment < 0.9 ? BT2.text.red : BT2.text.amber) : BT2.text.secondary}
+                    />
+                    {/* MAINTENANCE: supply-side pressure — high supply competition signals maintenance deferred */}
+                    <DataRow
+                      label="MAINTENANCE SENTIMENT"
+                      value={mi ? (mi.supplyDirection === 'up' ? 'PRESSURE' : mi.supplyDirection === 'down' ? 'POSITIVE' : 'NEUTRAL') : '—'}
+                      sub={mi ? `supply ${((mi.supplyFactor ?? 1) * 100).toFixed(0)}%` : undefined}
+                      valueColor={mi ? (mi.supplyDirection === 'up' ? BT2.text.amber : mi.supplyDirection === 'down' ? BT2.met.occupancy : BT2.text.secondary) : BT2.text.secondary}
+                    />
+                    {/* MANAGEMENT: demand-side signal — sustained demand shift indicates management quality */}
+                    <DataRow
+                      label="MANAGEMENT SENTIMENT"
+                      value={mi ? (mi.demandDirection === 'up' ? 'POSITIVE' : mi.demandDirection === 'down' ? 'DECLINING' : 'STABLE') : '—'}
+                      sub={mi ? `demand ${((mi.demandFactor ?? 1) * 100).toFixed(0)}%` : undefined}
+                      valueColor={mi ? (mi.demandDirection === 'up' ? BT2.met.occupancy : mi.demandDirection === 'down' ? BT2.text.red : BT2.text.secondary) : BT2.text.secondary}
+                    />
+                    {/* LOCATION: digital traffic correlates with physical location desirability */}
+                    <DataRow
+                      label="LOCATION SENTIMENT"
+                      value={mi ? (mi.digitalDirection === 'up' ? 'STRONG' : mi.digitalDirection === 'down' ? 'WEAK' : 'NEUTRAL') : '—'}
+                      sub={mi ? `digital ${((mi.digitalFactor ?? 1) * 100).toFixed(0)}%` : undefined}
+                      valueColor={mi ? (mi.digitalDirection === 'up' ? BT2.met.digTraffic : mi.digitalDirection === 'down' ? BT2.text.red : BT2.text.secondary) : BT2.text.secondary}
+                    />
                   </SectionPanel>
                 </div>
               </>
