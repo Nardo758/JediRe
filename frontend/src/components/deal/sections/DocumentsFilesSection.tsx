@@ -127,7 +127,9 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
       if (selectedCategory !== 'all') params.category = selectedCategory;
       if (selectedStatus !== 'all') params.status = selectedStatus;
       if (searchQuery) params.search = searchQuery;
-      if (viewMode === 'folder' && currentFolder !== '/') params.folderPath = currentFolder;
+      // In folder view, never filter by folderPath — FolderView filters client-side by category
+      // (predefined category folders store files via file.category, not file.folder_path)
+      if (viewMode !== 'folder' && currentFolder !== '/') params.folderPath = currentFolder;
 
       // Fetch files
       const filesResponse = await axios.get(`/api/v1/deals/${deal.id}/files`, { params });

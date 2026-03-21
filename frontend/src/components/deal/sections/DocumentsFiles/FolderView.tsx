@@ -198,7 +198,7 @@ export const FolderView: React.FC<FolderViewProps> = ({
                     {formatCategoryLabel(folder)}
                   </div>
                   <div style={{ fontSize: 9, color: count > 0 ? GREEN : TEXT_MUTED, letterSpacing: '0.06em' }}>
-                    {count > 0 ? `${count} FILE${count === 1 ? '' : 'S'}` : 'EMPTY'}
+                    {count} FILE{count === 1 ? '' : 'S'}
                   </div>
                 </div>
               );
