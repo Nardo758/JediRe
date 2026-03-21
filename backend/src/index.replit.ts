@@ -220,6 +220,8 @@ import dotAdminRouter from './api/rest/dot-admin.routes';
 app.use('/api/v1/admin', dotAdminRouter);
 import atlantaUrlDiscoveryRouter from './api/rest/atlanta-url-discovery.routes';
 app.use('/api/v1/admin/atlanta-url-discovery', atlantaUrlDiscoveryRouter);
+import enrichmentAdminRouter from './api/rest/enrichment-admin.routes';
+app.use('/api/v1/admin', enrichmentAdminRouter);
 app.use('/api/v1/admin-api', adminApiKeyRouter);
 
 app.use('/api/v1', dataRouter);
