@@ -129,7 +129,6 @@ function buildLayerData(deal: Record<string, unknown> | null): CollisionLayerDat
   const l2 = deal.layer2 as Record<string, unknown> | undefined;
   const l3 = deal.layer3 as Record<string, unknown> | undefined;
   if (!l1 && !l2 && !l3) return null;
-  const fmt = (v: unknown) => v != null ? String(v) : '—';
   const fmtRent = (v: unknown) => v != null ? `$${Number(v).toLocaleString()}` : '—';
   const fmtOcc  = (v: unknown) => v != null ? `${Number(v).toFixed(0)}%` : '—';
   return {
@@ -142,7 +141,6 @@ function buildLayerData(deal: Record<string, unknown> | null): CollisionLayerDat
       occupancy: fmtOcc(l3?.adjusted_occupancy ?? l2?.occupancy ?? l1?.occupancy),
     },
   };
-  void fmt;
 }
 
 const DD_CATEGORY_LABELS: Array<{ name: string; abbr: string }> = [
@@ -344,6 +342,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                       flex: '1 1 calc(14% - 4px)', minWidth: 80,
                       background: BT.bg.panel, padding: '6px 8px',
                       display: 'flex', flexDirection: 'column', gap: 4,
+                      borderTop: `2px solid ${BT.text.orange}`,
                     }}>
                       <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.primary }}>
                         {cat.abbr}
@@ -351,17 +350,14 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                       <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>
                         {cat.name}
                       </span>
-                      <Bd c={BT.text.amber}>PENDING</Bd>
                     </div>
                   ))}
                 </div>
-                <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8 }}>
+                <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>STATUS INDICATORS:</span>
                   <Bd c={BT.text.green}>COMPLETE</Bd>
                   <Bd c={BT.text.amber}>PENDING</Bd>
                   <Bd c={BT.text.red}>BLOCKED</Bd>
-                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 4 }}>
-                    Update status in checklist below
-                  </span>
                 </div>
               </SectionPanel>
             </div>
