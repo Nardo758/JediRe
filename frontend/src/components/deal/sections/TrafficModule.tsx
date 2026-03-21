@@ -1049,29 +1049,34 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 {renderPredictionsTab()}
                 <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
                 {/* Traffic Intelligence Signals + Leasing Velocity panels */}
-                {mi && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, marginTop: 1 }}>
-                    <SectionPanel title="FDOT TRAFFIC COUNTS" subtitle="Leasing foot traffic by period" borderColor={BT2.met.physTraffic}>
-                      {(projection?.periods ?? []).slice(0, 5).map((p, i) => (
-                        <DataRow
-                          key={i}
-                          label={p.label.split('|')[0]?.trim() ?? `Period ${i + 1}`}
-                          value={Math.round(p.adjTraffic).toLocaleString()}
-                          valueColor={p.isActual ? BT2.met.occupancy : BT2.text.amber}
-                          sub={p.isActual ? 'ACTUAL' : 'PREDICTED'}
-                        />
-                      ))}
-                      <DataRow label="DEMAND FACTOR" value={`${((mi.demandFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.demandDirection === 'up' ? BT2.met.occupancy : mi.demandDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
-                    </SectionPanel>
-                    <SectionPanel title="REVIEW SENTIMENT" subtitle="Market demand + digital signals" borderColor={BT2.met.digTraffic}>
-                      <DataRow label="OVERALL SIGNAL" value={mi.overallSummary ? mi.overallSummary.slice(0, 24) : `${((mi.overallAdjustment ?? 1) * 100).toFixed(0)}%`} valueColor={mi.overallAdjustment >= 1 ? BT2.met.occupancy : BT2.text.amber} />
-                      <DataRow label="DEMAND TREND" value={(mi.demandDirection ?? 'neutral').toUpperCase()} valueColor={mi.demandDirection === 'up' ? BT2.met.occupancy : mi.demandDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
-                      <DataRow label="DIGITAL SIGNAL" value={(mi.digitalDirection ?? 'neutral').toUpperCase()} valueColor={mi.digitalDirection === 'up' ? BT2.met.digTraffic : mi.digitalDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
-                      <DataRow label="SUPPLY PRESSURE" value={(mi.supplyDirection ?? 'neutral').toUpperCase()} valueColor={mi.supplyDirection === 'up' ? BT2.text.red : mi.supplyDirection === 'down' ? BT2.met.occupancy : BT2.text.secondary} />
-                      <DataRow label="SEASONAL FACTOR" value={`${((mi.seasonalFactor ?? 1) * 100).toFixed(0)}%`} valueColor={BT2.text.secondary} />
-                    </SectionPanel>
-                  </div>
-                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, marginTop: 1 }}>
+                  <SectionPanel title="FDOT TRAFFIC COUNTS" subtitle="State DOT ADT by period · year / count / source" borderColor={BT2.met.physTraffic}>
+                    {(projection?.periods ?? []).filter(p => p.isActual).slice(0, 5).map((p, i) => {
+                      const yearMatch = p.label.match(/20\d{2}/);
+                      const year = yearMatch ? yearMatch[0] : `Y${i + 1}`;
+                      const src = projection?.baseline_source === 'submarket_calibration' ? 'Submarket' : projection?.baseline_source === 'comp_pattern' ? 'Comp Pattern' : 'DOT/Actual';
+                      return (
+                        <DataRow key={i} label={year} value={Math.round(p.adjTraffic).toLocaleString()} sub={src} valueColor={BT2.met.occupancy} />
+                      );
+                    })}
+                    {(projection?.periods ?? []).filter(p => !p.isActual).slice(0, 3).map((p, i) => {
+                      const yearMatch = p.label.match(/20\d{2}/);
+                      const year = yearMatch ? yearMatch[0] : `Proj ${i + 1}`;
+                      return (
+                        <DataRow key={`proj-${i}`} label={year} value={Math.round(p.adjTraffic).toLocaleString()} sub="Predicted" valueColor={BT2.text.amber} />
+                      );
+                    })}
+                    {!(projection?.periods?.length) && (
+                      <DataRow label="NO DATA" value="—" valueColor={BT2.text.secondary} />
+                    )}
+                  </SectionPanel>
+                  <SectionPanel title="REVIEW SENTIMENT" subtitle="Google Places NLP · property_reviews rollup" borderColor={BT2.met.digTraffic}>
+                    <DataRow label="OVERALL SENTIMENT" value="—" sub="pending NLP" valueColor={BT2.text.secondary} />
+                    <DataRow label="MAINTENANCE SENTIMENT" value="—" sub="value-add signal" valueColor={BT2.text.secondary} />
+                    <DataRow label="MANAGEMENT SENTIMENT" value="—" sub="ownership detector" valueColor={BT2.text.secondary} />
+                    <DataRow label="LOCATION SENTIMENT" value="—" sub="validates FDOT" valueColor={BT2.text.secondary} />
+                  </SectionPanel>
+                </div>
               </>
             )}
             {activeTab === 'data_sources' && (

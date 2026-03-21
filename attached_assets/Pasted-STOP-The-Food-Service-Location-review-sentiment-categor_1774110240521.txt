@@ -1,0 +1,21 @@
+STOP. The "Food / Service / Location" review sentiment categories are WRONG. Those are Google Maps restaurant review sub-ratings. This is a commercial real estate platform.
+The correct review sentiment categories come from our Google Reviews Intelligence spec (Pattern Recognition Engine PR-01). Property-level reviews are NLP-classified into these categories:
+Review Sentiment rows (F5 / Traffic Intelligence section):
+
+Overall Sentiment — aggregate score across all categories (-1 to +1)
+Maintenance Sentiment — #1 value-add signal; high complaint rate + strong traffic position = operational fix cheaper than renovation
+Management Sentiment — ownership transition detector; ±0.3 shift in 6 months signals new owner or neglect-for-sale
+Location Sentiment — validates physical traffic position from FDOT/SpyFu data
+
+These map to the property_reviews table schema: review_text, rating, date, nlp_categories, sentiment_scores. The backend service is googleReviewIntelligence.service.ts pulling from Google Places API, classifying via NLP into: Maintenance, Management, Amenities, Location, Noise, Parking, Pests, Safety, Value. The four rows above are the TOP-LEVEL rollups shown in the UI.
+Do NOT map these to TrafficModule mi.* fields (overallAdjustment, demandFactor, digitalFactor, supplyFactor). Those are market adjustment coefficients for traffic prediction — completely different data. Review sentiment is a separate data source.
+FDOT Traffic Counts rows — this part is correct. Year / Count / Source structure mapping to State DOT ADT historical data per station. Keep that as-is.
+F3 KPI strip — use these five metrics with these data paths:
+
+Avg Rent → data.economy?.metrics?.avgRent?.value or data.demographics?.census?.medianRent
+Occupancy → data.demographics?.submarket?.avg_occupancy or data.supplyContext?.marketOccupancy
+Absorption → data.supplyContext?.absorption or data.economy?.metrics?.absorption?.value
+Job Growth → data.economy?.metrics?.jobsAdded?.value
+Population Growth → data.demographics?.census?.populationGrowth or data.economy?.metrics?.netMigration?.value
+
+If any data path returns null/undefined, show "--" with muted styling — never fabricate values or map unrelated fields as proxies.
