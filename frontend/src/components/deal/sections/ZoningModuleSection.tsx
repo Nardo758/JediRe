@@ -178,7 +178,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           display: 'flex', alignItems: 'center', gap: 6,
           flexShrink: 0,
         }}>
-          <Lock size={10} style={{ color: BT2.text.cyan }} />
+          <Lock size={10} style={{ color: BT2.text.amber }} />
           <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: MONO }}>{statusMessage}</span>
         </div>
       )}
