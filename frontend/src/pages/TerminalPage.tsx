@@ -131,17 +131,15 @@ const PORTFOLIO_NAV = [
   {key:"F2",label:"PIPELINE"},
   {key:"F3",label:"PORTFOLIO"},
   {key:"F4",label:"MARKETS"},
-  {key:"F5",label:"EMAIL"},
-  {key:"F6",label:"COMPETE"},
-  {key:"F7",label:"NEWS"},
-  {key:"F8",label:"STRATEGIES"},
-  {key:"F9",label:"REPORTS"},
-  {key:"F10",label:"SETTINGS"},
+  {key:"F5",label:"NEWS"},
+  {key:"F6",label:"STRATEGIES"},
+  {key:"F7",label:"REPORTS"},
+  {key:"F8",label:"SETTINGS"},
 ];
 
 const FKEY_SLUG: Record<string,string> = {
   F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
-  F5:"email",     F6:"compete",  F7:"news",      F8:"strategies", F9:"reports", F10:"settings",
+  F5:"news",      F6:"strategies", F7:"reports", F8:"settings",
 };
 const SLUG_FKEY: Record<string,string> = Object.fromEntries(
   Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
@@ -789,7 +787,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" };
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8" };
       if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
@@ -2092,17 +2090,17 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── VIEW: F7 NEWS (NewsIntelligencePage) ─────────────────
+  // ─── VIEW: F5 NEWS (NewsIntelligencePage) ─────────────────
   const ViewNews = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <NewsIntelligencePage />
     </div>
   );
 
-  // ─── VIEW: F8 STRATEGIES ───────────────────────────────────
+  // ─── VIEW: F6 STRATEGIES ───────────────────────────────────
   const ViewStrategies = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F8")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F6")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
         {[
           {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
@@ -2110,7 +2108,7 @@ export default function TerminalPage() {
           {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
           {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
         ].map((row,i)=>(
-          <div key={i} onClick={()=>setFkey("F8")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F6")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
               <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
               <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
@@ -2123,7 +2121,7 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── VIEW: F9 REPORTS ──────────────────────────────────────
+  // ─── VIEW: F7 REPORTS ──────────────────────────────────────
   const ViewReports = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <PanelHeader T={T} title="REPORTS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
@@ -2140,7 +2138,7 @@ export default function TerminalPage() {
           {["Deal Memo (latest deal)","LP Quarterly Report Q1 2026 (draft)","Market Report: Tampa MSA (auto)","Comp Report: Dadeland submarket"].map((r,i)=>(
             <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{r}</div>
           ))}
-          <button onClick={()=>setFkey("F9")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
+          <button onClick={()=>setFkey("F7")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
         </div>
         <div style={{background:T.bg.panel,padding:10}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TEAM</div>
@@ -2150,7 +2148,7 @@ export default function TerminalPage() {
               <Bd c={T.text.green}>{m.status}</Bd>
             </div>
           ))}
-          <button onClick={()=>setFkey("F10")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
+          <button onClick={()=>setFkey("F8")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
         </div>
       </div>
       <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
@@ -2399,12 +2397,10 @@ export default function TerminalPage() {
       case "F2": return DealGrid();
       case "F3": return ViewPortfolio();
       case "F4": return ViewMarkets();
-      case "F5": return ViewEmail();
-      case "F6": return ViewCompete();
-      case "F7": return ViewNews();
-      case "F8": return ViewStrategies();
-      case "F9": return ViewReports();
-      case "F10": return ViewSettings();
+      case "F5": return ViewNews();
+      case "F6": return ViewStrategies();
+      case "F7": return ViewReports();
+      case "F8": return ViewSettings();
       default: return null;
     }
   };
