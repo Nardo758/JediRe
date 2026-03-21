@@ -54,7 +54,6 @@ import { CommentThread } from '../components/deal/CommentThread';
 import { DealTeamPanel } from '../components/deal/DealTeamPanel';
 
 import { MarketIntelligencePage } from './development/MarketIntelligencePage';
-import CompetitionPage from './development/CompetitionPage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 
@@ -79,7 +78,7 @@ import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClos
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
 import { DocumentsShellPage } from './development/DocumentsShellPage';
-import CompsModule from '../components/deal/sections/CompsModule';
+import { CompsShellPage } from './development/CompsShellPage';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
@@ -201,23 +200,12 @@ const OverviewScreen = (props: ScreenProps) => {
 const MarketScreen = (props: ScreenProps) => (
   <MarketIntelligencePage dealId={props.dealId} deal={props.deal} dealType={props.dealType} />
 );
-const CompetitionScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="COMPS & COMPETITION"
-    moduleSubtitle="M15 · SALE COMPS + PEER BENCHMARKING"
-    moduleBorderColor={BT.text.amber}
-    accentColor={BT.text.amber}
-    moduleMetrics={[
-      { l: 'SALE COMPS',  c: BT.text.amber    },
-      { l: 'F_CAP',       c: BT.met.financial },
-      { l: 'O_OCC',       c: BT.met.occupancy },
-      { l: 'COMP SCORE',  c: BT.text.cyan     },
-    ]}
-    tabs={[
-      { id: 'comps',       label: 'Sale Comps',           component: CompsModule },
-      { id: 'competition', label: 'Competition Analysis', component: CompetitionPage },
-    ]}
+const CompsScreen = (props: ScreenProps) => (
+  <CompsShellPage
+    dealId={props.dealId}
+    deal={props.deal}
+    dealType={props.dealType}
+    onUpdate={props.onUpdate}
   />
 );
 const StrategyScreen = (props: ScreenProps) => (
@@ -515,7 +503,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
     { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', label: 'Comps',            icon: <Target size={14} />,          component: CompetitionScreen },
+    { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
     { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
     { id: 'execution',   moduleId: 'M17', fkey: 'F12', code: 'M17', label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F13', code: 'M13', label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
