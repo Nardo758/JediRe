@@ -94,7 +94,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
   fetchStrategies: async () => {
     set({ loading: true, error: null });
     try {
-      const res = await apiClient.get('/api/v1/strategies');
+      const res = await apiClient.get('/api/v1/m08/strategies');
       const all: Strategy[] = Array.isArray(res.data?.strategies) ? res.data.strategies : [];
       set({
         strategies: all.filter(s => !s.is_system_template),
@@ -109,7 +109,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
 
   fetchSystemTemplates: async () => {
     try {
-      const res = await apiClient.get('/api/v1/strategies/templates');
+      const res = await apiClient.get('/api/v1/m08/strategies/templates');
       const templates: Strategy[] = Array.isArray(res.data?.templates) ? res.data.templates : [];
       set({ systemTemplates: templates });
     } catch (err: unknown) {
@@ -120,7 +120,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
 
   createStrategy: async (payload) => {
     try {
-      const res = await apiClient.post('/api/v1/strategies', payload);
+      const res = await apiClient.post('/api/v1/m08/strategies', payload);
       const strategy: Strategy = res.data?.strategy;
       if (strategy) {
         set(s => ({ strategies: [...s.strategies, strategy] }));
@@ -136,7 +136,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
 
   updateStrategy: async (id, payload) => {
     try {
-      const res = await apiClient.put(`/api/v1/strategies/${id}`, payload);
+      const res = await apiClient.put(`/api/v1/m08/strategies/${id}`, payload);
       const strategy: Strategy = res.data?.strategy;
       if (strategy) {
         set(s => ({
@@ -154,7 +154,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
 
   deleteStrategy: async (id) => {
     try {
-      await apiClient.delete(`/api/v1/strategies/${id}`);
+      await apiClient.delete(`/api/v1/m08/strategies/${id}`);
       set(s => ({ strategies: s.strategies.filter(st => st.id !== id) }));
       return true;
     } catch (err: unknown) {
@@ -166,7 +166,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
 
   cloneStrategy: async (id, newName) => {
     try {
-      const res = await apiClient.post(`/api/v1/strategies/${id}/clone`, { name: newName });
+      const res = await apiClient.post(`/api/v1/m08/strategies/${id}/clone`, { name: newName });
       const strategy: Strategy = res.data?.strategy;
       if (strategy) {
         set(s => ({ strategies: [...s.strategies, strategy] }));
@@ -182,7 +182,7 @@ export const useStrategyStore = create<StrategyStoreState>((set, get) => ({
 
   reorderStrategies: async (orderedIds) => {
     try {
-      await apiClient.put('/api/v1/strategies/reorder', { order: orderedIds });
+      await apiClient.put('/api/v1/m08/strategies/reorder', { order: orderedIds });
       set(s => ({
         strategies: [...s.strategies].sort(
           (a, b) => orderedIds.indexOf(a.id) - orderedIds.indexOf(b.id)

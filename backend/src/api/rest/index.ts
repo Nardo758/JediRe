@@ -89,6 +89,7 @@ import metricsCatalogRoutes from './metrics-catalog.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
+import m08StrategiesRoutes from './strategies.routes';
 import { createCapsuleRoutes } from './capsule.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
@@ -330,6 +331,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Strategy Definitions & Execution routes (Strategy Engine - new execution engine)
   app.use(`${API_PREFIX}/strategies`, strategiesRoutes);
+
+  // M08 Signal-Weight Arbitrage Strategy Builder (new spec-compliant endpoint)
+  app.use(`${API_PREFIX}/m08/strategies`, m08StrategiesRoutes);
 
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
