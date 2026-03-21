@@ -377,9 +377,9 @@ const SupplyPipelinePage: React.FC = () => {
       <PanelHeader
         title="SUPPLY PIPELINE"
         subtitle="M04 · PIPELINE PRESSURE"
-        borderColor={BT2.text.orange}
+        borderColor={BT2.met.supply}
         metrics={[
-          { l: 'SUPPLY', c: BT2.text.orange },
+          { l: 'SUPPLY', c: BT2.met.supply },
           ...(isLiveData ? [{ l: 'LIVE', c: BT2.text.green }] : []),
         ]}
         right={
@@ -388,9 +388,9 @@ const SupplyPipelinePage: React.FC = () => {
             {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
               <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
                 fontSize: 7, padding: '1px 6px', fontFamily: BT2.font.mono,
-                background: timeHorizon === horizon ? `${BT2.text.orange}20` : 'transparent',
-                border: timeHorizon === horizon ? `1px solid ${BT2.text.orange}60` : `1px solid ${BT2.border.medium}`,
-                color: timeHorizon === horizon ? BT2.text.orange : BT2.text.secondary,
+                background: timeHorizon === horizon ? `${BT2.met.supply}20` : 'transparent',
+                border: timeHorizon === horizon ? `1px solid ${BT2.met.supply}60` : `1px solid ${BT2.border.medium}`,
+                color: timeHorizon === horizon ? BT2.met.supply : BT2.text.secondary,
                 cursor: 'pointer',
               }}>{horizon.toUpperCase()}</button>
             ))}
@@ -399,7 +399,7 @@ const SupplyPipelinePage: React.FC = () => {
       />
       {/* 4-tile KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
-        <KpiTile label="PIPELINE UNITS" value={formatNumber(pipelineTotal)} sub={`${pipelineProjects.length} projects`} color={BT2.text.orange} />
+        <KpiTile label="PIPELINE UNITS" value={formatNumber(pipelineTotal)} sub={`${pipelineProjects.length} projects`} color={BT2.met.supply} />
         <KpiTile label="UNDER CONSTRUCTION" value={formatNumber(underConstrTotal)} sub="confirmed starts" color={BT2.text.amber} />
         <KpiTile label="DELIVERIES/YR" value={annualDeliveries > 0 ? formatNumber(annualDeliveries) : '—'} sub="est. units/yr" color={BT2.text.cyan} />
         <KpiTile
@@ -413,12 +413,12 @@ const SupplyPipelinePage: React.FC = () => {
         tabs={[...S_TABS]}
         active={S_TAB_IDS.indexOf(activeTab)}
         setActive={(i) => setActiveTab(S_TAB_IDS[i])}
-        color={BT2.text.orange}
+        color={BT2.met.supply}
       />
 
       <BtTabWrapper style={{ padding: '12px', gap: 0 }}>
         {activeTab === 'wave' && (
-          <SectionPanel title="SUPPLY WAVE" borderColor={BT2.text.orange} subtitle="Delivery timeline by year · quarter">
+          <SectionPanel title="SUPPLY WAVE" borderColor={BT2.met.supply} subtitle="Delivery timeline by year · quarter">
             <SupplyWaveSection
               data={supplyWave}
               riskScore={riskScore}
@@ -427,7 +427,7 @@ const SupplyPipelinePage: React.FC = () => {
           </SectionPanel>
         )}
         {activeTab === 'pipeline' && (
-          <SectionPanel title="PIPELINE BY PHASE" borderColor={BT2.text.orange} subtitle="Active projects · threat scoring">
+          <SectionPanel title="PIPELINE BY PHASE" borderColor={BT2.met.supply} subtitle="Active projects · threat scoring">
             <PipelinePhaseSection
               projects={pipelineProjects}
               submarketFilter={submarketFilter}
@@ -436,17 +436,17 @@ const SupplyPipelinePage: React.FC = () => {
           </SectionPanel>
         )}
         {activeTab === 'developers' && (
-          <SectionPanel title="DEVELOPER ACTIVITY" borderColor={BT2.text.orange} subtitle="Market concentration · delivery track record">
+          <SectionPanel title="DEVELOPER ACTIVITY" borderColor={BT2.met.supply} subtitle="Market concentration · delivery track record">
             <DeveloperActivitySection developers={developerActivity} />
           </SectionPanel>
         )}
         {activeTab === 'absorption' && (
-          <SectionPanel title="ABSORPTION IMPACT" borderColor={BT2.text.orange} subtitle="Supply vs demand · time-to-absorb">
+          <SectionPanel title="ABSORPTION IMPACT" borderColor={BT2.met.supply} subtitle="Supply vs demand · time-to-absorb">
             <AbsorptionImpactSection absorption={absorption} supplyWave={supplyWave} />
           </SectionPanel>
         )}
         {activeTab === 'risk' && (
-          <SectionPanel title="RISK SCORING" borderColor={BT2.text.orange} subtitle="Composite risk · mitigation guidance">
+          <SectionPanel title="RISK SCORING" borderColor={BT2.met.supply} subtitle="Composite risk · mitigation guidance">
             <RiskScoringSection riskScore={riskScore} />
           </SectionPanel>
         )}
@@ -728,7 +728,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
             { label: 'DELIVERY' },
             { label: 'SUBMARKET' },
             { label: 'DISTANCE' },
-            { label: 'THREAT', color: BT2.text.orange },
+            { label: 'THREAT', color: BT2.met.supply },
           ]} />
           {filteredProjects.map((project, idx) => (
             <TableRow
