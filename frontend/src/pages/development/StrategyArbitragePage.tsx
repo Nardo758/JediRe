@@ -26,6 +26,8 @@ const STRATEGY_COLS: Array<{ id: string; label: string; color: string }> = [
 const SIGNAL_KEYS   = ['demand', 'supply', 'market', 'policy', 'risk'] as const;
 const SIGNAL_LABELS = ['D', 'S', 'M', 'P', 'R'];
 
+const TAB_LABELS = ['ARBITRAGE SCORES', 'STRATEGY DETAIL'];
+
 function ScoreRing({ score, color, size = 60 }: { score: number; color: string; size?: number }) {
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
@@ -59,7 +61,7 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
   const yoc = score.roi_estimate?.yoc;
   const em  = score.roi_estimate?.profit_margin;
   const timeline = typeof score.sub_scores?.['timeline'] === 'number'
-    ? score.sub_scores['timeline'] as number
+    ? (score.sub_scores['timeline'] as number)
     : null;
 
   return (
@@ -89,10 +91,10 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
         <ScoreRing score={score.overall_score} color={col.color} size={60} />
       </div>
 
-      <DataRow label="IRR"      value={irr != null ? `${(irr * 100).toFixed(1)}%`      : '—'} valueColor={BT.met.financial} />
-      <DataRow label="EM"       value={em  != null ? `${em.toFixed(2)}×`                : '—'} valueColor={BT.text.amber} />
-      <DataRow label="YOC"      value={yoc != null ? `${(yoc * 100).toFixed(1)}%`       : '—'} valueColor={BT.met.occupancy} />
-      <DataRow label="TIMELINE" value={timeline != null ? `${timeline}M`                : '—'} valueColor={BT.text.secondary} />
+      <DataRow label="IRR"      value={irr != null ? `${(irr * 100).toFixed(1)}%`  : '—'} valueColor={BT.met.financial} />
+      <DataRow label="EM"       value={em  != null ? `${em.toFixed(2)}×`            : '—'} valueColor={BT.text.amber} />
+      <DataRow label="YOC"      value={yoc != null ? `${(yoc * 100).toFixed(1)}%`  : '—'} valueColor={BT.met.occupancy} />
+      <DataRow label="TIMELINE" value={timeline != null ? `${timeline}M`            : '—'} valueColor={BT.text.secondary} />
 
       <div style={{ borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 2, paddingBottom: 2 }}>
         {SIGNAL_KEYS.map((key, i) => {
@@ -130,15 +132,10 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
   );
 }
 
-const TABS = [
-  { id: 'arbitrage', label: 'ARBITRAGE SCORES' },
-  { id: 'detail',    label: 'STRATEGY DETAIL' },
-];
-
 export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType }: StrategyArbitragePageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = dealId || params.dealId || params.id || '';
-  const [activeTab, setActiveTab] = useState('arbitrage');
+  const [activeTab, setActiveTab] = useState(0);
   const { scores, arbitrage, loading } = useStrategyArbitrage(resolvedDealId);
 
   const orderedCols = STRATEGY_COLS.map(col => ({
@@ -204,14 +201,14 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
       )}
 
       <SubTabBar
-        tabs={TABS}
+        tabs={TAB_LABELS}
         active={activeTab}
-        onChange={setActiveTab}
-        accent={BT.text.amber}
+        setActive={setActiveTab}
+        color={BT.text.amber}
       />
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {activeTab === 'arbitrage' && (
+        {activeTab === 0 && (
           <div style={{ padding: 1 }}>
             {loading && (
               <div style={{ padding: 24, textAlign: 'center', fontFamily: MONO, fontSize: 11, color: BT.text.secondary }}>
@@ -285,7 +282,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
           </div>
         )}
 
-        {activeTab === 'detail' && (
+        {activeTab === 1 && (
           <BtTabWrapper>
             <CustomScreenTab dealId={resolvedDealId} />
           </BtTabWrapper>

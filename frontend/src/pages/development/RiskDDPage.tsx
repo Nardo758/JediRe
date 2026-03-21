@@ -83,10 +83,6 @@ function severityColor(s: RiskCategory['severity']): string {
   return BT.text.red;
 }
 
-function severityBorderColor(s: RiskCategory['severity']): string {
-  return severityColor(s);
-}
-
 function trendArrow(d: RiskCategory['trendDirection']): string {
   return d === 'improving' ? '▼' : d === 'worsening' ? '▲' : '●';
 }
@@ -120,41 +116,84 @@ function mapApiToCategories(apiData: Record<string, unknown>): RiskCategory[] {
   return result;
 }
 
-const RISK_TABS = [
-  { id: 'risk-scores',  label: 'RISK SCORES' },
-  { id: 'collision',    label: 'COLLISION ANALYSIS' },
-  { id: 'dd-checklist', label: 'DD CHECKLIST' },
+interface CollisionLayerData {
+  broker: { rent1br: string; rent2br: string; occupancy: string };
+  platform: { rent1br: string; rent2br: string; occupancy: string };
+  user: { rent1br: string; rent2br: string; occupancy: string };
+  resolved: { rent1br: string; rent2br: string; occupancy: string };
+}
+
+function buildLayerData(deal: Record<string, unknown> | null): CollisionLayerData | null {
+  if (!deal) return null;
+  const l1 = deal.layer1 as Record<string, unknown> | undefined;
+  const l2 = deal.layer2 as Record<string, unknown> | undefined;
+  const l3 = deal.layer3 as Record<string, unknown> | undefined;
+  if (!l1 && !l2 && !l3) return null;
+  const fmt = (v: unknown) => v != null ? String(v) : '—';
+  const fmtRent = (v: unknown) => v != null ? `$${Number(v).toLocaleString()}` : '—';
+  const fmtOcc  = (v: unknown) => v != null ? `${Number(v).toFixed(0)}%` : '—';
+  return {
+    broker:   { rent1br: fmtRent(l1?.avg_rent_1br), rent2br: fmtRent(l1?.avg_rent_2br), occupancy: fmtOcc(l1?.occupancy) },
+    platform: { rent1br: fmtRent(l2?.avg_rent_1br), rent2br: fmtRent(l2?.avg_rent_2br), occupancy: fmtOcc(l2?.occupancy) },
+    user:     { rent1br: fmtRent(l3?.adjusted_rent_1br), rent2br: fmtRent(l3?.adjusted_rent_2br), occupancy: fmtOcc(l3?.adjusted_occupancy) },
+    resolved: {
+      rent1br: fmtRent(l3?.adjusted_rent_1br ?? l2?.avg_rent_1br ?? l1?.avg_rent_1br),
+      rent2br: fmtRent(l3?.adjusted_rent_2br ?? l2?.avg_rent_2br ?? l1?.avg_rent_2br),
+      occupancy: fmtOcc(l3?.adjusted_occupancy ?? l2?.occupancy ?? l1?.occupancy),
+    },
+  };
+  void fmt;
+}
+
+const DD_CATEGORY_LABELS: Array<{ name: string; abbr: string }> = [
+  { name: 'Physical Inspection', abbr: 'PHYS' },
+  { name: 'Environmental',       abbr: 'ENV' },
+  { name: 'Insurance',           abbr: 'INS' },
+  { name: 'Environmental & Hazmat', abbr: 'HAZ' },
+  { name: 'Geotechnical',        abbr: 'GEO' },
+  { name: 'Site & Engineering',  abbr: 'ENG' },
+  { name: 'Existing Structure',  abbr: 'STR' },
 ];
 
-export function RiskDDPage({ dealId: propDealId, deal: _deal }: RiskDDPageProps) {
+const RISK_TAB_LABELS = ['RISK SCORES', 'COLLISION ANALYSIS', 'DD CHECKLIST'];
+
+export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = propDealId || params.dealId || params.id || '';
 
-  const [activeTab, setActiveTab] = useState('risk-scores');
+  const [activeTab, setActiveTab] = useState(0);
   const [categories, setCategories] = useState<RiskCategory[]>(DEFAULT_CATEGORIES);
   const [isLive, setIsLive] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [dealData, setDealData] = useState<Record<string, unknown> | null>(propDeal ?? null);
 
   useEffect(() => {
     if (!resolvedDealId) return;
     let cancelled = false;
     setIsLoading(true);
-    apiClient.get(`/api/v1/risk/comprehensive/${resolvedDealId}`)
+
+    const riskFetch = apiClient.get(`/api/v1/risk/comprehensive/${resolvedDealId}`)
       .then(res => {
         if (cancelled) return;
         const data = res.data?.data as Record<string, unknown> | undefined;
         if (data) {
           const mapped = mapApiToCategories(data);
-          if (mapped.length > 0) {
-            setCategories(mapped);
-            setIsLive(true);
-          }
+          if (mapped.length > 0) { setCategories(mapped); setIsLive(true); }
         }
       })
-      .catch(() => {})
+      .catch(() => {});
+
+    const dealFetch = (!propDeal)
+      ? apiClient.get(`/api/v1/deals/${resolvedDealId}`)
+          .then(res => { if (!cancelled) setDealData(res.data?.deal ?? res.data ?? null); })
+          .catch(() => {})
+      : Promise.resolve();
+
+    Promise.all([riskFetch, dealFetch])
       .finally(() => { if (!cancelled) setIsLoading(false); });
+
     return () => { cancelled = true; };
-  }, [resolvedDealId]);
+  }, [resolvedDealId, propDeal]);
 
   const compositeScore = useMemo(
     () => categories.reduce((sum, c) => sum + c.score * (c.weight / 100), 0),
@@ -162,6 +201,7 @@ export function RiskDDPage({ dealId: propDealId, deal: _deal }: RiskDDPageProps)
   );
 
   const compColor = compositeScore < 40 ? BT.text.green : compositeScore < 60 ? BT.text.amber : BT.text.red;
+  const layerData = buildLayerData(dealData);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
@@ -178,28 +218,26 @@ export function RiskDDPage({ dealId: propDealId, deal: _deal }: RiskDDPageProps)
         right={
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {isLoading && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>LOADING...</span>}
-            <Bd c={compColor}>
-              COMPOSITE {compositeScore.toFixed(0)}
-            </Bd>
+            <Bd c={compColor}>COMPOSITE {compositeScore.toFixed(0)}</Bd>
             {isLive && <Bd c={BT.text.green}>LIVE</Bd>}
           </div>
         }
       />
 
       <SubTabBar
-        tabs={RISK_TABS}
+        tabs={RISK_TAB_LABELS}
         active={activeTab}
-        onChange={setActiveTab}
-        accent={BT.text.red}
+        setActive={setActiveTab}
+        color={BT.text.red}
       />
 
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {activeTab === 'risk-scores' && (
+
+        {activeTab === 0 && (
           <div style={{ padding: 1 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BT.border.subtle }}>
               {categories.slice(0, 6).map(cat => {
-                const bc = severityBorderColor(cat.severity);
-                const tc = severityColor(cat.severity);
+                const bc = severityColor(cat.severity);
                 const trendC = cat.trendDirection === 'improving' ? BT.text.green : cat.trendDirection === 'worsening' ? BT.text.red : BT.text.secondary;
                 return (
                   <SectionPanel
@@ -207,16 +245,16 @@ export function RiskDDPage({ dealId: propDealId, deal: _deal }: RiskDDPageProps)
                     title={cat.name.toUpperCase()}
                     subtitle={`WT ${cat.weight}%`}
                     borderColor={bc}
-                    right={<Bd c={tc}>{cat.label.toUpperCase()}</Bd>}
+                    right={<Bd c={bc}>{cat.label.toUpperCase()}</Bd>}
                   >
                     <div style={{ padding: '8px 8px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                      <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: tc }}>
+                      <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: bc }}>
                         {cat.score}<span style={{ fontSize: 10, color: BT.text.muted }}>/100</span>
                       </span>
-                      <Spark data={cat.sparkline} color={tc} w={64} h={18} />
+                      <Spark data={cat.sparkline} color={bc} w={64} h={18} />
                     </div>
-                    <DataRow label="DRIVER" value={cat.driver.slice(0, 32) + (cat.driver.length > 32 ? '…' : '')} valueColor={BT.text.primary} />
-                    <DataRow label="MITIGATION" value={cat.mitigation.slice(0, 32) + (cat.mitigation.length > 32 ? '…' : '')} valueColor={BT.text.secondary} />
+                    <DataRow label="DRIVER" value={cat.driver.length > 36 ? cat.driver.slice(0, 35) + '…' : cat.driver} valueColor={BT.text.primary} />
+                    <DataRow label="MITIGATION" value={cat.mitigation.length > 36 ? cat.mitigation.slice(0, 35) + '…' : cat.mitigation} valueColor={BT.text.secondary} />
                     <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>30D TREND</span>
                       <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: trendC }}>
@@ -260,34 +298,79 @@ export function RiskDDPage({ dealId: propDealId, deal: _deal }: RiskDDPageProps)
           </div>
         )}
 
-        {activeTab === 'collision' && (
-          <BtTabWrapper>
-            <div style={{ marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.secondary, letterSpacing: 1 }}>
-                FIELD SOURCE INDICATORS
-              </span>
-              <Bd c={BT.text.cyan}>BROKER</Bd>
-              <Bd c={BT.text.purple}>PLATFORM</Bd>
-              <Bd c={BT.text.amber}>USER</Bd>
-              <Bd c={BT.text.green}>RESOLVED</Bd>
+        {activeTab === 1 && (
+          <div>
+            <div style={{ padding: 1, background: BT.border.subtle }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 1, background: BT.border.subtle }}>
+                {(
+                  [
+                    { key: 'broker',   label: 'BROKER',   color: BT.text.cyan,   data: layerData?.broker },
+                    { key: 'platform', label: 'PLATFORM', color: BT.text.purple, data: layerData?.platform },
+                    { key: 'user',     label: 'USER',     color: BT.text.amber,  data: layerData?.user },
+                    { key: 'resolved', label: 'RESOLVED', color: BT.text.green,  data: layerData?.resolved },
+                  ] as Array<{key: string; label: string; color: string; data: {rent1br: string; rent2br: string; occupancy: string} | undefined}>
+                ).map(src => (
+                  <SectionPanel
+                    key={src.key}
+                    title={src.label}
+                    subtitle="data layer"
+                    borderColor={src.color}
+                    right={<Bd c={src.color}>{src.label}</Bd>}
+                  >
+                    <DataRow label="1BR RENT"   value={src.data?.rent1br   ?? '—'} valueColor={src.color} />
+                    <DataRow label="2BR RENT"   value={src.data?.rent2br   ?? '—'} valueColor={src.color} />
+                    <DataRow label="OCCUPANCY"  value={src.data?.occupancy ?? '—'} valueColor={src.color} />
+                  </SectionPanel>
+                ))}
+              </div>
             </div>
-            <CollisionAnalysisSection />
-          </BtTabWrapper>
+            <BtTabWrapper>
+              <CollisionAnalysisSection />
+            </BtTabWrapper>
+          </div>
         )}
 
-        {activeTab === 'dd-checklist' && (
-          <BtTabWrapper>
-            <div style={{ marginBottom: 8, display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.secondary, letterSpacing: 1 }}>
-                CHECKLIST STATUS
-              </span>
-              <Bd c={BT.text.green}>COMPLETE</Bd>
-              <Bd c={BT.text.amber}>PENDING</Bd>
-              <Bd c={BT.text.red}>BLOCKED</Bd>
+        {activeTab === 2 && (
+          <div>
+            <div style={{ padding: 1, background: BT.border.subtle }}>
+              <SectionPanel
+                title="DD CHECKLIST CATEGORIES"
+                subtitle="Environmental & Physical Due Diligence · status by category"
+                borderColor={BT.text.orange}
+              >
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 1, padding: 4, background: BT.border.subtle }}>
+                  {DD_CATEGORY_LABELS.map(cat => (
+                    <div key={cat.name} style={{
+                      flex: '1 1 calc(14% - 4px)', minWidth: 80,
+                      background: BT.bg.panel, padding: '6px 8px',
+                      display: 'flex', flexDirection: 'column', gap: 4,
+                    }}>
+                      <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.primary }}>
+                        {cat.abbr}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>
+                        {cat.name}
+                      </span>
+                      <Bd c={BT.text.amber}>PENDING</Bd>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8 }}>
+                  <Bd c={BT.text.green}>COMPLETE</Bd>
+                  <Bd c={BT.text.amber}>PENDING</Bd>
+                  <Bd c={BT.text.red}>BLOCKED</Bd>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 4 }}>
+                    Update status in checklist below
+                  </span>
+                </div>
+              </SectionPanel>
             </div>
-            <DueDiligencePage dealId={resolvedDealId} />
-          </BtTabWrapper>
+            <BtTabWrapper>
+              <DueDiligencePage dealId={resolvedDealId} />
+            </BtTabWrapper>
+          </div>
         )}
+
       </div>
     </div>
   );
