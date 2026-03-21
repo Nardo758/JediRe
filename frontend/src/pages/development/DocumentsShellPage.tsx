@@ -8,7 +8,7 @@ import { DueDiligencePage } from './DueDiligencePage';
 import { apiClient } from '../../services/api.client';
 import type { DealFile } from '../../components/deal/sections/DocumentsFilesSection';
 
-const TABS = ['DOCUMENT REGISTRY', 'DD CHECKLIST'];
+const TABS = ['Files & Assets', 'DD Checklist'];
 
 interface DocumentsShellPageProps {
   dealId?: string;
@@ -136,12 +136,12 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                       key={f.id}
                       index={i}
                       cells={[
-                        { value: f.original_filename || f.filename,     flex: 3, color: BT.text.secondary, weight: 600 },
-                        { value: fileExt(f),                            flex: 1, color: BT.text.cyan                   },
-                        { value: fmtSize(f.file_size),                  flex: 1, color: BT.text.muted                  },
-                        { value: fmtDate(f.created_at),                 flex: 1, color: BT.text.muted                  },
-                        { value: f.status.toUpperCase(),                flex: 1, color: statusColor(f.status)          },
-                        { value: ai.label,                              flex: 1, color: ai.color                        },
+                        { value: f.original_filename || f.filename,                        flex: 3, color: BT.text.secondary, weight: 600 },
+                        { value: <Bd c={BT.text.cyan}>{fileExt(f)}</Bd>,                  flex: 1                                         },
+                        { value: fmtSize(f.file_size),                                     flex: 1, color: BT.text.muted                   },
+                        { value: fmtDate(f.created_at),                                    flex: 1, color: BT.text.muted                   },
+                        { value: <Bd c={statusColor(f.status)}>{f.status.toUpperCase()}</Bd>, flex: 1                                      },
+                        { value: <Bd c={ai.color}>{ai.label}</Bd>,                         flex: 1                                         },
                       ]}
                     />
                   );

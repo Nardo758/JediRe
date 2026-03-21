@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
-  PanelHeader, BtTabWrapper, Bd,
+  PanelHeader, BtTabWrapper,
 } from '../../components/deal/bloomberg-ui';
 import { Building3DEditor } from '../../components/design/Building3DEditor';
 import { ThreeDErrorBoundary } from '../../components/3DErrorBoundary';
@@ -35,7 +35,6 @@ export function Design3DShellPage({ dealId: propDealId, deal }: Design3DShellPag
           { l: 'HEIGHT', c: BT.text.amber    },
           { l: 'COVER',  c: BT.met.financial },
         ]}
-        right={<Bd c={BT.text.purple}>DEV ONLY</Bd>}
       />
 
       <BtTabWrapper>
