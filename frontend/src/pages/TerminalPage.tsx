@@ -6,6 +6,8 @@ import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateH
 import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
+import { ReportsPage } from "./ReportsPage";
+import { SettingsPage } from "./SettingsPage";
 import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
 import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
 
@@ -493,15 +495,6 @@ export default function TerminalPage() {
   const [gridDrag, setGridDrag] = useState<{id:string,x:number,y:number}|null>(null);
   const [gridDragOver, setGridDragOver] = useState<string|null>(null);
 
-  // Org settings state (F9)
-  const [orgData, setOrgData] = useState<any>(null);
-  const [orgMembers, setOrgMembers] = useState<any[]>([]);
-  const [orgInvitations, setOrgInvitations] = useState<any[]>([]);
-  const [orgLoading, setOrgLoading] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("analyst");
-  const [orgError, setOrgError] = useState("");
-  const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
   const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
@@ -2032,98 +2025,15 @@ export default function TerminalPage() {
     </div>
   );
 
-  // ─── VIEW: F7 REPORTS ──────────────────────────────────────
+  // ─── VIEW: F7 REPORTS (ReportsPage) ────────────────────────
   const ViewReports = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="REPORTS" subtitle="Tasks · Reports · Team" borderColor={T.text.muted}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:1,background:T.border.subtle,margin:10}}>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TASKS</div>
-          {liveTasks.slice(0,4).map((t,i)=>(
-            <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{t.title} <span style={{color:T.text.amber}}>({t.deal})</span></div>
-          ))}
-          <button onClick={()=>setBottomTab("tasks")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW ALL TASKS →</button>
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>REPORTS</div>
-          {["Deal Memo (latest deal)","LP Quarterly Report Q1 2026 (draft)","Market Report: Tampa MSA (auto)","Comp Report: Dadeland submarket"].map((r,i)=>(
-            <div key={i} style={{padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`,fontSize:8,color:T.text.secondary}}>{r}</div>
-          ))}
-          <button onClick={()=>setFkey("F7")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW REPORTS →</button>
-        </div>
-        <div style={{background:T.bg.panel,padding:10}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>TEAM</div>
-          {[{n:"James R.",role:"Principal",status:"Active"},{n:"Marcus C.",role:"Analyst",status:"Active"},{n:"Sarah K.",role:"Researcher",status:"Active"},{n:"David P.",role:"Advisor",status:"Active"}].map((m,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
-              <div><div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{m.n}</div><div style={{fontSize:7,color:T.text.muted}}>{m.role}</div></div>
-              <Bd c={T.text.green}>{m.status}</Bd>
-            </div>
-          ))}
-          <button onClick={()=>setFkey("F8")} style={{marginTop:6,fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>VIEW TEAM →</button>
-        </div>
-      </div>
-      <div style={{margin:"0 10px 10px",padding:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-          <div style={{width:6,height:6,borderRadius:"50%",background:T.text.cyan}}/>
-          <span style={{fontSize:9,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>CORPORATE HEALTH OVERLAY</span>
-        </div>
-        {(() => {
-          const s = corpHealthLive.schi ?? DEMO_SCHI;
-          const d = corpHealthLive.divergence ?? DEMO_DIVERGENCE;
-          const h = corpHealthLive.herfindahl ?? DEMO_HERFINDAHL;
-          const topEmp = corpHealthLive.employers.length>0 ? (corpHealthLive.employers[0]?.company||corpHealthLive.employers[0]?.company_name||"\u2014") : CORP_HEALTH_DEMO[0].company;
-          return <div style={{display:"flex",gap:12,alignItems:"center"}}>
-            <div style={{textAlign:"center"}}>
-              <div style={{fontSize:20,fontWeight:800,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red}}>{s.toFixed(0)}</div>
-              <div style={{fontSize:7,color:T.text.muted}}>SCHI</div>
-            </div>
-            <div style={{width:1,height:30,background:T.border.subtle}}/>
-            <div>
-              <div style={{fontSize:9,color:T.text.secondary}}>Divergence: <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
-              <div style={{fontSize:9,color:T.text.secondary}}>Top Employer: <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
-              <div style={{fontSize:9,color:T.text.secondary}}>HHI: <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
-            </div>
-            <div style={{marginLeft:"auto"}}>
-              <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={60} h={16}/>
-              <div style={{fontSize:7,color:T.text.muted,textAlign:"center"}}>4Q trend</div>
-            </div>
-          </div>;
-        })()}
-      </div>
+      <ReportsPage />
     </div>
   );
 
-  // ─── F9: SETTINGS ────────────────────────────────────────
-  const fetchOrgData = useCallback(() => {
-    setOrgLoading(true); setOrgError(""); setOrgSuccess("");
-    apiClient.get("/api/v1/orgs/mine")
-      .then(res => {
-        const orgs = Array.isArray(res.data) ? res.data : [];
-        if(orgs.length > 0) {
-          const org = orgs[0];
-          setOrgData(org);
-          return Promise.all([
-            apiClient.get(`/api/v1/orgs/${org.id}/members`),
-            apiClient.get(`/api/v1/orgs/${org.id}/invitations`).catch(()=>({data:[]})),
-          ]);
-        }
-        setOrgData(null);
-        return null;
-      })
-      .then(results => {
-        if(results) {
-          setOrgMembers(Array.isArray(results[0].data) ? results[0].data : []);
-          setOrgInvitations(Array.isArray(results[1].data) ? results[1].data : []);
-        }
-      })
-      .catch(() => setOrgError("Failed to load organization data"))
-      .finally(() => setOrgLoading(false));
-  }, []);
+  // ─── F8: SETTINGS (SettingsPage) ─────────────────────────
 
-  // Legacy org fetch disabled — F9 now renders SettingsPage which manages its own data
-
-  const corpHealthStore = useCorporateHealth();
-  const dealStoreCorporateHealth = useDealStore(s => s.corporateHealth);
   const fetchSubmarketHealth = useCorporateHealthStore(s => s.fetchSubmarketHealth);
   const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
 
@@ -2169,137 +2079,11 @@ export default function TerminalPage() {
     });
   }, [fkey, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
-  const handleInvite = () => {
-    if(!inviteEmail || !orgData) return;
-    setOrgError(""); setOrgSuccess("");
-    apiClient.post(`/api/v1/orgs/${orgData.id}/invitations`, { email: inviteEmail, role: inviteRole })
-      .then(() => { setOrgSuccess(`Invitation sent to ${inviteEmail}`); setInviteEmail(""); fetchOrgData(); })
-      .catch(err => setOrgError(err.response?.data?.error || "Failed to send invitation"));
-  };
-
-  const handleRoleChange = (memberId: string, newRole: string) => {
-    if(!orgData) return;
-    apiClient.put(`/api/v1/orgs/${orgData.id}/members/${memberId}/role`, { role: newRole })
-      .then(() => { setOrgSuccess("Role updated"); fetchOrgData(); })
-      .catch(err => setOrgError(err.response?.data?.error || "Failed to update role"));
-  };
-
-  const handleRemoveMember = (memberId: string, name: string) => {
-    if(!orgData || !confirm(`Remove ${name} from the organization?`)) return;
-    apiClient.delete(`/api/v1/orgs/${orgData.id}/members/${memberId}`)
-      .then(() => { setOrgSuccess("Member removed"); fetchOrgData(); })
-      .catch(err => setOrgError(err.response?.data?.error || "Failed to remove member"));
-  };
-
-  const ViewSettings = () => {
-    const myRole = orgData?.my_role || "viewer";
-    const canManage = myRole === "owner" || myRole === "principal";
-    const isOwner = myRole === "owner";
-    const roleBadgeColor: Record<string,string> = { owner: T.text.amber, principal: T.text.cyan, analyst: T.text.green, viewer: T.text.muted };
-    return (
-      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-        <PanelHeader T={T} title="SETTINGS" subtitle={orgData ? orgData.name : "Organization Management"} borderColor={T.text.cyan}
-          right={<span style={{fontSize:8,color:T.text.muted}}>YOUR ROLE: <span style={{color:roleBadgeColor[myRole]||T.text.muted,fontWeight:700}}>{myRole.toUpperCase()}</span></span>}/>
-        {orgLoading ? (
-          <div style={{display:"flex",justifyContent:"center",padding:40}}><span style={{fontSize:10,color:T.text.muted,animation:"pulse 1.5s infinite"}}>Loading organization data...</span></div>
-        ) : !orgData ? (
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:60,gap:12}}>
-            <div style={{fontSize:14,color:T.text.muted}}>No organization found</div>
-            <div style={{fontSize:9,color:T.text.secondary}}>Contact support to create your organization</div>
-          </div>
-        ) : (
-          <div style={{padding:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            {orgError && <div style={{gridColumn:"1/-1",background:T.text.red+"18",border:`1px solid ${T.text.red}44`,padding:"6px 10px",fontSize:9,color:T.text.red}}>{orgError}</div>}
-            {orgSuccess && <div style={{gridColumn:"1/-1",background:T.text.green+"18",border:`1px solid ${T.text.green}44`,padding:"6px 10px",fontSize:9,color:T.text.green}}>{orgSuccess}</div>}
-            <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
-              <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
-                <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>MEMBERS</span>
-                <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgMembers.length} total</span>
-              </div>
-              <div style={{maxHeight:300,overflow:"auto"}}>
-                {orgMembers.map((m,i)=>(
-                  <div key={m.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:9,color:T.text.primary,fontWeight:600}}>{m.full_name || m.first_name || m.email}</div>
-                      <div style={{fontSize:7,color:T.text.muted}}>{m.email}</div>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      {isOwner && m.role !== "owner" ? (
-                        <select value={m.role} onChange={e=>handleRoleChange(m.id, e.target.value)}
-                          style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"2px 4px",cursor:"pointer"}}>
-                          <option value="principal">PRINCIPAL</option>
-                          <option value="analyst">ANALYST</option>
-                          <option value="viewer">VIEWER</option>
-                        </select>
-                      ) : (
-                        <Bd c={roleBadgeColor[m.role]||T.text.muted}>{m.role}</Bd>
-                      )}
-                      {isOwner && m.role !== "owner" && (
-                        <button onClick={()=>handleRemoveMember(m.id, m.full_name||m.email)}
-                          style={{fontFamily:T.font.mono,fontSize:8,color:T.text.red,background:"transparent",border:`1px solid ${T.text.red}44`,padding:"1px 6px",cursor:"pointer"}}>x</button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {canManage && (
-                <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
-                  <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
-                    <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>INVITE MEMBER</span>
-                  </div>
-                  <div style={{padding:10}}>
-                    <div style={{display:"flex",gap:6,marginBottom:6}}>
-                      <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)} placeholder="email@example.com"
-                        style={{flex:1,fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",outline:"none"}}
-                        onKeyDown={e=>{if(e.key==="Enter")handleInvite();}}/>
-                      <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)}
-                        style={{fontFamily:T.font.mono,fontSize:8,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.subtle}`,padding:"4px",cursor:"pointer"}}>
-                        <option value="principal">PRINCIPAL</option>
-                        <option value="analyst">ANALYST</option>
-                        <option value="viewer">VIEWER</option>
-                      </select>
-                    </div>
-                    <button onClick={handleInvite}
-                      style={{fontFamily:T.font.mono,fontSize:8,color:T.text.white,background:T.text.cyan+"33",border:`1px solid ${T.text.cyan}`,padding:"4px 12px",cursor:"pointer",width:"100%",fontWeight:700,letterSpacing:0.5}}>+ SEND INVITATION</button>
-                    <div style={{marginTop:6,fontSize:7,color:T.text.muted}}>
-                      Roles: <span style={{color:T.text.amber}}>OWNER</span> (full control) · <span style={{color:T.text.cyan}}>PRINCIPAL</span> (manage + invite) · <span style={{color:T.text.green}}>ANALYST</span> (read/write deals) · <span style={{color:T.text.muted}}>VIEWER</span> (read-only)
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`}}>
-                <div style={{padding:"8px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`}}>
-                  <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>PENDING INVITATIONS</span>
-                  <span style={{fontSize:8,color:T.text.muted,marginLeft:8}}>{orgInvitations.filter((inv)=>inv.status==="pending").length} pending</span>
-                </div>
-                <div style={{maxHeight:200,overflow:"auto"}}>
-                  {orgInvitations.length === 0 ? (
-                    <div style={{padding:10,fontSize:9,color:T.text.muted,textAlign:"center"}}>No invitations sent</div>
-                  ) : orgInvitations.map((inv,i)=>(
-                    <div key={inv.id||i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-                      <div>
-                        <div style={{fontSize:9,color:T.text.primary}}>{inv.email}</div>
-                        <div style={{fontSize:7,color:T.text.muted}}>Invited by {inv.invited_by_name||"—"} · {inv.role}</div>
-                      </div>
-                      <Bd c={inv.status==="pending"?T.text.orange:inv.status==="accepted"?T.text.green:T.text.red}>{inv.status}</Bd>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:10}}>
-                <div style={{fontSize:10,fontWeight:700,color:T.text.white,marginBottom:6}}>ORGANIZATION</div>
-                <div style={{fontSize:8,color:T.text.secondary,marginBottom:3}}>Name: <span style={{color:T.text.primary}}>{orgData.name}</span></div>
-                <div style={{fontSize:8,color:T.text.secondary,marginBottom:3}}>Slug: <span style={{color:T.text.muted}}>{orgData.slug}</span></div>
-                <div style={{fontSize:8,color:T.text.secondary}}>Created: <span style={{color:T.text.muted}}>{orgData.created_at ? new Date(orgData.created_at).toLocaleDateString() : "—"}</span></div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const ViewSettings = () => (
+    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+      <SettingsPage />
+    </div>
+  );
 
   // ─── MAIN CONTENT ROUTER ───────────────────────────────────
   const renderContent = () => {
