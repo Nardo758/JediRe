@@ -1,11 +1,24 @@
 /**
  * Folder View Component
- * Hierarchical folder navigation with breadcrumb trail
+ * Hierarchical folder navigation with predefined deal-type category folders.
+ * Bloomberg dark terminal styling.
  */
 
 import React from 'react';
 import { DealFile } from '../DocumentsFilesSection';
 import { formatFileSize, getFileIcon, formatDate } from './utils';
+
+const BG_PANEL   = '#0F1319';
+const BG_CARD    = '#131821';
+const BG_HOVER   = '#1E2538';
+const BORDER     = '#1E2538';
+const BORDER_MED = '#2A3348';
+const TEXT_PRI   = '#E8ECF1';
+const TEXT_SEC   = '#8B95A5';
+const TEXT_MUTED = '#4A5568';
+const CYAN       = '#00BCD4';
+const GREEN      = '#00D26A';
+const MONO       = "'JetBrains Mono','Fira Code','SF Mono',monospace";
 
 interface FolderViewProps {
   files: DealFile[];
@@ -15,6 +28,32 @@ interface FolderViewProps {
   onDownload: (file: DealFile) => void;
   onUpdate: (fileId: string, updates: Partial<DealFile>) => void;
   isPipeline: boolean;
+  predefinedFolders?: string[];
+}
+
+function formatCategoryLabel(slug: string): string {
+  const labels: Record<string, string> = {
+    offering_memo:        'Offering Memo',
+    rent_roll:            'Rent Roll',
+    t12:                  'T-12 P&L',
+    inspection:           'Inspection',
+    appraisal:            'Appraisal',
+    title:                'Title',
+    survey:               'Survey',
+    insurance:            'Insurance',
+    loan_docs:            'Loan Docs',
+    site_plans:           'Site Plans',
+    architectural:        'Architectural',
+    engineering:          'Engineering',
+    permits:              'Permits',
+    cost_estimates:       'Cost Estimates',
+    environmental:        'Environmental',
+    geotech:              'Geotech',
+    traffic_study:        'Traffic Study',
+    structural_assessment:'Structural Assessment',
+    hazmat:               'Hazmat',
+  };
+  return labels[slug] || slug.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export const FolderView: React.FC<FolderViewProps> = ({
@@ -23,25 +62,39 @@ export const FolderView: React.FC<FolderViewProps> = ({
   onFolderChange,
   onDelete,
   onDownload,
+  predefinedFolders = [],
 }) => {
-  // Get folders in current path
-  const folders = Array.from(
-    new Set(
-      files
-        .filter((f) => f.folder_path.startsWith(currentFolder) && f.folder_path !== currentFolder)
-        .map((f) => {
-          const relativePath = f.folder_path.substring(currentFolder.length).replace(/^\//, '');
-          const parts = relativePath.split('/');
-          return parts[0];
-        })
-        .filter(Boolean)
-    )
-  );
+  const isRoot = currentFolder === '/';
 
-  // Get files in current folder
-  const currentFiles = files.filter((f) => f.folder_path === currentFolder);
+  const categoryFromPath = (path: string): string =>
+    path.startsWith('/') ? path.slice(1) : path;
 
-  // Breadcrumb navigation
+  const currentCategory = isRoot ? null : categoryFromPath(currentFolder);
+
+  const isPredefinedCategory = currentCategory !== null &&
+    predefinedFolders.includes(currentCategory);
+
+  const currentFiles: DealFile[] = isRoot
+    ? []
+    : isPredefinedCategory
+      ? files.filter(f => f.category === currentCategory)
+      : files.filter(f => f.folder_path === currentFolder);
+
+  const dynamicFolders: string[] = isRoot
+    ? Array.from(
+        new Set(
+          files
+            .filter(f => f.folder_path.startsWith('/') && f.folder_path !== '/')
+            .map(f => {
+              const rel = f.folder_path.slice(1).split('/')[0];
+              return rel;
+            })
+            .filter(Boolean)
+            .filter(f => !predefinedFolders.includes(f))
+        )
+      )
+    : [];
+
   const pathParts = currentFolder.split('/').filter(Boolean);
   const breadcrumbs = ['Home', ...pathParts];
 
@@ -54,237 +107,266 @@ export const FolderView: React.FC<FolderViewProps> = ({
   };
 
   return (
-    <div className="folder-view">
+    <div style={{ fontFamily: MONO, color: TEXT_PRI }}>
+
       {/* Breadcrumb */}
-      <div className="breadcrumb">
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '8px 12px',
+        background: BG_CARD,
+        borderBottom: `1px solid ${BORDER}`,
+        marginBottom: 16,
+        fontSize: 11,
+        letterSpacing: '0.04em',
+      }}>
         {breadcrumbs.map((part, index) => (
           <React.Fragment key={index}>
             <button
-              className={index === breadcrumbs.length - 1 ? 'active' : ''}
               onClick={() => handleBreadcrumbClick(index)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: index === breadcrumbs.length - 1 ? 'default' : 'pointer',
+                color: index === breadcrumbs.length - 1 ? TEXT_PRI : CYAN,
+                fontFamily: MONO,
+                fontSize: 11,
+                padding: '2px 4px',
+                textDecoration: 'none',
+              }}
             >
-              {part}
+              {index === 0 ? 'ROOT' : part.toUpperCase()}
             </button>
-            {index < breadcrumbs.length - 1 && <span className="separator">/</span>}
+            {index < breadcrumbs.length - 1 && (
+              <span style={{ color: TEXT_MUTED }}>›</span>
+            )}
           </React.Fragment>
         ))}
       </div>
 
-      {/* Folders */}
-      {folders.length > 0 && (
-        <div className="folders-grid">
-          {folders.map((folder) => (
-            <div
-              key={folder}
-              className="folder-card"
-              onClick={() => {
-                const newPath = currentFolder === '/' ? `/${folder}` : `${currentFolder}/${folder}`;
-                onFolderChange(newPath);
-              }}
-            >
-              <div className="folder-icon">📁</div>
-              <span className="folder-name">{folder}</span>
-              <span className="folder-count">
-                {files.filter((f) => f.folder_path.startsWith(currentFolder + '/' + folder)).length} files
-              </span>
-            </div>
-          ))}
+      {/* Root: Predefined category folders */}
+      {isRoot && predefinedFolders.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            fontSize: 9,
+            color: TEXT_MUTED,
+            letterSpacing: '0.12em',
+            fontWeight: 700,
+            marginBottom: 10,
+            paddingLeft: 2,
+          }}>
+            DOCUMENT CATEGORIES
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 8,
+          }}>
+            {predefinedFolders.map(folder => {
+              const count = files.filter(f => f.category === folder).length;
+              return (
+                <div
+                  key={folder}
+                  onClick={() => onFolderChange('/' + folder)}
+                  style={{
+                    padding: '12px 14px',
+                    background: BG_CARD,
+                    border: `1px solid ${count > 0 ? BORDER_MED : BORDER}`,
+                    cursor: 'pointer',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.background = BG_HOVER;
+                    (e.currentTarget as HTMLElement).style.borderColor = CYAN;
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.background = BG_CARD;
+                    (e.currentTarget as HTMLElement).style.borderColor = count > 0 ? BORDER_MED : BORDER;
+                  }}
+                >
+                  <div style={{ fontSize: 18, marginBottom: 6, color: count > 0 ? CYAN : TEXT_MUTED }}>
+                    {count > 0 ? '▤' : '▱'}
+                  </div>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: count > 0 ? TEXT_PRI : TEXT_SEC,
+                    marginBottom: 3,
+                    letterSpacing: '0.02em',
+                  }}>
+                    {formatCategoryLabel(folder)}
+                  </div>
+                  <div style={{ fontSize: 9, color: count > 0 ? GREEN : TEXT_MUTED, letterSpacing: '0.06em' }}>
+                    {count > 0 ? `${count} FILE${count === 1 ? '' : 'S'}` : 'EMPTY'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* Files */}
-      {currentFiles.length > 0 && (
-        <div className="files-list">
-          <h4>Files</h4>
-          {currentFiles.map((file) => (
-            <div key={file.id} className="file-row">
-              <div className="file-icon">{getFileIcon(file.file_extension)}</div>
-              <div className="file-info">
-                <span className="file-name">{file.original_filename}</span>
-                <span className="file-meta">
-                  {formatFileSize(file.file_size)} • {formatDate(file.created_at)}
-                </span>
+      {/* Root: Dynamic folders (from actual folder_path, not in predefined) */}
+      {isRoot && dynamicFolders.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{
+            fontSize: 9,
+            color: TEXT_MUTED,
+            letterSpacing: '0.12em',
+            fontWeight: 700,
+            marginBottom: 10,
+            paddingLeft: 2,
+          }}>
+            OTHER FOLDERS
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 8,
+          }}>
+            {dynamicFolders.map(folder => {
+              const count = files.filter(f => f.folder_path.startsWith('/' + folder)).length;
+              return (
+                <div
+                  key={folder}
+                  onClick={() => onFolderChange('/' + folder)}
+                  style={{
+                    padding: '12px 14px',
+                    background: BG_CARD,
+                    border: `1px solid ${BORDER}`,
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.background = BG_HOVER;
+                    (e.currentTarget as HTMLElement).style.borderColor = CYAN;
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.background = BG_CARD;
+                    (e.currentTarget as HTMLElement).style.borderColor = BORDER;
+                  }}
+                >
+                  <div style={{ fontSize: 18, marginBottom: 6, color: TEXT_MUTED }}>▤</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: TEXT_SEC, marginBottom: 3 }}>
+                    {folder}
+                  </div>
+                  <div style={{ fontSize: 9, color: TEXT_MUTED, letterSpacing: '0.06em' }}>
+                    {count} FILE{count === 1 ? '' : 'S'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Root: truly empty (no predefined, no dynamic) */}
+      {isRoot && predefinedFolders.length === 0 && dynamicFolders.length === 0 && (
+        <div style={{ padding: '40px 0', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, color: TEXT_MUTED, marginBottom: 12 }}>▱</div>
+          <p style={{ fontSize: 11, color: TEXT_MUTED, margin: 0 }}>No folders or files yet</p>
+        </div>
+      )}
+
+      {/* Category folder contents */}
+      {!isRoot && (
+        <>
+          {currentFiles.length > 0 ? (
+            <div>
+              <div style={{
+                fontSize: 9,
+                color: TEXT_MUTED,
+                letterSpacing: '0.12em',
+                fontWeight: 700,
+                marginBottom: 10,
+                paddingLeft: 2,
+              }}>
+                {currentFiles.length} FILE{currentFiles.length === 1 ? '' : 'S'}
               </div>
-              <div className="file-actions">
-                <button onClick={() => onDownload(file)} title="Download">⬇</button>
-                <button onClick={() => onDelete(file.id)} title="Delete">🗑</button>
-              </div>
+              {currentFiles.map(file => (
+                <div
+                  key={file.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '10px 14px',
+                    background: BG_CARD,
+                    border: `1px solid ${BORDER}`,
+                    marginBottom: 4,
+                    fontSize: 11,
+                  }}
+                >
+                  <div style={{ fontSize: 20, flexShrink: 0, color: TEXT_SEC }}>
+                    {getFileIcon(file.file_extension)}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      color: TEXT_PRI,
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {file.original_filename}
+                    </div>
+                    <div style={{ fontSize: 9, color: TEXT_MUTED, marginTop: 2, letterSpacing: '0.04em' }}>
+                      {formatFileSize(file.file_size)} · {formatDate(file.created_at)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => onDownload(file)}
+                      style={{
+                        background: BG_HOVER,
+                        border: `1px solid ${BORDER}`,
+                        color: CYAN,
+                        cursor: 'pointer',
+                        padding: '4px 10px',
+                        fontSize: 10,
+                        fontFamily: MONO,
+                        letterSpacing: '0.06em',
+                      }}
+                    >
+                      DL
+                    </button>
+                    <button
+                      onClick={() => onDelete(file.id)}
+                      style={{
+                        background: BG_HOVER,
+                        border: `1px solid ${BORDER}`,
+                        color: '#FF4757',
+                        cursor: 'pointer',
+                        padding: '4px 10px',
+                        fontSize: 10,
+                        fontFamily: MONO,
+                        letterSpacing: '0.06em',
+                      }}
+                    >
+                      DEL
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          ) : (
+            <div style={{
+              padding: '36px 0',
+              textAlign: 'center',
+              background: BG_CARD,
+              border: `1px solid ${BORDER}`,
+            }}>
+              <div style={{ fontSize: 28, color: TEXT_MUTED, marginBottom: 10 }}>▱</div>
+              <p style={{ fontSize: 11, color: TEXT_MUTED, margin: '0 0 4px 0' }}>
+                {currentCategory ? formatCategoryLabel(currentCategory) : 'This folder'} is empty
+              </p>
+              <p style={{ fontSize: 9, color: TEXT_MUTED, margin: 0, letterSpacing: '0.06em' }}>
+                UPLOAD FILES TO POPULATE THIS CATEGORY
+              </p>
+            </div>
+          )}
+        </>
       )}
-
-      {folders.length === 0 && currentFiles.length === 0 && (
-        <div className="empty-folder">
-          <div className="empty-icon">📂</div>
-          <p>This folder is empty</p>
-        </div>
-      )}
-
-      <style jsx>{`
-        .folder-view {
-          margin-top: 20px;
-        }
-
-        .breadcrumb {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 16px;
-          background: #f9fafb;
-          border-radius: 8px;
-          margin-bottom: 20px;
-        }
-
-        .breadcrumb button {
-          padding: 6px 12px;
-          background: transparent;
-          border: none;
-          border-radius: 6px;
-          color: #2563eb;
-          cursor: pointer;
-          font-weight: 500;
-          transition: all 0.2s;
-        }
-
-        .breadcrumb button:hover {
-          background: #e0e7ff;
-        }
-
-        .breadcrumb button.active {
-          color: #1f2937;
-          cursor: default;
-        }
-
-        .breadcrumb button.active:hover {
-          background: transparent;
-        }
-
-        .separator {
-          color: #9ca3af;
-        }
-
-        .folders-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: 16px;
-          margin-bottom: 32px;
-        }
-
-        .folder-card {
-          padding: 20px;
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s;
-          text-align: center;
-        }
-
-        .folder-card:hover {
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-          transform: translateY(-2px);
-          border-color: #2563eb;
-        }
-
-        .folder-icon {
-          font-size: 48px;
-          margin-bottom: 12px;
-        }
-
-        .folder-name {
-          display: block;
-          font-weight: 600;
-          color: #1f2937;
-          margin-bottom: 4px;
-        }
-
-        .folder-count {
-          display: block;
-          font-size: 13px;
-          color: #6b7280;
-        }
-
-        .files-list h4 {
-          margin: 0 0 16px 0;
-          font-size: 16px;
-          color: #6b7280;
-        }
-
-        .file-row {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px 16px;
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          margin-bottom: 8px;
-          transition: all 0.2s;
-        }
-
-        .file-row:hover {
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-        }
-
-        .file-icon {
-          font-size: 32px;
-          flex-shrink: 0;
-        }
-
-        .file-info {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .file-name {
-          font-weight: 500;
-          color: #1f2937;
-        }
-
-        .file-meta {
-          font-size: 13px;
-          color: #6b7280;
-        }
-
-        .file-actions {
-          display: flex;
-          gap: 8px;
-        }
-
-        .file-actions button {
-          width: 36px;
-          height: 36px;
-          border: none;
-          border-radius: 6px;
-          background: #f3f4f6;
-          cursor: pointer;
-          font-size: 16px;
-          transition: all 0.2s;
-        }
-
-        .file-actions button:hover {
-          background: #e5e7eb;
-        }
-
-        .empty-folder {
-          padding: 60px 20px;
-          text-align: center;
-        }
-
-        .empty-icon {
-          font-size: 64px;
-          opacity: 0.3;
-          margin-bottom: 16px;
-        }
-
-        .empty-folder p {
-          color: #9ca3af;
-          margin: 0;
-        }
-      `}</style>
     </div>
   );
 };

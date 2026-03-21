@@ -90,14 +90,14 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
 
   // State
   const [files, setFiles] = useState<DealFile[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>(allowedCategories);
   const [analytics, setAnalytics] = useState<StorageAnalytics | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // View state
-  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'folder'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'folder'>('folder');
   const [currentFolder, setCurrentFolder] = useState('/');
 
   // Filter state
@@ -139,12 +139,15 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
         setAnalytics(statsResponse.data.analytics);
         setSuggestions(statsResponse.data.missing_file_suggestions || []);
 
-        // Filter categories based on deal type variant
-        let availableCategories = statsResponse.data.available_categories || [];
+        // Seed categories from M18 config; supplement with any server-reported categories
+        let availableCategories: string[] = statsResponse.data.available_categories || [];
         if (allowedCategories.length > 0) {
-          availableCategories = availableCategories.filter((cat: string) =>
+          const filtered = availableCategories.filter((cat: string) =>
             allowedCategories.includes(cat)
           );
+          // Always include all predefined M18 categories, not just ones already uploaded
+          const merged = Array.from(new Set([...allowedCategories, ...filtered]));
+          availableCategories = merged;
         }
         setCategories(availableCategories);
       }
@@ -319,6 +322,17 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           <p>⚠️ {error}</p>
           <button onClick={loadData}>Retry</button>
         </div>
+      ) : viewMode === 'folder' ? (
+        <FolderView
+          files={files}
+          currentFolder={currentFolder}
+          onFolderChange={handleFolderChange}
+          onDelete={handleDelete}
+          onDownload={handleDownload}
+          onUpdate={handleUpdate}
+          isPipeline={isPipeline}
+          predefinedFolders={allowedCategories}
+        />
       ) : files.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">📄</div>
@@ -347,18 +361,6 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           {viewMode === 'list' && (
             <ListView
               files={files}
-              onDelete={handleDelete}
-              onDownload={handleDownload}
-              onUpdate={handleUpdate}
-              isPipeline={isPipeline}
-            />
-          )}
-
-          {viewMode === 'folder' && (
-            <FolderView
-              files={files}
-              currentFolder={currentFolder}
-              onFolderChange={handleFolderChange}
               onDelete={handleDelete}
               onDownload={handleDownload}
               onUpdate={handleUpdate}
