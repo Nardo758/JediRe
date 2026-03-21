@@ -115,7 +115,7 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
 
   useEffect(() => {
     loadData();
-  }, [deal.id, selectedCategory, selectedStatus, searchQuery, currentFolder, viewMode]);
+  }, [deal.id, selectedCategory, selectedStatus, searchQuery, currentFolder]);
 
   const loadData = async () => {
     try {

@@ -62,6 +62,7 @@ export const FolderView: React.FC<FolderViewProps> = ({
   onFolderChange,
   onDelete,
   onDownload,
+  // onUpdate and isPipeline reserved for future folder-level actions
   predefinedFolders = [],
 }) => {
   const isRoot = currentFolder === '/';
