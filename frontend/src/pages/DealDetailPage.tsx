@@ -60,9 +60,7 @@ import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysi
 
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
-import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
 import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
-import FinancialDashboard from '../components/deal/sections/FinancialDashboard';
 
 import { StrategyArbitragePage } from './development/StrategyArbitragePage';
 import { RiskDDPage } from './development/RiskDDPage';
@@ -78,7 +76,7 @@ import { TeamManagementSection } from '../components/deal/sections/TeamManagemen
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
 
-import TaxModule from '../components/deal/sections/TaxModule';
+import { FinancialEnginePage } from './development/FinancialEnginePage';
 import CompsModule from '../components/deal/sections/CompsModule';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
@@ -221,23 +219,10 @@ const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
 const ProFormaScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="PRO FORMA"
-    moduleSubtitle="M09 · 3-LAYER MODEL + TAX + DASHBOARD"
-    moduleBorderColor={BT.met.financial}
-    moduleMetrics={[
-      { l: 'F_IRR', c: BT.met.financial },
-      { l: 'F_EM', c: BT.text.amber },
-      { l: 'F_YOC', c: BT.met.occupancy },
-      { l: 'F_CAP', c: BT.text.cyan },
-    ]}
-    accentColor={BT.met.financial}
-    tabs={[
-      { id: 'proforma',            label: 'Pro Forma',           component: ProFormaTab },
-      { id: 'tax',                 label: 'Tax Intelligence',    component: TaxModule },
-      { id: 'financial-dashboard', label: 'Financial Dashboard', component: FinancialDashboard },
-    ]}
+  <FinancialEnginePage
+    dealId={props.dealId}
+    deal={props.deal as Record<string, unknown> | undefined}
+    dealType={props.dealType}
   />
 );
 const DebtCapitalScreen = (props: ScreenProps) => (
