@@ -66,6 +66,103 @@ export const BT_CSS = `
   @keyframes bt-blink { 0%,49%{opacity:1}50%,100%{opacity:0} }
 `;
 
+// ─── Bloomberg dark-theme CSS overrides for light-mode Tailwind tab components ─
+export const BT_TAB_CSS = `
+.bt-tab-wrap{color-scheme:dark}
+.bt-tab-wrap .bg-white{background-color:#0F1319!important}
+.bt-tab-wrap .bg-gray-50{background-color:#131821!important}
+.bt-tab-wrap .bg-gray-100{background-color:#1A1F2E!important}
+.bt-tab-wrap .bg-blue-50{background-color:#00BCD408!important}
+.bt-tab-wrap .bg-blue-100{background-color:#00BCD418!important}
+.bt-tab-wrap .bg-green-50{background-color:#00D26A08!important}
+.bt-tab-wrap .bg-green-100{background-color:#00D26A18!important}
+.bt-tab-wrap .bg-yellow-50{background-color:#F5A62308!important}
+.bt-tab-wrap .bg-yellow-100{background-color:#F5A62318!important}
+.bt-tab-wrap .bg-red-50{background-color:#FF475708!important}
+.bt-tab-wrap .bg-red-100{background-color:#FF475718!important}
+.bt-tab-wrap .bg-amber-50{background-color:#F5A62308!important}
+.bt-tab-wrap .bg-amber-100{background-color:#F5A62318!important}
+.bt-tab-wrap .bg-orange-50{background-color:#FF8C4208!important}
+.bt-tab-wrap .bg-orange-100{background-color:#FF8C4218!important}
+.bt-tab-wrap .bg-purple-50{background-color:#A78BFA08!important}
+.bt-tab-wrap .bg-purple-100{background-color:#A78BFA18!important}
+.bt-tab-wrap .bg-violet-50{background-color:#A78BFA06!important}
+.bt-tab-wrap .bg-indigo-50{background-color:#818CF808!important}
+.bt-tab-wrap .from-violet-50{--tw-gradient-from:#A78BFA06!important}
+.bt-tab-wrap .to-indigo-50{--tw-gradient-to:#818CF808!important}
+.bt-tab-wrap .bg-gradient-to-r{background-image:none!important;background-color:#0F1319!important}
+.bt-tab-wrap .border,.bt-tab-wrap .border-t,.bt-tab-wrap .border-b,.bt-tab-wrap .border-l,.bt-tab-wrap .border-r{border-color:#1E2538!important}
+.bt-tab-wrap .border-gray-100,.bt-tab-wrap .border-gray-200,.bt-tab-wrap .border-gray-300{border-color:#1E2538!important}
+.bt-tab-wrap .border-blue-200,.bt-tab-wrap .border-blue-300{border-color:#00BCD433!important}
+.bt-tab-wrap .border-green-200,.bt-tab-wrap .border-green-300{border-color:#00D26A44!important}
+.bt-tab-wrap .border-yellow-200,.bt-tab-wrap .border-yellow-300{border-color:#F5A62344!important}
+.bt-tab-wrap .border-amber-200,.bt-tab-wrap .border-amber-300{border-color:#F5A62344!important}
+.bt-tab-wrap .border-red-200,.bt-tab-wrap .border-red-300{border-color:#FF475744!important}
+.bt-tab-wrap .border-orange-200{border-color:#FF8C4244!important}
+.bt-tab-wrap .border-violet-200{border-color:#A78BFA44!important}
+.bt-tab-wrap .border-purple-200{border-color:#A78BFA44!important}
+.bt-tab-wrap .text-gray-900{color:#E8ECF1!important}
+.bt-tab-wrap .text-gray-800{color:#C8D0DC!important}
+.bt-tab-wrap .text-gray-700{color:#8B95A5!important}
+.bt-tab-wrap .text-gray-600{color:#8B95A5!important}
+.bt-tab-wrap .text-gray-500{color:#4A5568!important}
+.bt-tab-wrap .text-gray-400{color:#4A5568!important}
+.bt-tab-wrap .text-blue-500,.bt-tab-wrap .text-blue-600,.bt-tab-wrap .text-blue-700{color:#00BCD4!important}
+.bt-tab-wrap .text-green-500,.bt-tab-wrap .text-green-600,.bt-tab-wrap .text-green-700,.bt-tab-wrap .text-green-800,.bt-tab-wrap .text-green-900{color:#00D26A!important}
+.bt-tab-wrap .text-yellow-500,.bt-tab-wrap .text-yellow-600,.bt-tab-wrap .text-yellow-700,.bt-tab-wrap .text-yellow-800{color:#F5A623!important}
+.bt-tab-wrap .text-orange-500,.bt-tab-wrap .text-orange-600,.bt-tab-wrap .text-orange-700,.bt-tab-wrap .text-orange-800{color:#FF8C42!important}
+.bt-tab-wrap .text-red-500,.bt-tab-wrap .text-red-600,.bt-tab-wrap .text-red-700,.bt-tab-wrap .text-red-800{color:#FF4757!important}
+.bt-tab-wrap .text-amber-500,.bt-tab-wrap .text-amber-600,.bt-tab-wrap .text-amber-700,.bt-tab-wrap .text-amber-800,.bt-tab-wrap .text-amber-900{color:#F5A623!important}
+.bt-tab-wrap .text-purple-600,.bt-tab-wrap .text-purple-700{color:#A78BFA!important}
+.bt-tab-wrap .text-violet-600,.bt-tab-wrap .text-violet-700,.bt-tab-wrap .text-violet-800,.bt-tab-wrap .text-violet-900{color:#A78BFA!important}
+.bt-tab-wrap .text-violet-400{color:#7C6FCD!important}
+.bt-tab-wrap .text-indigo-600{color:#818CF8!important}
+.bt-tab-wrap .bg-blue-600{background-color:#00BCD4!important}
+.bt-tab-wrap .bg-blue-600,.bt-tab-wrap .bg-blue-600 *{color:#0A0E17!important}
+.bt-tab-wrap .bg-blue-700:hover,.bt-tab-wrap .hover\\:bg-blue-700:hover{background-color:#00BCD4CC!important}
+.bt-tab-wrap .bg-violet-200{background-color:#A78BFA22!important}
+.bt-tab-wrap .text-violet-800{color:#A78BFA!important}
+.bt-tab-wrap table{background-color:#0F1319!important;width:100%}
+.bt-tab-wrap thead tr,.bt-tab-wrap .bg-gray-50 thead tr{background-color:#1A1F2E!important}
+.bt-tab-wrap th{color:#4A5568!important;border-bottom-color:#2A3348!important}
+.bt-tab-wrap td{border-bottom-color:#1E2538!important}
+.bt-tab-wrap tr:hover:not(thead tr){background-color:#1E2538!important}
+.bt-tab-wrap .hover\\:bg-gray-50:hover{background-color:#1E2538!important}
+.bt-tab-wrap .hover\\:bg-green-50:hover{background-color:#00D26A08!important}
+.bt-tab-wrap .hover\\:bg-amber-50:hover{background-color:#F5A62308!important}
+.bt-tab-wrap .divide-y>*+*{border-top-color:#1E2538!important}
+.bt-tab-wrap .divide-gray-100>*+*{border-top-color:#1E2538!important}
+.bt-tab-wrap input,.bt-tab-wrap select,.bt-tab-wrap textarea{background-color:#0D1117!important;color:#E8ECF1!important;border-color:#1E2538!important}
+.bt-tab-wrap input::placeholder,.bt-tab-wrap textarea::placeholder{color:#4A5568!important}
+.bt-tab-wrap .rounded-lg{border-radius:0!important}
+.bt-tab-wrap .rounded{border-radius:0!important}
+.bt-tab-wrap .rounded-full{border-radius:9999px!important}
+.bt-tab-wrap h3,.bt-tab-wrap h4,.bt-tab-wrap h2{font-family:'JetBrains Mono','Fira Code','SF Mono',monospace!important}
+.bt-tab-wrap .animate-spin{border-color:#1E2538!important;border-bottom-color:#00BCD4!important}
+.bt-tab-wrap .border-b-2.border-blue-600{border-bottom-color:#00BCD4!important}
+.bt-tab-wrap .focus\\:ring-blue-500:focus{--tw-ring-color:#00BCD4!important}
+.bt-tab-wrap .focus\\:border-blue-500:focus{border-color:#00BCD4!important}
+`;
+
+// ─── BtTabWrapper — applies Bloomberg dark theme to light-mode tab components ──
+export function BtTabWrapper({
+  children, style,
+}: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div className="bt-tab-wrap" style={{
+      flex: 1,
+      overflow: 'auto',
+      background: BT.bg.terminal,
+      padding: '12px 16px',
+      animation: 'bt-fade 0.15s',
+      ...style,
+    }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
+      {children}
+    </div>
+  );
+}
+
 // ─── Spark — SVG polyline sparkline ───────────────────────────────────────────
 export function Spark({ data, color = BT.text.green, w = 56, h = 16 }: {
   data: number[]; color?: string; w?: number; h?: number;

@@ -18,7 +18,7 @@ import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
-import { BT as BT2 } from '../bloomberg-ui';
+import { BT as BT2, BtTabWrapper } from '../bloomberg-ui';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -154,7 +154,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         padding: '6px 10px',
         background: BT2.bg.header,
         borderBottom: `1px solid ${BT2.border.subtle}`,
-        borderTop: `2px solid ${BT2.text.cyan}`,
+        borderTop: `2px solid ${BT2.text.amber}`,
         flexShrink: 0,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -184,8 +184,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
       {statusMessage && !boundaryAndZoningComplete && (
         <div style={{
           padding: '4px 10px',
-          background: `${BT2.text.cyan}08`,
-          borderLeft: `3px solid ${BT2.text.cyan}`,
+          background: `${BT2.text.amber}08`,
+          borderLeft: `3px solid ${BT2.text.amber}`,
           display: 'flex', alignItems: 'center', gap: 6,
           flexShrink: 0,
         }}>
@@ -222,8 +222,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
                 padding: '0 12px',
                 background: 'transparent',
                 border: 'none',
-                borderBottom: isActive ? `2px solid ${BT2.text.cyan}` : '2px solid transparent',
-                color: isActive ? BT2.text.cyan : unlocked ? BT2.text.secondary : BT2.text.muted,
+                borderBottom: isActive ? `2px solid ${BT2.text.amber}` : '2px solid transparent',
+                color: isActive ? BT2.text.amber : unlocked ? BT2.text.secondary : BT2.text.muted,
                 cursor: unlocked ? 'pointer' : 'not-allowed',
                 whiteSpace: 'nowrap' as const,
                 letterSpacing: 0.5,
@@ -242,9 +242,9 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         })}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', background: BT2.bg.terminal, padding: '12px 16px' }}>
+      <BtTabWrapper>
         {renderActiveTab()}
-      </div>
+      </BtTabWrapper>
     </div>
   );
 }
