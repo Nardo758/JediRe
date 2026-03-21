@@ -457,7 +457,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'competition', moduleId: 'M15', fkey: 'F5',  code: 'M15', label: 'Comps',             icon: <Target size={14} />,          component: CompetitionScreen },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F6',  code: 'M08', label: 'Strategy',          icon: <Target size={14} />,          component: StrategyScreen },
     { id: 'traffic',     moduleId: 'M07', fkey: 'F7',  code: 'M07', label: 'Traffic Intel',     icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'proforma',    moduleId: 'M09', fkey: 'F8',  code: 'M09', label: 'Pro Forma',         icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine',   icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', label: 'Debt & Capital',    icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', label: 'Risk & DD',         icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', label: 'Execution',         icon: <HardHat size={14} />,         component: ExecutionScreen },

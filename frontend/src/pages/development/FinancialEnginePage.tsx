@@ -230,10 +230,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         subtitle="M08 · 3-LAYER MODEL + DASHBOARD + TAX + CAPITAL + EXIT"
         borderColor={BT.met.financial}
         metrics={[
-          { l: 'IRR',      c: BT.met.financial },
-          { l: 'EM',       c: BT.text.amber    },
-          { l: 'YOC',      c: BT.met.occupancy  },
-          { l: 'CAP RATE', c: BT.text.cyan      },
+          { l: 'F_IRR',  c: BT.met.financial },
+          { l: 'F_EM',   c: BT.text.amber    },
+          { l: 'F_YOC',  c: BT.met.occupancy  },
+          { l: 'F_CAP',  c: BT.text.cyan      },
         ]}
         right={
           kpiLoading
