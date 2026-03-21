@@ -642,6 +642,9 @@ export default function TerminalPage() {
     return()=>clearInterval(t);
   },[liveDeals]);
 
+  // Reset map pin selection when switching tabs
+  useEffect(()=>{ setMapSelDeal(null); },[fkey]);
+
   useEffect(() => {
     setDealsLoading(true);
     apiClient.get("/api/v1/deals", { params:{ limit:100 } })
@@ -946,6 +949,7 @@ export default function TerminalPage() {
         {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
         {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
         <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>{sorted.length} deals</span>
+        <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
@@ -1004,13 +1008,56 @@ export default function TerminalPage() {
     {x:"22%",y:"28%"},{x:"68%",y:"18%"},{x:"55%",y:"58%"},{x:"44%",y:"42%"},
     {x:"26%",y:"48%"},{x:"36%",y:"36%"},{x:"60%",y:"65%"},{x:"48%",y:"38%"},
   ];
+
+  // Tab-aware map: F2 shows pipeline deals, F3 shows owned assets
+  const mapPins: {id:string;name:string;metric:number;metricLabel:string;units:number;irr:string;strat:string;stage:string;addr:string}[] =
+    fkey==="F3"
+      ? portfolioAssets.slice(0,8).map(a=>({
+          id: String(a.id),
+          name: a.property_name||"—",
+          metric: Number(a.actual_occupancy??0),
+          metricLabel: `${Number(a.actual_occupancy??0).toFixed(1)}% OCC`,
+          units: Number(a.units??0),
+          irr: a.irr!=null?`${Number(a.irr).toFixed(1)}% IRR`:"—",
+          strat: (a.asset_type||"MF").toUpperCase().slice(0,6),
+          stage: "OWNED",
+          addr: a.address||a.submarket||"",
+        }))
+      : sorted.slice(0,8).map(d=>({
+          id: d.id,
+          name: d.name,
+          metric: d.score,
+          metricLabel: String(d.score>0?d.score:"—"),
+          units: d.units,
+          irr: d.irr,
+          strat: d.strat,
+          stage: d.stage,
+          addr: d.addr,
+        }));
+
+  const mapPinColor = (metric: number) =>
+    fkey==="F3"
+      ? metric>=95?T.text.green:metric>=85?T.text.amber:T.text.red
+      : metric>=80?T.text.green:metric>=65?T.text.amber:metric>0?T.text.red:T.text.muted;
+
+  const mapTitle   = fkey==="F3" ? "PORTFOLIO MAP" : "PIPELINE MAP";
+  const mapSubtitle = fkey==="F3"
+    ? `${portfolioAssets.length} owned assets`
+    : `${sorted.length} deals plotted`;
+  const mapLegend = fkey==="F3"
+    ? [{c:T.text.green,l:"OCC ≥95%"},{c:T.text.amber,l:"OCC 85-94%"},{c:T.text.red,l:"OCC <85%"}]
+    : [{c:T.text.green,l:"JEDI 80+"},{c:T.text.amber,l:"JEDI 65-79"},{c:T.text.red,l:"JEDI <65"}];
+
   const MapSidebar = () => (
-    <div style={{width:340,borderLeft:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel}}>
-      <PanelHeader T={T} title="MAP" subtitle={`${liveDeals.length} deals plotted`}
+    <div style={{width:320,borderLeft:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel}}>
+      {/* Header */}
+      <PanelHeader T={T} title={mapTitle} subtitle={mapSubtitle}
         right={<div style={{display:"flex",gap:4}}>
           <button onClick={()=>setMapCreating(c=>!c)} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"1px 6px",cursor:"pointer"}}>+ LAYER</button>
           <button onClick={()=>{setMapOpen(false);setMapCreating(false);setMapSelDeal(null);}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0px 5px",cursor:"pointer"}}>✕</button>
         </div>}/>
+
+      {/* ── Layer creation form ── */}
       {mapCreating&&(
         <div style={{padding:"8px 10px",background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.medium}`,animation:"fadeIn 0.12s",flexShrink:0}}>
           <div style={{fontSize:8,fontWeight:700,color:T.text.cyan,letterSpacing:0.5,marginBottom:6}}>NEW MAP LAYER</div>
@@ -1026,8 +1073,10 @@ export default function TerminalPage() {
           </div>
         </div>
       )}
+
+      {/* ── Layer list ── */}
       {mapLayers.length>0&&(
-        <div style={{flexShrink:0,maxHeight:120,overflow:"auto",borderBottom:`1px solid ${T.border.medium}`}}>
+        <div style={{flexShrink:0,maxHeight:110,overflow:"auto",borderBottom:`1px solid ${T.border.medium}`}}>
           {mapLayers.map(layer=>{const mt=MAP_TYPES.find(m=>m.id===layer.type)||MAP_TYPES[0];return(
             <div key={layer.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.panel,opacity:layer.visible?1:0.45}}>
               <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:7,height:7,borderRadius:"50%",background:mt.color,flexShrink:0}}/>
@@ -1038,50 +1087,61 @@ export default function TerminalPage() {
           );})}
         </div>
       )}
-      {/* ── LIVE DEAL MAP ── */}
+      {mapLayers.length===0&&!mapCreating&&(
+        <div style={{flexShrink:0,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.panelAlt}}>
+          <span style={{fontSize:7,color:T.text.muted,fontFamily:T.font.mono}}>No layers · click <span style={{color:T.text.cyan}}>+ LAYER</span> to create war maps &amp; heat maps</span>
+        </div>
+      )}
+
+      {/* ── Live map viewport with tab-aware pins ── */}
       <div style={{flex:1,background:"#080C14",position:"relative",minHeight:0,overflow:"hidden"}} onClick={()=>setMapSelDeal(null)}>
-        {/* Grid lines */}
         <svg width="100%" height="100%" style={{position:"absolute",inset:0,opacity:0.05,pointerEvents:"none"}}>
           {Array.from({length:20}).map((_,i)=><line key={i} x1="0" y1={i*25} x2="100%" y2={i*25} stroke="#8B95A5" strokeWidth="0.5"/>)}
           {Array.from({length:16}).map((_,i)=><line key={`v${i}`} x1={i*22} y1="0" x2={i*22} y2="100%" stroke="#8B95A5" strokeWidth="0.5"/>)}
         </svg>
-        {/* Watermark */}
-        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:8,color:"#8B95A5",opacity:0.1,textAlign:"center",pointerEvents:"none",letterSpacing:1}}>MAPBOX GL JS<br/>ATLANTA MSA</div>
-        {/* Deal pins */}
-        {liveDeals.slice(0,8).map((d,idx)=>{
+        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:8,color:"#8B95A5",opacity:0.08,textAlign:"center",pointerEvents:"none",letterSpacing:1}}>MAPBOX GL JS<br/>ATLANTA MSA</div>
+
+        {/* Pins — derived from current tab data */}
+        {mapPins.map((pin,idx)=>{
           const pos = PIN_POSITIONS[idx];
-          const c = d.score>=80?T.text.green:d.score>=65?T.text.amber:d.score>0?T.text.red:T.text.muted;
-          const sz = d.units>200?16:d.units>100?12:d.units>0?10:8;
-          const sel = mapSelDeal===d.id;
+          const c   = mapPinColor(pin.metric);
+          const sz  = pin.units>200?16:pin.units>100?12:pin.units>0?10:8;
+          const sel = mapSelDeal===pin.id;
+          const layerColor = mapLayers.find(l=>l.visible) ? MAP_TYPES.find(mt=>mt.id===mapLayers.find(l=>l.visible)?.type)?.color||c : c;
           return (
-            <div key={d.id} onClick={e=>{e.stopPropagation();setMapSelDeal(sel?null:d.id);}} style={{position:"absolute",left:pos.x,top:pos.y,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:sel?10:1}}>
-              <div style={{width:sz,height:sz,borderRadius:"50%",background:c,border:sel?`2px solid #fff`:`1px solid ${c}`,opacity:sel?1:0.85,boxShadow:sel?`0 0 14px ${c}88`:"none",transition:"all 0.12s"}}/>
-              {!sel&&<div style={{position:"absolute",top:"-14px",left:"50%",transform:"translateX(-50%)",fontSize:7,fontFamily:"monospace",color:c,fontWeight:700,whiteSpace:"nowrap",textShadow:"0 0 6px #000"}}>{d.score>0?d.score:""}</div>}
+            <div key={pin.id} onClick={e=>{e.stopPropagation();setMapSelDeal(sel?null:pin.id);}} style={{position:"absolute",left:pos.x,top:pos.y,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:sel?10:1}}>
+              <div style={{width:sz,height:sz,borderRadius:"50%",background:layerColor,border:sel?`2px solid #fff`:`1px solid ${layerColor}`,opacity:sel?1:0.85,boxShadow:sel?`0 0 14px ${layerColor}88`:"none",transition:"all 0.12s"}}/>
+              {!sel&&<div style={{position:"absolute",top:"-14px",left:"50%",transform:"translateX(-50%)",fontSize:7,fontFamily:"monospace",color:c,fontWeight:700,whiteSpace:"nowrap",textShadow:"0 0 6px #000"}}>{pin.metricLabel}</div>}
               {sel&&(
-                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:T.bg.header,border:`1px solid ${T.border.bright}`,padding:"6px 8px",whiteSpace:"nowrap",zIndex:20,animation:"fadeIn 0.12s",minWidth:140}}>
-                  <div style={{fontSize:9,fontWeight:700,color:T.text.white,fontFamily:"monospace",marginBottom:3}}>{d.name}</div>
+                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:T.bg.header,border:`1px solid ${T.border.bright}`,padding:"6px 8px",whiteSpace:"nowrap",zIndex:20,animation:"fadeIn 0.12s",minWidth:150}}>
+                  <div style={{fontSize:9,fontWeight:700,color:T.text.white,fontFamily:"monospace",marginBottom:3}}>{pin.name}</div>
                   <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
-                    <span style={{fontSize:10,fontWeight:800,color:c,fontFamily:"monospace"}}>{d.score>0?d.score:"—"}</span>
-                    <span style={{fontSize:8,color:T.text.amber,fontFamily:"monospace"}}>{d.irr}</span>
-                    <span style={{fontSize:7,fontWeight:700,padding:"1px 4px",background:T.text.purple+"22",color:T.text.purple,border:`1px solid ${T.text.purple}44`}}>{d.strat}</span>
+                    <span style={{fontSize:10,fontWeight:800,color:c,fontFamily:"monospace"}}>{pin.metricLabel}</span>
+                    <span style={{fontSize:8,color:T.text.amber,fontFamily:"monospace"}}>{pin.irr}</span>
+                    <span style={{fontSize:7,fontWeight:700,padding:"1px 4px",background:T.text.purple+"22",color:T.text.purple,border:`1px solid ${T.text.purple}44`}}>{pin.strat}</span>
                   </div>
-                  <div style={{fontSize:7,color:T.text.muted,marginBottom:4}}>{d.stage} · {d.addr}</div>
-                  <button onClick={()=>navigate(`/deals/${d.id}/detail`)} style={{fontFamily:"monospace",fontSize:7,fontWeight:700,color:T.text.amber,background:"transparent",border:"none",cursor:"pointer",padding:0,letterSpacing:0.3}}>OPEN CAPSULE →</button>
+                  <div style={{fontSize:7,color:T.text.muted,marginBottom:4}}>{pin.stage} · {pin.addr}</div>
+                  <button onClick={()=>navigate(fkey==="F3"?`/deals/${pin.id}/detail`:`/deals/${pin.id}/detail`)} style={{fontFamily:"monospace",fontSize:7,fontWeight:700,color:T.text.amber,background:"transparent",border:"none",cursor:"pointer",padding:0,letterSpacing:0.3}}>OPEN CAPSULE →</button>
                 </div>
               )}
             </div>
           );
         })}
+        {mapPins.length===0&&(
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-30%)",textAlign:"center"}}>
+            <div style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>No {fkey==="F3"?"assets":"deals"} to plot</div>
+          </div>
+        )}
+
         {/* Legend */}
         <div style={{position:"absolute",bottom:8,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
-          {[{c:T.text.green,l:"JEDI 80+"},{c:T.text.amber,l:"JEDI 65-79"},{c:T.text.red,l:"JEDI <65"}].map(({c,l})=>(
+          {mapLegend.map(({c,l})=>(
             <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:c,opacity:0.85}}/>
               <span style={{fontSize:7,color:T.text.muted,fontFamily:"monospace"}}>{l}</span>
             </div>
           ))}
         </div>
-        {/* Full map link */}
         <button onClick={()=>navigate("/map")} style={{position:"absolute",bottom:8,right:8,fontFamily:"monospace",fontSize:7,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"3px 8px",cursor:"pointer",zIndex:5}}>FULL MAP →</button>
       </div>
     </div>
@@ -1665,6 +1725,7 @@ export default function TerminalPage() {
             </button>
           ))}
           <div style={{flex:1}}/>
+          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
           <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
         </div>
 
@@ -2613,7 +2674,6 @@ export default function TerminalPage() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 9px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>+ DEAL</button>
-          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:"transparent",color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${T.text.cyan}`,padding:"3px 8px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>MAP</button>
           <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,flex:"0 1 130px",minWidth:60}}>
             <span style={{color:T.text.amber,fontSize:10,fontWeight:700}}>{">"}</span>
             <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:10,color:T.text.primary,flex:1,width:"100%",minWidth:0}}/>
@@ -2625,7 +2685,7 @@ export default function TerminalPage() {
       {/* ═══ MAIN CONTENT ═══ */}
       <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
         {renderContent()}
-        {mapOpen&&<MapSidebar/>}
+        {mapOpen&&(fkey==="F2"||fkey==="F3")&&<MapSidebar/>}
       </div>
 
       {/* ═══ BOTTOM PANEL — collapsible ═══ */}
