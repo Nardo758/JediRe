@@ -1,4 +1,5 @@
-import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
+import { T as BT } from '../../components/deal/bloomberg-tokens';
+import { BT as BT2, PanelHeader, SubTabBar, KpiTile, BtTabWrapper, BT_CSS } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -116,32 +117,74 @@ export const MarketIntelligencePage: React.FC = () => {
   if (error) return <ErrorState message={error} onRetry={() => fetchData()} />;
   if (!data) return <ErrorState message="No data available" onRetry={() => fetchData()} />;
 
+  const kpiEconomy = [
+    {
+      label: 'MEDIAN RENT',
+      value: data.demographics?.census?.medianRent
+        ? `$${data.demographics.census.medianRent.toLocaleString()}`
+        : (data.economy?.metrics?.avgRent?.value ?? '—'),
+      color: BT2.text.cyan,
+    },
+    {
+      label: 'JOBS ADDED (12M)',
+      value: data.economy?.metrics?.jobsAdded?.value ?? '—',
+      color: BT2.met.economic,
+    },
+    {
+      label: 'WAGE GROWTH',
+      value: data.economy?.metrics?.wageGrowth?.value ?? '—',
+      color: BT2.met.economic,
+    },
+    {
+      label: 'NET MIGRATION',
+      value: data.economy?.metrics?.netMigration?.value ?? '—',
+      color: BT2.text.purple,
+    },
+    {
+      label: 'AFFORDABILITY',
+      value: data.economy?.metrics?.affordabilityRatio?.value ?? '—',
+      color: data.economy?.metrics?.affordabilityRatio?.status === 'green'
+        ? BT2.met.occupancy
+        : data.economy?.metrics?.affordabilityRatio?.status === 'red'
+          ? BT2.text.red
+          : BT2.text.amber,
+    },
+  ];
+
   return (
-    <div className="space-y-0">
-      {/* Bloomberg v0.34 PanelHeader */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 10px', background: '#1A1F2E',
-        borderBottom: '1px solid #1E2538', borderTop: '2px solid #60A5FA',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, ...bMono }}>MARKET INTELLIGENCE</span>
-          <span style={{ fontSize: 8, color: '#8B95A5', ...bMono }}>M05 | Economy · Demographics · News · Supply Context</span>
-          <span style={{ fontSize: 6, fontWeight: 700, color: '#60A5FA', background: '#60A5FA15', border: '1px solid #60A5FA30', padding: '0 3px', borderRadius: 2, ...bMono }}>MKT</span>
-          <span style={{ fontSize: 6, fontWeight: 700, color: '#A78BFA', background: '#A78BFA15', border: '1px solid #A78BFA30', padding: '0 3px', borderRadius: 2, ...bMono }}>DEMAND</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {cached && (
-            <span style={{ fontSize: 7, color: '#8B95A5', background: '#0F1319', border: '1px solid #1e2a3d', padding: '1px 5px', ...bMono }}>CACHED</span>
-          )}
-          <button
-            onClick={() => fetchData(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: '#60A5FA', background: 'transparent', border: '1px solid #60A5FA30', cursor: 'pointer', ...bMono }}
-          >
-            <RefreshCw size={10} />
-            REFRESH
-          </button>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', background: BT2.bg.terminal }}>
+      <style>{BT_CSS}</style>
+      <PanelHeader
+        title="MARKET INTELLIGENCE"
+        subtitle="M03 · DEMAND + RENT + SUPPLY"
+        borderColor={BT2.text.cyan}
+        metrics={[
+          { l: 'F_RENT',   c: BT2.text.cyan },
+          { l: 'O_ABSORB', c: BT2.met.occupancy },
+          { l: 'E_JOBS',   c: BT2.met.economic },
+          { l: 'D_SEARCH', c: BT2.met.digTraffic },
+        ]}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {cached && (
+              <span style={{ fontSize: 7, color: BT2.text.secondary, background: BT2.bg.panel, border: `1px solid ${BT2.border}`, padding: '1px 5px', fontFamily: 'var(--bt-mono)' }}>CACHED</span>
+            )}
+            <button
+              onClick={() => fetchData(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}
+            >
+              <RefreshCw size={10} />
+              REFRESH
+            </button>
+          </div>
+        }
+      />
+
+      {/* KpiTile strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: BT2.border, borderBottom: `1px solid ${BT2.border}`, flexShrink: 0 }}>
+        {kpiEconomy.map(k => (
+          <KpiTile key={k.label} label={k.label} value={k.value} color={k.color} />
+        ))}
       </div>
 
       {hasZoningContext ? (
@@ -197,35 +240,19 @@ export const MarketIntelligencePage: React.FC = () => {
         </div>
       )}
 
-      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderTop: 0, borderRadius: "0 0 4px 4px" }}>
-        <div className="flex border-b border-[#1e2a3d]">
-          {TABS.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 ${
-                  isActive
-                    ? 'border-violet-600 text-violet-300 bg-violet-900/10'
-                    : 'border-transparent text-[#6B7585] hover:text-[#9EA8B4]'
-                }`}
-              >
-                <Icon size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      <SubTabBar
+        tabs={TABS.map(t => t.label.toUpperCase())}
+        active={TABS.findIndex(t => t.id === activeTab)}
+        setActive={(i) => setActiveTab(TABS[i].id)}
+        color={BT2.text.cyan}
+      />
 
-        <div className="p-5">
-          {activeTab === 'economy' && <EconomyTab data={data.economy} />}
-          {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
-          {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
-          {activeTab === 'news' && <NewsTab events={data.news} />}
-        </div>
-      </div>
+      <BtTabWrapper>
+        {activeTab === 'economy' && <EconomyTab data={data.economy} />}
+        {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
+        {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
+        {activeTab === 'news' && <NewsTab events={data.news} />}
+      </BtTabWrapper>
     </div>
   );
 };
