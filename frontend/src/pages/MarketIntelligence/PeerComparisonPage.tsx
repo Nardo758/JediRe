@@ -116,7 +116,12 @@ function ThresholdCell({ value, thresholds, invert }: { value: string; threshold
 
 type SortKey = string;
 
-function MSAGrid({ onDrill }: { onDrill: (name: string) => void }) {
+function MSAGrid({ onDrill, watched, toggleWatch, showWatchedOnly }: {
+  onDrill: (name: string) => void;
+  watched: Set<string>;
+  toggleWatch: (name: string) => void;
+  showWatchedOnly: boolean;
+}) {
   const [sel, setSel] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("jedi");
   const [sortAsc, setSortAsc] = useState(false);
@@ -126,12 +131,14 @@ function MSAGrid({ onDrill }: { onDrill: (name: string) => void }) {
     else { setSortKey(key); setSortAsc(false); }
   };
 
-  const sorted = [...MSA_DATA].sort((a, b) => {
-    const av = (a as any)[sortKey], bv = (b as any)[sortKey];
-    const an = typeof av === "string" ? parseFloat(av.replace(/[^0-9.-]/g, "")) : av;
-    const bn = typeof bv === "string" ? parseFloat(bv.replace(/[^0-9.-]/g, "")) : bv;
-    return sortAsc ? an - bn : bn - an;
-  });
+  const sorted = [...MSA_DATA]
+    .filter(d => !showWatchedOnly || watched.has(d.name))
+    .sort((a, b) => {
+      const av = (a as any)[sortKey], bv = (b as any)[sortKey];
+      const an = typeof av === "string" ? parseFloat(av.replace(/[^0-9.-]/g, "")) : av;
+      const bn = typeof bv === "string" ? parseFloat(bv.replace(/[^0-9.-]/g, "")) : bv;
+      return sortAsc ? an - bn : bn - an;
+    });
 
   const median = { jedi: 81, rent: "$1,879", rentD: "+3.4%", vac: "6.4%", absorb: "1,800", pipeline: "14.2%", constraint: 60, jobs: 5.2, pop: "+2.0%", cap: "5.3%" };
   const hdr = (label: string, key: SortKey, w: number) => (
@@ -141,6 +148,7 @@ function MSAGrid({ onDrill }: { onDrill: (name: string) => void }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
       <div style={{ display: "flex", background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
+        <HeaderCell width={28}>★</HeaderCell>
         <HeaderCell width={28}>#</HeaderCell>
         <HeaderCell width={144}>MSA</HeaderCell>
         {hdr("PROPS", "props", 48)}
@@ -163,6 +171,7 @@ function MSAGrid({ onDrill }: { onDrill: (name: string) => void }) {
 
       {/* Median row */}
       <div style={{ display: "flex", background: T.amber + "08", borderBottom: `1px solid ${T.amber}33`, flexShrink: 0 }}>
+        <DataCell width={28} />
         <DataCell width={28}><span style={{ fontSize: 8, color: T.amber, ...mono }}>M</span></DataCell>
         <DataCell width={144}><span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>Median</span></DataCell>
         <DataCell width={48}><span style={{ fontSize: 9, color: T.amber, ...mono }}>—</span></DataCell>
@@ -193,6 +202,13 @@ function MSAGrid({ onDrill }: { onDrill: (name: string) => void }) {
             onMouseEnter={e => { if (sel !== i) (e.currentTarget as HTMLElement).style.background = T.hover; }}
             onMouseLeave={e => { if (sel !== i) (e.currentTarget as HTMLElement).style.background = i % 2 === 0 ? T.panel : T.panelAlt; }}
           >
+            <DataCell width={28}>
+              <button
+                onClick={e => { e.stopPropagation(); toggleWatch(d.name); }}
+                style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: watched.has(d.name) ? T.amber : T.muted, lineHeight: 1 }}
+                title={watched.has(d.name) ? "Remove from watchlist" : "Add to watchlist"}
+              >{watched.has(d.name) ? "★" : "☆"}</button>
+            </DataCell>
             <DataCell width={28}><span style={{ fontSize: 8, color: T.muted, ...mono }}>{i + 1}</span></DataCell>
             <DataCell width={144}><span style={{ fontSize: 10, fontWeight: 600, color: T.primary, ...sans }}>{d.name}</span></DataCell>
             <DataCell width={48}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{d.props.toLocaleString()}</span></DataCell>
@@ -218,7 +234,10 @@ function MSAGrid({ onDrill }: { onDrill: (name: string) => void }) {
   );
 }
 
-function SubmarketGrid({ market, onDrill }: { market: string; onDrill: (name: string) => void }) {
+function SubmarketGrid({ market, onDrill, watched, toggleWatch, showWatchedOnly }: {
+  market: string; onDrill: (name: string) => void;
+  watched: Set<string>; toggleWatch: (name: string) => void; showWatchedOnly: boolean;
+}) {
   const [sel, setSel] = useState<number | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("jedi");
   const [sortAsc, setSortAsc] = useState(false);
@@ -228,12 +247,14 @@ function SubmarketGrid({ market, onDrill }: { market: string; onDrill: (name: st
     else { setSortKey(key); setSortAsc(false); }
   };
 
-  const sorted = [...SUB_DATA].sort((a, b) => {
-    const av = (a as any)[sortKey], bv = (b as any)[sortKey];
-    const an = typeof av === "string" ? parseFloat(av.replace(/[^0-9.-]/g, "")) : av;
-    const bn = typeof bv === "string" ? parseFloat(bv.replace(/[^0-9.-]/g, "")) : bv;
-    return sortAsc ? an - bn : bn - an;
-  });
+  const sorted = [...SUB_DATA]
+    .filter(d => !showWatchedOnly || watched.has(d.name))
+    .sort((a, b) => {
+      const av = (a as any)[sortKey], bv = (b as any)[sortKey];
+      const an = typeof av === "string" ? parseFloat(av.replace(/[^0-9.-]/g, "")) : av;
+      const bn = typeof bv === "string" ? parseFloat(bv.replace(/[^0-9.-]/g, "")) : bv;
+      return sortAsc ? an - bn : bn - an;
+    });
 
   const hdr = (label: string, key: SortKey, w: number) => (
     <HeaderCell width={w} sortable sorted={sortKey === key} onClick={() => toggleSort(key)}>{label}</HeaderCell>
@@ -242,6 +263,7 @@ function SubmarketGrid({ market, onDrill }: { market: string; onDrill: (name: st
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
       <div style={{ display: "flex", background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
+        <HeaderCell width={28}>★</HeaderCell>
         <HeaderCell width={28}>#</HeaderCell>
         <HeaderCell width={128}>SUBMARKET</HeaderCell>
         {hdr("PROPS", "props", 44)}
@@ -273,6 +295,13 @@ function SubmarketGrid({ market, onDrill }: { market: string; onDrill: (name: st
             onMouseEnter={e => { if (sel !== i) (e.currentTarget as HTMLElement).style.background = T.hover; }}
             onMouseLeave={e => { if (sel !== i) (e.currentTarget as HTMLElement).style.background = i % 2 === 0 ? T.panel : T.panelAlt; }}
           >
+            <DataCell width={28}>
+              <button
+                onClick={e => { e.stopPropagation(); toggleWatch(d.name); }}
+                style={{ background: "transparent", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: watched.has(d.name) ? T.amber : T.muted, lineHeight: 1 }}
+                title={watched.has(d.name) ? "Remove from watchlist" : "Add to watchlist"}
+              >{watched.has(d.name) ? "★" : "☆"}</button>
+            </DataCell>
             <DataCell width={28}><span style={{ fontSize: 8, color: T.muted, ...mono }}>{i + 1}</span></DataCell>
             <DataCell width={128}><span style={{ fontSize: 10, fontWeight: 600, color: T.primary, ...sans }}>{d.name}</span></DataCell>
             <DataCell width={44}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{d.props}</span></DataCell>
@@ -404,11 +433,24 @@ type Level = "msa" | "submarket" | "property";
 
 interface PeerComparisonPageProps {
   embedded?: boolean;
+  onViewDetail?: () => void;
 }
 
-export default function PeerComparisonPage({ embedded = false }: PeerComparisonPageProps) {
+const DEFAULT_WATCHED = new Set(["Atlanta, GA", "Raleigh, NC", "Midtown", "Buckhead"]);
+
+export default function PeerComparisonPage({ embedded = false, onViewDetail }: PeerComparisonPageProps) {
   const [level, setLevel] = useState<Level>("msa");
   const [context, setContext] = useState("All Markets");
+  const [watched, setWatched] = useState<Set<string>>(DEFAULT_WATCHED);
+  const [showWatchedOnly, setShowWatchedOnly] = useState(false);
+
+  const toggleWatch = (name: string) => {
+    setWatched(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   const handleDrill = (name: string) => {
     if (level === "msa") { setLevel("submarket"); setContext(name); }
@@ -439,15 +481,20 @@ export default function PeerComparisonPage({ embedded = false }: PeerComparisonP
         </div>
       )}
 
-      {/* CONTEXT / NAV BAR */}
+      {/* CONTEXT / NAV BAR — single combined bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px", height: 28, background: T.header, borderBottom: `1px solid ${T.borderM}`, flexShrink: 0 }}>
+        {/* Back-to-MarketDetail button (only when embedded and onViewDetail provided) */}
+        {onViewDetail && (
+          <button
+            onClick={onViewDetail}
+            style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "1px 8px", fontSize: 9, cursor: "pointer", ...mono, borderRadius: 2 }}
+          >◀ MKT DETAIL</button>
+        )}
         {level !== "msa" && (
           <button
             onClick={handleBack}
             style={{ background: "transparent", border: `1px solid ${T.borderS}`, color: T.secondary, padding: "1px 8px", fontSize: 9, cursor: "pointer", ...mono, borderRadius: 2 }}
-          >
-            ◀ BACK
-          </button>
+          >◀ BACK</button>
         )}
         {/* Breadcrumb */}
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -468,6 +515,13 @@ export default function PeerComparisonPage({ embedded = false }: PeerComparisonP
           </>}
         </div>
         <div style={{ flex: 1 }} />
+        {/* Watchlist filter — only on MSA / submarket levels */}
+        {level !== "property" && (
+          <button
+            onClick={() => setShowWatchedOnly(v => !v)}
+            style={{ background: showWatchedOnly ? T.amber + "22" : "transparent", border: `1px solid ${showWatchedOnly ? T.amber : T.borderS}`, color: showWatchedOnly ? T.amber : T.secondary, padding: "1px 8px", fontSize: 8, cursor: "pointer", ...mono, borderRadius: 2, display: "flex", alignItems: "center", gap: 4 }}
+          >★ WATCHLIST {watched.size > 0 && <span style={{ fontSize: 7, color: T.amber }}>({watched.size})</span>}</button>
+        )}
         {/* Level toggle pills */}
         <div style={{ display: "flex", gap: 4 }}>
           {([["msa", "MSA INDEX"], ["submarket", "SUBMARKET"], ["property", "PROPERTY STOCK"]] as [Level, string][]).map(([lvl, label]) => (
@@ -495,8 +549,8 @@ export default function PeerComparisonPage({ embedded = false }: PeerComparisonP
 
       {/* GRID */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {level === "msa"       && <MSAGrid onDrill={handleDrill} />}
-        {level === "submarket" && <SubmarketGrid market={context} onDrill={handleDrill} />}
+        {level === "msa"       && <MSAGrid onDrill={handleDrill} watched={watched} toggleWatch={toggleWatch} showWatchedOnly={showWatchedOnly} />}
+        {level === "submarket" && <SubmarketGrid market={context} onDrill={handleDrill} watched={watched} toggleWatch={toggleWatch} showWatchedOnly={showWatchedOnly} />}
         {level === "property"  && <PropertyGrid submarket={context} />}
       </div>
 

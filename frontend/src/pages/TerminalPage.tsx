@@ -8,7 +8,6 @@ import { layersService } from "../services/layers.service";
 import CompetitiveIntelligencePage from "./CompetitiveIntelligence/CompetitiveIntelligencePage";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
-import WatchlistPage from "./MarketIntelligence/WatchlistPage";
 import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
 
 // ═══════════════════════════════════════════════════════════════
@@ -496,7 +495,7 @@ export default function TerminalPage() {
   const [orgError, setOrgError] = useState("");
   const [orgSuccess, setOrgSuccess] = useState("");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"detail"|"watchlist"|"peers">("detail");
+  const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1967,9 +1966,9 @@ export default function TerminalPage() {
 
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      {/* MSA selector / view toggle bar */}
-      <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        {marketsView === "detail" && <>
+      {/* MSA selector / view toggle bar — hidden when Peer Comp is active (it has its own nav bar) */}
+      {marketsView === "detail" && (
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
           <select
             value={selectedMsaId}
@@ -1978,35 +1977,23 @@ export default function TerminalPage() {
           >
             {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
-        </>}
-        {marketsView === "watchlist" && (
-          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>WATCHLIST</span>
-        )}
-        {marketsView === "peers" && (
-          <span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono,fontWeight:700,letterSpacing:1}}>PEER COMPARISON</span>
-        )}
-        <div style={{flex:1}}/>
-        <div style={{display:"flex",gap:2}}>
-          {([["detail","MARKET DETAIL"],["watchlist","WATCHLIST"],["peers","PEER COMP"]] as ["detail"|"watchlist"|"peers", string][]).map(([v,label]) => (
-            <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
-              {label}
-            </button>
-          ))}
-          <button onClick={() => setFkey("F4")} style={{background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}`,fontSize:8,fontFamily:T.font.mono,fontWeight:700,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
-            FULL INTEL →
-          </button>
+          <div style={{flex:1}}/>
+          <div style={{display:"flex",gap:2}}>
+            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
+              <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       {/* Content */}
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
         {marketsView === "detail" && (
           <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
         )}
-        {marketsView === "watchlist" && (
-          <WatchlistPage embedded />
-        )}
         {marketsView === "peers" && (
-          <PeerComparisonPage embedded />
+          <PeerComparisonPage embedded onViewDetail={() => setMarketsView("detail")} />
         )}
       </div>
     </div>
