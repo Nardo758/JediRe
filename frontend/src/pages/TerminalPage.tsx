@@ -443,7 +443,7 @@ export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { section } = useParams<{ section?: string }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
@@ -457,6 +457,14 @@ export default function TerminalPage() {
     if (qp && FKEY_SLUG[qp]) return qp;
     return (location.state as {fkey?:string})?.fkey || "F1";
   });
+
+  // Consume ?fkey param — clear it immediately after applying on mount
+  useEffect(() => {
+    if (searchParams.get("fkey")) {
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [cmd, setCmd] = useState("");
   const [sortBy, setSortBy] = useState("score");
   const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");

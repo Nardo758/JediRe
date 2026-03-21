@@ -213,7 +213,7 @@ function AppContent() {
           <Route path="/reports" element={<Navigate to="/terminal/reports" replace />} />
           <Route path="/team" element={<Navigate to="/terminal/settings" replace />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<Navigate to="/terminal/settings" replace />} />
           <Route path="/settings/modules" element={<ModulesPage />} />
           <Route path="/settings/module-libraries" element={<ModuleLibrariesPage />} />
           <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
