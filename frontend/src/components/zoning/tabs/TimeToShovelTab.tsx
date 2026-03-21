@@ -496,11 +496,11 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
         <div>
           <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">AI Timeline Intelligence</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Deal-specific analysis from {intelligence.dataLibraryContext.benchmarkCount} benchmarks
-            {intelligence.dataLibraryContext.hasCostData && ' + Data Library costs'}
+            Deal-specific analysis from {intelligence.dataLibraryContext?.benchmarkCount ?? '—'} benchmarks
+            {intelligence.dataLibraryContext?.hasCostData && ' + Data Library costs'}
           </p>
         </div>
-        <span className="text-[10px] text-gray-400">Generated {new Date(intelligence.generatedAt).toLocaleDateString()}</span>
+        <span className="text-[10px] text-gray-400">Generated {intelligence.generatedAt ? new Date(intelligence.generatedAt).toLocaleDateString() : '—'}</span>
       </div>
 
       <div className="px-5 py-4 space-y-5">
@@ -509,7 +509,7 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Path Analysis</h4>
             <p className="text-sm text-gray-700 mb-3">{intelligence.pathInsights.summary}</p>
             <div className="grid grid-cols-2 gap-3">
-              {intelligence.pathInsights.advantages.length > 0 && (
+              {(intelligence.pathInsights.advantages?.length ?? 0) > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <p className="text-[10px] font-semibold text-green-800 uppercase mb-1">Advantages</p>
                   <ul className="space-y-1">
@@ -521,7 +521,7 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
                   </ul>
                 </div>
               )}
-              {intelligence.pathInsights.challenges.length > 0 && (
+              {(intelligence.pathInsights.challenges?.length ?? 0) > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
                   <p className="text-[10px] font-semibold text-amber-800 uppercase mb-1">Challenges</p>
                   <ul className="space-y-1">
@@ -540,7 +540,7 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
           </div>
         )}
 
-        {intelligence.riskFactors.length > 0 && (
+        {(intelligence.riskFactors?.length ?? 0) > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Timeline Risk Factors</h4>
             <div className="space-y-2">
@@ -558,7 +558,7 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
           </div>
         )}
 
-        {intelligence.criticalMilestones.length > 0 && (
+        {(intelligence.criticalMilestones?.length ?? 0) > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Critical Milestones</h4>
             <div className="overflow-x-auto">
@@ -586,7 +586,7 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
           </div>
         )}
 
-        {intelligence.benchmarkComparison && intelligence.benchmarkComparison.summary && (
+        {intelligence.benchmarkComparison?.summary && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-[10px] font-semibold text-blue-800 uppercase mb-1">Benchmark Comparison</p>
             <p className="text-xs text-blue-700">{intelligence.benchmarkComparison.summary}</p>
@@ -601,7 +601,7 @@ function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading,
           </div>
         )}
 
-        {intelligence.recommendations.length > 0 && (
+        {(intelligence.recommendations?.length ?? 0) > 0 && (
           <div>
             <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Recommendations</h4>
             <ul className="space-y-1.5">
