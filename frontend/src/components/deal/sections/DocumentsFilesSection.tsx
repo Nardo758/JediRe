@@ -14,7 +14,7 @@ import { FolderView } from './DocumentsFiles/FolderView';
 import { SearchFilters } from './DocumentsFiles/SearchFilters';
 import { StorageStats } from './DocumentsFiles/StorageStats';
 import { MissingFileSuggestions } from './DocumentsFiles/MissingFileSuggestions';
-import axios from 'axios';
+import { apiClient as axios } from '../../../services/api.client';
 import { useDealType } from '../../../stores/dealStore';
 import { MODULE_TABS } from '@/shared/config/deal-type-visibility';
 
