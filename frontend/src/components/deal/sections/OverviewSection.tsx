@@ -281,32 +281,6 @@ export const OverviewSection: React.FC<OverviewSectionProps> = ({
         roiLabel: 'Projected ROI',
         insight: recommended.description || `${recommended.name} scores highest with ${Math.round(recommended.confidence)}/100 confidence.`,
       });
-    } else if (deal) {
-      const strategyType = deal.strategyType || deal.strategy || 'value_add';
-      const strategyLabels: Record<string, string> = {
-        'value_add': 'Value-Add',
-        'core': 'Core',
-        'core_plus': 'Core Plus',
-        'opportunistic': 'Opportunistic',
-        'development': 'Ground-Up Development',
-        'ground_up': 'Ground-Up Development',
-        'stabilized': 'Stabilized Hold',
-        'distressed': 'Distressed / Turnaround',
-      };
-      const label = strategyLabels[strategyType] || strategyType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-      setStrategyVerdict({
-        recommended: strategyType,
-        recommendedLabel: label,
-        score: 0,
-        secondBest: '',
-        secondBestLabel: '',
-        secondBestScore: 0,
-        arbitrageGap: 0,
-        isArbitrage: false,
-        roiEstimate: '—',
-        roiLabel: 'Projected ROI',
-        insight: `Based on deal classification. Run full strategy analysis for detailed scoring.`,
-      });
     }
   }, [strategyResults, deal]);
 
@@ -1287,7 +1261,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
 
         const subjectRank = allRows.findIndex(r => r.isSubject) + 1;
 
-        if (rentComps.length === 0 && unitMix.length === 0) {
+        if (rentComps.length === 0) {
           return (
             <>
               <SectionHead title="Competitive Set" right="No comps" accent={BT.greenL} />

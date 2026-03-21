@@ -20,6 +20,7 @@ import {
 } from '../../services/capital-structure.service';
 import { fetchLiveRates, fetchRateHistory } from '../../services/rate-index.service';
 import { logger } from '../../utils/logger';
+import { getPool } from '../../database/connection';
 
 const upload = multer({
   dest: path.join(process.cwd(), 'uploads', 'rate-sheets'),
@@ -471,6 +472,99 @@ router.post('/optimal-strategy', async (req: Request, res: Response) => {
     res.json(result);
   } catch (error: any) {
     logger.error('[CapStructure Routes] Optimal strategy failed', { error: error.message });
+  }
+});
+
+// ============================================================================
+// Deal Capital Structure Lookup (persisted deal_data)
+// ============================================================================
+
+/** GET /capital-structure/:dealId - Return capital layers stored in deal_data */
+router.get('/:dealId', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const pool = getPool();
+
+    const result = await pool.query(
+      `SELECT purchase_price, loan_amount, loan_to_value, interest_rate, noi, deal_data
+       FROM deals WHERE id = $1`,
+      [dealId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const row = result.rows[0];
+    const dealData = row.deal_data || {};
+
+    const purchasePrice: number = parseFloat(row.purchase_price) || 0;
+    const loanAmount: number = parseFloat(row.loan_amount) || 0;
+    const ltv: number = parseFloat(row.loan_to_value) || 0;
+    const interestRate: number = parseFloat(row.interest_rate) || 0;
+    const noi: number = parseFloat(row.noi) || 0;
+    const equityAmount = Math.max(0, purchasePrice - loanAmount);
+
+    const layers: any[] = [];
+
+    if (loanAmount > 0) {
+      layers.push({
+        id: 'senior',
+        name: 'Senior Debt',
+        layerType: 'senior',
+        amount: loanAmount.toString(),
+        rate: interestRate > 0 ? interestRate.toString() : '—',
+        ltv: ltv > 0 ? `${(ltv * 100).toFixed(1)}%` : '—',
+        term: dealData.loanTerm || '5yr',
+      });
+    }
+
+    const mezzAmount: number =
+      parseFloat(dealData?.capitalStack?.mezz) ||
+      parseFloat(dealData?.financing?.mezzanine) ||
+      0;
+
+    if (mezzAmount > 0) {
+      layers.push({
+        id: 'mezz',
+        name: 'Mezzanine',
+        layerType: 'mezz',
+        amount: mezzAmount.toString(),
+        rate: dealData?.capitalStack?.mezzRate || dealData?.financing?.mezzRate || '—',
+        term: dealData?.capitalStack?.mezzTerm || '3yr',
+      });
+    }
+
+    if (equityAmount > 0) {
+      layers.push({
+        id: 'equity',
+        name: 'Equity',
+        layerType: 'equity',
+        amount: equityAmount.toString(),
+        rate: '—',
+        term: '—',
+      });
+    }
+
+    return res.json({
+      dealId,
+      layers,
+      summary: {
+        purchasePrice,
+        loanAmount,
+        equityAmount,
+        mezzAmount: mezzAmount || null,
+        ltv,
+        interestRate,
+        noi,
+        dscr: noi > 0 && loanAmount > 0 && interestRate > 0
+          ? noi / (loanAmount * (interestRate / 100))
+          : null,
+      },
+    });
+  } catch (error: any) {
+    logger.error('[CapStructure Routes] GET /:dealId failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to fetch capital structure', detail: error.message });
   }
 });
 
