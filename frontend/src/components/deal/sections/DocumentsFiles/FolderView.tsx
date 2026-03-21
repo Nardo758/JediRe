@@ -77,8 +77,15 @@ export const FolderView: React.FC<FolderViewProps> = ({
   const currentFiles: DealFile[] = isRoot
     ? []
     : isPredefinedCategory
-      ? files.filter(f => f.category === currentCategory)
-      : files.filter(f => f.folder_path === currentFolder);
+      ? files.filter(
+          f => f.category === currentCategory ||
+               f.folder_path === currentFolder ||
+               f.folder_path.startsWith(currentFolder + '/')
+        )
+      : files.filter(
+          f => f.folder_path === currentFolder ||
+               f.folder_path.startsWith(currentFolder + '/')
+        );
 
   const dynamicFolders: string[] = isRoot
     ? Array.from(
@@ -164,7 +171,12 @@ export const FolderView: React.FC<FolderViewProps> = ({
             gap: 8,
           }}>
             {predefinedFolders.map(folder => {
-              const count = files.filter(f => f.category === folder).length;
+              const folderPath = '/' + folder;
+              const count = files.filter(
+                f => f.category === folder ||
+                     f.folder_path === folderPath ||
+                     f.folder_path.startsWith(folderPath + '/')
+              ).length;
               return (
                 <div
                   key={folder}
