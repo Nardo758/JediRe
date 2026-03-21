@@ -733,7 +733,18 @@ export default function TerminalPage() {
       apiClient.get("/api/v1/grid/owned").catch(() => ({ data: { assets: [] } })),
       apiClient.get("/api/v1/rankings/owned/atlanta").catch(() => ({ data: {} })),
     ]).then(([assetsRes, rankRes]) => {
-      setPortfolioAssets(assetsRes.data?.assets || assetsRes.data?.data || []);
+      const rawAssets: PortfolioAsset[] = assetsRes.data?.assets || assetsRes.data?.data || [];
+      setPortfolioAssets(rawAssets.map(a => ({
+        ...a,
+        actual_occupancy:    a.actual_occupancy    != null ? Number(a.actual_occupancy)    : undefined,
+        proforma_occupancy:  a.proforma_occupancy  != null ? Number(a.proforma_occupancy)  : undefined,
+        actual_noi:          a.actual_noi          != null ? Number(a.actual_noi)          : undefined,
+        proforma_noi:        a.proforma_noi        != null ? Number(a.proforma_noi)        : undefined,
+        noi_variance:        a.noi_variance        != null ? Number(a.noi_variance)        : undefined,
+        occupancy_variance:  a.occupancy_variance  != null ? Number(a.occupancy_variance)  : undefined,
+        actual_avg_rent:     a.actual_avg_rent     != null ? Number(a.actual_avg_rent)     : undefined,
+        irr:                 a.irr                 != null ? Number(a.irr)                 : undefined,
+      })));
       const rankData = rankRes.data?.data || rankRes.data;
       if (rankData?.rankedAssets?.length > 0) setPortfolioRankings(rankData.rankedAssets);
       setPortfolioLoaded(true);
