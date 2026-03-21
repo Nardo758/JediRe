@@ -9,6 +9,7 @@ import {
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '@/contexts/DealModuleContext';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
+import { BT as BT2, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper, BT_CSS } from '../bloomberg-ui';
 import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
@@ -961,11 +962,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     </div>
   );
 
-  const BT2_MONO = "'JetBrains Mono','Fira Code','SF Mono',monospace";
-  const BT2_HEADER = '#1A1F2E', BT2_BORDER = '#1E2538', BT2_CYAN = '#00BCD4', BT2_AMBER = '#F5A623', BT2_AMBER_BRIGHT = '#FFD166', BT2_TEXT = '#E8ECF1', BT2_SEC = '#8B95A5', BT2_MET_PHYS = '#60a5fa', BT2_MET_DIG = '#f59e0b', BT2_MET_COMP = '#a855f7', BT2_MET_OCC = '#14b8a6', BT2_GREEN = '#00D26A';
-
   return (
-    <div style={{ background: '#0A0E17', minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: BT2.bg.terminal, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+      <style>{BT_CSS}</style>
       <input
         ref={fileInputRef}
         type="file"
@@ -974,44 +973,39 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         style={{ display: 'none' }}
       />
 
-      {/* Bloomberg v0.34 PanelHeader */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 10px',
-        background: BT2_HEADER,
-        borderBottom: `1px solid ${BT2_BORDER}`,
-        borderTop: `2px solid ${BT2_AMBER}`,
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: BT2_TEXT, letterSpacing: 0.8, fontFamily: BT2_MONO }}>TRAFFIC INTELLIGENCE</span>
-          <span style={{ fontSize: 8, color: BT2_SEC, fontFamily: BT2_MONO }}>M07 | Leasing Velocity &amp; Demand Signals</span>
-          <span style={{ fontSize: 6, color: BT2_AMBER, background: `${BT2_AMBER}18`, padding: '0 3px', borderRadius: 2, fontFamily: BT2_MONO, fontWeight: 600 }}>P_TRAFFIC</span>
-          <span style={{ fontSize: 6, color: BT2_MET_DIG, background: `${BT2_MET_DIG}18`, padding: '0 3px', borderRadius: 2, fontFamily: BT2_MONO, fontWeight: 600 }}>D_TRAFFIC</span>
-          <span style={{ fontSize: 6, color: BT2_MET_COMP, background: `${BT2_MET_COMP}18`, padding: '0 3px', borderRadius: 2, fontFamily: BT2_MONO, fontWeight: 600 }}>C_TRAFFIC</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {projection?.marketIntelligence && (
-            <span style={{ fontSize: 8, fontWeight: 700, color: BT2_GREEN, fontFamily: BT2_MONO }}>
-              OCC {((projection.periods[0]?.adjOccPct ?? 0) * 100).toFixed(0)}%
-            </span>
-          )}
-          {dataSource === 'uploaded' && (
-            <span style={{ fontSize: 8, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 6px', fontFamily: BT2_MONO }}>LIVE</span>
-          )}
-          {dataSource === 'blended' && (
-            <span style={{ fontSize: 8, fontWeight: 700, color: '#60A5FA', background: '#0d1e3d', border: '1px solid #60A5FA40', padding: '1px 6px', fontFamily: BT2_MONO }}>BLENDED</span>
-          )}
-          {dataSource === 'predicted' && (
-            <span style={{ fontSize: 8, fontWeight: 700, color: BT2_AMBER, background: '#1a1200', border: `1px solid ${BT2_AMBER}40`, padding: '1px 6px', fontFamily: BT2_MONO }}>PREDICTED</span>
-          )}
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'transparent', color: BT2_SEC, border: `1px solid #2A3348`, cursor: 'pointer', fontSize: 8, fontFamily: BT2_MONO }}>
-            <Upload size={10} />
-            {uploading ? 'UPLOADING...' : 'UPLOAD'}
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} style={{ display: 'none' }} />
-          </label>
-        </div>
-      </div>
+      <PanelHeader
+        title="TRAFFIC INTELLIGENCE"
+        subtitle="M07 · LEASING VELOCITY + DEMAND SIGNALS"
+        borderColor={BT2.met.physTraffic}
+        metrics={[
+          { l: 'P_TRAFFIC', c: BT2.met.physTraffic },
+          { l: 'D_TRAFFIC', c: BT2.met.digTraffic },
+          { l: 'C_TRAFFIC', c: BT2.met.compTraffic },
+        ]}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {projection?.marketIntelligence && (
+              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.green, fontFamily: 'var(--bt-mono)' }}>
+                OCC {((projection.periods[0]?.adjOccPct ?? 0) * 100).toFixed(0)}%
+              </span>
+            )}
+            {dataSource === 'uploaded' && (
+              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.green, background: `${BT2.text.green}12`, border: `1px solid ${BT2.text.green}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>LIVE</span>
+            )}
+            {dataSource === 'blended' && (
+              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.met.physTraffic, background: `${BT2.met.physTraffic}12`, border: `1px solid ${BT2.met.physTraffic}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>BLENDED</span>
+            )}
+            {dataSource === 'predicted' && (
+              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.amber, background: `${BT2.text.amber}12`, border: `1px solid ${BT2.text.amber}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>PREDICTED</span>
+            )}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'transparent', color: BT2.text.secondary, border: `1px solid ${BT2.border.subtle}`, cursor: 'pointer', fontSize: 8, fontFamily: 'var(--bt-mono)' }}>
+              <Upload size={10} />
+              {uploading ? 'UPLOADING...' : 'UPLOAD'}
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} style={{ display: 'none' }} />
+            </label>
+          </div>
+        }
+      />
 
       {loading ? (
         <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, padding: 48, textAlign: 'center' }}>
@@ -1020,58 +1014,79 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         </div>
       ) : (
         <>
-          {renderKPIDashboard()}
-
-          <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border}`, gap: 2 }}>
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 5, padding: '8px 14px',
-                    fontSize: 11, fontWeight: isActive ? 700 : 500, ...bSans,
-                    color: isActive ? BT.amber : BT.td,
-                    background: 'none', border: 'none',
-                    borderBottom: isActive ? `2px solid ${BT.amber}` : '2px solid transparent',
-                    cursor: 'pointer', transition: 'all 0.15s',
-                  } satisfies React.CSSProperties}
-                >
-                  <Icon size={13} />
-                  {tab.label}
-                </button>
-              );
-            })}
+          {/* KpiTile strip — 4 tiles */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
+            <KpiTile label="WEEKLY TRAFFIC" value={Math.round(kpiTraffic).toLocaleString()} sub={trafficTrend.text} color={BT2.met.physTraffic} spark={sparkTraffic} />
+            <KpiTile label="IN-PERSON TOURS" value={Math.round(kpiTours).toLocaleString()} sub={toursTrend.text} color={BT2.met.digTraffic} spark={sparkTours} />
+            <KpiTile label="CLOSING RATIO" value={`${(kpiClosing * 100).toFixed(1)}%`} sub={closingTrend.text} color={BT2.met.compTraffic} spark={sparkClosing} />
+            <KpiTile label="OCCUPANCY" value={`${(kpiOcc * 100).toFixed(1)}%`} sub={occTrend.text} color={BT2.met.occupancy} spark={sparkOcc} />
           </div>
 
-          {activeTab === 'predictions' && (
-            <>
-              {renderPredictionsTab()}
-              <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
-            </>
+          {/* Digital-Physical Gap alert banner */}
+          {mi && Math.abs((mi.digitalFactor ?? 1) - (mi.demandFactor ?? 1)) >= 0.15 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: `${BT2.text.amber}0d`, borderBottom: `1px solid ${BT2.text.amber}30`, flexShrink: 0 }}>
+              <AlertCircle size={10} color={BT2.text.amber} />
+              <span style={{ fontSize: 9, color: BT2.text.amber, fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>DIGITAL-PHYSICAL GAP</span>
+              <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)' }}>
+                Digital demand {mi.digitalFactor > mi.demandFactor ? 'outpacing' : 'lagging'} physical leasing by {Math.abs(((mi.digitalFactor ?? 1) - (mi.demandFactor ?? 1)) * 100).toFixed(0)}% — {mi.digitalSummary ?? mi.demandSummary ?? ''}
+              </span>
+            </div>
           )}
-          {activeTab === 'data_sources' && (
-            <TrafficDataSourcesTab
-              key={dataSourcesKey}
-              dealId={resolvedDealId}
-              onNavigateToVisibility={() => setActiveTab('visibility')}
-              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-            />
-          )}
-          {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} onSelectionChange={loadData} />}
-          {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
-          {activeTab === 'adjustments' && renderAdjustmentsTab()}
-          {activeTab === 'calibration' && renderCalibrationTab()}
-          {activeTab === 'absorption' && (
-            <AbsorptionScheduleTab
-              dealId={resolvedDealId}
-              deal={deal}
-              totalUnits={projection?.periods?.[0]?.totalUnits}
-              currentOccupancy={projection?.periods?.[0]?.baseOccPct}
-            />
-          )}
+
+          <SubTabBar
+            tabs={TABS.map(t => t.label.toUpperCase())}
+            active={TABS.findIndex(t => t.id === activeTab)}
+            setActive={(i) => setActiveTab(TABS[i].id)}
+            color={BT2.met.physTraffic}
+          />
+
+          <BtTabWrapper>
+            {activeTab === 'predictions' && (
+              <>
+                {renderPredictionsTab()}
+                <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
+                {/* Traffic Intelligence Signals + Leasing Velocity panels */}
+                {mi && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, marginTop: 1 }}>
+                    <SectionPanel title="TRAFFIC INTELLIGENCE SIGNALS" subtitle="Market adjustment factors" borderColor={BT2.met.physTraffic}>
+                      <DataRow label="DEMAND FACTOR" value={`${((mi.demandFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.demandDirection === 'up' ? BT2.met.occupancy : mi.demandDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
+                      <DataRow label="DIGITAL FACTOR" value={`${((mi.digitalFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.digitalDirection === 'up' ? BT2.met.digTraffic : mi.digitalDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
+                      <DataRow label="SUPPLY FACTOR" value={`${((mi.supplyFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.supplyDirection === 'up' ? BT2.met.occupancy : mi.supplyDirection === 'down' ? BT2.text.amber : BT2.text.secondary} />
+                      <DataRow label="SEASONAL FACTOR" value={`${((mi.seasonalFactor ?? 1) * 100).toFixed(0)}%`} valueColor={BT2.text.secondary} />
+                      <DataRow label="OVERALL ADJUSTMENT" value={`${((mi.overallAdjustment ?? 1) * 100).toFixed(0)}%`} valueColor={mi.overallAdjustment >= 1 ? BT2.met.occupancy : BT2.text.amber} />
+                    </SectionPanel>
+                    <SectionPanel title="LEASING VELOCITY SUMMARY" subtitle="Current period baseline" borderColor={BT2.met.digTraffic}>
+                      <DataRow label="WEEKLY TRAFFIC" value={Math.round(kpiTraffic).toLocaleString()} valueColor={BT2.met.physTraffic} />
+                      <DataRow label="IN-PERSON TOURS" value={Math.round(kpiTours).toLocaleString()} valueColor={BT2.met.digTraffic} />
+                      <DataRow label="NET LEASES / WK" value={Math.round(kpiNetLeases).toLocaleString()} valueColor={BT2.met.occupancy} />
+                      <DataRow label="CLOSING RATIO" value={`${(kpiClosing * 100).toFixed(1)}%`} valueColor={kpiClosing >= 0.2 ? BT2.met.occupancy : BT2.text.amber} />
+                      <DataRow label="OCCUPANCY" value={`${(kpiOcc * 100).toFixed(1)}%`} valueColor={kpiOcc >= 0.92 ? BT2.met.occupancy : kpiOcc >= 0.85 ? BT2.text.amber : BT2.text.red} />
+                    </SectionPanel>
+                  </div>
+                )}
+              </>
+            )}
+            {activeTab === 'data_sources' && (
+              <TrafficDataSourcesTab
+                key={dataSourcesKey}
+                dealId={resolvedDealId}
+                onNavigateToVisibility={() => setActiveTab('visibility')}
+                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
+              />
+            )}
+            {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} onSelectionChange={loadData} />}
+            {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
+            {activeTab === 'adjustments' && renderAdjustmentsTab()}
+            {activeTab === 'calibration' && renderCalibrationTab()}
+            {activeTab === 'absorption' && (
+              <AbsorptionScheduleTab
+                dealId={resolvedDealId}
+                deal={deal}
+                totalUnits={projection?.periods?.[0]?.totalUnits}
+                currentOccupancy={projection?.periods?.[0]?.baseOccPct}
+              />
+            )}
+          </BtTabWrapper>
         </>
       )}
 

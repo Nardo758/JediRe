@@ -167,7 +167,7 @@ export const MarketIntelligencePage: React.FC = () => {
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {cached && (
-              <span style={{ fontSize: 7, color: BT2.text.secondary, background: BT2.bg.panel, border: `1px solid ${BT2.border}`, padding: '1px 5px', fontFamily: 'var(--bt-mono)' }}>CACHED</span>
+              <span style={{ fontSize: 7, color: BT2.text.secondary, background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: '1px 5px', fontFamily: 'var(--bt-mono)' }}>CACHED</span>
             )}
             <button
               onClick={() => fetchData(true)}
@@ -181,7 +181,7 @@ export const MarketIntelligencePage: React.FC = () => {
       />
 
       {/* KpiTile strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: BT2.border, borderBottom: `1px solid ${BT2.border}`, flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
         {kpiEconomy.map(k => (
           <KpiTile key={k.label} label={k.label} value={k.value} color={k.color} />
         ))}
