@@ -44,6 +44,7 @@ import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
+import type { Deal } from '../types/deal';
 
 import { BT, BT_CSS, PanelHeader } from '../components/deal/bloomberg-ui';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
@@ -204,16 +205,19 @@ const MarketScreen = (props: ScreenProps) => (
 const CompetitionScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
-    moduleTitle="COMPETITION & COMPS"
-    moduleSubtitle="M15 · PEER BENCHMARKING"
+    moduleTitle="COMPS & COMPETITION"
+    moduleSubtitle="M15 · SALE COMPS + PEER BENCHMARKING"
     moduleBorderColor={BT.text.amber}
+    accentColor={BT.text.amber}
     moduleMetrics={[
-      { l: 'F_CAP', c: BT.met.financial },
-      { l: 'O_OCC', c: BT.met.occupancy },
+      { l: 'SALE COMPS',  c: BT.text.amber    },
+      { l: 'F_CAP',       c: BT.met.financial },
+      { l: 'O_OCC',       c: BT.met.occupancy },
+      { l: 'COMP SCORE',  c: BT.text.cyan     },
     ]}
     tabs={[
-      { id: 'competition', label: 'Competition Analysis', component: CompetitionPage },
       { id: 'comps',       label: 'Sale Comps',           component: CompsModule },
+      { id: 'competition', label: 'Competition Analysis', component: CompetitionPage },
     ]}
   />
 );
@@ -279,7 +283,7 @@ const Design3DScreen = (props: ScreenProps) => (
 const DocumentsScreen = (props: ScreenProps) => (
   <DocumentsShellPage
     dealId={props.dealId}
-    deal={props.deal}
+    deal={props.deal as unknown as Deal}
     dealType={props.dealType}
   />
 );
@@ -434,10 +438,10 @@ const DealDetailPage: React.FC = () => {
         return;
       }
       const fKeyMap: { [key: string]: string } = {
-        F1: 'overview',    F2: 'zoning',    F3: 'market',     F4: 'supply',
-        F5: 'competition', F6: 'strategy',  F7: 'traffic',    F8: 'proforma',
-        F9: 'capital',     F10: 'risk',     F11: 'execution', F12: 'ai-agent',
-        F13: 'documents',  F14: 'design-3d',
+        F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
+        F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',  F8: 'proforma',
+        F9: 'capital',    F10: 'comps',    F11: 'documents', F12: 'execution',
+        F13: 'risk',      F14: 'ai-agent',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -467,22 +471,23 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
-  // ─── 14 FLAT SCREEN DEFINITIONS (F1–F14) ── Station-logical Bloomberg order ──
+  // ─── 14 FLAT SCREEN DEFINITIONS (F1–F14) ── Bloomberg station-logical order ──
+  // F7 = 3D Design · F10 = Comps · F11 = Documents · F12 = Execution
   const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
-    { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',          icon: <LayoutDashboard size={14} />, component: OverviewScreen },
-    { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Zoning',            icon: <Landmark size={14} />,        component: ZoningModuleSection },
-    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', label: 'Market Intel',      icon: <TrendingUp size={14} />,      component: MarketScreen },
-    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',   icon: <Package size={14} />,         component: SupplyPipelineScreen },
-    { id: 'competition', moduleId: 'M15', fkey: 'F5',  code: 'M15', label: 'Comps',             icon: <Target size={14} />,          component: CompetitionScreen },
-    { id: 'strategy',    moduleId: 'M08', fkey: 'F6',  code: 'M08', label: 'Strategy',          icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'traffic',     moduleId: 'M07', fkey: 'F7',  code: 'M07', label: 'Traffic Intel',     icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine',  icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',         icon: <LayoutDashboard size={14} />, component: OverviewScreen },
+    { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Zoning',           icon: <Landmark size={14} />,        component: ZoningModuleSection },
+    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
+    { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F12', code: 'M20', label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
-    { id: 'documents',   moduleId: 'M18', fkey: 'F13', code: 'M18', label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
-    { id: 'design-3d',   moduleId: 'M03', fkey: 'F14', code: 'M03', label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', label: 'Comps',            icon: <Target size={14} />,          component: CompetitionScreen },
+    { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
+    { id: 'execution',   moduleId: 'M17', fkey: 'F12', code: 'M17', label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F13', code: 'M13', label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F14', code: 'M20', label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
   // Filter by deal-type visibility rules

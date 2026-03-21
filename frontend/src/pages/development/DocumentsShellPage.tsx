@@ -5,6 +5,7 @@ import {
   PanelHeader, SubTabBar, BtTabWrapper, Bd, KpiTile,
 } from '../../components/deal/bloomberg-ui';
 import { DocumentsFilesSection } from '../../components/deal/sections/DocumentsFilesSection';
+import type { Deal } from '../../types/deal';
 import { DueDiligencePage } from './DueDiligencePage';
 import { apiClient } from '../../services/api.client';
 
@@ -12,7 +13,7 @@ const TABS = ['FILES & ASSETS', 'DD CHECKLIST'];
 
 interface DocumentsShellPageProps {
   dealId?: string;
-  deal?: Record<string, unknown>;
+  deal?: Deal;
   dealType?: string;
 }
 
@@ -20,7 +21,6 @@ interface FileStats {
   total: number;
   parsed: number;
   pending: number;
-  totalSizeMb: number;
 }
 
 export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellPageProps) {
@@ -32,21 +32,21 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
 
   useEffect(() => {
     if (!resolvedDealId) return;
-    apiClient.get(`/api/v1/deals/${resolvedDealId}/files`)
-      .then((res: { data?: { data?: { files?: unknown[]; total_count?: number } } }) => {
+    apiClient
+      .get<{ data?: { files?: unknown[]; total_count?: number } }>(
+        `/api/v1/deals/${resolvedDealId}/files`,
+      )
+      .then((res) => {
         const files = res.data?.data?.files ?? [];
-        const total = res.data?.data?.total_count ?? (files as unknown[]).length;
+        const total = res.data?.data?.total_count ?? files.length;
         setStats({
           total,
-          parsed: Math.round((total as number) * 0.6),
-          pending: Math.round((total as number) * 0.4),
-          totalSizeMb: 0,
+          parsed: Math.round(total * 0.6),
+          pending: Math.round(total * 0.4),
         });
       })
       .catch(() => {});
   }, [resolvedDealId]);
-
-  const fmtMb = (mb: number) => mb >= 1000 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
@@ -81,28 +81,32 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
             {stats != null && (
               <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
                 <div style={{ flex: 1 }}>
-                  <KpiTile label="TOTAL FILES" value={String(stats.total)}       color={BT.text.secondary} />
+                  <KpiTile label="TOTAL FILES" value={String(stats.total)}  color={BT.text.secondary} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <KpiTile label="AI PARSED"   value={String(stats.parsed)}      color={BT.met.financial} />
+                  <KpiTile label="AI PARSED"   value={String(stats.parsed)} color={BT.met.financial} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <KpiTile label="PENDING"     value={String(stats.pending)}     color={BT.text.amber}    />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <KpiTile label="STORAGE"     value={stats.totalSizeMb > 0 ? fmtMb(stats.totalSizeMb) : '—'} color={BT.text.cyan} />
+                  <KpiTile label="PENDING"     value={String(stats.pending)} color={BT.text.amber} />
                 </div>
               </div>
             )}
-            <BtTabWrapper>
-              <DocumentsFilesSection deal={deal as any} />
-            </BtTabWrapper>
+            {deal != null && (
+              <BtTabWrapper>
+                <DocumentsFilesSection deal={deal} />
+              </BtTabWrapper>
+            )}
+            {deal == null && (
+              <div style={{ padding: 24, color: BT.text.muted, fontFamily: BT.font.mono, fontSize: 11 }}>
+                NO DEAL CONTEXT — FILE BROWSER UNAVAILABLE
+              </div>
+            )}
           </div>
         )}
 
         {activeTab === 1 && (
           <BtTabWrapper>
-            <DueDiligencePage dealId={resolvedDealId} deal={deal as any} />
+            <DueDiligencePage dealId={resolvedDealId} deal={deal} />
           </BtTabWrapper>
         )}
       </div>
