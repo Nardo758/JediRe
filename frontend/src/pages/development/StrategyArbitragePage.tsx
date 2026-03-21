@@ -17,12 +17,18 @@ interface StrategyArbitragePageProps {
 
 const MONO = BT.font.mono;
 
-const STRATEGY_COLS: Array<{ id: string; label: string; color: string }> = [
-  { id: 'bts',    label: 'BTS',    color: BT.text.purple },
-  { id: 'flip',   label: 'FLIP',   color: BT.text.amber },
-  { id: 'rental', label: 'RENTAL', color: BT.met.occupancy },
-  { id: 'str',    label: 'STR',    color: BT.text.cyan },
+type StrategyColDef = { id: string; label: string; color: string; aliases: string[] };
+const STRATEGY_COLS: StrategyColDef[] = [
+  { id: 'bts',    label: 'BTS',    color: BT.text.purple, aliases: ['bts', 'build_to_suit', 'build-to-suit', 'build to suit'] },
+  { id: 'flip',   label: 'FLIP',   color: BT.text.amber,  aliases: ['flip', 'fix_and_flip', 'fix-and-flip', 'wholesale'] },
+  { id: 'rental', label: 'RENTAL', color: BT.met.occupancy, aliases: ['rental', 'long_term_rental', 'ltr', 'buy_and_hold', 'buy and hold'] },
+  { id: 'str',    label: 'STR',    color: BT.text.cyan,   aliases: ['str', 'short_term_rental', 'vacation_rental', 'airbnb'] },
 ];
+
+function matchStrategyCol(score: M08StrategyScore, col: StrategyColDef): boolean {
+  const raw = ((score.strategy_type ?? score.strategy_id) as string).toLowerCase().trim();
+  return col.aliases.some(a => raw === a);
+}
 
 const SIGNAL_KEYS   = ['demand', 'supply', 'market', 'policy', 'risk'] as const;
 const SIGNAL_LABELS = ['D', 'S', 'M', 'P', 'R'];
@@ -141,10 +147,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
 
   const orderedCols = STRATEGY_COLS.map(col => ({
     col,
-    score: scores.find(s =>
-      (s.strategy_type ?? s.strategy_id).toLowerCase().includes(col.id)
-      || s.strategy_id.toLowerCase().includes(col.id)
-    ) ?? null,
+    score: scores.find(s => matchStrategyCol(s, col)) ?? null,
   }));
 
   const winnerIRR = arbitrage?.winning_strategy_id != null

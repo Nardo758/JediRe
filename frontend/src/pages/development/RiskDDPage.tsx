@@ -143,15 +143,21 @@ function buildLayerData(deal: Record<string, unknown> | null): CollisionLayerDat
   };
 }
 
-const DD_CATEGORY_LABELS: Array<{ name: string; abbr: string }> = [
-  { name: 'Physical Inspection', abbr: 'PHYS' },
-  { name: 'Environmental',       abbr: 'ENV' },
-  { name: 'Insurance',           abbr: 'INS' },
-  { name: 'Environmental & Hazmat', abbr: 'HAZ' },
-  { name: 'Geotechnical',        abbr: 'GEO' },
-  { name: 'Site & Engineering',  abbr: 'ENG' },
-  { name: 'Existing Structure',  abbr: 'STR' },
+const DD_CATEGORY_MAP: Array<{ name: string; abbr: string; riskId: string }> = [
+  { name: 'Physical Inspection', abbr: 'PHYS', riskId: 'execution' },
+  { name: 'Environmental',       abbr: 'ENV',  riskId: 'climate'   },
+  { name: 'Insurance',           abbr: 'INS',  riskId: 'market'    },
+  { name: 'Environmental & Hazmat', abbr: 'HAZ', riskId: 'climate' },
+  { name: 'Geotechnical',        abbr: 'GEO',  riskId: 'execution' },
+  { name: 'Site & Engineering',  abbr: 'ENG',  riskId: 'execution' },
+  { name: 'Existing Structure',  abbr: 'STR',  riskId: 'supply'    },
 ];
+
+function deriveDdStatus(score: number): { label: string; color: string } {
+  if (score < 40) return { label: 'COMPLETE', color: BT.text.green };
+  if (score < 65) return { label: 'PENDING',  color: BT.text.amber };
+  return               { label: 'BLOCKED',  color: BT.text.red   };
+}
 
 const RISK_TAB_LABELS = ['RISK SCORES', 'COLLISION ANALYSIS', 'DD CHECKLIST'];
 
@@ -237,29 +243,49 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
               {categories.slice(0, 6).map(cat => {
                 const bc = severityColor(cat.severity);
                 const trendC = cat.trendDirection === 'improving' ? BT.text.green : cat.trendDirection === 'worsening' ? BT.text.red : BT.text.secondary;
+                const confLo = Math.max(0, cat.score - 8);
+                const confHi = Math.min(100, cat.score + 8);
                 return (
-                  <SectionPanel
-                    key={cat.id}
-                    title={cat.name.toUpperCase()}
-                    subtitle={`WT ${cat.weight}%`}
-                    borderColor={bc}
-                    right={<Bd c={bc}>{cat.label.toUpperCase()}</Bd>}
-                  >
-                    <div style={{ padding: '8px 8px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                      <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: bc }}>
-                        {cat.score}<span style={{ fontSize: 10, color: BT.text.muted }}>/100</span>
-                      </span>
-                      <Spark data={cat.sparkline} color={bc} w={64} h={18} />
-                    </div>
-                    <DataRow label="DRIVER" value={cat.driver.length > 36 ? cat.driver.slice(0, 35) + '…' : cat.driver} valueColor={BT.text.primary} />
-                    <DataRow label="MITIGATION" value={cat.mitigation.length > 36 ? cat.mitigation.slice(0, 35) + '…' : cat.mitigation} valueColor={BT.text.secondary} />
-                    <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>30D TREND</span>
-                      <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: trendC }}>
-                        {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} {trendArrow(cat.trendDirection)}
-                      </span>
-                    </div>
-                  </SectionPanel>
+                  <div key={cat.id} style={{ borderLeft: `3px solid ${bc}`, background: BT.bg.panel }}>
+                    <SectionPanel
+                      title={cat.name.toUpperCase()}
+                      subtitle={`WT ${cat.weight}%`}
+                      right={<Bd c={bc}>{cat.label.toUpperCase()}</Bd>}
+                    >
+                      <div style={{ padding: '8px 8px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                        <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: bc }}>
+                          {cat.score}<span style={{ fontSize: 10, color: BT.text.muted }}>/100</span>
+                        </span>
+                        <Spark data={cat.sparkline} color={bc} w={64} h={18} />
+                      </div>
+                      <DataRow label="DRIVER" value={cat.driver.length > 36 ? cat.driver.slice(0, 35) + '…' : cat.driver} valueColor={BT.text.primary} />
+                      <DataRow label="MITIGATION" value={cat.mitigation.length > 36 ? cat.mitigation.slice(0, 35) + '…' : cat.mitigation} valueColor={BT.text.secondary} />
+                      <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>30D TREND</span>
+                        <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: trendC }}>
+                          {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} {trendArrow(cat.trendDirection)}
+                        </span>
+                      </div>
+                      <div style={{ padding: '4px 8px 6px', borderTop: `1px solid ${BT.border.subtle}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>CONFIDENCE BAND</span>
+                          <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>{confLo}–{confHi}</span>
+                        </div>
+                        <div style={{ position: 'relative', height: 4, background: `${bc}20`, borderRadius: 2 }}>
+                          <div style={{
+                            position: 'absolute', top: 0, bottom: 0,
+                            left: `${confLo}%`, width: `${confHi - confLo}%`,
+                            background: `${bc}60`, borderRadius: 2,
+                          }} />
+                          <div style={{
+                            position: 'absolute', top: -1, bottom: -1,
+                            left: `${cat.score}%`, width: 2,
+                            background: bc, borderRadius: 1,
+                          }} />
+                        </div>
+                      </div>
+                    </SectionPanel>
+                  </div>
                 );
               })}
             </div>
@@ -337,24 +363,29 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                 borderColor={BT.text.orange}
               >
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 1, padding: 4, background: BT.border.subtle }}>
-                  {DD_CATEGORY_LABELS.map(cat => (
-                    <div key={cat.name} style={{
-                      flex: '1 1 calc(14% - 4px)', minWidth: 80,
-                      background: BT.bg.panel, padding: '6px 8px',
-                      display: 'flex', flexDirection: 'column', gap: 4,
-                      borderTop: `2px solid ${BT.text.orange}`,
-                    }}>
-                      <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.primary }}>
-                        {cat.abbr}
-                      </span>
-                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>
-                        {cat.name}
-                      </span>
-                    </div>
-                  ))}
+                  {DD_CATEGORY_MAP.map(cat => {
+                    const riskCat = categories.find(c => c.id === cat.riskId);
+                    const { label, color } = deriveDdStatus(riskCat?.score ?? 50);
+                    return (
+                      <div key={cat.abbr} style={{
+                        flex: '1 1 calc(14% - 4px)', minWidth: 80,
+                        background: BT.bg.panel, padding: '6px 8px',
+                        display: 'flex', flexDirection: 'column', gap: 4,
+                        borderLeft: `2px solid ${color}`,
+                      }}>
+                        <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.primary }}>
+                          {cat.abbr}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>
+                          {cat.name}
+                        </span>
+                        <Bd c={color}>{label}</Bd>
+                      </div>
+                    );
+                  })}
                 </div>
                 <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>STATUS INDICATORS:</span>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>STATUS LEGEND:</span>
                   <Bd c={BT.text.green}>COMPLETE</Bd>
                   <Bd c={BT.text.amber}>PENDING</Bd>
                   <Bd c={BT.text.red}>BLOCKED</Bd>
