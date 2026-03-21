@@ -15,6 +15,7 @@
  */
 
 import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
+import { RiskDot } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
@@ -53,6 +54,14 @@ interface PipelineProject {
   };
   status: string;
   delayMonths?: number;
+}
+
+function projectThreatLevel(project: PipelineProject): 'HIGH' | 'MED' | 'LOW' {
+  const dist = project.distanceMiles ?? 99;
+  if (project.phase === 'under_construction' && dist < 1) return 'HIGH';
+  if (project.phase === 'under_construction') return 'MED';
+  if (project.phase === 'planned' && dist < 0.5) return 'MED';
+  return 'LOW';
 }
 
 interface DeveloperActivity {
@@ -718,6 +727,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delivery</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Submarket</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Distance</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-[#F97316] uppercase">Threat</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#1e2a3d]">
@@ -749,6 +759,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                   <td className="px-6 py-4 text-sm text-[#6B7585]">{project.expectedDelivery}</td>
                   <td className="px-6 py-4 text-sm text-[#6B7585]">{project.submarket}</td>
                   <td className="px-6 py-4 text-sm text-[#6B7585]">{project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—'}</td>
+                  <td className="px-6 py-4"><RiskDot level={projectThreatLevel(project)} /></td>
                 </tr>
               ))}
             </tbody>

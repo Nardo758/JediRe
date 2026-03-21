@@ -18,7 +18,7 @@ import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
-import { BT as BT2, BtTabWrapper } from '../bloomberg-ui';
+import { BT as BT2, BtTabWrapper, PanelHeader } from '../bloomberg-ui';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -148,23 +148,12 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal }}>
-      {/* Bloomberg v0.34 PanelHeader */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 10px',
-        background: BT2.bg.header,
-        borderBottom: `1px solid ${BT2.border.subtle}`,
-        borderTop: `2px solid ${BT2.text.amber}`,
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.white, letterSpacing: 0.8, fontFamily: MONO }}>PROPERTY &amp; ZONING</span>
-          <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: MONO }}>M02 | Verification-First</span>
-          {deal?.strategy && (
-            <span style={{ fontSize: 8, color: BT2.text.cyan, fontFamily: MONO }}>{deal.strategy}</span>
-          )}
-        </div>
-        {!boundaryAndZoningComplete && (
+      <PanelHeader
+        title="PROPERTY & ZONING"
+        subtitle="M02 · ENTITLEMENT ENGINE"
+        borderColor={BT2.text.amber}
+        metrics={deal?.strategy ? [{ l: deal.strategy, c: BT2.text.amber }] : undefined}
+        right={!boundaryAndZoningComplete ? (
           <button
             onClick={() => checkCompletionStatus()}
             style={{
@@ -177,8 +166,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
             <RefreshCw size={10} />
             REFRESH
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Status Banner */}
       {statusMessage && !boundaryAndZoningComplete && (
