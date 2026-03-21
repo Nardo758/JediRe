@@ -1,5 +1,5 @@
 import { T as BT } from '../../components/deal/bloomberg-tokens';
-import { BT as BT2, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper } from '../../components/deal/bloomberg-ui';
+import { BT as BT2, BT_CSS, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -10,6 +10,9 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
+import UnitMixIntelligence from '../../components/deal/sections/UnitMixIntelligence';
+import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnalysisSection';
+import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
 
 interface MarketIntelData {
   economy: any;
@@ -28,10 +31,17 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-export const MarketIntelligencePage: React.FC = () => {
+interface MarketIntelPageProps {
+  dealId?: string;
+  deal?: any;
+  dealType?: string;
+}
+
+export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProps) => {
   const { dealId: paramDealId } = useParams<{ dealId: string }>();
-  const dealId = paramDealId || '';
+  const dealId = outerProps.dealId || paramDealId || '';
   const { updateMarketIntelligence, emitEvent, activeScenario, zoningProfile, lastEvent } = useDealModule();
+  const [moduleTab, setModuleTab] = useState(0);
   const [activeTab, setActiveTab] = useState<TabId>('economy');
   const [data, setData] = useState<MarketIntelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,21 +134,25 @@ export const MarketIntelligencePage: React.FC = () => {
         ? `$${data.demographics.census.medianRent.toLocaleString()}`
         : (data.economy?.metrics?.avgRent?.value ?? '—'),
       color: BT2.text.cyan,
+      spark: (data.economy?.metrics?.avgRent?.sparkline as number[] | undefined) ?? [],
     },
     {
       label: 'JOBS ADDED (12M)',
       value: data.economy?.metrics?.jobsAdded?.value ?? '—',
       color: BT2.met.economic,
+      spark: (data.economy?.metrics?.jobsAdded?.sparkline as number[] | undefined) ?? [],
     },
     {
       label: 'WAGE GROWTH',
       value: data.economy?.metrics?.wageGrowth?.value ?? '—',
       color: BT2.met.economic,
+      spark: (data.economy?.metrics?.wageGrowth?.sparkline as number[] | undefined) ?? [],
     },
     {
       label: 'NET MIGRATION',
       value: data.economy?.metrics?.netMigration?.value ?? '—',
       color: BT2.text.purple,
+      spark: (data.economy?.metrics?.netMigration?.sparkline as number[] | undefined) ?? [],
     },
     {
       label: 'AFFORDABILITY',
@@ -148,17 +162,46 @@ export const MarketIntelligencePage: React.FC = () => {
         : data.economy?.metrics?.affordabilityRatio?.status === 'red'
           ? BT2.text.red
           : BT2.text.amber,
+      spark: (data.economy?.metrics?.affordabilityRatio?.sparkline as number[] | undefined) ?? [],
     },
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', background: BT2.bg.terminal }}>
-      {/* KpiTile strip */}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal }}>
+      <style>{BT_CSS}</style>
+      <PanelHeader
+        title="MARKET INTELLIGENCE"
+        subtitle="M03 · DEMAND + RENT + SUPPLY"
+        borderColor={BT2.text.cyan}
+        metrics={[
+          { l: 'F_RENT', c: BT2.text.cyan },
+          { l: 'O_ABSORB', c: BT2.met.occupancy },
+          { l: 'E_JOBS', c: BT2.met.economic },
+          { l: 'D_SEARCH', c: BT2.met.digTraffic },
+        ]}
+      />
+
+      {/* 5 KpiTiles with sparklines */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
         {kpiEconomy.map(k => (
-          <KpiTile key={k.label} label={k.label} value={k.value} color={k.color} />
+          <KpiTile key={k.label} label={k.label} value={k.value} color={k.color} spark={k.spark} />
         ))}
       </div>
+
+      {/* Module SubTabBar: Market Intel / Unit Mix / Trends / Opportunity */}
+      <SubTabBar
+        tabs={['MARKET INTEL', 'UNIT MIX', 'TRENDS', 'OPPORTUNITY']}
+        active={moduleTab}
+        setActive={setModuleTab}
+        color={BT2.text.cyan}
+      />
+
+      <BtTabWrapper>
+        {moduleTab === 1 && <UnitMixIntelligence />}
+        {moduleTab === 2 && <TrendsAnalysisSection deal={outerProps.deal} />}
+        {moduleTab === 3 && <OpportunityEngineSection deal={outerProps.deal} />}
+        {moduleTab === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
 
       {/* Demand Drivers / Rent Comp Matrix — 2-col DataRow grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, flexShrink: 0 }}>
@@ -247,11 +290,14 @@ export const MarketIntelligencePage: React.FC = () => {
         color={BT2.text.cyan}
       />
 
-      <BtTabWrapper>
-        {activeTab === 'economy' && <EconomyTab data={data.economy} />}
-        {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
-        {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
-        {activeTab === 'news' && <NewsTab events={data.news} />}
+            <BtTabWrapper>
+              {activeTab === 'economy' && <EconomyTab data={data.economy} />}
+              {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
+              {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
+              {activeTab === 'news' && <NewsTab events={data.news} />}
+            </BtTabWrapper>
+          </div>
+        )}
       </BtTabWrapper>
     </div>
   );

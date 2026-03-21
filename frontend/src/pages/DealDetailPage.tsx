@@ -202,25 +202,7 @@ const OverviewScreen = (props: ScreenProps) => {
   );
 };
 const MarketScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="MARKET INTELLIGENCE"
-    moduleSubtitle="M03 · DEMAND + RENT + SUPPLY"
-    moduleBorderColor={BT.text.cyan}
-    moduleMetrics={[
-      { l: 'F_RENT', c: BT.text.cyan },
-      { l: 'O_ABSORB', c: BT.met.occupancy },
-      { l: 'E_JOBS', c: BT.met.economic },
-      { l: 'D_SEARCH', c: BT.met.digTraffic },
-    ]}
-    accentColor={BT.text.cyan}
-    tabs={[
-      { id: 'market-intelligence', label: 'Market Intel', component: MarketIntelligencePage },
-      { id: 'unit-mix',            label: 'Unit Mix',     component: UnitMixIntelligence },
-      { id: 'trends',              label: 'Trends',       component: TrendsAnalysisSection },
-      { id: 'opportunity',         label: 'Opportunity',  component: OpportunityEngineSection },
-    ]}
-  />
+  <MarketIntelligencePage dealId={props.dealId} deal={props.deal} dealType={props.dealType} />
 );
 const CompetitionScreen = (props: ScreenProps) => (
   <DealScreenWrapper
