@@ -124,8 +124,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       }
 
       if (taxRes.status === 'fulfilled') {
-        const r = (taxRes.value as { success?: boolean; data?: TaxSummary } | null);
-        if (r?.success && r?.data) setTaxData(r.data);
+        const body = (taxRes.value as { data?: { success?: boolean; data?: TaxSummary } })?.data;
+        if (body?.success && body?.data) setTaxData(body.data);
       }
 
       if (stratRes.status === 'fulfilled') {
@@ -153,42 +153,55 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const brokerPurchasePrice = typeof propDeal?.purchase_price === 'number' ? propDeal.purchase_price as number
     : typeof propDeal?.asking_price === 'number' ? propDeal.asking_price as number : null;
 
-  // Pro Forma assumption rows: [label, broker, platform, hasCollision]
-  const proFormaRows: Array<{ label: string; broker: string; platform: string; collision: boolean }> = [
+  // Pro Forma assumption rows with raw numbers for per-row collision computation
+  type ProFormaRow = { label: string; brokerFmt: string; platformFmt: string; brokerRaw: number | null; platformRaw: number | null };
+  const proFormaRows: ProFormaRow[] = [
     {
-      label: 'EXIT CAP RATE',
-      broker:   brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—',
-      platform: platformData.exitCap != null ? fmtPct(platformData.exitCap * 100) : '—',
-      collision: brokerCapRate != null && platformData.exitCap != null && Math.abs((brokerCapRate - platformData.exitCap) / platformData.exitCap) > 0.10,
+      label:       'EXIT CAP RATE',
+      brokerFmt:   brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—',
+      platformFmt: platformData.exitCap != null ? fmtPct(platformData.exitCap * 100) : '—',
+      brokerRaw:   brokerCapRate,
+      platformRaw: platformData.exitCap ?? null,
     },
     {
-      label: 'ACQUISITION CAP RATE',
-      broker:   brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—',
-      platform: platformData.capRate != null ? fmtPct(platformData.capRate * 100) : '—',
-      collision: brokerCapRate != null && platformData.capRate != null && Math.abs((brokerCapRate - platformData.capRate) / platformData.capRate) > 0.10,
+      label:       'ACQUISITION CAP RATE',
+      brokerFmt:   brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—',
+      platformFmt: platformData.capRate != null ? fmtPct(platformData.capRate * 100) : '—',
+      brokerRaw:   brokerCapRate,
+      platformRaw: platformData.capRate ?? null,
     },
     {
-      label: 'PURCHASE PRICE',
-      broker:   brokerPurchasePrice != null ? fmt$(brokerPurchasePrice) : '—',
-      platform: '—',
-      collision: false,
+      label:       'PURCHASE PRICE',
+      brokerFmt:   brokerPurchasePrice != null ? fmt$(brokerPurchasePrice) : '—',
+      platformFmt: '—',
+      brokerRaw:   brokerPurchasePrice,
+      platformRaw: null,
     },
-    { label: 'VACANCY RATE',     broker: '—', platform: '—', collision: false },
-    { label: 'EXPENSE RATIO',    broker: '—', platform: '—', collision: false },
+    { label: 'VACANCY RATE',  brokerFmt: '—', platformFmt: '—', brokerRaw: null, platformRaw: null },
+    { label: 'EXPENSE RATIO', brokerFmt: '—', platformFmt: '—', brokerRaw: null, platformRaw: null },
   ];
-  const anyCollision = proFormaRows.some(r => r.collision);
+  const anyCollision = proFormaRows.some(r => collisionDot(r.brokerRaw, r.platformRaw) != null);
 
-  // Capital structure defaults
-  const totalBasis = resolvedDealType === 'development' ? 52000000 : 46420000;
-  const srAmt  = totalBasis * TRANCHE_PRESETS.sr.pct / 100;
-  const mzAmt  = totalBasis * TRANCHE_PRESETS.mz.pct / 100;
-  const eqAmt  = totalBasis * TRANCHE_PRESETS.eq.pct / 100;
-  const baseNOI = resolvedDealType === 'development' ? 2800000 : 3420000;
-  const annualDS = srAmt * (TRANCHE_PRESETS.sr.rate / 100) + mzAmt * (TRANCHE_PRESETS.mz.rate / 100);
-  const dscr = baseNOI / annualDS;
+  // Capital structure — sourced from deal.purchase_price and API KPI data
+  const totalBasis: number | null = typeof propDeal?.purchase_price === 'number'
+    ? propDeal.purchase_price as number
+    : null;
+  const srAmt  = totalBasis != null ? totalBasis * TRANCHE_PRESETS.sr.pct / 100 : null;
+  const mzAmt  = totalBasis != null ? totalBasis * TRANCHE_PRESETS.mz.pct / 100 : null;
+  const eqAmt  = totalBasis != null ? totalBasis * TRANCHE_PRESETS.eq.pct / 100 : null;
+  // DSCR from API (kpi); annual debt service back-computed when basis is known
+  const capDscr = kpi?.dscr ?? null;
+  const capNoi  = kpi?.noi  ?? null;
+  const annualDS = srAmt != null && mzAmt != null
+    ? srAmt * (TRANCHE_PRESETS.sr.rate / 100) + mzAmt * (TRANCHE_PRESETS.mz.rate / 100)
+    : null;
   const capHorizonReturns = computeExitReturns(12, resolvedDealType);
-  const ltv = Math.round((srAmt / capHorizonReturns.grossValue) * 100);
-  const ltc = Math.round((srAmt / totalBasis) * 100);
+  const ltv = srAmt != null && capHorizonReturns.grossValue > 0
+    ? Math.round((srAmt / capHorizonReturns.grossValue) * 100)
+    : null;
+  const ltc = srAmt != null && totalBasis != null
+    ? Math.round((srAmt / totalBasis) * 100)
+    : TRANCHE_PRESETS.sr.pct;
 
   // Exit scenarios
   const exitScenarios = EXIT_SCENARIOS.map(s => ({
@@ -300,10 +313,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                 }}>
                   <div style={{ flex: 2, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.secondary, display: 'flex', alignItems: 'center', gap: 4 }}>
                     {row.label}
-                    {row.collision && collisionDot(1, 1.15)}
+                    {collisionDot(row.brokerRaw, row.platformRaw)}
                   </div>
-                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.cyan,   textAlign: 'right' as const }}>{row.broker}</div>
-                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.purple, textAlign: 'right' as const }}>{row.platform}</div>
+                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.cyan,   textAlign: 'right' as const }}>{row.brokerFmt}</div>
+                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.purple, textAlign: 'right' as const }}>{row.platformFmt}</div>
                   <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.amber,  textAlign: 'right' as const }}>—</div>
                 </div>
               ))}
@@ -429,13 +442,13 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             <div style={{ flexShrink: 0 }}>
               <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1 }}>
-                <div style={{ flex: 1 }}><KpiTile label="LTV"  value={`${ltv}%`}             color={BT.text.cyan}     /></div>
-                <div style={{ flex: 1 }}><KpiTile label="LTC"  value={`${ltc}%`}             color={BT.met.financial} /></div>
-                <div style={{ flex: 1 }}><KpiTile label="DSCR" value={`${dscr.toFixed(2)}×`} color={BT.text.amber}    /></div>
+                <div style={{ flex: 1 }}><KpiTile label="LTV"  value={ltv != null ? `${ltv}%` : '—'}            color={BT.text.cyan}     /></div>
+                <div style={{ flex: 1 }}><KpiTile label="LTC"  value={`${ltc}%`}                               color={BT.met.financial} /></div>
+                <div style={{ flex: 1 }}><KpiTile label="DSCR" value={capDscr != null ? `${capDscr.toFixed(2)}×` : '—'} color={BT.text.amber} sub="from model" /></div>
               </div>
               <SectionPanel
                 title="CAPITAL STACK"
-                subtitle={`Total Basis ${fmt$(totalBasis)}`}
+                subtitle={totalBasis != null ? `Total Basis ${fmt$(totalBasis)}` : 'Awaiting deal data'}
                 borderColor={BT.text.cyan}
               >
                 {/* Stacked bar */}
@@ -453,12 +466,17 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                     ))}
                   </div>
                 </div>
-                {/* Tranche DataRow table */}
-                <DataRow label="SENIOR DEBT"   value={fmt$(srAmt)}    valueColor={BT.text.cyan}    sub={`${TRANCHE_PRESETS.sr.rate}% / ${TRANCHE_PRESETS.sr.term}`} />
-                <DataRow label="MEZZ"          value={fmt$(mzAmt)}    valueColor={BT.text.orange}  sub={`${TRANCHE_PRESETS.mz.rate}% / ${TRANCHE_PRESETS.mz.term}`} />
-                <DataRow label="EQUITY"        value={fmt$(eqAmt)}    valueColor={BT.met.financial} sub={`${TRANCHE_PRESETS.eq.pct}% of stack`} />
-                <DataRow label="TOTAL BASIS"   value={fmt$(totalBasis)} valueColor={BT.text.primary} />
-                <DataRow label="DSCR"          value={`${dscr.toFixed(2)}×`} valueColor={BT.text.amber} sub={`NOI ${fmt$(baseNOI)} / DS ${fmt$(annualDS)}`} border={false} />
+                {/* Tranche DataRow table — amounts from deal.purchase_price × tranche pct */}
+                <DataRow label="SENIOR DEBT"   value={srAmt != null ? fmt$(srAmt) : '—'}    valueColor={BT.text.cyan}     sub={`${TRANCHE_PRESETS.sr.rate}% / ${TRANCHE_PRESETS.sr.term}`} />
+                <DataRow label="MEZZ"          value={mzAmt != null ? fmt$(mzAmt) : '—'}    valueColor={BT.text.orange}   sub={`${TRANCHE_PRESETS.mz.rate}% / ${TRANCHE_PRESETS.mz.term}`} />
+                <DataRow label="EQUITY"        value={eqAmt != null ? fmt$(eqAmt) : '—'}    valueColor={BT.met.financial} sub={`${TRANCHE_PRESETS.eq.pct}% of stack`} />
+                <DataRow label="TOTAL BASIS"   value={totalBasis != null ? fmt$(totalBasis) : '—'} valueColor={BT.text.primary} />
+                <DataRow label="DSCR"
+                  value={capDscr != null ? `${capDscr.toFixed(2)}×` : '—'}
+                  valueColor={BT.text.amber}
+                  sub={capNoi != null && annualDS != null ? `NOI ${fmt$(capNoi)} / DS ${fmt$(annualDS)}` : undefined}
+                  border={false}
+                />
               </SectionPanel>
             </div>
             <BtTabWrapper>
