@@ -1,5 +1,5 @@
 import { T as BT } from '../../components/deal/bloomberg-tokens';
-import { BT as BT2, PanelHeader, SubTabBar, KpiTile, BtTabWrapper, BT_CSS } from '../../components/deal/bloomberg-ui';
+import { BT as BT2, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -153,38 +153,38 @@ export const MarketIntelligencePage: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%', background: BT2.bg.terminal }}>
-      <style>{BT_CSS}</style>
-      <PanelHeader
-        title="MARKET INTELLIGENCE"
-        subtitle="M03 · DEMAND + RENT + SUPPLY"
-        borderColor={BT2.text.cyan}
-        metrics={[
-          { l: 'F_RENT',   c: BT2.text.cyan },
-          { l: 'O_ABSORB', c: BT2.met.occupancy },
-          { l: 'E_JOBS',   c: BT2.met.economic },
-          { l: 'D_SEARCH', c: BT2.met.digTraffic },
-        ]}
-        right={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {cached && (
-              <span style={{ fontSize: 7, color: BT2.text.secondary, background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: '1px 5px', fontFamily: 'var(--bt-mono)' }}>CACHED</span>
-            )}
-            <button
-              onClick={() => fetchData(true)}
-              style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}
-            >
-              <RefreshCw size={10} />
-              REFRESH
-            </button>
-          </div>
-        }
-      />
-
       {/* KpiTile strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
         {kpiEconomy.map(k => (
           <KpiTile key={k.label} label={k.label} value={k.value} color={k.color} />
         ))}
+      </div>
+
+      {/* Demand Drivers / Rent Comp Matrix — 2-col DataRow grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, flexShrink: 0 }}>
+        <SectionPanel title="DEMAND DRIVERS" subtitle="Labour + population signals" borderColor={BT2.text.cyan}>
+          <DataRow label="JOBS ADDED (12M)" value={data.economy?.metrics?.jobsAdded?.value ?? '—'} valueColor={BT2.met.economic} />
+          <DataRow label="WAGE GROWTH" value={data.economy?.metrics?.wageGrowth?.value ?? '—'} valueColor={BT2.met.economic} />
+          <DataRow label="NET MIGRATION" value={data.economy?.metrics?.netMigration?.value ?? '—'} valueColor={BT2.text.purple} />
+          <DataRow label="ECONOMIC HEALTH" value={data.economy?.healthScore != null ? `${data.economy.healthScore}/100` : '—'} valueColor={data.economy?.healthScore >= 70 ? BT2.met.occupancy : data.economy?.healthScore >= 50 ? BT2.text.amber : BT2.text.red} />
+          <DataRow label="POPULATION" value={data.demographics?.census?.population != null ? Number(data.demographics.census.population).toLocaleString() : '—'} valueColor={BT2.text.secondary} />
+        </SectionPanel>
+        <SectionPanel title="RENT COMP MATRIX" subtitle="Submarket benchmarks" borderColor={BT2.met.economic}>
+          <DataRow label="MEDIAN RENT" value={data.demographics?.census?.medianRent != null ? `$${Number(data.demographics.census.medianRent).toLocaleString()}` : '—'} valueColor={BT2.text.cyan} />
+          <DataRow label="SUBMARKET AVG RENT" value={data.demographics?.submarket?.avgRent != null ? `$${Number(data.demographics.submarket.avgRent).toLocaleString()}` : '—'} valueColor={BT2.text.cyan} />
+          <DataRow label="RENT GROWTH" value={data.demographics?.submarket?.rentGrowth ?? data.economy?.metrics?.rentGrowth?.value ?? '—'} valueColor={BT2.met.occupancy} />
+          <DataRow label="AFFORDABILITY" value={data.economy?.metrics?.affordabilityRatio?.value ?? '—'} valueColor={data.economy?.metrics?.affordabilityRatio?.status === 'green' ? BT2.met.occupancy : BT2.text.amber} />
+          <DataRow label="MEDIAN INCOME" value={data.demographics?.census?.medianIncome != null ? `$${Number(data.demographics.census.medianIncome).toLocaleString()}` : '—'} valueColor={BT2.text.secondary} />
+        </SectionPanel>
+      </div>
+
+      {/* Refresh control */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
+        {cached && <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
+        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
+          <RefreshCw size={10} />
+          REFRESH DATA
+        </button>
       </div>
 
       {hasZoningContext ? (

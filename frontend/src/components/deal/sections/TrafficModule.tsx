@@ -464,6 +464,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const sparkOcc = hasHistory
     ? history.slice(-12).map(h => (h.occ_pct || 0) * 100)
     : (projection?.periods?.slice(0, 12).map(p => p.adjOccPct * 100) || []);
+  const sparkWebsite = hasHistory
+    ? history.slice(-12).map(h => h.website_leads || 0)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjWebsite) || []);
 
   const mi = projection?.marketIntelligence;
 
@@ -1014,12 +1017,12 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         </div>
       ) : (
         <>
-          {/* KpiTile strip — 4 tiles */}
+          {/* KpiTile strip — Physical / Digital / Quadrant / Trajectory */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
-            <KpiTile label="WEEKLY TRAFFIC" value={Math.round(kpiTraffic).toLocaleString()} sub={trafficTrend.text} color={BT2.met.physTraffic} spark={sparkTraffic} />
-            <KpiTile label="IN-PERSON TOURS" value={Math.round(kpiTours).toLocaleString()} sub={toursTrend.text} color={BT2.met.digTraffic} spark={sparkTours} />
-            <KpiTile label="CLOSING RATIO" value={`${(kpiClosing * 100).toFixed(1)}%`} sub={closingTrend.text} color={BT2.met.compTraffic} spark={sparkClosing} />
-            <KpiTile label="OCCUPANCY" value={`${(kpiOcc * 100).toFixed(1)}%`} sub={occTrend.text} color={BT2.met.occupancy} spark={sparkOcc} />
+            <KpiTile label="PHYSICAL TRAFFIC" value={Math.round(kpiTraffic).toLocaleString()} sub={trafficTrend.text} color={BT2.met.physTraffic} spark={sparkTraffic} />
+            <KpiTile label="DIGITAL TRAFFIC" value={Math.round(funnelWebsite).toLocaleString()} sub={hasHistory ? `vs ${Math.round(avg4('website_leads'))} avg` : 'Predicted'} color={BT2.met.digTraffic} spark={sparkWebsite} />
+            <KpiTile label="QUADRANT SCORE" value={`${(kpiClosing * 100).toFixed(0)}pts`} sub={closingTrend.text} color={BT2.met.compTraffic} spark={sparkClosing} />
+            <KpiTile label="TRAJECTORY" value={`${(kpiOcc * 100).toFixed(1)}%`} sub={occTrend.text} color={BT2.met.occupancy} spark={sparkOcc} />
           </div>
 
           {/* Digital-Physical Gap alert banner */}
@@ -1048,19 +1051,24 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 {/* Traffic Intelligence Signals + Leasing Velocity panels */}
                 {mi && (
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, marginTop: 1 }}>
-                    <SectionPanel title="TRAFFIC INTELLIGENCE SIGNALS" subtitle="Market adjustment factors" borderColor={BT2.met.physTraffic}>
+                    <SectionPanel title="FDOT TRAFFIC COUNTS" subtitle="Leasing foot traffic by period" borderColor={BT2.met.physTraffic}>
+                      {(projection?.periods ?? []).slice(0, 5).map((p, i) => (
+                        <DataRow
+                          key={i}
+                          label={p.label.split('|')[0]?.trim() ?? `Period ${i + 1}`}
+                          value={Math.round(p.adjTraffic).toLocaleString()}
+                          valueColor={p.isActual ? BT2.met.occupancy : BT2.text.amber}
+                          sub={p.isActual ? 'ACTUAL' : 'PREDICTED'}
+                        />
+                      ))}
                       <DataRow label="DEMAND FACTOR" value={`${((mi.demandFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.demandDirection === 'up' ? BT2.met.occupancy : mi.demandDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
-                      <DataRow label="DIGITAL FACTOR" value={`${((mi.digitalFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.digitalDirection === 'up' ? BT2.met.digTraffic : mi.digitalDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
-                      <DataRow label="SUPPLY FACTOR" value={`${((mi.supplyFactor ?? 1) * 100).toFixed(0)}%`} valueColor={mi.supplyDirection === 'up' ? BT2.met.occupancy : mi.supplyDirection === 'down' ? BT2.text.amber : BT2.text.secondary} />
-                      <DataRow label="SEASONAL FACTOR" value={`${((mi.seasonalFactor ?? 1) * 100).toFixed(0)}%`} valueColor={BT2.text.secondary} />
-                      <DataRow label="OVERALL ADJUSTMENT" value={`${((mi.overallAdjustment ?? 1) * 100).toFixed(0)}%`} valueColor={mi.overallAdjustment >= 1 ? BT2.met.occupancy : BT2.text.amber} />
                     </SectionPanel>
-                    <SectionPanel title="LEASING VELOCITY SUMMARY" subtitle="Current period baseline" borderColor={BT2.met.digTraffic}>
-                      <DataRow label="WEEKLY TRAFFIC" value={Math.round(kpiTraffic).toLocaleString()} valueColor={BT2.met.physTraffic} />
-                      <DataRow label="IN-PERSON TOURS" value={Math.round(kpiTours).toLocaleString()} valueColor={BT2.met.digTraffic} />
-                      <DataRow label="NET LEASES / WK" value={Math.round(kpiNetLeases).toLocaleString()} valueColor={BT2.met.occupancy} />
-                      <DataRow label="CLOSING RATIO" value={`${(kpiClosing * 100).toFixed(1)}%`} valueColor={kpiClosing >= 0.2 ? BT2.met.occupancy : BT2.text.amber} />
-                      <DataRow label="OCCUPANCY" value={`${(kpiOcc * 100).toFixed(1)}%`} valueColor={kpiOcc >= 0.92 ? BT2.met.occupancy : kpiOcc >= 0.85 ? BT2.text.amber : BT2.text.red} />
+                    <SectionPanel title="REVIEW SENTIMENT" subtitle="Market demand + digital signals" borderColor={BT2.met.digTraffic}>
+                      <DataRow label="OVERALL SIGNAL" value={mi.overallSummary ? mi.overallSummary.slice(0, 24) : `${((mi.overallAdjustment ?? 1) * 100).toFixed(0)}%`} valueColor={mi.overallAdjustment >= 1 ? BT2.met.occupancy : BT2.text.amber} />
+                      <DataRow label="DEMAND TREND" value={(mi.demandDirection ?? 'neutral').toUpperCase()} valueColor={mi.demandDirection === 'up' ? BT2.met.occupancy : mi.demandDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
+                      <DataRow label="DIGITAL SIGNAL" value={(mi.digitalDirection ?? 'neutral').toUpperCase()} valueColor={mi.digitalDirection === 'up' ? BT2.met.digTraffic : mi.digitalDirection === 'down' ? BT2.text.red : BT2.text.secondary} />
+                      <DataRow label="SUPPLY PRESSURE" value={(mi.supplyDirection ?? 'neutral').toUpperCase()} valueColor={mi.supplyDirection === 'up' ? BT2.text.red : mi.supplyDirection === 'down' ? BT2.met.occupancy : BT2.text.secondary} />
+                      <DataRow label="SEASONAL FACTOR" value={`${((mi.seasonalFactor ?? 1) * 100).toFixed(0)}%`} valueColor={BT2.text.secondary} />
                     </SectionPanel>
                   </div>
                 )}
