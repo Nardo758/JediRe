@@ -26,6 +26,7 @@ import { ModulesPage } from './pages/settings/ModulesPage';
 import { ModuleLibrariesPage } from './pages/settings/ModuleLibrariesPage';
 import { ModuleLibraryDetailPage } from './pages/settings/ModuleLibraryDetailPage';
 import { EmailSettings } from './pages/settings/EmailSettings';
+import { M08StrategyBuilderPage } from './pages/settings/M08StrategyBuilderPage';
 import { DashboardContentsPage } from './pages/DashboardContentsPage';
 import AuthPage from './pages/AuthPage';
 import { ShowcaseLandingPage } from './pages/ShowcaseLandingPage';
@@ -218,6 +219,7 @@ function AppContent() {
           <Route path="/settings/module-libraries/:module" element={<ModuleLibraryDetailPage />} />
           <Route path="/settings/email" element={<EmailSettings />} />
           <Route path="/settings/marketplace" element={<ModuleMarketplacePage />} />
+          <Route path="/settings/strategies" element={<M08StrategyBuilderPage />} />
 
           {/* M08 Strategy Control Panel */}
           <Route path="/strategies" element={<M08StrategyControlPanel />} />
