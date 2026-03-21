@@ -135,6 +135,21 @@ const labelSx: React.CSSProperties = {
 };
 
 // ─── SIGNAL WEIGHT SLIDERS ────────────────────────────────────────────────────
+/** Hard-normalize all weights so they sum exactly to 1.0 */
+function finalizeWeights(w: SignalWeights): SignalWeights {
+  const total = Object.values(w).reduce((a, b) => a + b, 0);
+  if (total === 0) return { ...DEFAULT_WEIGHTS };
+  const normalized = { ...w } as SignalWeights;
+  let acc = 0;
+  const keys = SIGNAL_KEYS.slice(0, -1);
+  keys.forEach(k => {
+    normalized[k] = parseFloat((w[k] / total).toFixed(4));
+    acc += normalized[k];
+  });
+  normalized.risk = parseFloat((1.0 - acc).toFixed(4));
+  return normalized;
+}
+
 function SignalWeightSliders({ weights, onChange }: { weights: SignalWeights; onChange: (w: SignalWeights) => void }) {
   const chartData = SIGNAL_KEYS.map(k => ({ key: k, val: Math.round(weights[k] * 100) }));
   const sum = Object.values(weights).reduce((a, b) => a + b, 0);
@@ -155,6 +170,8 @@ function SignalWeightSliders({ weights, onChange }: { weights: SignalWeights; on
               type="range" min={0} max={100} step={1}
               value={Math.round(weights[k] * 100)}
               onChange={e => onChange(rebalanceWeights(weights, k, Number(e.target.value)))}
+              onMouseUp={() => onChange(finalizeWeights(weights))}
+              onTouchEnd={() => onChange(finalizeWeights(weights))}
               style={{ width: '100%', accentColor: SIGNAL_COLORS[k] }}
             />
           </div>
@@ -886,7 +903,8 @@ function TemplateGallery({ templates, onClone, onClose }: {
 export function M08StrategyBuilderPage() {
   const {
     strategies, systemTemplates, loading, error,
-    fetchStrategies, createStrategy, updateStrategy, deleteStrategy, cloneStrategy, toggleActive,
+    fetchStrategies, fetchSystemTemplates, createStrategy, updateStrategy,
+    deleteStrategy, cloneStrategy, toggleActive,
   } = useStrategyStore();
 
   const [editorOpen, setEditorOpen]           = useState(false);
@@ -898,7 +916,15 @@ export function M08StrategyBuilderPage() {
   const [search, setSearch]                   = useState('');
   const [showTemplates, setShowTemplates]     = useState(false);
 
-  useEffect(() => { fetchStrategies(); }, [fetchStrategies]);
+  function openTemplates() {
+    fetchSystemTemplates();
+    setShowTemplates(true);
+  }
+
+  useEffect(() => {
+    fetchStrategies();
+    fetchSystemTemplates();
+  }, [fetchStrategies, fetchSystemTemplates]);
 
   const filtered = strategies.filter(s =>
     !search || s.name.toLowerCase().includes(search.toLowerCase())
@@ -968,7 +994,7 @@ export function M08StrategyBuilderPage() {
             value={search} onChange={e => setSearch(e.target.value)} />
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
             <button style={btnSx('ghost')} onClick={fetchStrategies}>↺ REFRESH</button>
-            <button style={btnSx('ghost')} onClick={() => setShowTemplates(true)}>
+            <button style={btnSx('ghost')} onClick={openTemplates}>
               BROWSE TEMPLATES
             </button>
             <button style={btnSx('primary')} onClick={openNew}>+ NEW STRATEGY</button>

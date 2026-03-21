@@ -259,6 +259,9 @@ router.post('/:id/clone', requireAuth, async (req: AuthenticatedRequest, res: Re
     );
     if (source.rows.length === 0) return res.status(404).json({ success: false, error: 'Strategy not found' });
     const s = source.rows[0];
+    const cloneName = typeof req.body.name === 'string' && req.body.name.trim()
+      ? req.body.name.trim()
+      : `${s.name} (Copy)`;
 
     const normalizedWeights = normalizeWeights(s.signal_weights || {});
     const result = await query(
@@ -266,7 +269,7 @@ router.post('/:id/clone', requireAuth, async (req: AuthenticatedRequest, res: Re
        VALUES ($1, $2, $3, $4, $5, $6, false, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM strategies), $7, $8)
        RETURNING *`,
       [
-        `${s.name} (Copy)`, s.description,
+        cloneName, s.description,
         JSON.stringify(normalizedWeights),
         JSON.stringify(s.property_gates || []),
         JSON.stringify(s.risk_gates || []),
