@@ -130,11 +130,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const kpiEconomy = [
     {
       label: 'AVG RENT',
-      value: data.demographics?.census?.medianRent
-        ? `$${Number(data.demographics.census.medianRent).toLocaleString()}`
-        : (data.economy?.metrics?.avgRent?.value ?? '—'),
+      value: data.demographics?.submarket?.avgRent != null
+        ? `$${Number(data.demographics.submarket.avgRent).toLocaleString()}`
+        : data.demographics?.census?.medianRent != null
+          ? `$${Number(data.demographics.census.medianRent).toLocaleString()}`
+          : (data.economy?.metrics?.avgRent?.value ?? '—'),
       color: BT2.text.cyan,
-      spark: (data.economy?.metrics?.avgRent?.sparkline as number[] | undefined) ?? [],
+      spark: (data.demographics?.submarket?.rentSeries as number[] | undefined)
+          ?? (data.economy?.metrics?.avgRent?.sparkline as number[] | undefined) ?? [],
     },
     {
       label: 'OCCUPANCY',
@@ -154,14 +157,17 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     },
     {
       label: 'JOB GROWTH',
-      value: data.economy?.metrics?.jobGrowth?.value ?? data.economy?.metrics?.jobsAdded?.value ?? '—',
+      value: data.economy?.metrics?.jobsAdded?.value ?? data.economy?.metrics?.jobGrowth?.value ?? '—',
       color: BT2.met.economic,
-      spark: (data.economy?.metrics?.jobGrowth?.sparkline as number[] | undefined)
-          ?? (data.economy?.metrics?.jobsAdded?.sparkline as number[] | undefined) ?? [],
+      spark: (data.economy?.metrics?.jobsAdded?.sparkline as number[] | undefined)
+          ?? (data.economy?.metrics?.jobGrowth?.sparkline as number[] | undefined) ?? [],
     },
     {
       label: 'POPULATION GROWTH',
-      value: data.economy?.metrics?.populationGrowth?.value ?? data.economy?.metrics?.netMigration?.value ?? '—',
+      value: data.economy?.metrics?.populationGrowth?.value
+          ?? (data.demographics?.census as Record<string, unknown> | undefined)?.populationGrowth as string | undefined
+          ?? data.economy?.metrics?.netMigration?.value
+          ?? '—',
       color: BT2.text.purple,
       spark: (data.economy?.metrics?.populationGrowth?.sparkline as number[] | undefined)
           ?? (data.economy?.metrics?.netMigration?.sparkline as number[] | undefined) ?? [],
