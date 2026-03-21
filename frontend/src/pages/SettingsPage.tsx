@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { EmailSettings } from './settings/EmailSettings';
 import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
 import PropertyTypesSettings from './settings/PropertyTypesSettings';
@@ -146,24 +147,24 @@ export function SettingsPage() {
           >
             Subscription
           </button>
-          <a 
-            href="/settings/modules"
+          <Link 
+            to="/settings/modules"
             className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
           >
             AI Modules
-          </a>
-          <a 
-            href="/settings/module-libraries"
+          </Link>
+          <Link 
+            to="/settings/module-libraries"
             className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
           >
             Module Libraries
-          </a>
-          <a 
-            href="/settings/strategies"
+          </Link>
+          <Link 
+            to="/settings/strategies"
             className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
           >
             Strategy Builder
-          </a>
+          </Link>
           <button 
             onClick={() => setActiveTab('markets')}
             className={`w-full text-left px-4 py-3 rounded-lg ${
