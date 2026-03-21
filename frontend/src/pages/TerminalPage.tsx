@@ -503,6 +503,25 @@ export default function TerminalPage() {
   interface CorpHealthLive { employers:CorpEmployer[]; schi:number|null; reHealth:number|null; divergence:number|null; herfindahl:number|null; alerts:CorpAlert[]; sectors:Record<string,number>; portfolioSubmarkets:DivSubmarket[]; topEmployers:CorpEmployer[]; sectorRotation:{sectors:SectorRotEntry[];markets:string[]}|null; loaded:boolean; loading:boolean }
   const [corpHealthLive, setCorpHealthLive] = useState<CorpHealthLive>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},portfolioSubmarkets:[],topEmployers:[],sectorRotation:null,loaded:false,loading:false});
 
+  // F3 Portfolio typed interfaces
+  interface PortfolioAsset {
+    id: string; deal_id?: string; property_name?: string; address?: string;
+    submarket?: string; asset_type?: string; units?: number;
+    actual_noi?: number; proforma_noi?: number; noi_variance?: number;
+    actual_occupancy?: number; proforma_occupancy?: number; occupancy_variance?: number;
+    actual_avg_rent?: number; irr?: number;
+  }
+  interface RankedPortfolioAsset {
+    id: string; dealId?: string; name: string; submarket?: string;
+    pcsScore: number; rank: number; totalInSubmarket?: number;
+    movement?: number; trajectory?: string;
+  }
+  interface PortfolioComp {
+    id?: string; comp_name?: string; comp_property_address?: string;
+    avg_rent?: number; occupancy?: number; distance_miles?: number; match_score?: number;
+  }
+  interface PerfMetric { l: string; v: string; c?: string }
+
   // Media floating windows (global overlay, separate from dashboard windows)
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
   const [mediaWinStates, setMediaWinStates] = useState<Record<string,WinState>>({});
@@ -582,13 +601,13 @@ export default function TerminalPage() {
   const [rawCatalogMetricsT, setRawCatalogMetricsT] = useState<Array<Record<string,unknown>>>([]);
   const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
-  // F3 Portfolio state
+  // F3 Portfolio state (typed after PortfolioAsset/RankedPortfolioAsset/PortfolioComp interfaces above)
   const [f3Tab, setF3Tab] = useState<"rankings"|"grid"|"performance"|"comps">("rankings");
-  const [portfolioAssets, setPortfolioAssets] = useState<any[]>([]);
-  const [portfolioRankings, setPortfolioRankings] = useState<any[]>([]);
+  const [portfolioAssets, setPortfolioAssets] = useState<PortfolioAsset[]>([]);
+  const [portfolioRankings, setPortfolioRankings] = useState<RankedPortfolioAsset[]>([]);
   const [portfolioLoaded, setPortfolioLoaded] = useState(false);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const [portfolioComps, setPortfolioComps] = useState<Record<string,any[]>>({});
+  const [portfolioComps, setPortfolioComps] = useState<Record<string,PortfolioComp[]>>({});
   const [portfolioCompsLoading, setPortfolioCompsLoading] = useState<Set<string>>(new Set());
   const [portfolioExpanded, setPortfolioExpanded] = useState<Set<string>>(new Set());
 
@@ -1615,7 +1634,7 @@ export default function TerminalPage() {
                       {["ASSET","SUBMARKET","PCS SCORE","RANK","MOVEMENT","TRAJECTORY","ACTION"].map(h => <TH key={h}>{h}</TH>)}
                     </tr></thead>
                     <tbody>
-                      {portfolioRankings.map((asset: any, i: number) => (
+                      {portfolioRankings.map((asset, i) => (
                         <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.dealId}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
                           <TD><span style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.name}</span></TD>
                           <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket}</span></TD>
@@ -1641,9 +1660,9 @@ export default function TerminalPage() {
                       {["PROPERTY","SUBMARKET","TYPE","UNITS","OCCUPANCY","NOI ACTUAL","NOI PF","IRR"].map(h => <TH key={h}>{h}</TH>)}
                     </tr></thead>
                     <tbody>
-                      {portfolioAssets.map((asset: any, i: number) => {
-                        const occ = parseFloat(asset.actual_occupancy||"0");
-                        const noiVar = parseFloat(asset.noi_variance||"0");
+                      {portfolioAssets.map((asset, i) => {
+                        const occ = asset.actual_occupancy ?? 0;
+                        const noiVar = asset.noi_variance ?? 0;
                         return (
                           <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
                             <TD>
@@ -1653,10 +1672,10 @@ export default function TerminalPage() {
                             <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket||"—"}</span></TD>
                             <TD><span style={{fontSize:8,color:T.text.amber,fontFamily:T.font.mono}}>{asset.asset_type||"—"}</span></TD>
                             <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.units||"—"}</span></TD>
-                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{asset.actual_occupancy?`${occ.toFixed(1)}%`:"—"}</span></TD>
-                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_noi?`$${(parseFloat(asset.actual_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
-                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{asset.proforma_noi?`$${(parseFloat(asset.proforma_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
-                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.purple}}>{asset.irr?`${parseFloat(asset.irr).toFixed(1)}%`:"—"}</span></TD>
+                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{asset.actual_occupancy!=null?`${occ.toFixed(1)}%`:"—"}</span></TD>
+                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_noi?`$${((asset.actual_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
+                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{asset.proforma_noi?`$${((asset.proforma_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
+                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.purple}}>{asset.irr?`${(asset.irr).toFixed(1)}%`:"—"}</span></TD>
                           </tr>
                         );
                       })}
@@ -1671,11 +1690,19 @@ export default function TerminalPage() {
                   <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No assets found</div>
                 ) : (
                   <div style={{padding:10,display:"flex",flexDirection:"column",gap:8}}>
-                    {portfolioAssets.map((asset: any, i: number) => {
-                      const noiVar = parseFloat(asset.noi_variance||"0");
-                      const occVar = parseFloat(asset.occupancy_variance||"0");
+                    {portfolioAssets.map((asset, i) => {
+                      const noiVar = asset.noi_variance ?? 0;
+                      const occVar = asset.occupancy_variance ?? 0;
                       const status = noiVar>5?"OUTPERFORMING":noiVar<-10?"UNDERPERFORMING":"ON TRACK";
                       const statusC = noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.amber;
+                      const metrics: PerfMetric[] = [
+                        {l:"NOI ACTUAL",   v: asset.actual_noi   ? `$${((asset.actual_noi)/1000).toFixed(0)}K`    : "—"},
+                        {l:"NOI PROFORMA", v: asset.proforma_noi ? `$${((asset.proforma_noi)/1000).toFixed(0)}K`  : "—"},
+                        {l:"NOI VAR",      v: asset.noi_variance  != null ? `${noiVar>0?"+":""}${noiVar.toFixed(1)}%` : "—", c: noiVar>0?T.text.green:noiVar<0?T.text.red:T.text.muted},
+                        {l:"OCC ACTUAL",   v: asset.actual_occupancy   != null ? `${(asset.actual_occupancy).toFixed(1)}%`   : "—"},
+                        {l:"OCC PROFORMA", v: asset.proforma_occupancy != null ? `${(asset.proforma_occupancy).toFixed(1)}%` : "—"},
+                        {l:"OCC VAR",      v: asset.occupancy_variance  != null ? `${occVar>0?"+":""}${occVar.toFixed(1)}%`  : "—", c: occVar>0?T.text.green:occVar<0?T.text.red:T.text.muted},
+                      ];
                       return (
                         <div key={asset.id||i} style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"10px 12px"}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -1686,17 +1713,10 @@ export default function TerminalPage() {
                             <span style={{fontSize:7,fontWeight:700,padding:"3px 8px",background:statusC+"22",color:statusC,border:`1px solid ${statusC}44`}}>{status}</span>
                           </div>
                           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
-                            {[
-                              {l:"NOI ACTUAL",   v: asset.actual_noi   ? `$${(parseFloat(asset.actual_noi)/1000).toFixed(0)}K`    : "—"},
-                              {l:"NOI PROFORMA", v: asset.proforma_noi ? `$${(parseFloat(asset.proforma_noi)/1000).toFixed(0)}K`  : "—"},
-                              {l:"NOI VAR",      v: asset.noi_variance  ? `${noiVar>0?"+":""}${noiVar.toFixed(1)}%`               : "—", c: noiVar>0?T.text.green:noiVar<0?T.text.red:T.text.muted},
-                              {l:"OCC ACTUAL",   v: asset.actual_occupancy   ? `${parseFloat(asset.actual_occupancy).toFixed(1)}%`   : "—"},
-                              {l:"OCC PROFORMA", v: asset.proforma_occupancy ? `${parseFloat(asset.proforma_occupancy).toFixed(1)}%` : "—"},
-                              {l:"OCC VAR",      v: asset.occupancy_variance  ? `${occVar>0?"+":""}${occVar.toFixed(1)}%`            : "—", c: occVar>0?T.text.green:occVar<0?T.text.red:T.text.muted},
-                            ].map((m,j) => (
+                            {metrics.map((m,j) => (
                               <div key={j}>
                                 <div style={{fontSize:7,color:T.text.muted,letterSpacing:1,marginBottom:2}}>{m.l}</div>
-                                <div style={{fontSize:11,fontWeight:700,fontFamily:T.font.mono,color:(m as any).c||T.text.primary}}>{m.v}</div>
+                                <div style={{fontSize:11,fontWeight:700,fontFamily:T.font.mono,color:m.c||T.text.primary}}>{m.v}</div>
                               </div>
                             ))}
                           </div>
@@ -1717,7 +1737,7 @@ export default function TerminalPage() {
                       {["OWNED ASSET","AVG RENT","OCCUPANCY","COMPS",""].map(h => <TH key={h}>{h}</TH>)}
                     </tr></thead>
                     <tbody>
-                      {portfolioAssets.map((asset: any, i: number) => {
+                      {portfolioAssets.map((asset, i) => {
                         const comps = portfolioComps[asset.id]||[];
                         const expanded = portfolioExpanded.has(asset.id);
                         const loadingComp = portfolioCompsLoading.has(asset.id);
@@ -1732,8 +1752,8 @@ export default function TerminalPage() {
                                   <div style={{fontSize:7,color:T.text.muted}}>{asset.asset_type||""}</div>
                                 </div>
                               </div></TD>
-                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent?`$${parseFloat(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
-                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy?`${parseFloat(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent!=null?`$${(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy!=null?`${(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
                               <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.cyan}}>{comps.length||"—"}</span></TD>
                               <TD onClick={e=>e.stopPropagation()}>
                                 <button onClick={() => loadCompSet(asset.id)} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>
@@ -1751,13 +1771,13 @@ export default function TerminalPage() {
                                 <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>No comps loaded — click LOAD COMPS to discover competitors</td>
                               </tr>
                             )}
-                            {expanded && comps.map((comp: any, j: number) => (
+                            {expanded && comps.map((comp, j) => (
                               <tr key={comp.id||j} style={{background:T.bg.active,borderBottom:`1px solid ${T.border.subtle}`}}>
                                 <td style={{padding:"5px 10px 5px 32px",fontSize:9,color:T.text.secondary}}>{comp.comp_name||comp.comp_property_address||"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent?`$${comp.avg_rent}`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy?`${comp.occupancy}%`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:8,color:T.text.muted}}>{comp.distance_miles?`${comp.distance_miles}mi`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:8,fontWeight:700,fontFamily:T.font.mono,color:comp.match_score>=80?T.text.green:comp.match_score>=60?T.text.amber:T.text.muted}}>{comp.match_score?`${comp.match_score}% match`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent!=null?`$${comp.avg_rent}`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy!=null?`${comp.occupancy}%`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:8,color:T.text.muted}}>{comp.distance_miles!=null?`${comp.distance_miles}mi`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize:8,fontWeight:700,fontFamily:T.font.mono,color:(comp.match_score??0)>=80?T.text.green:(comp.match_score??0)>=60?T.text.amber:T.text.muted}}>{comp.match_score!=null?`${comp.match_score}% match`:"—"}</td>
                               </tr>
                             ))}
                           </>
