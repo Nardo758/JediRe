@@ -7,7 +7,6 @@ import {
 import { useStrategyArbitrage } from '../../hooks/useStrategyArbitrageM08';
 import type { M08StrategyScore } from '../../stores/dealStore';
 import { CustomScreenTab } from '../../components/deal/sections/CustomScreenTab';
-import { Design3DPage } from '../Design3DPage';
 
 interface StrategyArbitragePageProps {
   dealId: string;
@@ -33,7 +32,7 @@ function matchStrategyCol(score: M08StrategyScore, col: StrategyColDef): boolean
 const SIGNAL_KEYS   = ['demand', 'supply', 'market', 'policy', 'risk'] as const;
 const SIGNAL_LABELS = ['D', 'S', 'M', 'P', 'R'];
 
-const TAB_LABELS = ['ARBITRAGE SCORES', 'STRATEGY DETAIL', '3D DESIGN'];
+const TAB_LABELS = ['ARBITRAGE SCORES', 'STRATEGY DETAIL'];
 
 function ScoreRing({ score, color, size = 60 }: { score: number; color: string; size?: number }) {
   const r = (size - 8) / 2;
@@ -289,12 +288,6 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
         {activeTab === 1 && (
           <BtTabWrapper>
             <CustomScreenTab dealId={resolvedDealId} />
-          </BtTabWrapper>
-        )}
-
-        {activeTab === 2 && (
-          <BtTabWrapper>
-            <Design3DPage />
           </BtTabWrapper>
         )}
       </div>
