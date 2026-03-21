@@ -14,7 +14,7 @@ import {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const MONO: React.CSSProperties = { ...bMono };
+const MONO: React.CSSProperties = { fontFamily: bMono };
 
 function scoreColor(s: number) {
   return s >= 80 ? BTV.text.green : s >= 65 ? BTV.text.amber : BTV.text.red;
