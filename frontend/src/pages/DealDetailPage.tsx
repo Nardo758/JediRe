@@ -64,7 +64,6 @@ import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
 import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
 import FinancialDashboard from '../components/deal/sections/FinancialDashboard';
 
-import { DueDiligencePage } from './development/DueDiligencePage';
 import { StrategyArbitragePage } from './development/StrategyArbitragePage';
 import { RiskDDPage } from './development/RiskDDPage';
 import { ProjectTimelinePage } from './development/ProjectTimelinePage';
