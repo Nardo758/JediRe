@@ -18,7 +18,7 @@ import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
-import { BT as BT2, BtTabWrapper, PanelHeader } from '../bloomberg-ui';
+import { BT as BT2, BtTabWrapper, PanelHeader, SubTabBar } from '../bloomberg-ui';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -183,53 +183,15 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         </div>
       )}
 
-      {/* Bloomberg v0.34 sub-tab bar */}
-      <div style={{
-        display: 'flex',
-        background: BT2.bg.header,
-        borderBottom: `1px solid ${BT2.border.medium}`,
-        flexShrink: 0,
-        overflowX: 'auto',
-        height: 28,
-        alignItems: 'stretch',
-      }}>
-        {visibleTabs.map(tab => {
-          const unlocked = isTabUnlocked(tab.id);
-          const completed = tab.id === 'boundary_zoning' && boundaryAndZoningComplete;
-          const isActive = activeTab === tab.id;
-
-          return (
-            <button
-              key={tab.id}
-              onClick={() => unlocked && setActiveTab(tab.id)}
-              disabled={!unlocked}
-              title={!unlocked ? 'Complete boundary & zoning verification to unlock' : ''}
-              style={{
-                fontFamily: MONO,
-                fontSize: 8,
-                fontWeight: isActive ? 700 : 500,
-                padding: '0 12px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: isActive ? `2px solid ${BT2.text.amber}` : '2px solid transparent',
-                color: isActive ? BT2.text.amber : unlocked ? BT2.text.secondary : BT2.text.muted,
-                cursor: unlocked ? 'pointer' : 'not-allowed',
-                whiteSpace: 'nowrap' as const,
-                letterSpacing: 0.5,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                transition: 'color 0.1s',
-              }}
-            >
-              {!unlocked && <Lock size={9} />}
-              {completed && <CheckCircle2 size={9} style={{ color: BT2.text.green }} />}
-              {tab.label.toUpperCase()}
-              <span style={{ fontSize: 6, color: BT2.text.muted }}>{tab.step}</span>
-            </button>
-          );
-        })}
-      </div>
+      <SubTabBar
+        tabs={visibleTabs.map(t =>
+          (t.id === 'boundary_zoning' && boundaryAndZoningComplete ? '✓ ' : '') +
+          t.label.toUpperCase()
+        )}
+        active={visibleTabs.findIndex(t => t.id === activeTab)}
+        setActive={(i) => setActiveTab(visibleTabs[i].id)}
+        color={BT2.text.amber}
+      />
 
       <BtTabWrapper>
         {renderActiveTab()}

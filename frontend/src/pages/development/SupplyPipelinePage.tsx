@@ -15,7 +15,7 @@
  */
 
 import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
-import { RiskDot } from '../../components/deal/bloomberg-ui';
+import { RiskDot, PanelHeader, SubTabBar, KpiTile, BT_CSS, BT as BT2 } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
@@ -363,55 +363,58 @@ const SupplyPipelinePage: React.FC = () => {
     );
   }
 
+  const S_TABS = ['SUPPLY WAVE', 'PIPELINE', 'DEVELOPERS', 'ABSORPTION', 'RISK SCORING'] as const;
+  const S_TAB_IDS: Array<'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk'> = ['wave', 'pipeline', 'developers', 'absorption', 'risk'];
+  const pipelineTotal = pipelineProjects.reduce((sum, p) => sum + p.units, 0);
+  const underConstrTotal = pipelineProjects.filter(p => p.phase === 'under_construction').reduce((sum, p) => sum + p.units, 0);
+  const annualDeliveries = supplyWave.length > 0
+    ? Math.round(supplyWave.reduce((sum, d) => sum + d.total, 0) / Math.max(supplyWave.length / 4, 1))
+    : 0;
+
   return (
-    <div className="min-h-screen bg-[#131920]">
-      {/* Bloomberg v0.34 PanelHeader */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 10px', background: '#1A1F2E',
-        borderBottom: '1px solid #1E2538', borderTop: '2px solid #F97316',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, fontFamily: "'JetBrains Mono',monospace" }}>SUPPLY PIPELINE</span>
-          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>M04 | Pipeline · Absorption · Developer Activity · Risk</span>
-          <span style={{ fontSize: 6, fontWeight: 700, color: '#F97316', background: '#F9731615', border: '1px solid #F9731630', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>SUPPLY</span>
-          {isLiveData && <span style={{ fontSize: 6, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>LIVE</span>}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>HORIZON:</span>
-          {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
-            <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
-              fontSize: 7, padding: '1px 6px', fontFamily: "'JetBrains Mono',monospace",
-              background: timeHorizon === horizon ? '#F9731620' : 'transparent',
-              border: timeHorizon === horizon ? '1px solid #F9731660' : '1px solid #2A3348',
-              color: timeHorizon === horizon ? '#F97316' : '#8B95A5',
-              cursor: 'pointer',
-            }}>{horizon.toUpperCase()}</button>
-          ))}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal, overflow: 'hidden' }}>
+      <style>{BT_CSS}</style>
+      <PanelHeader
+        title="SUPPLY PIPELINE"
+        subtitle="M04 · PIPELINE PRESSURE"
+        borderColor={BT2.text.orange}
+        metrics={[
+          { l: 'SUPPLY', c: BT2.text.orange },
+          ...(isLiveData ? [{ l: 'LIVE', c: BT2.text.green }] : []),
+        ]}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: BT2.font.mono }}>HORIZON:</span>
+            {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
+              <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
+                fontSize: 7, padding: '1px 6px', fontFamily: BT2.font.mono,
+                background: timeHorizon === horizon ? `${BT2.text.orange}20` : 'transparent',
+                border: timeHorizon === horizon ? `1px solid ${BT2.text.orange}60` : `1px solid ${BT2.border.medium}`,
+                color: timeHorizon === horizon ? BT2.text.orange : BT2.text.secondary,
+                cursor: 'pointer',
+              }}>{horizon.toUpperCase()}</button>
+            ))}
+          </div>
+        }
+      />
+      {/* 4-tile KPI strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
+        <KpiTile label="PIPELINE UNITS" value={formatNumber(pipelineTotal)} sub={`${pipelineProjects.length} projects`} color={BT2.text.orange} />
+        <KpiTile label="UNDER CONSTRUCTION" value={formatNumber(underConstrTotal)} sub="confirmed starts" color={BT2.text.amber} />
+        <KpiTile label="DELIVERIES/YR" value={annualDeliveries > 0 ? formatNumber(annualDeliveries) : '—'} sub="est. units/yr" color={BT2.text.cyan} />
+        <KpiTile
+          label="ABSORPTION MONTHS"
+          value={absorption?.monthsToAbsorb ? `${absorption.monthsToAbsorb}mo` : '—'}
+          sub={absorption?.riskLevel ?? 'awaiting data'}
+          color={absorption?.riskLevel === 'high' || absorption?.riskLevel === 'critical' ? BT2.text.red : BT2.text.green}
+        />
       </div>
-      {/* Bloomberg v0.34 Sub-tab Bar */}
-      <div style={{ display: 'flex', background: '#1A1F2E', borderBottom: '1px solid #2A3348', height: 28, alignItems: 'stretch' }}>
-        {[
-          { id: 'wave', label: 'SUPPLY WAVE' },
-          { id: 'pipeline', label: 'PIPELINE' },
-          { id: 'developers', label: 'DEVELOPERS' },
-          { id: 'absorption', label: 'ABSORPTION' },
-          { id: 'risk', label: 'RISK SCORING' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as 'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk')}
-            style={{
-              fontFamily: "'JetBrains Mono',monospace", fontSize: 8, fontWeight: activeTab === tab.id ? 700 : 500,
-              padding: '0 14px', background: 'transparent', border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid #F97316' : '2px solid transparent',
-              color: activeTab === tab.id ? '#F97316' : '#8B95A5',
-              cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >{tab.label}</button>
-        ))}
-      </div>
+      <SubTabBar
+        tabs={[...S_TABS]}
+        active={S_TAB_IDS.indexOf(activeTab)}
+        setActive={(i) => setActiveTab(S_TAB_IDS[i])}
+        color={BT2.text.orange}
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
