@@ -129,40 +129,42 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
   const kpiEconomy = [
     {
-      label: 'MEDIAN RENT',
+      label: 'AVG RENT',
       value: data.demographics?.census?.medianRent
-        ? `$${data.demographics.census.medianRent.toLocaleString()}`
+        ? `$${Number(data.demographics.census.medianRent).toLocaleString()}`
         : (data.economy?.metrics?.avgRent?.value ?? '—'),
       color: BT2.text.cyan,
       spark: (data.economy?.metrics?.avgRent?.sparkline as number[] | undefined) ?? [],
     },
     {
-      label: 'JOBS ADDED (12M)',
-      value: data.economy?.metrics?.jobsAdded?.value ?? '—',
-      color: BT2.met.economic,
-      spark: (data.economy?.metrics?.jobsAdded?.sparkline as number[] | undefined) ?? [],
+      label: 'OCCUPANCY',
+      value: data.demographics?.submarket?.avg_occupancy != null
+        ? `${data.demographics.submarket.avg_occupancy}%`
+        : data.supplyContext?.marketOccupancy != null
+          ? `${(data.supplyContext.marketOccupancy * 100).toFixed(1)}%`
+          : '—',
+      color: BT2.met.occupancy,
+      spark: (data.supplyContext?.occupancySeries as number[] | undefined) ?? [],
     },
     {
-      label: 'WAGE GROWTH',
-      value: data.economy?.metrics?.wageGrowth?.value ?? '—',
+      label: 'ABSORPTION',
+      value: data.supplyContext?.absorption?.value ?? data.economy?.metrics?.absorption?.value ?? '—',
       color: BT2.met.economic,
-      spark: (data.economy?.metrics?.wageGrowth?.sparkline as number[] | undefined) ?? [],
+      spark: (data.supplyContext?.absorptionSeries as number[] | undefined) ?? [],
     },
     {
-      label: 'NET MIGRATION',
-      value: data.economy?.metrics?.netMigration?.value ?? '—',
+      label: 'JOB GROWTH',
+      value: data.economy?.metrics?.jobGrowth?.value ?? data.economy?.metrics?.jobsAdded?.value ?? '—',
+      color: BT2.met.economic,
+      spark: (data.economy?.metrics?.jobGrowth?.sparkline as number[] | undefined)
+          ?? (data.economy?.metrics?.jobsAdded?.sparkline as number[] | undefined) ?? [],
+    },
+    {
+      label: 'POPULATION GROWTH',
+      value: data.economy?.metrics?.populationGrowth?.value ?? data.economy?.metrics?.netMigration?.value ?? '—',
       color: BT2.text.purple,
-      spark: (data.economy?.metrics?.netMigration?.sparkline as number[] | undefined) ?? [],
-    },
-    {
-      label: 'AFFORDABILITY',
-      value: data.economy?.metrics?.affordabilityRatio?.value ?? '—',
-      color: data.economy?.metrics?.affordabilityRatio?.status === 'green'
-        ? BT2.met.occupancy
-        : data.economy?.metrics?.affordabilityRatio?.status === 'red'
-          ? BT2.text.red
-          : BT2.text.amber,
-      spark: (data.economy?.metrics?.affordabilityRatio?.sparkline as number[] | undefined) ?? [],
+      spark: (data.economy?.metrics?.populationGrowth?.sparkline as number[] | undefined)
+          ?? (data.economy?.metrics?.netMigration?.sparkline as number[] | undefined) ?? [],
     },
   ];
 
