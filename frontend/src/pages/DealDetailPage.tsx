@@ -44,9 +44,8 @@ import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
-import type { Deal } from '../types/deal';
 
-import { BT, BT_CSS, PanelHeader } from '../components/deal/bloomberg-ui';
+import { BT, BT_CSS, PanelHeader, SectionPanel } from '../components/deal/bloomberg-ui';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
@@ -252,27 +251,60 @@ const DebtCapitalScreen = (props: ScreenProps) => (
 const RiskScreen = (props: ScreenProps) => (
   <RiskDDPage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
-const ExecutionScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="EXECUTION"
-    moduleSubtitle="M17 · CLOSE + MANAGE"
-    moduleBorderColor={BT.text.cyan}
-    moduleMetrics={[
-      { l: 'TIMELINE', c: BT.text.cyan },
-      { l: 'PM', c: BT.met.occupancy },
-      { l: 'OPUS', c: BT.text.purple },
-    ]}
-    accentColor={BT.text.cyan}
-    tabs={[
-      { id: 'timeline',           label: 'Project Timeline',   component: ProjectTimelinePage },
-      { id: 'project-management', label: 'Project Management', component: ProjectManagementSection },
-      { id: 'construction-mgmt',  label: 'Construction Mgmt',  component: ConstructionManagementSection },
-      { id: 'notarize-closing',   label: 'Closing (RON)',      component: NotarizeClosingSection },
-      { id: 'opus-ai',            label: 'Opus AI',            component: OpusAISection },
-    ]}
-  />
-);
+const EXEC_TABS = [
+  { id: 'timeline',           label: 'PROJECT TIMELINE',   title: 'PROJECT TIMELINE',   subtitle: 'M17 · MILESTONES + GANTT',        border: BT.text.cyan    },
+  { id: 'project-management', label: 'PROJECT MANAGEMENT', title: 'PROJECT MANAGEMENT', subtitle: 'M17 · PM TASKS + ASSIGNMENTS',     border: BT.met.occupancy },
+  { id: 'construction-mgmt',  label: 'CONSTRUCTION MGMT',  title: 'CONSTRUCTION MGMT',  subtitle: 'M17 · CONSTRUCTION MONITORING',   border: BT.text.amber   },
+  { id: 'notarize-closing',   label: 'CLOSING (RON)',       title: 'NOTARIZE & CLOSE',   subtitle: 'M17 · REMOTE ONLINE NOTARIZATION', border: BT.met.financial },
+  { id: 'opus-ai',            label: 'OPUS AI',             title: 'OPUS AI ASSISTANT',  subtitle: 'M17 · INTELLIGENT EXECUTION AID', border: BT.text.purple  },
+] as const;
+const EXEC_COMPONENTS: Record<string, React.ComponentType<ScreenProps>> = {
+  timeline:           ProjectTimelinePage,
+  'project-management': ProjectManagementSection,
+  'construction-mgmt':  ConstructionManagementSection,
+  'notarize-closing':   NotarizeClosingSection,
+  'opus-ai':            OpusAISection,
+};
+const ExecutionScreen = (props: ScreenProps) => {
+  const [active, setActive] = React.useState<string>(EXEC_TABS[0].id);
+  const tab = EXEC_TABS.find(t => t.id === active) ?? EXEC_TABS[0];
+  const C = EXEC_COMPONENTS[tab.id] as React.ComponentType<ScreenProps>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
+      <PanelHeader
+        title="EXECUTION"
+        subtitle="M17 · CLOSE + MANAGE"
+        borderColor={BT.text.cyan}
+        metrics={[
+          { l: 'TIMELINE', c: BT.text.cyan    },
+          { l: 'PM',       c: BT.met.occupancy },
+          { l: 'RON',      c: BT.met.financial },
+          { l: 'OPUS',     c: BT.text.purple  },
+        ]}
+      />
+      <div style={{ display: 'flex', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0, overflowX: 'auto', height: 28, alignItems: 'stretch' }}>
+        {EXEC_TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActive(t.id)}
+            style={{
+              fontFamily: BT.font.mono, fontSize: 8, fontWeight: active === t.id ? 700 : 500,
+              padding: '0 14px', background: 'transparent', border: 'none',
+              borderBottom: active === t.id ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+              color: active === t.id ? BT.text.cyan : BT.text.secondary,
+              cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: 0.6,
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BT.bg.terminal }}>
+        <SectionPanel title={tab.title} subtitle={tab.subtitle} borderColor={tab.border} style={{ minHeight: '100%' }}>
+          <C {...props} />
+        </SectionPanel>
+      </div>
+    </div>
+  );
+};
 const Design3DScreen = (props: ScreenProps) => (
   <Design3DShellPage
     dealId={props.dealId}
@@ -283,7 +315,7 @@ const Design3DScreen = (props: ScreenProps) => (
 const DocumentsScreen = (props: ScreenProps) => (
   <DocumentsShellPage
     dealId={props.dealId}
-    deal={props.deal as unknown as Deal}
+    deal={props.deal}
     dealType={props.dealType}
   />
 );

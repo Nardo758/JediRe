@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
-  PanelHeader, SubTabBar, BtTabWrapper, Bd, KpiTile,
+  PanelHeader, SubTabBar, BtTabWrapper, SectionPanel, DataRow, Bd,
 } from '../../components/deal/bloomberg-ui';
 import { DocumentsFilesSection } from '../../components/deal/sections/DocumentsFilesSection';
 import type { Deal } from '../../types/deal';
@@ -13,22 +13,22 @@ const TABS = ['FILES & ASSETS', 'DD CHECKLIST'];
 
 interface DocumentsShellPageProps {
   dealId?: string;
-  deal?: Deal;
+  deal?: Record<string, unknown>;
   dealType?: string;
 }
 
-interface FileStats {
-  total: number;
-  parsed: number;
-  pending: number;
+function isDeal(d: Record<string, unknown>): d is Deal {
+  return typeof d.id === 'string' && typeof d.name === 'string';
 }
+
+interface FileTotal { total: number }
 
 export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellPageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
   const resolvedDealId = propDealId || params.dealId || params.id || '';
 
   const [activeTab, setActiveTab] = useState(0);
-  const [stats, setStats] = useState<FileStats | null>(null);
+  const [fileTotal, setFileTotal] = useState<FileTotal | null>(null);
 
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -39,14 +39,12 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
       .then((res) => {
         const files = res.data?.data?.files ?? [];
         const total = res.data?.data?.total_count ?? files.length;
-        setStats({
-          total,
-          parsed: Math.round(total * 0.6),
-          pending: Math.round(total * 0.4),
-        });
+        setFileTotal({ total });
       })
       .catch(() => {});
   }, [resolvedDealId]);
+
+  const typedDeal: Deal | null = deal != null && isDeal(deal) ? deal : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
@@ -58,13 +56,14 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
         borderColor={BT.border.medium}
         metrics={[
           { l: 'FILES',   c: BT.text.secondary },
-          { l: 'PARSED',  c: BT.met.financial  },
-          { l: 'PENDING', c: BT.text.amber     },
+          { l: 'TYPE',    c: BT.text.cyan      },
+          { l: 'STATUS',  c: BT.met.financial  },
+          { l: 'AI',      c: BT.text.purple    },
         ]}
         right={
-          stats != null
-            ? <Bd c={BT.met.financial}>{stats.total} FILES</Bd>
-            : <Bd c={BT.text.muted}>LOADING</Bd>
+          fileTotal != null
+            ? <Bd c={BT.met.financial}>{fileTotal.total} FILES</Bd>
+            : <Bd c={BT.text.muted}>—</Bd>
         }
       />
 
@@ -78,25 +77,25 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {activeTab === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            {stats != null && (
-              <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
-                <div style={{ flex: 1 }}>
-                  <KpiTile label="TOTAL FILES" value={String(stats.total)}  color={BT.text.secondary} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <KpiTile label="AI PARSED"   value={String(stats.parsed)} color={BT.met.financial} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <KpiTile label="PENDING"     value={String(stats.pending)} color={BT.text.amber} />
-                </div>
-              </div>
-            )}
-            {deal != null && (
+            <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
+              <SectionPanel
+                title="FILE REGISTRY"
+                subtitle="M18 · TOTAL COUNT FROM API"
+                borderColor={BT.border.medium}
+                style={{ flex: 1, minWidth: 0 }}
+              >
+                <DataRow label="TOTAL FILES"  value={fileTotal != null ? String(fileTotal.total) : '—'} valueColor={BT.text.secondary} />
+                <DataRow label="TYPE"         value="MIXED"    valueColor={BT.text.cyan}                />
+                <DataRow label="STATUS"       value="ACTIVE"   valueColor={BT.met.financial}            />
+                <DataRow label="AI STATUS"    value="READY"    valueColor={BT.text.purple}              />
+              </SectionPanel>
+            </div>
+
+            {typedDeal != null ? (
               <BtTabWrapper>
-                <DocumentsFilesSection deal={deal} />
+                <DocumentsFilesSection deal={typedDeal} />
               </BtTabWrapper>
-            )}
-            {deal == null && (
+            ) : (
               <div style={{ padding: 24, color: BT.text.muted, fontFamily: BT.font.mono, fontSize: 11 }}>
                 NO DEAL CONTEXT — FILE BROWSER UNAVAILABLE
               </div>
