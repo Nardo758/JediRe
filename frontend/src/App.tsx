@@ -114,7 +114,7 @@ function AppContent() {
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
         {/* Terminal — full-page, no MainLayout; :section gives each F-key a bookmarkable URL */}
-        <Route path="/terminal" element={<TerminalPage />} />
+        <Route path="/terminal" element={<Navigate to="/terminal/dashboard" replace />} />
         <Route path="/terminal/:section" element={<TerminalPage />} />
 
         {/* Bloomberg Market Intelligence — base route redirects to terminal; sub-routes kept for embedded use */}
@@ -123,7 +123,7 @@ function AppContent() {
         <Route path="/market-intelligence/watchlist" element={<WatchlistPage />} />
         
         <Route element={<MainLayout />}>
-          <Route path="/" element={<Navigate to="/terminal" replace />} />
+          <Route path="/" element={<Navigate to="/terminal/dashboard" replace />} />
           <Route path="/map" element={
             <Suspense fallback={<PageLoadingFallback />}>
               <MapPage />
