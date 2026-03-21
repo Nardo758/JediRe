@@ -48,7 +48,6 @@ import type { ModuleId } from '../shared/config/deal-type-visibility';
 import { BT, BT_CSS, PanelHeader } from '../components/deal/bloomberg-ui';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
-import { Design3DPage as Design3DPageEnhanced } from './Design3DPage';
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
 import { ActivityFeed } from '../components/deal/ActivityFeed';
 import { CommentThread } from '../components/deal/CommentThread';
@@ -59,7 +58,6 @@ import CompetitionPage from './development/CompetitionPage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
 
-import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
@@ -67,6 +65,8 @@ import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule
 import FinancialDashboard from '../components/deal/sections/FinancialDashboard';
 
 import { DueDiligencePage } from './development/DueDiligencePage';
+import { StrategyArbitragePage } from './development/StrategyArbitragePage';
+import { RiskDDPage } from './development/RiskDDPage';
 import { ProjectTimelinePage } from './development/ProjectTimelinePage';
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 
@@ -75,14 +75,12 @@ import { FilesSection } from '../components/deal/sections/FilesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
-import { CustomScreenTab as M08StrategyScoring } from '../components/deal/sections/CustomScreenTab';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
 
 import TaxModule from '../components/deal/sections/TaxModule';
 import CompsModule from '../components/deal/sections/CompsModule';
-import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
@@ -221,28 +219,7 @@ const CompetitionScreen = (props: ScreenProps) => (
   />
 );
 const StrategyScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="STRATEGY & DESIGN"
-    moduleSubtitle="M08 · BEST-USE MATRIX + MASSING"
-    moduleBorderColor={BT.text.amber}
-    moduleMetrics={[
-      { l: 'IRR', c: BT.met.financial },
-      { l: 'EM', c: BT.text.amber },
-      { l: 'YOC', c: BT.met.occupancy },
-      { l: 'FAR', c: BT.text.purple },
-    ]}
-    tabs={[
-      { id: 'strategy',  label: 'Strategy',   component: (p: ScreenProps) => <M08StrategyScoring dealId={p.dealId} /> },
-      { id: 'design-3d', label: '3D Design',  moduleId: 'M03' as ModuleId, component: (p: ScreenProps) => (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
-          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <Design3DPageEnhanced {...p} dealId={p.dealId} />
-          </div>
-        </div>
-      )},
-    ]}
-  />
+  <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
 const ProFormaScreen = (props: ScreenProps) => (
   <DealScreenWrapper
@@ -283,23 +260,7 @@ const DebtCapitalScreen = (props: ScreenProps) => (
   />
 );
 const RiskScreen = (props: ScreenProps) => (
-  <DealScreenWrapper
-    passProps={props}
-    moduleTitle="RISK & DUE DILIGENCE"
-    moduleSubtitle="M13 · INTELLIGENCE ENGINE + FILES"
-    moduleBorderColor={BT.text.red}
-    moduleMetrics={[
-      { l: 'RISK', c: BT.text.red },
-      { l: 'DD', c: BT.text.orange },
-    ]}
-    accentColor={BT.text.red}
-    tabs={[
-      { id: 'risk-intelligence', label: 'Risk Intelligence',  component: RiskIntelligence },
-      { id: 'collision',         label: 'Collision Analysis', component: CollisionAnalysisSection },
-      { id: 'due-diligence',     label: 'DD Checklist',       component: DueDiligencePage },
-      { id: 'files',             label: 'Files & Assets',     component: FilesSection },
-    ]}
-  />
+  <RiskDDPage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
 const ExecutionScreen = (props: ScreenProps) => (
   <DealScreenWrapper
