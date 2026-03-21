@@ -113,12 +113,13 @@ function AppContent() {
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
-        {/* Terminal — full-page, no MainLayout; :section gives each F-key a bookmarkable URL */}
-        <Route path="/terminal" element={<Navigate to="/terminal/dashboard" replace />} />
+        {/* Terminal — full-page, no MainLayout; :section gives each F-key a bookmarkable URL.
+            Root /terminal renders TerminalPage directly so ?fkey=Fn deep-links are preserved. */}
+        <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/terminal/:section" element={<TerminalPage />} />
 
-        {/* Bloomberg Market Intelligence — base route redirects to terminal; sub-routes kept for embedded use */}
-        <Route path="/market-intelligence" element={<Navigate to="/terminal" replace />} />
+        {/* Bloomberg Market Intelligence — base route redirects to terminal/markets */}
+        <Route path="/market-intelligence" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/market-intelligence/markets/:marketId" element={<BloombergMarketDetail />} />
         <Route path="/market-intelligence/watchlist" element={<WatchlistPage />} />
         
