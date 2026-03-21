@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield,
+  Landmark, HardHat, Shield, Box, FileText,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -77,6 +77,8 @@ import { ConstructionManagementSection } from '../components/deal/sections/Const
 import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
 
 import { FinancialEnginePage } from './development/FinancialEnginePage';
+import { Design3DShellPage } from './development/Design3DShellPage';
+import { DocumentsShellPage } from './development/DocumentsShellPage';
 import CompsModule from '../components/deal/sections/CompsModule';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
@@ -255,6 +257,7 @@ const ExecutionScreen = (props: ScreenProps) => (
     moduleMetrics={[
       { l: 'TIMELINE', c: BT.text.cyan },
       { l: 'PM', c: BT.met.occupancy },
+      { l: 'OPUS', c: BT.text.purple },
     ]}
     accentColor={BT.text.cyan}
     tabs={[
@@ -262,7 +265,22 @@ const ExecutionScreen = (props: ScreenProps) => (
       { id: 'project-management', label: 'Project Management', component: ProjectManagementSection },
       { id: 'construction-mgmt',  label: 'Construction Mgmt',  component: ConstructionManagementSection },
       { id: 'notarize-closing',   label: 'Closing (RON)',      component: NotarizeClosingSection },
+      { id: 'opus-ai',            label: 'Opus AI',            component: OpusAISection },
     ]}
+  />
+);
+const Design3DScreen = (props: ScreenProps) => (
+  <Design3DShellPage
+    dealId={props.dealId}
+    deal={props.deal}
+    dealType={props.dealType}
+  />
+);
+const DocumentsScreen = (props: ScreenProps) => (
+  <DocumentsShellPage
+    dealId={props.dealId}
+    deal={props.deal}
+    dealType={props.dealType}
   />
 );
 const AIAgentScreen = (props: ScreenProps) => (
@@ -416,9 +434,10 @@ const DealDetailPage: React.FC = () => {
         return;
       }
       const fKeyMap: { [key: string]: string } = {
-        F1: 'overview',    F2: 'zoning',    F3: 'market',   F4: 'supply',
-        F5: 'competition', F6: 'strategy',  F7: 'traffic',  F8: 'proforma',
+        F1: 'overview',    F2: 'zoning',    F3: 'market',     F4: 'supply',
+        F5: 'competition', F6: 'strategy',  F7: 'traffic',    F8: 'proforma',
         F9: 'capital',     F10: 'risk',     F11: 'execution', F12: 'ai-agent',
+        F13: 'documents',  F14: 'design-3d',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -448,7 +467,7 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
-  // ─── 12 FLAT SCREEN DEFINITIONS (F1–F12) ── Station-logical Bloomberg order ──
+  // ─── 14 FLAT SCREEN DEFINITIONS (F1–F14) ── Station-logical Bloomberg order ──
   const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
     { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',          icon: <LayoutDashboard size={14} />, component: OverviewScreen },
     { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Zoning',            icon: <Landmark size={14} />,        component: ZoningModuleSection },
@@ -457,11 +476,13 @@ const DealDetailPage: React.FC = () => {
     { id: 'competition', moduleId: 'M15', fkey: 'F5',  code: 'M15', label: 'Comps',             icon: <Target size={14} />,          component: CompetitionScreen },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F6',  code: 'M08', label: 'Strategy',          icon: <Target size={14} />,          component: StrategyScreen },
     { id: 'traffic',     moduleId: 'M07', fkey: 'F7',  code: 'M07', label: 'Traffic Intel',     icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine',   icon: <Calculator size={14} />,      component: ProFormaScreen },
-    { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', label: 'Debt & Capital',    icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', label: 'Risk & DD',         icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', label: 'Execution',         icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F12', code: 'M20', label: 'AI Agent',          icon: <Bot size={14} />,             component: AIAgentScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine',  icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F12', code: 'M20', label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
+    { id: 'documents',   moduleId: 'M18', fkey: 'F13', code: 'M18', label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
+    { id: 'design-3d',   moduleId: 'M03', fkey: 'F14', code: 'M03', label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
   ];
 
   // Filter by deal-type visibility rules
