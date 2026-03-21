@@ -32,7 +32,7 @@ const MarketPreferences: React.FC = () => {
       
       if (marketsRes.ok) {
         const marketsData = await marketsRes.json();
-        setAvailableMarkets(marketsData);
+        setAvailableMarkets(Array.isArray(marketsData) ? marketsData : (marketsData.markets ?? []));
       }
     } catch (error) {
       console.error('Error loading preferences:', error);
