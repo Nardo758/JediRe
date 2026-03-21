@@ -15,7 +15,7 @@
  */
 
 import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
-import { RiskDot, PanelHeader, SubTabBar, KpiTile, BT_CSS, BT as BT2 } from '../../components/deal/bloomberg-ui';
+import { RiskDot, PanelHeader, SubTabBar, KpiTile, BT_CSS, BT as BT2, BtTabWrapper, SectionPanel, TableHeader, TableRow } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { 
@@ -416,41 +416,41 @@ const SupplyPipelinePage: React.FC = () => {
         color={BT2.text.orange}
       />
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* 1. SUPPLY WAVE VISUALIZATION */}
+      <BtTabWrapper style={{ padding: '12px', gap: 0 }}>
         {activeTab === 'wave' && (
-          <SupplyWaveSection 
-            data={supplyWave} 
-            riskScore={riskScore}
-            timeHorizon={timeHorizon}
-          />
+          <SectionPanel title="SUPPLY WAVE" borderColor={BT2.text.orange} subtitle="Delivery timeline by year · quarter">
+            <SupplyWaveSection
+              data={supplyWave}
+              riskScore={riskScore}
+              timeHorizon={timeHorizon}
+            />
+          </SectionPanel>
         )}
-
-        {/* 2. PIPELINE BY PHASE */}
         {activeTab === 'pipeline' && (
-          <PipelinePhaseSection 
-            projects={pipelineProjects}
-            submarketFilter={submarketFilter}
-            onSubmarketChange={setSubmarketFilter}
-          />
+          <SectionPanel title="PIPELINE BY PHASE" borderColor={BT2.text.orange} subtitle="Active projects · threat scoring">
+            <PipelinePhaseSection
+              projects={pipelineProjects}
+              submarketFilter={submarketFilter}
+              onSubmarketChange={setSubmarketFilter}
+            />
+          </SectionPanel>
         )}
-
-        {/* 3. DEVELOPER ACTIVITY */}
         {activeTab === 'developers' && (
-          <DeveloperActivitySection developers={developerActivity} />
+          <SectionPanel title="DEVELOPER ACTIVITY" borderColor={BT2.text.orange} subtitle="Market concentration · delivery track record">
+            <DeveloperActivitySection developers={developerActivity} />
+          </SectionPanel>
         )}
-
-        {/* 4. ABSORPTION IMPACT */}
         {activeTab === 'absorption' && (
-          <AbsorptionImpactSection absorption={absorption} supplyWave={supplyWave} />
+          <SectionPanel title="ABSORPTION IMPACT" borderColor={BT2.text.orange} subtitle="Supply vs demand · time-to-absorb">
+            <AbsorptionImpactSection absorption={absorption} supplyWave={supplyWave} />
+          </SectionPanel>
         )}
-
-        {/* 5. RISK SCORING */}
         {activeTab === 'risk' && (
-          <RiskScoringSection riskScore={riskScore} />
+          <SectionPanel title="RISK SCORING" borderColor={BT2.text.orange} subtitle="Composite risk · mitigation guidance">
+            <RiskScoringSection riskScore={riskScore} />
+          </SectionPanel>
         )}
-      </div>
+      </BtTabWrapper>
     </div>
   );
 };
@@ -719,54 +719,50 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-[#131920]">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Project</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Developer</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Units</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Phase</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delivery</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Submarket</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Distance</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#F97316] uppercase">Threat</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1e2a3d]">
-              {filteredProjects.map((project) => (
-                <tr key={project.id} className="hover:bg-[#131920] transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-medium text-[#E8E6E1]">{project.name}</div>
-                    {project.delayMonths && project.delayMonths > 0 && (
-                      <div className="text-xs text-red-400 mt-1">
-                        ⚠️ Delayed {project.delayMonths} months
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.developer}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
-                    {formatNumber(project.units)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span 
-                      className="px-2 py-1 text-xs font-semibold rounded-full"
-                      style={{
-                        backgroundColor: `${getPhaseColor(project.phase)}20`,
-                        color: getPhaseColor(project.phase)
-                      }}
-                    >
+        <div>
+          <TableHeader cols={[
+            { label: 'PROJECT', flex: 2 },
+            { label: 'DEVELOPER', flex: 1.5 },
+            { label: 'UNITS' },
+            { label: 'PHASE' },
+            { label: 'DELIVERY' },
+            { label: 'SUBMARKET' },
+            { label: 'DISTANCE' },
+            { label: 'THREAT', color: BT2.text.orange },
+          ]} />
+          {filteredProjects.map((project, idx) => (
+            <TableRow
+              key={project.id}
+              index={idx}
+              cells={[
+                {
+                  value: (
+                    <div>
+                      <div style={{ color: BT2.text.white, fontWeight: 600 }}>{project.name}</div>
+                      {project.delayMonths && project.delayMonths > 0 && (
+                        <div style={{ fontSize: 7, color: BT2.text.red, marginTop: 2 }}>
+                          ⚠ Delayed {project.delayMonths}mo
+                        </div>
+                      )}
+                    </div>
+                  ), flex: 2,
+                },
+                { value: project.developer, flex: 1.5 },
+                { value: formatNumber(project.units), color: BT2.text.white, weight: 600 },
+                {
+                  value: (
+                    <span style={{ fontSize: 7, padding: '1px 4px', background: `${getPhaseColor(project.phase)}20`, color: getPhaseColor(project.phase) }}>
                       {project.phase.replace('_', ' ').toUpperCase()}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.expectedDelivery}</td>
-                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.submarket}</td>
-                  <td className="px-6 py-4 text-sm text-[#6B7585]">{project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—'}</td>
-                  <td className="px-6 py-4"><RiskDot level={projectThreatLevel(project)} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ),
+                },
+                { value: project.expectedDelivery },
+                { value: project.submarket },
+                { value: project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—' },
+                { value: <RiskDot level={projectThreatLevel(project)} /> },
+              ]}
+            />
+          ))}
         </div>
       </div>
     </div>
