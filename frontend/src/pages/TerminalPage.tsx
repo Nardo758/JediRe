@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { TickerBar } from "../components/terminal/TickerBar";
-import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
 import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateHealthStore";
 import { useDealStore } from "../stores/dealStore";
@@ -444,15 +444,18 @@ export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { section } = useParams<{ section?: string }>();
+  const [searchParams] = useSearchParams();
 
   const cmdInputRef = useRef<HTMLInputElement>(null);
 
   const [theme, setTheme] = useState<"dark"|"light">(() => (localStorage.getItem("jedi-theme")||"dark") as "dark"|"light");
   const T = theme==="dark" ? DARK : LIGHT;
 
-  // Core UI state
+  // Core UI state — resolve fkey from: URL slug > ?fkey param > location state > F1
   const [fkey, setFkey] = useState(() => {
     if (section && SLUG_FKEY[section]) return SLUG_FKEY[section];
+    const qp = searchParams.get("fkey");
+    if (qp && FKEY_SLUG[qp]) return qp;
     return (location.state as {fkey?:string})?.fkey || "F1";
   });
   const [cmd, setCmd] = useState("");

@@ -129,28 +129,28 @@ function AppContent() {
               <MapPage />
             </Suspense>
           } />
-          <Route path="/dashboard" element={<Navigate to="/terminal" replace />} />
+          <Route path="/dashboard" element={<Navigate to="/terminal/dashboard" replace />} />
           <Route path="/dashboard/contents" element={<DashboardContentsPage />} />
-          <Route path="/dashboard/email" element={<Navigate to="/terminal" replace />} />
-          <Route path="/dashboard/email/sent" element={<Navigate to="/terminal" replace />} />
-          <Route path="/dashboard/email/drafts" element={<Navigate to="/terminal" replace />} />
-          <Route path="/dashboard/email/flagged" element={<Navigate to="/terminal" replace />} />
-          <Route path="/strategy-builder" element={<Navigate to="/terminal" replace />} />
-          <Route path="/strategy-builder/:id" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel/dashboard" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel/network" element={<Navigate to="/terminal" replace />} />
-          <Route path="/news-intel/alerts" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data/comparables" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data/demographics" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-data/supply-demand" element={<Navigate to="/terminal" replace />} />
+          <Route path="/dashboard/email" element={<Navigate to="/terminal/dashboard" replace />} />
+          <Route path="/dashboard/email/sent" element={<Navigate to="/terminal/dashboard" replace />} />
+          <Route path="/dashboard/email/drafts" element={<Navigate to="/terminal/dashboard" replace />} />
+          <Route path="/dashboard/email/flagged" element={<Navigate to="/terminal/dashboard" replace />} />
+          <Route path="/strategy-builder" element={<Navigate to="/terminal/strategies" replace />} />
+          <Route path="/strategy-builder/:id" element={<Navigate to="/terminal/strategies" replace />} />
+          <Route path="/news-intel" element={<Navigate to="/terminal/news" replace />} />
+          <Route path="/news-intel/dashboard" element={<Navigate to="/terminal/news" replace />} />
+          <Route path="/news-intel/network" element={<Navigate to="/terminal/news" replace />} />
+          <Route path="/news-intel/alerts" element={<Navigate to="/terminal/news" replace />} />
+          <Route path="/market-data" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-data/comparables" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-data/demographics" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-data/supply-demand" element={<Navigate to="/terminal/markets" replace />} />
           <Route path="/news" element={<NewsPage />} />
-          <Route path="/assets-owned" element={<Navigate to="/terminal" replace />} />
+          <Route path="/assets-owned" element={<Navigate to="/terminal/portfolio" replace />} />
           <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
-          <Route path="/assets-owned/performance" element={<Navigate to="/assets-owned" replace />} />
-          <Route path="/assets-owned/documents" element={<Navigate to="/assets-owned" replace />} />
-          <Route path="/assets-owned/grid" element={<Navigate to="/assets-owned" replace />} />
+          <Route path="/assets-owned/performance" element={<Navigate to="/terminal/portfolio" replace />} />
+          <Route path="/assets-owned/documents" element={<Navigate to="/terminal/portfolio" replace />} />
+          <Route path="/assets-owned/grid" element={<Navigate to="/terminal/portfolio" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/properties/:id" element={<PropertyDetailsPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
@@ -166,24 +166,24 @@ function AppContent() {
           } />
           
           {/* Market Research Redirects */}
-          <Route path="/market-research" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-research/active-owners" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-research/future-supply" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-research" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-research/active-owners" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-research/future-supply" element={<Navigate to="/terminal/markets" replace />} />
           
-          {/* Market Intelligence redirects → terminal */}
+          {/* Market Intelligence redirects → terminal/markets */}
           <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
-          <Route path="/market-intelligence/compare" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/owners" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/supply" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/terminal" replace />} />
-          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/terminal" replace />} />
+          <Route path="/market-intelligence/compare" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-intelligence/owners" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-intelligence/supply" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-intelligence/traffic-intelligence" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/market-intelligence/competitive-position" element={<Navigate to="/terminal/markets" replace />} />
 
-          {/* Competitive Intelligence */}
-          <Route path="/competitive-intelligence" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/performance" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/acquisition" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/comps" element={<Navigate to="/terminal" replace />} />
-          <Route path="/competitive-intelligence/alerts" element={<Navigate to="/terminal" replace />} />
+          {/* Competitive Intelligence → markets (COMPETE is not a standalone tab) */}
+          <Route path="/competitive-intelligence" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/competitive-intelligence/performance" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/competitive-intelligence/acquisition" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/competitive-intelligence/comps" element={<Navigate to="/terminal/markets" replace />} />
+          <Route path="/competitive-intelligence/alerts" element={<Navigate to="/terminal/markets" replace />} />
           
           <Route path="/deals" element={<DealsPage />} />
           <Route path="/deals/create" element={<CreateDealPage />} />
@@ -208,9 +208,9 @@ function AppContent() {
           <Route path="/capsules" element={<DealCapsulesPage />} />
           <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
           <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
-          <Route path="/tasks" element={<Navigate to="/terminal" replace />} />
-          <Route path="/reports" element={<Navigate to="/terminal" replace />} />
-          <Route path="/team" element={<Navigate to="/terminal" replace />} />
+          <Route path="/tasks" element={<Navigate to="/terminal/reports" replace />} />
+          <Route path="/reports" element={<Navigate to="/terminal/reports" replace />} />
+          <Route path="/team" element={<Navigate to="/terminal/settings" replace />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/modules" element={<ModulesPage />} />
