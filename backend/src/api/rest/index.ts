@@ -75,6 +75,7 @@ import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
 import dealContextRoutes from './deal-context.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
+import createMarketIntelligenceRoutes from './market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
 import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
@@ -277,6 +278,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Deal Comp Sets routes (Tiered comp discovery & management)
   app.use(`${API_PREFIX}/deals`, dealCompSetsRoutes);
+
+  // Market Intelligence routes (preferences, available markets, overview)
+  const { getPool: getMarketPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/markets`, createMarketIntelligenceRoutes(getMarketPool()));
 
   // Deal Market Intelligence routes
   app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
