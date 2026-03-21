@@ -28,7 +28,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
   const resolvedDealId = propDealId || params.dealId || params.id || '';
 
   const [activeTab, setActiveTab] = useState(0);
-  const [stats, setStats] = useState<FileStats | null>(null);
+  const [stats, setStats] = useState<FileStats>({ total: 0, parsed: 0, pending: 0, totalSizeMb: 0 });
 
   useEffect(() => {
     if (!resolvedDealId) return;
@@ -61,11 +61,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
           { l: 'PARSED',  c: BT.met.financial  },
           { l: 'PENDING', c: BT.text.amber     },
         ]}
-        right={
-          stats != null
-            ? <Bd c={BT.met.financial}>{stats.total} FILES</Bd>
-            : <Bd c={BT.text.muted}>LOADING</Bd>
-        }
+        right={<Bd c={BT.met.financial}>{stats.total} FILES</Bd>}
       />
 
       <SubTabBar
@@ -78,8 +74,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {activeTab === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            {stats != null && (
-              <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
                 <div style={{ flex: 1 }}>
                   <KpiTile label="TOTAL FILES" value={String(stats.total)}       color={BT.text.secondary} />
                 </div>
@@ -93,7 +88,6 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                   <KpiTile label="STORAGE"     value={stats.totalSizeMb > 0 ? fmtMb(stats.totalSizeMb) : '—'} color={BT.text.cyan} />
                 </div>
               </div>
-            )}
             <BtTabWrapper>
               {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <DocumentsFilesSection deal={deal as any} />
