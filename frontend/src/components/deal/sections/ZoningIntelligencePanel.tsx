@@ -97,19 +97,19 @@ function ScenarioCard({ scenario, index }: { scenario: any; index: number }) {
       <p className="text-sm mb-3">{scenario.description}</p>
       <div className="grid grid-cols-2 gap-2 text-sm">
         <div>
-          <span className="text-gray-400 text-xs">Units</span>
+          <span className="text-neutral-400 text-xs">Units</span>
           <p className="font-semibold">{scenario.maxUnits.toLocaleString()}</p>
         </div>
         <div>
-          <span className="text-gray-400 text-xs">GFA</span>
+          <span className="text-neutral-400 text-xs">GFA</span>
           <p className="font-semibold">{scenario.maxGFA.toLocaleString()} sf</p>
         </div>
         <div>
-          <span className="text-gray-400 text-xs">Parking</span>
+          <span className="text-neutral-400 text-xs">Parking</span>
           <p className="font-semibold">{scenario.parkingRequired} spaces</p>
         </div>
         <div>
-          <span className="text-gray-400 text-xs">Timeline</span>
+          <span className="text-neutral-400 text-xs">Timeline</span>
           <p className="font-semibold">{scenario.timelineMonths === 0 ? 'Immediate' : `${scenario.timelineMonths} mo`}</p>
         </div>
       </div>
@@ -293,7 +293,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
           <button
             onClick={runFullAnalysis}
             disabled={analysisLoading || !resolvedDistrict}
-            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
+            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-neutral-800 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
           >
             {analysisLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {analysisLoading ? 'Running Analysis...' : 'Run Full Analysis'}
@@ -384,7 +384,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
             <button
               onClick={() => askQuestion()}
               disabled={queryLoading || !question.trim() || !resolvedDistrict}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white rounded-lg transition-colors"
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-neutral-800 text-white rounded-lg transition-colors"
             >
               {queryLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             </button>

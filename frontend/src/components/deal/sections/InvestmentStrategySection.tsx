@@ -213,7 +213,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'acquisition'
                 ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 '
+                : 'bg-neutral-800 '
             }`}
           >
             <div className="text-lg mb-1">🎯</div>
@@ -224,7 +224,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'value-creation'
                 ? 'bg-green-600 text-white'
-                : 'bg-gray-100 '
+                : 'bg-neutral-800 '
             }`}
           >
             <div className="text-lg mb-1">🚀</div>
@@ -235,7 +235,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'exit'
                 ? 'bg-purple-600 text-white'
-                : 'bg-gray-100 '
+                : 'bg-neutral-800 '
             }`}
           >
             <div className="text-lg mb-1">🏆</div>
@@ -793,7 +793,7 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
               className={`rounded-lg border-2 p-5 cursor-pointer transition ${
                 selectedScenario === scenario.id
                   ? 'border-blue-400 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  : 'border-neutral-700 hover:border-neutral-700'
               }`}
             >
               <div className="flex items-start justify-between mb-3">
@@ -1001,11 +1001,11 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) 
             <div className="space-y-2 text-sm">
               <div>
                 <span className="font-semibold">Risk:</span>
-                <p className="text-gray-600 mt-1">{risk.description}</p>
+                <p className="text-neutral-400 mt-1">{risk.description}</p>
               </div>
               <div>
                 <span className="font-semibold">Mitigation:</span>
-                <p className="text-gray-600 mt-1">{risk.mitigation}</p>
+                <p className="text-neutral-400 mt-1">{risk.mitigation}</p>
               </div>
             </div>
           </div>

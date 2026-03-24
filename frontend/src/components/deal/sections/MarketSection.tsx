@@ -297,7 +297,7 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
             className="bg-gradient-to-br from-gray-50 to-white border rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-600 text-xs font-medium">{stat.label}</span>
+              <span className="text-neutral-400 text-xs font-medium">{stat.label}</span>
               <span className="text-2xl">{stat.icon}</span>
             </div>
             <div className="text-2xl font-bold mb-1">
@@ -523,7 +523,7 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
                           <span className={`text-xs px-2 py-0.5 rounded font-semibold ${impactBadge.color}`}>
                             {impactBadge.label}
                           </span>
-                          <span className="text-gray-400 text-xs">
+                          <span className="text-neutral-400 text-xs">
                             {isExpanded ? '−' : '+'}
                           </span>
                         </div>
@@ -565,7 +565,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'rentGrowth' 
                 ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 '
+                : 'bg-neutral-800 '
             }`}
           >
             Rent Growth
@@ -575,7 +575,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'vacancy' 
                 ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 '
+                : 'bg-neutral-800 '
             }`}
           >
             Vacancy
@@ -585,7 +585,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'avgRent' 
                 ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 '
+                : 'bg-neutral-800 '
             }`}
           >
             Avg Rent

@@ -470,7 +470,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           <button
             onClick={analyzeEnvelope}
             disabled={envelopeLoading}
-            className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-neutral-800 text-white rounded-lg text-sm font-medium transition-colors"
           >
             {envelopeLoading ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />}
             {envelopeLoading ? 'Analyzing...' : 'Analyze Envelope'}
@@ -505,7 +505,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 onKeyDown={(e) => e.key === 'Enter' && lookupZoningCode()}
                 placeholder="Enter zoning code (e.g. MR-4A)" className={`${inputClass} flex-1`} />
               <button onClick={() => lookupZoningCode()} disabled={lookingUp || !zoningCode}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-800 text-white disabled:text-neutral-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                 {lookingUp ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 Look Up
               </button>
@@ -567,7 +567,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
 
             {!hasParams && !showDistrictPicker && (
               <div className="mt-4 p-4 border rounded-lg text-center">
-                <MapPin size={24} className="text-gray-300 mx-auto mb-2" />
+                <MapPin size={24} className="text-neutral-400 mx-auto mb-2" />
                 <p className="text-sm">Look up a zoning code to load parameters automatically,</p>
                 <p className="text-sm">or draw a property boundary to detect the zoning district.</p>
               </div>
@@ -622,7 +622,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                     className="w-16 px-2 py-1 border rounded text-sm text-center" />
                   <span className="text-xs">%</span>
                   <button onClick={() => updateField('affordable_housing_bonus', !data.affordable_housing_bonus)}
-                    className="text-gray-500 ">
+                    className="text-neutral-400 ">
                     {data.affordable_housing_bonus ? (
                       <ToggleRight size={28} className="text-green-500" />
                     ) : (
@@ -643,7 +643,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                     className="w-16 px-2 py-1 border rounded text-sm text-center" />
                   <span className="text-xs">%</span>
                   <button onClick={() => updateField('tdr_available', !data.tdr_available)}
-                    className="text-gray-500 ">
+                    className="text-neutral-400 ">
                     {data.tdr_available ? (
                       <ToggleRight size={28} className="text-green-500" />
                     ) : (
@@ -752,23 +752,23 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Buildable Area:</span>
-                  <span className="text-gray-900 font-medium">{(envelope.buildableArea / 43560).toFixed(2)} acres</span>
+                  <span className="text-neutral-400 font-medium">{(envelope.buildableArea / 43560).toFixed(2)} acres</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Max Footprint:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(envelope.maxFootprint)} sq ft</span>
+                  <span className="text-neutral-400 font-medium">{formatNumber(envelope.maxFootprint)} sq ft</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Max GFA:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(envelope.maxGFA)} sq ft</span>
+                  <span className="text-neutral-400 font-medium">{formatNumber(envelope.maxGFA)} sq ft</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Max Floors:</span>
-                  <span className="text-gray-900 font-medium">{envelope.maxFloors}</span>
+                  <span className="text-neutral-400 font-medium">{envelope.maxFloors}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Parking:</span>
-                  <span className="text-gray-900 font-medium">{envelope.parkingRequired} spaces</span>
+                  <span className="text-neutral-400 font-medium">{envelope.parkingRequired} spaces</span>
                 </div>
               </div>
 
@@ -805,7 +805,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 Building Envelope
               </h3>
               <div className="text-center py-6">
-                <Target size={32} className="text-gray-300 mx-auto mb-3" />
+                <Target size={32} className="text-neutral-400 mx-auto mb-3" />
                 <p className="text-sm">Click <strong>Analyze Envelope</strong> to calculate</p>
                 <p className="text-xs mt-1">Uses data from Property Boundary + Zoning Code</p>
               </div>
@@ -880,25 +880,25 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Avg Rent:</span>
-                  <span className="text-gray-900 font-medium">{formatCurrency(data.avg_rent_per_unit)}/mo</span>
+                  <span className="text-neutral-400 font-medium">{formatCurrency(data.avg_rent_per_unit)}/mo</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-neutral-400">Total Units:</span>
-                  <span className="text-gray-900 font-medium">{formatNumber(withIncentivesUnits || byRightUnits)}</span>
+                  <span className="text-neutral-400 font-medium">{formatNumber(withIncentivesUnits || byRightUnits)}</span>
                 </div>
                 {data.annual_revenue && (
                   <>
                     <div className="border-t my-2" />
                     <div className="flex justify-between">
                       <span className="text-neutral-400">Annual Revenue:</span>
-                      <span className="text-gray-900 font-medium">{formatCurrency(data.annual_revenue)}</span>
+                      <span className="text-neutral-400 font-medium">{formatCurrency(data.annual_revenue)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-neutral-400">Pro Forma NOI:</span>
-                      <span className="text-gray-900 font-medium">{formatCurrency(data.pro_forma_noi)}</span>
+                      <span className="text-neutral-400 font-medium">{formatCurrency(data.pro_forma_noi)}</span>
                     </div>
                     <div className="flex justify-between pt-2 border-t">
-                      <span className="text-gray-700 font-medium">Est. Value (5% cap):</span>
+                      <span className="text-neutral-400 font-medium">Est. Value (5% cap):</span>
                       <span className="text-lg font-bold text-purple-700">{formatCurrency(data.estimated_value)}</span>
                     </div>
                   </>

@@ -416,7 +416,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border-2 ${
               isActive
                 ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                : 'border-gray-200 hover:border-gray-300'
+                : 'border-neutral-700 hover:border-neutral-700'
             }`}
           >
             {t.label}
@@ -1069,7 +1069,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-b-2 border-blue-500 text-blue-600'
-                : 'text-gray-500 '
+                : 'text-neutral-400 '
             }`}
           >
             <span className="mr-1.5">{tab.icon}</span>
