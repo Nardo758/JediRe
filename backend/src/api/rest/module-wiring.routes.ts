@@ -393,12 +393,24 @@ router.post('/wire/risk/:dealId', async (req: Request, res: Response) => {
   }
 });
 
-/** POST /wire/strategy/:dealId - Wire strategy arbitrage */
+/** POST /wire/strategy/:dealId - Wire strategy arbitrage, then bridge M08→M09 */
 router.post('/wire/strategy/:dealId', async (req: Request, res: Response) => {
   try {
     await wireStrategyArbitrage(req.params.dealId);
     const strategyData = dataFlowRouter.getModuleData('M08', req.params.dealId);
-    res.json({ dealId: req.params.dealId, ...strategyData?.data });
+
+    // M08 → M09 bridge: after arbitrage selects a strategy, init ProForma with it
+    const selectedStrategy = strategyData?.data?.selected_strategy || strategyData?.data?.recommendedStrategy || 'rental';
+    await wireProFormaInit(req.params.dealId, selectedStrategy);
+    const proformaData = dataFlowRouter.getModuleData('M09', req.params.dealId);
+
+    res.json({
+      dealId: req.params.dealId,
+      ...strategyData?.data,
+      proformaInitialized: true,
+      proformaStrategy: selectedStrategy,
+      proforma: proformaData?.data,
+    });
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
   }
@@ -684,6 +696,60 @@ router.post('/wiring/capital-structure/pipeline', async (req: Request, res: Resp
 router.post('/wiring/capital-structure/subscriptions', (_req: Request, res: Response) => {
   setupCapitalStructureSubscriptions();
   res.json({ status: 'Capital structure subscriptions initialized' });
+});
+
+// ============================================================================
+// Keystone Cascade — full M02→M03→M08→M09 chain in one shot
+// ============================================================================
+
+/**
+ * POST /keystone-cascade/:dealId
+ *
+ * Chains the four foundational modules in dependency order:
+ *   M02 Zoning → M03 Dev Capacity → M08 Strategy Arbitrage → M09 ProForma init
+ *
+ * Body params are forwarded to wireZoningToStrategy as strategy inputs.
+ * Returns the output of each stage so the client can surface partial results.
+ */
+router.post('/keystone-cascade/:dealId', async (req: Request, res: Response) => {
+  const { dealId } = req.params;
+  try {
+    // Stage 1 — M02 Zoning → M03 Dev Capacity → M08 Strategy
+    await wireZoningToStrategy(dealId, req.body);
+    const zoningData = dataFlowRouter.getModuleData('M02', dealId);
+    const devCapData = dataFlowRouter.getModuleData('M03', dealId);
+
+    // Stage 2 — M08 Strategy Arbitrage Engine
+    await wireStrategyArbitrage(dealId);
+    const strategyData = dataFlowRouter.getModuleData('M08', dealId);
+
+    // Stage 3 — M08 → M09 bridge: init ProForma with the selected strategy
+    const selectedStrategy =
+      strategyData?.data?.selected_strategy ||
+      strategyData?.data?.recommendedStrategy ||
+      'rental';
+    await wireProFormaInit(dealId, selectedStrategy);
+    const proformaData = dataFlowRouter.getModuleData('M09', dealId);
+
+    res.json({
+      dealId,
+      chain: ['M02_zoning', 'M03_dev_capacity', 'M08_strategy_arbitrage', 'M09_proforma_init'],
+      stages: {
+        zoning: zoningData?.data ?? null,
+        devCapacity: devCapData?.data ?? null,
+        strategy: strategyData?.data ?? null,
+        proforma: proformaData?.data ?? null,
+      },
+      selectedStrategy,
+    });
+  } catch (error: any) {
+    const statusCode = error.message?.includes('Missing') ? 400 : 500;
+    res.status(statusCode).json({
+      error: 'Keystone cascade failed',
+      detail: error.message,
+      dealId,
+    });
+  }
 });
 
 export default router;

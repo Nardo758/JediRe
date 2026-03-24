@@ -95,6 +95,12 @@ import { createCapsuleRoutes } from './capsule.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
 import dealCompSetsRoutes from './deal-comp-sets.routes';
+import capitalStructureRoutes from './capital-structure.routes';
+import buildingEnvelopeRoutes from './building-envelope.routes';
+import moduleWiringRoutes from './module-wiring.routes';
+import corporateHealthRoutes from './corporate-health.routes';
+import opportunityEngineRoutes from './opportunity-engine.routes';
+import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -374,6 +380,24 @@ export function setupRESTRoutes(app: Application): void {
   // Deal Capsule routes (3-layer capsule CRUD, documents, shares, collision)
   const { getPool: getCapsulePool } = require('../../database/connection');
   app.use(`${API_PREFIX}/capsules`, createCapsuleRoutes(getCapsulePool()));
+
+  // Capital Structure Engine routes (M11 — capital stack, waterfall, rates, lifecycle)
+  app.use(`${API_PREFIX}/capital-structure`, capitalStructureRoutes);
+
+  // Building Envelope routes (M03 — envelope calc, HBU, AI recommendations)
+  app.use(`${API_PREFIX}`, buildingEnvelopeRoutes);
+
+  // Module Wiring routes (orchestration, pipelines, keystone cascade)
+  app.use(`${API_PREFIX}/module-wiring`, moduleWiringRoutes);
+
+  // Corporate Health routes (M33 — REIT earnings, sector rotation, alerts)
+  app.use(`${API_PREFIX}/corporate-health`, corporateHealthRoutes);
+
+  // Opportunity Engine routes (detect, rankings, market opportunities)
+  app.use(`${API_PREFIX}/opportunity-engine`, opportunityEngineRoutes);
+
+  // Benchmark Timeline routes (Monte Carlo simulation, entitlement benchmarks)
+  app.use(`${API_PREFIX}/benchmark-timeline`, benchmarkTimelineRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

@@ -130,6 +130,41 @@ export async function wireCapitalStack(
       insights,
     });
 
+    // M11 → M09 bridge: pass real WACC and debt service to ProForma so it
+    // stops defaulting to the hardcoded 0.15 (15%) target IRR.
+    const wacc = parseFloat(stack.metrics.weightedAvgCostOfCapital?.toString() || '0');
+    const dscrVal = parseFloat(stack.metrics.dscr?.toString() || '0');
+    const annualDebtService = dscrVal > 0 ? noi / dscrVal : 0;
+
+    if (wacc > 0 || annualDebtService > 0) {
+      const existingM09 = dataFlowRouter.getModuleData('M09', dealId)?.data || {};
+      dataFlowRouter.publishModuleData('M09', dealId, {
+        ...existingM09,
+        target_irr: wacc > 0 ? wacc : existingM09.target_irr,
+        annual_debt_service: annualDebtService > 0 ? annualDebtService : existingM09.annual_debt_service,
+        wacc_from_m11: wacc,
+        debt_service_source: 'M11_capital_stack',
+      });
+
+      moduleEventBus.emit({
+        type: ModuleEventType.RECALCULATE,
+        sourceModule: 'M09',
+        dealId,
+        data: {
+          trigger: 'M11_capital_stack_update',
+          target_irr: wacc,
+          annual_debt_service: annualDebtService,
+        },
+        timestamp: new Date(),
+      });
+
+      logger.info('[CapStructure Wiring] M11→M09 bridge: ProForma updated with real WACC', {
+        dealId,
+        wacc,
+        annualDebtService,
+      });
+    }
+
     logger.info('[CapStructure Wiring] Capital stack wired', {
       dealId,
       dscr: stack.metrics.dscr,

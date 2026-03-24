@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { api } from '../../services/api.client';
 
 interface Finding {
   id: string;
@@ -235,6 +236,59 @@ export const KeyFindingsSection: React.FC = () => {
     } catch (err) {
       console.error('Error fetching findings:', err);
       const fallback = generateFallbackFindings();
+
+      // Replace hardcoded jediScore values (87/74/42) with real live scores
+      try {
+        const dealsResponse = await api.deals.list({ limit: 10 });
+        const deals: any[] = dealsResponse.data?.deals ?? dealsResponse.data ?? [];
+
+        if (deals.length > 0) {
+          const scoreResults = await Promise.allSettled(
+            deals.slice(0, 4).map(async (deal: any) => {
+              const scoreRes = await api.jedi.getScore(deal.id);
+              const scoreData = scoreRes.data;
+              return {
+                id: deal.id,
+                name: deal.name ?? deal.address ?? 'Deal',
+                score: scoreData?.score ?? scoreData?.jedi_score ?? null,
+                verdict: scoreData?.verdict ?? scoreData?.signal ?? 'UNKNOWN',
+                updatedAt: deal.updated_at ?? deal.created_at ?? new Date().toISOString(),
+              };
+            })
+          );
+
+          const scoredDeals = scoreResults
+            .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled' && r.value.score !== null)
+            .map(r => r.value);
+
+          if (scoredDeals.length > 0) {
+            fallback.insights = scoredDeals.map((deal, idx) => {
+              const score: number = deal.score;
+              const priority: Finding['priority'] =
+                score >= 70 ? 'urgent' : score >= 50 ? 'important' : 'info';
+              const titlePrefix =
+                score >= 70 ? 'Strong opportunity' : score >= 50 ? 'Good opportunity' : 'Monitor';
+              return {
+                id: `insight-live-${deal.id ?? idx}`,
+                type: 'insight' as const,
+                priority,
+                title: `${titlePrefix}: ${deal.name}`,
+                description: `JEDI Score ${score}/100 — ${deal.verdict.replace(/_/g, ' ')}`,
+                timestamp: deal.updatedAt,
+                link: `/deals/${deal.id}/detail`,
+                metadata: {
+                  jediScore: score,
+                  verdict: deal.verdict,
+                  dealId: deal.id,
+                },
+              };
+            });
+          }
+        }
+      } catch (scoreErr) {
+        console.warn('Could not load live JEDI scores for fallback insights:', scoreErr);
+      }
+
       setFindings(fallback);
       const priorityOrder: CategoryKey[] = ['actions', 'insights', 'news', 'market'];
       const firstWithData = priorityOrder.find(key => fallback[key]?.length > 0);

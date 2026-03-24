@@ -354,6 +354,66 @@ export const api = {
     getModuleLibraries: (moduleId: string) =>
       apiClient.get(`/api/v1/module-libraries/${moduleId}`),
   },
+
+  // Capital Structure Engine (M11) — full capital stack REST API
+  capitalStructure: {
+    getByDeal: (dealId: string) =>
+      apiClient.get(`/api/v1/capital-structure/${dealId}`),
+    buildStack: (data: any) =>
+      apiClient.post(`/api/v1/capital-structure/stack`, data),
+    sizeSenior: (data: any) =>
+      apiClient.post(`/api/v1/capital-structure/size-senior`, data),
+    sizeMezz: (data: any) =>
+      apiClient.post(`/api/v1/capital-structure/size-mezz`, data),
+    getLiveRates: (params?: any) =>
+      apiClient.get(`/api/v1/capital-structure/rates/live`, { params }),
+    compareScenarios: (data: any) =>
+      apiClient.post(`/api/v1/capital-structure/scenarios/compare`, data),
+    waterfall: (dealId: string, data: any) =>
+      apiClient.post(`/api/v1/capital-structure/${dealId}/waterfall`, data),
+    getLifecycle: (dealId: string) =>
+      apiClient.get(`/api/v1/capital-structure/${dealId}/lifecycle`),
+    riskScore: (dealId: string) =>
+      apiClient.get(`/api/v1/capital-structure/${dealId}/risk-score`),
+  },
+
+  // Module Wiring — orchestration, pipelines, keystone cascade
+  moduleWiring: {
+    keystoneCascade: (dealId: string, data?: any) =>
+      apiClient.post(`/api/v1/module-wiring/keystone-cascade/${dealId}`, data ?? {}),
+    wireZoning: (dealId: string, data?: any) =>
+      apiClient.post(`/api/v1/module-wiring/wire/zoning/${dealId}`, data ?? {}),
+    wireStrategy: (dealId: string, data?: any) =>
+      apiClient.post(`/api/v1/module-wiring/wire/strategy/${dealId}`, data ?? {}),
+    wireProforma: (dealId: string, data?: any) =>
+      apiClient.post(`/api/v1/module-wiring/wire/proforma/sync/${dealId}`, data ?? {}),
+    wireCapitalStack: (data: any) =>
+      apiClient.post(`/api/v1/module-wiring/wiring/capital-structure/stack`, data),
+    setupSubscriptions: () =>
+      apiClient.post(`/api/v1/module-wiring/wire/subscriptions/all/setup`),
+    getStatus: (dealId: string) =>
+      apiClient.get(`/api/v1/module-wiring/status/${dealId}`),
+  },
+
+  // Building Envelope (M03) — envelope calc, HBU, AI recommendations
+  buildingEnvelope: {
+    calculate: (dealId: string, data: any) =>
+      apiClient.post(`/api/v1/deals/${dealId}/building-envelope`, data),
+    getPropertyTypeConfigs: () =>
+      apiClient.get(`/api/v1/property-type-configs`),
+  },
+
+  // Benchmark Timeline (M16) — Monte Carlo simulation, entitlement benchmarks
+  benchmarkTimeline: {
+    getBenchmarks: (county: string, state: string) =>
+      apiClient.get(`/api/v1/benchmark-timeline/benchmarks`, { params: { county, state } }),
+    simulate: (data: any) =>
+      apiClient.post(`/api/v1/benchmark-timeline/simulate`, data),
+    comparePaths: (data: any) =>
+      apiClient.post(`/api/v1/benchmark-timeline/compare-paths`, data),
+    getTimeline: (dealId: string) =>
+      apiClient.get(`/api/v1/benchmark-timeline/timeline/${dealId}`),
+  },
 };
 
 export const corporateHealthAPI = api.corporateHealth;
