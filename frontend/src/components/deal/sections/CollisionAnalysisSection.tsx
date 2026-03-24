@@ -331,7 +331,7 @@ const CollisionAnalysisSection: React.FC = () => {
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all ${
                 subTab === tab.id
                   ? 'bg-neutral-900 shadow-dark'
-                  : 'text-stone-500 hover:text-stone-700'
+                  : 'text-neutral-400 hover:text-neutral-400'
               }`}
             >
               <Icon className="w-4 h-4" />
@@ -439,12 +439,12 @@ const CollisionAnalysisSection: React.FC = () => {
               <h3 className="font-semibold mb-4">Deal Summary</h3>
               <div className="space-y-3 text-sm">
                 <div>
-                  <div className="text-stone-500 mb-1">Deal</div>
+                  <div className="text-neutral-400 mb-1">Deal</div>
                   <div className="font-medium">{dealName}</div>
                 </div>
                 {layers.layer1.asking_price > 0 && (
                   <div>
-                    <div className="text-stone-500 mb-1">Asking Price</div>
+                    <div className="text-neutral-400 mb-1">Asking Price</div>
                     <div className="font-medium">
                       ${(layers.layer1.asking_price / 1000000).toFixed(1)}M
                     </div>
@@ -452,7 +452,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 )}
                 {deal?.state && (
                   <div>
-                    <div className="text-stone-500 mb-1">Status</div>
+                    <div className="text-neutral-400 mb-1">Status</div>
                     <span className="inline-block px-2 py-1 bg-neutral-800 text-blue-300 rounded text-xs font-medium">
                       {deal.state}
                     </span>
@@ -460,7 +460,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 )}
                 {layers.layer1.cap_rate > 0 && (
                   <div>
-                    <div className="text-stone-500 mb-1">Cap Rate</div>
+                    <div className="text-neutral-400 mb-1">Cap Rate</div>
                     <div className="font-medium">{layers.layer1.cap_rate.toFixed(1)}%</div>
                   </div>
                 )}
@@ -471,19 +471,19 @@ const CollisionAnalysisSection: React.FC = () => {
               <h3 className="font-semibold mb-4">Investment Criteria</h3>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-stone-500 mb-1">Target IRR</div>
+                  <div className="text-neutral-400 mb-1">Target IRR</div>
                   <div className="font-semibold">{layers.layer3.target_irr}%</div>
                 </div>
                 <div>
-                  <div className="text-stone-500 mb-1">Hold Period</div>
+                  <div className="text-neutral-400 mb-1">Hold Period</div>
                   <div className="font-semibold">{layers.layer3.preferred_hold_period} yrs</div>
                 </div>
                 <div>
-                  <div className="text-stone-500 mb-1">Exit Cap</div>
+                  <div className="text-neutral-400 mb-1">Exit Cap</div>
                   <div className="font-semibold">{layers.layer3.exit_cap_assumption}%</div>
                 </div>
                 <div>
-                  <div className="text-stone-500 mb-1">Max LTV</div>
+                  <div className="text-neutral-400 mb-1">Max LTV</div>
                   <div className="font-semibold">{layers.layer3.max_ltv}%</div>
                 </div>
               </div>
@@ -555,7 +555,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   {Object.entries(layers.layer1.broker_claims).map(([key, value]) => (
                     <div key={key}>
-                      <span className="text-stone-500 capitalize">{key.replace(/_/g, ' ')}: </span>
+                      <span className="text-neutral-400 capitalize">{key.replace(/_/g, ' ')}: </span>
                       <span className="font-medium">{value}</span>
                     </div>
                   ))}
@@ -604,7 +604,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 <div className="space-y-2 text-sm">
                   {layers.layer2.comp_sales.map((comp, idx) => (
                     <div key={idx} className="flex justify-between">
-                      <span className="text-stone-500">{comp.address}</span>
+                      <span className="text-neutral-400">{comp.address}</span>
                       <span className="font-medium">${(comp.price_per_unit / 1000).toFixed(0)}K/unit @ {comp.cap_rate}%</span>
                     </div>
                   ))}
@@ -626,21 +626,21 @@ const CollisionAnalysisSection: React.FC = () => {
               <div className="text-sm font-medium mb-3">Your Adjusted Assumptions:</div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-stone-500">1BR Rent: </span>
+                  <span className="text-neutral-400">1BR Rent: </span>
                   <span className="font-semibold text-green-400">
                     {layers.layer3.adjusted_rent_1br ? `$${layers.layer3.adjusted_rent_1br.toLocaleString()}` : 'Using broker'}
                   </span>
                   {layers.layer1.avg_rent_1br > 0 && (
-                    <span className="text-stone-400 ml-1">(broker ${layers.layer1.avg_rent_1br.toLocaleString()})</span>
+                    <span className="text-neutral-400 ml-1">(broker ${layers.layer1.avg_rent_1br.toLocaleString()})</span>
                   )}
                 </div>
                 <div>
-                  <span className="text-stone-500">Occupancy: </span>
+                  <span className="text-neutral-400">Occupancy: </span>
                   <span className="font-semibold text-green-400">
                     {layers.layer3.adjusted_occupancy ? `${layers.layer3.adjusted_occupancy}%` : 'Using broker'}
                   </span>
                   {layers.layer1.occupancy > 0 && (
-                    <span className="text-stone-400 ml-1">(broker {layers.layer1.occupancy}%)</span>
+                    <span className="text-neutral-400 ml-1">(broker {layers.layer1.occupancy}%)</span>
                   )}
                 </div>
               </div>
@@ -683,7 +683,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 {collision.overall_score}/100
               </div>
             </div>
-            <p className="text-stone-600">
+            <p className="text-neutral-400">
               Personalized analysis based on property data, market intelligence, and your investment criteria.
             </p>
           </div>
@@ -723,12 +723,12 @@ const CollisionAnalysisSection: React.FC = () => {
 
                   <div className="mb-4">
                     <div className="text-sm font-medium uppercase tracking-wide mb-2">Analysis</div>
-                    <p className="text-stone-700">{dim.insight}</p>
+                    <p className="text-neutral-400">{dim.insight}</p>
                   </div>
 
                   <div className="rounded-lg p-4 border">
                     <div className="text-sm font-medium uppercase tracking-wide mb-1">Recommended Action</div>
-                    <p className="text-stone-900 font-medium">{dim.recommended_action}</p>
+                    <p className="text-neutral-400 font-medium">{dim.recommended_action}</p>
                   </div>
                 </div>
               );

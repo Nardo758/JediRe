@@ -252,7 +252,7 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
         {!isCompPattern && (
           <button
             onClick={onUploadClick}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700 transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 text-neutral-100 rounded-lg text-xs hover:bg-neutral-600 transition-colors flex-shrink-0"
           >
             <Upload size={12} /> Upload Data
           </button>
@@ -547,33 +547,33 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         <div className="flex items-center gap-2 mb-4">
           {[
             { label: 'Traffic', value: Math.round(funnelTraffic), color: 'bg-[#4B5563]' },
-            { label: 'Tours', value: Math.round(funnelTours), color: 'bg-stone-700' },
-            { label: 'Apps', value: Math.round(funnelApps), color: 'bg-stone-500' },
+            { label: 'Tours', value: Math.round(funnelTours), color: 'bg-neutral-800' },
+            { label: 'Apps', value: Math.round(funnelApps), color: 'bg-neutral-800' },
             { label: 'Cancel/Deny', value: Math.round(funnelCancelDeny), color: 'bg-red-400' },
-            { label: 'Net Leases', value: Math.round(funnelNetLeases), color: 'bg-emerald-600' },
+            { label: 'Net Leases', value: Math.round(funnelNetLeases), color: 'bg-neutral-700' },
           ].map((step, i, arr) => (
             <div key={step.label} className="flex items-center gap-2 flex-1">
               <div className="flex-1">
-                <div className="text-stone-400 font-mono text-[10px] uppercase mb-1">{step.label}</div>
+                <div className="text-neutral-400 font-mono text-[10px] uppercase mb-1">{step.label}</div>
                 <div className="text-lg font-bold text-[#E8E6E1]">{step.value}</div>
                 <div className={`h-2 rounded-full ${step.color} mt-1`}
                   style={{ width: `${funnelTraffic > 0 ? Math.max(10, (step.value / funnelTraffic) * 100) : 10}%` }} />
               </div>
-              {i < arr.length - 1 && <ChevronRight size={16} className="text-stone-300 flex-shrink-0" />}
+              {i < arr.length - 1 && <ChevronRight size={16} className="text-neutral-400 flex-shrink-0" />}
             </div>
           ))}
         </div>
         <div className="flex gap-4 mt-4 pt-4 border-t border-stone-100">
           <div className="flex-1">
-            <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Traffic Source Split</div>
+            <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">Traffic Source Split</div>
             <div className="flex h-4 rounded-full overflow-hidden bg-[#131920]">
-              <div className="bg-stone-700 flex items-center justify-center"
+              <div className="bg-neutral-800 flex items-center justify-center"
                 style={{ width: `${funnelTraffic > 0 ? (Math.max(0, funnelWalkIn) / funnelTraffic) * 100 : 50}%` }}>
-                <span className="text-[9px] text-white font-mono">{Math.max(0, Math.round(funnelWalkIn))}</span>
+                <span className="text-[9px] text-neutral-100 font-mono">{Math.max(0, Math.round(funnelWalkIn))}</span>
               </div>
               <div className="bg-blue-500 flex items-center justify-center"
                 style={{ width: `${funnelTraffic > 0 ? (funnelWebsite / funnelTraffic) * 100 : 50}%` }}>
-                <span className="text-[9px] text-white font-mono">{Math.round(funnelWebsite)}</span>
+                <span className="text-[9px] text-neutral-100 font-mono">{Math.round(funnelWebsite)}</span>
               </div>
             </div>
             <div className="flex justify-between mt-1">
@@ -582,7 +582,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
           </div>
           <div className="flex-1">
-            <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">
+            <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">
               {hasHistory ? 'This Week vs 4-Wk Avg' : 'Predicted Baseline'}
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -592,7 +592,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </div>
               <div>
                 <div className="text-xs text-[#6B7585]">{hasHistory ? '4-Wk Avg' : 'Monthly Est.'}</div>
-                <div className="text-lg font-bold text-stone-400">
+                <div className="text-lg font-bold text-neutral-400">
                   {hasHistory ? Math.round(avg4('traffic')) : Math.round(kpiTraffic * 4.33)}
                 </div>
               </div>
@@ -619,7 +619,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
             {editing ? (
               <div className="flex gap-2">
-                <button onClick={handleSaveEdits} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700">
+                <button onClick={handleSaveEdits} className="flex items-center gap-1 px-3 py-1.5 bg-neutral-700 text-neutral-100 rounded-lg text-xs hover:bg-neutral-600">
                   <Save size={12} /> Save
                 </button>
                 <button onClick={() => { setEditing(false); setEditValues({}); }} className="flex items-center gap-1 px-3 py-1.5 bg-[#1e2a3d] text-[#9EA8B4] rounded-lg text-xs hover:bg-[#1e2a3d]">
@@ -639,7 +639,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <thead>
               <tr style={{ backgroundColor: '#3C4A3B' }}>
                 <th className="sticky left-0 z-10 text-left px-4 py-3 min-w-[160px] border-r border-[#4d5a4c]" style={{ backgroundColor: '#3C4A3B' }}>
-                  <span className="text-white/60 text-[10px] font-normal uppercase tracking-wider"></span>
+                  <span className="text-neutral-400 text-[10px] font-normal uppercase tracking-wider"></span>
                 </th>
                 {periods.map(p => {
                   const parts = p.label.split('|');
@@ -647,8 +647,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   const bottomLine = parts[1] || '';
                   return (
                     <th key={p.index} className="px-3 py-2.5 text-right min-w-[88px] border-r border-[#4d5a4c] last:border-r-0">
-                      <div className="text-white text-[11px] font-semibold leading-tight">{topLine}</div>
-                      {bottomLine && <div className="text-white/50 text-[9px] font-normal mt-0.5">{bottomLine}</div>}
+                      <div className="text-neutral-100 text-[11px] font-semibold leading-tight">{topLine}</div>
+                      {bottomLine && <div className="text-neutral-400 text-[9px] font-normal mt-0.5">{bottomLine}</div>}
                     </th>
                   );
                 })}
@@ -666,7 +666,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   {periods.map(p => {
                     const val = (p as Record<string, unknown>)[row.field] as number;
                     return (
-                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-800">
+                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-neutral-400">
                         {formatVal(val, row.format)}
                       </td>
                     );
@@ -743,7 +743,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           </table>
         </div>
 
-        <div className="flex items-center gap-6 mt-3 text-[10px] text-stone-400">
+        <div className="flex items-center gap-6 mt-3 text-[10px] text-neutral-400">
           <span>Parentheses indicate negative values</span>
           <span>– indicates zero or not applicable</span>
         </div>
@@ -786,10 +786,10 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Vacancy & Availability</h3>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className="text-stone-400 font-mono text-[10px] uppercase mb-3">Vacancy Breakdown</div>
+              <div className="text-neutral-400 font-mono text-[10px] uppercase mb-3">Vacancy Breakdown</div>
               <div className="space-y-3">
                 {[
-                  { label: 'Model', value: latest.vacant_model || 0, color: 'bg-stone-400' },
+                  { label: 'Model', value: latest.vacant_model || 0, color: 'bg-neutral-800' },
                   { label: 'Rented Vacant', value: latest.vacant_rented || 0, color: 'bg-amber-500' },
                   { label: 'Unrented Vacant', value: latest.vacant_unrented || 0, color: 'bg-red-500' },
                 ].map(item => (
@@ -809,7 +809,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 </div>
               </div>
 
-              <div className="text-stone-400 font-mono text-[10px] uppercase mt-6 mb-3">On-Notice Pipeline</div>
+              <div className="text-neutral-400 font-mono text-[10px] uppercase mt-6 mb-3">On-Notice Pipeline</div>
               <div className="space-y-3">
                 {[
                   { label: 'Rented Notice', value: latest.notice_rented || 0, color: 'bg-amber-400' },
@@ -833,7 +833,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
 
             <div>
-              <div className="text-stone-400 font-mono text-[10px] uppercase mb-3">Unit Availability by Type</div>
+              <div className="text-neutral-400 font-mono text-[10px] uppercase mb-3">Unit Availability by Type</div>
               <div className="space-y-4">
                 {[
                   { label: '1 BR', value: latest.avail_1br || 0 },
@@ -846,7 +846,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                       <span className="text-xs font-mono font-bold text-[#E8E6E1]">{item.value} units</span>
                     </div>
                     <div className="bg-[#131920] rounded-full h-3 overflow-hidden">
-                      <div className="h-full bg-stone-600 rounded-full"
+                      <div className="h-full bg-neutral-800 rounded-full"
                         style={{ width: `${Math.min(100, item.value * 5)}%` }} />
                     </div>
                   </div>
@@ -860,7 +860,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   { label: 'Avail %', value: `${((latest.avail_pct || 0) * 100).toFixed(1)}%` },
                 ].map(item => (
                   <div key={item.label} className="bg-[#0F1319] rounded-lg p-3 text-center">
-                    <div className="text-stone-400 font-mono text-[10px] uppercase">{item.label}</div>
+                    <div className="text-neutral-400 font-mono text-[10px] uppercase">{item.label}</div>
                     <div className="text-lg font-bold text-[#E8E6E1] mt-1">{item.value}</div>
                   </div>
                 ))}
@@ -872,7 +872,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
       {!mi && !latest && (
         <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
-          <SlidersHorizontal size={32} className="mx-auto text-stone-300 mb-3" />
+          <SlidersHorizontal size={32} className="mx-auto text-neutral-400 mb-3" />
           <p className="text-sm text-[#6B7585]">Market adjustments will appear once projection data is available.</p>
         </div>
       )}
@@ -883,7 +883,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     <div className="space-y-6">
       <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center gap-3 mb-4">
-          <Database size={18} className="text-stone-400" />
+          <Database size={18} className="text-neutral-400" />
           <div>
             <h3 className="text-lg font-bold text-[#E8E6E1]">Data Library Calibration</h3>
             <p className="text-xs text-[#6B7585] mt-0.5">
@@ -899,7 +899,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
         {calibration?.calibrated && Object.keys(calibration.comparisons).length > 0 ? (
           <div className="space-y-3">
-            <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Calibrated vs Default Values</div>
+            <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">Calibrated vs Default Values</div>
             <div className="grid grid-cols-2 gap-3">
               {Object.entries(calibration.comparisons).map(([metric, vals]) => {
                 const isPct = metric.includes('Ratio') || metric.includes('Conversion') || metric.includes('%');
@@ -914,7 +914,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     <div className="flex items-end justify-between">
                       <div>
                         <div className="text-lg font-bold text-[#E8E6E1]">{formatFn(vals.calibrated)}</div>
-                        <div className="text-[11px] text-stone-400">Default: {formatFn(vals.default)}</div>
+                        <div className="text-[11px] text-neutral-400">Default: {formatFn(vals.default)}</div>
                       </div>
                       <div className={`text-xs font-mono ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
                         {isUp ? '+' : ''}{diffPct}%
@@ -926,7 +926,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
             <div className="flex items-center justify-between mt-3">
               {calibration.lastUpdated && (
-                <div className="text-[10px] text-stone-400">
+                <div className="text-[10px] text-neutral-400">
                   Last updated: {new Date(calibration.lastUpdated).toLocaleDateString()}
                 </div>
               )}
@@ -940,7 +940,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           </div>
         ) : (
           <div className="text-center py-6">
-            <Database size={32} className="mx-auto text-stone-300 mb-3" />
+            <Database size={32} className="mx-auto text-neutral-400 mb-3" />
             <p className="text-sm text-[#6B7585] mb-3">
               Upload weekly operating reports to build submarket-specific calibration data.
               The more deals that contribute data, the better the predictions become.
