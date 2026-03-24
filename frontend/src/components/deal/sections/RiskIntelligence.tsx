@@ -364,7 +364,7 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
         {/* Bloomberg v0.34 PanelHeader */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '6px 10px', background: T.bgMid,
+          padding: '6px 10px', background: T.bg.panelAlt,
           borderBottom: `1px solid ${T.border.subtle}`, borderTop: `2px solid ${T.text.red}`, marginBottom: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -455,8 +455,8 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
             })}
           </div>
 
-          <div style={{ marginTop: 14, background: T.bg.panelAlt, borderRadius: 6, border: `1px solid ${T.text.blue}30`, padding: '10px 14px' }}>
-            <p style={{ fontSize: 11, color: T.text.blue, lineHeight: 1.6, margin: 0, fontFamily: sans }}>
+          <div style={{ marginTop: 14, background: T.bg.panelAlt, borderRadius: 6, border: `1px solid ${T.text.amber}30`, padding: '10px 14px' }}>
+            <p style={{ fontSize: 11, color: T.text.amber, lineHeight: 1.6, margin: 0, fontFamily: sans }}>
               Supply risk moved +8 pts due to a new 280-unit permit filed nearby. Demand risk improved because of local expansion.
               Net composite change: +3 — manageable.
             </p>
@@ -489,7 +489,7 @@ const RiskCard: React.FC<{
     <button
       onClick={onToggle}
       style={{
-        background: isExpanded ? T.bgHover : T.bg.panel,
+        background: isExpanded ? T.bg.panelAlt : T.bg.panel,
         border: `1px solid ${isExpanded ? cfg.border : T.border.subtle}`,
         borderTop: `3px solid ${cfg.border}`,
         borderRadius: 8, padding: '14px 14px 12px', textAlign: 'left', cursor: 'pointer',
@@ -528,8 +528,8 @@ const RiskCard: React.FC<{
             <p style={{ fontSize: 10, color: T.text.green, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.offsetting}</p>
           </div>
           <div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.blue, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>MITIGATION</div>
-            <p style={{ fontSize: 10, color: T.text.blue, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.mitigation}</p>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.amber, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>MITIGATION</div>
+            <p style={{ fontSize: 10, color: T.text.amber, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.mitigation}</p>
           </div>
         </div>
       )}

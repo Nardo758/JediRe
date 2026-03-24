@@ -17,8 +17,8 @@ import type {
 } from '../../../types/capital-structure.types';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { apiClient } from '@/services/api.client';
-import {
 import { BT } from '../bloomberg-ui';
+import {
   strategyTemplates,
   defaultCapitalStack,
   debtProducts,
