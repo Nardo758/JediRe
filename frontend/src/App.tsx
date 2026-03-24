@@ -113,6 +113,10 @@ function AppContent() {
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
 
+        {/* Root and catch-all — redirect immediately to terminal/dashboard without going through
+            MainLayout so the address bar updates on every server restart / fresh load. */}
+        <Route path="/" element={<Navigate to="/terminal/dashboard" replace />} />
+
         {/* Terminal — full-page, no MainLayout; :section gives each F-key a bookmarkable URL.
             Root /terminal renders TerminalPage directly so ?fkey=Fn deep-links are preserved. */}
         <Route path="/terminal" element={<TerminalPage />} />
@@ -232,7 +236,7 @@ function AppContent() {
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
           <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />
           
-          <Route path="*" element={<Navigate to="/terminal" replace />} />
+          <Route path="*" element={<Navigate to="/terminal/dashboard" replace />} />
         </Route>
       </Routes>
       
