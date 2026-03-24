@@ -277,7 +277,7 @@ const CollisionAnalysisSection: React.FC = () => {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm">Loading collision analysis...</span>
         </div>
       </div>
@@ -295,9 +295,9 @@ const CollisionAnalysisSection: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <div className={`px-4 py-2 rounded-lg font-bold text-lg ${
-            collision.overall_score >= 80 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-            collision.overall_score >= 60 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
-            'bg-red-50 text-red-700 border border-red-200'
+            collision.overall_score >= 80 ? 'bg-neutral-800 text-emerald-400 border border-green-700' :
+            collision.overall_score >= 60 ? 'bg-neutral-700 text-amber-400 border border-amber-700' :
+            'bg-neutral-800 text-red-400 border border-red-700'
           }`}>
             {collision.overall_score}/100
           </div>
@@ -305,11 +305,11 @@ const CollisionAnalysisSection: React.FC = () => {
       </div>
 
       {!hasRealData && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="bg-neutral-700 border border-amber-700 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
           <div>
-            <div className="font-medium text-amber-800">Limited Deal Data</div>
-            <div className="text-sm text-amber-700">
+            <div className="font-medium text-amber-400">Limited Deal Data</div>
+            <div className="text-sm text-amber-400">
               This analysis uses available data. Add property details, market research, and financial assumptions to improve accuracy.
             </div>
           </div>
@@ -411,16 +411,16 @@ const CollisionAnalysisSection: React.FC = () => {
                     return (
                       <div key={key} className="flex items-start gap-3">
                         {isGood ? (
-                          <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+                          <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
                         ) : (
-                          <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                         )}
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <div className="font-medium">
                               {DIMENSION_LABELS[key] || key.replace(/_/g, ' ')}
                             </div>
-                            <div className={`text-sm font-semibold ${isGood ? 'text-emerald-600' : 'text-amber-600'}`}>
+                            <div className={`text-sm font-semibold ${isGood ? 'text-emerald-400' : 'text-amber-400'}`}>
                               {dim.score}/100
                             </div>
                           </div>
@@ -452,7 +452,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 {deal?.state && (
                   <div>
                     <div className="text-stone-500 mb-1">Status</div>
-                    <span className="inline-block px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-medium">
+                    <span className="inline-block px-2 py-1 bg-neutral-800 text-blue-300 rounded text-xs font-medium">
                       {deal.state}
                     </span>
                   </div>
@@ -493,30 +493,30 @@ const CollisionAnalysisSection: React.FC = () => {
 
       {subTab === 'layers' && (
         <div className="space-y-6">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-2">Three-Layer Intelligence System</h3>
-            <p className="text-sm text-blue-700 mb-3">
+          <div className="bg-neutral-800 border border-blue-700 rounded-lg p-4">
+            <h3 className="font-semibold text-blue-300 mb-2">Three-Layer Intelligence System</h3>
+            <p className="text-sm text-blue-300 mb-3">
               Deal data is preserved as-is. Platform provides reality check. You decide final assumptions.
             </p>
             <div className="grid grid-cols-3 gap-4 text-xs">
               <div className="rounded p-2">
-                <div className="font-semibold text-blue-900 mb-1">Layer 1: Truth</div>
-                <div className="text-blue-700">Broker's claims (never changed)</div>
+                <div className="font-semibold text-blue-300 mb-1">Layer 1: Truth</div>
+                <div className="text-blue-300">Broker's claims (never changed)</div>
               </div>
               <div className="rounded p-2">
-                <div className="font-semibold text-purple-900 mb-1">Layer 2: Reality Check</div>
-                <div className="text-purple-700">Market data (comparison only)</div>
+                <div className="font-semibold text-purple-300 mb-1">Layer 2: Reality Check</div>
+                <div className="text-purple-300">Market data (comparison only)</div>
               </div>
               <div className="rounded p-2">
-                <div className="font-semibold text-green-900 mb-1">Layer 3: Your Model</div>
-                <div className="text-green-700">Your assumptions (pro forma)</div>
+                <div className="font-semibold text-green-400 mb-1">Layer 3: Your Model</div>
+                <div className="text-green-400">Your assumptions (pro forma)</div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-lg border-2 border-blue-200 p-6">
+          <div className="rounded-lg border-2 border-blue-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">1</div>
+              <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-blue-300 font-bold">1</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 1: Deal Data (Preserved)</h3>
                 <p className="text-sm">Original broker claims — never modified by platform</p>
@@ -563,9 +563,9 @@ const CollisionAnalysisSection: React.FC = () => {
             )}
           </div>
 
-          <div className="rounded-lg border-2 border-purple-200 p-6">
+          <div className="rounded-lg border-2 border-purple-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold">2</div>
+              <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-purple-300 font-bold">2</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 2: Platform Intelligence (Reality Check)</h3>
                 <p className="text-sm">Market data for comparison — does not override deal data</p>
@@ -593,7 +593,7 @@ const CollisionAnalysisSection: React.FC = () => {
               <div>
                 <div className="text-sm mb-1">Employment Growth</div>
                 <div className="font-semibold">
-                  {layers.layer2.employment_growth > 0 ? <span className="text-emerald-600">+{layers.layer2.employment_growth}%</span> : 'Not set'}
+                  {layers.layer2.employment_growth > 0 ? <span className="text-emerald-400">+{layers.layer2.employment_growth}%</span> : 'Not set'}
                 </div>
               </div>
             </div>
@@ -612,9 +612,9 @@ const CollisionAnalysisSection: React.FC = () => {
             )}
           </div>
 
-          <div className="rounded-lg border-2 border-green-200 p-6">
+          <div className="rounded-lg border-2 border-green-700 p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold">3</div>
+              <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-green-400 font-bold">3</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 3: Your Model (Pro Forma Input)</h3>
                 <p className="text-sm">Your adjusted assumptions — used in financial models</p>
@@ -626,7 +626,7 @@ const CollisionAnalysisSection: React.FC = () => {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-stone-500">1BR Rent: </span>
-                  <span className="font-semibold text-green-700">
+                  <span className="font-semibold text-green-400">
                     {layers.layer3.adjusted_rent_1br ? `$${layers.layer3.adjusted_rent_1br.toLocaleString()}` : 'Using broker'}
                   </span>
                   {layers.layer1.avg_rent_1br > 0 && (
@@ -635,7 +635,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-stone-500">Occupancy: </span>
-                  <span className="font-semibold text-green-700">
+                  <span className="font-semibold text-green-400">
                     {layers.layer3.adjusted_occupancy ? `${layers.layer3.adjusted_occupancy}%` : 'Using broker'}
                   </span>
                   {layers.layer1.occupancy > 0 && (
@@ -672,12 +672,12 @@ const CollisionAnalysisSection: React.FC = () => {
 
       {subTab === 'collision' && (
         <div className="space-y-6">
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
+          <div className="bg-gradient-to-r from-neutral-800 to-neutral-900 border border-blue-700 rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-2xl font-bold">Collision Analysis</h3>
               <div className={`text-3xl font-bold ${
-                collision.overall_score >= 80 ? 'text-emerald-600' :
-                collision.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
+                collision.overall_score >= 80 ? 'text-emerald-400' :
+                collision.overall_score >= 60 ? 'text-amber-400' : 'text-red-400'
               }`}>
                 {collision.overall_score}/100
               </div>
@@ -692,9 +692,9 @@ const CollisionAnalysisSection: React.FC = () => {
             .map(([key, data]) => {
               const dim = data as CollisionDimension;
               const colors = {
-                high: 'border-emerald-200 bg-emerald-50/50',
-                medium: 'border-amber-200 bg-amber-50/50',
-                low: 'border-red-200 bg-red-50/50'
+                high: 'border-green-700 bg-neutral-800/50',
+                medium: 'border-amber-700 bg-neutral-700/50',
+                low: 'border-red-700 bg-neutral-800/50'
               };
               const level = dim.score >= 80 ? 'high' : dim.score >= 60 ? 'medium' : 'low';
               const icon = DIMENSION_ICONS[key] || <AlertTriangle className="w-5 h-5" />;
@@ -704,9 +704,9 @@ const CollisionAnalysisSection: React.FC = () => {
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg ${
-                        level === 'high' ? 'bg-emerald-100 text-emerald-700' :
-                        level === 'medium' ? 'bg-amber-100 text-amber-700' :
-                        'bg-red-100 text-red-700'
+                        level === 'high' ? 'bg-neutral-800 text-emerald-400' :
+                        level === 'medium' ? 'bg-neutral-700 text-amber-400' :
+                        'bg-neutral-800 text-red-400'
                       }`}>
                         {icon}
                       </div>

@@ -417,7 +417,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-blue-300" />
         <span className="ml-3">Loading zoning data...</span>
       </div>
     );
@@ -442,7 +442,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     (data.unit_mix?.twoBR?.percent || 0) +
     (data.unit_mix?.threeBR?.percent || 0);
 
-  const inputClass = "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400";
+  const inputClass = "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-700 placeholder-gray-400";
   const labelClass = "block text-xs font-medium mb-1";
 
   return (
@@ -450,7 +450,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <Building2 size={22} className="text-blue-600" />
+            <Building2 size={22} className="text-blue-300" />
             Zoning & Development Capacity
           </h2>
           <p className="text-sm mt-1">
@@ -470,7 +470,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           <button
             onClick={analyzeEnvelope}
             disabled={envelopeLoading}
-            className="flex items-center gap-2 px-5 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-neutral-800 text-white rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-5 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white rounded-lg text-sm font-medium transition-colors"
           >
             {envelopeLoading ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />}
             {envelopeLoading ? 'Analyzing...' : 'Analyze Envelope'}
@@ -479,7 +479,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       </div>
 
       {statusMsg && (
-        <div className={`px-4 py-2 rounded-lg text-sm ${statusMsg.includes('Failed') || statusMsg.includes('No matching') || statusMsg.includes('No land') || statusMsg.includes('boundary') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+        <div className={`px-4 py-2 rounded-lg text-sm ${statusMsg.includes('Failed') || statusMsg.includes('No matching') || statusMsg.includes('No land') || statusMsg.includes('boundary') ? 'bg-neutral-800 text-red-400 border border-red-700' : 'bg-neutral-800 text-green-400 border border-green-700'}`}>
           {statusMsg}
         </div>
       )}
@@ -493,8 +493,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               {dataSource && (
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                   dataSource === 'verified'
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-purple-100 text-purple-700'
+                    ? 'bg-neutral-800 text-green-400'
+                    : 'bg-neutral-800 text-purple-300'
                 }`}>
                   {dataSource === 'verified' ? '✓ Database Verified' : '⚡ AI-Retrieved'}
                 </span>
@@ -505,20 +505,20 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 onKeyDown={(e) => e.key === 'Enter' && lookupZoningCode()}
                 placeholder="Enter zoning code (e.g. MR-4A)" className={`${inputClass} flex-1`} />
               <button onClick={() => lookupZoningCode()} disabled={lookingUp || !zoningCode}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-800 text-white disabled:text-neutral-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white disabled:text-neutral-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                 {lookingUp ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 Look Up
               </button>
             </div>
             <button onClick={loadAvailableDistricts}
-              className="text-xs text-blue-600 hover:text-blue-800 hover:underline">
+              className="text-xs text-blue-300 hover:text-blue-300 hover:underline">
               Browse all {deal?.city || 'Atlanta'} districts
             </button>
 
             {autoFillSource && (
-              <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-                <CheckCircle2 size={14} className="text-blue-600" />
-                <span className="text-sm text-blue-800">
+              <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-neutral-800 border border-blue-700 rounded-lg">
+                <CheckCircle2 size={14} className="text-blue-300" />
+                <span className="text-sm text-blue-300">
                   Loaded from <strong>{autoFillSource}</strong>
                 </span>
               </div>
@@ -575,10 +575,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           </div>
 
           {showDistrictPicker && availableDistricts.length > 0 && (
-            <div className="rounded-xl border border-blue-200 p-5 shadow-sm">
+            <div className="rounded-xl border border-blue-700 p-5 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Info size={18} className="text-blue-600" />
+                  <Info size={18} className="text-blue-300" />
                   Select a Zoning District
                 </h3>
                 <button onClick={() => setShowDistrictPicker(false)}
@@ -587,7 +587,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               <div className="max-h-72 overflow-y-auto space-y-2">
                 {availableDistricts.map((d) => (
                   <button key={d.id} onClick={() => selectDistrict(d)}
-                    className="w-full text-left p-3 hover:bg-blue-50 border hover:border-blue-200 rounded-lg transition-colors">
+                    className="w-full text-left p-3 hover:bg-neutral-800 border hover:border-blue-600 rounded-lg transition-colors">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-sm font-semibold">{d.district_code}</span>
@@ -624,7 +624,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   <button onClick={() => updateField('affordable_housing_bonus', !data.affordable_housing_bonus)}
                     className="text-neutral-400 ">
                     {data.affordable_housing_bonus ? (
-                      <ToggleRight size={28} className="text-green-500" />
+                      <ToggleRight size={28} className="text-green-400" />
                     ) : (
                       <ToggleLeft size={28} className="text-neutral-400" />
                     )}
@@ -645,7 +645,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   <button onClick={() => updateField('tdr_available', !data.tdr_available)}
                     className="text-neutral-400 ">
                     {data.tdr_available ? (
-                      <ToggleRight size={28} className="text-green-500" />
+                      <ToggleRight size={28} className="text-green-400" />
                     ) : (
                       <ToggleLeft size={28} className="text-neutral-400" />
                     )}
@@ -658,17 +658,17 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           <div className="rounded-xl border p-5 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Unit Mix Distribution</h3>
             {unitMixTotal !== 100 && unitMixTotal > 0 && (
-              <div className="flex items-center gap-2 mb-3 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertTriangle size={14} className="text-amber-500" />
-                <span className="text-xs text-amber-700">Total is {unitMixTotal}% — should equal 100%</span>
+              <div className="flex items-center gap-2 mb-3 p-2 bg-neutral-700 border border-amber-700 rounded-lg">
+                <AlertTriangle size={14} className="text-amber-400" />
+                <span className="text-xs text-amber-400">Total is {unitMixTotal}% — should equal 100%</span>
               </div>
             )}
             <div className="space-y-3">
               {[
-                { key: 'studio', label: 'Studio', color: 'bg-blue-500' },
-                { key: 'oneBR', label: '1 Bedroom', color: 'bg-indigo-500' },
-                { key: 'twoBR', label: '2 Bedroom', color: 'bg-purple-500' },
-                { key: 'threeBR', label: '3 Bedroom', color: 'bg-violet-500' },
+                { key: 'studio', label: 'Studio', color: 'bg-neutral-800' },
+                { key: 'oneBR', label: '1 Bedroom', color: 'bg-neutral-800' },
+                { key: 'twoBR', label: '2 Bedroom', color: 'bg-neutral-800' },
+                { key: 'threeBR', label: '3 Bedroom', color: 'bg-neutral-800' },
               ].map(({ key, label, color }) => {
                 const item = data.unit_mix?.[key as keyof UnitMix];
                 return (
@@ -702,14 +702,14 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               </div>
               <div className="flex items-end">
                 {data.avg_rent_per_unit && (data.max_units_with_incentives || data.max_units_by_right) ? (
-                  <div className="w-full p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="w-full p-3 bg-neutral-800 border border-green-700 rounded-lg">
                     <div className="flex justify-between text-sm">
                       <span className="text-neutral-400">Monthly</span>
                       <span className="font-medium">{formatCurrency((data.avg_rent_per_unit || 0) * (withIncentivesUnits || byRightUnits))}</span>
                     </div>
                     <div className="flex justify-between text-sm mt-1">
                       <span className="text-neutral-400">Annual</span>
-                      <span className="font-bold text-green-700">{formatCurrency(data.annual_revenue)}</span>
+                      <span className="font-bold text-green-400">{formatCurrency(data.annual_revenue)}</span>
                     </div>
                   </div>
                 ) : (
@@ -732,19 +732,19 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         <div className="space-y-6">
 
           {envelope ? (
-            <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-200 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-blue-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                <Layers size={18} className="text-blue-600" />
+                <Layers size={18} className="text-blue-300" />
                 Building Envelope
               </h3>
               <div className="text-center mb-4">
-                <p className="text-4xl font-bold text-blue-700">{formatNumber(envelope.maxCapacity)}</p>
+                <p className="text-4xl font-bold text-blue-300">{formatNumber(envelope.maxCapacity)}</p>
                 <p className="text-xs mt-1">Max Capacity ({PROPERTY_TYPE_LABELS[selectedPropertyType]})</p>
               </div>
               {envelope.limitingFactor && envelope.limitingFactor !== 'none' && (
-                <div className="flex items-center gap-2 p-2 mb-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <AlertTriangle size={14} className="text-amber-500" />
-                  <span className="text-xs text-amber-700">
+                <div className="flex items-center gap-2 p-2 mb-3 bg-neutral-700 border border-amber-700 rounded-lg">
+                  <AlertTriangle size={14} className="text-amber-400" />
+                  <span className="text-xs text-amber-400">
                     Bottleneck: {LIMITING_FACTOR_LABELS[envelope.limitingFactor] || envelope.limitingFactor}
                   </span>
                 </div>
@@ -782,14 +782,14 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                       .map(([constraint, value]) => (
                         <div key={constraint}>
                           <div className="flex justify-between text-xs mb-0.5">
-                            <span className={`${constraint === envelope.limitingFactor ? 'text-amber-600 font-semibold' : 'text-neutral-400'}`}>
+                            <span className={`${constraint === envelope.limitingFactor ? 'text-amber-400 font-semibold' : 'text-neutral-400'}`}>
                               {constraint === envelope.limitingFactor ? '⚠ ' : ''}{LIMITING_FACTOR_LABELS[constraint] || constraint}
                             </span>
                             <span className="font-medium">{formatNumber(value)}</span>
                           </div>
                           <div className="w-full rounded-full h-2">
                             <div className={`rounded-full h-2 transition-all ${
-                              constraint === envelope.limitingFactor ? 'bg-amber-500' : 'bg-blue-400'
+                              constraint === envelope.limitingFactor ? 'bg-neutral-700' : 'bg-neutral-800'
                             }`} style={{ width: `${(value / maxConstraintVal) * 100}%` }} />
                           </div>
                         </div>
@@ -799,9 +799,9 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               )}
             </div>
           ) : (
-            <div className="bg-gradient-to-br from-blue-50 to-white rounded-xl border border-blue-200 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-blue-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Building2 size={18} className="text-blue-600" />
+                <Building2 size={18} className="text-blue-300" />
                 Building Envelope
               </h3>
               <div className="text-center py-6">
@@ -813,19 +813,19 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           )}
 
           {hasParams && (
-            <div className="bg-gradient-to-br from-green-50 to-white rounded-xl border border-green-200 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-green-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <TrendingUp size={18} className="text-green-600" />
+                <TrendingUp size={18} className="text-green-400" />
                 Capacity Summary
               </h3>
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-neutral-400">By Right</span>
-                    <span className="font-medium text-blue-700">{formatNumber(byRightUnits)}</span>
+                    <span className="font-medium text-blue-300">{formatNumber(byRightUnits)}</span>
                   </div>
                   <div className="w-full rounded-full h-4">
-                    <div className="bg-blue-500 rounded-full h-4 transition-all" style={{
+                    <div className="bg-neutral-800 rounded-full h-4 transition-all" style={{
                       width: `${(byRightUnits / Math.max(withIncentivesUnits, byRightUnits, 1)) * 100}%`
                     }} />
                   </div>
@@ -834,10 +834,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   <div>
                     <div className="flex justify-between text-xs mb-1">
                       <span className="text-neutral-400">With Incentives</span>
-                      <span className="font-medium text-green-700">{formatNumber(withIncentivesUnits)}</span>
+                      <span className="font-medium text-green-400">{formatNumber(withIncentivesUnits)}</span>
                     </div>
                     <div className="w-full rounded-full h-4">
-                      <div className="bg-green-500 rounded-full h-4 transition-all" style={{
+                      <div className="bg-neutral-800 rounded-full h-4 transition-all" style={{
                         width: `${(withIncentivesUnits / Math.max(withIncentivesUnits, byRightUnits, 1)) * 100}%`
                       }} />
                     </div>
@@ -845,7 +845,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 )}
                 {withIncentivesUnits > byRightUnits && byRightUnits > 0 && (
                   <div className="text-center">
-                    <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-700 border border-green-200">
+                    <span className="inline-block px-2 py-0.5 text-xs rounded-full bg-neutral-800 text-green-400 border border-green-700">
                       +{withIncentivesUnits - byRightUnits} units ({Math.round(((withIncentivesUnits - byRightUnits) / byRightUnits) * 100)}% increase)
                     </span>
                   </div>
@@ -854,19 +854,19 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   {data.affordable_housing_bonus && (
                     <div className="flex justify-between">
                       <span className="text-neutral-400">Affordable Bonus:</span>
-                      <span className="text-green-700 font-medium">+{data.affordable_bonus_percent || 25}%</span>
+                      <span className="text-green-400 font-medium">+{data.affordable_bonus_percent || 25}%</span>
                     </div>
                   )}
                   {data.tdr_available && (
                     <div className="flex justify-between">
                       <span className="text-neutral-400">TDR Bonus:</span>
-                      <span className="text-green-700 font-medium">+{data.tdr_bonus_percent || 15}%</span>
+                      <span className="text-green-400 font-medium">+{data.tdr_bonus_percent || 15}%</span>
                     </div>
                   )}
                   {data.limiting_factor && data.limiting_factor !== 'unknown' && data.limiting_factor !== 'none' && (
                     <div className="flex justify-between">
                       <span className="text-neutral-400">Limited by:</span>
-                      <span className="text-amber-700 font-medium">{LIMITING_FACTOR_LABELS[data.limiting_factor] || data.limiting_factor}</span>
+                      <span className="text-amber-400 font-medium">{LIMITING_FACTOR_LABELS[data.limiting_factor] || data.limiting_factor}</span>
                     </div>
                   )}
                 </div>
@@ -875,7 +875,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           )}
 
           {(data.annual_revenue || data.avg_rent_per_unit) && (
-            <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-200 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-purple-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-4">Revenue Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -899,7 +899,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                     </div>
                     <div className="flex justify-between pt-2 border-t">
                       <span className="text-neutral-400 font-medium">Est. Value (5% cap):</span>
-                      <span className="text-lg font-bold text-purple-700">{formatCurrency(data.estimated_value)}</span>
+                      <span className="text-lg font-bold text-purple-300">{formatCurrency(data.estimated_value)}</span>
                     </div>
                   </>
                 )}
@@ -914,7 +914,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           <button onClick={() => setShowHBU(!showHBU)}
             className="w-full flex items-center justify-between">
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Crown size={18} className="text-amber-500" />
+              <Crown size={18} className="text-amber-400" />
               Highest & Best Use Analysis
             </h3>
             {showHBU ? <ChevronUp size={20} className="text-neutral-400" /> : <ChevronDown size={20} className="text-neutral-400" />}
@@ -935,15 +935,15 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                   <tbody>
                     {hbuResults.map((result, idx) => (
                       <tr key={result.propertyType}
-                        className={`border-b ${result.recommended ? 'bg-amber-50' : idx % 2 === 0 ? 'bg-neutral-900' : 'bg-neutral-800'}`}>
+                        className={`border-b ${result.recommended ? 'bg-neutral-700' : idx % 2 === 0 ? 'bg-neutral-900' : 'bg-neutral-800'}`}>
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-2">
                             <span>{PROPERTY_TYPE_ICONS[result.propertyType] || '🏢'}</span>
-                            <span className={`font-medium ${result.recommended ? 'text-amber-800' : 'text-neutral-400'}`}>
+                            <span className={`font-medium ${result.recommended ? 'text-amber-400' : 'text-neutral-400'}`}>
                               {PROPERTY_TYPE_LABELS[result.propertyType] || result.propertyType}
                             </span>
                             {result.recommended && (
-                              <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium border border-amber-200">
+                              <span className="text-xs px-1.5 py-0.5 bg-neutral-700 text-amber-400 rounded-full font-medium border border-amber-700">
                                 Best Use
                               </span>
                             )}
@@ -958,7 +958,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                         <td className="py-3 px-3 text-right font-medium">
                           {formatCurrency(result.estimatedNOI)}
                         </td>
-                        <td className={`py-3 px-3 text-right font-bold ${result.recommended ? 'text-amber-700' : 'text-neutral-400'}`}>
+                        <td className={`py-3 px-3 text-right font-bold ${result.recommended ? 'text-amber-400' : 'text-neutral-400'}`}>
                           {formatCurrency(result.estimatedValue)}
                         </td>
                       </tr>
@@ -967,9 +967,9 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 </table>
               </div>
               {hbuResults[0]?.reasoning && (
-                <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                  <p className="text-xs font-medium text-amber-700 mb-1">Recommendation</p>
-                  <p className="text-sm text-amber-800">{hbuResults[0].reasoning}</p>
+                <div className="mt-3 p-3 bg-neutral-700 border border-amber-700 rounded-lg">
+                  <p className="text-xs font-medium text-amber-400 mb-1">Recommendation</p>
+                  <p className="text-sm text-amber-400">{hbuResults[0].reasoning}</p>
                 </div>
               )}
             </div>
@@ -978,11 +978,11 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       )}
 
       {aiRecommendations && (
-        <div className="bg-gradient-to-br from-purple-50 to-white rounded-xl border border-purple-200 p-5 shadow-sm">
+        <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-purple-700 p-5 shadow-sm">
           <button onClick={() => setShowAI(!showAI)}
             className="w-full flex items-center justify-between">
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Sparkles size={18} className="text-purple-600" />
+              <Sparkles size={18} className="text-purple-300" />
               AI Optimization Recommendations
             </h3>
             {showAI ? <ChevronUp size={20} className="text-neutral-400" /> : <ChevronDown size={20} className="text-neutral-400" />}

@@ -68,7 +68,7 @@ const QUICK_QUESTIONS = [
 ];
 
 function ConfidenceBar({ value, label }: { value: number; label: string }) {
-  const color = value >= 85 ? 'bg-green-500' : value >= 70 ? 'bg-yellow-500' : value >= 50 ? 'bg-orange-500' : 'bg-red-500';
+  const color = value >= 85 ? 'bg-neutral-800' : value >= 70 ? 'bg-neutral-700' : value >= 50 ? 'bg-neutral-700' : 'bg-neutral-800';
   return (
     <div className="flex items-center gap-3">
       <span className="text-xs w-32 text-right">{label}</span>
@@ -81,13 +81,13 @@ function ConfidenceBar({ value, label }: { value: number; label: string }) {
 }
 
 function ScenarioCard({ scenario, index }: { scenario: any; index: number }) {
-  const riskColor = scenario.riskScore === 0 ? 'text-green-600 bg-green-50 border-green-200'
-    : scenario.riskScore <= 20 ? 'text-blue-600 bg-blue-50 border-blue-200'
-    : scenario.riskScore <= 40 ? 'text-yellow-600 bg-yellow-50 border-yellow-200'
-    : 'text-red-600 bg-red-50 border-red-200';
+  const riskColor = scenario.riskScore === 0 ? 'text-green-400 bg-neutral-800 border-green-700'
+    : scenario.riskScore <= 20 ? 'text-blue-300 bg-neutral-800 border-blue-700'
+    : scenario.riskScore <= 40 ? 'text-yellow-300 bg-neutral-700 border-yellow-700'
+    : 'text-red-400 bg-neutral-800 border-red-700';
 
   return (
-    <div className="p-4 rounded-lg border hover:border-blue-300 transition-colors">
+    <div className="p-4 rounded-lg border hover:border-blue-600 transition-colors">
       <div className="flex items-start justify-between mb-2">
         <h4 className="font-semibold">{scenario.name}</h4>
         <span className={`text-xs px-2 py-1 rounded-full border font-medium ${riskColor}`}>
@@ -282,8 +282,8 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
       <div className="border-t pt-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-100 rounded-lg">
-              <Brain size={20} className="text-indigo-600" />
+            <div className="p-2 bg-neutral-800 rounded-lg">
+              <Brain size={20} className="text-indigo-300" />
             </div>
             <div>
               <h3 className="text-lg font-bold">Zoning Intelligence Agent</h3>
@@ -293,7 +293,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
           <button
             onClick={runFullAnalysis}
             disabled={analysisLoading || !resolvedDistrict}
-            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-neutral-800 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
+            className="flex items-center gap-2 px-5 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
           >
             {analysisLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {analysisLoading ? 'Running Analysis...' : 'Run Full Analysis'}
@@ -301,23 +301,23 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
         </div>
 
         {boundaryData && (
-          <div className={`p-3 rounded-lg border text-sm mb-4 ${boundaryData.hasBoundary ? 'bg-emerald-50 border-emerald-200' : 'bg-neutral-800'}`}>
+          <div className={`p-3 rounded-lg border text-sm mb-4 ${boundaryData.hasBoundary ? 'bg-neutral-800 border-green-700' : 'bg-neutral-800'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <MapPin size={14} className={boundaryData.hasBoundary ? 'text-emerald-600' : 'text-neutral-400'} />
-                <span className={boundaryData.hasBoundary ? 'text-emerald-800 font-medium' : 'text-neutral-400'}>
+                <MapPin size={14} className={boundaryData.hasBoundary ? 'text-emerald-400' : 'text-neutral-400'} />
+                <span className={boundaryData.hasBoundary ? 'text-emerald-400 font-medium' : 'text-neutral-400'}>
                   {boundaryData.hasBoundary ? 'Property boundary detected' : 'No property boundary set'}
                 </span>
                 {boundaryData.hasBoundary && (
-                  <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full">
+                  <span className="text-xs px-2 py-0.5 bg-neutral-800 text-emerald-400 rounded-full">
                     {boundaryData.boundary?.parcelAreaSF ? `${(boundaryData.boundary.parcelAreaSF / 43560).toFixed(2)} acres` : ''}
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  boundaryData.dataCompleteness.score >= 80 ? 'bg-green-100 text-green-700'
-                    : boundaryData.dataCompleteness.score >= 50 ? 'bg-yellow-100 text-yellow-700'
+                  boundaryData.dataCompleteness.score >= 80 ? 'bg-neutral-800 text-green-400'
+                    : boundaryData.dataCompleteness.score >= 50 ? 'bg-neutral-700 text-yellow-300'
                     : 'bg-neutral-800'
                 }`}>
                   {boundaryData.dataCompleteness.score}% data ready
@@ -327,13 +327,13 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
             {boundaryData.hasBoundary && boundaryData.boundary?.constraints && (
               <div className="flex items-center gap-2 mt-2">
                 {boundaryData.boundary.constraints.floodplain && (
-                  <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">Floodplain</span>
+                  <span className="text-xs px-2 py-0.5 bg-neutral-800 text-blue-300 rounded-full">Floodplain</span>
                 )}
                 {boundaryData.boundary.constraints.wetlands && (
-                  <span className="text-xs px-2 py-0.5 bg-cyan-100 text-cyan-700 rounded-full">Wetlands</span>
+                  <span className="text-xs px-2 py-0.5 bg-neutral-800 text-cyan-400 rounded-full">Wetlands</span>
                 )}
                 {boundaryData.boundary.constraints.protectedArea && (
-                  <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">Protected</span>
+                  <span className="text-xs px-2 py-0.5 bg-neutral-700 text-amber-400 rounded-full">Protected</span>
                 )}
                 {boundaryData.boundary.setbacks && (
                   <span className="text-xs">
@@ -346,13 +346,13 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
         )}
 
         {error && (
-          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-center gap-2 mb-4">
+          <div className="px-4 py-3 bg-neutral-800 border border-red-700 rounded-lg text-sm text-red-400 flex items-center gap-2 mb-4">
             <AlertTriangle size={16} /> {error}
           </div>
         )}
 
         {!resolvedDistrict && !boundaryData?.zoningLookup?.districtCode && (
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-center gap-2 mb-4">
+          <div className="p-4 bg-neutral-700 border border-amber-700 rounded-lg text-sm text-amber-400 flex items-center gap-2 mb-4">
             <AlertTriangle size={16} /> Look up a zoning code above or draw a property boundary to enable the intelligence agent
           </div>
         )}
@@ -363,7 +363,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               key={qq.label}
               onClick={() => askQuestion(qq.q)}
               disabled={queryLoading || !resolvedDistrict}
-              className="px-3 py-1.5 text-xs font-medium hover:bg-indigo-100 hover:text-indigo-700 rounded-full transition-colors disabled:opacity-50"
+              className="px-3 py-1.5 text-xs font-medium hover:bg-neutral-800 hover:text-indigo-300 rounded-full transition-colors disabled:opacity-50"
             >
               {qq.label}
             </button>
@@ -378,13 +378,13 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               onChange={(e) => setQuestion(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && askQuestion()}
               placeholder="Ask the zoning agent anything... (e.g., 'Can I build a hotel here?')"
-              className="flex-1 px-4 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-400"
+              className="flex-1 px-4 py-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-700 placeholder-gray-400"
               disabled={!resolvedDistrict}
             />
             <button
               onClick={() => askQuestion()}
               disabled={queryLoading || !question.trim() || !resolvedDistrict}
-              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-neutral-800 text-white rounded-lg transition-colors"
+              className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white rounded-lg transition-colors"
             >
               {queryLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             </button>
@@ -398,18 +398,18 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-lg p-3 ${
                     msg.role === 'user'
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-neutral-800 text-white'
                       : msg.role === 'error'
-                        ? 'bg-red-50 text-red-700 border border-red-200'
+                        ? 'bg-neutral-800 text-red-400 border border-red-700'
                         : 'bg-neutral-900 border-neutral-700'
                   }`}>
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                     {msg.meta && (
                       <div className="flex items-center gap-3 mt-2 pt-2 border-t">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          msg.meta.confidence >= 85 ? 'bg-green-100 text-green-700'
-                            : msg.meta.confidence >= 70 ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-orange-100 text-orange-700'
+                          msg.meta.confidence >= 85 ? 'bg-neutral-800 text-green-400'
+                            : msg.meta.confidence >= 70 ? 'bg-neutral-700 text-yellow-300'
+                            : 'bg-neutral-700 text-orange-400'
                         }`}>
                           {msg.meta.confidence}% confidence
                         </span>
@@ -429,7 +429,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               {queryLoading && (
                 <div className="flex justify-start">
                   <div className="border rounded-lg p-3 flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin text-indigo-500" />
+                    <Loader2 size={14} className="animate-spin text-indigo-300" />
                     <span className="text-sm">Agent thinking...</span>
                   </div>
                 </div>
@@ -445,7 +445,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               <button
                 key={i}
                 onClick={() => askQuestion(fq)}
-                className="px-3 py-1 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-full transition-colors"
+                className="px-3 py-1 text-xs bg-neutral-800 text-indigo-300 hover:bg-neutral-800 rounded-full transition-colors"
               >
                 {fq}
               </button>
@@ -456,20 +456,20 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
 
       {analysisResult && (
         <div className="space-y-4">
-          <div className="bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-200 p-5">
+          <div className="bg-gradient-to-r from-neutral-800 to-neutral-900 rounded-xl border border-indigo-700 p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Target size={18} className="text-indigo-600" />
+                <Target size={18} className="text-indigo-300" />
                 <h3 className="font-bold">Full Zoning Analysis</h3>
                 {analysisSource === 'property_boundary' && (
-                  <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+                  <span className="text-xs px-2 py-0.5 bg-neutral-800 text-emerald-400 rounded-full font-medium">
                     From Boundary
                   </span>
                 )}
                 {analysisResult.step2_baseApplication.footprintSource && (
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    analysisResult.step2_baseApplication.footprintSource === 'property_boundary' ? 'bg-emerald-100 text-emerald-700'
-                      : analysisResult.step2_baseApplication.footprintSource === 'geometry_calculated' ? 'bg-blue-100 text-blue-700'
+                    analysisResult.step2_baseApplication.footprintSource === 'property_boundary' ? 'bg-neutral-800 text-emerald-400'
+                      : analysisResult.step2_baseApplication.footprintSource === 'geometry_calculated' ? 'bg-neutral-800 text-blue-300'
                       : 'bg-neutral-800'
                   }`}>
                     {analysisResult.step2_baseApplication.footprintSource === 'property_boundary' ? 'Measured Footprint'
@@ -480,9 +480,9 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               </div>
               <div className="flex items-center gap-3">
                 <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-                  analysisResult.step8_confidence.overall >= 85 ? 'bg-green-100 text-green-700'
-                    : analysisResult.step8_confidence.overall >= 70 ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-orange-100 text-orange-700'
+                  analysisResult.step8_confidence.overall >= 85 ? 'bg-neutral-800 text-green-400'
+                    : analysisResult.step8_confidence.overall >= 70 ? 'bg-neutral-700 text-yellow-300'
+                    : 'bg-neutral-700 text-orange-400'
                 }`}>
                   {analysisResult.step8_confidence.overall}% Overall Confidence
                 </span>
@@ -494,25 +494,25 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
 
             <div className="grid grid-cols-4 gap-3 mb-4">
               <div className="bg-neutral-800/70 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-indigo-700">
+                <p className="text-2xl font-bold text-indigo-300">
                   {analysisResult.step2_baseApplication.acres.toFixed(2)}
                 </p>
                 <p className="text-xs">Acres</p>
               </div>
               <div className="bg-neutral-800/70 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-indigo-700">
+                <p className="text-2xl font-bold text-indigo-300">
                   {analysisResult.step4_capacityScenarios[0]?.maxUnits || 0}
                 </p>
                 <p className="text-xs">By-Right Units</p>
               </div>
               <div className="bg-neutral-800/70 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-indigo-700">
+                <p className="text-2xl font-bold text-indigo-300">
                   {(analysisResult.step4_capacityScenarios[0]?.maxGFA || 0).toLocaleString()}
                 </p>
                 <p className="text-xs">Max GFA (sf)</p>
               </div>
               <div className="bg-neutral-800/70 p-3 rounded-lg text-center">
-                <p className="text-2xl font-bold text-indigo-700">
+                <p className="text-2xl font-bold text-indigo-300">
                   {analysisResult.step5_incentivePrograms.length}
                 </p>
                 <p className="text-xs">Incentives</p>
@@ -526,7 +526,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               className="w-full flex items-center justify-between p-4  transition-colors"
             >
               <div className="flex items-center gap-2">
-                <BarChart3 size={18} className="text-blue-600" />
+                <BarChart3 size={18} className="text-blue-300" />
                 <h3 className="font-semibold">Capacity Scenarios ({analysisResult.step4_capacityScenarios.length})</h3>
               </div>
               {expandedSections.scenarios ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -546,7 +546,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               className="w-full flex items-center justify-between p-4  transition-colors"
             >
               <div className="flex items-center gap-2">
-                <Scale size={18} className="text-purple-600" />
+                <Scale size={18} className="text-purple-300" />
                 <h3 className="font-semibold">Entitlement Paths ({analysisResult.step6_entitlementPaths.length})</h3>
               </div>
               {expandedSections.entitlements ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
@@ -562,9 +562,9 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
                       </div>
                       <div className="text-right">
                         <span className={`text-sm font-bold ${
-                          path.approvalProbability >= 80 ? 'text-green-600'
-                            : path.approvalProbability >= 60 ? 'text-yellow-600'
-                            : 'text-red-600'
+                          path.approvalProbability >= 80 ? 'text-green-400'
+                            : path.approvalProbability >= 60 ? 'text-yellow-300'
+                            : 'text-red-400'
                         }`}>
                           {path.approvalProbability}% approval
                         </span>
@@ -590,18 +590,18 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
           {analysisResult.step5_incentivePrograms.length > 0 && (
             <div className="rounded-xl border shadow-sm p-4">
               <div className="flex items-center gap-2 mb-3">
-                <TrendingUp size={18} className="text-green-600" />
+                <TrendingUp size={18} className="text-green-400" />
                 <h3 className="font-semibold">Incentive Programs</h3>
               </div>
               <div className="space-y-2">
                 {analysisResult.step5_incentivePrograms.map((inc, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                  <div key={i} className="flex items-center justify-between p-3 bg-neutral-800 rounded-lg border border-green-700">
                     <div>
                       <p className="text-sm font-medium">{inc.program}</p>
                       <p className="text-xs">Trigger: {inc.trigger}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-semibold text-green-700">{inc.benefit}</p>
+                      <p className="text-sm font-semibold text-green-400">{inc.benefit}</p>
                       {inc.codeRef && <p className="text-xs">{inc.codeRef}</p>}
                     </div>
                   </div>
@@ -616,14 +616,14 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
               className="w-full flex items-center justify-between p-4  transition-colors"
             >
               <div className="flex items-center gap-2">
-                <FileText size={18} className="text-indigo-600" />
+                <FileText size={18} className="text-indigo-300" />
                 <h3 className="font-semibold">Strategy Recommendation</h3>
               </div>
               {expandedSections.strategy ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
             </button>
             {expandedSections.strategy && (
               <div className="p-4 pt-0">
-                <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-200">
+                <div className="p-4 bg-neutral-800 rounded-lg border border-indigo-700">
                   <p className="text-sm whitespace-pre-wrap leading-relaxed">
                     {analysisResult.step7_strategyRecommendation}
                   </p>
@@ -653,9 +653,9 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
                 <div className="flex items-center gap-3 pt-2 border-t mt-2">
                   <span className="text-xs w-32 text-right font-medium">Jurisdiction</span>
                   <span className={`text-xs px-2 py-1 rounded-full font-medium capitalize ${
-                    analysisResult.step8_confidence.jurisdictionMaturity === 'authority' ? 'bg-green-100 text-green-700'
-                      : analysisResult.step8_confidence.jurisdictionMaturity === 'expert' ? 'bg-blue-100 text-blue-700'
-                      : analysisResult.step8_confidence.jurisdictionMaturity === 'competent' ? 'bg-yellow-100 text-yellow-700'
+                    analysisResult.step8_confidence.jurisdictionMaturity === 'authority' ? 'bg-neutral-800 text-green-400'
+                      : analysisResult.step8_confidence.jurisdictionMaturity === 'expert' ? 'bg-neutral-800 text-blue-300'
+                      : analysisResult.step8_confidence.jurisdictionMaturity === 'competent' ? 'bg-neutral-700 text-yellow-300'
                       : 'bg-neutral-800'
                   }`}>
                     {analysisResult.step8_confidence.jurisdictionMaturity}

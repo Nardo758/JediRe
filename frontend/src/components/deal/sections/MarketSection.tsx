@@ -172,7 +172,7 @@ export const MarketSection: React.FC<MarketSectionProps> = ({ deal }) => {
       <div className="space-y-6">
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mx-auto mb-4"></div>
             <p className="text-neutral-400">Loading market data...</p>
           </div>
         </div>
@@ -184,9 +184,9 @@ export const MarketSection: React.FC<MarketSectionProps> = ({ deal }) => {
   if (error) {
     return (
       <div className="space-y-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700 mb-2">⚠️ Error loading market data</p>
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="bg-neutral-800 border border-red-700 rounded-lg p-6 text-center">
+          <p className="text-red-400 mb-2">⚠️ Error loading market data</p>
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       </div>
     );
@@ -199,8 +199,8 @@ export const MarketSection: React.FC<MarketSectionProps> = ({ deal }) => {
       <div className="flex items-center justify-between">
         <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
           isPipeline 
-            ? 'bg-blue-100 text-blue-700' 
-            : 'bg-green-100 text-green-700'
+            ? 'bg-neutral-800 text-blue-300' 
+            : 'bg-neutral-800 text-green-400'
         }`}>
           {isPipeline ? '🎯 Acquisition Mode: Market Opportunity' : '🏢 Performance Mode: Market Position'}
         </div>
@@ -236,11 +236,11 @@ interface MarketSentimentBadgeProps {
 const MarketSentimentBadge: React.FC<MarketSentimentBadgeProps> = ({ sentiment }) => {
   const getSentimentConfig = (level: string) => {
     const configs = {
-      hot: { bg: 'bg-red-100', text: 'text-red-700', icon: '🔥', label: 'HOT' },
-      warm: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '☀️', label: 'WARM' },
+      hot: { bg: 'bg-neutral-800', text: 'text-red-400', icon: '🔥', label: 'HOT' },
+      warm: { bg: 'bg-neutral-700', text: 'text-orange-400', icon: '☀️', label: 'WARM' },
       neutral: { bg: 'bg-neutral-800', text: 'text-neutral-400', icon: '➖', label: 'NEUTRAL' },
-      cool: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '❄️', label: 'COOL' },
-      cold: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '🧊', label: 'COLD' }
+      cool: { bg: 'bg-neutral-800', text: 'text-blue-300', icon: '❄️', label: 'COOL' },
+      cold: { bg: 'bg-neutral-800', text: 'text-purple-300', icon: '🧊', label: 'COLD' }
     };
     return configs[level as keyof typeof configs] || configs.neutral;
   };
@@ -306,9 +306,9 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
             {stat.trend && (
               <div className={`flex items-center gap-1 text-xs font-semibold ${
                 stat.trend.direction === 'up' 
-                  ? 'text-green-600' 
+                  ? 'text-green-400' 
                   : stat.trend.direction === 'down'
-                    ? 'text-red-600'
+                    ? 'text-red-400'
                     : 'text-neutral-400'
               }`}>
                 <span>{stat.trend.direction === 'up' ? '↗' : stat.trend.direction === 'down' ? '↘' : '→'}</span>
@@ -341,9 +341,9 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
   const getTrendColor = (historical: number[]) => {
     const first = historical[0];
     const last = historical[historical.length - 1];
-    if (last > first * 1.1) return 'text-green-600';
-    if (last < first * 0.9) return 'text-red-600';
-    return 'text-blue-600';
+    if (last > first * 1.1) return 'text-green-400';
+    if (last < first * 0.9) return 'text-red-400';
+    return 'text-blue-300';
   };
 
   return (
@@ -376,7 +376,7 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
                 return (
                   <div
                     key={i}
-                    className="flex-1 bg-gradient-to-t from-blue-500 to-blue-300 rounded-t hover:from-blue-600 hover:to-blue-400 transition-all cursor-pointer relative group"
+                    className="flex-1 bg-gradient-to-t from-neutral-800 to-neutral-900 rounded-t hover:from-neutral-800 hover:to-neutral-900 transition-all cursor-pointer relative group"
                     style={{ height: `${Math.max(heightPercent, 10)}%` }}
                   >
                     <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -422,34 +422,34 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
       strength: { 
         icon: '💪', 
         label: 'Strengths', 
-        bg: 'bg-green-50', 
-        border: 'border-green-200',
-        text: 'text-green-700',
-        accent: 'bg-green-500'
+        bg: 'bg-neutral-800', 
+        border: 'border-green-700',
+        text: 'text-green-400',
+        accent: 'bg-neutral-800'
       },
       weakness: { 
         icon: '⚠️', 
         label: 'Weaknesses', 
-        bg: 'bg-yellow-50', 
-        border: 'border-yellow-200',
-        text: 'text-yellow-700',
-        accent: 'bg-yellow-500'
+        bg: 'bg-neutral-700', 
+        border: 'border-yellow-700',
+        text: 'text-yellow-300',
+        accent: 'bg-neutral-700'
       },
       opportunity: { 
         icon: '🎯', 
         label: 'Opportunities', 
-        bg: 'bg-blue-50', 
-        border: 'border-blue-200',
-        text: 'text-blue-700',
-        accent: 'bg-blue-500'
+        bg: 'bg-neutral-800', 
+        border: 'border-blue-700',
+        text: 'text-blue-300',
+        accent: 'bg-neutral-800'
       },
       threat: { 
         icon: '⚡', 
         label: 'Threats', 
-        bg: 'bg-red-50', 
-        border: 'border-red-200',
-        text: 'text-red-700',
-        accent: 'bg-red-500'
+        bg: 'bg-neutral-800', 
+        border: 'border-red-700',
+        text: 'text-red-400',
+        accent: 'bg-neutral-800'
       }
     };
     return configs[category as keyof typeof configs];
@@ -457,8 +457,8 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
 
   const getImpactBadge = (impact: string) => {
     const badges = {
-      high: { label: 'HIGH', color: 'bg-red-100 text-red-700' },
-      medium: { label: 'MED', color: 'bg-yellow-100 text-yellow-700' },
+      high: { label: 'HIGH', color: 'bg-neutral-800 text-red-400' },
+      medium: { label: 'MED', color: 'bg-neutral-700 text-yellow-300' },
       low: { label: 'LOW', color: 'bg-neutral-800' }
     };
     return badges[impact as keyof typeof badges] || badges.low;
@@ -475,7 +475,7 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
         </h3>
         <button 
           onClick={() => setExpandedItems(expandedItems.size === swot.length ? new Set() : new Set(swot.map(s => s.id)))}
-          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+          className="text-xs text-blue-300 hover:text-blue-300 font-medium"
         >
           {expandedItems.size === swot.length ? 'Collapse All' : 'Expand All'}
         </button>
@@ -564,7 +564,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             onClick={() => setSortBy('rentGrowth')}
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'rentGrowth' 
-                ? 'bg-blue-600 text-white' 
+                ? 'bg-neutral-800 text-white' 
                 : 'bg-neutral-800 '
             }`}
           >
@@ -574,7 +574,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             onClick={() => setSortBy('vacancy')}
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'vacancy' 
-                ? 'bg-blue-600 text-white' 
+                ? 'bg-neutral-800 text-white' 
                 : 'bg-neutral-800 '
             }`}
           >
@@ -584,7 +584,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             onClick={() => setSortBy('avgRent')}
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'avgRent' 
-                ? 'bg-blue-600 text-white' 
+                ? 'bg-neutral-800 text-white' 
                 : 'bg-neutral-800 '
             }`}
           >
@@ -609,19 +609,19 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
               <tr 
                 key={index}
                 className={`border-b  transition-colors ${
-                  submarket.isTarget ? 'bg-blue-50 font-semibold' : ''
+                  submarket.isTarget ? 'bg-neutral-800 font-semibold' : ''
                 }`}
               >
                 <td className="py-3 px-4 text-sm">
                   <div className="flex items-center gap-2">
-                    {submarket.isTarget && <span className="text-blue-600">📍</span>}
+                    {submarket.isTarget && <span className="text-blue-300">📍</span>}
                     {submarket.name}
                   </div>
                 </td>
                 <td className="text-right py-3 px-4 text-sm">
                   <span className={`${
-                    submarket.rentGrowth >= 5 ? 'text-green-600' : 
-                    submarket.rentGrowth >= 3 ? 'text-yellow-600' : 
+                    submarket.rentGrowth >= 5 ? 'text-green-400' : 
+                    submarket.rentGrowth >= 3 ? 'text-yellow-300' : 
                     'text-neutral-400'
                   } font-medium`}>
                     {submarket.rentGrowth}%
@@ -629,9 +629,9 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
                 </td>
                 <td className="text-right py-3 px-4 text-sm">
                   <span className={`${
-                    submarket.vacancy <= 4 ? 'text-green-600' : 
-                    submarket.vacancy <= 6 ? 'text-yellow-600' : 
-                    'text-red-600'
+                    submarket.vacancy <= 4 ? 'text-green-400' : 
+                    submarket.vacancy <= 6 ? 'text-yellow-300' : 
+                    'text-red-400'
                   } font-medium`}>
                     {submarket.vacancy}%
                   </span>
@@ -665,15 +665,15 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
   ];
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
+    if (score >= 80) return 'text-green-400';
+    if (score >= 60) return 'text-yellow-300';
+    return 'text-red-400';
   };
 
   const getBarColor = (score: number) => {
-    if (score >= 80) return 'bg-green-500';
-    if (score >= 60) return 'bg-yellow-500';
-    return 'bg-red-500';
+    if (score >= 80) return 'bg-neutral-800';
+    if (score >= 60) return 'bg-neutral-700';
+    return 'bg-neutral-800';
   };
 
   return (
@@ -686,7 +686,7 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Overall Score */}
-        <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6 flex flex-col items-center justify-center">
+        <div className="bg-gradient-to-br from-neutral-800 to-neutral-900 border border-blue-700 rounded-lg p-6 flex flex-col items-center justify-center">
           <div className="text-sm font-semibold uppercase tracking-wide mb-2">
             Overall Market Score
           </div>
@@ -731,12 +731,12 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
 
       {/* Interpretation */}
       <div className="mt-6 pt-6 border-t">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-neutral-800 border border-blue-700 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl">💡</span>
             <div className="flex-1">
-              <h4 className="text-sm font-semibold text-blue-900 mb-1">Interpretation</h4>
-              <p className="text-xs text-blue-700">
+              <h4 className="text-sm font-semibold text-blue-300 mb-1">Interpretation</h4>
+              <p className="text-xs text-blue-300">
                 {mode === 'acquisition' ? (
                   sentiment.score >= 70 
                     ? 'Strong acquisition opportunity. Market fundamentals are favorable with healthy demand-supply dynamics and growth trajectory.'

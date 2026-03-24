@@ -294,7 +294,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const renderTabLoading = () => (
     <div className="flex items-center justify-center py-12">
       <div className="flex items-center gap-3">
-        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
         <span className="text-sm">Loading live data...</span>
       </div>
     </div>
@@ -415,7 +415,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border-2 ${
               isActive
-                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                ? 'border-blue-700 bg-neutral-800 text-blue-300 shadow-sm'
                 : 'border-neutral-700 hover:border-neutral-700'
             }`}
           >
@@ -436,10 +436,10 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       <div className="space-y-6">
         {/* Sources = Uses Balance Bar */}
         <div className={`flex items-center justify-between p-4 rounded-lg border-2 ${
-          balance.balanced ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'
+          balance.balanced ? 'border-green-700 bg-neutral-800' : 'border-red-700 bg-neutral-800'
         }`}>
           <div className="flex items-center gap-3">
-            <span className={`text-2xl ${balance.balanced ? 'text-green-600' : 'text-red-600'}`}>
+            <span className={`text-2xl ${balance.balanced ? 'text-green-400' : 'text-red-400'}`}>
               {balance.balanced ? '=' : '!'}
             </span>
             <div>
@@ -447,14 +447,14 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                 Sources {fmtM(totalSources)} {balance.balanced ? '=' : '≠'} Uses {fmtM(stack.uses.total)}
               </div>
               {!balance.balanced && (
-                <div className="text-xs text-red-600 mt-1">
+                <div className="text-xs text-red-400 mt-1">
                   {balance.imbalance > 0 ? `${fmtM(balance.imbalance)} excess sources` : `${fmtM(Math.abs(balance.imbalance))} funding gap`}
                 </div>
               )}
             </div>
           </div>
           <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-            balance.balanced ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
+            balance.balanced ? 'bg-neutral-800 text-green-400' : 'bg-neutral-800 text-red-400'
           }`}>
             {balance.balanced ? 'BALANCED' : 'IMBALANCED'}
           </span>
@@ -506,14 +506,14 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             <h4 className="text-sm font-semibold uppercase tracking-wide mb-4">Key Metrics</h4>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'LTV', value: fmtPct(stack.metrics.ltv), color: stack.metrics.ltv > 75 ? 'text-orange-600' : 'text-green-600' },
+                { label: 'LTV', value: fmtPct(stack.metrics.ltv), color: stack.metrics.ltv > 75 ? 'text-orange-400' : 'text-green-400' },
                 { label: 'LTC', value: fmtPct(stack.metrics.ltc), color: 'text-neutral-400' },
-                { label: 'DSCR', value: `${stack.metrics.dscr.toFixed(2)}x`, color: stack.metrics.dscr < 1.25 ? 'text-red-600' : 'text-green-600' },
+                { label: 'DSCR', value: `${stack.metrics.dscr.toFixed(2)}x`, color: stack.metrics.dscr < 1.25 ? 'text-red-400' : 'text-green-400' },
                 { label: 'Debt Yield', value: fmtPct(stack.metrics.debtYield), color: 'text-neutral-400' },
-                { label: 'Total Debt', value: fmtM(stack.metrics.totalDebt), color: 'text-blue-600' },
-                { label: 'Total Equity', value: fmtM(stack.metrics.totalEquity), color: 'text-green-600' },
+                { label: 'Total Debt', value: fmtM(stack.metrics.totalDebt), color: 'text-blue-300' },
+                { label: 'Total Equity', value: fmtM(stack.metrics.totalEquity), color: 'text-green-400' },
                 { label: 'WACC', value: fmtPct(stack.metrics.weightedAvgCostOfCapital), color: 'text-neutral-400' },
-                { label: 'Cash-on-Cash', value: fmtPct(stack.metrics.cocReturn), color: 'text-purple-600' },
+                { label: 'Cash-on-Cash', value: fmtPct(stack.metrics.cocReturn), color: 'text-purple-300' },
               ].map((m) => (
                 <div key={m.label} className="p-3 rounded-lg">
                   <div className="text-xs uppercase">{m.label}</div>
@@ -561,7 +561,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const renderDebtSelector = () => (
     <div className="space-y-6">
       {/* Strategy template info */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200 p-6">
+      <div className="bg-gradient-to-r from-neutral-800 to-neutral-900 rounded-lg border border-blue-700 p-6">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold">{template.label} Capital Template</h3>
@@ -569,7 +569,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
           </div>
           <div className="text-right">
             <div className="text-xs uppercase">Key Metric</div>
-            <div className="text-sm font-semibold text-blue-700">{template.keyMetric}</div>
+            <div className="text-sm font-semibold text-blue-300">{template.keyMetric}</div>
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
@@ -594,13 +594,13 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
 
       {/* Mismatch warnings */}
       {activeWarnings.map((w, i) => (
-        <div key={i} className="p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+        <div key={i} className="p-4 bg-neutral-800 border-2 border-red-700 rounded-lg">
           <div className="flex items-start gap-3">
-            <span className="text-red-500 text-lg font-bold">!</span>
+            <span className="text-red-400 text-lg font-bold">!</span>
             <div>
-              <div className="text-sm font-semibold text-red-800">Strategy Mismatch: {w.debtProduct}</div>
-              <div className="text-sm text-red-700 mt-1">{w.issue}</div>
-              <div className="text-sm text-red-600 mt-2 font-medium">Suggestion: {w.suggestion}</div>
+              <div className="text-sm font-semibold text-red-400">Strategy Mismatch: {w.debtProduct}</div>
+              <div className="text-sm text-red-400 mt-1">{w.issue}</div>
+              <div className="text-sm text-red-400 mt-2 font-medium">Suggestion: {w.suggestion}</div>
             </div>
           </div>
         </div>
@@ -613,13 +613,13 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredProducts.map((product) => (
-            <div key={product.id} className="rounded-lg border-2 border-blue-200 p-5 hover:shadow-md transition-shadow">
+            <div key={product.id} className="rounded-lg border-2 border-blue-700 p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="font-semibold">{product.name}</div>
                   <div className="text-xs">{product.lender}</div>
                 </div>
-                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-700">
+                <span className="px-2 py-1 text-xs font-semibold rounded-full bg-neutral-800 text-blue-300">
                   {product.rateType === 'fixed' ? 'Fixed' : 'Floating'}
                 </span>
               </div>
@@ -637,8 +637,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                   <div className="text-sm font-semibold">{product.term.min}–{product.term.max}mo</div>
                 </div>
               </div>
-              <div className="mt-3 p-3 bg-green-50 rounded text-xs text-green-800">{product.keyBenefit}</div>
-              <div className="mt-2 p-3 bg-red-50 rounded text-xs text-red-700">{product.keyRisk}</div>
+              <div className="mt-3 p-3 bg-neutral-800 rounded text-xs text-green-400">{product.keyBenefit}</div>
+              <div className="mt-2 p-3 bg-neutral-800 rounded text-xs text-red-400">{product.keyRisk}</div>
             </div>
           ))}
         </div>
@@ -670,17 +670,17 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   const renderRateEnvironment = () => (
     <div className="space-y-6">
       {/* Current rates */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
+      <div className="bg-gradient-to-r from-neutral-800 to-neutral-900 rounded-lg border border-blue-700 p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Current Rate Environment</h3>
           <span className="text-xs">Updated: {currentRates.lastUpdated}</span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Fed Funds', value: fmtPct(currentRates.fedFunds), color: 'text-blue-600' },
-            { label: '10Y Treasury', value: fmtPct(currentRates.treasury10Y), color: 'text-purple-600' },
-            { label: 'SOFR', value: fmtPct(currentRates.sofr), color: 'text-indigo-600' },
-            { label: 'Prime', value: fmtPct(currentRates.prime), color: 'text-green-600' },
+            { label: 'Fed Funds', value: fmtPct(currentRates.fedFunds), color: 'text-blue-300' },
+            { label: '10Y Treasury', value: fmtPct(currentRates.treasury10Y), color: 'text-purple-300' },
+            { label: 'SOFR', value: fmtPct(currentRates.sofr), color: 'text-indigo-300' },
+            { label: 'Prime', value: fmtPct(currentRates.prime), color: 'text-green-400' },
           ].map((r) => (
             <div key={r.label} className="rounded-lg p-4 border">
               <div className="text-xs uppercase">{r.label}</div>
@@ -696,10 +696,10 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
           <h4 className="text-sm font-semibold uppercase tracking-wide mb-3">Cycle Position</h4>
           <div className="flex items-center gap-4">
             <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold ${
-              currentRates.cyclePhase === 'easing' ? 'bg-green-100 text-green-700' :
-              currentRates.cyclePhase === 'tightening' ? 'bg-red-100 text-red-700' :
-              currentRates.cyclePhase === 'peak' ? 'bg-orange-100 text-orange-700' :
-              'bg-blue-100 text-blue-700'
+              currentRates.cyclePhase === 'easing' ? 'bg-neutral-800 text-green-400' :
+              currentRates.cyclePhase === 'tightening' ? 'bg-neutral-800 text-red-400' :
+              currentRates.cyclePhase === 'peak' ? 'bg-neutral-700 text-orange-400' :
+              'bg-neutral-800 text-blue-300'
             }`}>
               {currentRates.cyclePhase === 'easing' ? '↓' : currentRates.cyclePhase === 'tightening' ? '↑' : '→'}
             </div>
@@ -718,19 +718,19 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         <div className="rounded-lg border p-6">
           <h4 className="text-sm font-semibold uppercase tracking-wide mb-3">Lock vs Float Analysis</h4>
           <div className="grid grid-cols-2 gap-4">
-            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'lock' ? 'border-blue-400 bg-blue-50' : 'border-neutral-700'}`}>
+            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'lock' ? 'border-blue-700 bg-neutral-800' : 'border-neutral-700'}`}>
               <div className="text-xs uppercase">Lock Now</div>
               <div className="text-xl font-bold mt-1">{fmtPct(lockVsFloatAnalysis.lockNow.rate)}</div>
               <div className="text-sm mt-1">NPV: {fmtM(lockVsFloatAnalysis.lockNow.npv)}</div>
             </div>
-            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'float' ? 'border-green-400 bg-green-50' : 'border-neutral-700'}`}>
+            <div className={`p-4 rounded-lg border-2 ${lockVsFloatAnalysis.recommendation === 'float' ? 'border-green-700 bg-neutral-800' : 'border-neutral-700'}`}>
               <div className="text-xs uppercase">Float & Wait</div>
               <div className="text-xl font-bold mt-1">{fmtPct(lockVsFloatAnalysis.floatAndWait.expectedRate)}</div>
               <div className="text-sm mt-1">NPV: {fmtM(lockVsFloatAnalysis.floatAndWait.npv)}</div>
             </div>
           </div>
           <div className={`mt-4 p-3 rounded-lg text-sm ${
-            lockVsFloatAnalysis.recommendation === 'float' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-blue-50 text-blue-800 border border-blue-200'
+            lockVsFloatAnalysis.recommendation === 'float' ? 'bg-neutral-800 text-green-400 border border-green-700' : 'bg-neutral-800 text-blue-300 border border-blue-700'
           }`}>
             <span className="font-semibold">Recommendation: {lockVsFloatAnalysis.recommendation === 'float' ? 'Float' : 'Lock'}</span>
             <span className="ml-1">— {lockVsFloatAnalysis.rationale.slice(0, 120)}...</span>
@@ -748,8 +748,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               <div className="text-xl font-bold mt-1">{s.currentSpread} bps</div>
               <div className="text-xs mt-1">5yr avg: {s.fiveYearAvg} bps</div>
               <div className={`mt-2 px-2 py-1 rounded text-xs font-semibold inline-block ${
-                s.position === 'tight' ? 'bg-green-100 text-green-700' :
-                s.position === 'wide' ? 'bg-red-100 text-red-700' :
+                s.position === 'tight' ? 'bg-neutral-800 text-green-400' :
+                s.position === 'wide' ? 'bg-neutral-800 text-red-400' :
                 'bg-neutral-800'
               }`}>
                 {s.position.toUpperCase()} ({s.percentile}th pctl)
@@ -784,12 +784,12 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                     <td className="px-4 py-3 text-sm text-right">{fmtPct(f.sofr)}</td>
                     <td className="px-4 py-3 text-sm text-right">
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                        f.confidence >= 60 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                        f.confidence >= 60 ? 'bg-neutral-800 text-green-400' : 'bg-neutral-700 text-yellow-300'
                       }`}>
                         {f.confidence}%
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-right font-semibold text-green-600">
+                    <td className="px-4 py-3 text-sm text-right font-semibold text-green-400">
                       {impact > 0 ? `Save ${fmtM(impact)}` : `Cost ${fmtM(Math.abs(impact))}`}
                     </td>
                   </tr>
@@ -821,10 +821,10 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase">Metric</th>
                 {scenarioComparison.scenarios.map((s) => (
                   <th key={s.id} className={`px-4 py-3 text-center text-xs font-semibold uppercase ${
-                    s.isActive ? 'text-blue-700 bg-blue-50' : 'text-neutral-400'
+                    s.isActive ? 'text-blue-300 bg-neutral-800' : 'text-neutral-400'
                   }`}>
                     {s.name}
-                    {s.isActive && <div className="text-[10px] mt-1 text-blue-500">ACTIVE</div>}
+                    {s.isActive && <div className="text-[10px] mt-1 text-blue-300">ACTIVE</div>}
                   </th>
                 ))}
               </tr>
@@ -839,16 +839,16 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               {renderScenarioRow('Equity Required', (s: CapitalScenario) => fmtM(s.stack.metrics.equityRequired))}
               {renderScenarioRow('Refi Risk', (s: CapitalScenario) => (
                 <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                  s.risks.refinanceRisk === 'low' ? 'bg-green-100 text-green-700' :
-                  s.risks.refinanceRisk === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
+                  s.risks.refinanceRisk === 'low' ? 'bg-neutral-800 text-green-400' :
+                  s.risks.refinanceRisk === 'medium' ? 'bg-neutral-700 text-yellow-300' :
+                  'bg-neutral-800 text-red-400'
                 }`}>{s.risks.refinanceRisk}</span>
               ))}
               {renderScenarioRow('Rate Risk', (s: CapitalScenario) => (
                 <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                  s.risks.interestRateRisk === 'low' ? 'bg-green-100 text-green-700' :
-                  s.risks.interestRateRisk === 'medium' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
+                  s.risks.interestRateRisk === 'low' ? 'bg-neutral-800 text-green-400' :
+                  s.risks.interestRateRisk === 'medium' ? 'bg-neutral-700 text-yellow-300' :
+                  'bg-neutral-800 text-red-400'
                 }`}>{s.risks.interestRateRisk}</span>
               ))}
             </tbody>
@@ -857,21 +857,21 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       </div>
 
       {/* Recommendation */}
-      <div className="p-6 bg-blue-50 border-2 border-blue-200 rounded-lg">
-        <div className="text-sm font-semibold text-blue-900 mb-1">Recommendation</div>
-        <div className="text-sm text-blue-800">{scenarioComparison.recommendation}</div>
+      <div className="p-6 bg-neutral-800 border-2 border-blue-700 rounded-lg">
+        <div className="text-sm font-semibold text-blue-300 mb-1">Recommendation</div>
+        <div className="text-sm text-blue-300">{scenarioComparison.recommendation}</div>
         <div className="mt-3 grid grid-cols-3 gap-4">
           <div className="text-center">
-            <div className="text-xs text-blue-600">IRR Spread</div>
-            <div className="text-lg font-bold text-blue-900">{fmtPct(scenarioComparison.delta.irr)}</div>
+            <div className="text-xs text-blue-300">IRR Spread</div>
+            <div className="text-lg font-bold text-blue-300">{fmtPct(scenarioComparison.delta.irr)}</div>
           </div>
           <div className="text-center">
-            <div className="text-xs text-blue-600">Multiple Spread</div>
-            <div className="text-lg font-bold text-blue-900">{scenarioComparison.delta.equityMultiple.toFixed(2)}x</div>
+            <div className="text-xs text-blue-300">Multiple Spread</div>
+            <div className="text-lg font-bold text-blue-300">{scenarioComparison.delta.equityMultiple.toFixed(2)}x</div>
           </div>
           <div className="text-center">
-            <div className="text-xs text-blue-600">DSCR Spread</div>
-            <div className="text-lg font-bold text-blue-900">{scenarioComparison.delta.dscr.toFixed(2)}x</div>
+            <div className="text-xs text-blue-300">DSCR Spread</div>
+            <div className="text-lg font-bold text-blue-300">{scenarioComparison.delta.dscr.toFixed(2)}x</div>
           </div>
         </div>
       </div>
@@ -883,8 +883,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
       <td className="px-4 py-3 text-sm font-medium">{label}</td>
       {scenarioComparison.scenarios.map((s) => (
         <td key={s.id} className={`px-4 py-3 text-sm text-center ${
-          s.isActive ? 'bg-blue-50 font-semibold' : ''
-        } ${bestKey && s.id === (scenarioComparison as any)[bestKey] ? 'text-green-600 font-bold' : 'text-neutral-400'}`}>
+          s.isActive ? 'bg-neutral-800 font-semibold' : ''
+        } ${bestKey && s.id === (scenarioComparison as any)[bestKey] ? 'text-green-400 font-bold' : 'text-neutral-400'}`}>
           {getter(s)}
         </td>
       ))}
@@ -908,12 +908,12 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               <div key={event.id} className="relative">
                 <div className={`absolute -left-[2.15rem] w-4 h-4 rounded-full border-2 ${
                   event.isKeyEvent
-                    ? 'bg-blue-500 border-blue-600'
+                    ? 'bg-neutral-800 border-blue-700'
                     : event.isPast
                     ? 'bg-neutral-800'
                     : 'bg-neutral-900'
                 }`} />
-                <div className={`p-4 rounded-lg border ${event.isKeyEvent ? 'border-blue-200 bg-blue-50' : 'border-neutral-700'}`}>
+                <div className={`p-4 rounded-lg border ${event.isKeyEvent ? 'border-blue-700 bg-neutral-800' : 'border-neutral-700'}`}>
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="text-sm font-semibold">{event.title}</div>
@@ -925,11 +925,11 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                     )}
                   </div>
                   <span className={`mt-2 inline-block px-2 py-0.5 rounded text-[10px] font-semibold uppercase ${
-                    event.type === 'origination' ? 'bg-blue-100 text-blue-700' :
-                    event.type === 'draw' ? 'bg-green-100 text-green-700' :
-                    event.type === 'refinance' ? 'bg-purple-100 text-purple-700' :
-                    event.type === 'maturity' ? 'bg-red-100 text-red-700' :
-                    event.type === 'milestone' ? 'bg-yellow-100 text-yellow-700' :
+                    event.type === 'origination' ? 'bg-neutral-800 text-blue-300' :
+                    event.type === 'draw' ? 'bg-neutral-800 text-green-400' :
+                    event.type === 'refinance' ? 'bg-neutral-800 text-purple-300' :
+                    event.type === 'maturity' ? 'bg-neutral-800 text-red-400' :
+                    event.type === 'milestone' ? 'bg-neutral-700 text-yellow-300' :
                     'bg-neutral-800'
                   }`}>
                     {event.type.replace('_', ' ')}
@@ -982,7 +982,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             { from: 'M11 Capital Structure', to: 'M12 Exit', direction: 'outgoing', description: 'Debt payoff and refi proceeds for exit analysis', event: 'capital.stack.updated', status: 'planned' },
           ].map((flow, i) => (
             <div key={i} className="flex items-center gap-4 p-4 rounded-lg">
-              <div className={`w-2 h-2 rounded-full ${flow.status === 'active' ? 'bg-green-500' : 'bg-yellow-400'}`} />
+              <div className={`w-2 h-2 rounded-full ${flow.status === 'active' ? 'bg-neutral-800' : 'bg-neutral-700'}`} />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{flow.from}</span>
@@ -994,7 +994,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               <div className="flex items-center gap-2">
                 <code className="text-xs px-2 py-0.5 rounded">{flow.event}</code>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                  flow.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                  flow.status === 'active' ? 'bg-neutral-800 text-green-400' : 'bg-neutral-700 text-yellow-300'
                 }`}>
                   {flow.status}
                 </span>
@@ -1004,7 +1004,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         </div>
       </div>
 
-      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+      <div className="p-4 bg-neutral-800 border border-blue-700 rounded-lg text-sm text-blue-300">
         Phase 1 uses mock data. Phase 2 backend services will power real calculations. Phase 3 will wire live cross-module events via the Event Bus.
       </div>
     </div>
@@ -1018,10 +1018,10 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
     <div className="space-y-3">
       {insights.map((insight, i) => (
         <div key={i} className={`p-4 rounded-lg border ${
-          insight.severity === 'success' ? 'border-green-200 bg-green-50' :
-          insight.severity === 'warning' ? 'border-yellow-200 bg-yellow-50' :
-          insight.severity === 'danger' ? 'border-red-200 bg-red-50' :
-          'border-blue-200 bg-blue-50'
+          insight.severity === 'success' ? 'border-green-700 bg-neutral-800' :
+          insight.severity === 'warning' ? 'border-yellow-700 bg-neutral-700' :
+          insight.severity === 'danger' ? 'border-red-700 bg-neutral-800' :
+          'border-blue-700 bg-neutral-800'
         }`}>
           <div className="flex items-start justify-between">
             <div>
@@ -1029,7 +1029,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
               <div className="text-sm mt-1">{insight.insight}</div>
             </div>
             {insight.action && (
-              <button className="text-xs text-blue-600 font-semibold hover:text-blue-700 whitespace-nowrap ml-4">
+              <button className="text-xs text-blue-300 font-semibold hover:text-blue-300 whitespace-nowrap ml-4">
                 {insight.action.label}
               </button>
             )}
@@ -1050,7 +1050,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
         <div className="flex items-center gap-3">
           {renderStrategySelector()}
           {isAnyLive && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700 border border-green-300 animate-pulse">
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-neutral-800 text-green-400 border border-green-700 animate-pulse">
               LIVE DATA
             </span>
           )}
@@ -1068,7 +1068,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap ${
               activeTab === tab.id
-                ? 'border-b-2 border-blue-500 text-blue-600'
+                ? 'border-b-2 border-blue-700 text-blue-300'
                 : 'text-neutral-400 '
             }`}
           >
