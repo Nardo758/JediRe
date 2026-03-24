@@ -594,6 +594,12 @@ export default function TerminalPage() {
   const [liveEmails, setLiveEmails] = useState(STATIC_EMAILS);
   const [liveAgents] = useState(STATIC_AGENTS);
   const [metricsTicker, setMetricsTicker] = useState(STATIC_METRICS_TICKER_T);
+
+  // Live FRED macro ticker — polls /api/v1/ticker/feed every 60s
+  // Falls back to TICKERS static data if the endpoint is unreachable
+  const [liveMacroTicker, setLiveMacroTicker] = useState<{raw:string;color:string}[]>(
+    TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? DARK.text.green : t.startsWith('v') ? DARK.text.red : DARK.text.amber }))
+  );
   const [rawCatalogMetricsT, setRawCatalogMetricsT] = useState<Array<Record<string,unknown>>>([]);
   const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
@@ -611,6 +617,36 @@ export default function TerminalPage() {
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
 
   // ─── Effects ──────────────────────────────────────────────
+
+  // ── FRED macro ticker — poll every 60 seconds ──────────────
+  useEffect(() => {
+    const FALLBACK = TICKERS.map(t => ({
+      raw: t,
+      color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber,
+    }));
+
+    const fetchTicker = async () => {
+      try {
+        const res = await api.ticker.getFeed();
+        const items: { symbol: string; value: string; change: string; direction: 'up'|'down'|'flat' }[] =
+          res.data?.data ?? [];
+        if (items.length === 0) return;
+        const mapped = items.map(item => {
+          const arrow = item.direction === 'up' ? '^' : item.direction === 'down' ? 'v' : '*';
+          const color = item.direction === 'up' ? T.text.green : item.direction === 'down' ? T.text.red : T.text.amber;
+          return { raw: `${arrow} ${item.symbol}  ${item.value} (${item.change})`, color };
+        });
+        setLiveMacroTicker(mapped);
+      } catch {
+        setLiveMacroTicker(FALLBACK);
+      }
+    };
+
+    fetchTicker();
+    const intervalId = setInterval(fetchTicker, 60_000);
+    return () => clearInterval(intervalId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync URL slug + browser tab title whenever fkey changes
   useEffect(() => {
     const slug = FKEY_SLUG[fkey] || "dashboard";
@@ -2335,7 +2371,7 @@ export default function TerminalPage() {
             const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
             return { raw: `[${n.time}]${(n as {mkt?:string}).mkt ? ` [${(n as {mkt?:string}).mkt}]` : ''} ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
           }),
-          ...TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? T.text.green : t.startsWith('v') ? T.text.red : T.text.amber })),
+          ...liveMacroTicker,
           ...metricsTicker,
         ]}
       />

@@ -414,6 +414,11 @@ export const api = {
     getTimeline: (dealId: string) =>
       apiClient.get(`/api/v1/benchmark-timeline/timeline/${dealId}`),
   },
+
+  // Ticker — public macro data feed (FRED: 10Y Treasury, SOFR, CPI, Unemployment)
+  ticker: {
+    getFeed: () => apiClient.get('/api/v1/ticker/feed'),
+  },
 };
 
 export const corporateHealthAPI = api.corporateHealth;

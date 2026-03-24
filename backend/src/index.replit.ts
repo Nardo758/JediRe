@@ -257,6 +257,10 @@ app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
+// FRED macro ticker — public (no auth required) — used by TerminalPage ticker bar
+import tickerRoutes from './api/rest/ticker.routes';
+app.use('/api/v1/ticker', tickerRoutes);
+
 app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 

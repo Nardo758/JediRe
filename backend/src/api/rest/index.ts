@@ -101,6 +101,7 @@ import moduleWiringRoutes from './module-wiring.routes';
 import corporateHealthRoutes from './corporate-health.routes';
 import opportunityEngineRoutes from './opportunity-engine.routes';
 import benchmarkTimelineRoutes from './benchmark-timeline.routes';
+import tickerRoutes from './ticker.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -398,6 +399,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Benchmark Timeline routes (Monte Carlo simulation, entitlement benchmarks)
   app.use(`${API_PREFIX}/benchmark-timeline`, benchmarkTimelineRoutes);
+
+  // Ticker feed — public macro data (FRED: 10Y Treasury, SOFR, CPI, Unemployment)
+  // No auth required — mounts before the 404 handler so it is always reachable
+  app.use(`${API_PREFIX}/ticker`, tickerRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
