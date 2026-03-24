@@ -155,6 +155,49 @@ export const BT_TAB_CSS = `
 .bt-tab-wrap .border-b-2.border-blue-600{border-bottom-color:#00BCD4!important}
 .bt-tab-wrap .focus\\:ring-blue-500:focus{--tw-ring-color:#00BCD4!important}
 .bt-tab-wrap .focus\\:border-blue-500:focus{border-color:#00BCD4!important}
+.bt-tab-wrap .bg-neutral-950{background-color:#0A0E17!important}
+.bt-tab-wrap .bg-neutral-900{background-color:#0F1319!important}
+.bt-tab-wrap .bg-neutral-800{background-color:#131821!important}
+.bt-tab-wrap .bg-neutral-700{background-color:#1A1F2E!important}
+.bt-tab-wrap .bg-neutral-600{background-color:#1E2538!important}
+.bt-tab-wrap .text-neutral-100{color:#E8ECF1!important}
+.bt-tab-wrap .text-neutral-200{color:#C8D0DC!important}
+.bt-tab-wrap .text-neutral-300{color:#8B95A5!important}
+.bt-tab-wrap .text-neutral-400{color:#4A5568!important}
+.bt-tab-wrap .text-neutral-500{color:#2A3348!important}
+.bt-tab-wrap .border-neutral-700{border-color:#1E2538!important}
+.bt-tab-wrap .border-neutral-600{border-color:#2A3348!important}
+.bt-tab-wrap .hover\\:bg-neutral-700:hover{background-color:#1E2538!important}
+.bt-tab-wrap .hover\\:bg-neutral-800:hover{background-color:#131821!important}
+.bt-tab-wrap .hover\\:border-neutral-600:hover{border-color:#2A3348!important}
+.bt-tab-wrap .disabled\\:bg-neutral-700:disabled{background-color:#1A1F2E!important}
+.bt-tab-wrap .disabled\\:text-neutral-500:disabled{color:#2A3348!important}
+.bt-tab-wrap .text-blue-300{color:#00BCD4!important}
+.bt-tab-wrap .text-blue-400{color:#00BCD4CC!important}
+.bt-tab-wrap .text-green-400{color:#00D26A!important}
+.bt-tab-wrap .text-emerald-400{color:#00D26A!important}
+.bt-tab-wrap .text-teal-400{color:#00E5A0!important}
+.bt-tab-wrap .text-amber-400{color:#F5A623!important}
+.bt-tab-wrap .text-yellow-300{color:#FFD166!important}
+.bt-tab-wrap .text-yellow-400{color:#F5A623!important}
+.bt-tab-wrap .text-red-400{color:#FF4757!important}
+.bt-tab-wrap .text-rose-400{color:#FF4757!important}
+.bt-tab-wrap .text-orange-400{color:#FF8C42!important}
+.bt-tab-wrap .text-purple-300{color:#A78BFA!important}
+.bt-tab-wrap .text-indigo-300{color:#818CF8!important}
+.bt-tab-wrap .text-sky-400{color:#00BCD4!important}
+.bt-tab-wrap .text-cyan-400{color:#00BCD4!important}
+.bt-tab-wrap .border-blue-700{border-color:#00BCD433!important}
+.bt-tab-wrap .border-green-700{border-color:#00D26A44!important}
+.bt-tab-wrap .border-amber-700{border-color:#F5A62344!important}
+.bt-tab-wrap .border-red-700{border-color:#FF475744!important}
+.bt-tab-wrap .border-purple-700{border-color:#A78BFA44!important}
+.bt-tab-wrap .border-indigo-700{border-color:#818CF844!important}
+.bt-tab-wrap .bg-gradient-to-br{background-image:none!important;background-color:#131821!important}
+.bt-tab-wrap .bg-gradient-to-b{background-image:none!important;background-color:#131821!important}
+.bt-tab-wrap .from-neutral-800{--tw-gradient-from:#131821!important}
+.bt-tab-wrap .to-neutral-950{--tw-gradient-to:#0A0E17!important}
+.bt-tab-wrap .to-neutral-900{--tw-gradient-to:#0F1319!important}
 `;
 
 // ─── BtTabWrapper — applies Bloomberg dark theme to light-mode tab components ──
@@ -170,6 +213,18 @@ export function BtTabWrapper({
       animation: 'bt-fade 0.15s',
       ...style,
     }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
+      {children}
+    </div>
+  );
+}
+
+// ─── BtSection — injects BT CSS overrides into any section component ──────────
+export function BtSection({ children, className = '', style }: {
+  children: React.ReactNode; className?: string; style?: React.CSSProperties;
+}) {
+  return (
+    <div className={`bt-tab-wrap ${className}`} style={{ background: BT.bg.terminal, color: BT.text.primary, ...style }}>
       <style>{BT_CSS + BT_TAB_CSS}</style>
       {children}
     </div>

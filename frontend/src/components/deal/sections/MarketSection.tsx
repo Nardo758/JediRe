@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
-import { BT } from '../bloomberg-ui';
+import { BT, BT_CSS, BT_TAB_CSS } from '../bloomberg-ui';
 
 // Type definitions (moved from mock data)
 interface DemographicStat {
@@ -193,8 +193,8 @@ export const MarketSection: React.FC<MarketSectionProps> = ({ deal }) => {
   }
 
   return (
-    <div className="space-y-6">
-      
+    <div className="bt-tab-wrap space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
       {/* Mode Indicator */}
       <div className="flex items-center justify-between">
         <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -294,7 +294,7 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
         {demographics.map((stat, index) => (
           <div 
             key={index}
-            className="bg-gradient-to-br from-gray-50 to-white border rounded-lg p-4 hover:shadow-md transition-shadow"
+            className="bg-gradient-to-br from-neutral-800 to-neutral-950 border rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-neutral-400 text-xs font-medium">{stat.label}</span>
@@ -379,7 +379,7 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
                     className="flex-1 bg-gradient-to-t from-neutral-800 to-neutral-900 rounded-t hover:from-neutral-800 hover:to-neutral-900 transition-all cursor-pointer relative group"
                     style={{ height: `${Math.max(heightPercent, 10)}%` }}
                   >
-                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 text-neutral-100 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                       {formatValue(trend, value)}
                     </div>
                   </div>
@@ -564,7 +564,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             onClick={() => setSortBy('rentGrowth')}
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'rentGrowth' 
-                ? 'bg-neutral-800 text-white' 
+                ? 'bg-neutral-800 text-neutral-100' 
                 : 'bg-neutral-800 '
             }`}
           >
@@ -574,7 +574,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             onClick={() => setSortBy('vacancy')}
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'vacancy' 
-                ? 'bg-neutral-800 text-white' 
+                ? 'bg-neutral-800 text-neutral-100' 
                 : 'bg-neutral-800 '
             }`}
           >
@@ -584,7 +584,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             onClick={() => setSortBy('avgRent')}
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'avgRent' 
-                ? 'bg-neutral-800 text-white' 
+                ? 'bg-neutral-800 text-neutral-100' 
                 : 'bg-neutral-800 '
             }`}
           >

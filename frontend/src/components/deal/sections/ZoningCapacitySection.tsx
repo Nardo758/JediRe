@@ -9,7 +9,7 @@ import { apiClient } from '../../../services/api.client';
 import { ZoningIntelligencePanel } from './ZoningIntelligencePanel';
 import { ZoningLearningPanel } from './ZoningLearningPanel';
 import { useDealModule } from '../../../contexts/DealModuleContext';
-import { BT } from '../bloomberg-ui';
+import { BT, BT_CSS, BT_TAB_CSS } from '../bloomberg-ui';
 
 interface ZoningCapacitySectionProps {
   deal?: any;
@@ -446,7 +446,8 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   const labelClass = "block text-xs font-medium mb-1";
 
   return (
-    <div className="space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+    <div className="bt-tab-wrap space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
@@ -470,7 +471,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           <button
             onClick={analyzeEnvelope}
             disabled={envelopeLoading}
-            className="flex items-center gap-2 px-5 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-2 px-5 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-neutral-100 rounded-lg text-sm font-medium transition-colors"
           >
             {envelopeLoading ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />}
             {envelopeLoading ? 'Analyzing...' : 'Analyze Envelope'}
@@ -505,7 +506,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                 onKeyDown={(e) => e.key === 'Enter' && lookupZoningCode()}
                 placeholder="Enter zoning code (e.g. MR-4A)" className={`${inputClass} flex-1`} />
               <button onClick={() => lookupZoningCode()} disabled={lookingUp || !zoningCode}
-                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white disabled:text-neutral-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                className="px-4 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-neutral-100 disabled:text-neutral-400 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
                 {lookingUp ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
                 Look Up
               </button>
@@ -732,7 +733,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         <div className="space-y-6">
 
           {envelope ? (
-            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-blue-700 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-neutral-950 rounded-xl border border-blue-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                 <Layers size={18} className="text-blue-300" />
                 Building Envelope
@@ -799,7 +800,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
               )}
             </div>
           ) : (
-            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-blue-700 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-neutral-950 rounded-xl border border-blue-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Building2 size={18} className="text-blue-300" />
                 Building Envelope
@@ -813,7 +814,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           )}
 
           {hasParams && (
-            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-green-700 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-neutral-950 rounded-xl border border-green-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <TrendingUp size={18} className="text-green-400" />
                 Capacity Summary
@@ -875,7 +876,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
           )}
 
           {(data.annual_revenue || data.avg_rent_per_unit) && (
-            <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-purple-700 p-5 shadow-sm">
+            <div className="bg-gradient-to-br from-neutral-800 to-neutral-950 rounded-xl border border-purple-700 p-5 shadow-sm">
               <h3 className="text-lg font-semibold mb-4">Revenue Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -978,7 +979,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       )}
 
       {aiRecommendations && (
-        <div className="bg-gradient-to-br from-neutral-800 to-white rounded-xl border border-purple-700 p-5 shadow-sm">
+        <div className="bg-gradient-to-br from-neutral-800 to-neutral-950 rounded-xl border border-purple-700 p-5 shadow-sm">
           <button onClick={() => setShowAI(!showAI)}
             className="w-full flex items-center justify-between">
             <h3 className="text-lg font-semibold flex items-center gap-2">

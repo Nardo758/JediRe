@@ -5,7 +5,7 @@ import {
   Send, Clock, Layers, TrendingUp, CheckCircle2, FileText, MapPin
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
-import { BT } from '../bloomberg-ui';
+import { BT, BT_CSS, BT_TAB_CSS } from '../bloomberg-ui';
 
 interface ZoningIntelligencePanelProps {
   deal?: any;
@@ -278,7 +278,8 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
   }, [resolvedDistrict, resolvedMunicipality, resolvedState, resolvedLandArea, resolvedDealId, deal]);
 
   return (
-    <div className="space-y-6 mt-8" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+    <div className="bt-tab-wrap space-y-6 mt-8" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
       <div className="border-t pt-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -293,7 +294,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
           <button
             onClick={runFullAnalysis}
             disabled={analysisLoading || !resolvedDistrict}
-            className="flex items-center gap-2 px-5 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white rounded-lg text-sm font-semibold transition-colors shadow-sm"
+            className="flex items-center gap-2 px-5 py-2 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-neutral-100 rounded-lg text-sm font-semibold transition-colors shadow-sm"
           >
             {analysisLoading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {analysisLoading ? 'Running Analysis...' : 'Run Full Analysis'}
@@ -384,7 +385,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
             <button
               onClick={() => askQuestion()}
               disabled={queryLoading || !question.trim() || !resolvedDistrict}
-              className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-white rounded-lg transition-colors"
+              className="px-4 py-2.5 bg-neutral-800 hover:bg-neutral-800 disabled:bg-neutral-800 text-neutral-100 rounded-lg transition-colors"
             >
               {queryLoading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             </button>
@@ -398,7 +399,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-lg p-3 ${
                     msg.role === 'user'
-                      ? 'bg-neutral-800 text-white'
+                      ? 'bg-neutral-800 text-neutral-100'
                       : msg.role === 'error'
                         ? 'bg-neutral-800 text-red-400 border border-red-700'
                         : 'bg-neutral-900 border-neutral-700'

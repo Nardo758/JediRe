@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { apiClient } from '@/services/api.client';
-import { BT } from '../bloomberg-ui';
+import { BT, BT_CSS, BT_TAB_CSS } from '../bloomberg-ui';
 
 // Type definitions
 interface InvestmentStrategyOverview {
@@ -166,8 +166,8 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
   }
 
   return (
-    <div className="space-y-6 p-6">
-      
+    <div className="bt-tab-wrap space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 24 }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
       {/* Mode Indicator */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -212,7 +212,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             onClick={() => setActiveSubSection('acquisition')}
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'acquisition'
-                ? 'bg-neutral-800 text-white'
+                ? 'bg-neutral-800 text-neutral-100'
                 : 'bg-neutral-800 '
             }`}
           >
@@ -223,7 +223,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             onClick={() => setActiveSubSection('value-creation')}
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'value-creation'
-                ? 'bg-neutral-800 text-white'
+                ? 'bg-neutral-800 text-neutral-100'
                 : 'bg-neutral-800 '
             }`}
           >
@@ -234,7 +234,7 @@ export const InvestmentStrategySection: React.FC<InvestmentStrategySectionProps>
             onClick={() => setActiveSubSection('exit')}
             className={`flex-1 px-4 py-3 rounded-lg font-semibold transition-colors ${
               activeSubSection === 'exit'
-                ? 'bg-neutral-800 text-white'
+                ? 'bg-neutral-800 text-neutral-100'
                 : 'bg-neutral-800 '
             }`}
           >
@@ -391,7 +391,7 @@ const InvestmentTimelineVisualization: React.FC<InvestmentTimelineVisualizationP
               }}
             >
               <span className="text-2xl mb-1">{getPhaseIcon(phase.phase, phase.status)}</span>
-              <span className="text-xs font-semibold text-white text-center px-1">
+              <span className="text-xs font-semibold text-neutral-100 text-center px-1">
                 {phase.phase}
               </span>
             </div>

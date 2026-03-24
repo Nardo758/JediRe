@@ -17,7 +17,7 @@ import type {
 } from '../../../types/capital-structure.types';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { apiClient } from '@/services/api.client';
-import { BT } from '../bloomberg-ui';
+import { BT, BT_CSS, BT_TAB_CSS } from '../bloomberg-ui';
 import {
   strategyTemplates,
   defaultCapitalStack,
@@ -475,7 +475,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
                     title={`${layer.name}: ${fmtM(layer.amount)} (${widthPct.toFixed(0)}%)`}
                   >
                     {widthPct > 12 && (
-                      <span className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold">
+                      <span className="absolute inset-0 flex items-center justify-center text-neutral-100 text-xs font-semibold">
                         {widthPct.toFixed(0)}%
                       </span>
                     )}
@@ -1044,7 +1044,8 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   // ========================================================================
 
   return (
-    <div className="space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+    <div className="bt-tab-wrap space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
+      <style>{BT_CSS + BT_TAB_CSS}</style>
       {/* Strategy Selector */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
