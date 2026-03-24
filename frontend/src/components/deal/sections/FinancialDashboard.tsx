@@ -274,17 +274,17 @@ function CompView({ model }: { model: any }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20, padding: '14px 0' }}>
         <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14, textAlign: 'center' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.green, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>EXIT SCORE</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: exitScore >= 70 ? '#16a34a' : exitScore >= 50 ? '#d97706' : '#dc2626' }}>{exitScore}</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: exitScore >= 70 ? BT.text.green : exitScore >= 50 ? BT.text.amber : BT.text.red }}>{exitScore}</div>
           <div style={{ fontSize: 11, color: BT.text.muted }}>{exitScore >= 70 ? 'Strong window' : exitScore >= 50 ? 'Fair window' : 'Weak window'}</div>
         </div>
         <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14, textAlign: 'center' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.blue, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>OPTIMAL EXIT</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: BT.text.blue }}>Q1 26</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>OPTIMAL EXIT</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: BT.text.cyan }}>Q1 26</div>
           <div style={{ fontSize: 11, color: BT.text.muted }}>Low rates + low supply</div>
         </div>
-        <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: 14, textAlign: 'center' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#854d0e', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>CONVERGENCE</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>3</div>
+        <div style={{ background: BT.bg.panelAlt, border: '1px solid #1E2538', borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.amber, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>CONVERGENCE</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: BT.text.amber }}>3</div>
           <div style={{ fontSize: 11, color: BT.text.muted }}>Factors aligned</div>
         </div>
       </div>
@@ -412,8 +412,8 @@ function DebtView({ model, setModel }: { model: any; setModel: React.Dispatch<Re
         ))}
       </div>
       <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 12, color: BT.text.blue }}>Full debt analysis, 10-year cycle chart, and product comparison available in <strong>Debt, Equity &amp; Exit</strong> module</div>
-        <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>&rarr; Edit in Module</div>
+        <div style={{ fontSize: 12, color: BT.text.cyan }}>Full debt analysis, 10-year cycle chart, and product comparison available in <strong>Debt, Equity &amp; Exit</strong> module</div>
+        <div style={{ fontSize: 11, color: BT.text.cyan, fontWeight: 600 }}>&rarr; Edit in Module</div>
       </div>
       <div className="ai-call">
         <h4>&#x26A1; AI Debt Analysis</h4>
@@ -437,7 +437,7 @@ function ProjectionsView({ model }: { model: any }) {
     return (
       <div className="ass">
         <div className="slbl">OPERATING STATEMENT PROJECTIONS</div>
-        <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ba3b0', fontSize: '12px' }}>
+        <div style={{ padding: '40px 0', textAlign: 'center', color: BT.text.muted, fontSize: '12px' }}>
           No projection data available. Build a model from the Pro Forma tab to generate annual cash flow projections.
         </div>
       </div>
@@ -452,9 +452,9 @@ function ProjectionsView({ model }: { model: any }) {
           {[3, 5, 7, 10].map(y => (
             <button key={y} onClick={() => setHoldFilter(y)} style={{
               padding: '3px 10px', borderRadius: 4, fontSize: '10.5px', fontWeight: holdFilter === y ? 700 : 400,
-              border: `1px solid ${holdFilter === y ? '#111827' : '#e2e5ed'}`,
-              background: holdFilter === y ? '#111827' : '#f9fafb',
-              color: holdFilter === y ? '#fff' : '#6b7280', cursor: 'pointer',
+              border: `1px solid ${holdFilter === y ? BT.bg.terminal : BT.border.subtle}`,
+              background: holdFilter === y ? BT.bg.terminal : BT.bg.panel,
+              color: holdFilter === y ? BT.text.primary : BT.text.muted, cursor: 'pointer',
             }}>{y}yr</button>
           ))}
         </div>
@@ -472,43 +472,43 @@ function ProjectionsView({ model }: { model: any }) {
         </thead>
         <tbody>
           <tr onClick={() => toggle('revenue')} style={{ cursor: 'pointer' }}>
-            <td style={{ fontWeight: 700, color: '#1f2937' }}>{collapsed.revenue ? '\u25B6' : '\u25BC'} REVENUE</td>
+            <td style={{ fontWeight: 700, color: BT.text.primary }}>{collapsed.revenue ? '\u25B6' : '\u25BC'} REVENUE</td>
             {filteredCF.map((cf: any) => <td key={cf.year} />)}
           </tr>
           {!collapsed.revenue && (
             <>
               <tr><td>Gross Potential Rent</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv">{fmt$(cf.potentialRent || 0)}</td>)}</tr>
-              <tr><td>(Less) Vacancy</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: '#dc2626' }}>({fmt$(cf.vacancy || 0)})</td>)}</tr>
-              <tr><td>(Less) Collection Loss</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: '#dc2626' }}>({fmt$(cf.collectionLoss || 0)})</td>)}</tr>
+              <tr><td>(Less) Vacancy</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: BT.text.red }}>({fmt$(cf.vacancy || 0)})</td>)}</tr>
+              <tr><td>(Less) Collection Loss</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: BT.text.red }}>({fmt$(cf.collectionLoss || 0)})</td>)}</tr>
               <tr><td>Other Income</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv">{fmt$(cf.otherIncome || 0)}</td>)}</tr>
-              <tr style={{ borderBottom: '2px solid #e5e7eb' }}><td style={{ fontWeight: 600 }}>Effective Gross Revenue</td>{filteredCF.map((cf: any) => <td key={cf.year} className="thl">{fmt$(cf.effectiveGrossRevenue || 0)}</td>)}</tr>
+              <tr style={{ borderBottom: '2px solid #1E2538' }}><td style={{ fontWeight: 600 }}>Effective Gross Revenue</td>{filteredCF.map((cf: any) => <td key={cf.year} className="thl">{fmt$(cf.effectiveGrossRevenue || 0)}</td>)}</tr>
             </>
           )}
           <tr onClick={() => toggle('expenses')} style={{ cursor: 'pointer' }}>
-            <td style={{ fontWeight: 700, color: '#1f2937' }}>{collapsed.expenses ? '\u25B6' : '\u25BC'} EXPENSES</td>
+            <td style={{ fontWeight: 700, color: BT.text.primary }}>{collapsed.expenses ? '\u25B6' : '\u25BC'} EXPENSES</td>
             {filteredCF.map((cf: any) => <td key={cf.year} />)}
           </tr>
           {!collapsed.expenses && (
             <>
-              <tr><td>Total Operating Expenses</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: '#dc2626' }}>({fmt$(cf.totalExpenses || 0)})</td>)}</tr>
+              <tr><td>Total Operating Expenses</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: BT.text.red }}>({fmt$(cf.totalExpenses || 0)})</td>)}</tr>
             </>
           )}
-          <tr style={{ borderBottom: '2px solid #111827', background: '#f9fafb' }}>
-            <td style={{ fontWeight: 700, color: '#1f2937' }}>NET OPERATING INCOME</td>
+          <tr style={{ borderBottom: '2px solid #0A0E17', background: BT.bg.panel }}>
+            <td style={{ fontWeight: 700, color: BT.text.primary }}>NET OPERATING INCOME</td>
             {filteredCF.map((cf: any) => <td key={cf.year} className="tgr" style={{ fontWeight: 700 }}>{fmt$(cf.noi || 0)}</td>)}
           </tr>
           <tr><td>Replacement Reserves</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv">({fmt$(cf.replacementReserves || 0)})</td>)}</tr>
           <tr><td style={{ fontWeight: 600 }}>NOI After Reserves</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tgr">{fmt$(cf.noiAfterReserves || 0)}</td>)}</tr>
           <tr onClick={() => toggle('debt')} style={{ cursor: 'pointer' }}>
-            <td style={{ fontWeight: 700, color: '#1f2937' }}>{collapsed.debt ? '\u25B6' : '\u25BC'} DEBT SERVICE</td>
+            <td style={{ fontWeight: 700, color: BT.text.primary }}>{collapsed.debt ? '\u25B6' : '\u25BC'} DEBT SERVICE</td>
             {filteredCF.map((cf: any) => <td key={cf.year} />)}
           </tr>
           {!collapsed.debt && (
             <>
-              <tr><td>Total Debt Service</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: '#dc2626' }}>({fmt$(cf.debtService || 0)})</td>)}</tr>
+              <tr><td>Total Debt Service</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: BT.text.red }}>({fmt$(cf.debtService || 0)})</td>)}</tr>
             </>
           )}
-          <tr style={{ borderBottom: `2px solid ${BT.border.mid}`, background: BT.bg.panelAlt }}>
+          <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.panelAlt }}>
             <td style={{ fontWeight: 700, color: BT.text.green }}>LEVERED CASH FLOW</td>
             {filteredCF.map((cf: any) => <td key={cf.year} className="tgr" style={{ fontWeight: 700 }}>{fmt$(cf.leveredCashFlow || cf.beforeTaxCashFlow || 0)}</td>)}
           </tr>
@@ -524,8 +524,8 @@ function SensView({ model }: { model: any }) {
   const baseIrr = model.scenarios?.base?.irr || 18;
   const baseEM = model.scenarios?.base?.equityMultiple || 2.0;
 
-  const hc = (irr: number) => irr > 40 ? { background: '#dcfce7', color: BT.text.green } : irr > 35 ? { background: '#d1fae5', color: '#065f46' } : irr > 28 ? { background: '#dbeafe', color: BT.text.blue } : irr > 20 ? { background: '#fef9c3', color: '#854d0e' } : { background: '#fee2e2', color: '#991b1b' };
-  const ec = (em: number) => em > 9 ? { background: '#dcfce7', color: BT.text.green } : em > 6 ? { background: '#dbeafe', color: BT.text.blue } : em > 4 ? { background: '#fef9c3', color: '#854d0e' } : { background: '#fee2e2', color: '#991b1b' };
+  const hc = (irr: number) => irr > 40 ? { background: BT.bg.panelAlt, color: BT.text.green } : irr > 35 ? { background: BT.bg.panelAlt, color: BT.text.green } : irr > 28 ? { background: BT.bg.panelAlt, color: BT.text.cyan } : irr > 20 ? { background: BT.bg.panelAlt, color: BT.text.amber } : { background: BT.bg.panelAlt, color: BT.text.red };
+  const ec = (em: number) => em > 9 ? { background: BT.bg.panelAlt, color: BT.text.green } : em > 6 ? { background: BT.bg.panelAlt, color: BT.text.cyan } : em > 4 ? { background: BT.bg.panelAlt, color: BT.text.amber } : { background: BT.bg.panelAlt, color: BT.text.red };
   const baseExitCap = model.exit?.exitCapRate || 0.055;
   const baseRentGrowth = model.revenue?.rentGrowthY1 || 0.04;
   const ai = (cap: number, rg: number) => Math.max(8, Math.min(55, baseIrr + (baseExitCap - cap) * 200 + (rg - baseRentGrowth) * 150));
@@ -590,7 +590,7 @@ function WaterfallView({ model }: { model: any }) {
           </div>
         </div>
       ) : (
-        <div style={{ padding: '20px 0', textAlign: 'center', color: '#9ba3b0', fontSize: '12px', marginBottom: 20 }}>
+        <div style={{ padding: '20px 0', textAlign: 'center', color: BT.text.muted, fontSize: '12px', marginBottom: 20 }}>
           Sources & Uses will appear after building a model.
         </div>
       )}
@@ -599,19 +599,19 @@ function WaterfallView({ model }: { model: any }) {
       {total > 0 ? (
         <>
           <div style={{ height: 32, borderRadius: 6, overflow: 'hidden', display: 'flex', marginBottom: 16 }}>
-            <div style={{ width: `${lpPct}%`, background: '#3b82f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 11, fontWeight: 700 }}>LP {lpPct}%</div>
-            <div style={{ width: `${gpPct}%`, background: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontSize: 11, fontWeight: 700 }}>GP {gpPct}%</div>
+            <div style={{ width: `${lpPct}%`, background: BT.text.cyan, display: 'flex', alignItems: 'center', justifyContent: 'center', color: BT.text.primary, fontSize: 11, fontWeight: 700 }}>LP {lpPct}%</div>
+            <div style={{ width: `${gpPct}%`, background: BT.text.amber, display: 'flex', alignItems: 'center', justifyContent: 'center', color: BT.bg.terminal, fontSize: 11, fontWeight: 700 }}>GP {gpPct}%</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.blue, marginBottom: 8 }}>LP RETURNS</div>
-              <div style={{ fontSize: 12, color: '#374151', lineHeight: 2 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.cyan, marginBottom: 8 }}>LP RETURNS</div>
+              <div style={{ fontSize: 12, color: BT.text.secondary, lineHeight: 2 }}>
                 <div>Total LP: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt$(totalLP)}</strong></div>
               </div>
             </div>
-            <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 14 }}>
+            <div style={{ background: BT.bg.panelAlt, border: '1px solid #F5A62344', borderRadius: 8, padding: 14 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, marginBottom: 8 }}>GP RETURNS</div>
-              <div style={{ fontSize: 12, color: '#374151', lineHeight: 2 }}>
+              <div style={{ fontSize: 12, color: BT.text.secondary, lineHeight: 2 }}>
                 <div>Total GP: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt$(totalGP)}</strong></div>
                 <div>Promote: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt$(totalPromote)}</strong></div>
               </div>
@@ -638,7 +638,7 @@ function WaterfallView({ model }: { model: any }) {
           )}
         </>
       ) : (
-        <div style={{ padding: '40px 0', textAlign: 'center', color: '#9ba3b0', fontSize: '12px' }}>
+        <div style={{ padding: '40px 0', textAlign: 'center', color: BT.text.muted, fontSize: '12px' }}>
           Waterfall distributions will appear after building a model with partnership structure.
         </div>
       )}
@@ -673,7 +673,7 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
   if (loading) {
     return (
       <div className="dec" style={{ textAlign: 'center', padding: 40 }}>
-        <div style={{ fontSize: 12, color: '#9ba3b0' }}>Generating AI analysis...</div>
+        <div style={{ fontSize: 12, color: BT.text.muted }}>Generating AI analysis...</div>
         <div className="fc-think" style={{ justifyContent: 'center', marginTop: 12 }}><span /><span /><span /></div>
       </div>
     );
@@ -707,7 +707,7 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
             <h4>&#x26A0;&#xFE0F; Risk Flags</h4>
             <ul>
               {analysis.riskFlags.map((r: string, i: number) => (
-                <li key={i}><span style={{ color: '#f59e0b' }}>&blacktriangle;</span><span>{r}</span></li>
+                <li key={i}><span style={{ color: BT.text.amber }}>&blacktriangle;</span><span>{r}</span></li>
               ))}
             </ul>
           </div>
@@ -717,7 +717,7 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
             <h4>&#x1F4CB; Action Items</h4>
             <ul>
               {analysis.actionItems.map((a: string, i: number) => (
-                <li key={i}><span style={{ color: '#059669' }}>&rarr;</span><span>{a}</span></li>
+                <li key={i}><span style={{ color: BT.text.green }}>&rarr;</span><span>{a}</span></li>
               ))}
             </ul>
           </div>
@@ -745,30 +745,30 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
       <div className="dc">
         <h4>&#x26A0;&#xFE0F; Risk Flags</h4>
         <ul>
-          <li><span style={{ color: '#f59e0b' }}>&blacktriangle;</span><span>Defeasance/Yield Maintenance prepay &mdash; exit before maturity carries a premium.</span></li>
-          <li><span style={{ color: '#f59e0b' }}>&blacktriangle;</span><span>DSCR at {(scenarios.worst?.dscr || 0).toFixed(2)}x in Worst Case &mdash; limited buffer if occupancy recovery stalls.</span></li>
+          <li><span style={{ color: BT.text.amber }}>&blacktriangle;</span><span>Defeasance/Yield Maintenance prepay &mdash; exit before maturity carries a premium.</span></li>
+          <li><span style={{ color: BT.text.amber }}>&blacktriangle;</span><span>DSCR at {(scenarios.worst?.dscr || 0).toFixed(2)}x in Worst Case &mdash; limited buffer if occupancy recovery stalls.</span></li>
         </ul>
       </div>
       <div className="dc">
         <h4>&#x1F4CB; Action Items</h4>
         <ul>
-          <li><span style={{ color: '#059669' }}>&rarr;</span><span>Lock term sheet within 14 days of PSA execution.</span></li>
-          <li><span style={{ color: '#059669' }}>&rarr;</span><span>Commission contractor bids for Y1 renovation units before close.</span></li>
-          <li><span style={{ color: '#059669' }}>&rarr;</span><span>Order Phase I ESA and Property Condition Report concurrently with DD.</span></li>
+          <li><span style={{ color: BT.text.green }}>&rarr;</span><span>Lock term sheet within 14 days of PSA execution.</span></li>
+          <li><span style={{ color: BT.text.green }}>&rarr;</span><span>Commission contractor bids for Y1 renovation units before close.</span></li>
+          <li><span style={{ color: BT.text.green }}>&rarr;</span><span>Order Phase I ESA and Property Condition Report concurrently with DD.</span></li>
         </ul>
       </div>
       <div className="slbl">EXIT READINESS</div>
       <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.green, letterSpacing: '.06em', textTransform: 'uppercase' }}>OPTIMAL EXIT WINDOW</div>
-          <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>Q1 2026 &ndash; Q2 2026 &mdash; all three factors converge</div>
+          <div style={{ fontSize: 13, color: BT.text.secondary, marginTop: 4 }}>Q1 2026 &ndash; Q2 2026 &mdash; all three factors converge</div>
         </div>
         <div style={{ fontSize: 11, color: BT.text.muted }}>View details in Debt, Equity &amp; Exit tab</div>
       </div>
       {scenarios?.base?.irr > 0 && (
         <button onClick={fetchAnalysis} style={{
-          marginTop: 16, padding: '8px 16px', borderRadius: 6, border: '1px solid #e2e5ed',
-          background: '#f9fafb', color: '#374151', fontSize: 12, cursor: 'pointer', fontFamily: "'Inter', sans-serif",
+          marginTop: 16, padding: '8px 16px', borderRadius: 6, border: '1px solid #1E2538',
+          background: BT.bg.panel, color: BT.text.secondary, fontSize: 12, cursor: 'pointer', fontFamily: "'Inter', sans-serif",
         }}>&#x26A1; Generate AI Analysis</button>
       )}
     </div>
@@ -777,176 +777,176 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap');
-.fd{display:flex;height:100%;font-family:'Inter',sans-serif;overflow:hidden;background:#f8fafc;border-radius:10px}
+.fd{display:flex;height:100%;font-family:'Inter',sans-serif;overflow:hidden;background:#0F1319;border-radius:10px}
 .fc{width:380px;min-width:320px;display:flex;flex-direction:column;background:#0c0d10;border-right:1px solid #1c1e26;flex-shrink:0;border-radius:10px 0 0 10px}
-.fc-top{padding:14px 16px 12px;border-bottom:1px solid #181a21;flex-shrink:0}
+.fc-top{padding:14px 16px 12px;border-bottom:1px solid #131821;flex-shrink:0}
 .fc-brand{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.fc-mark{width:24px;height:24px;background:linear-gradient(135deg,#f59e0b,#d97706);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#000;font-family:'Syne',sans-serif}
-.fc-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#e1e4ea;letter-spacing:.04em}
-.fc-name span{color:#f59e0b}
-.fc-h{font-size:12px;font-weight:600;color:#c5cad4;margin-bottom:2px}
-.fc-s{font-size:11px;color:#3e4455;line-height:1.4}
-.fc-ctx{padding:7px 16px;border-bottom:1px solid #181a21;background:#09090c;display:flex;align-items:center;gap:6px;flex-shrink:0}
-.fc-dot{width:5px;height:5px;border-radius:50%;background:#22c55e;box-shadow:0 0 5px #22c55e;flex-shrink:0}
-.fc-ctxt{font-size:10.5px;color:#3e4455;font-family:'JetBrains Mono',monospace}
-.fc-ctxt b{color:#f59e0b;font-weight:500}
+.fc-mark{width:24px;height:24px;background:linear-gradient(135deg,#F5A623,#F5A623);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#0A0E17;font-family:'Syne',sans-serif}
+.fc-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:#E8ECF1;letter-spacing:.04em}
+.fc-name span{color:#F5A623}
+.fc-h{font-size:12px;font-weight:600;color:#4A5568;margin-bottom:2px}
+.fc-s{font-size:11px;color:#2A3348;line-height:1.4}
+.fc-ctx{padding:7px 16px;border-bottom:1px solid #131821;background:#09090c;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.fc-dot{width:5px;height:5px;border-radius:50%;background:#00D26A;box-shadow:0 0 5px #00D26A;flex-shrink:0}
+.fc-ctxt{font-size:10.5px;color:#2A3348;font-family:'JetBrains Mono',monospace}
+.fc-ctxt b{color:#F5A623;font-weight:500}
 .fc-msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:0;scrollbar-width:thin;scrollbar-color:#1c1e26 transparent}
 .fc-msg{display:flex;gap:9px;padding:10px 0;border-bottom:1px solid #121419}
 .fc-msg:last-child{border-bottom:none}
 .fc-av{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;margin-top:1px;font-family:'Syne',sans-serif}
-.fc-av.u{background:#16244a;color:#60a5fa;border:1px solid #1d3461}
-.fc-av.a{background:#38200a;color:#f59e0b;border:1px solid #78350f}
+.fc-av.u{background:#16244a;color:#00BCD4;border:1px solid #1d3461}
+.fc-av.a{background:#38200a;color:#F5A623;border:1px solid #F5A623}
 .fc-mi{flex:1;min-width:0}
 .fc-mr{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;margin-bottom:4px;color:#383d4a}
-.fc-mr.a{color:#f59e0b}
-.fc-mt{font-size:12.5px;line-height:1.65;color:#c5cad4}
+.fc-mr.a{color:#F5A623}
+.fc-mt{font-size:12.5px;line-height:1.65;color:#4A5568}
 .fc-mt p{margin-bottom:5px}
 .fc-mt p:last-child{margin-bottom:0}
-.fc-chip{display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:3px 9px;border-radius:4px;font-size:10.5px;font-family:'JetBrains Mono',monospace;background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:#4ade80}
+.fc-chip{display:inline-flex;align-items:center;gap:4px;margin-top:7px;padding:3px 9px;border-radius:4px;font-size:10.5px;font-family:'JetBrains Mono',monospace;background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:#00D26A}
 .fc-think{display:flex;gap:3px;align-items:center;padding:3px 0}
-.fc-think span{width:4px;height:4px;border-radius:50%;background:#f59e0b;animation:fp 1.2s ease-in-out infinite}
+.fc-think span{width:4px;height:4px;border-radius:50%;background:#F5A623;animation:fp 1.2s ease-in-out infinite}
 .fc-think span:nth-child(2){animation-delay:.2s}
 .fc-think span:nth-child(3){animation-delay:.4s}
 @keyframes fp{0%,100%{opacity:.2;transform:scale(.8)}50%{opacity:1;transform:scale(1.1)}}
-.fc-qp{padding:8px 14px 6px;border-top:1px solid #181a21;display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
-.fc-qb{padding:4px 9px;border-radius:3px;font-size:10.5px;cursor:pointer;border:1px solid #1c1e26;background:#11131a;color:#3e4455;transition:all .12s;font-family:'Inter',sans-serif}
-.fc-qb:hover{border-color:#f59e0b;color:#f59e0b;background:rgba(245,158,11,.06)}
-.fc-ia{padding:10px 14px 12px;border-top:1px solid #181a21;flex-shrink:0}
-.fc-ii{display:flex;align-items:flex-end;gap:8px;background:#11131a;border:1px solid #1c1e26;border-radius:8px;padding:8px 10px;transition:border-color .12s}
-.fc-ii:focus-within{border-color:#f59e0b}
-.fc-ii textarea{flex:1;background:transparent;border:none;outline:none;color:#c5cad4;font-size:12.5px;font-family:'Inter',sans-serif;resize:none;line-height:1.5;max-height:100px;overflow-y:auto}
+.fc-qp{padding:8px 14px 6px;border-top:1px solid #131821;display:flex;flex-wrap:wrap;gap:5px;flex-shrink:0}
+.fc-qb{padding:4px 9px;border-radius:3px;font-size:10.5px;cursor:pointer;border:1px solid #1c1e26;background:#0A0E17;color:#2A3348;transition:all .12s;font-family:'Inter',sans-serif}
+.fc-qb:hover{border-color:#F5A623;color:#F5A623;background:rgba(245,158,11,.06)}
+.fc-ia{padding:10px 14px 12px;border-top:1px solid #131821;flex-shrink:0}
+.fc-ii{display:flex;align-items:flex-end;gap:8px;background:#0A0E17;border:1px solid #1c1e26;border-radius:8px;padding:8px 10px;transition:border-color .12s}
+.fc-ii:focus-within{border-color:#F5A623}
+.fc-ii textarea{flex:1;background:transparent;border:none;outline:none;color:#4A5568;font-size:12.5px;font-family:'Inter',sans-serif;resize:none;line-height:1.5;max-height:100px;overflow-y:auto}
 .fc-ii textarea::placeholder{color:#272b35}
-.fc-sb{width:28px;height:28px;border-radius:5px;border:none;background:#f59e0b;color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;transition:all .12s}
-.fc-sb:hover{background:#d97706}
+.fc-sb{width:28px;height:28px;border-radius:5px;border:none;background:#F5A623;color:#0A0E17;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;transition:all .12s}
+.fc-sb:hover{background:#F5A623}
 .fc-sb:disabled{background:#1c1e26;color:#272b35;cursor:not-allowed}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .mi{animation:mi .2s ease-out}
 .fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0b0e}
 .fm-tb{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:#0d0f14;border-bottom:1px solid #1c1e26;flex-shrink:0}
 .fm-tbl{display:flex;align-items:center;gap:8px}
-.fm-logo{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#e1e4ea}
-.fm-logo span{color:#f59e0b}
+.fm-logo{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#E8ECF1}
+.fm-logo span{color:#F5A623}
 .fm-sep{width:1px;height:14px;background:#1c1e26}
-.fm-bc{font-size:12px;color:#6b7280;display:flex;align-items:center;gap:5px}.fm-bc strong{color:#e1e4ea}
+.fm-bc{font-size:12px;color:#4A5568;display:flex;align-items:center;gap:5px}.fm-bc strong{color:#E8ECF1}
 
 .fm-tbr{display:flex;align-items:center;gap:6px}
 .fm-bdg{padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:500;border:1px solid}
-.fm-bdg.amb{background:#fffbeb;color:#b45309;border-color:#fcd34d}
-.fm-bdg.grn{background:#f0fdf4;color:#166534;border-color:#86efac}
-.fm-act{padding:5px 10px;border-radius:5px;font-size:11px;border:1px solid #e2e5ed;background:#f9fafb;color:#6b7280;cursor:pointer;transition:all .12s;font-family:'Inter',sans-serif}
-.fm-act:hover{border-color:#d1d5db;color:#374151}
-.fm-hero{margin:16px 20px 0;background:#13151c;border-radius:10px 10px 0 0;padding:18px 22px 16px;border:1px solid #1e2028;border-bottom:none;flex-shrink:0}
-.fm-hl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#4a8cf0;margin-bottom:8px;font-family:'JetBrains Mono',monospace}
-.fm-ht{font-size:19px;font-weight:700;color:#eef0f5;font-family:'Syne',sans-serif;margin-bottom:5px;line-height:1.2}
-.fm-hs{font-size:12px;color:#454d5e;line-height:1.4}
+.fm-bdg.amb{background:#131821;color:#F5A623;border-color:#F5A62344}
+.fm-bdg.grn{background:#131821;color:#00D26A;border-color:#00D26A44}
+.fm-act{padding:5px 10px;border-radius:5px;font-size:11px;border:1px solid #1E2538;background:#0F1319;color:#4A5568;cursor:pointer;transition:all .12s;font-family:'Inter',sans-serif}
+.fm-act:hover{border-color:#2A3348;color:#8B95A5}
+.fm-hero{margin:16px 20px 0;background:#131821;border-radius:10px 10px 0 0;padding:18px 22px 16px;border:1px solid #1E2538;border-bottom:none;flex-shrink:0}
+.fm-hl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#00BCD4;margin-bottom:8px;font-family:'JetBrains Mono',monospace}
+.fm-ht{font-size:19px;font-weight:700;color:#E8ECF1;font-family:'Syne',sans-serif;margin-bottom:5px;line-height:1.2}
+.fm-hs{font-size:12px;color:#4A5568;line-height:1.4}
 .fm-mb{margin:0 20px;background:#0d0f14;border:1px solid #1c1e26;border-top:none;padding:10px 16px;display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap}
 .fm-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:500;border:1.5px solid;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;background:none}
-.fm-pill.inactive{border-color:#e2e5ed;color:#9ba3b0;background:#f9fafb}
-.fm-pill.inactive:hover{border-color:#d1d5db;color:#6b7280}
-.fm-pill.live{border-color:#22c55e;color:#15803d;background:#f0fdf4}
-.fm-pill.mock{border-color:#f59e0b;color:#b45309;background:#fffbeb}
-.fm-pill.error{border-color:#ef4444;color:#b91c1c;background:#fef2f2}
+.fm-pill.inactive{border-color:#1E2538;color:#4A5568;background:#0F1319}
+.fm-pill.inactive:hover{border-color:#2A3348;color:#4A5568}
+.fm-pill.live{border-color:#00D26A;color:#00D26A;background:#131821}
+.fm-pill.mock{border-color:#F5A623;color:#F5A623;background:#131821}
+.fm-pill.error{border-color:#FF4757;color:#FF4757;background:#131821}
 .fp-icon{font-size:10px}
 .fp-name{font-weight:600}
 .fp-st{font-size:10px;font-weight:400;opacity:.8}
-.fm-mc{margin-left:auto;font-size:11px;color:#9ba3b0;display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;white-space:nowrap}
-.fm-mc b{color:#374151}
-.fm-rfr{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;border:1px solid #e2e5ed;background:#f9fafb;color:#6b7280;font-size:11px;cursor:pointer;transition:all .12s;font-family:'Inter',sans-serif}
-.fm-rfr:hover{border-color:#d1d5db;color:#374151}
-.fm-md{margin:0 20px;background:#fff;border:1px solid #e2e5ed;border-top:1px solid #f3f4f6;overflow:hidden;max-height:0;transition:max-height .25s ease;flex-shrink:0}
+.fm-mc{margin-left:auto;font-size:11px;color:#4A5568;display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;white-space:nowrap}
+.fm-mc b{color:#8B95A5}
+.fm-rfr{display:flex;align-items:center;gap:4px;padding:3px 8px;border-radius:4px;border:1px solid #1E2538;background:#0F1319;color:#4A5568;font-size:11px;cursor:pointer;transition:all .12s;font-family:'Inter',sans-serif}
+.fm-rfr:hover{border-color:#2A3348;color:#8B95A5}
+.fm-md{margin:0 20px;background:#E8ECF1;border:1px solid #1E2538;border-top:1px solid #1E2538;overflow:hidden;max-height:0;transition:max-height .25s ease;flex-shrink:0}
 .fm-md.open{max-height:220px}
 .fm-mdi{padding:14px 16px}
-.fm-mdi h4{font-size:12px;font-weight:700;color:#1f2937;margin-bottom:10px}
+.fm-mdi h4{font-size:12px;font-weight:700;color:#E8ECF1;margin-bottom:10px}
 .fm-mg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.fm-mi{background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px}
-.fm-mil{font-size:9.5px;color:#9ba3b0;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
-.fm-min{font-size:12px;font-weight:700;color:#1f2937;margin-bottom:4px}
-.fm-mif{font-size:10.5px;color:#6b7280;line-height:1.5}
+.fm-mi{background:#0F1319;border:1px solid #1E2538;border-radius:6px;padding:10px 12px}
+.fm-mil{font-size:9.5px;color:#4A5568;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:3px}
+.fm-min{font-size:12px;font-weight:700;color:#E8ECF1;margin-bottom:4px}
+.fm-mif{font-size:10.5px;color:#4A5568;line-height:1.5}
 .fm-mist{display:inline-flex;align-items:center;gap:3px;margin-top:6px;padding:2px 7px;border-radius:99px;font-size:9.5px;font-weight:600}
-.fm-mist.live{background:#dcfce7;color:#166534}
-.fm-mist.mock{background:#fef3c7;color:#92400e}
-.fm-mist.none{background:#f3f4f6;color:#6b7280}
-.fm-tabs{margin:0 20px;border-bottom:1px solid #e2e5ed;background:#fff;display:flex;align-items:center;padding:0 4px;flex-shrink:0;overflow-x:auto;scrollbar-width:thin;scrollbar-color:#c5cad4 transparent}
+.fm-mist.live{background:#131821;color:#00D26A}
+.fm-mist.mock{background:#131821;color:#F5A623}
+.fm-mist.none{background:#1E2538;color:#4A5568}
+.fm-tabs{margin:0 20px;border-bottom:1px solid #1E2538;background:#E8ECF1;display:flex;align-items:center;padding:0 4px;flex-shrink:0;overflow-x:auto;scrollbar-width:thin;scrollbar-color:#4A5568 transparent}
 .fm-tabs::-webkit-scrollbar{height:4px}
 .fm-tabs::-webkit-scrollbar-track{background:transparent}
-.fm-tabs::-webkit-scrollbar-thumb{background:#c5cad4;border-radius:4px}
-.fm-tabs::-webkit-scrollbar-thumb:hover{background:#9ca3af}
-.fm-tab{padding:11px 16px;font-size:12.5px;font-weight:500;color:#9ba3b0;cursor:pointer;border-bottom:2px solid transparent;transition:all .12s;white-space:nowrap;background:transparent;border-top:none;border-left:none;border-right:none;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif}
-.fm-tab:hover:not(.on){color:#4b5563}
-.fm-tab.on{color:#111827;border-bottom-color:#111827;font-weight:600}
-.fm-cnt{flex:1;overflow-y:auto;margin:0 20px 16px;background:#fff;border:1px solid #e2e5ed;border-top:none;border-radius:0 0 10px 10px;scrollbar-width:thin;scrollbar-color:#e2e5ed transparent}
+.fm-tabs::-webkit-scrollbar-thumb{background:#4A5568;border-radius:4px}
+.fm-tabs::-webkit-scrollbar-thumb:hover{background:#4A5568}
+.fm-tab{padding:11px 16px;font-size:12.5px;font-weight:500;color:#4A5568;cursor:pointer;border-bottom:2px solid transparent;transition:all .12s;white-space:nowrap;background:transparent;border-top:none;border-left:none;border-right:none;display:flex;align-items:center;gap:5px;font-family:'Inter',sans-serif}
+.fm-tab:hover:not(.on){color:#4A5568}
+.fm-tab.on{color:#0A0E17;border-bottom-color:#0A0E17;font-weight:600}
+.fm-cnt{flex:1;overflow-y:auto;margin:0 20px 16px;background:#E8ECF1;border:1px solid #1E2538;border-top:none;border-radius:0 0 10px 10px;scrollbar-width:thin;scrollbar-color:#1E2538 transparent}
 .cmp{padding:24px}
 .cmp-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px}
-.cmp-hdr h3{font-size:16px;font-weight:700;color:#111827;margin-bottom:3px}
-.cmp-hdr p{font-size:12px;color:#9ba3b0}
+.cmp-hdr h3{font-size:16px;font-weight:700;color:#0A0E17;margin-bottom:3px}
+.cmp-hdr p{font-size:12px;color:#4A5568}
 .cmp-tbl{width:100%;border-collapse:collapse}
-.cmp-tbl thead tr{border-bottom:2px solid #f3f4f6}
+.cmp-tbl thead tr{border-bottom:2px solid #1E2538}
 .cmp-tbl thead th{padding:12px 16px;text-align:left;font-weight:400;vertical-align:top}
-.th-lbl{width:160px;font-size:11px;color:#9ba3b0;text-transform:uppercase;letter-spacing:.06em;font-family:'JetBrains Mono',monospace}
-.th-base{background:#eef2ff;border-radius:8px 8px 0 0}
+.th-lbl{width:160px;font-size:11px;color:#4A5568;text-transform:uppercase;letter-spacing:.06em;font-family:'JetBrains Mono',monospace}
+.th-base{background:#131821;border-radius:8px 8px 0 0}
 .th-base .cn{font-size:15px;font-weight:700;color:#1e3a8a}
-.th-base .cs{font-size:11px;color:#6b7280;margin-top:2px}
-.th-best .cn{font-size:15px;font-weight:700;color:#111827}
-.th-best .cs{font-size:11px;color:#9ba3b0;margin-top:2px}
-.th-worst .cn{font-size:15px;font-weight:700;color:#111827}
-.th-worst .cs{font-size:11px;color:#9ba3b0;margin-top:2px}
-.cmp-tbl tbody tr{border-bottom:1px solid #f9fafb}
-.cmp-tbl tbody tr:hover td{background:#fcfcfd}
-.cmp-tbl tbody tr:hover .cb{background:#e8edff}
+.th-base .cs{font-size:11px;color:#4A5568;margin-top:2px}
+.th-best .cn{font-size:15px;font-weight:700;color:#0A0E17}
+.th-best .cs{font-size:11px;color:#4A5568;margin-top:2px}
+.th-worst .cn{font-size:15px;font-weight:700;color:#0A0E17}
+.th-worst .cs{font-size:11px;color:#4A5568;margin-top:2px}
+.cmp-tbl tbody tr{border-bottom:1px solid #0F1319}
+.cmp-tbl tbody tr:hover td{background:#0F1319}
+.cmp-tbl tbody tr:hover .cb{background:#131821}
 td.cm{padding:14px 16px;vertical-align:middle}
-td.cm-lbl{font-size:13px;color:#374151}
-td.cb{background:#eef2ff}
-.cv{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#111827}
-td.cbe .cv{color:#059669}
-td.cwo .cv{color:#dc2626}
+td.cm-lbl{font-size:13px;color:#8B95A5}
+td.cb{background:#131821}
+.cv{font-size:18px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#0A0E17}
+td.cbe .cv{color:#00D26A}
+td.cwo .cv{color:#FF4757}
 .cd{font-size:11px;margin-top:2px;font-family:'JetBrains Mono',monospace}
-.cd.p{color:#059669}
-.cd.n{color:#dc2626}
-.ai-call{margin-top:20px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:14px 16px}
-.ai-call h4{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#b45309;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.cd.p{color:#00D26A}
+.cd.n{color:#FF4757}
+.ai-call{margin-top:20px;background:#131821;border:1px solid #F5A62344;border-radius:8px;padding:14px 16px}
+.ai-call h4{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#F5A623;margin-bottom:8px;display:flex;align-items:center;gap:6px}
 .ai-call ul{list-style:none;display:flex;flex-direction:column;gap:5px;padding:0;margin:0}
-.ai-call li{font-size:12px;color:#78350f;display:flex;gap:7px;line-height:1.5}
+.ai-call li{font-size:12px;color:#F5A623;display:flex;gap:7px;line-height:1.5}
 .ai-call li strong{color:#451a03}
 .ass{padding:24px}
-.slbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#9ba3b0;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #f3f4f6;font-family:'JetBrains Mono',monospace}
+.slbl{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4A5568;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #1E2538;font-family:'JetBrains Mono',monospace}
 .dtbl{width:100%;border-collapse:collapse;margin-bottom:22px}
-.dtbl th{text-align:left;padding:7px 12px;font-size:10px;color:#9ba3b0;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:#f9fafb;border-bottom:1px solid #f3f4f6}
-.dtbl td{padding:9px 12px;border-bottom:1px solid #f9fafb;font-size:12px;color:#374151}
+.dtbl th{text-align:left;padding:7px 12px;font-size:10px;color:#4A5568;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:#0F1319;border-bottom:1px solid #1E2538}
+.dtbl td{padding:9px 12px;border-bottom:1px solid #0F1319;font-size:12px;color:#8B95A5}
 .dtbl tr:last-child td{border-bottom:none}
-.dtbl tr:hover td{background:#fcfcfd}
-.tv{font-family:'JetBrains Mono',monospace;font-weight:600;color:#111827;text-align:right}
-.thl{font-family:'JetBrains Mono',monospace;font-weight:700;color:#1d4ed8;text-align:right}
-.tgr{font-family:'JetBrains Mono',monospace;font-weight:700;color:#059669;text-align:right}
-.tsc{font-size:10px;color:#9ba3b0;font-style:italic}
+.dtbl tr:hover td{background:#0F1319}
+.tv{font-family:'JetBrains Mono',monospace;font-weight:600;color:#0A0E17;text-align:right}
+.thl{font-family:'JetBrains Mono',monospace;font-weight:700;color:#00BCD4;text-align:right}
+.tgr{font-family:'JetBrains Mono',monospace;font-weight:700;color:#00D26A;text-align:right}
+.tsc{font-size:10px;color:#4A5568;font-style:italic}
 .dbt{padding:24px}
 .lc{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px}
-.lcard{border:2px solid #e5e7eb;border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s;background:#fff}
-.lcard:hover{border-color:#93c5fd}
-.lcard.sel{border-color:#2563eb}
-.lch{padding:10px 14px;background:#f9fafb;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between}
-.lch span{font-size:12px;font-weight:700;color:#111827}
-.lch .sd{width:8px;height:8px;border-radius:50%;background:#2563eb}
-.lr{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #f3f4f6}
+.lcard{border:2px solid #1E2538;border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s;background:#E8ECF1}
+.lcard:hover{border-color:#00BCD4}
+.lcard.sel{border-color:#00BCD4}
+.lch{padding:10px 14px;background:#0F1319;border-bottom:1px solid #1E2538;display:flex;align-items:center;justify-content:space-between}
+.lch span{font-size:12px;font-weight:700;color:#0A0E17}
+.lch .sd{width:8px;height:8px;border-radius:50%;background:#00BCD4}
+.lr{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #1E2538}
 .lr:last-child{border-bottom:none}
-.lr .lk{font-size:11px;color:#9ba3b0}
-.lr .lv{font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:600;color:#111827}
+.lr .lk{font-size:11px;color:#4A5568}
+.lr .lv{font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:600;color:#0A0E17}
 .sns{padding:24px}
-.scard{border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:20px}
-.stit{padding:10px 14px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:12px;font-weight:600;color:#374151}
+.scard{border:1px solid #1E2538;border-radius:8px;overflow:hidden;margin-bottom:20px}
+.stit{padding:10px 14px;background:#0F1319;border-bottom:1px solid #1E2538;font-size:12px;font-weight:600;color:#8B95A5}
 .ht{width:100%;border-collapse:collapse}
-.ht th{padding:7px 12px;text-align:center;font-size:10.5px;color:#9ba3b0;border-bottom:1px solid #f3f4f6;font-family:'JetBrains Mono',monospace;background:#f9fafb}
-.ht td{padding:8px 12px;text-align:center;font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:600;border-bottom:1px solid #f9fafb}
-.rl{font-size:11px;color:#9ba3b0;background:#f9fafb;font-weight:400;border-right:1px solid #e5e7eb;text-align:left}
+.ht th{padding:7px 12px;text-align:center;font-size:10.5px;color:#4A5568;border-bottom:1px solid #1E2538;font-family:'JetBrains Mono',monospace;background:#0F1319}
+.ht td{padding:8px 12px;text-align:center;font-size:12px;font-family:'JetBrains Mono',monospace;font-weight:600;border-bottom:1px solid #0F1319}
+.rl{font-size:11px;color:#4A5568;background:#0F1319;font-weight:400;border-right:1px solid #1E2538;text-align:left}
 .dec{padding:24px}
-.win{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;margin-bottom:20px}
+.win{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#131821;border:1.5px solid #00BCD4;border-radius:8px;margin-bottom:20px}
 .win h4{font-size:14px;font-weight:700;color:#1e40af}
-.win p{font-size:11px;color:#6b7280;margin-top:2px}
-.bbl{padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:600;background:#dbeafe;color:#1d4ed8;border:1px solid #93c5fd}
-.bgr{padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:600;background:#dcfce7;color:#166534;border:1px solid #86efac}
-.dc{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:12px}
-.dc h4{font-size:13px;font-weight:700;color:#111827;margin-bottom:10px;display:flex;align-items:center;gap:7px}
+.win p{font-size:11px;color:#4A5568;margin-top:2px}
+.bbl{padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:600;background:#131821;color:#00BCD4;border:1px solid #00BCD4}
+.bgr{padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:600;background:#131821;color:#00D26A;border:1px solid #00D26A44}
+.dc{background:#0F1319;border:1px solid #1E2538;border-radius:8px;padding:14px;margin-bottom:12px}
+.dc h4{font-size:13px;font-weight:700;color:#0A0E17;margin-bottom:10px;display:flex;align-items:center;gap:7px}
 .dc ul{list-style:none;padding:0;margin:0}
-.dc li{font-size:12px;color:#6b7280;padding:6px 0;border-bottom:1px solid #e5e7eb;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.dc li{font-size:12px;color:#4A5568;padding:6px 0;border-bottom:1px solid #1E2538;display:flex;align-items:flex-start;gap:8px;line-height:1.5}
 .dc li:last-child{border-bottom:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 `;
@@ -1139,7 +1139,7 @@ const FinancialDashboard: React.FC<DealProps> = ({ deal, dealId }) => {
         <div className="fd" style={{ height: 'calc(100vh - 120px)', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ textAlign: 'center' }}>
             <div className="fc-think" style={{ justifyContent: 'center', marginBottom: 12 }}><span /><span /><span /></div>
-            <div style={{ fontSize: 12, color: '#9ba3b0' }}>Loading financial model data...</div>
+            <div style={{ fontSize: 12, color: BT.text.muted }}>Loading financial model data...</div>
           </div>
         </div>
       </>
