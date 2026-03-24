@@ -5,6 +5,7 @@ import {
   Send, Clock, Layers, TrendingUp, CheckCircle2, FileText, MapPin
 } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import { BT } from '../bloomberg-ui';
 
 interface ZoningIntelligencePanelProps {
   deal?: any;
@@ -277,7 +278,7 @@ export function ZoningIntelligencePanel({ deal, dealId, districtCode, municipali
   }, [resolvedDistrict, resolvedMunicipality, resolvedState, resolvedLandArea, resolvedDealId, deal]);
 
   return (
-    <div className="space-y-6 mt-8">
+    <div className="space-y-6 mt-8" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
       <div className="border-t border-gray-200 pt-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">

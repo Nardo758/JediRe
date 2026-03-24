@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
 import { apiClient } from '@/services/api.client';
+import { BT } from '../bloomberg-ui';
 
 // Type definitions
 interface InvestmentStrategyOverview {
@@ -366,7 +367,7 @@ const InvestmentTimelineVisualization: React.FC<InvestmentTimelineVisualizationP
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <h3 className="text-lg font-bold text-gray-900 mb-4">
         🗺️ Investment Lifecycle Timeline
       </h3>
@@ -478,7 +479,7 @@ const AcquisitionStrategySubSection: React.FC<AcquisitionStrategySubSectionProps
     <div className="space-y-6">
       
       {/* Strategy Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
         <h3 className="text-lg font-bold text-gray-900 mb-4">
           🎯 {isPipeline ? 'Acquisition Strategy' : 'Acquisition Thesis (Executed)'}
         </h3>
@@ -531,7 +532,7 @@ const AcquisitionStrategySubSection: React.FC<AcquisitionStrategySubSectionProps
       </div>
 
       {/* Capital Deployment */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
         <h3 className="text-lg font-bold text-gray-900 mb-4">
           💰 Capital Deployment Plan
         </h3>
@@ -618,7 +619,7 @@ const ValueCreationPlanSubSection: React.FC<ValueCreationPlanSubSectionProps> = 
     <div className="space-y-6">
       
       {/* Progress Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
         <h3 className="text-lg font-bold text-gray-900 mb-4">
           🚀 {isPipeline ? 'Planned Value Creation' : 'Value Creation Progress'}
         </h3>
@@ -664,7 +665,7 @@ const ValueCreationPlanSubSection: React.FC<ValueCreationPlanSubSectionProps> = 
       </div>
 
       {/* Initiatives List */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
         <h3 className="text-lg font-bold text-gray-900 mb-4">
           📋 Value Creation Initiatives
         </h3>
@@ -738,7 +739,7 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
     <div className="space-y-6">
       
       {/* Exit Overview */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
         <h3 className="text-lg font-bold text-gray-900 mb-4">
           🏆 Exit Strategy Overview
         </h3>
@@ -776,7 +777,7 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
       </div>
 
       {/* Exit Scenarios */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
         <h3 className="text-lg font-bold text-gray-900 mb-4">
           🎯 Exit Scenarios
         </h3>
@@ -860,7 +861,7 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
 
       {/* Exit Readiness Preparation (Performance Mode) */}
       {!isPipeline && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
           <h3 className="text-lg font-bold text-gray-900 mb-4">
             📊 Exit Preparation Status
           </h3>
@@ -888,7 +889,7 @@ const ExitStrategySubSection: React.FC<ExitStrategySubSectionProps> = ({
 
       {/* Broker Recommendations (Performance Mode) */}
       {!isPipeline && exitStrategy.recommendedBrokers && exitStrategy.recommendedBrokers.length > 0 && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
           <h3 className="text-lg font-bold text-gray-900 mb-4">
             🏆 Recommended Brokers
           </h3>
@@ -973,7 +974,7 @@ const RiskAssessmentSection: React.FC<RiskAssessmentSectionProps> = ({ risks }) 
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <h3 className="text-lg font-bold text-gray-900 mb-4">
         ⚠️ Risk Assessment
       </h3>

@@ -7,6 +7,7 @@ import {
 import { apiClient } from '../../../services/api.client';
 import { ThreeColumnComparison } from '../ThreeColumnComparison';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { BT } from '../bloomberg-ui';
 
 interface CollisionDimension {
   score: number;
@@ -284,7 +285,7 @@ const CollisionAnalysisSection: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-stone-900">Collision Analysis</h2>

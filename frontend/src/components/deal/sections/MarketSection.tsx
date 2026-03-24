@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { BT } from '../bloomberg-ui';
 
 // Type definitions (moved from mock data)
 interface DemographicStat {
@@ -282,7 +283,7 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           {mode === 'acquisition' ? '📊 Market Demographics' : '📍 Trade Area Demographics'}
@@ -346,7 +347,7 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           {mode === 'acquisition' ? '📈 Market Trends' : '📊 Market Trend Monitoring'}
@@ -467,7 +468,7 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
     ['strength', 'weakness', 'opportunity', 'threat'];
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           {mode === 'acquisition' ? '🔍 SWOT Analysis' : '📋 Market Position SWOT'}
@@ -553,7 +554,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
   });
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           {mode === 'acquisition' ? '🗺️ Submarket Comparison' : '📍 Competitive Submarket Analysis'}
@@ -676,7 +677,7 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
           {mode === 'acquisition' ? '🎯 Investment Opportunity Gauge' : '📊 Exit Timing Indicator'}

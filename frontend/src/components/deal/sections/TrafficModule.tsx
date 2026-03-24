@@ -175,24 +175,24 @@ function Sparkline({ data, color = '#d97706', height = 32 }: { data: number[]; c
 function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
   label: string; value: string; trend: string; trendUp: boolean | null; sparkData: number[]; icon: any;
 }) {
-  const trendColor = trendUp === true ? BT.greenL : trendUp === false ? BT.redL : BT.td;
+  const trendColor = trendUp === true ? BT2.text.green : trendUp === false ? BT2.text.red : BT2.text.muted;
   return (
-    <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${BT2.border.subtle}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 9, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', ...bMono }}>{label}</span>
-        <Icon size={13} style={{ color: BT.td }} />
+        <span style={{ fontSize: 9, color: BT2.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: bMono }}>{label}</span>
+        <Icon size={13} style={{ color: BT2.text.muted }} />
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: BT.amberL, ...bMono }}>{value}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: BT2.text.amber, fontFamily: bMono }}>{value}</div>
           {trend && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: trendColor, marginTop: 3 }}>
               {trendUp === true ? <ArrowUpRight size={11} /> : trendUp === false ? <ArrowDownRight size={11} /> : <Minus size={11} />}
-              <span style={{ ...bMono }}>{trend}</span>
+              <span style={{ fontFamily: bMono }}>{trend}</span>
             </div>
           )}
         </div>
-        <Sparkline data={sparkData} color={BT.amber} />
+        <Sparkline data={sparkData} color={BT2.text.amber} />
       </div>
     </div>
   );
@@ -201,19 +201,19 @@ function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
 function FactorCard({ label, factor, summary, direction }: {
   label: string; factor: number; summary: string; direction: 'up' | 'down' | 'neutral';
 }) {
-  const dc = direction === 'up' ? BT.greenL : direction === 'down' ? BT.redL : BT.amberL;
-  const db = direction === 'up' ? BT.greenBg : direction === 'down' ? BT.redBg : BT.amberBg;
+  const dc = direction === 'up' ? BT2.text.green : direction === 'down' ? BT2.text.red : BT2.text.amber;
+  const db = direction === 'up' ? `${BT2.text.green}18` : direction === 'down' ? `${BT2.text.red}18` : `${BT2.text.amber}18`;
   return (
     <div style={{ background: db, borderRadius: 8, border: `1px solid ${dc}30`, padding: '14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <div style={{ width: 6, height: 6, borderRadius: '50%', background: dc }} />
-        <span style={{ fontSize: 9, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', ...bMono }}>{label}</span>
+        <span style={{ fontSize: 9, color: BT2.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: bMono }}>{label}</span>
       </div>
-      <div style={{ fontSize: 20, fontWeight: 700, color: dc, display: 'flex', alignItems: 'center', gap: 4, ...bMono }}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: dc, display: 'flex', alignItems: 'center', gap: 4, fontFamily: bMono }}>
         {factor.toFixed(2)}x
         {direction === 'up' ? <ArrowUpRight size={12} /> : direction === 'down' ? <ArrowDownRight size={12} /> : <Minus size={12} />}
       </div>
-      <p style={{ fontSize: 10, color: BT.tm, lineHeight: 1.4, margin: 0, ...bSans }}>{summary}</p>
+      <p style={{ fontSize: 10, color: BT2.text.secondary, lineHeight: 1.4, margin: 0, fontFamily: bSans }}>{summary}</p>
     </div>
   );
 }
@@ -1011,9 +1011,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       />
 
       {loading ? (
-        <div style={{ background: BT.bgCard, borderRadius: 8, border: `1px solid ${BT.border}`, padding: 48, textAlign: 'center' }}>
-          <div style={{ width: 28, height: 28, border: `2px solid ${BT.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
-          <p style={{ fontSize: 12, color: BT.td, ...bSans }}>Loading traffic predictions...</p>
+        <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${BT2.border.subtle}`, padding: 48, textAlign: 'center' }}>
+          <div style={{ width: 28, height: 28, border: `2px solid ${BT2.text.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: 12, color: BT2.text.muted, fontFamily: bSans }}>Loading traffic predictions...</p>
         </div>
       ) : (
         <>
@@ -1105,18 +1105,18 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
       {showTradeAreaPanel && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: 16 }}>
-          <div style={{ background: BT.bgCard, borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', position: 'relative', border: `1px solid ${BT.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: `1px solid ${BT.border}` }}>
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: BT.text, ...bSans }}>Define Trade Area</h2>
+          <div style={{ background: BT2.bg.panel, borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', position: 'relative', border: `1px solid ${BT2.border.subtle}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: `1px solid ${BT2.border.subtle}` }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: BT2.text.primary, fontFamily: bSans }}>Define Trade Area</h2>
               <button
                 onClick={() => setShowTradeAreaPanel(false)}
-                style={{ background: BT.bgPanel, border: `1px solid ${BT.border}`, borderRadius: 6, padding: '4px 8px', color: BT.td, cursor: 'pointer' }}
+                style={{ background: BT2.bg.panelAlt, border: `1px solid ${BT2.border.subtle}`, borderRadius: 6, padding: '4px 8px', color: BT2.text.muted, cursor: 'pointer' }}
               >
                 <X size={16} />
               </button>
             </div>
             <div style={{ padding: 24 }}>
-              <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: BT.td, fontSize: 12, ...bSans }}>Loading map...</div>}>
+              <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: BT2.text.muted, fontSize: 12, fontFamily: bSans }}>Loading map...</div>}>
                 <TradeAreaDefinitionPanel
                   propertyLat={dealLatLng.lat}
                   propertyLng={dealLatLng.lng}

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '@/contexts/DealModuleContext';
+import { BT } from '../bloomberg-ui';
 
 interface DealProps {
   deal?: any;
@@ -271,20 +272,20 @@ function CompView({ model }: { model: any }) {
         <span className="bgr">Auto-calculated</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20, padding: '14px 0' }}>
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, textAlign: 'center' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#166534', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>EXIT SCORE</div>
+        <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.green, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>EXIT SCORE</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: exitScore >= 70 ? '#16a34a' : exitScore >= 50 ? '#d97706' : '#dc2626' }}>{exitScore}</div>
-          <div style={{ fontSize: 11, color: '#6b7280' }}>{exitScore >= 70 ? 'Strong window' : exitScore >= 50 ? 'Fair window' : 'Weak window'}</div>
+          <div style={{ fontSize: 11, color: BT.text.muted }}>{exitScore >= 70 ? 'Strong window' : exitScore >= 50 ? 'Fair window' : 'Weak window'}</div>
         </div>
-        <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 14, textAlign: 'center' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#1e40af', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>OPTIMAL EXIT</div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: '#1e40af' }}>Q1 26</div>
-          <div style={{ fontSize: 11, color: '#6b7280' }}>Low rates + low supply</div>
+        <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14, textAlign: 'center' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.blue, letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>OPTIMAL EXIT</div>
+          <div style={{ fontSize: 24, fontWeight: 700, color: BT.text.blue }}>Q1 26</div>
+          <div style={{ fontSize: 11, color: BT.text.muted }}>Low rates + low supply</div>
         </div>
         <div style={{ background: '#fefce8', border: '1px solid #fde68a', borderRadius: 8, padding: 14, textAlign: 'center' }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#854d0e', letterSpacing: '.08em', textTransform: 'uppercase', marginBottom: 4 }}>CONVERGENCE</div>
           <div style={{ fontSize: 24, fontWeight: 700, color: '#d97706' }}>3</div>
-          <div style={{ fontSize: 11, color: '#6b7280' }}>Factors aligned</div>
+          <div style={{ fontSize: 11, color: BT.text.muted }}>Factors aligned</div>
         </div>
       </div>
       <table className="cmp-tbl">
@@ -410,8 +411,8 @@ function DebtView({ model, setModel }: { model: any; setModel: React.Dispatch<Re
           </div>
         ))}
       </div>
-      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 12, color: '#1e40af' }}>Full debt analysis, 10-year cycle chart, and product comparison available in <strong>Debt, Equity &amp; Exit</strong> module</div>
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 12, color: BT.text.blue }}>Full debt analysis, 10-year cycle chart, and product comparison available in <strong>Debt, Equity &amp; Exit</strong> module</div>
         <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 600 }}>&rarr; Edit in Module</div>
       </div>
       <div className="ai-call">
@@ -507,8 +508,8 @@ function ProjectionsView({ model }: { model: any }) {
               <tr><td>Total Debt Service</td>{filteredCF.map((cf: any) => <td key={cf.year} className="tv" style={{ color: '#dc2626' }}>({fmt$(cf.debtService || 0)})</td>)}</tr>
             </>
           )}
-          <tr style={{ borderBottom: '2px solid #111827', background: '#f0fdf4' }}>
-            <td style={{ fontWeight: 700, color: '#166534' }}>LEVERED CASH FLOW</td>
+          <tr style={{ borderBottom: `2px solid ${BT.border.mid}`, background: BT.bg.panelAlt }}>
+            <td style={{ fontWeight: 700, color: BT.text.green }}>LEVERED CASH FLOW</td>
             {filteredCF.map((cf: any) => <td key={cf.year} className="tgr" style={{ fontWeight: 700 }}>{fmt$(cf.leveredCashFlow || cf.beforeTaxCashFlow || 0)}</td>)}
           </tr>
         </tbody>
@@ -523,8 +524,8 @@ function SensView({ model }: { model: any }) {
   const baseIrr = model.scenarios?.base?.irr || 18;
   const baseEM = model.scenarios?.base?.equityMultiple || 2.0;
 
-  const hc = (irr: number) => irr > 40 ? { background: '#dcfce7', color: '#166534' } : irr > 35 ? { background: '#d1fae5', color: '#065f46' } : irr > 28 ? { background: '#dbeafe', color: '#1e40af' } : irr > 20 ? { background: '#fef9c3', color: '#854d0e' } : { background: '#fee2e2', color: '#991b1b' };
-  const ec = (em: number) => em > 9 ? { background: '#dcfce7', color: '#166534' } : em > 6 ? { background: '#dbeafe', color: '#1e40af' } : em > 4 ? { background: '#fef9c3', color: '#854d0e' } : { background: '#fee2e2', color: '#991b1b' };
+  const hc = (irr: number) => irr > 40 ? { background: '#dcfce7', color: BT.text.green } : irr > 35 ? { background: '#d1fae5', color: '#065f46' } : irr > 28 ? { background: '#dbeafe', color: BT.text.blue } : irr > 20 ? { background: '#fef9c3', color: '#854d0e' } : { background: '#fee2e2', color: '#991b1b' };
+  const ec = (em: number) => em > 9 ? { background: '#dcfce7', color: BT.text.green } : em > 6 ? { background: '#dbeafe', color: BT.text.blue } : em > 4 ? { background: '#fef9c3', color: '#854d0e' } : { background: '#fee2e2', color: '#991b1b' };
   const baseExitCap = model.exit?.exitCapRate || 0.055;
   const baseRentGrowth = model.revenue?.rentGrowthY1 || 0.04;
   const ai = (cap: number, rg: number) => Math.max(8, Math.min(55, baseIrr + (baseExitCap - cap) * 200 + (rg - baseRentGrowth) * 150));
@@ -602,14 +603,14 @@ function WaterfallView({ model }: { model: any }) {
             <div style={{ width: `${gpPct}%`, background: '#f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontSize: 11, fontWeight: 700 }}>GP {gpPct}%</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#1e40af', marginBottom: 8 }}>LP RETURNS</div>
+            <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.blue, marginBottom: 8 }}>LP RETURNS</div>
               <div style={{ fontSize: 12, color: '#374151', lineHeight: 2 }}>
                 <div>Total LP: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt$(totalLP)}</strong></div>
               </div>
             </div>
             <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309', marginBottom: 8 }}>GP RETURNS</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, marginBottom: 8 }}>GP RETURNS</div>
               <div style={{ fontSize: 12, color: '#374151', lineHeight: 2 }}>
                 <div>Total GP: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt$(totalGP)}</strong></div>
                 <div>Promote: <strong style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmt$(totalPromote)}</strong></div>
@@ -757,12 +758,12 @@ function DecView({ model, dealId }: { model: any; dealId: string }) {
         </ul>
       </div>
       <div className="slbl">EXIT READINESS</div>
-      <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 8, padding: 14, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#166534', letterSpacing: '.06em', textTransform: 'uppercase' }}>OPTIMAL EXIT WINDOW</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.green, letterSpacing: '.06em', textTransform: 'uppercase' }}>OPTIMAL EXIT WINDOW</div>
           <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>Q1 2026 &ndash; Q2 2026 &mdash; all three factors converge</div>
         </div>
-        <div style={{ fontSize: 11, color: '#6b7280' }}>View details in Debt, Equity &amp; Exit tab</div>
+        <div style={{ fontSize: 11, color: BT.text.muted }}>View details in Debt, Equity &amp; Exit tab</div>
       </div>
       {scenarios?.base?.irr > 0 && (
         <button onClick={fetchAnalysis} style={{
@@ -820,14 +821,14 @@ const CSS = `
 .fc-sb:disabled{background:#1c1e26;color:#272b35;cursor:not-allowed}
 @keyframes mi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 .mi{animation:mi .2s ease-out}
-.fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#f8fafc}
-.fm-tb{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:#fff;border-bottom:1px solid #e2e5ed;flex-shrink:0}
+.fm{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#0a0b0e}
+.fm-tb{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:48px;background:#0d0f14;border-bottom:1px solid #1c1e26;flex-shrink:0}
 .fm-tbl{display:flex;align-items:center;gap:8px}
-.fm-logo{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#111827}
+.fm-logo{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#e1e4ea}
 .fm-logo span{color:#f59e0b}
-.fm-sep{width:1px;height:14px;background:#e2e5ed}
-.fm-bc{font-size:12px;color:#6b7280;display:flex;align-items:center;gap:5px}
-.fm-bc strong{color:#111827}
+.fm-sep{width:1px;height:14px;background:#1c1e26}
+.fm-bc{font-size:12px;color:#6b7280;display:flex;align-items:center;gap:5px}.fm-bc strong{color:#e1e4ea}
+
 .fm-tbr{display:flex;align-items:center;gap:6px}
 .fm-bdg{padding:3px 10px;border-radius:99px;font-size:10.5px;font-weight:500;border:1px solid}
 .fm-bdg.amb{background:#fffbeb;color:#b45309;border-color:#fcd34d}
@@ -838,7 +839,7 @@ const CSS = `
 .fm-hl{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#4a8cf0;margin-bottom:8px;font-family:'JetBrains Mono',monospace}
 .fm-ht{font-size:19px;font-weight:700;color:#eef0f5;font-family:'Syne',sans-serif;margin-bottom:5px;line-height:1.2}
 .fm-hs{font-size:12px;color:#454d5e;line-height:1.4}
-.fm-mb{margin:0 20px;background:#fff;border:1px solid #e2e5ed;border-top:none;padding:10px 16px;display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap}
+.fm-mb{margin:0 20px;background:#0d0f14;border:1px solid #1c1e26;border-top:none;padding:10px 16px;display:flex;align-items:center;gap:7px;flex-shrink:0;flex-wrap:wrap}
 .fm-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:500;border:1.5px solid;cursor:pointer;transition:all .15s;font-family:'Inter',sans-serif;background:none}
 .fm-pill.inactive{border-color:#e2e5ed;color:#9ba3b0;background:#f9fafb}
 .fm-pill.inactive:hover{border-color:#d1d5db;color:#6b7280}

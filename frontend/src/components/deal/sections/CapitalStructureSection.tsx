@@ -18,6 +18,7 @@ import type {
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { apiClient } from '@/services/api.client';
 import {
+import { BT } from '../bloomberg-ui';
   strategyTemplates,
   defaultCapitalStack,
   debtProducts,
@@ -1043,7 +1044,7 @@ export const CapitalStructureSection: React.FC<CapitalStructureSectionProps> = (
   // ========================================================================
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
       {/* Strategy Selector */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">

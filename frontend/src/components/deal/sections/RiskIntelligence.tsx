@@ -12,7 +12,8 @@ import { useParams } from 'react-router-dom';
 import { useDealModule } from '../../../contexts/DealModuleContext';
 import { apiClient, api } from '../../../services/api.client';
 import { useDealStore } from '../../../stores/dealStore';
-import { T, mono, sans, BCard, BSection, BBadge, BLiveBadge, BloombergPage, BSparkline, BMiniBar } from '../bloomberg-tokens';
+import { T, mono, sans } from '../bloomberg-tokens';
+import { BCard, BLiveBadge, BloombergPage } from '../bloomberg-ui';
 
 interface RiskCategory {
   id: string;
@@ -338,19 +339,19 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
     [augmentedCategories],
   );
 
-  const scoreColor = (s: number) => s < 40 ? T.greenL : s < 60 ? T.amberL : T.redL;
+  const scoreColor = (s: number) => s < 40 ? T.text.green : s < 60 ? T.text.amber : T.text.red;
 
   if (isLoading) {
     return (
       <BloombergPage>
-        <div style={{ background: T.bgCard, borderRadius: 8, border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.amber}`, padding: '14px 18px', marginBottom: 14 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: T.amber, letterSpacing: 2, marginBottom: 4, ...mono }}>THE DECISION THIS PAGE DRIVES</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>What could kill this deal and how do I protect against it?</div>
+        <div style={{ background: T.bg.panel, borderRadius: 8, border: `1px solid ${T.border.subtle}`, borderLeft: `3px solid ${T.text.amber}`, padding: '14px 18px', marginBottom: 14 }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: T.text.amber, letterSpacing: 2, marginBottom: 4, fontFamily: mono }}>THE DECISION THIS PAGE DRIVES</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: T.text.primary, fontFamily: sans }}>What could kill this deal and how do I protect against it?</div>
         </div>
         <BCard style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 18, height: 18, border: `2px solid ${T.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-            <span style={{ fontSize: 12, color: T.td, ...sans }}>Loading risk intelligence...</span>
+            <div style={{ width: 18, height: 18, border: `2px solid ${T.text.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <span style={{ fontSize: 12, color: T.text.muted, fontFamily: sans }}>Loading risk intelligence...</span>
           </div>
         </BCard>
       </BloombergPage>
@@ -364,13 +365,13 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '6px 10px', background: T.bgMid,
-          borderBottom: `1px solid ${T.border}`, borderTop: `2px solid ${T.red}`, marginBottom: 12,
+          borderBottom: `1px solid ${T.border.subtle}`, borderTop: `2px solid ${T.text.red}`, marginBottom: 12,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: T.text, letterSpacing: 0.8, ...mono }}>RISK INTELLIGENCE</span>
-            <span style={{ fontSize: 8, color: T.td, ...mono }}>M14 | Due Diligence · Exposure · Mitigation</span>
-            <span style={{ fontSize: 6, fontWeight: 700, color: '#FF4757', background: '#FF475715', border: '1px solid #FF475730', padding: '0 3px', borderRadius: 2, ...mono }}>RISK</span>
-            <span style={{ fontSize: 6, fontWeight: 700, color: '#F5A623', background: '#F5A62315', border: '1px solid #F5A62330', padding: '0 3px', borderRadius: 2, ...mono }}>DD</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.text.primary, letterSpacing: 0.8, fontFamily: mono }}>RISK INTELLIGENCE</span>
+            <span style={{ fontSize: 8, color: T.text.muted, fontFamily: mono }}>M14 | Due Diligence · Exposure · Mitigation</span>
+            <span style={{ fontSize: 6, fontWeight: 700, color: '#FF4757', background: '#FF475715', border: '1px solid #FF475730', padding: '0 3px', borderRadius: 2, fontFamily: mono }}>RISK</span>
+            <span style={{ fontSize: 6, fontWeight: 700, color: '#F5A623', background: '#F5A62315', border: '1px solid #F5A62330', padding: '0 3px', borderRadius: 2, fontFamily: mono }}>DD</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <BLiveBadge live={isLiveData} />
@@ -382,15 +383,15 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>Risk Heatmap</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: T.text.primary, fontFamily: sans }}>Risk Heatmap</span>
                 <BLiveBadge live={isLiveData} />
               </div>
-              <p style={{ fontSize: 11, color: T.td, margin: 0, ...sans }}>Risk categories weighted by impact. Click any card to drill down.</p>
+              <p style={{ fontSize: 11, color: T.text.muted, margin: 0, fontFamily: sans }}>Risk categories weighted by impact. Click any card to drill down.</p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 9, color: T.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, ...mono }}>COMPOSITE RISK</div>
-              <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(adjustedCompositeScore), ...mono }}>
-                {adjustedCompositeScore.toFixed(0)}<span style={{ fontSize: 14, color: T.td }}>/100</span>
+              <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, fontFamily: mono }}>COMPOSITE RISK</div>
+              <div style={{ fontSize: 32, fontWeight: 700, color: scoreColor(adjustedCompositeScore), fontFamily: mono }}>
+                {adjustedCompositeScore.toFixed(0)}<span style={{ fontSize: 14, color: T.text.muted }}>/100</span>
               </div>
             </div>
           </div>
@@ -408,8 +409,8 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
           </div>
 
           {/* Insight */}
-          <div style={{ marginTop: 14, background: T.amberBg, borderRadius: 6, border: `1px solid ${T.amber}30`, padding: '10px 14px' }}>
-            <p style={{ fontSize: 11, color: T.amberL, lineHeight: 1.6, margin: 0, ...sans }}>
+          <div style={{ marginTop: 14, background: T.bg.panelAlt, borderRadius: 6, border: `1px solid ${T.text.amber}30`, padding: '10px 14px' }}>
+            <p style={{ fontSize: 11, color: T.text.amber, lineHeight: 1.6, margin: 0, fontFamily: sans }}>
               Supply Risk is your #1 exposure. But look at the OFFSET: Demand Risk is low because of diversified demand drivers.
               The demand-supply NET position is positive. Set alerts on Supply Risk at 70.
             </p>
@@ -419,18 +420,18 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
         {/* 30-Day Trend Strip */}
         <BCard>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: T.text, ...sans }}>30-Day Risk Trends</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: T.text.primary, fontFamily: sans }}>30-Day Risk Trends</span>
             <BLiveBadge live={isLiveData} />
           </div>
-          <p style={{ fontSize: 11, color: T.td, marginBottom: 16, ...sans }}>Track how each risk category is evolving</p>
+          <p style={{ fontSize: 11, color: T.text.muted, marginBottom: 16, fontFamily: sans }}>Track how each risk category is evolving</p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {augmentedCategories.map(cat => {
-              const severityColor = cat.severity === 'low' ? T.greenL : cat.severity === 'moderate' ? T.amberL : cat.severity === 'elevated' ? T.orangeL : T.redL;
-              const trendColor = cat.trendDirection === 'improving' ? T.greenL : cat.trendDirection === 'worsening' ? T.redL : T.td;
+              const severityColor = cat.severity === 'low' ? T.text.green : cat.severity === 'moderate' ? T.text.amber : cat.severity === 'elevated' ? T.text.amber : T.text.red;
+              const trendColor = cat.trendDirection === 'improving' ? T.text.green : cat.trendDirection === 'worsening' ? T.text.red : T.text.muted;
               return (
-                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${T.border}`, paddingBottom: 10 }}>
-                  <div style={{ width: 120, fontSize: 11, color: T.tm, fontWeight: 500, ...sans }}>{cat.name}</div>
+                <div key={cat.id} style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 10 }}>
+                  <div style={{ width: 120, fontSize: 11, color: T.text.secondary, fontWeight: 500, fontFamily: sans }}>{cat.name}</div>
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 2, height: 22 }}>
                     {cat.sparkline.map((v, i, arr) => {
                       const mn = Math.min(...arr), mx = Math.max(...arr);
@@ -445,8 +446,8 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
                       );
                     })}
                   </div>
-                  <div style={{ width: 30, textAlign: 'right', fontSize: 12, fontWeight: 700, color: severityColor, ...mono }}>{cat.score}</div>
-                  <div style={{ width: 80, textAlign: 'right', fontSize: 9, fontWeight: 700, color: trendColor, letterSpacing: 0.5, ...mono }}>
+                  <div style={{ width: 30, textAlign: 'right', fontSize: 12, fontWeight: 700, color: severityColor, fontFamily: mono }}>{cat.score}</div>
+                  <div style={{ width: 80, textAlign: 'right', fontSize: 9, fontWeight: 700, color: trendColor, letterSpacing: 0.5, fontFamily: mono }}>
                     {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} {cat.trendDirection === 'improving' ? '▲' : cat.trendDirection === 'worsening' ? '▼' : '●'}
                   </div>
                 </div>
@@ -454,8 +455,8 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
             })}
           </div>
 
-          <div style={{ marginTop: 14, background: T.blueBg, borderRadius: 6, border: `1px solid ${T.blue}30`, padding: '10px 14px' }}>
-            <p style={{ fontSize: 11, color: T.blueL, lineHeight: 1.6, margin: 0, ...sans }}>
+          <div style={{ marginTop: 14, background: T.bg.panelAlt, borderRadius: 6, border: `1px solid ${T.text.blue}30`, padding: '10px 14px' }}>
+            <p style={{ fontSize: 11, color: T.text.blue, lineHeight: 1.6, margin: 0, fontFamily: sans }}>
               Supply risk moved +8 pts due to a new 280-unit permit filed nearby. Demand risk improved because of local expansion.
               Net composite change: +3 — manageable.
             </p>
@@ -476,59 +477,59 @@ const RiskCard: React.FC<{
   onToggle: () => void;
 }> = ({ category, isExpanded, onToggle }) => {
   const severityMap = {
-    low:      { color: T.greenL, bg: T.greenBg, border: T.green },
-    moderate: { color: T.amberL, bg: T.amberBg, border: T.amber },
-    elevated: { color: T.orangeL, bg: T.orangeBg, border: T.orange },
-    high:     { color: T.redL,   bg: T.redBg,   border: T.red   },
+    low:      { color: T.text.green, bg: T.bg.panelAlt, border: T.text.green },
+    moderate: { color: T.text.amber, bg: T.bg.panelAlt, border: T.text.amber },
+    elevated: { color: T.text.amber, bg: T.bg.panelAlt, border: T.text.amber },
+    high:     { color: T.text.red,   bg: T.bg.panelAlt,   border: T.text.red   },
   };
   const cfg = severityMap[category.severity] || severityMap.moderate;
-  const trendColor = category.trendDirection === 'improving' ? T.greenL : category.trendDirection === 'worsening' ? T.redL : T.td;
+  const trendColor = category.trendDirection === 'improving' ? T.text.green : category.trendDirection === 'worsening' ? T.text.red : T.text.muted;
 
   return (
     <button
       onClick={onToggle}
       style={{
-        background: isExpanded ? T.bgHover : T.bgCard,
-        border: `1px solid ${isExpanded ? cfg.border : T.border}`,
+        background: isExpanded ? T.bgHover : T.bg.panel,
+        border: `1px solid ${isExpanded ? cfg.border : T.border.subtle}`,
         borderTop: `3px solid ${cfg.border}`,
         borderRadius: 8, padding: '14px 14px 12px', textAlign: 'left', cursor: 'pointer',
         width: '100%', transition: 'all 0.15s',
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, ...sans }}>{category.name}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: cfg.color, fontFamily: sans }}>{category.name}</span>
         <span style={{
           fontSize: 9, fontWeight: 700, color: cfg.color, background: cfg.bg,
-          border: `1px solid ${cfg.border}40`, borderRadius: 4, padding: '2px 6px', ...mono,
+          border: `1px solid ${cfg.border}40`, borderRadius: 4, padding: '2px 6px', fontFamily: mono,
         }}>
           {category.score} — {category.label.toUpperCase()}
         </span>
       </div>
 
       {/* Mini bar */}
-      <div style={{ height: 3, background: T.border, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
+      <div style={{ height: 3, background: T.border.subtle, borderRadius: 2, marginBottom: 8, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${category.score}%`, background: cfg.color, borderRadius: 2 }} />
       </div>
 
-      <div style={{ fontSize: 9, color: T.td, marginBottom: 6, ...mono }}>WEIGHT: {category.weight}%</div>
+      <div style={{ fontSize: 9, color: T.text.muted, marginBottom: 6, fontFamily: mono }}>WEIGHT: {category.weight}%</div>
 
-      <div style={{ fontSize: 9, fontWeight: 700, color: trendColor, ...mono }}>
+      <div style={{ fontSize: 9, fontWeight: 700, color: trendColor, fontFamily: mono }}>
         30d: {category.trend30d > 0 ? '+' : ''}{category.trend30d} ({category.trendDirection})
       </div>
 
       {isExpanded && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border}` }}>
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border.subtle}` }}>
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, ...mono }}>DRIVER</div>
-            <p style={{ fontSize: 10, color: T.tm, lineHeight: 1.5, margin: 0, ...sans }}>{category.driver}</p>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>DRIVER</div>
+            <p style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.driver}</p>
           </div>
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.green, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, ...mono }}>OFFSET</div>
-            <p style={{ fontSize: 10, color: T.greenL, lineHeight: 1.5, margin: 0, ...sans }}>{category.offsetting}</p>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.green, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>OFFSET</div>
+            <p style={{ fontSize: 10, color: T.text.green, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.offsetting}</p>
           </div>
           <div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.blue, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, ...mono }}>MITIGATION</div>
-            <p style={{ fontSize: 10, color: T.blueL, lineHeight: 1.5, margin: 0, ...sans }}>{category.mitigation}</p>
+            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.blue, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>MITIGATION</div>
+            <p style={{ fontSize: 10, color: T.text.blue, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.mitigation}</p>
           </div>
         </div>
       )}

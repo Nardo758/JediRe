@@ -53,6 +53,19 @@ export const BT = {
     display: "'IBM Plex Mono',monospace",
     label:   "'IBM Plex Sans',sans-serif",
   },
+  fontSize: {
+    xs:   '8px',
+    sm:   '9px',
+    md:   '10px',
+    base: '11px',
+    lg:   '12px',
+    xl:   '14px',
+    xxl:  '20px',
+    hero: '32px',
+  },
+  gradient: {
+    tealCyan: 'linear-gradient(135deg, #00E5A0, #00B4D8)',
+  },
 } as const;
 
 const MONO = BT.font.mono;
@@ -538,5 +551,29 @@ export function TableRow({
         </div>
       ))}
     </div>
+  );
+}
+
+export function BloombergPage({ children, style: s }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ background: BT.bg.terminal, color: BT.text.primary, fontFamily: MONO, minHeight: '100%', padding: 16, ...s }}>
+      {children}
+    </div>
+  );
+}
+
+export function BCard({ children, style: s }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: '12px 16px', ...s }}>
+      {children}
+    </div>
+  );
+}
+
+export function BLiveBadge({ live }: { live: boolean }) {
+  return live ? (
+    <span style={{ fontSize: 7, fontWeight: 700, color: BT.text.green, background: `${BT.text.green}18`, border: `1px solid ${BT.text.green}40`, borderRadius: 2, padding: '1px 4px', letterSpacing: 0.5, fontFamily: MONO }}>LIVE</span>
+  ) : (
+    <span style={{ fontSize: 7, fontWeight: 700, color: BT.text.muted, background: `${BT.text.muted}18`, border: `1px solid ${BT.text.muted}40`, borderRadius: 2, padding: '1px 4px', letterSpacing: 0.5, fontFamily: MONO }}>EST</span>
   );
 }

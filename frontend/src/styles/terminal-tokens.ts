@@ -1,55 +1,6 @@
-export const T = {
-  bg: {
-    terminal: '#0A0E17',
-    panel:    '#0F1319',
-    panelAlt: '#131821',
-    header:   '#1A1F2E',
-    hover:    '#1E2538',
-    active:   '#252D40',
-    input:    '#0D1117',
-    topBar:   '#050810',
-  },
-  text: {
-    primary:     '#E8ECF1',
-    secondary:   '#8B95A5',
-    muted:       '#4A5568',
-    amber:       '#F5A623',
-    amberBright: '#FFD166',
-    green:       '#00D26A',
-    red:         '#FF4757',
-    cyan:        '#00BCD4',
-    orange:      '#FF8C42',
-    purple:      '#A78BFA',
-    white:       '#FFFFFF',
-  },
-  border: {
-    subtle: '#1E2538',
-    medium: '#2A3348',
-    bright: '#3B4A6B',
-  },
-  gradient: {
-    tealCyan: 'linear-gradient(135deg, #00E5A0, #00B4D8)',
-  },
-  font: {
-    mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
-    display: "'IBM Plex Mono', monospace",
-    label:   "'IBM Plex Sans', sans-serif",
-  },
-  fontSize: {
-    xs:   '8px',
-    sm:   '9px',
-    md:   '10px',
-    base: '11px',
-    lg:   '12px',
-    xl:   '14px',
-    xxl:  '20px',
-    hero: '32px',
-  },
-} as const;
+export { BT as T, BT as DARK } from '../components/deal/bloomberg-ui';
 
-export type TerminalTheme = typeof T;
-
-export const DARK = T;
+export type TerminalTheme = typeof import('../components/deal/bloomberg-ui').BT;
 
 export const LIGHT = {
   bg: {
@@ -66,6 +17,7 @@ export const LIGHT = {
     primary:     '#1E293B',
     secondary:   '#475569',
     muted:       '#94A3B8',
+    white:       '#FFFFFF',
     amber:       '#D97706',
     amberBright: '#B45309',
     green:       '#059669',
@@ -73,15 +25,22 @@ export const LIGHT = {
     cyan:        '#0891B2',
     orange:      '#EA580C',
     purple:      '#7C3AED',
-    white:       '#FFFFFF',
+    teal:        '#00A67E',
   },
   border: {
     subtle: '#E2E8F0',
     medium: '#CBD5E1',
     bright: '#94A3B8',
   },
-  gradient: {
-    tealCyan: 'linear-gradient(135deg, #00E5A0, #00B4D8)',
+  met: {
+    physTraffic:  '#3b82f6',
+    digTraffic:   '#d97706',
+    compTraffic:  '#9333ea',
+    financial:    '#16a34a',
+    occupancy:    '#0d9488',
+    economic:     '#db2777',
+    supply:       '#ea580c',
+    quality:      '#7c3aed',
   },
   font: {
     mono:    "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace",
@@ -97,5 +56,8 @@ export const LIGHT = {
     xl:   '14px',
     xxl:  '20px',
     hero: '32px',
+  },
+  gradient: {
+    tealCyan: 'linear-gradient(135deg, #00E5A0, #00B4D8)',
   },
 } as const;

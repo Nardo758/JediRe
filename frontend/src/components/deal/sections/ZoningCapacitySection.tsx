@@ -9,6 +9,7 @@ import { apiClient } from '../../../services/api.client';
 import { ZoningIntelligencePanel } from './ZoningIntelligencePanel';
 import { ZoningLearningPanel } from './ZoningLearningPanel';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { BT } from '../bloomberg-ui';
 
 interface ZoningCapacitySectionProps {
   deal?: any;
@@ -445,7 +446,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   const labelClass = "block text-xs font-medium text-gray-500 mb-1";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
