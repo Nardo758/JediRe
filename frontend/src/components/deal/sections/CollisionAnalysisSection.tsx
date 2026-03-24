@@ -278,7 +278,7 @@ const CollisionAnalysisSection: React.FC = () => {
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-slate-500">Loading collision analysis...</span>
+          <span className="text-sm">Loading collision analysis...</span>
         </div>
       </div>
     );
@@ -288,8 +288,8 @@ const CollisionAnalysisSection: React.FC = () => {
     <div className="space-y-6" style={{ background: BT.bg.terminal, color: BT.text.primary, padding: 16 }}>
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-stone-900">Collision Analysis</h2>
-          <p className="text-sm text-stone-500 mt-1">
+          <h2 className="text-xl font-bold">Collision Analysis</h2>
+          <p className="text-sm mt-1">
             Three-Layer Intelligence: Broker Claims vs Market Reality vs Your Model
           </p>
         </div>
@@ -316,7 +316,7 @@ const CollisionAnalysisSection: React.FC = () => {
         </div>
       )}
 
-      <div className="flex gap-1 bg-stone-100 rounded-lg p-1">
+      <div className="flex gap-1 rounded-lg p-1">
         {[
           { id: 'overview', label: 'Overview', icon: BarChart3 },
           { id: 'layers', label: 'Three Layers', icon: Target },
@@ -329,7 +329,7 @@ const CollisionAnalysisSection: React.FC = () => {
               onClick={() => setSubTab(tab.id as any)}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all ${
                 subTab === tab.id
-                  ? 'bg-white text-stone-900 shadow-sm'
+                  ? 'bg-neutral-900 shadow-dark'
                   : 'text-stone-500 hover:text-stone-700'
               }`}
             >
@@ -344,10 +344,10 @@ const CollisionAnalysisSection: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div>
-              <h3 className="text-lg font-semibold mb-2 text-stone-900">
+              <h3 className="text-lg font-semibold mb-2">
                 Deal Analysis: Broker vs Market vs Your Model
               </h3>
-              <p className="text-sm text-stone-500 mb-4">
+              <p className="text-sm mb-4">
                 Compare broker claims with market reality. Adjust assumptions to build your pro forma.
               </p>
 
@@ -400,8 +400,8 @@ const CollisionAnalysisSection: React.FC = () => {
               />
             </div>
 
-            <div className="bg-white rounded-lg border border-stone-200 p-6">
-              <h3 className="text-lg font-semibold mb-4 text-stone-900">Collision Highlights</h3>
+            <div className="rounded-lg border p-6">
+              <h3 className="text-lg font-semibold mb-4">Collision Highlights</h3>
               <div className="space-y-4">
                 {Object.entries(collision)
                   .filter(([key]) => key !== 'overall_score')
@@ -417,14 +417,14 @@ const CollisionAnalysisSection: React.FC = () => {
                         )}
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
-                            <div className="font-medium text-stone-900">
+                            <div className="font-medium">
                               {DIMENSION_LABELS[key] || key.replace(/_/g, ' ')}
                             </div>
                             <div className={`text-sm font-semibold ${isGood ? 'text-emerald-600' : 'text-amber-600'}`}>
                               {dim.score}/100
                             </div>
                           </div>
-                          <div className="text-sm text-stone-600">{dim.insight}</div>
+                          <div className="text-sm">{dim.insight}</div>
                         </div>
                       </div>
                     );
@@ -434,17 +434,17 @@ const CollisionAnalysisSection: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-stone-200 p-6">
-              <h3 className="font-semibold mb-4 text-stone-900">Deal Summary</h3>
+            <div className="rounded-lg border p-6">
+              <h3 className="font-semibold mb-4">Deal Summary</h3>
               <div className="space-y-3 text-sm">
                 <div>
                   <div className="text-stone-500 mb-1">Deal</div>
-                  <div className="font-medium text-stone-900">{dealName}</div>
+                  <div className="font-medium">{dealName}</div>
                 </div>
                 {layers.layer1.asking_price > 0 && (
                   <div>
                     <div className="text-stone-500 mb-1">Asking Price</div>
-                    <div className="font-medium text-stone-900">
+                    <div className="font-medium">
                       ${(layers.layer1.asking_price / 1000000).toFixed(1)}M
                     </div>
                   </div>
@@ -460,30 +460,30 @@ const CollisionAnalysisSection: React.FC = () => {
                 {layers.layer1.cap_rate > 0 && (
                   <div>
                     <div className="text-stone-500 mb-1">Cap Rate</div>
-                    <div className="font-medium text-stone-900">{layers.layer1.cap_rate.toFixed(1)}%</div>
+                    <div className="font-medium">{layers.layer1.cap_rate.toFixed(1)}%</div>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="bg-white rounded-lg border border-stone-200 p-6">
-              <h3 className="font-semibold mb-4 text-stone-900">Investment Criteria</h3>
+            <div className="rounded-lg border p-6">
+              <h3 className="font-semibold mb-4">Investment Criteria</h3>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <div className="text-stone-500 mb-1">Target IRR</div>
-                  <div className="font-semibold text-stone-900">{layers.layer3.target_irr}%</div>
+                  <div className="font-semibold">{layers.layer3.target_irr}%</div>
                 </div>
                 <div>
                   <div className="text-stone-500 mb-1">Hold Period</div>
-                  <div className="font-semibold text-stone-900">{layers.layer3.preferred_hold_period} yrs</div>
+                  <div className="font-semibold">{layers.layer3.preferred_hold_period} yrs</div>
                 </div>
                 <div>
                   <div className="text-stone-500 mb-1">Exit Cap</div>
-                  <div className="font-semibold text-stone-900">{layers.layer3.exit_cap_assumption}%</div>
+                  <div className="font-semibold">{layers.layer3.exit_cap_assumption}%</div>
                 </div>
                 <div>
                   <div className="text-stone-500 mb-1">Max LTV</div>
-                  <div className="font-semibold text-stone-900">{layers.layer3.max_ltv}%</div>
+                  <div className="font-semibold">{layers.layer3.max_ltv}%</div>
                 </div>
               </div>
             </div>
@@ -499,58 +499,58 @@ const CollisionAnalysisSection: React.FC = () => {
               Deal data is preserved as-is. Platform provides reality check. You decide final assumptions.
             </p>
             <div className="grid grid-cols-3 gap-4 text-xs">
-              <div className="bg-white rounded p-2">
+              <div className="rounded p-2">
                 <div className="font-semibold text-blue-900 mb-1">Layer 1: Truth</div>
                 <div className="text-blue-700">Broker's claims (never changed)</div>
               </div>
-              <div className="bg-white rounded p-2">
+              <div className="rounded p-2">
                 <div className="font-semibold text-purple-900 mb-1">Layer 2: Reality Check</div>
                 <div className="text-purple-700">Market data (comparison only)</div>
               </div>
-              <div className="bg-white rounded p-2">
+              <div className="rounded p-2">
                 <div className="font-semibold text-green-900 mb-1">Layer 3: Your Model</div>
                 <div className="text-green-700">Your assumptions (pro forma)</div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border-2 border-blue-200 p-6">
+          <div className="rounded-lg border-2 border-blue-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">1</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 1: Deal Data (Preserved)</h3>
-                <p className="text-sm text-stone-500">Original broker claims — never modified by platform</p>
+                <p className="text-sm">Original broker claims — never modified by platform</p>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <div className="text-sm text-stone-500 mb-1">Asking Price</div>
+                <div className="text-sm mb-1">Asking Price</div>
                 <div className="font-semibold">
                   {layers.layer1.asking_price > 0 ? `$${(layers.layer1.asking_price / 1000000).toFixed(1)}M` : 'Not set'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">NOI</div>
+                <div className="text-sm mb-1">NOI</div>
                 <div className="font-semibold">
                   {layers.layer1.noi > 0 ? `$${(layers.layer1.noi / 1000000).toFixed(2)}M` : 'Not set'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">Cap Rate</div>
+                <div className="text-sm mb-1">Cap Rate</div>
                 <div className="font-semibold">
                   {layers.layer1.cap_rate > 0 ? `${layers.layer1.cap_rate.toFixed(1)}%` : 'Not set'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">Occupancy</div>
+                <div className="text-sm mb-1">Occupancy</div>
                 <div className="font-semibold">
                   {layers.layer1.occupancy > 0 ? `${layers.layer1.occupancy}%` : 'Not set'}
                 </div>
               </div>
             </div>
             {Object.keys(layers.layer1.broker_claims).length > 0 && (
-              <div className="mt-4 pt-4 border-t border-stone-200">
-                <div className="text-sm font-medium text-stone-700 mb-2">Broker Claims:</div>
+              <div className="mt-4 pt-4 border-t">
+                <div className="text-sm font-medium mb-2">Broker Claims:</div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   {Object.entries(layers.layer1.broker_claims).map(([key, value]) => (
                     <div key={key}>
@@ -563,43 +563,43 @@ const CollisionAnalysisSection: React.FC = () => {
             )}
           </div>
 
-          <div className="bg-white rounded-lg border-2 border-purple-200 p-6">
+          <div className="rounded-lg border-2 border-purple-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-bold">2</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 2: Platform Intelligence (Reality Check)</h3>
-                <p className="text-sm text-stone-500">Market data for comparison — does not override deal data</p>
+                <p className="text-sm">Market data for comparison — does not override deal data</p>
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <div>
-                <div className="text-sm text-stone-500 mb-1">Market Rent (1BR)</div>
+                <div className="text-sm mb-1">Market Rent (1BR)</div>
                 <div className="font-semibold">
                   {layers.layer2.market_rent_1br > 0 ? `$${layers.layer2.market_rent_1br.toLocaleString()}` : 'Not set'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">Submarket Vacancy</div>
+                <div className="text-sm mb-1">Submarket Vacancy</div>
                 <div className="font-semibold">
                   {layers.layer2.submarket_vacancy > 0 ? `${layers.layer2.submarket_vacancy}%` : 'Not set'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">Supply Risk</div>
+                <div className="text-sm mb-1">Supply Risk</div>
                 <div className="font-semibold">
                   {layers.layer2.supply_risk_score > 0 ? `${layers.layer2.supply_risk_score}/100` : 'Not set'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-stone-500 mb-1">Employment Growth</div>
+                <div className="text-sm mb-1">Employment Growth</div>
                 <div className="font-semibold">
                   {layers.layer2.employment_growth > 0 ? <span className="text-emerald-600">+{layers.layer2.employment_growth}%</span> : 'Not set'}
                 </div>
               </div>
             </div>
             {layers.layer2.comp_sales.length > 0 && (
-              <div className="pt-4 border-t border-stone-200">
-                <div className="text-sm font-medium text-stone-700 mb-2">Recent Comps:</div>
+              <div className="pt-4 border-t">
+                <div className="text-sm font-medium mb-2">Recent Comps:</div>
                 <div className="space-y-2 text-sm">
                   {layers.layer2.comp_sales.map((comp, idx) => (
                     <div key={idx} className="flex justify-between">
@@ -612,17 +612,17 @@ const CollisionAnalysisSection: React.FC = () => {
             )}
           </div>
 
-          <div className="bg-white rounded-lg border-2 border-green-200 p-6">
+          <div className="rounded-lg border-2 border-green-200 p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center text-green-600 font-bold">3</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 3: Your Model (Pro Forma Input)</h3>
-                <p className="text-sm text-stone-500">Your adjusted assumptions — used in financial models</p>
+                <p className="text-sm">Your adjusted assumptions — used in financial models</p>
               </div>
             </div>
 
-            <div className="mb-4 pb-4 border-b border-stone-200">
-              <div className="text-sm font-medium text-stone-700 mb-3">Your Adjusted Assumptions:</div>
+            <div className="mb-4 pb-4 border-b">
+              <div className="text-sm font-medium mb-3">Your Adjusted Assumptions:</div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-stone-500">1BR Rent: </span>
@@ -646,22 +646,22 @@ const CollisionAnalysisSection: React.FC = () => {
             </div>
 
             <div>
-              <div className="text-sm font-medium text-stone-700 mb-3">Investment Criteria:</div>
+              <div className="text-sm font-medium mb-3">Investment Criteria:</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <div className="text-sm text-stone-500 mb-1">Target IRR</div>
+                  <div className="text-sm mb-1">Target IRR</div>
                   <div className="font-semibold">{layers.layer3.target_irr}%</div>
                 </div>
                 <div>
-                  <div className="text-sm text-stone-500 mb-1">Hold Period</div>
+                  <div className="text-sm mb-1">Hold Period</div>
                   <div className="font-semibold">{layers.layer3.preferred_hold_period} years</div>
                 </div>
                 <div>
-                  <div className="text-sm text-stone-500 mb-1">Exit Cap</div>
+                  <div className="text-sm mb-1">Exit Cap</div>
                   <div className="font-semibold">{layers.layer3.exit_cap_assumption}%</div>
                 </div>
                 <div>
-                  <div className="text-sm text-stone-500 mb-1">Max LTV</div>
+                  <div className="text-sm mb-1">Max LTV</div>
                   <div className="font-semibold">{layers.layer3.max_ltv}%</div>
                 </div>
               </div>
@@ -674,7 +674,7 @@ const CollisionAnalysisSection: React.FC = () => {
         <div className="space-y-6">
           <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-2xl font-bold text-stone-900">Collision Analysis</h3>
+              <h3 className="text-2xl font-bold">Collision Analysis</h3>
               <div className={`text-3xl font-bold ${
                 collision.overall_score >= 80 ? 'text-emerald-600' :
                 collision.overall_score >= 60 ? 'text-amber-600' : 'text-red-600'
@@ -700,7 +700,7 @@ const CollisionAnalysisSection: React.FC = () => {
               const icon = DIMENSION_ICONS[key] || <AlertTriangle className="w-5 h-5" />;
 
               return (
-                <div key={key} className={`bg-white rounded-lg border-2 p-6 ${colors[level]}`}>
+                <div key={key} className={`bg-neutral-900 rounded-lg border-2 p-6 ${colors[level]}`}>
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg ${
@@ -710,23 +710,23 @@ const CollisionAnalysisSection: React.FC = () => {
                       }`}>
                         {icon}
                       </div>
-                      <h4 className="text-lg font-semibold text-stone-900">
+                      <h4 className="text-lg font-semibold">
                         {DIMENSION_LABELS[key] || key.replace(/_/g, ' ')}
                       </h4>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="text-2xl font-bold text-stone-900">{dim.score}</div>
-                      <div className="text-sm text-stone-500">/100</div>
+                      <div className="text-2xl font-bold">{dim.score}</div>
+                      <div className="text-sm">/100</div>
                     </div>
                   </div>
 
                   <div className="mb-4">
-                    <div className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-2">Analysis</div>
+                    <div className="text-sm font-medium uppercase tracking-wide mb-2">Analysis</div>
                     <p className="text-stone-700">{dim.insight}</p>
                   </div>
 
-                  <div className="bg-white rounded-lg p-4 border border-stone-200">
-                    <div className="text-sm font-medium text-stone-500 uppercase tracking-wide mb-1">Recommended Action</div>
+                  <div className="rounded-lg p-4 border">
+                    <div className="text-sm font-medium uppercase tracking-wide mb-1">Recommended Action</div>
                     <p className="text-stone-900 font-medium">{dim.recommended_action}</p>
                   </div>
                 </div>

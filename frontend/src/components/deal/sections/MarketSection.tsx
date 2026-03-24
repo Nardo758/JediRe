@@ -173,7 +173,7 @@ export const MarketSection: React.FC<MarketSectionProps> = ({ deal }) => {
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading market data...</p>
+            <p className="text-neutral-400">Loading market data...</p>
           </div>
         </div>
       </div>
@@ -238,7 +238,7 @@ const MarketSentimentBadge: React.FC<MarketSentimentBadgeProps> = ({ sentiment }
     const configs = {
       hot: { bg: 'bg-red-100', text: 'text-red-700', icon: '🔥', label: 'HOT' },
       warm: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '☀️', label: 'WARM' },
-      neutral: { bg: 'bg-gray-100', text: 'text-gray-700', icon: '➖', label: 'NEUTRAL' },
+      neutral: { bg: 'bg-neutral-800', text: 'text-neutral-400', icon: '➖', label: 'NEUTRAL' },
       cool: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '❄️', label: 'COOL' },
       cold: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '🧊', label: 'COLD' }
     };
@@ -285,7 +285,7 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
   return (
     <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold">
           {mode === 'acquisition' ? '📊 Market Demographics' : '📍 Trade Area Demographics'}
         </h3>
       </div>
@@ -294,13 +294,13 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
         {demographics.map((stat, index) => (
           <div 
             key={index}
-            className="bg-gradient-to-br from-gray-50 to-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+            className="bg-gradient-to-br from-gray-50 to-white border rounded-lg p-4 hover:shadow-md transition-shadow"
           >
             <div className="flex items-center justify-between mb-2">
               <span className="text-gray-600 text-xs font-medium">{stat.label}</span>
               <span className="text-2xl">{stat.icon}</span>
             </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">
+            <div className="text-2xl font-bold mb-1">
               {formatValue(stat)}
             </div>
             {stat.trend && (
@@ -309,7 +309,7 @@ const DemographicsCard: React.FC<DemographicsCardProps> = ({ demographics, mode 
                   ? 'text-green-600' 
                   : stat.trend.direction === 'down'
                     ? 'text-red-600'
-                    : 'text-gray-600'
+                    : 'text-neutral-400'
               }`}>
                 <span>{stat.trend.direction === 'up' ? '↗' : stat.trend.direction === 'down' ? '↘' : '→'}</span>
                 <span>{stat.trend.value}</span>
@@ -349,17 +349,17 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
   return (
     <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold">
           {mode === 'acquisition' ? '📈 Market Trends' : '📊 Market Trend Monitoring'}
         </h3>
-        <span className="text-xs text-gray-500">Last 6 periods</span>
+        <span className="text-xs">Last 6 periods</span>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {trends.map((trend, index) => (
-          <div key={index} className="border border-gray-200 rounded-lg p-4 bg-gradient-to-br from-white to-gray-50">
+          <div key={index} className="border rounded-lg p-4 bg-gradient-to-br from-white to-gray-50">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-semibold text-gray-700">{trend.label}</h4>
+              <h4 className="text-sm font-semibold">{trend.label}</h4>
               <div className={`text-2xl font-bold ${getTrendColor(trend.historical)}`}>
                 {formatValue(trend, trend.current)}
               </div>
@@ -379,7 +379,7 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
                     className="flex-1 bg-gradient-to-t from-blue-500 to-blue-300 rounded-t hover:from-blue-600 hover:to-blue-400 transition-all cursor-pointer relative group"
                     style={{ height: `${Math.max(heightPercent, 10)}%` }}
                   >
-                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
                       {formatValue(trend, value)}
                     </div>
                   </div>
@@ -387,7 +387,7 @@ const MarketTrendsCard: React.FC<MarketTrendsCardProps> = ({ trends, mode }) => 
               })}
             </div>
             
-            <div className="mt-2 text-xs text-gray-500 text-center">
+            <div className="mt-2 text-xs text-center">
               {trend.historical[0]} → {trend.current} {trend.unit}
             </div>
           </div>
@@ -459,7 +459,7 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
     const badges = {
       high: { label: 'HIGH', color: 'bg-red-100 text-red-700' },
       medium: { label: 'MED', color: 'bg-yellow-100 text-yellow-700' },
-      low: { label: 'LOW', color: 'bg-gray-100 text-gray-700' }
+      low: { label: 'LOW', color: 'bg-neutral-800' }
     };
     return badges[impact as keyof typeof badges] || badges.low;
   };
@@ -470,7 +470,7 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
   return (
     <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold">
           {mode === 'acquisition' ? '🔍 SWOT Analysis' : '📋 Market Position SWOT'}
         </h3>
         <button 
@@ -493,7 +493,7 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
                 <h4 className={`text-sm font-bold ${config.text} uppercase tracking-wide`}>
                   {config.label}
                 </h4>
-                <span className="text-xs text-gray-500">({items.length})</span>
+                <span className="text-xs">({items.length})</span>
               </div>
               
               <div className="space-y-2">
@@ -504,17 +504,17 @@ const SwotAnalysisCard: React.FC<SwotAnalysisCardProps> = ({ swot, mode }) => {
                   return (
                     <div 
                       key={item.id}
-                      className="bg-white border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow cursor-pointer"
+                      className="border rounded-lg p-3 hover:shadow-md transition-shadow cursor-pointer"
                       onClick={() => toggleItem(item.id)}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <span className={`w-2 h-2 rounded-full ${config.accent}`}></span>
-                            <span className="text-sm font-semibold text-gray-900">{item.title}</span>
+                            <span className="text-sm font-semibold">{item.title}</span>
                           </div>
                           {isExpanded && (
-                            <p className="text-xs text-gray-600 mt-2 ml-4">
+                            <p className="text-xs mt-2 ml-4">
                               {item.description}
                             </p>
                           )}
@@ -556,7 +556,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
   return (
     <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold">
           {mode === 'acquisition' ? '🗺️ Submarket Comparison' : '📍 Competitive Submarket Analysis'}
         </h3>
         <div className="flex gap-2">
@@ -565,7 +565,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'rentGrowth' 
                 ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-gray-100 '
             }`}
           >
             Rent Growth
@@ -575,7 +575,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'vacancy' 
                 ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-gray-100 '
             }`}
           >
             Vacancy
@@ -585,7 +585,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
             className={`text-xs px-3 py-1 rounded font-medium transition-colors ${
               sortBy === 'avgRent' 
                 ? 'bg-blue-600 text-white' 
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                : 'bg-gray-100 '
             }`}
           >
             Avg Rent
@@ -596,23 +596,23 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Submarket</th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Rent Growth</th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Vacancy</th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Avg Rent</th>
-              <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Population</th>
+            <tr className="border-b">
+              <th className="text-left py-3 px-4 text-xs font-semibold uppercase">Submarket</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold uppercase">Rent Growth</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold uppercase">Vacancy</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold uppercase">Avg Rent</th>
+              <th className="text-right py-3 px-4 text-xs font-semibold uppercase">Population</th>
             </tr>
           </thead>
           <tbody>
             {sortedSubmarkets.map((submarket, index) => (
               <tr 
                 key={index}
-                className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+                className={`border-b  transition-colors ${
                   submarket.isTarget ? 'bg-blue-50 font-semibold' : ''
                 }`}
               >
-                <td className="py-3 px-4 text-sm text-gray-900">
+                <td className="py-3 px-4 text-sm">
                   <div className="flex items-center gap-2">
                     {submarket.isTarget && <span className="text-blue-600">📍</span>}
                     {submarket.name}
@@ -622,7 +622,7 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
                   <span className={`${
                     submarket.rentGrowth >= 5 ? 'text-green-600' : 
                     submarket.rentGrowth >= 3 ? 'text-yellow-600' : 
-                    'text-gray-600'
+                    'text-neutral-400'
                   } font-medium`}>
                     {submarket.rentGrowth}%
                   </span>
@@ -636,10 +636,10 @@ const SubmarketComparisonCard: React.FC<SubmarketComparisonCardProps> = ({ subma
                     {submarket.vacancy}%
                   </span>
                 </td>
-                <td className="text-right py-3 px-4 text-sm font-medium text-gray-900">
+                <td className="text-right py-3 px-4 text-sm font-medium">
                   ${submarket.avgRent.toLocaleString()}
                 </td>
-                <td className="text-right py-3 px-4 text-sm text-gray-600">
+                <td className="text-right py-3 px-4 text-sm">
                   {(submarket.population / 1000).toFixed(0)}k
                 </td>
               </tr>
@@ -679,7 +679,7 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
   return (
     <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 6, padding: 24, color: BT.text.primary }}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
+        <h3 className="text-lg font-semibold">
           {mode === 'acquisition' ? '🎯 Investment Opportunity Gauge' : '📊 Exit Timing Indicator'}
         </h3>
       </div>
@@ -687,14 +687,14 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Overall Score */}
         <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6 flex flex-col items-center justify-center">
-          <div className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+          <div className="text-sm font-semibold uppercase tracking-wide mb-2">
             Overall Market Score
           </div>
           <div className={`text-6xl font-bold mb-2 ${getScoreColor(sentiment.score)}`}>
             {sentiment.score}
           </div>
-          <div className="text-sm text-gray-600">out of 100</div>
-          <div className="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+          <div className="text-sm">out of 100</div>
+          <div className="mt-4 w-full rounded-full h-3 overflow-hidden">
             <div 
               className={`h-full ${getBarColor(sentiment.score)} transition-all`}
               style={{ width: `${sentiment.score}%` }}
@@ -711,12 +711,12 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
                 <span className="text-2xl">{factor.icon}</span>
                 <div className="flex-1">
                   <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm font-medium text-gray-700">{factor.label}</span>
+                    <span className="text-sm font-medium">{factor.label}</span>
                     <span className={`text-sm font-bold ${getScoreColor(score)}`}>
                       {score}/100
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div className="w-full rounded-full h-2 overflow-hidden">
                     <div 
                       className={`h-full ${getBarColor(score)} transition-all`}
                       style={{ width: `${score}%` }}
@@ -730,7 +730,7 @@ const SentimentDetailCard: React.FC<SentimentDetailCardProps> = ({ sentiment, mo
       </div>
 
       {/* Interpretation */}
-      <div className="mt-6 pt-6 border-t border-gray-200">
+      <div className="mt-6 pt-6 border-t">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl">💡</span>
