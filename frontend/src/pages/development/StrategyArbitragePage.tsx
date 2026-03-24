@@ -88,7 +88,7 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {isWinner && <Bd c={BT.text.amber}>WINNER</Bd>}
           <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: isWinner ? BT.text.amber : BT.text.primary }}>
-            {score.overall_score.toFixed(0)}
+            {(score.overall_score ?? 0).toFixed(0)}
           </span>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
             ARBITRAGE ALERT
           </span>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>
-            {(arbitrage.winning_strategy_name ?? 'Winner').toUpperCase()} wins by {arbitrage.delta.toFixed(1)} pts over {(arbitrage.runner_up_strategy_name ?? 'Runner-up').toUpperCase()}
+            {(arbitrage.winning_strategy_name ?? 'Winner').toUpperCase()} wins by {(arbitrage.delta ?? 0).toFixed(1)} pts over {(arbitrage.runner_up_strategy_name ?? 'Runner-up').toUpperCase()}
           </span>
           {irrDelta != null && (
             <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.green }}>
@@ -273,7 +273,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
                           </span>
                           <Spark data={spark.length >= 2 ? spark : [s.overall_score, s.overall_score]} color={col.color} w={80} h={14} />
                           <span style={{ fontFamily: MONO, fontSize: 9, color: col.color, fontWeight: 700, marginLeft: 'auto' }}>
-                            {s.overall_score.toFixed(0)}
+                            {(s.overall_score ?? 0).toFixed(0)}
                           </span>
                         </div>
                       );
