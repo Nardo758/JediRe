@@ -31,6 +31,7 @@ import geographicContextRoutes from './geographic-context.routes';
 import geographyRoutes from './geography.routes';
 import isochroneRoutes from './isochrone.routes';
 import trafficAiRoutes from './traffic-ai.routes';
+import trafficPredictionRoutes from './trafficPrediction.routes';
 import layersRoutes from './layers.routes';
 import mapConfigsRoutes from './map-configs.routes';
 import gridRoutes from './grid.routes';
@@ -72,7 +73,9 @@ import developmentScenariosRoutes from './development-scenarios.routes';
 import trafficDataRoutes from './traffic-data.routes';
 import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
+import dealContextRoutes from './deal-context.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
+import createMarketIntelligenceRoutes from './market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
 import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
@@ -87,6 +90,8 @@ import metricsCatalogRoutes from './metrics-catalog.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
+import m08StrategiesRoutes from './strategies.routes';
+import { createCapsuleRoutes } from './capsule.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
 import dealCompSetsRoutes from './deal-comp-sets.routes';
@@ -176,6 +181,9 @@ export function setupRESTRoutes(app: Application): void {
   // Geographic Context routes (Deal → Trade Area/Submarket/MSA linking)
   app.use(`${API_PREFIX}/deals`, geographicContextRoutes);
   app.use(`${API_PREFIX}`, geographicContextRoutes); // For /submarkets/lookup, /msas/lookup
+
+  // Deal Context routes (Full deal data hydration)
+  app.use(`${API_PREFIX}/deals`, dealContextRoutes);
 
   // Geography routes (Complete Geographic Assignment Engine)
   app.use(`${API_PREFIX}/geography`, geographyRoutes);
@@ -271,6 +279,10 @@ export function setupRESTRoutes(app: Application): void {
   // Deal Comp Sets routes (Tiered comp discovery & management)
   app.use(`${API_PREFIX}/deals`, dealCompSetsRoutes);
 
+  // Market Intelligence routes (preferences, available markets, overview)
+  const { getPool: getMarketPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/markets`, createMarketIntelligenceRoutes(getMarketPool()));
+
   // Deal Market Intelligence routes
   app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
 
@@ -310,6 +322,9 @@ export function setupRESTRoutes(app: Application): void {
   // Traffic Comps routes (M07 Traffic Engine - comp traffic analysis per deal)
   app.use(`${API_PREFIX}/traffic-comps`, trafficCompsRoutes);
 
+  // Traffic Prediction routes (foot traffic predictions, calibration, validation)
+  app.use(`${API_PREFIX}/traffic`, trafficPredictionRoutes);
+
   // Correlation Engine routes (COR-01 through COR-20 market correlations)
   app.use(`${API_PREFIX}/correlations`, correlationRoutes);
 
@@ -321,6 +336,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Strategy Definitions & Execution routes (Strategy Engine - new execution engine)
   app.use(`${API_PREFIX}/strategies`, strategiesRoutes);
+
+  // M08 Signal-Weight Arbitrage Strategy Builder (new spec-compliant endpoint)
+  app.use(`${API_PREFIX}/m08/strategies`, m08StrategiesRoutes);
 
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
@@ -352,6 +370,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data Ingestion routes (Admin-only — Zillow, FRED, other data sources)
   app.use(`${API_PREFIX}/admin/ingest`, ingestionRoutes);
+
+  // Deal Capsule routes (3-layer capsule CRUD, documents, shares, collision)
+  const { getPool: getCapsulePool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/capsules`, createCapsuleRoutes(getCapsulePool()));
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

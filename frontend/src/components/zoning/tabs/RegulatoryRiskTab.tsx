@@ -80,6 +80,7 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
   const { setRegulatoryAlerts } = useZoningModuleStore();
   const [analysis, setAnalysis] = useState<RiskAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,16 +89,24 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
 
     async function fetchAnalysis() {
       setLoading(true);
+      setQueued(false);
       setError(null);
       try {
         const token = localStorage.getItem('auth_token') || '';
         const resp = await axios.get(`/api/v1/deals/${dealId}/regulatory-risk-analysis`, {
           headers: { Authorization: `Bearer ${token}` },
+          validateStatus: (status) => status < 500,
         });
         if (!cancelled) {
-          setAnalysis(resp.data);
-          if (resp.data.alerts) {
-            setRegulatoryAlerts(resp.data.alerts);
+          // 202 means the analysis is being generated in the background
+          if (resp.status === 202 || !resp.data?.compositeScore) {
+            setQueued(true);
+            setAnalysis(null);
+          } else {
+            setAnalysis(resp.data);
+            if (resp.data.alerts) {
+              setRegulatoryAlerts(resp.data.alerts);
+            }
           }
         }
       } catch (err: any) {
@@ -140,6 +149,16 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
     );
   }
 
+  if (queued) {
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+        <p className="text-sm font-medium text-blue-700">Regulatory risk analysis in progress</p>
+        <p className="text-xs text-blue-500 mt-1">AI is analyzing the regulatory environment. Check back in 30–60 seconds.</p>
+      </div>
+    );
+  }
+
   if (!analysis) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
@@ -149,7 +168,7 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
   }
 
   const levelCfg = LEVEL_CONFIG[analysis.compositeLevel] || LEVEL_CONFIG.moderate;
-  const dlCtx = analysis.dataLibraryContext;
+  const dlCtx = analysis.dataLibraryContext || { hasImpactFees: false, hasConstructionCosts: false, hasRentComps: false, recentProjectCount: 0, permitTimelineCount: 0 };
 
   return (
     <div className="space-y-6">

@@ -350,6 +350,10 @@ export function createZoningIntelligenceRoutes(pool: Pool): Router {
   router.get('/analyses/:id', async (req: AuthenticatedRequest, res: Response) => {
     try {
       const { id } = req.params;
+      const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRe.test(id)) {
+        return res.status(404).json({ success: false, error: 'Analysis not found' });
+      }
       const result = await pool.query('SELECT * FROM zoning_agent_analyses WHERE id = $1', [id]);
       if (result.rows.length === 0) {
         return res.status(404).json({ success: false, error: 'Analysis not found' });

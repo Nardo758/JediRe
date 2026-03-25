@@ -113,6 +113,10 @@ export const StrategyBuilderPage: React.FC = () => {
   const [previewResults, setPreviewResults] = useState<PreviewResult[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Peer-group dimension filters
+  const [peerVintage, setPeerVintage] = useState<'all' | 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s'>('all');
+  const [peerTypology, setPeerTypology] = useState<'all' | 'garden' | 'low_rise_elevator' | 'mid_rise' | 'high_rise'>('all');
+
   // Fetch strategies on mount
   useEffect(() => {
     const fetchData = async () => {
@@ -123,7 +127,11 @@ export const StrategyBuilderPage: React.FC = () => {
         ]);
 
         const raw = strategiesRes.data;
-        setStrategies(Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []);
+        setStrategies(
+          Array.isArray(raw?.strategies) ? raw.strategies :
+          Array.isArray(raw?.data) ? raw.data :
+          Array.isArray(raw) ? raw : []
+        );
 
         if (catalogRes.data) {
           setMetrics(catalogRes.data.metrics || []);
@@ -166,6 +174,10 @@ export const StrategyBuilderPage: React.FC = () => {
         scope,
         assetClasses: selectedAssetClasses,
         maxResults: 10,
+        peerGroup: {
+          vintage: peerVintage !== 'all' ? peerVintage : undefined,
+          typology: peerTypology !== 'all' ? peerTypology : undefined,
+        },
       });
       setPreviewResults(response.data.results || []);
     } catch (error) {
@@ -233,6 +245,10 @@ export const StrategyBuilderPage: React.FC = () => {
         conditions,
         assetClasses: selectedAssetClasses,
         type: 'custom',
+        peerGroup: {
+          vintage: peerVintage !== 'all' ? peerVintage : undefined,
+          typology: peerTypology !== 'all' ? peerTypology : undefined,
+        },
       };
 
       if (strategyId) {
@@ -558,6 +574,77 @@ export const StrategyBuilderPage: React.FC = () => {
                       {cls}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Peer-Group Dimensions */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.textMuted, marginBottom: 6 }}>
+                  Peer-Group Dimensions
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: COLORS.textDim, marginBottom: 4 }}>VINTAGE (Year Built)</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {(['all', 'pre1980', '1980s', '1990s', '2000s', '2010s', '2020s'] as const).map(v => (
+                        <button
+                          key={v}
+                          onClick={() => setPeerVintage(v)}
+                          style={{
+                            padding: '4px 8px', fontSize: 8, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
+                            border: `1px solid ${peerVintage === v ? COLORS.warning + '60' : COLORS.border}`,
+                            background: peerVintage === v ? COLORS.warning + '10' : 'transparent',
+                            color: peerVintage === v ? COLORS.warning : COLORS.textDim,
+                          }}
+                        >
+                          {v === 'all' ? 'ALL' : v === 'pre1980' ? 'PRE-80' : v.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: COLORS.textDim, marginBottom: 4 }}>TYPOLOGY (Building Type)</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {([
+                        { id: 'all', label: 'ALL' },
+                        { id: 'garden', label: 'GARDEN' },
+                        { id: 'low_rise_elevator', label: 'LOW-RISE ELEV' },
+                        { id: 'mid_rise', label: 'MID-RISE' },
+                        { id: 'high_rise', label: 'HIGH-RISE' },
+                      ] as const).map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setPeerTypology(t.id)}
+                          style={{
+                            padding: '4px 8px', fontSize: 8, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
+                            border: `1px solid ${peerTypology === t.id ? COLORS.cyan + '60' : COLORS.border}`,
+                            background: peerTypology === t.id ? COLORS.cyan + '10' : 'transparent',
+                            color: peerTypology === t.id ? COLORS.cyan : COLORS.textDim,
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {(peerVintage !== 'all' || peerTypology !== 'all') && (
+                    <div style={{
+                      padding: '6px 10px',
+                      background: `${COLORS.warning}08`,
+                      border: `1px solid ${COLORS.warning}25`,
+                      borderRadius: 4,
+                      fontSize: 9,
+                      color: COLORS.textMuted,
+                      lineHeight: 1.5,
+                      maxWidth: 280,
+                    }}>
+                      Strategy conditions will be evaluated against{' '}
+                      <span style={{ color: COLORS.warning }}>
+                        {peerVintage !== 'all' ? `${peerVintage} ` : ''}
+                        {peerTypology !== 'all' ? { garden:'garden walkup', low_rise_elevator:'low-rise elevator', mid_rise:'mid-rise', high_rise:'high-rise' }[peerTypology] || peerTypology : 'all types'}
+                      </span>{' '}peer comps only.
+                    </div>
+                  )}
                 </div>
               </div>
 

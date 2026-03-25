@@ -116,6 +116,12 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         pipelineStage: row.pipelineStage || null,
         daysInStage: row.daysInStage || 0,
         dealCategory: row.deal_category || 'pipeline',
+        deal_category: row.deal_category || 'pipeline',
+        stage: row.stage || 'prospect',
+        pipeline_stage: row.pipelineStage || row.stage || null,
+        triage_score: row.triage_score ?? null,
+        jedi_score: row.jedi_score ?? row.triage_score ?? null,
+        timeline_end: row.timeline_end,
         developmentType: row.development_type,
         address: row.address,
         description: row.description,
@@ -710,7 +716,8 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
         p.renewal_status
       FROM properties p
       JOIN deals d ON d.id = $1
-      WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+      WHERE d.boundary IS NOT NULL
+        AND ST_Contains(d.boundary, ST_SetSRID(ST_Point(p.lng, p.lat), 4326))
     `, [dealId]);
 
     const properties = result.rows;

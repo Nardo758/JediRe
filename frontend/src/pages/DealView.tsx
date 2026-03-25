@@ -142,6 +142,7 @@ export const DealView: React.FC = () => {
         stats.submarket = {
           occupancy: context.submarket.stats.avg_occupancy,
           avg_rent: context.submarket.stats.avg_rent,
+          avgCapRate: context.submarket.avgCapRate ?? context.submarket.stats.avg_cap_rate,
         };
       }
       
@@ -149,6 +150,7 @@ export const DealView: React.FC = () => {
         stats.msa = {
           occupancy: context.msa.stats.avg_occupancy,
           avg_rent: context.msa.stats.avg_rent,
+          avgCapRate: context.msa.avgCapRate ?? context.msa.stats.avg_cap_rate,
         };
       }
       
@@ -178,6 +180,7 @@ export const DealView: React.FC = () => {
             <OverviewSection 
               deal={deal} 
               onStrategySelected={handleStrategySelection}
+              geographicContext={geographicStats}
             />
           </div>
         );

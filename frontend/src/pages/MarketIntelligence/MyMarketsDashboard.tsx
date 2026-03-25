@@ -60,7 +60,7 @@ const MyMarketsDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => navigate('/market-intelligence')}
+                onClick={() => navigate('/terminal', { state: { fkey: 'F4' } })}
                 className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

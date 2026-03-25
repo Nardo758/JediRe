@@ -295,16 +295,16 @@ class ProformaGeneratorService {
     const hasData = parseInt(actuals.months || '0') >= 3;
 
     const submarketResult = await query(
-      `SELECT avg_rent, vacancy_rate, rent_growth_yoy FROM submarkets WHERE id::text = $1 OR name = $1`,
+      `SELECT avg_rent, avg_occupancy FROM submarkets WHERE id::text = $1 OR name = $1`,
       [prop.submarket_id || '']
     );
     const submarket = submarketResult.rows[0] || {};
 
     return {
-      rentGrowth: hasData ? '0.0300' : new Decimal(submarket.rent_growth_yoy || 0.03).toFixed(4),
+      rentGrowth: '0.0300',
       vacancyRate: hasData
         ? new Decimal(1).minus(new Decimal(actuals.avg_occ || 0.93)).toFixed(4)
-        : new Decimal(submarket.vacancy_rate || 0.05).toFixed(4),
+        : new Decimal(submarket.avg_occupancy ? 1 - parseFloat(submarket.avg_occupancy) : 0.05).toFixed(4),
       concessionPct: '0.0100',
       badDebtPct: '0.0150',
       otherIncomePerUnit: '150.00',

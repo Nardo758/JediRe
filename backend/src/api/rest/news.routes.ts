@@ -11,6 +11,9 @@ const logger = { error: (...args: any[]) => console.error(...args) };
 
 const router = Router();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidUUID = (s: string) => UUID_RE.test(s);
+
 /**
  * GET /api/v1/news/events
  * Get news events with filtering
@@ -113,6 +116,9 @@ router.get('/events', authMiddleware.requireAuth, async (req: Request, res: Resp
 router.get('/events/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
     const userId = (req as any).user?.userId;
 
     const result = await query(
@@ -317,6 +323,9 @@ router.get('/alerts', authMiddleware.requireAuth, async (req: Request, res: Resp
 router.patch('/alerts/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Alert not found' });
+    }
     const userId = (req as any).user?.userId;
     const { is_read, is_dismissed, snooze_hours } = req.body;
 

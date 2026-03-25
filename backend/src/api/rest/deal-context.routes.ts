@@ -116,7 +116,6 @@ router.get('/:dealId/context', async (req: Request, res: Response) => {
     // Build context object
     const context = {
       identity,
-      projectType: deal.project_type || 'existing',
       site: {
         acreage: layered(dealData.site?.acreage || 0),
         buildableAcreage: layered(dealData.site?.buildableAcreage || 0),

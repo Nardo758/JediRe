@@ -295,7 +295,9 @@ router.post('/orchestrator/pipeline/:pipelineId/:dealId', async (req: Request, r
     );
     res.json({ pipelineId: req.params.pipelineId, results });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    const msg = (error as Error).message || '';
+    const status = msg.includes('not found') || msg.includes('Pipeline not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 
@@ -414,12 +416,11 @@ router.post('/wire/subscriptions/setup', (_req: Request, res: Response) => {
 
 /** POST /wire/p1/:dealId - Run full P1 pipeline for a deal */
 router.post('/wire/p1/:dealId', async (req: Request, res: Response) => {
-  try {
-    const result = await wireP1Pipeline(req.params.dealId, req.body);
-    res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
+  const dealId = req.params.dealId;
+  res.status(202).json({ success: true, dealId, message: 'P1 pipeline queued' });
+  wireP1Pipeline(dealId, req.body).catch((error: any) => {
+    logger.error(`[ModuleWiring] P1 pipeline failed for ${dealId}:`, error.message);
+  });
 });
 
 /** POST /wire/proforma/sync/:dealId - Recalculate proforma assumptions */
@@ -448,13 +449,11 @@ router.post('/wire/proforma/init/:dealId', async (req: Request, res: Response) =
 
 /** POST /wire/scenarios/:dealId - Generate scenarios for a deal */
 router.post('/wire/scenarios/:dealId', async (req: Request, res: Response) => {
-  try {
-    await wireScenarioGeneration(req.params.dealId, req.body);
-    const scenarioData = dataFlowRouter.getModuleData('M10', req.params.dealId);
-    res.json({ dealId: req.params.dealId, ...scenarioData?.data });
-  } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
-  }
+  const dealId = req.params.dealId;
+  res.status(202).json({ success: true, dealId, message: 'Scenario generation queued' });
+  wireScenarioGeneration(dealId, req.body).catch((error: any) => {
+    logger.error(`[ModuleWiring] Scenario generation failed for ${dealId}:`, error.message);
+  });
 });
 
 /** POST /wire/scenarios/recalculate/:scenarioId - Recalculate a specific scenario */
@@ -463,7 +462,9 @@ router.post('/wire/scenarios/recalculate/:scenarioId', async (req: Request, res:
     await wireScenarioRecalculate(req.params.scenarioId, req.body.userId);
     res.json({ scenarioId: req.params.scenarioId, status: 'recalculated' });
   } catch (error) {
-    res.status(500).json({ error: (error as Error).message });
+    const msg = (error as Error).message || '';
+    const status = msg.includes('not found') || msg.includes('Not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
   }
 });
 

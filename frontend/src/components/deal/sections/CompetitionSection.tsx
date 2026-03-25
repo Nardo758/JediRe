@@ -5,9 +5,10 @@
  * - owned → Performance mode (competitive threats, market share, positioning changes)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
+import { PeerComparisonDataGrid, PeerProperty } from './PeerComparisonDataGrid';
 
 // Type definitions (moved from mock data)
 interface ComparableProperty {
@@ -227,6 +228,44 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
       }
     });
 
+  // Peer comparison DataGrid: subject + peers transformed to PeerProperty format
+  const peerProperties = useMemo<PeerProperty[]>(() => {
+    const dealAny = deal as any;
+    const subject: PeerProperty = {
+      id: 'subject',
+      name: deal.name || 'Subject Property',
+      address: (deal as any).address || '',
+      units: dealAny.units || dealAny.totalUnits || 0,
+      yearBuilt: dealAny.yearBuilt ?? null,
+      class: dealAny.buildingClass || dealAny.class || null,
+      avgRent: dealAny.avgRent || dealAny.averageRent || null,
+      capRate: deal.capRate ?? null,
+      pricePerUnit: deal.purchasePrice && (dealAny.units || dealAny.totalUnits)
+        ? Math.round(deal.purchasePrice / (dealAny.units || dealAny.totalUnits))
+        : null,
+      occupancy: deal.occupancy ?? null,
+      distance: 0,
+      matchScore: 100,
+      isSubject: true,
+    };
+    const peers: PeerProperty[] = filteredComparables.map(c => ({
+      id: c.id,
+      name: c.name,
+      address: c.address,
+      units: c.units,
+      yearBuilt: c.yearBuilt,
+      class: c.class,
+      avgRent: c.avgRent,
+      capRate: c.capRate ?? null,
+      pricePerUnit: c.pricePerUnit ?? null,
+      occupancy: c.occupancy ?? null,
+      distance: c.distance,
+      matchScore: c.similarityScore,
+      isSubject: false,
+    }));
+    return [subject, ...peers];
+  }, [filteredComparables, deal]);
+
   // Loading state
   if (loading) {
     return (
@@ -304,6 +343,16 @@ export const CompetitionSection: React.FC<CompetitionSectionProps> = ({ deal }) 
           {isOwned && <CompetitiveThreatsCard threats={competitiveThreats} />}
         </div>
       </div>
+
+      {/* Peer Comparison DataGrid (Acquisition Mode) */}
+      {isPipeline && peerProperties.length > 1 && (
+        <div>
+          <PeerComparisonDataGrid
+            properties={peerProperties}
+            title="PEER COMPARISON GRID"
+          />
+        </div>
+      )}
 
       {/* Bottom Row: Market Share (Performance Mode Only) */}
       {isOwned && (

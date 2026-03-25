@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Activity, Users, Building2, Map, Cog,
+  Activity, Users, Building2, Map, Cog, Database,
   ArrowLeft, Shield, Zap,
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
@@ -10,8 +10,9 @@ import { UserManagementSection } from './sections/UserManagementSection';
 import { DealOversightSection } from './sections/DealOversightSection';
 import { DataCoverageSection } from './sections/DataCoverageSection';
 import { BackgroundJobsSection } from './sections/BackgroundJobsSection';
+import { EnrichmentStatusSection } from './sections/EnrichmentStatusSection';
 
-type TabKey = 'health' | 'users' | 'deals' | 'coverage' | 'jobs';
+type TabKey = 'health' | 'users' | 'deals' | 'coverage' | 'jobs' | 'enrichment';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'health', label: 'System Health', icon: <Activity className="w-4 h-4" /> },
@@ -19,6 +20,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'deals', label: 'Deals', icon: <Building2 className="w-4 h-4" /> },
   { key: 'coverage', label: 'Data Coverage', icon: <Map className="w-4 h-4" /> },
   { key: 'jobs', label: 'Jobs', icon: <Cog className="w-4 h-4" /> },
+  { key: 'enrichment', label: 'Enrichment', icon: <Database className="w-4 h-4" /> },
 ];
 
 interface QuickStats {
@@ -47,6 +49,7 @@ export function AdminDashboard() {
       case 'deals': return <DealOversightSection />;
       case 'coverage': return <DataCoverageSection />;
       case 'jobs': return <BackgroundJobsSection />;
+      case 'enrichment': return <EnrichmentStatusSection />;
     }
   };
 

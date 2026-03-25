@@ -47,12 +47,54 @@ import {
 // Store actions interface
 // ---------------------------------------------------------------------------
 
+// ─── M08 Strategy Score types ─────────────────────────────────────────────
+
+export interface M08StrategyScore {
+  strategy_id: string;
+  strategy_name: string;
+  strategy_type?: 'rental' | 'bts' | 'flip' | 'str' | string;
+  overall_score: number;
+  sub_scores: Record<string, number>;
+  signal_weights?: Record<string, number>;
+  gate_result: 'PASS' | 'FAIL' | 'N/A';
+  gate_failures: string[];
+  soft_penalty: number;
+  confidence: number;
+  is_system_template?: boolean;
+  sort_order?: number;
+  roi_estimate?: {
+    irr?: number;
+    yoc?: number;
+    profit_margin?: number;
+    rev_par?: number;
+  };
+}
+
+export interface M08ArbitrageResult {
+  winning_strategy_id: string | null;
+  winning_strategy_name: string | null;
+  runner_up_strategy_id: string | null;
+  runner_up_strategy_name: string | null;
+  winning_score: number;
+  runner_up_score: number;
+  delta: number;
+  arbitrage_detected: boolean;
+}
+
 interface DealStoreActions {
   // ─── DEAL LIST (Dashboard) ────────────────────────────────
   deals: any[];
   isLoading: boolean;
   error: string | null;
   fetchDeals: () => Promise<void>;
+
+  // ─── M08 STRATEGY ARBITRAGE ───────────────────────────────
+  strategyScores: M08StrategyScore[];
+  arbitrageResult: M08ArbitrageResult | null;
+  strategyScoresLoading: boolean;
+  fetchStrategyScores: (dealId: string) => Promise<void>;
+  recalculateStrategyScores: (dealId: string) => Promise<void>;
+  fetchArbitrage: (dealId: string) => Promise<void>;
 
   // ─── LIFECYCLE ────────────────────────────────────────────
   /** Create a new deal */
@@ -184,6 +226,20 @@ interface DealStoreActions {
    * Called once agent analysis completes; all downstream modules read from here.
    */
   updateZoningOutput: (output: DealContext['zoningOutput']) => void;
+
+  // ─── CORPORATE HEALTH (M33) ──────────────────────────────
+  corporateHealth: {
+    schi: number | null;
+    divergence: number | null;
+    signal: string | null;
+    reHealth: number | null;
+    herfindahl: number | null;
+    minChs: number | null;
+    topEmployerShare: number | null;
+    loading: boolean;
+  };
+  fetchCorporateHealth: (dealId: string) => Promise<void>;
+  fetchSubmarketHealth: (submarketId: number) => Promise<void>;
 
   // ─── DEAL STAGE ───────────────────────────────────────────
   /** Advance deal to next stage */
@@ -393,6 +449,49 @@ export const useDealStore = create<DealStore>()(
       }
     },
 
+    // ─── M08 STRATEGY ARBITRAGE ───────────────────────────────
+    strategyScores: [] as M08StrategyScore[],
+    arbitrageResult: null as M08ArbitrageResult | null,
+    strategyScoresLoading: false,
+
+    fetchStrategyScores: async (dealId: string) => {
+      set({ strategyScoresLoading: true });
+      try {
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/strategy-scores`);
+        // Backend returns { success, scores: M08StrategyScore[] }
+        const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
+        set({ strategyScores: scores, strategyScoresLoading: false });
+      } catch (err) {
+        console.error('[dealStore] fetchStrategyScores failed:', err);
+        set({ strategyScoresLoading: false });
+      }
+    },
+
+    recalculateStrategyScores: async (dealId: string) => {
+      set({ strategyScoresLoading: true });
+      try {
+        const res = await apiClient.post(`/api/v1/deals/${dealId}/strategy-scores/recalculate`);
+        // Backend returns { success, scores: M08StrategyScore[], arbitrage?, freshlyCalculated }
+        const scores: M08StrategyScore[] = Array.isArray(res.data?.scores) ? res.data.scores : [];
+        const arbitrageResult: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
+        set({ strategyScores: scores, arbitrageResult, strategyScoresLoading: false });
+      } catch (err) {
+        console.error('[dealStore] recalculateStrategyScores failed:', err);
+        set({ strategyScoresLoading: false });
+      }
+    },
+
+    fetchArbitrage: async (dealId: string) => {
+      try {
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/arbitrage`);
+        // Backend returns { success, arbitrage: M08ArbitrageResult }
+        const result: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
+        set({ arbitrageResult: result });
+      } catch (err) {
+        console.error('[dealStore] fetchArbitrage failed:', err);
+      }
+    },
+
     createDeal: async (payload: any) => {
       set({ isLoading: true, error: null });
       try {
@@ -446,7 +545,7 @@ export const useDealStore = create<DealStore>()(
     },
 
     clearDeal: () => {
-      set(INITIAL_CONTEXT);
+      set({ ...INITIAL_CONTEXT, strategyScores: [], arbitrageResult: null, strategyScoresLoading: false });
     },
 
     // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────
@@ -798,6 +897,71 @@ export const useDealStore = create<DealStore>()(
     updateZoning: (updates) => set((s) => ({ zoning: { ...s.zoning, ...updates } })),
     updateZoningOutput: (output) => set({ zoningOutput: output }),
 
+    // ─── CORPORATE HEALTH (M33) ─────────────────────────────
+
+    corporateHealth: {
+      schi: null,
+      divergence: null,
+      signal: null,
+      reHealth: null,
+      herfindahl: null,
+      minChs: null,
+      topEmployerShare: null,
+      loading: false,
+    },
+
+    fetchCorporateHealth: async (dealId: string) => {
+      set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: true } }));
+      try {
+        const res = await apiClient.get(`/api/v1/corporate-health/deal/${dealId}`);
+        const d = res.data?.data;
+        if (d) {
+          set({
+            corporateHealth: {
+              schi: d.weightedSCHI ?? null,
+              divergence: d.divergence ?? null,
+              signal: d.submarkets?.[0]?.signal ?? null,
+              reHealth: null,
+              herfindahl: d.herfindahl ?? null,
+              minChs: d.minChs ?? null,
+              topEmployerShare: d.topEmployerShare ?? null,
+              loading: false,
+            },
+          });
+        } else {
+          set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
+        }
+      } catch {
+        set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
+      }
+    },
+
+    fetchSubmarketHealth: async (submarketId: number) => {
+      set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: true } }));
+      try {
+        const res = await apiClient.get(`/api/v1/corporate-health/submarket/${submarketId}`);
+        const d = res.data?.data;
+        if (d) {
+          set({
+            corporateHealth: {
+              schi: d.schi ?? null,
+              divergence: d.divergence ?? null,
+              signal: d.signal ?? null,
+              reHealth: d.reHealth ?? null,
+              herfindahl: d.herfindahl ?? null,
+              minChs: null,
+              topEmployerShare: null,
+              loading: false,
+            },
+          });
+        } else {
+          set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
+        }
+      } catch {
+        set((s) => ({ corporateHealth: { ...s.corporateHealth, loading: false } }));
+      }
+    },
+
     // ─── STAGE MANAGEMENT ───────────────────────────────────
 
     setStage: (stage: DealStage) => {
@@ -911,7 +1075,7 @@ export const useDevCapacity = () =>
     updateZoningOutput: s.updateZoningOutput,
   }));
 
-/** M08 Strategy Arbitrage — reads scores, unit mix, zoning */
+/** M08 Strategy Arbitrage — reads scores, unit mix, zoning + live M08 slices */
 export const useStrategyArbitrage = () =>
   useDealStore((s) => ({
     strategy: s.strategy,
@@ -925,6 +1089,13 @@ export const useStrategyArbitrage = () =>
     isDevelopment: s.isDevelopment(),
     projectType: s.projectType,
     productType: s.productType,
+    // M08 live slices
+    strategyScores: s.strategyScores,
+    arbitrageResult: s.arbitrageResult,
+    strategyScoresLoading: s.strategyScoresLoading,
+    fetchStrategyScores: s.fetchStrategyScores,
+    recalculateStrategyScores: s.recalculateStrategyScores,
+    fetchArbitrage: s.fetchArbitrage,
   }));
 
 /** M09 ProForma — reads unit mix, assumptions, capital */
