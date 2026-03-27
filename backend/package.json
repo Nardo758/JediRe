@@ -10,7 +10,10 @@
     "replit": "npm install && npm run build && npm run start",
     "migrate": "ts-node src/scripts/run-migrations.ts",
     "backfill": "ts-node src/scripts/backfill-data-library.ts",
-    "embeddings": "ts-node src/scripts/generate-embeddings.ts"
+    "embeddings": "ts-node src/scripts/generate-embeddings.ts",
+    "setup-strategy-engine": "ts-node src/scripts/setup-strategy-engine.ts",
+    "seed-presets": "ts-node src/scripts/seed-preset-strategies.ts",
+    "seed-florida": "ts-node src/scripts/seed-florida-geographies.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -26,7 +29,9 @@
     "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.1.0",
+    "decimal.js": "^10.6.0",
     "dotenv": "^16.3.1",
+    "drizzle-orm": "^0.29.5",
     "express": "^4.18.2",
     "googleapis": "^144.0.0",
     "graphql": "^16.8.1",
@@ -36,6 +41,7 @@
     "kafkajs": "^2.2.4",
     "mime-types": "^3.0.2",
     "multer": "^2.0.2",
+    "node-cron": "^3.0.3",
     "node-schedule": "^2.1.1",
     "openai": "^6.25.0",
     "passport": "^0.6.0",
@@ -49,6 +55,7 @@
     "uuid": "^9.0.0",
     "winston": "^3.11.0",
     "xlsx": "^0.18.5",
+    "yahoo-finance2": "^3.13.2",
     "zod": "^4.3.6"
   },
   "devDependencies": {

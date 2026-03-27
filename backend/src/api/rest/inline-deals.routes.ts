@@ -32,7 +32,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       deals: result.rows.map(row => ({
         id: row.id,
         name: row.name,
-        projectType: row.project_type,
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         projectIntent: row.project_intent,
         tier: row.tier || 'basic',
         status: row.status,
@@ -97,7 +98,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       deal: {
         id: row.id,
         name: row.name,
-        projectType: row.project_type || 'multifamily',
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         projectIntent: row.project_intent,
         tier: row.tier || 'basic',
         status: row.status,
@@ -114,6 +116,12 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         pipelineStage: row.pipelineStage || null,
         daysInStage: row.daysInStage || 0,
         dealCategory: row.deal_category || 'pipeline',
+        deal_category: row.deal_category || 'pipeline',
+        stage: row.stage || 'prospect',
+        pipeline_stage: row.pipelineStage || row.stage || null,
+        triage_score: row.triage_score ?? null,
+        jedi_score: row.jedi_score ?? row.triage_score ?? null,
+        timeline_end: row.timeline_end,
         developmentType: row.development_type,
         address: row.address,
         description: row.description,
@@ -139,13 +147,13 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     // Use pool directly instead of req.dbClient
     const client = pool;
     const {
-      name, boundary, projectType, projectIntent, targetUnits,
+      name, boundary, projectType, project_type, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
       deal_category, development_type, address, description,
       property_type_key
     } = req.body;
 
-    let resolvedProjectType = projectType;
+    let resolvedProjectType = projectType || project_type;
     if (!resolvedProjectType && property_type_key) {
       const ptResult = await client.query(
         'SELECT category FROM property_types WHERE type_key = $1 LIMIT 1',
@@ -158,11 +166,18 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
           'Hospitality': 'hospitality', 'Mixed-Use': 'mixed_use',
           'Land': 'land', 'Special Purpose': 'special_purpose',
         };
-        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'multifamily';
+        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'existing';
       }
     }
 
     const userTier = tier || 'basic';
+
+    const orgResult = await client.query(
+      'SELECT org_id FROM org_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1',
+      [req.user!.userId]
+    );
+    const userOrgId = orgResult.rows.length > 0 ? orgResult.rows[0].org_id : null;
+
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
       : `ST_GeomFromGeoJSON($3)`;
@@ -170,15 +185,15 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
-        deal_category, development_type, address, description
+        deal_category, development_type, address, description, org_id
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15)
       RETURNING *
     `, [
       req.user!.userId,
       name,
       JSON.stringify(boundary),
-      resolvedProjectType || 'multifamily',
+      resolvedProjectType || 'existing',
       projectIntent || null,
       targetUnits || null,
       budget || null,
@@ -189,6 +204,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       development_type || 'new',
       address || null,
       description || null,
+      userOrgId,
     ]);
 
     const row = result.rows[0];
@@ -215,7 +231,8 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       deal: {
         id: row.id,
         name: row.name,
-        projectType: row.project_type,
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         tier: row.tier || 'basic',
         status: row.status,
         budget: parseFloat(row.budget) || 0,
@@ -699,7 +716,8 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
         p.renewal_status
       FROM properties p
       JOIN deals d ON d.id = $1
-      WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+      WHERE d.boundary IS NOT NULL
+        AND ST_Contains(d.boundary, ST_SetSRID(ST_Point(p.lng, p.lat), 4326))
     `, [dealId]);
 
     const properties = result.rows;

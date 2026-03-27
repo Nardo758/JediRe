@@ -1,3 +1,5 @@
+import { T as BT } from '../../components/deal/bloomberg-tokens';
+import { BT as BT2, BT_CSS, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
@@ -8,6 +10,9 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
+import UnitMixIntelligence from '../../components/deal/sections/UnitMixIntelligence';
+import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnalysisSection';
+import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
 
 interface MarketIntelData {
   economy: any;
@@ -26,10 +31,17 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
-export const MarketIntelligencePage: React.FC = () => {
+interface MarketIntelPageProps {
+  dealId?: string;
+  deal?: any;
+  dealType?: string;
+}
+
+export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProps) => {
   const { dealId: paramDealId } = useParams<{ dealId: string }>();
-  const dealId = paramDealId || '';
+  const dealId = outerProps.dealId || paramDealId || '';
   const { updateMarketIntelligence, emitEvent, activeScenario, zoningProfile, lastEvent } = useDealModule();
+  const [moduleTab, setModuleTab] = useState(0);
   const [activeTab, setActiveTab] = useState<TabId>('economy');
   const [data, setData] = useState<MarketIntelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -95,7 +107,7 @@ export const MarketIntelligencePage: React.FC = () => {
     setError(null);
     try {
       const url = `/api/v1/deals/${dealId}/market-intelligence${refresh ? '?refresh=true' : ''}`;
-      const response = await apiClient.get(url, { timeout: 60000 }) as any;
+      const response = await apiClient.get(url, { timeout: 60000 }) as { data?: { data?: MarketIntelData; cached?: boolean } };
       const intelData = response?.data?.data || null;
       setData(intelData);
       setCached(response?.data?.cached || false);
@@ -115,29 +127,119 @@ export const MarketIntelligencePage: React.FC = () => {
   if (error) return <ErrorState message={error} onRetry={() => fetchData()} />;
   if (!data) return <ErrorState message="No data available" onRetry={() => fetchData()} />;
 
+  const kpiEconomy = [
+    {
+      label: 'AVG RENT',
+      value: data.demographics?.submarket?.avgRent != null
+        ? `$${Number(data.demographics.submarket.avgRent).toLocaleString()}`
+        : data.demographics?.census?.medianRent != null
+          ? `$${Number(data.demographics.census.medianRent).toLocaleString()}`
+          : (data.economy?.metrics?.avgRent?.value ?? '—'),
+      color: BT2.text.cyan,
+      spark: (data.demographics?.submarket?.rentSeries as number[] | undefined)
+          ?? (data.economy?.metrics?.avgRent?.sparkline as number[] | undefined) ?? [],
+    },
+    {
+      label: 'OCCUPANCY',
+      value: data.demographics?.submarket?.avg_occupancy != null
+        ? `${data.demographics.submarket.avg_occupancy}%`
+        : data.supplyContext?.marketOccupancy != null
+          ? `${(data.supplyContext.marketOccupancy * 100).toFixed(1)}%`
+          : '—',
+      color: BT2.met.occupancy,
+      spark: (data.supplyContext?.occupancySeries as number[] | undefined) ?? [],
+    },
+    {
+      label: 'ABSORPTION',
+      value: data.supplyContext?.absorption?.value ?? data.economy?.metrics?.absorption?.value ?? '—',
+      color: BT2.met.economic,
+      spark: (data.supplyContext?.absorptionSeries as number[] | undefined) ?? [],
+    },
+    {
+      label: 'JOB GROWTH',
+      value: data.economy?.metrics?.jobsAdded?.value ?? data.economy?.metrics?.jobGrowth?.value ?? '—',
+      color: BT2.met.economic,
+      spark: (data.economy?.metrics?.jobsAdded?.sparkline as number[] | undefined)
+          ?? (data.economy?.metrics?.jobGrowth?.sparkline as number[] | undefined) ?? [],
+    },
+    {
+      label: 'POPULATION GROWTH',
+      value: data.economy?.metrics?.populationGrowth?.value
+          ?? (data.demographics?.census as Record<string, unknown> | undefined)?.populationGrowth as string | undefined
+          ?? data.economy?.metrics?.netMigration?.value
+          ?? '—',
+      color: BT2.text.purple,
+      spark: (data.economy?.metrics?.populationGrowth?.sparkline as number[] | undefined)
+          ?? (data.economy?.metrics?.netMigration?.sparkline as number[] | undefined) ?? [],
+    },
+  ];
+
   return (
-    <div className="space-y-0">
-      <div className="bg-stone-900 border-l-4 border-violet-500 rounded-t-lg px-5 py-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-white text-lg font-bold tracking-tight">Market Intelligence</h2>
-          <p className="text-stone-400 text-xs mt-0.5">Economic drivers, demand signals, and competitive landscape</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {cached && (
-            <span className="text-xs text-stone-500 bg-stone-800 px-2 py-0.5 rounded">Cached</span>
-          )}
-          <button
-            onClick={() => fetchData(true)}
-            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-300 bg-violet-500/10 border border-violet-500/20 rounded-md hover:bg-violet-500/20 transition-colors"
-          >
-            <RefreshCw size={12} />
-            Refresh
-          </button>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal }}>
+      <style>{BT_CSS}</style>
+      <PanelHeader
+        title="MARKET INTELLIGENCE"
+        subtitle="M03 · DEMAND + RENT + SUPPLY"
+        borderColor={BT2.text.cyan}
+        metrics={[
+          { l: 'F_RENT', c: BT2.text.cyan },
+          { l: 'O_ABSORB', c: BT2.met.occupancy },
+          { l: 'E_JOBS', c: BT2.met.economic },
+          { l: 'D_SEARCH', c: BT2.met.digTraffic },
+        ]}
+      />
+
+      {/* 5 KpiTiles with sparklines */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
+        {kpiEconomy.map(k => (
+          <KpiTile key={k.label} label={k.label} value={k.value} color={k.color} spark={k.spark} />
+        ))}
+      </div>
+
+      {/* Module SubTabBar: Market Intel / Unit Mix / Trends / Opportunity */}
+      <SubTabBar
+        tabs={['MARKET INTEL', 'UNIT MIX', 'TRENDS', 'OPPORTUNITY']}
+        active={moduleTab}
+        setActive={setModuleTab}
+        color={BT2.text.cyan}
+      />
+
+      <BtTabWrapper>
+        {moduleTab === 1 && <UnitMixIntelligence />}
+        {moduleTab === 2 && <TrendsAnalysisSection deal={outerProps.deal} />}
+        {moduleTab === 3 && <OpportunityEngineSection deal={outerProps.deal} />}
+        {moduleTab === 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+
+      {/* Demand Drivers / Rent Comp Matrix — 2-col DataRow grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, flexShrink: 0 }}>
+        <SectionPanel title="DEMAND DRIVERS" subtitle="Labour + population signals" borderColor={BT2.text.cyan}>
+          <DataRow label="JOBS ADDED (12M)" value={data.economy?.metrics?.jobsAdded?.value ?? '—'} valueColor={BT2.met.economic} />
+          <DataRow label="WAGE GROWTH" value={data.economy?.metrics?.wageGrowth?.value ?? '—'} valueColor={BT2.met.economic} />
+          <DataRow label="NET MIGRATION" value={data.economy?.metrics?.netMigration?.value ?? '—'} valueColor={BT2.text.purple} />
+          <DataRow label="ECONOMIC HEALTH" value={data.economy?.healthScore != null ? `${data.economy.healthScore}/100` : '—'} valueColor={data.economy?.healthScore >= 70 ? BT2.met.occupancy : data.economy?.healthScore >= 50 ? BT2.text.amber : BT2.text.red} />
+          <DataRow label="POPULATION" value={data.demographics?.census?.population != null ? Number(data.demographics.census.population).toLocaleString() : '—'} valueColor={BT2.text.secondary} />
+        </SectionPanel>
+        <SectionPanel title="RENT COMP MATRIX" subtitle="Submarket benchmarks" borderColor={BT2.met.economic}>
+          <DataRow label="MEDIAN RENT" value={data.demographics?.census?.medianRent != null ? `$${Number(data.demographics.census.medianRent).toLocaleString()}` : '—'} valueColor={BT2.text.cyan} />
+          <DataRow label="SUBMARKET AVG RENT" value={data.demographics?.submarket?.avgRent != null ? `$${Number(data.demographics.submarket.avgRent).toLocaleString()}` : '—'} valueColor={BT2.text.cyan} />
+          <DataRow label="RENT GROWTH" value={data.demographics?.submarket?.rentGrowth ?? data.economy?.metrics?.rentGrowth?.value ?? '—'} valueColor={BT2.met.occupancy} />
+          <DataRow label="AFFORDABILITY" value={data.economy?.metrics?.affordabilityRatio?.value ?? '—'} valueColor={data.economy?.metrics?.affordabilityRatio?.status === 'green' ? BT2.met.occupancy : BT2.text.amber} />
+          <DataRow label="MEDIAN INCOME" value={data.demographics?.census?.medianIncome != null ? `$${Number(data.demographics.census.medianIncome).toLocaleString()}` : '—'} valueColor={BT2.text.secondary} />
+        </SectionPanel>
+      </div>
+
+      {/* Refresh control */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
+        {cached && <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
+        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
+          <RefreshCw size={10} />
+          REFRESH DATA
+        </button>
       </div>
 
       {hasZoningContext ? (
-        <div className="bg-indigo-50 border border-indigo-200 border-t-0 px-5 py-2.5 flex items-center justify-between">
+        <div className="border border-t-0 border-[#1e2a3d] px-5 py-2.5 flex items-center justify-between" style={{ background: "#131920" }}>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
               <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
@@ -145,33 +247,33 @@ export const MarketIntelligencePage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               {zoningCode && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 border border-indigo-200 rounded text-xs font-mono font-bold text-indigo-700">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono font-bold text-violet-300" style={{ background: "#1a1228", border: "1px solid #4C1D95" }}>
                   <Layers size={10} />
                   {zoningCode}
                 </span>
               )}
               {activeScenario?.maxUnits && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.maxUnits.toLocaleString()} units
                 </span>
               )}
               {activeScenario?.maxGba && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.maxGba.toLocaleString()} SF GBA
                 </span>
               )}
               {activeScenario?.appliedFar && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.appliedFar.toFixed(2)} FAR
                 </span>
               )}
               {activeScenario?.maxStories && (
-                <span className="px-2 py-0.5 bg-white border border-stone-200 rounded text-xs font-mono text-stone-600">
+                <span className="px-2 py-0.5 rounded text-xs font-mono" style={{ background: "#131920", border: "1px solid #1e2a3d", color: "#9EA8B4" }}>
                   {activeScenario.maxStories} stories
                 </span>
               )}
               {activeScenario?.bindingConstraint && (
-                <span className="px-2 py-0.5 bg-amber-50 border border-amber-200 rounded text-xs font-mono text-amber-700">
+                <span className="px-2 py-0.5 border border-amber-800 rounded text-xs font-mono text-amber-400">
                   Binding: {activeScenario.bindingConstraint}
                 </span>
               )}
@@ -183,41 +285,28 @@ export const MarketIntelligencePage: React.FC = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-stone-50 border border-stone-200 border-t-0 px-5 py-2 flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-stone-300" />
-          <span className="text-xs text-stone-400">Select a development path in Property & Zoning to contextualize market analysis</span>
+        <div className="px-5 py-2 flex items-center gap-2" style={{background: "#131920", borderLeft: "1px solid #1e2a3d", borderRight: "1px solid #1e2a3d"}}>
+          <div className="w-2 h-2 rounded-full" style={{background: "#3a4a5c"}} />
+          <span className="text-xs" style={{color: '#9EA8B4'}}>Select a development path in Property & Zoning to contextualize market analysis</span>
         </div>
       )}
 
-      <div className="bg-white border border-stone-200 border-t-0 rounded-b-lg">
-        <div className="flex border-b border-stone-200">
-          {TABS.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium transition-colors border-b-2 ${
-                  isActive
-                    ? 'border-violet-600 text-violet-700 bg-violet-50/50'
-                    : 'border-transparent text-stone-500 hover:text-stone-700 hover:bg-stone-50'
-                }`}
-              >
-                <Icon size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      <SubTabBar
+        tabs={TABS.map(t => t.label.toUpperCase())}
+        active={TABS.findIndex(t => t.id === activeTab)}
+        setActive={(i) => setActiveTab(TABS[i].id)}
+        color={BT2.text.cyan}
+      />
 
-        <div className="p-5">
-          {activeTab === 'economy' && <EconomyTab data={data.economy} />}
-          {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
-          {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
-          {activeTab === 'news' && <NewsTab events={data.news} />}
-        </div>
-      </div>
+            <BtTabWrapper>
+              {activeTab === 'economy' && <EconomyTab data={data.economy} />}
+              {activeTab === 'documents' && <DocumentIntelligenceTab data={data.documentIntelligence} />}
+              {activeTab === 'demographics' && <DemographicsTab data={data.demographics} supply={data.supplyContext} />}
+              {activeTab === 'news' && <NewsTab events={data.news} />}
+            </BtTabWrapper>
+          </div>
+        )}
+      </BtTabWrapper>
     </div>
   );
 };
@@ -225,15 +314,15 @@ export const MarketIntelligencePage: React.FC = () => {
 function EconomyTab({ data }: { data: any }) {
   if (!data) return <EmptySection message="Economic data not available for this deal." />;
 
-  const healthColor = data.healthScore >= 70 ? 'text-emerald-600' : data.healthScore >= 50 ? 'text-amber-600' : 'text-red-600';
-  const healthBg = data.healthScore >= 70 ? 'bg-emerald-50 border-emerald-200' : data.healthScore >= 50 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+  const healthColor = data.healthScore >= 70 ? 'text-emerald-400' : data.healthScore >= 50 ? 'text-amber-400' : 'text-red-400';
+  const healthBg = data.healthScore >= 70 ? 'border-emerald-700 bg-opacity-20' : data.healthScore >= 50 ? 'border-amber-700 bg-opacity-20' : 'border-red-700 bg-opacity-20';
 
   const metrics = [
     { label: 'Economic Health', value: data.healthScore?.toString() || 'N/A', unit: '/100', trend: data.healthTrend, icon: Activity, color: healthColor },
-    { label: 'Jobs Added (12mo)', value: data.metrics?.jobsAdded?.value || 'N/A', unit: '', trend: data.metrics?.jobsAdded?.trend, icon: Briefcase, color: 'text-emerald-600' },
-    { label: 'Wage Growth', value: data.metrics?.wageGrowth?.value || 'N/A', unit: '', trend: data.metrics?.wageGrowth?.trend, icon: DollarSign, color: 'text-emerald-600' },
-    { label: 'Net Migration', value: data.metrics?.netMigration?.value || 'N/A', unit: '', trend: data.metrics?.netMigration?.trend, icon: Users, color: 'text-violet-600' },
-    { label: 'Affordability', value: data.metrics?.affordabilityRatio?.value || 'N/A', unit: '', trend: data.metrics?.affordabilityRatio?.detail, icon: Home, color: data.metrics?.affordabilityRatio?.status === 'green' ? 'text-emerald-600' : data.metrics?.affordabilityRatio?.status === 'red' ? 'text-red-600' : 'text-amber-600' },
+    { label: 'Jobs Added (12mo)', value: data.metrics?.jobsAdded?.value || 'N/A', unit: '', trend: data.metrics?.jobsAdded?.trend, icon: Briefcase, color: 'text-emerald-400' },
+    { label: 'Wage Growth', value: data.metrics?.wageGrowth?.value || 'N/A', unit: '', trend: data.metrics?.wageGrowth?.trend, icon: DollarSign, color: 'text-emerald-400' },
+    { label: 'Net Migration', value: data.metrics?.netMigration?.value || 'N/A', unit: '', trend: data.metrics?.netMigration?.trend, icon: Users, color: 'text-violet-300' },
+    { label: 'Affordability', value: data.metrics?.affordabilityRatio?.value || 'N/A', unit: '', trend: data.metrics?.affordabilityRatio?.detail, icon: Home, color: data.metrics?.affordabilityRatio?.status === 'green' ? 'text-emerald-400' : data.metrics?.affordabilityRatio?.status === 'red' ? 'text-red-400' : 'text-amber-400' },
   ];
 
   return (
@@ -242,11 +331,11 @@ function EconomyTab({ data }: { data: any }) {
         {metrics.map((m, i) => {
           const Icon = m.icon;
           return (
-            <div key={i} className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
+            <div key={i} className="rounded-lg p-3 text-center" style={{background: "#131920", border: "1px solid #1e2a3d"}}>
               <Icon size={16} className={`mx-auto mb-1 ${m.color}`} />
               <div className={`text-xl font-bold font-mono ${m.color}`}>{m.value}</div>
-              <div className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider mt-0.5">{m.label}{m.unit}</div>
-              {m.trend && <div className="text-[10px] text-stone-400 mt-1 truncate" title={m.trend}>{m.trend}</div>}
+              <div className="text-[10px] text-[#6B7585] font-semibold uppercase tracking-wider mt-0.5">{m.label}{m.unit}</div>
+              {m.trend && <div className="text-[10px] text-[#6B7585] mt-1 truncate" title={m.trend}>{m.trend}</div>}
             </div>
           );
         })}
@@ -273,17 +362,17 @@ function EconomyTab({ data }: { data: any }) {
 
 function EmployersSection({ employers }: { employers: any[] }) {
   if (!employers?.length) return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={Building2} title="Major Employers & Anchors" />
-      <p className="text-sm text-stone-400 mt-3">No employer data available. Upload an OM or enable news intelligence to populate.</p>
+      <p className="text-sm text-[#6B7585] mt-3">No employer data available. Upload an OM or enable news intelligence to populate.</p>
     </div>
   );
 
   const statusColors: Record<string, string> = {
-    expanding: 'text-emerald-600 bg-emerald-50',
-    stable: 'text-blue-600 bg-blue-50',
-    watch: 'text-amber-600 bg-amber-50',
-    contracting: 'text-red-600 bg-red-50',
+    expanding: 'text-emerald-400 bg-opacity-10',
+    stable: 'text-blue-400 bg-opacity-10',
+    watch: 'text-amber-400 bg-opacity-10',
+    contracting: 'text-red-400 bg-opacity-10',
   };
 
   const statusIcons: Record<string, string> = {
@@ -294,29 +383,29 @@ function EmployersSection({ employers }: { employers: any[] }) {
   };
 
   return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={Building2} title="Major Employers & Anchors" badge={`${employers.length} tracked`} />
       <div className="space-y-2 mt-3">
         {employers.map((emp, i) => (
-          <div key={i} className={`bg-stone-50 rounded-lg p-3 border-l-3 ${
+          <div key={i} className={`rounded-lg p-3 border-l-3 ${
             emp.status === 'expanding' ? 'border-l-emerald-500' :
             emp.status === 'watch' ? 'border-l-amber-500' :
             emp.status === 'contracting' ? 'border-l-red-500' : 'border-l-blue-500'
           }`}>
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-stone-800">{emp.name}</span>
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">{emp.industry}</span>
+                <span className="text-sm font-semibold text-[#C8C4BE]">{emp.name}</span>
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-900/30 text-violet-300">{emp.industry}</span>
               </div>
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-stone-100 text-stone-500">{emp.sourceType}</span>
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[#131920] text-[#6B7585]">{emp.sourceType}</span>
             </div>
-            <div className="flex gap-4 text-[11px] text-stone-500">
+            <div className="flex gap-4 text-[11px] text-[#6B7585]">
               <span>👥 {emp.employees}</span>
               {emp.distance && <span>📍 {emp.distance}</span>}
-              <span className={statusColors[emp.status] || 'text-stone-600'}>
+              <span className={statusColors[emp.status] || 'text-[#4B5563]'}>
                 {statusIcons[emp.status] || '●'} {emp.statusText}
               </span>
-              <span className="text-emerald-600 font-medium">→ {emp.demandImpact}</span>
+              <span className="text-emerald-400 font-medium">→ {emp.demandImpact}</span>
             </div>
           </div>
         ))}
@@ -327,30 +416,30 @@ function EmployersSection({ employers }: { employers: any[] }) {
 
 function PipelineSection({ pipeline }: { pipeline: any[] }) {
   if (!pipeline?.length) return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={Factory} title="Development Pipeline" />
-      <p className="text-sm text-stone-400 mt-3">No pipeline data available.</p>
+      <p className="text-sm text-[#6B7585] mt-3">No pipeline data available.</p>
     </div>
   );
 
   return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={Factory} title="Development Pipeline" badge={`${pipeline.length} projects`} />
       <div className="space-y-2 mt-3">
         {pipeline.map((proj, i) => (
-          <div key={i} className="bg-stone-50 rounded-lg p-3 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-violet-50 border border-violet-200 flex items-center justify-center text-lg shrink-0">
+          <div key={i} className="rounded-lg p-3 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-violet-900/10 border border-violet-800/50 flex items-center justify-center text-lg shrink-0">
               {proj.type === 'Infrastructure' ? '🚲' : proj.type === 'Corporate' ? '🏢' : proj.type === 'Residential' ? '🏠' : '🏗️'}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-stone-800 truncate">{proj.project}</div>
-              <div className="text-[11px] text-stone-500 truncate">{proj.impact}</div>
+              <div className="text-sm font-semibold text-[#C8C4BE] truncate">{proj.project}</div>
+              <div className="text-[11px] text-[#6B7585] truncate">{proj.impact}</div>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-xs font-semibold text-violet-700">{proj.timeline}</div>
+              <div className="text-xs font-semibold text-violet-300">{proj.timeline}</div>
               <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                proj.confidence === 'HIGH' ? 'bg-emerald-50 text-emerald-700' :
-                proj.confidence === 'LOW' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                proj.confidence === 'HIGH' ? 'bg-emerald-900/30 text-emerald-400' :
+                proj.confidence === 'LOW' ? 'bg-red-900/30 text-red-400' : 'bg-amber-900/30 text-amber-400'
               }`}>{proj.confidence}</span>
             </div>
           </div>
@@ -364,25 +453,25 @@ function IndustryComposition({ industries }: { industries: any[] }) {
   if (!industries?.length) return null;
 
   const trendColors: Record<string, string> = {
-    up: 'text-emerald-600',
-    down: 'text-red-600',
-    flat: 'text-stone-500',
+    up: 'text-emerald-400',
+    down: 'text-red-400',
+    flat: 'text-[#6B7585]',
   };
 
   const barColors = ['bg-violet-500', 'bg-blue-500', 'bg-cyan-500', 'bg-emerald-500', 'bg-amber-500', 'bg-red-400', 'bg-stone-400'];
 
   return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={TrendingUp} title="Industry Composition" />
       <div className="space-y-1.5 mt-3">
         {industries.map((ind, i) => (
           <div key={i} className="flex items-center gap-2">
-            <span className="text-[11px] text-stone-500 w-28 text-right truncate">{ind.name}</span>
-            <div className="flex-1 h-3.5 bg-stone-100 rounded overflow-hidden">
+            <span className="text-[11px] text-[#6B7585] w-28 text-right truncate">{ind.name}</span>
+            <div className="flex-1 h-3.5 bg-[#131920] rounded overflow-hidden">
               <div className={`h-full rounded ${barColors[i % barColors.length]} opacity-60`} style={{ width: `${ind.pct}%` }} />
             </div>
-            <span className="text-[11px] font-semibold text-stone-700 w-8 font-mono">{ind.pct}%</span>
-            <span className={`text-[10px] font-semibold w-10 font-mono ${trendColors[ind.trend] || 'text-stone-500'}`}>{ind.growth}</span>
+            <span className="text-[11px] font-semibold text-stone-300 w-8 font-mono">{ind.pct}%</span>
+            <span className={`text-[10px] font-semibold w-10 font-mono ${trendColors[ind.trend] || 'text-[#6B7585]'}`}>{ind.growth}</span>
           </div>
         ))}
       </div>
@@ -394,25 +483,25 @@ function WageRentAlignment({ alignment }: { alignment: any }) {
   if (!alignment) return null;
 
   const items = [
-    { label: 'Wage Growth', value: alignment.wageGrowth, color: 'text-emerald-600' },
-    { label: 'Rent Growth', value: alignment.rentGrowth, color: 'text-violet-600' },
-    { label: 'Traffic Surge', value: alignment.trafficSurge, color: 'text-amber-600' },
-    { label: 'Search Momentum', value: alignment.searchMomentum, color: 'text-blue-600' },
+    { label: 'Wage Growth', value: alignment.wageGrowth, color: 'text-emerald-400' },
+    { label: 'Rent Growth', value: alignment.rentGrowth, color: 'text-violet-300' },
+    { label: 'Traffic Surge', value: alignment.trafficSurge, color: 'text-amber-400' },
+    { label: 'Search Momentum', value: alignment.searchMomentum, color: 'text-blue-400' },
   ];
 
   return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={Activity} title="Wage-Rent-Traffic Alignment" badge="CORRELATION ENGINE" />
       <div className="grid grid-cols-4 gap-4 mt-3">
         {items.map((item, i) => (
           <div key={i} className="text-center">
             <div className={`text-lg font-bold font-mono ${item.color}`}>{item.value || 'N/A'}</div>
-            <div className="text-[10px] text-stone-500 font-semibold mt-0.5">{item.label}</div>
+            <div className="text-[10px] text-[#6B7585] font-semibold mt-0.5">{item.label}</div>
           </div>
         ))}
       </div>
       {alignment.insight && (
-        <div className="mt-3 px-3 py-2 bg-violet-50 border border-violet-200 rounded-lg">
+        <div className="mt-3 px-3 py-2 bg-violet-900/10 border border-violet-800/50 rounded-lg">
           <p className="text-xs text-violet-800 leading-relaxed">{alignment.insight}</p>
         </div>
       )}
@@ -426,15 +515,15 @@ function DocumentIntelligenceTab({ data }: { data: any }) {
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
-        <div className="w-20 h-20 rounded-2xl bg-violet-50 border-2 border-dashed border-violet-300 flex items-center justify-center mb-4">
+        <div className="w-20 h-20 rounded-2xl bg-violet-900/10 border-2 border-dashed border-violet-300 flex items-center justify-center mb-4">
           <Upload size={32} className="text-violet-400" />
         </div>
-        <h3 className="text-lg font-semibold text-stone-800 mb-1">Document Intelligence</h3>
-        <p className="text-sm text-stone-500 text-center max-w-md mb-4">
+        <h3 className="text-lg font-semibold text-[#C8C4BE] mb-1">Document Intelligence</h3>
+        <p className="text-sm text-[#6B7585] text-center max-w-md mb-4">
           Upload an Offering Memorandum or broker package to unlock AI-powered claim verification.
           Every market claim will be extracted and checked against platform data.
         </p>
-        <p className="text-xs text-stone-400">
+        <p className="text-xs text-[#6B7585]">
           Supported formats: PDF, DOCX
         </p>
       </div>
@@ -445,15 +534,15 @@ function DocumentIntelligenceTab({ data }: { data: any }) {
   const summary = data.summary || {};
 
   const statusConfig: Record<string, { icon: any; color: string; bg: string; label: string }> = {
-    verified: { icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', label: 'Verified' },
-    partial: { icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', label: 'Partially True' },
-    contradicted: { icon: XCircle, color: 'text-red-600', bg: 'bg-red-50 border-red-200', label: 'Contradicted' },
-    unverifiable: { icon: HelpCircle, color: 'text-stone-500', bg: 'bg-stone-50 border-stone-200', label: 'Unverifiable' },
+    verified: { icon: CheckCircle2, color: 'text-emerald-400', bg: 'border-emerald-700 bg-opacity-20', label: 'Verified' },
+    partial: { icon: AlertTriangle, color: 'text-amber-400', bg: 'border-amber-700 bg-opacity-20', label: 'Partially True' },
+    contradicted: { icon: XCircle, color: 'text-red-400', bg: 'border-red-700 bg-opacity-20', label: 'Contradicted' },
+    unverifiable: { icon: HelpCircle, color: 'text-[#6B7585]', bg: 'border-[#1e2a3d] bg-opacity-20', label: 'Unverifiable' },
   };
 
   return (
     <div className="space-y-5">
-      <div className="bg-violet-50/50 border border-violet-200 rounded-lg p-5">
+      <div className="bg-violet-900/10 border border-violet-800/50 rounded-lg p-5">
         <SectionTitle icon={FileText} title="OM Verification Report" badge="DOCUMENT INTELLIGENCE" />
 
         <div className="grid grid-cols-4 gap-3 mt-4">
@@ -472,15 +561,15 @@ function DocumentIntelligenceTab({ data }: { data: any }) {
         </div>
 
         {data.verdict && (
-          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Platform vs Broker Verdict</div>
-            <p className="text-xs text-blue-800 leading-relaxed">{data.verdict}</p>
+          <div className="mt-4 p-3 border border-blue-800 rounded-lg">
+            <div className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">Platform vs Broker Verdict</div>
+            <p className="text-xs text-blue-300 leading-relaxed">{data.verdict}</p>
           </div>
         )}
       </div>
 
       {claims.length > 0 && (
-        <div className="border border-stone-200 rounded-lg p-4">
+        <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
           <SectionTitle icon={CheckCircle2} title="Claim-by-Claim Verification" />
           <div className="space-y-2 mt-3">
             {claims.map((claim: any, i: number) => {
@@ -492,7 +581,7 @@ function DocumentIntelligenceTab({ data }: { data: any }) {
                 <div
                   key={i}
                   onClick={() => setExpandedClaim(isExpanded ? null : i)}
-                  className={`bg-stone-50 rounded-lg p-3 cursor-pointer transition-colors hover:bg-stone-100 border-l-3 ${
+                  className={`rounded-lg p-3 cursor-pointer transition-colors hover:bg-[#131920] border-l-3 ${
                     claim.status === 'verified' ? 'border-l-emerald-500' :
                     claim.status === 'partial' ? 'border-l-amber-500' :
                     claim.status === 'contradicted' ? 'border-l-red-500' : 'border-l-stone-300'
@@ -500,23 +589,23 @@ function DocumentIntelligenceTab({ data }: { data: any }) {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 shrink-0">{claim.category}</span>
-                      <span className="text-sm text-stone-700 truncate">"{claim.claim}"</span>
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-900/30 text-violet-300 shrink-0">{claim.category}</span>
+                      <span className="text-sm text-stone-300 truncate">"{claim.claim}"</span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className={`flex items-center gap-1 text-[10px] font-semibold ${cfg.color}`}>
                         <Icon size={12} /> {cfg.label}
                       </span>
-                      {isExpanded ? <ChevronUp size={14} className="text-stone-400" /> : <ChevronDown size={14} className="text-stone-400" />}
+                      {isExpanded ? <ChevronUp size={14} className="text-[#6B7585]" /> : <ChevronDown size={14} className="text-[#6B7585]" />}
                     </div>
                   </div>
                   {isExpanded && (
-                    <div className="mt-2 p-3 bg-white rounded border border-stone-200">
-                      <p className="text-xs text-stone-600 leading-relaxed mb-2">
-                        <span className="font-semibold text-violet-700">Platform Finding: </span>
+                    <div style={{ marginTop: 8, padding: 10, background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
+                      <p className="text-xs text-[#4B5563] leading-relaxed mb-2">
+                        <span className="font-semibold text-violet-300">Platform Finding: </span>
                         {claim.finding}
                       </p>
-                      <span className="text-[10px] text-stone-400">Source: {claim.source}</span>
+                      <span className="text-[10px] text-[#6B7585]">Source: {claim.source}</span>
                     </div>
                   )}
                 </div>
@@ -538,7 +627,7 @@ function DemographicsTab({ data, supply }: { data: any; supply: any }) {
   return (
     <div className="space-y-5">
       {census && (
-        <div className="border border-stone-200 rounded-lg p-4">
+        <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
           <SectionTitle icon={MapPin} title="Census Data — Trade Area" badge="U.S. Census ACS" />
           <div className="grid grid-cols-4 gap-4 mt-3">
             {[
@@ -549,21 +638,21 @@ function DemographicsTab({ data, supply }: { data: any; supply: any }) {
             ].map((item, i) => {
               const Icon = item.icon;
               return (
-                <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
-                  <Icon size={14} className="mx-auto mb-1 text-violet-600" />
-                  <div className="text-lg font-bold text-stone-800">{item.value || 'N/A'}</div>
-                  <div className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider">{item.label}</div>
+                <div key={i} className="rounded-lg p-3 text-center">
+                  <Icon size={14} className="mx-auto mb-1 text-violet-300" />
+                  <div className="text-lg font-bold text-[#C8C4BE]">{item.value || 'N/A'}</div>
+                  <div className="text-[10px] text-[#6B7585] font-semibold uppercase tracking-wider">{item.label}</div>
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 text-right text-[10px] text-stone-400">Source: U.S. Census ACS 5-Year Estimates</div>
+          <div className="mt-2 text-right text-[10px] text-[#6B7585]">Source: U.S. Census ACS 5-Year Estimates</div>
         </div>
       )}
 
       {data.submarket && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="border border-stone-200 rounded-lg p-4">
+          <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
             <SectionTitle icon={MapPin} title={`Submarket: ${data.submarket.name}`} />
             <div className="grid grid-cols-2 gap-3 mt-3">
               <StatCard label="Occupancy" value={data.submarket.avg_occupancy ? `${data.submarket.avg_occupancy}%` : 'N/A'} />
@@ -573,7 +662,7 @@ function DemographicsTab({ data, supply }: { data: any; supply: any }) {
             </div>
           </div>
           {data.msa && (
-            <div className="border border-stone-200 rounded-lg p-4">
+            <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
               <SectionTitle icon={MapPin} title={`MSA: ${data.msa.name}`} />
               <div className="grid grid-cols-2 gap-3 mt-3">
                 <StatCard label="Occupancy" value={data.msa.avg_occupancy ? `${data.msa.avg_occupancy}%` : 'N/A'} />
@@ -589,7 +678,7 @@ function DemographicsTab({ data, supply }: { data: any; supply: any }) {
       {funnel && <DemandFunnel funnel={funnel} />}
 
       {supply?.competingProperties && (
-        <div className="border border-stone-200 rounded-lg p-4">
+        <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
           <SectionTitle icon={Building2} title="Competitive Supply Context" badge={`${supply.radiusMiles}mi radius`} />
           <div className="grid grid-cols-5 gap-3 mt-3">
             <StatCard label="Properties" value={supply.competingProperties.count?.toString()} />
@@ -614,38 +703,38 @@ function DemandFunnel({ funnel }: { funnel: any }) {
   ];
 
   return (
-    <div className="border border-stone-200 rounded-lg p-4">
+    <div className="rounded-lg p-4" style={{ border: "1px solid #1e2a3d", background: "#0F1319" }}>
       <SectionTitle icon={Users} title="Renter Demand Quantification" badge="DEMAND FUNNEL" />
       <div className="mt-4 space-y-2">
         {steps.map((step, i) => {
           const width = i === 0 ? 100 : steps.slice(1, i + 1).reduce((acc, s) => acc * (s.pct / 100), 100);
           return (
             <div key={i} className="flex items-center gap-3">
-              <span className="text-[11px] text-stone-500 w-28 text-right shrink-0">{step.label}</span>
-              <div className="flex-1 h-7 bg-stone-100 rounded-md overflow-hidden relative">
+              <span className="text-[11px] text-[#6B7585] w-28 text-right shrink-0">{step.label}</span>
+              <div className="flex-1 h-7 bg-[#131920] rounded-md overflow-hidden relative">
                 <div className={`h-full rounded-md ${step.color} opacity-70 transition-all duration-500`} style={{ width: `${width}%` }} />
                 <span className="absolute inset-0 flex items-center justify-center text-[11px] font-bold text-white drop-shadow-sm">
                   {step.value}
                 </span>
               </div>
-              {i > 0 && <span className="text-[10px] text-stone-400 w-8 shrink-0">{step.pct}%</span>}
+              {i > 0 && <span className="text-[10px] text-[#6B7585] w-8 shrink-0">{step.pct}%</span>}
             </div>
           );
         })}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-emerald-700 font-mono">{funnel.demandPool}</div>
-          <div className="text-[10px] text-emerald-600 font-semibold uppercase">Qualified Demand Pool</div>
+        <div className="border border-emerald-800 rounded-lg p-3 text-center">
+          <div className="text-lg font-bold text-emerald-400 font-mono">{funnel.demandPool}</div>
+          <div className="text-[10px] text-emerald-400 font-semibold uppercase">Qualified Demand Pool</div>
         </div>
-        <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 text-center">
-          <div className="text-lg font-bold text-violet-700 font-mono">{funnel.captureRate}</div>
-          <div className="text-[10px] text-violet-600 font-semibold uppercase">Capture Rate</div>
+        <div className="bg-violet-900/10 border border-violet-800/50 rounded-lg p-3 text-center">
+          <div className="text-lg font-bold text-violet-300 font-mono">{funnel.captureRate}</div>
+          <div className="text-[10px] text-violet-300 font-semibold uppercase">Capture Rate</div>
         </div>
       </div>
       {funnel.captureInsight && (
-        <div className="mt-2 px-3 py-2 bg-violet-50 border border-violet-200 rounded-lg">
+        <div className="mt-2 px-3 py-2 bg-violet-900/10 border border-violet-800/50 rounded-lg">
           <p className="text-xs text-violet-800">{funnel.captureInsight}</p>
         </div>
       )}
@@ -658,8 +747,8 @@ function NewsTab({ events }: { events: any[] }) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <Newspaper size={40} className="text-stone-300 mb-3" />
-        <h3 className="text-base font-semibold text-stone-700 mb-1">No News Events</h3>
-        <p className="text-sm text-stone-400 text-center max-w-md">
+        <h3 className="text-base font-semibold text-stone-300 mb-1">No News Events</h3>
+        <p className="text-sm text-[#6B7585] text-center max-w-md">
           No news events tracked for this trade area yet. Events will appear here as the platform detects employment, development, and economic activity near this property.
         </p>
       </div>
@@ -667,12 +756,12 @@ function NewsTab({ events }: { events: any[] }) {
   }
 
   const typeConfig: Record<string, { color: string; bg: string; icon: string }> = {
-    DEMAND: { color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: '📈' },
-    SUPPLY: { color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', icon: '🏗️' },
-    INFRASTRUCTURE: { color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', icon: '🚇' },
-    ECONOMIC: { color: 'text-violet-700', bg: 'bg-violet-50 border-violet-200', icon: '💼' },
-    RISK: { color: 'text-red-700', bg: 'bg-red-50 border-red-200', icon: '⚠️' },
-    REGULATORY: { color: 'text-stone-700', bg: 'bg-stone-50 border-stone-200', icon: '⚖️' },
+    DEMAND: { color: 'text-emerald-400', bg: 'border-emerald-700 bg-opacity-20', icon: '📈' },
+    SUPPLY: { color: 'text-amber-400', bg: 'border-amber-700 bg-opacity-20', icon: '🏗️' },
+    INFRASTRUCTURE: { color: 'text-blue-400', bg: 'border-blue-700 bg-opacity-20', icon: '🚇' },
+    ECONOMIC: { color: 'text-violet-300', bg: 'bg-violet-900/10 border-violet-800/50', icon: '💼' },
+    RISK: { color: 'text-red-400', bg: 'border-red-700 bg-opacity-20', icon: '⚠️' },
+    REGULATORY: { color: 'text-[#6B7585]', bg: 'border-[#1e2a3d] bg-opacity-20', icon: '⚖️' },
   };
 
   return (
@@ -699,11 +788,11 @@ function NewsTab({ events }: { events: any[] }) {
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.color} border`}>
                     {cfg.icon} {event.type}
                   </span>
-                  <span className="text-[10px] text-stone-400">{event.category}/{event.eventType?.replace(/_/g, ' ')}</span>
+                  <span className="text-[10px] text-[#6B7585]">{event.category}/{event.eventType?.replace(/_/g, ' ')}</span>
                 </div>
-                <h4 className="text-sm font-semibold text-stone-800 mb-1">{event.headline}</h4>
+                <h4 className="text-sm font-semibold text-[#C8C4BE] mb-1">{event.headline}</h4>
                 {event.extractedData && (
-                  <div className="text-xs text-stone-500 space-x-3">
+                  <div className="text-xs text-[#6B7585] space-x-3">
                     {event.extractedData.company_name && <span>Company: {event.extractedData.company_name}</span>}
                     {event.extractedData.employee_count && <span>Employees: {event.extractedData.employee_count.toLocaleString()}</span>}
                     {event.extractedData.unit_count && <span>Units: {event.extractedData.unit_count}</span>}
@@ -713,9 +802,9 @@ function NewsTab({ events }: { events: any[] }) {
                 )}
               </div>
               <div className="text-right shrink-0">
-                <div className="text-[10px] text-stone-400">{event.date ? new Date(event.date).toLocaleDateString() : ''}</div>
-                <div className="text-[10px] text-stone-400">{event.city}, {event.state}</div>
-                {event.source && <div className="text-[10px] text-stone-400 mt-0.5">via {event.source}</div>}
+                <div className="text-[10px] text-[#6B7585]">{event.date ? new Date(event.date).toLocaleDateString() : ''}</div>
+                <div className="text-[10px] text-[#6B7585]">{event.city}, {event.state}</div>
+                {event.source && <div className="text-[10px] text-[#6B7585] mt-0.5">via {event.source}</div>}
               </div>
             </div>
           </div>
@@ -728,18 +817,18 @@ function NewsTab({ events }: { events: any[] }) {
 function SectionTitle({ icon: Icon, title, badge }: { icon: any; title: string; badge?: string }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon size={15} className="text-violet-600" />
-      <span className="text-sm font-bold text-stone-800">{title}</span>
-      {badge && <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-violet-50 text-violet-600 border border-violet-200">{badge}</span>}
+      <Icon size={15} className="text-violet-300" />
+      <span className="text-sm font-bold text-[#C8C4BE]">{title}</span>
+      {badge && <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-violet-900/10 text-violet-300 border border-violet-800/50">{badge}</span>}
     </div>
   );
 }
 
 function StatCard({ label, value }: { label: string; value?: string }) {
   return (
-    <div className="bg-stone-50 rounded-lg p-2.5 text-center">
-      <div className="text-base font-bold text-stone-800">{value || 'N/A'}</div>
-      <div className="text-[10px] text-stone-500 font-medium">{label}</div>
+    <div className=" rounded-lg p-2.5 text-center">
+      <div className="text-base font-bold text-[#C8C4BE]">{value || 'N/A'}</div>
+      <div className="text-[10px] text-[#6B7585] font-medium">{label}</div>
     </div>
   );
 }
@@ -747,7 +836,7 @@ function StatCard({ label, value }: { label: string; value?: string }) {
 function EmptySection({ message }: { message: string }) {
   return (
     <div className="flex items-center justify-center py-16">
-      <p className="text-sm text-stone-400">{message}</p>
+      <p className="text-sm text-[#6B7585]">{message}</p>
     </div>
   );
 }
@@ -756,10 +845,10 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   return (
     <div className="flex flex-col items-center justify-center py-16">
       <AlertTriangle size={32} className="text-red-400 mb-3" />
-      <p className="text-sm text-stone-600 mb-3">{message}</p>
+      <p className="text-sm text-[#4B5563] mb-3">{message}</p>
       <button
         onClick={onRetry}
-        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 border border-violet-200 rounded-md hover:bg-violet-100"
+        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-violet-300 bg-violet-900/10 border border-violet-800/50 rounded-md hover:bg-violet-900/20"
       >
         <RefreshCw size={12} />
         Retry
@@ -771,20 +860,20 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 function LoadingSkeleton() {
   return (
     <div className="space-y-0">
-      <div className="bg-stone-900 border-l-4 border-violet-500 rounded-t-lg px-5 py-3">
+      <div className="bg-[#0F1319] border-l-4 border-violet-500 rounded-t-lg px-5 py-3">
         <div className="h-5 w-48 bg-stone-700 rounded animate-pulse" />
-        <div className="h-3 w-72 bg-stone-800 rounded animate-pulse mt-1.5" />
+        <div className="h-3 w-72 bg-[#131920] rounded animate-pulse mt-1.5" />
       </div>
-      <div className="bg-white border border-stone-200 border-t-0 rounded-b-lg p-5">
-        <div className="flex gap-4 border-b border-stone-200 pb-3 mb-5">
-          {[1, 2, 3, 4].map(i => <div key={i} className="h-8 w-32 bg-stone-100 rounded animate-pulse" />)}
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderTop: 0, borderRadius: "0 0 4px 4px", padding: 20 }}>
+        <div className="flex gap-4 border-b border-[#1e2a3d] pb-3 mb-5">
+          {[1, 2, 3, 4].map(i => <div key={i} className="h-8 w-32 bg-[#131920] rounded animate-pulse" />)}
         </div>
         <div className="grid grid-cols-5 gap-3 mb-5">
-          {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-24 bg-stone-50 border border-stone-200 rounded-lg animate-pulse" />)}
+          {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-24  border-[#1e2a3d] rounded-lg animate-pulse" />)}
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="h-64 bg-stone-50 border border-stone-200 rounded-lg animate-pulse" />
-          <div className="h-64 bg-stone-50 border border-stone-200 rounded-lg animate-pulse" />
+          <div className="h-64  border-[#1e2a3d] rounded-lg animate-pulse" />
+          <div className="h-64  border-[#1e2a3d] rounded-lg animate-pulse" />
         </div>
       </div>
     </div>

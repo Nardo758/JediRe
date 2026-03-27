@@ -20,6 +20,10 @@ export class UpdateDealDto {
 
   @IsString()
   @IsOptional()
+  projectType?: string;
+
+  @IsString()
+  @IsOptional()
   projectIntent?: string;
 
   @IsNumber()

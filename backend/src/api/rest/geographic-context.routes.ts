@@ -159,7 +159,7 @@ router.get('/:id/geographic-context', authMiddleware.requireAuth, async (req: Re
 
       if (submarketId) {
         const smResult = await pool.query(
-          `SELECT id, name, avg_occupancy, avg_rent, properties_count, total_units
+          `SELECT id, name, avg_occupancy, avg_rent, avg_cap_rate, properties_count, total_units
            FROM submarkets WHERE id = $1`,
           [submarketId]
         );
@@ -168,9 +168,11 @@ router.get('/:id/geographic-context', authMiddleware.requireAuth, async (req: Re
           submarketData = {
             id: sm.id,
             name: sm.name,
+            avgCapRate: sm.avg_cap_rate ? parseFloat(sm.avg_cap_rate) : undefined,
             stats: {
               avg_occupancy: sm.avg_occupancy ? parseFloat(sm.avg_occupancy) : undefined,
               avg_rent: sm.avg_rent ? parseFloat(sm.avg_rent) : undefined,
+              avg_cap_rate: sm.avg_cap_rate ? parseFloat(sm.avg_cap_rate) : undefined,
               properties_count: sm.properties_count,
               total_units: sm.total_units,
             },

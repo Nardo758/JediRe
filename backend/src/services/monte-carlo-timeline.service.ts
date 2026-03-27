@@ -315,11 +315,26 @@ class MonteCarloTimelineService {
     const toDays = (field: keyof BenchmarkRow): number[] =>
       benchmarks.map(b => (b[field] as number) || 0).filter(v => v > 0);
 
-    const preApp = parseFloat((median(toDays('pre_app_days')) / 30.44).toFixed(1));
-    const sitePlan = parseFloat((median(toDays('site_plan_review_days')) / 30.44).toFixed(1));
-    const hearing = parseFloat((median(toDays('zoning_hearing_days')) / 30.44).toFixed(1));
-    const approval = parseFloat((median(toDays('approval_days')) / 30.44).toFixed(1));
-    const permit = parseFloat((median(toDays('permit_issuance_days')) / 30.44).toFixed(1));
+    let preApp = parseFloat((median(toDays('pre_app_days')) / 30.44).toFixed(1));
+    let sitePlan = parseFloat((median(toDays('site_plan_review_days')) / 30.44).toFixed(1));
+    let hearing = parseFloat((median(toDays('zoning_hearing_days')) / 30.44).toFixed(1));
+    let approval = parseFloat((median(toDays('approval_days')) / 30.44).toFixed(1));
+    let permit = parseFloat((median(toDays('permit_issuance_days')) / 30.44).toFixed(1));
+
+    // When real benchmarks store only total_entitlement_days with no per-phase breakdown,
+    // derive phase durations proportionally from the actual total median.
+    if (preApp === 0 && sitePlan === 0 && approval === 0 && permit === 0) {
+      const totalMedianDays = median(toDays('total_entitlement_days'));
+      if (totalMedianDays > 0) {
+        const entitlementType = this.mapPathToEntitlementType(path);
+        const hasHearing = entitlementType !== 'by_right';
+        preApp  = parseFloat((totalMedianDays * 0.10 / 30.44).toFixed(1));
+        sitePlan = parseFloat((totalMedianDays * 0.25 / 30.44).toFixed(1));
+        hearing  = hasHearing ? parseFloat((totalMedianDays * 0.20 / 30.44).toFixed(1)) : 0;
+        approval = parseFloat((totalMedianDays * (hasHearing ? 0.30 : 0.45) / 30.44).toFixed(1));
+        permit   = parseFloat((totalMedianDays * 0.15 / 30.44).toFixed(1));
+      }
+    }
 
     // Construction timeline estimate based on unit count
     const constructionMonths = unitCount > 300 ? 24 : unitCount > 200 ? 20 : unitCount > 100 ? 16 : 12;

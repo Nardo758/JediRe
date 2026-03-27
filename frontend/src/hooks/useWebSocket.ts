@@ -27,8 +27,9 @@ export function useWebSocket() {
       console.log('✅ WebSocket connected');
       setConnected(true);
       reconnectAttempts.current = 0;
+
+      (window as any).__jediSocket = newSocket;
       
-      // Process queued messages
       if (messageQueue.current.length > 0) {
         console.log(`Sending ${messageQueue.current.length} queued messages`);
         messageQueue.current.forEach(({ event, data }) => {
@@ -55,6 +56,9 @@ export function useWebSocket() {
     setSocket(newSocket);
 
     return () => {
+      if ((window as any).__jediSocket === newSocket) {
+        (window as any).__jediSocket = null;
+      }
       newSocket.close();
     };
   }, [token]);

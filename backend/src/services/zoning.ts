@@ -1,3 +1,9 @@
+/**
+ * DEPRECATED: Use zoning.service.ts instead (canonical location).
+ * This file maintains the ZoningService class for backward compatibility only.
+ * All new code should import from: ./zoning.service
+ */
+
 import { query } from '../database/connection';
 
 interface ZoningDistrict {

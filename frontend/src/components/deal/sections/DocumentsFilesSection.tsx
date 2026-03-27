@@ -14,7 +14,7 @@ import { FolderView } from './DocumentsFiles/FolderView';
 import { SearchFilters } from './DocumentsFiles/SearchFilters';
 import { StorageStats } from './DocumentsFiles/StorageStats';
 import { MissingFileSuggestions } from './DocumentsFiles/MissingFileSuggestions';
-import axios from 'axios';
+import { apiClient as axios } from '../../../services/api.client';
 import { useDealType } from '../../../stores/dealStore';
 import { MODULE_TABS } from '@/shared/config/deal-type-visibility';
 
@@ -90,14 +90,14 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
 
   // State
   const [files, setFiles] = useState<DealFile[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>(allowedCategories);
   const [analytics, setAnalytics] = useState<StorageAnalytics | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // View state
-  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'folder'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'folder'>('folder');
   const [currentFolder, setCurrentFolder] = useState('/');
 
   // Filter state
@@ -127,7 +127,9 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
       if (selectedCategory !== 'all') params.category = selectedCategory;
       if (selectedStatus !== 'all') params.status = selectedStatus;
       if (searchQuery) params.search = searchQuery;
-      if (viewMode === 'folder' && currentFolder !== '/') params.folderPath = currentFolder;
+      // In folder view, never filter by folderPath — FolderView filters client-side by category
+      // (predefined category folders store files via file.category, not file.folder_path)
+      if (viewMode !== 'folder' && currentFolder !== '/') params.folderPath = currentFolder;
 
       // Fetch files
       const filesResponse = await axios.get(`/api/v1/deals/${deal.id}/files`, { params });
@@ -139,12 +141,15 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
         setAnalytics(statsResponse.data.analytics);
         setSuggestions(statsResponse.data.missing_file_suggestions || []);
 
-        // Filter categories based on deal type variant
-        let availableCategories = statsResponse.data.available_categories || [];
+        // Seed categories from M18 config; supplement with any server-reported categories
+        let availableCategories: string[] = statsResponse.data.available_categories || [];
         if (allowedCategories.length > 0) {
-          availableCategories = availableCategories.filter((cat: string) =>
+          const filtered = availableCategories.filter((cat: string) =>
             allowedCategories.includes(cat)
           );
+          // Always include all predefined M18 categories, not just ones already uploaded
+          const merged = Array.from(new Set([...allowedCategories, ...filtered]));
+          availableCategories = merged;
         }
         setCategories(availableCategories);
       }
@@ -319,6 +324,17 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           <p>⚠️ {error}</p>
           <button onClick={loadData}>Retry</button>
         </div>
+      ) : viewMode === 'folder' ? (
+        <FolderView
+          files={files}
+          currentFolder={currentFolder}
+          onFolderChange={handleFolderChange}
+          onDelete={handleDelete}
+          onDownload={handleDownload}
+          onUpdate={handleUpdate}
+          isPipeline={isPipeline}
+          predefinedFolders={allowedCategories}
+        />
       ) : files.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">📄</div>
@@ -353,95 +369,102 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
               isPipeline={isPipeline}
             />
           )}
-
-          {viewMode === 'folder' && (
-            <FolderView
-              files={files}
-              currentFolder={currentFolder}
-              onFolderChange={handleFolderChange}
-              onDelete={handleDelete}
-              onDownload={handleDownload}
-              onUpdate={handleUpdate}
-              isPipeline={isPipeline}
-            />
-          )}
         </>
       )}
 
       {/* Styles */}
       <style jsx>{`
         .documents-files-section {
-          padding: 24px;
-          background: #ffffff;
-          border-radius: 12px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+          padding: 20px;
+          background: #0F1319;
+          border-radius: 0;
+          box-shadow: none;
+          color: #C8D8E8;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
         }
 
         .section-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          margin-bottom: 24px;
+          margin-bottom: 16px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid #1E2D3D;
         }
 
         .header-left h2 {
-          margin: 0 0 4px 0;
-          font-size: 24px;
+          margin: 0 0 2px 0;
+          font-size: 13px;
           font-weight: 700;
-          color: #1a1a1a;
+          color: #C8D8E8;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
         }
 
         .context-label {
           margin: 0;
-          font-size: 14px;
-          color: #666;
+          font-size: 10px;
+          color: #5A6A7A;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
         }
 
         .btn-primary {
-          padding: 10px 20px;
-          background: #2563eb;
-          color: white;
-          border: none;
-          border-radius: 8px;
+          padding: 6px 14px;
+          background: transparent;
+          color: #4A9EFF;
+          border: 1px solid #4A9EFF;
+          border-radius: 2px;
           font-weight: 600;
+          font-size: 10px;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
           cursor: pointer;
-          transition: all 0.2s;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
+          transition: all 0.15s;
         }
 
         .btn-primary:hover {
-          background: #1d4ed8;
-          transform: translateY(-1px);
+          background: #4A9EFF22;
         }
 
         .view-mode-selector {
           display: flex;
-          gap: 8px;
-          margin: 20px 0;
-          padding: 4px;
-          background: #f3f4f6;
-          border-radius: 8px;
+          gap: 2px;
+          margin: 12px 0;
+          padding: 0;
+          background: transparent;
+          border-radius: 0;
           width: fit-content;
+          border-bottom: 1px solid #1E2D3D;
         }
 
         .view-mode-selector button {
-          padding: 8px 16px;
+          padding: 6px 14px;
           background: transparent;
           border: none;
-          border-radius: 6px;
-          font-weight: 500;
-          color: #6b7280;
+          border-bottom: 2px solid transparent;
+          border-radius: 0;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: #5A6A7A;
           cursor: pointer;
-          transition: all 0.2s;
+          font-family: 'IBM Plex Mono', 'Courier New', monospace;
+          transition: all 0.15s;
+          margin-bottom: -1px;
         }
 
         .view-mode-selector button.active {
-          background: white;
-          color: #2563eb;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+          background: transparent;
+          color: #C8D8E8;
+          border-bottom: 2px solid #4A9EFF;
         }
 
         .view-mode-selector button:hover:not(.active) {
-          color: #374151;
+          color: #8A9EAE;
         }
 
         .loading-state,
@@ -456,41 +479,43 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
         }
 
         .spinner {
-          width: 40px;
-          height: 40px;
-          border: 4px solid #e5e7eb;
-          border-top-color: #2563eb;
+          width: 32px;
+          height: 32px;
+          border: 2px solid #1E2D3D;
+          border-top-color: #4A9EFF;
           border-radius: 50%;
           animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
-          to {
-            transform: rotate(360deg);
-          }
+          to { transform: rotate(360deg); }
         }
 
         .empty-icon {
-          font-size: 64px;
-          margin-bottom: 16px;
-          opacity: 0.5;
+          font-size: 48px;
+          margin-bottom: 12px;
+          opacity: 0.3;
         }
 
         .empty-state h3 {
           margin: 0 0 8px 0;
-          font-size: 20px;
-          color: #1a1a1a;
+          font-size: 12px;
+          color: #C8D8E8;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
         }
 
         .empty-state p {
-          margin: 0 0 24px 0;
-          color: #6b7280;
+          margin: 0 0 20px 0;
+          color: #5A6A7A;
           max-width: 400px;
+          font-size: 11px;
         }
 
         .error-state p {
-          color: #dc2626;
+          color: #E85555;
           margin-bottom: 16px;
+          font-size: 11px;
         }
       `}</style>
     </div>

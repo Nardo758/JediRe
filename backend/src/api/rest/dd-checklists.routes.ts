@@ -267,6 +267,12 @@ router.patch('/tasks/:id', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
     const { id } = req.params;
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(id)) {
+      return res.status(404).json({ success: false, error: 'Task not found or access denied' });
+    }
+
     const { title, category, priority, status, dueDate, assignedTo, notes } = req.body;
 
     // Verify user has access to this task's checklist/deal
@@ -367,6 +373,11 @@ router.delete('/tasks/:id', async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.userId;
     const { id } = req.params;
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(id)) {
+      return res.status(404).json({ success: false, error: 'Task not found or access denied' });
+    }
 
     // Verify user has access to this task's checklist/deal
     const accessCheck = await query(

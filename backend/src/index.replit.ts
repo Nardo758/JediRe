@@ -22,6 +22,7 @@ import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.ro
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
 import strategiesRouter from './api/rest/strategies.routes';
 import strategyDefinitionsRouter from './api/rest/strategy-definitions.routes';
+import dealStrategyRouter from './api/rest/deal-strategy.routes';
 import metricsCatalogRouter from './api/rest/metrics-catalog.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
@@ -36,6 +37,7 @@ import tasksRouter from './api/rest/inline-tasks.routes';
 import inboxRouter from './api/rest/inline-inbox.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
+import microsoftRouter from './api/rest/microsoft.routes';
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
@@ -70,7 +72,9 @@ import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
 import teamManagementRouter from './api/rest/team-management.routes';
+import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
+import notarizeRouter from './api/rest/notarize.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
 import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
 import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
@@ -78,6 +82,7 @@ import zoningVerificationRouter from './api/rest/zoning-verification.routes';
 import zoningProfileRouter from './api/rest/zoning-profile.routes';
 import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 import moduleWiringRouter from './api/rest/module-wiring.routes';
+import taskCompletionRouter from './api/rest/task-completion.routes';
 import capitalStructureRouter from './api/rest/capital-structure.routes';
 import dataUploadRouter from './api/rest/data-upload.routes';
 import pstUploadRouter from './api/rest/pst-upload.routes';
@@ -101,6 +106,7 @@ import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
+import marketRouter from './api/rest/market.routes';
 import portfolioRouter from './api/rest/portfolio.routes';
 import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
@@ -118,6 +124,9 @@ import dealValidationRoutes from './api/rest/deal-validation.routes';
 import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
 import jediRoutes from './api/rest/jedi.routes';
+import corporateHealthRouter from './api/rest/corporate-health.routes';
+import mediaRouter from './api/rest/media.routes';
+import orgRouter from './api/rest/org.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
 
@@ -207,8 +216,12 @@ import dataTrackerRoutes from './api/rest/data-tracker.routes';
 app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
 import adminRouter from './api/rest/admin.routes';
 app.use('/api/v1/admin', adminRouter);
+import dotAdminRouter from './api/rest/dot-admin.routes';
+app.use('/api/v1/admin', dotAdminRouter);
 import atlantaUrlDiscoveryRouter from './api/rest/atlanta-url-discovery.routes';
 app.use('/api/v1/admin/atlanta-url-discovery', atlantaUrlDiscoveryRouter);
+import enrichmentAdminRouter from './api/rest/enrichment-admin.routes';
+app.use('/api/v1/admin', enrichmentAdminRouter);
 app.use('/api/v1/admin-api', adminApiKeyRouter);
 
 app.use('/api/v1', dataRouter);
@@ -228,7 +241,12 @@ const microsoftConfig = {
   redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4000/api/v1/microsoft/auth/callback',
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
+// Inline router mounted first: handles /auth/init, /auth/callback, /status
+// with a lightweight config-less implementation.
+// Full microsoftRouter mounted second: handles the remaining 13 unique routes.
+// Express first-match means /auth/callback and /status go to inline router.
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
+app.use('/api/v1/microsoft', microsoftRouter);
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
 app.use('/api/v1/admin/rent-scraper', rentScraperAdminRouter);
@@ -239,8 +257,12 @@ app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
-app.use('/api/v1/markets', marketIntelligenceRouter(pool));
-app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
+// FRED macro ticker — public (no auth required) — used by TerminalPage ticker bar
+import tickerRoutes from './api/rest/ticker.routes';
+app.use('/api/v1/ticker', tickerRoutes);
+
+app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
+app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 
 import createUnifiedPropertiesRoutes from './api/rest/unified-properties.routes';
 app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
@@ -282,6 +304,9 @@ app.use('/api/v1/deals', requireAuth, dealContextRoutes);
 app.use('/api/v1/deals', requireAuth, financialModelRoutes);
 app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
 app.use('/api/v1/jedi', jediRoutes);
+app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
+app.use('/api/media', mediaRouter);
+app.use('/api/v1/orgs', requireAuth, orgRouter);
 
 // Phase 10: Cross-Module Validation
 app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
@@ -297,6 +322,7 @@ app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
 app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
 app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
+app.use('/api/v1/market', requireAuth, marketRouter);
 app.use('/api/v1', requireAuth, supplyRoutes);
 app.use('/api/v1', requireAuth, demandRoutes);
 app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
@@ -309,6 +335,7 @@ app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesR
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
 app.use('/api/v1/strategies', requireAuth, strategiesRouter);
 app.use('/api/v1/strategy-definitions', requireAuth, strategyDefinitionsRouter);
+app.use('/api/v1/deals', requireAuth, dealStrategyRouter);
 app.use('/api/v1/metrics', requireAuth, metricsCatalogRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
 app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
@@ -324,11 +351,14 @@ app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
 app.use('/api/v1', requireAuth, zoningProfileRouter);
 app.use('/api/v1', requireAuth, developmentScenariosRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
+app.use('/api/v1', requireAuth, collaborationRouter);
 app.use('/api/v1/emails', emailRouter);
 app.use('/api/v1/email-extractions', emailExtractionsRouter);
 app.use('/api/v1', requireAuth, contactsSyncRouter);
+app.use('/api/v1', notarizeRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
+app.use('/api/v1/task-completion', requireAuth, taskCompletionRouter);
 app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
 app.use('/api/v1/properties', requireAuth, dataUploadRouter);
 app.use('/api/v1/data-upload/pst', requireAuth, pstUploadRouter);
@@ -378,14 +408,106 @@ app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: any, res) 
   }
 });
 
+app.get('/api/v1/apartment-sync/market-snapshots', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_market_snapshots WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/demand-signals', requireAuth, async (req: any, res) => {
+  try {
+    const { city } = req.query;
+    const result = await pool.query(
+      `SELECT analytics_type, data, synced_at FROM apartment_user_analytics
+       WHERE analytics_type = 'demand-signals' ${city ? 'AND (city = $1 OR city IS NULL)' : ''}
+       ORDER BY synced_at DESC LIMIT 20`,
+      city ? [city] : []
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/user-analytics', requireAuth, async (req: any, res) => {
+  try {
+    const { city, type } = req.query;
+    const params: any[] = [];
+    let where = 'WHERE 1=1';
+    if (city) { params.push(city); where += ` AND (city = $${params.length} OR city IS NULL)`; }
+    if (type) { params.push(type); where += ` AND analytics_type = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT analytics_type, data, synced_at FROM apartment_user_analytics ${where} ORDER BY synced_at DESC LIMIT 50`,
+      params
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/rent-comps', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta', submarket } = req.query;
+    const params: any[] = [city];
+    let where = 'WHERE city = $1';
+    if (submarket) { params.push(submarket); where += ` AND submarket_name = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT * FROM apartment_submarkets ${where} ORDER BY snapshot_date DESC LIMIT 30`,
+      params
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
+app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
+app.use('/api/v1/email', emailRouter);
 
 const activeUsers = new Map<string, any>();
+const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();
+
+function getDealParticipants(dealId: string) {
+  const members = dealPresence.get(dealId);
+  return members ? Array.from(members.values()) : [];
+}
+
+function broadcastDealPresence(dealId: string) {
+  const room = `deal:${dealId}`;
+  io.to(room).emit('deal:presence', { dealId, participants: getDealParticipants(dealId) });
+}
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (token) {
+    try {
+      const { verifyAccessToken } = require('./auth/jwt');
+      const payload = verifyAccessToken(token);
+      if (payload) {
+        (socket as any).userId = payload.userId;
+        (socket as any).email = payload.email;
+        return next();
+      }
+    } catch {}
+  }
+  (socket as any).userId = socket.id;
+  (socket as any).email = 'anonymous';
+  next();
+});
 
 io.on('connection', (socket) => {
-  console.log(`WebSocket connected: ${socket.id}`);
+  console.log(`WebSocket connected: ${socket.id} (user: ${(socket as any).userId})`);
   
   socket.on('user:join', (userData) => {
     activeUsers.set(socket.id, {
@@ -410,9 +532,73 @@ io.on('connection', (socket) => {
     });
   });
   
+  const socketDeals = new Set<string>();
+
+  socket.on('deal:join', (data: { dealId: string; activeModule?: string }) => {
+    const { dealId, activeModule } = data;
+    const room = `deal:${dealId}`;
+    socket.join(room);
+    socketDeals.add(dealId);
+
+    if (!dealPresence.has(dealId)) dealPresence.set(dealId, new Map());
+    dealPresence.get(dealId)!.set(socket.id, {
+      userId: (socket as any).userId,
+      email: (socket as any).email,
+      activeModule,
+      joinedAt: Date.now(),
+    });
+    broadcastDealPresence(dealId);
+  });
+
+  socket.on('deal:leave', (data: { dealId: string }) => {
+    const { dealId } = data;
+    socket.leave(`deal:${dealId}`);
+    socketDeals.delete(dealId);
+    dealPresence.get(dealId)?.delete(socket.id);
+    if (dealPresence.get(dealId)?.size === 0) dealPresence.delete(dealId);
+    broadcastDealPresence(dealId);
+  });
+
+  socket.on('deal:module_change', (data: { dealId: string; activeModule?: string }) => {
+    const entry = dealPresence.get(data.dealId)?.get(socket.id);
+    if (entry) {
+      entry.activeModule = data.activeModule;
+      broadcastDealPresence(data.dealId);
+    }
+  });
+
+  socket.on('deal:field_change', (data: { dealId: string; module: string; field: string; value: any }) => {
+    socket.to(`deal:${data.dealId}`).emit('deal:field_updated', {
+      ...data,
+      userId: (socket as any).userId,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_added', (data: { dealId: string; comment: any }) => {
+    io.to(`deal:${data.dealId}`).emit('deal:new_comment', {
+      ...data,
+      userId: (socket as any).userId,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_resolved', (data: { dealId: string; commentId: string }) => {
+    io.to(`deal:${data.dealId}`).emit('deal:comment_resolved', {
+      ...data,
+      userId: (socket as any).userId,
+      timestamp: Date.now(),
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log(`WebSocket disconnected: ${socket.id}`);
     activeUsers.delete(socket.id);
+    for (const dealId of socketDeals) {
+      dealPresence.get(dealId)?.delete(socket.id);
+      if (dealPresence.get(dealId)?.size === 0) dealPresence.delete(dealId);
+      broadcastDealPresence(dealId);
+    }
     io.emit('users:update', Array.from(activeUsers.values()));
   });
 });
@@ -438,8 +624,9 @@ if (isProduction) {
 
 app.use(errorWebhookMiddleware);
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({
+  const statusCode = (err && typeof err.statusCode === 'number' && err.statusCode >= 100 && err.statusCode < 600) ? err.statusCode : 500;
+  if (statusCode >= 500) console.error('Error:', err);
+  res.status(statusCode).json({
     success: false,
     error: err.message || 'Internal server error'
   });
@@ -505,6 +692,19 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     await runStartupPstBackflow();
   } catch (error) {
     console.error('PST backflow startup check failed (non-fatal):', error);
+  }
+
+  try {
+    const { MetricCorrelationEngine } = await import('./services/metric-correlation-engine.service');
+    const correlationPool = getPool();
+    const correlationEngine = new MetricCorrelationEngine(correlationPool);
+    correlationEngine.seedCorePairs().then(result => {
+      console.log(`Correlation seeding complete: ${result.computed} computed, ${result.skipped} skipped`);
+    }).catch(err => {
+      console.error('Correlation seeding failed (non-fatal):', err);
+    });
+  } catch (error) {
+    console.error('Correlation engine startup failed (non-fatal):', error);
   }
 
   await initStripe();
