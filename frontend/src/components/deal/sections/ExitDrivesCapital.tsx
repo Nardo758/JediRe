@@ -488,34 +488,34 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
         <p className="text-[11px] mt-3" style={{ color: BT.text.muted }}>See Exit Windows tab for detailed year-by-year analysis</p>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
           Causal Chain
         </h3>
         <div className="flex items-center justify-center gap-0 flex-wrap">
-          <CausalBox color="text-amber-600" bg="bg-amber-50" border="border-amber-200" label="High Rent Growth" sublabel="+ Low Supply" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-blue-600" bg="bg-blue-50" border="border-blue-200" label="Low Rates" sublabel="Rates falling" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-emerald-600" bg="bg-emerald-50" border="border-emerald-200" label="Exit Q3 2026" sublabel="3.5yr hold" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-blue-600" bg="bg-blue-50" border="border-blue-200" label="5yr Fixed Debt" sublabel="Penalty-free @ Mo 36" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-purple-600" bg="bg-purple-50" border="border-purple-200" label="20% Pref + 2-Tier" sublabel="GP promotes @ 4.3x" />
+          <CausalBox color={BT.text.amber} bg={`${BT.text.amber}11`} border={`${BT.text.amber}44`} label="High Rent Growth" sublabel="+ Low Supply" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.cyan} bg={`${BT.text.cyan}11`} border={`${BT.text.cyan}44`} label="Low Rates" sublabel="Rates falling" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.green} bg={`${BT.text.green}11`} border={`${BT.text.green}44`} label="Exit Q3 2026" sublabel="3.5yr hold" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.cyan} bg={`${BT.text.cyan}11`} border={`${BT.text.cyan}44`} label="5yr Fixed Debt" sublabel="Penalty-free @ Mo 36" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.purple} bg={`${BT.text.purple}11`} border={`${BT.text.purple}44`} label="20% Pref + 2-Tier" sublabel="GP promotes @ 4.3x" />
         </div>
       </div>
 
       {MISMATCH_WARNINGS.length > 0 && (
-        <div className="bg-red-50 rounded-lg border border-red-200 px-4 py-3">
+        <div className="px-4 py-3" style={{ background: `${BT.text.red}11`, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
           <div className="flex items-center gap-2 mb-2">
-            <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0" />
-            <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider">Structure Mismatches</span>
+            <ShieldAlert className="w-4 h-4 flex-shrink-0" style={{ color: BT.text.red }} />
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: BT.text.red }}>Structure Mismatches</span>
           </div>
           <div className="space-y-1">
             {MISMATCH_WARNINGS.map((w, i) => (
               <div key={i} className="flex items-baseline gap-2">
-                <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
-                <span className="text-[12px] text-red-700"><strong>{w.title}:</strong> {w.reason}</span>
+                <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: BT.text.red }} />
+                <span className="text-[12px]" style={{ color: BT.text.red }}><strong>{w.title}:</strong> {w.reason}</span>
               </div>
             ))}
           </div>
