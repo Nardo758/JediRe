@@ -28,6 +28,12 @@ interface CorpHealthData {
   loading?: boolean;
 }
 
+function Spark({ data, color = C.green, w = 52, h = 14 }: { data: number[]; color?: string; w?: number; h?: number }) {
+  const mx = Math.max(...data), mn = Math.min(...data), r = mx - mn || 1;
+  const p = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - mn) / r) * h}`).join(" ");
+  return <svg width={w} height={h} style={{ display: "block" }}><polyline points={p} fill="none" stroke={color} strokeWidth="1.2" strokeLinejoin="round" /></svg>;
+}
+
 function Badge({ label, color }: { label: string; color: string }) {
   return <span style={{ ...mono, fontSize: 8, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>;
 }
@@ -81,6 +87,7 @@ const MSA = {
 };
 
 const MSA_RENT = [1820,1840,1860,1880,1920,1950,1980,2010,2050,2080,2120,2150];
+const MSA_VAC = [6.8,6.6,6.4,6.2,6.0,5.9,5.8,5.7,5.6,5.6,5.7,5.8];
 
 const MSA_SIGNALS = [
   { id: "D", name: "DEMAND", score: 82, delta: "+3", weight: 30, color: C.green, desc: "Pop +2.1%, Employment +2.8%, Net migration +14K HH/yr. Amazon HQ expansion." },
@@ -175,13 +182,16 @@ function MSAOverview({ onDrillToSubmarket }: { onDrillToSubmarket: () => void })
           <span style={{ fontSize: 9, letterSpacing: 1, color: C.cyan, ...mono }}>SUPPLY-DEMAND BALANCE</span>
           <div style={{ marginTop: 8 }}>
             {[
-              { l: "Vacancy Rate", v: MSA.vac, c: C.green }, { l: "Net Absorption", v: MSA.absorb },
+              { l: "Vacancy Rate", v: MSA.vac, c: C.green, spark: MSA_VAC as number[] | undefined }, { l: "Net Absorption", v: MSA.absorb },
               { l: "Pipeline Units", v: MSA.pipeline }, { l: "Pipeline %", v: MSA.pipelinePct, c: C.orange },
               { l: "Months of Supply", v: MSA.moSupply, c: C.orange }, { l: "Permit Velocity", v: "-8.2% YoY", c: C.green },
             ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
                 <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  {m.spark && <Spark data={m.spark} color={m.c || C.green} />}
+                  <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -255,6 +265,9 @@ function MSAOverview({ onDrillToSubmarket }: { onDrillToSubmarket: () => void })
             </div>
           ))}
         </div>
+        <div style={{ background: C.panel, padding: "8px 12px", display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onDrillToSubmarket} style={{ ...mono, fontSize: 8, fontWeight: 700, letterSpacing: 1, color: C.bg, background: C.amber, border: "none", padding: "4px 12px", cursor: "pointer" }}>DRILL TO SUBMARKETS ▸</button>
+        </div>
       </div>
     </div>
   );
@@ -264,7 +277,10 @@ function SubmarketOverview({ onBack }: { onBack: () => void }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, background: C.borderS, flex: 1, overflow: "auto" }}>
       <div style={{ background: C.panel, padding: "12px 16px" }}>
-        <div style={{ fontSize: 9, letterSpacing: 2, color: C.amber, marginBottom: 6, ...mono }}>SUBMARKET PRIMER · MIDTOWN, ATLANTA</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span style={{ fontSize: 9, letterSpacing: 2, color: C.amber, ...mono }}>SUBMARKET PRIMER · MIDTOWN, ATLANTA</span>
+          <button onClick={onBack} style={{ ...mono, fontSize: 8, fontWeight: 700, letterSpacing: 1, color: C.amber, background: "transparent", border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer" }}>◂ BACK TO MSA</button>
+        </div>
         <p style={{ fontSize: 11, color: C.secondary, lineHeight: 1.7, margin: 0, ...sans }}>
           Midtown is Atlanta's <span style={{ color: C.primary, fontWeight: 600 }}>premier multifamily submarket</span> with <span style={{ color: C.cyan }}>52 properties</span> totaling <span style={{ color: C.cyan }}>14,856 units</span>.
           The submarket sits at the center of Atlanta's tech corridor with a <span style={{ color: C.green }}>walk score of 92</span> and direct Piedmont Park adjacency — commanding the MSA's highest rents at <span style={{ color: C.green }}>$2,056/mo (+4.8% YoY)</span>, the fastest growth rate in the metro.
