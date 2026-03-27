@@ -446,9 +446,15 @@ type F4Level = "msa" | "submarket" | "detail" | "peers";
 
 export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   const [level, setLevel] = useState<F4Level>("msa");
+  const [priorLevel, setPriorLevel] = useState<"msa" | "submarket">("msa");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
 
-  const isSubmarket = level === "submarket";
+  const goToDetail = (target: "detail" | "peers") => {
+    if (level === "msa" || level === "submarket") setPriorLevel(level);
+    setLevel(target);
+  };
+
+  const isSubmarket = level === "submarket" || (level !== "msa" && priorLevel === "submarket");
   const lvl = isSubmarket ? SUB : MSA;
 
   return (
@@ -480,7 +486,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
         )}
         {(level === "msa" || level === "submarket") && (
           <div style={{ display: "flex", gap: 2 }}>
-            <button onClick={() => setLevel("detail")} style={{ ...mono, fontSize: 8, fontWeight: 600, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>
+            <button onClick={() => goToDetail("detail")} style={{ ...mono, fontSize: 8, fontWeight: 600, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>
               FULL INTEL →
             </button>
           </div>
@@ -510,7 +516,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
 
       {(level === "detail" || level === "peers") && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => setLevel("msa")} style={{ ...mono, fontSize: 8, fontWeight: 600, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>← OVERVIEW</button>
+          <button onClick={() => setLevel(priorLevel)} style={{ ...mono, fontSize: 8, fontWeight: 600, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>← OVERVIEW</button>
           <span style={{ fontSize: 9, color: C.muted, ...mono, letterSpacing: 1 }}>MARKET</span>
           <select
             value={selectedMsaId}
