@@ -1031,14 +1031,15 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 </div>
               ) : zoningInfo && zoningInfo.code !== '--' ? (
                 <div className="space-y-3">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm" style={{ color: BT.text.secondary }}>
                     <p><span className="font-medium">{zoningInfo.code}</span> - {zoningInfo.description}</p>
-                    <p className="text-xs text-gray-400 mt-1">Detailed zoning data not in municipal database</p>
+                    <p className="text-xs mt-1" style={{ color: BT.text.secondary }}>Detailed zoning data not in municipal database</p>
                   </div>
                   <button
                     onClick={handleAgentRetrieve}
                     disabled={agentLoading}
-                    className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-colors text-sm font-medium w-full justify-center"
+                    className="flex items-center gap-2 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-40 transition-colors text-sm font-medium w-full justify-center"
+                    style={{ background: BT.text.purple, color: BT.bg.base, borderRadius: 0 }}
                   >
                     {agentLoading ? (
                       <><Loader2 size={16} className="animate-spin" /> Retrieving Zoning Data...</>
@@ -1061,7 +1062,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                     <button
                       onClick={handleAgentRetrieve}
                       disabled={agentLoading}
-                      className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-colors text-sm font-medium w-full justify-center"
+                      className="flex items-center gap-2 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-40 transition-colors text-sm font-medium w-full justify-center"
+                    style={{ background: BT.text.purple, color: BT.bg.base, borderRadius: 0 }}
                     >
                       {agentLoading ? (
                         <><Loader2 size={16} className="animate-spin" /> Retrieving...</>
