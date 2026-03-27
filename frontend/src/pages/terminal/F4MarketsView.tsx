@@ -107,24 +107,17 @@ const TRACKED_MARKETS: TrackedMarket[] = [
   { id: "miami-fl", rank: 6, starred: false, msa: "Miami, FL", props: 1245, units: "310K", jedi: 74, d30: -2, trend: [80,79,78,77,76,75,74,74], rent: "$2,480", rentNum: 2480, rentD: "+1.2%", vac: "8.4%", vacNum: 8.4, absorb: "1,920", absorbNum: 1920, pipeline: "18.6%", pipelineNum: 18.6, costs: "$12,200", costsNum: 12200, dApt: "38", dAptNum: 38, popD: "+0.8%", popDNum: 0.8, medInc: "$58,900", medIncNum: 58900, cap: "5.0%", capNum: 5.0, cycle: "PEAK" },
 ];
 
-type SortKey = "rank" | "msa" | "props" | "jedi" | "d30" | "rentNum" | "vacNum" | "absorbNum" | "pipelineNum" | "costsNum" | "dAptNum" | "popDNum" | "medIncNum" | "capNum" | "cycle";
-
-const COL_DEFS: { key: SortKey; label: string; w: number; align?: "right" }[] = [
-  { key: "rank", label: "#", w: 28 },
-  { key: "msa", label: "MSA", w: 120 },
-  { key: "props", label: "PROPS", w: 52, align: "right" },
-  { key: "jedi", label: "JEDI\u25BC", w: 48, align: "right" },
-  { key: "d30", label: "\u039430", w: 36, align: "right" },
-  { key: "rentNum", label: "RENT", w: 56, align: "right" },
-  { key: "vacNum", label: "RENT \u0394", w: 48, align: "right" },
-  { key: "absorbNum", label: "VAC", w: 42, align: "right" },
-  { key: "pipelineNum", label: "ABSORB", w: 52, align: "right" },
-  { key: "costsNum", label: "PIPELN", w: 52, align: "right" },
-  { key: "dAptNum", label: "COSTS", w: 52, align: "right" },
-  { key: "popDNum", label: "$/APT", w: 42, align: "right" },
-  { key: "medIncNum", label: "POP \u0394", w: 48, align: "right" },
-  { key: "capNum", label: "MED INC", w: 56, align: "right" },
+const ALL_MSAS: TrackedMarket[] = [
+  ...TRACKED_MARKETS,
+  { id: "charlotte-nc", rank: 7, starred: false, msa: "Charlotte, NC", props: 620, units: "155K", jedi: 83, d30: 3, trend: [75,77,78,79,80,81,82,83], rent: "$1,680", rentNum: 1680, rentD: "+3.6%", vac: "6.0%", vacNum: 6.0, absorb: "1,450", absorbNum: 1450, pipeline: "12.6%", pipelineNum: 12.6, costs: "$7,800", costsNum: 7800, dApt: "65", dAptNum: 65, popD: "+2.3%", popDNum: 2.3, medInc: "$68,500", medIncNum: 68500, cap: "5.3%", capNum: 5.3, cycle: "EXPANSION" },
+  { id: "nashville-tn", rank: 8, starred: false, msa: "Nashville, TN", props: 540, units: "132K", jedi: 81, d30: 2, trend: [73,75,76,77,78,79,80,81], rent: "$1,720", rentNum: 1720, rentD: "+3.2%", vac: "6.8%", vacNum: 6.8, absorb: "1,280", absorbNum: 1280, pipeline: "14.2%", pipelineNum: 14.2, costs: "$8,400", costsNum: 8400, dApt: "60", dAptNum: 60, popD: "+1.8%", popDNum: 1.8, medInc: "$67,200", medIncNum: 67200, cap: "5.1%", capNum: 5.1, cycle: "LATE EXP" },
+  { id: "austin-tx", rank: 9, starred: false, msa: "Austin, TX", props: 780, units: "195K", jedi: 76, d30: -1, trend: [82,81,80,79,78,77,76,76], rent: "$1,890", rentNum: 1890, rentD: "+1.8%", vac: "8.2%", vacNum: 8.2, absorb: "1,560", absorbNum: 1560, pipeline: "19.4%", pipelineNum: 19.4, costs: "$9,800", costsNum: 9800, dApt: "42", dAptNum: 42, popD: "+2.5%", popDNum: 2.5, medInc: "$76,800", medIncNum: 76800, cap: "4.8%", capNum: 4.8, cycle: "PEAK" },
+  { id: "dallas-tx", rank: 10, starred: false, msa: "Dallas, TX", props: 1380, units: "345K", jedi: 79, d30: 1, trend: [74,75,76,76,77,78,78,79], rent: "$1,640", rentNum: 1640, rentD: "+2.6%", vac: "7.4%", vacNum: 7.4, absorb: "2,680", absorbNum: 2680, pipeline: "16.8%", pipelineNum: 16.8, costs: "$7,600", costsNum: 7600, dApt: "52", dAptNum: 52, popD: "+1.6%", popDNum: 1.6, medInc: "$70,100", medIncNum: 70100, cap: "5.4%", capNum: 5.4, cycle: "LATE EXP" },
+  { id: "phoenix-az", rank: 11, starred: false, msa: "Phoenix, AZ", props: 920, units: "228K", jedi: 77, d30: 0, trend: [78,78,77,77,77,77,77,77], rent: "$1,560", rentNum: 1560, rentD: "+2.0%", vac: "7.8%", vacNum: 7.8, absorb: "1,840", absorbNum: 1840, pipeline: "15.2%", pipelineNum: 15.2, costs: "$8,200", costsNum: 8200, dApt: "46", dAptNum: 46, popD: "+1.4%", popDNum: 1.4, medInc: "$64,800", medIncNum: 64800, cap: "5.5%", capNum: 5.5, cycle: "PEAK" },
+  { id: "denver-co", rank: 12, starred: false, msa: "Denver, CO", props: 680, units: "168K", jedi: 75, d30: -1, trend: [80,79,78,77,76,76,75,75], rent: "$1,780", rentNum: 1780, rentD: "+1.4%", vac: "8.6%", vacNum: 8.6, absorb: "1,120", absorbNum: 1120, pipeline: "17.8%", pipelineNum: 17.8, costs: "$10,200", costsNum: 10200, dApt: "40", dAptNum: 40, popD: "+1.2%", popDNum: 1.2, medInc: "$78,400", medIncNum: 78400, cap: "4.9%", capNum: 4.9, cycle: "CONTRACTION" },
 ];
+
+type SortKey = "rank" | "msa" | "props" | "jedi" | "d30" | "rentNum" | "vacNum" | "absorbNum" | "pipelineNum" | "costsNum" | "dAptNum" | "popDNum" | "medIncNum" | "capNum" | "cycle";
 
 function computeMedian(markets: TrackedMarket[]) {
   const med = (vals: number[]) => { const s = [...vals].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -166,17 +159,30 @@ const PROPERTY_INDEX = [
 ];
 
 type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
-type PrimaryTab = "overview" | "market-detail" | "peer-comp";
-type SubTab = "mkt-detail" | "msa-index" | "watchlist" | "submarket" | "property-stock";
+type PrimaryTab = "f4-landing" | "all-msas";
+type SubTab = "msa-detail" | "msa-index" | "submarkets" | "watchlist" | "peer-comp" | "property-stock";
 
 interface F4MarketsViewProps {
   corpHealthData?: CorpHealthData;
 }
 
+const hdrCell: React.CSSProperties = {
+  padding: "4px 6px", fontSize: 7, fontWeight: 700, color: "#4A5568",
+  letterSpacing: 0.5, borderRight: "1px solid #1E2538", borderBottom: "1px solid #2A3348",
+  textAlign: "center", cursor: "pointer", whiteSpace: "nowrap",
+  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+};
+
+const dataCell: React.CSSProperties = {
+  padding: "4px 6px", textAlign: "center", borderRight: "1px solid #1E2538",
+  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+  whiteSpace: "nowrap",
+};
+
 export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   const [level, setLevel] = useState<DrillLevel>("landing");
-  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("overview");
-  const [subTab, setSubTab] = useState<SubTab>("msa-index");
+  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("f4-landing");
+  const [subTab, setSubTab] = useState<SubTab>("msa-detail");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
   const [drillMsaId, setDrillMsaId] = useState("");
   const [drillMsaName, setDrillMsaName] = useState("");
@@ -184,6 +190,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   const [drillPropertyId, setDrillPropertyId] = useState("");
   const [sortCol, setSortCol] = useState<SortKey>("jedi");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [allMsaSortCol, setAllMsaSortCol] = useState<SortKey>("jedi");
+  const [allMsaSortDir, setAllMsaSortDir] = useState<"asc" | "desc">("desc");
+  const [allMsaSearch, setAllMsaSearch] = useState("");
   const [marketSearch, setMarketSearch] = useState("");
   const [marketDropdownOpen, setMarketDropdownOpen] = useState(false);
 
@@ -202,15 +211,36 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     return s;
   }, [sortCol, sortDir]);
 
+  const allMsasSorted = useMemo(() => {
+    let filtered = [...ALL_MSAS];
+    if (allMsaSearch) {
+      filtered = filtered.filter(m => m.msa.toLowerCase().includes(allMsaSearch.toLowerCase()));
+    }
+    filtered.sort((a, b) => {
+      const av = a[allMsaSortCol as keyof TrackedMarket];
+      const bv = b[allMsaSortCol as keyof TrackedMarket];
+      if (typeof av === "number" && typeof bv === "number") return allMsaSortDir === "asc" ? av - bv : bv - av;
+      if (typeof av === "string" && typeof bv === "string") return allMsaSortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return 0;
+    });
+    return filtered;
+  }, [allMsaSortCol, allMsaSortDir, allMsaSearch]);
+
   const median = useMemo(() => computeMedian(TRACKED_MARKETS), []);
+  const allMsaMedian = useMemo(() => computeMedian(ALL_MSAS), []);
 
   const handleSort = (col: SortKey) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("desc"); }
   };
 
+  const handleAllMsaSort = (col: SortKey) => {
+    if (allMsaSortCol === col) setAllMsaSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setAllMsaSortCol(col); setAllMsaSortDir("desc"); }
+  };
+
   const handleDrillToMsa = (marketId: string) => {
-    const mkt = TRACKED_MARKETS.find(m => m.id === marketId);
+    const mkt = ALL_MSAS.find(m => m.id === marketId) || TRACKED_MARKETS.find(m => m.id === marketId);
     setDrillMsaId(marketId);
     setDrillMsaName(mkt?.msa || marketId);
     setLevel("msa-terminal");
@@ -234,15 +264,20 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     return C.muted;
   };
 
+  const filteredMsaOptions = MSA_OPTIONS.filter(m =>
+    m.name.toLowerCase().includes(marketSearch.toLowerCase())
+  );
+
   if (level === "msa-terminal") {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
           <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
-            ← ALL MARKETS
+            ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>|</span>
-          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillMsaName.toUpperCase()} MSA</span>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillMsaName.toUpperCase()}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
           <MSATerminal
@@ -261,8 +296,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
           <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
-            ← ALL MARKETS
+            ← BACK
           </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
@@ -286,8 +322,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
           <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
-            ← ALL MARKETS
+            ← BACK
           </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
@@ -306,19 +343,99 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     );
   }
 
-  const filteredMsaOptions = MSA_OPTIONS.filter(m =>
-    m.name.toLowerCase().includes(marketSearch.toLowerCase())
+  const renderMarketTable = (markets: TrackedMarket[], medianRow: ReturnType<typeof computeMedian>, sCol: SortKey, sDir: "asc" | "desc", onSort: (col: SortKey) => void, showSubject?: boolean, singleClickDrill?: boolean) => (
+    <div style={{ flex: 1, overflow: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
+        <thead>
+          <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
+            <th style={{ ...hdrCell, width: 28 }}>#</th>
+            <th style={{ ...hdrCell, width: 120, textAlign: "left" }} onClick={() => onSort("msa")}>MSA</th>
+            <th style={{ ...hdrCell, width: 52 }} onClick={() => onSort("props")}>PROPS</th>
+            <th style={{ ...hdrCell, width: 44 }}>UNITS</th>
+            <th style={{ ...hdrCell, width: 48, color: C.amber }} onClick={() => onSort("jedi")}>JEDI{sCol === "jedi" ? (sDir === "desc" ? "▼" : "▲") : "▼"}</th>
+            <th style={{ ...hdrCell, width: 36 }} onClick={() => onSort("d30")}>Δ30</th>
+            <th style={{ ...hdrCell, width: 56 }}>TREND</th>
+            <th style={{ ...hdrCell, width: 56 }} onClick={() => onSort("rentNum")}>RENT</th>
+            <th style={{ ...hdrCell, width: 48 }}>RENT Δ</th>
+            <th style={{ ...hdrCell, width: 42 }} onClick={() => onSort("vacNum")}>VAC</th>
+            <th style={{ ...hdrCell, width: 52 }} onClick={() => onSort("absorbNum")}>ABSORB</th>
+            <th style={{ ...hdrCell, width: 52 }} onClick={() => onSort("pipelineNum")}>PIPELN</th>
+            <th style={{ ...hdrCell, width: 52 }}>COSTS</th>
+            <th style={{ ...hdrCell, width: 42 }}>$/APT</th>
+            <th style={{ ...hdrCell, width: 48 }} onClick={() => onSort("popDNum")}>POP Δ</th>
+            <th style={{ ...hdrCell, width: 56 }} onClick={() => onSort("medIncNum")}>MED INC</th>
+            <th style={{ ...hdrCell, width: 44 }} onClick={() => onSort("capNum")}>CAP</th>
+            <th style={{ ...hdrCell, width: 76 }}>CYCLE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style={{ background: C.panelAlt, borderBottom: `1px solid ${C.borderM}` }}>
+            <td style={dataCell}><span style={{ color: C.muted, fontStyle: "italic" }}>n</span></td>
+            <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.muted }}>Median</span></td>
+            <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+            <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+            <td style={dataCell}><ScoreCell value={medianRow.jedi} size={10} /></td>
+            <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+            <td style={dataCell}><span style={{ color: C.muted }}>─</span></td>
+            <td style={dataCell}><span style={{ color: C.primary }}>{medianRow.rent}</span></td>
+            <td style={dataCell}><DeltaCell value={medianRow.rentD} /></td>
+            <td style={dataCell}><ThresholdVal value={medianRow.vac} thresholds={[5, 8]} invert /></td>
+            <td style={dataCell}><span style={{ color: C.primary }}>{medianRow.absorb}</span></td>
+            <td style={dataCell}><ThresholdVal value={medianRow.pipeline} thresholds={[8, 14]} invert /></td>
+            <td style={dataCell}><span style={{ color: C.primary }}>{medianRow.costs}</span></td>
+            <td style={dataCell}><span style={{ color: C.primary }}>{medianRow.dApt}</span></td>
+            <td style={dataCell}><DeltaCell value={medianRow.popD} /></td>
+            <td style={dataCell}><span style={{ color: C.primary }}>{medianRow.medInc}</span></td>
+            <td style={dataCell}><span style={{ color: C.primary }}>{medianRow.cap}</span></td>
+            <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+          </tr>
+          {markets.map((m, i) => (
+            <tr
+              key={m.id}
+              onClick={singleClickDrill ? () => handleDrillToMsa(m.id) : undefined}
+              onDoubleClick={!singleClickDrill ? () => handleDrillToMsa(m.id) : undefined}
+              style={{
+                background: showSubject && m.id === selectedMsaId ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt,
+                borderBottom: `1px solid ${C.borderS}`,
+                borderLeft: showSubject && m.id === selectedMsaId ? `2px solid ${C.amber}` : "2px solid transparent",
+                cursor: "pointer",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = showSubject && m.id === selectedMsaId ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt; }}
+            >
+              <td style={dataCell}>
+                <span style={{ color: m.starred ? C.amber : C.muted, marginRight: 2 }}>{m.starred ? "★" : ""}</span>
+                {showSubject && m.id === selectedMsaId && <span style={{ color: C.amberBright, marginRight: 1, fontSize: 8 }}>*</span>}
+                <span style={{ color: C.secondary }}>{m.rank}</span>
+              </td>
+              <td style={{ ...dataCell, textAlign: "left" }}>
+                <span style={{ color: showSubject && m.id === selectedMsaId ? C.amberBright : C.primary, fontWeight: showSubject && m.id === selectedMsaId ? 700 : 500, ...sans }}>{m.msa}</span>
+              </td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.props.toLocaleString()}</span></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.units}</span></td>
+              <td style={dataCell}><ScoreCell value={m.jedi} size={10} /></td>
+              <td style={dataCell}><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></td>
+              <td style={dataCell}><Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={44} h={12} /></td>
+              <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></td>
+              <td style={dataCell}><DeltaCell value={m.rentD} /></td>
+              <td style={dataCell}><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></td>
+              <td style={dataCell}><span style={{ color: C.primary }}>{m.absorb}</span></td>
+              <td style={dataCell}><ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert /></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.costs}</span></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.dApt}</span></td>
+              <td style={dataCell}><DeltaCell value={m.popD} /></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.medInc}</span></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.cap}</span></td>
+              <td style={dataCell}><Badge label={m.cycle} color={cycleColor(m.cycle)} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 
-  const renderContent = () => {
-    if (primaryTab === "market-detail") {
-      return <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={corpHealthData} />;
-    }
-    if (primaryTab === "peer-comp") {
-      return <PeerComparisonPage embedded onViewDetail={() => setPrimaryTab("market-detail")} />;
-    }
-
-    if (subTab === "mkt-detail") {
+  const renderLandingContent = () => {
+    if (subTab === "msa-detail") {
       return <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={corpHealthData} />;
     }
 
@@ -327,99 +444,11 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>All Markets</span>
-              <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {TRACKED_MARKETS.length} tracked markets · Sort by any column · Double-click row to drill to submarkets</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>My Markets</span>
+              <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {TRACKED_MARKETS.length} tracked markets · Double-click to drill</span>
             </div>
-            <span style={{ fontSize: 8, color: C.muted, ...mono }}>{COL_DEFS.length + 4} cols</span>
           </div>
-
-          <div style={{ flex: 1, overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
-              <thead>
-                <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
-                  <th style={{ ...hdrCell, width: 28 }}>#</th>
-                  <th style={{ ...hdrCell, width: 120, textAlign: "left" }} onClick={() => handleSort("msa")}>MSA</th>
-                  <th style={{ ...hdrCell, width: 52 }} onClick={() => handleSort("props")}>PROPS</th>
-                  <th style={{ ...hdrCell, width: 44 }}>UNITS</th>
-                  <th style={{ ...hdrCell, width: 48, color: C.amber }} onClick={() => handleSort("jedi")}>JEDI{sortCol === "jedi" ? (sortDir === "desc" ? "\u25BC" : "\u25B2") : "\u25BC"}</th>
-                  <th style={{ ...hdrCell, width: 36 }} onClick={() => handleSort("d30")}>\u039430</th>
-                  <th style={{ ...hdrCell, width: 56 }}>TREND</th>
-                  <th style={{ ...hdrCell, width: 56 }} onClick={() => handleSort("rentNum")}>RENT</th>
-                  <th style={{ ...hdrCell, width: 48 }}>RENT \u0394</th>
-                  <th style={{ ...hdrCell, width: 42 }} onClick={() => handleSort("vacNum")}>VAC</th>
-                  <th style={{ ...hdrCell, width: 52 }} onClick={() => handleSort("absorbNum")}>ABSORB</th>
-                  <th style={{ ...hdrCell, width: 52 }} onClick={() => handleSort("pipelineNum")}>PIPELN</th>
-                  <th style={{ ...hdrCell, width: 52 }}>COSTS</th>
-                  <th style={{ ...hdrCell, width: 42 }}>$/APT</th>
-                  <th style={{ ...hdrCell, width: 48 }} onClick={() => handleSort("popDNum")}>POP \u0394</th>
-                  <th style={{ ...hdrCell, width: 56 }} onClick={() => handleSort("medIncNum")}>MED INC</th>
-                  <th style={{ ...hdrCell, width: 44 }} onClick={() => handleSort("capNum")}>CAP</th>
-                  <th style={{ ...hdrCell, width: 76 }}>CYCLE</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr style={{ background: C.panelAlt, borderBottom: `1px solid ${C.borderM}` }}>
-                  <td style={dataCell}><span style={{ color: C.muted, fontStyle: "italic" }}>n</span></td>
-                  <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.muted }}>Median</span></td>
-                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-                  <td style={dataCell}><ScoreCell value={median.jedi} size={10} /></td>
-                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-                  <td style={dataCell}><span style={{ color: C.muted }}>─</span></td>
-                  <td style={dataCell}><span style={{ color: C.primary }}>{median.rent}</span></td>
-                  <td style={dataCell}><DeltaCell value={median.rentD} /></td>
-                  <td style={dataCell}><ThresholdVal value={median.vac} thresholds={[5, 8]} invert /></td>
-                  <td style={dataCell}><span style={{ color: C.primary }}>{median.absorb}</span></td>
-                  <td style={dataCell}><ThresholdVal value={median.pipeline} thresholds={[8, 14]} invert /></td>
-                  <td style={dataCell}><span style={{ color: C.primary }}>{median.costs}</span></td>
-                  <td style={dataCell}><span style={{ color: C.primary }}>{median.dApt}</span></td>
-                  <td style={dataCell}><DeltaCell value={median.popD} /></td>
-                  <td style={dataCell}><span style={{ color: C.primary }}>{median.medInc}</span></td>
-                  <td style={dataCell}><span style={{ color: C.primary }}>{median.cap}</span></td>
-                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-                </tr>
-                {sorted.map((m, i) => (
-                  <tr
-                    key={m.id}
-                    onDoubleClick={() => handleDrillToMsa(m.id)}
-                    style={{
-                      background: m.id === selectedMsaId ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt,
-                      borderBottom: `1px solid ${C.borderS}`,
-                      borderLeft: m.id === selectedMsaId ? `2px solid ${C.amber}` : "2px solid transparent",
-                      cursor: "pointer",
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = m.id === selectedMsaId ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt; }}
-                  >
-                    <td style={dataCell}>
-                      <span style={{ color: m.starred ? C.amber : C.muted, marginRight: 2 }}>{m.starred ? "★" : ""}</span>
-                      {m.id === selectedMsaId && <span style={{ color: C.amberBright, marginRight: 1, fontSize: 8 }}>*</span>}
-                      <span style={{ color: C.secondary }}>{m.rank}</span>
-                    </td>
-                    <td style={{ ...dataCell, textAlign: "left" }}>
-                      <span style={{ color: m.id === selectedMsaId ? C.amberBright : C.primary, fontWeight: m.id === selectedMsaId ? 700 : 500, ...sans }}>{m.msa}</span>
-                    </td>
-                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.props.toLocaleString()}</span></td>
-                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.units}</span></td>
-                    <td style={dataCell}><ScoreCell value={m.jedi} size={10} /></td>
-                    <td style={dataCell}><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></td>
-                    <td style={dataCell}><Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={44} h={12} /></td>
-                    <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></td>
-                    <td style={dataCell}><DeltaCell value={m.rentD} /></td>
-                    <td style={dataCell}><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></td>
-                    <td style={dataCell}><span style={{ color: C.primary }}>{m.absorb}</span></td>
-                    <td style={dataCell}><ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert /></td>
-                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.costs}</span></td>
-                    <td style={dataCell}><span style={{ color: C.primary }}>{m.dApt}</span></td>
-                    <td style={dataCell}><DeltaCell value={m.popD} /></td>
-                    <td style={dataCell}><span style={{ color: C.primary }}>{m.medInc}</span></td>
-                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.cap}</span></td>
-                    <td style={dataCell}><Badge label={m.cycle} color={cycleColor(m.cycle)} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {renderMarketTable(sorted, median, sortCol, sortDir, handleSort, true)}
         </div>
       );
     }
@@ -427,46 +456,51 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     if (subTab === "watchlist") {
       const watched = TRACKED_MARKETS.filter(m => m.starred);
       return (
-        <div style={{ padding: 16 }}>
-          <div style={{ fontSize: 9, color: C.amber, letterSpacing: 1, marginBottom: 12, ...mono }}>WATCHLIST · {watched.length} MARKETS</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            {watched.map(m => (
-              <div key={m.id} onClick={() => handleDrillToMsa(m.id)} style={{ background: C.panel, border: `1px solid ${C.borderS}`, padding: 12, cursor: "pointer" }}
-                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.amber; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.borderS; }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, ...sans }}>{m.msa}</span>
-                  <ScoreCell value={m.jedi} size={14} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, ...sans }}>★ Watchlist</span>
+            <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {watched.length} watched markets</span>
+          </div>
+          <div style={{ flex: 1, overflow: "auto", padding: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 8 }}>
+              {watched.map(m => (
+                <div key={m.id} onDoubleClick={() => handleDrillToMsa(m.id)} style={{ background: C.panel, border: `1px solid ${C.borderM}`, padding: "10px 12px", cursor: "pointer" }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.amber; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.borderM; }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, ...sans }}>{m.msa}</span>
+                    <ScoreCell value={m.jedi} size={14} />
+                  </div>
+                  <div style={{ display: "flex", gap: 12, marginBottom: 6 }}>
+                    <div><span style={{ fontSize: 8, color: C.muted, ...mono }}>RENT</span><br /><span style={{ fontSize: 10, color: C.primary, fontWeight: 600, ...mono }}>{m.rent}</span></div>
+                    <div><span style={{ fontSize: 8, color: C.muted, ...mono }}>VAC</span><br /><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></div>
+                    <div><span style={{ fontSize: 8, color: C.muted, ...mono }}>Δ30</span><br /><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={80} h={16} />
+                    <Badge label={m.cycle} color={cycleColor(m.cycle)} />
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 16, fontSize: 9, color: C.secondary, ...mono }}>
-                  <span>Rent: <span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></span>
-                  <span>Vac: <ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></span>
-                  <span>Cap: {m.cap}</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                  <Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={80} h={16} />
-                  <DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} />
-                  <Badge label={m.cycle} color={cycleColor(m.cycle)} />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       );
     }
 
-    if (subTab === "submarket") {
+    if (subTab === "submarkets") {
       return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Submarkets</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Submarket Index</span>
             <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {SUBMARKET_INDEX.length} submarkets across tracked markets</span>
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
               <thead>
                 <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
-                  {["SUBMARKET", "MSA", "JEDI", "RENT", "RENT \u0394", "VAC", "PROPS", "UNITS", "OPP", "CAP", "CYCLE"].map(h => (
+                  {["SUBMARKET", "MSA", "JEDI", "RENT", "RENT Δ", "VAC", "PROPS", "UNITS", "OPP", "CAP", "CYCLE"].map(h => (
                     <th key={h} style={hdrCell}>{h}</th>
                   ))}
                 </tr>
@@ -482,7 +516,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}>
-                    <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, ...sans }}>{s.name}</span></td>
+                    <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, fontWeight: 600, ...sans }}>{s.name}</span></td>
                     <td style={dataCell}><span style={{ color: C.secondary }}>{s.msa}</span></td>
                     <td style={dataCell}><ScoreCell value={s.jedi} size={10} /></td>
                     <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{s.rent}</span></td>
@@ -500,6 +534,10 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           </div>
         </div>
       );
+    }
+
+    if (subTab === "peer-comp") {
+      return <PeerComparisonPage embedded onViewDetail={() => { setPrimaryTab("f4-landing"); setSubTab("msa-detail"); }} />;
     }
 
     if (subTab === "property-stock") {
@@ -552,79 +590,58 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     return null;
   };
 
+  const renderAllMsasContent = () => {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>All MSAs</span>
+            <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {ALL_MSAS.length} markets · Click row to drill into MSA Overview</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              value={allMsaSearch}
+              onChange={e => setAllMsaSearch(e.target.value)}
+              placeholder="Search MSAs..."
+              style={{ width: 160, padding: "3px 8px", background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, fontSize: 9, ...mono, outline: "none", boxSizing: "border-box" }}
+            />
+            <span style={{ fontSize: 8, color: C.muted, ...mono }}>{allMsasSorted.length} results</span>
+          </div>
+        </div>
+        {renderMarketTable(allMsasSorted, allMsaMedian, allMsaSortCol, allMsaSortDir, handleAllMsaSort, false, true)}
+      </div>
+    );
+  };
+
+  const SUB_TAB_DEFS: { id: SubTab; label: string }[] = [
+    { id: "msa-detail", label: "MSA DETAIL" },
+    { id: "msa-index", label: "MSA INDEX" },
+    { id: "submarkets", label: "SUBMARKETS" },
+    { id: "watchlist", label: `WATCHLIST (${TRACKED_MARKETS.filter(m => m.starred).length})` },
+    { id: "peer-comp", label: "PEER COMP" },
+    { id: "property-stock", label: "PROPERTY STOCK" },
+  ];
+
   return (
     <div style={{ flex: 1, overflow: "hidden", animation: "fadeIn 0.15s", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>INDEX</span>
-        <span style={{ fontSize: 9, color: C.secondary, ...mono }}>MSA · {selectedMsa.name}</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>SECTOR</span>
-        <span style={{ fontSize: 9, color: C.secondary, ...mono }}>Submarket · Midtown</span>
-        <div style={{ flex: 1 }} />
-        {(["market-detail", "peer-comp"] as PrimaryTab[]).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setPrimaryTab(primaryTab === tab ? "overview" : tab)}
-            style={{
-              ...mono, fontSize: 9, fontWeight: primaryTab === tab ? 700 : 500, letterSpacing: 0.5,
-              padding: "3px 10px", cursor: "pointer",
-              background: primaryTab === tab ? C.active : "transparent",
-              color: primaryTab === tab ? C.amber : C.secondary,
-              border: `1px solid ${primaryTab === tab ? C.amber : C.borderS}`,
-            }}
-          >
-            {tab === "market-detail" ? "MARKET DETAIL" : "PEER COMP"}
-          </button>
-        ))}
-      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+        <span style={{ fontSize: 8, color: C.muted, ...mono, marginRight: 8 }}>F4</span>
+        <span style={{ fontSize: 9, color: C.amberBright, fontWeight: 700, ...mono, marginRight: 12 }}>MARKETS</span>
 
-      <div style={{ padding: "4px 10px", background: C.blueBg, borderBottom: `1px solid ${C.borderM}`, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: C.amberBright, ...sans }}>{selectedMsa.name}</span>
-        <span style={{ fontSize: 10, color: C.secondary, ...sans }}>Market Intelligence Dashboard</span>
-        <span style={{ fontSize: 8, color: C.muted }}>|</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: C.green, ...mono }}>{selectedMarketData?.rent || "$2,150"}</span>
-        <DeltaCell value={selectedMarketData?.rentD || "+4.2%"} />
-        <span style={{ fontSize: 8, color: C.muted }}>|</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Vac</span>
-        <ThresholdVal value={selectedMarketData?.vac || "5.8%"} thresholds={[5, 8]} invert />
-        <span style={{ fontSize: 8, color: C.muted }}>|</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>JEDI</span>
-        <ScoreCell value={selectedMarketData?.jedi || 87} size={12} />
-        <DeltaCell value={selectedMarketData ? (selectedMarketData.d30 >= 0 ? `+${selectedMarketData.d30}` : `${selectedMarketData.d30}`) : "+4"} />
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 8, color: C.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
-          <span style={{ width: 4, height: 4, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-          {selectedMarketData?.props || 1028} Properties · {selectedMarketData?.units || "250K"} Units
-        </span>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", height: 30, background: C.panel, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        <button
-          onClick={() => { setPrimaryTab("overview"); }}
-          style={{
-            ...mono, fontSize: 9, fontWeight: primaryTab === "overview" ? 700 : 500,
-            padding: "0 14px", height: "100%", cursor: "pointer",
-            background: primaryTab === "overview" ? C.active : "transparent",
-            color: primaryTab === "overview" ? C.amber : C.secondary,
-            border: "none", borderBottom: primaryTab === "overview" ? `2px solid ${C.amber}` : "2px solid transparent",
-          }}
-        >
-          OVERVIEW
-        </button>
-
-        <div style={{ position: "relative" }}>
+        <div style={{ position: "relative", marginRight: 12 }}>
           <button
             onClick={() => setMarketDropdownOpen(!marketDropdownOpen)}
             style={{
               ...mono, fontSize: 9, fontWeight: 500,
-              padding: "0 14px", height: 30, cursor: "pointer",
+              padding: "0 8px", height: 22, cursor: "pointer",
               background: "transparent", color: C.secondary,
-              border: "none", display: "flex", alignItems: "center", gap: 4,
+              border: `1px solid ${C.borderS}`, display: "flex", alignItems: "center", gap: 4,
             }}
           >
-            MARKET <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 7 }}>▾</span>
+            MSA · <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 7 }}>▾</span>
           </button>
           {marketDropdownOpen && (
-            <div style={{ position: "absolute", top: 30, left: 0, zIndex: 100, background: C.panel, border: `1px solid ${C.borderM}`, minWidth: 220, boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+            <div style={{ position: "absolute", top: 24, left: 0, zIndex: 100, background: C.panel, border: `1px solid ${C.borderM}`, minWidth: 220, boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
               <input
                 autoFocus
                 value={marketSearch}
@@ -651,66 +668,70 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             </div>
           )}
         </div>
+
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 8, color: C.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
+          <span style={{ width: 4, height: 4, borderRadius: "50%", background: C.green, display: "inline-block" }} />
+          JEDI {selectedMarketData?.jedi || 87}
+        </span>
+        <span style={{ fontSize: 8, color: C.muted, margin: "0 6px" }}>|</span>
+        <span style={{ fontSize: 9, color: C.primary, fontWeight: 600, ...mono }}>{selectedMarketData?.rent || "$2,150"}</span>
+        <span style={{ margin: "0 4px" }}><DeltaCell value={selectedMarketData?.rentD || "+4.2%"} /></span>
+        <span style={{ fontSize: 8, color: C.muted, margin: "0 4px" }}>|</span>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Vac </span>
+        <ThresholdVal value={selectedMarketData?.vac || "5.8%"} thresholds={[5, 8]} invert />
       </div>
 
-      {primaryTab === "overview" && (
-        <div style={{ display: "flex", alignItems: "center", height: 26, background: C.panelAlt, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0, gap: 0 }}>
-          {([
-            { id: "mkt-detail" as SubTab, label: "MKT DETAIL" },
-            { id: "msa-index" as SubTab, label: "MSA INDEX" },
-          ]).map(t => (
-            <button
-              key={t.id}
-              onClick={() => setSubTab(t.id)}
-              style={{
-                ...mono, fontSize: 8, fontWeight: subTab === t.id ? 700 : 400,
-                padding: "0 10px", height: "100%", cursor: "pointer",
-                background: subTab === t.id ? C.active : "transparent",
-                color: subTab === t.id ? C.amber : C.muted,
-                border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-          <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />
+      <div style={{ display: "flex", alignItems: "center", height: 30, background: C.panel, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+        {([
+          { id: "f4-landing" as PrimaryTab, label: "F4 LANDING" },
+          { id: "all-msas" as PrimaryTab, label: "ALL MSAs" },
+        ]).map(tab => (
           <button
-            onClick={() => setSubTab("watchlist")}
+            key={tab.id}
+            onClick={() => setPrimaryTab(tab.id)}
             style={{
-              ...mono, fontSize: 8, fontWeight: subTab === "watchlist" ? 700 : 400,
-              padding: "0 10px", height: "100%", cursor: "pointer",
-              background: subTab === "watchlist" ? C.active : "transparent",
-              color: subTab === "watchlist" ? C.amber : C.muted,
-              border: "none", borderBottom: subTab === "watchlist" ? `1px solid ${C.amber}` : "1px solid transparent",
-              display: "flex", alignItems: "center", gap: 4,
+              ...mono, fontSize: 9, fontWeight: primaryTab === tab.id ? 700 : 500,
+              padding: "0 16px", height: "100%", cursor: "pointer",
+              background: primaryTab === tab.id ? C.active : "transparent",
+              color: primaryTab === tab.id ? C.amber : C.secondary,
+              border: "none", borderBottom: primaryTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
+              letterSpacing: 0.5,
             }}
           >
-            ▸ WATCHLIST ({TRACKED_MARKETS.filter(m => m.starred).length})
+            {tab.label}
           </button>
-          <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />
-          {([
-            { id: "submarket" as SubTab, label: "SUBMARKET" },
-            { id: "property-stock" as SubTab, label: "PROPERTY STOCK" },
-          ]).map(t => (
-            <button
-              key={t.id}
-              onClick={() => setSubTab(t.id)}
-              style={{
-                ...mono, fontSize: 8, fontWeight: subTab === t.id ? 700 : 400,
-                padding: "0 10px", height: "100%", cursor: "pointer",
-                background: subTab === t.id ? C.active : "transparent",
-                color: subTab === t.id ? C.amber : C.muted,
-                border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
-              }}
-            >
-              {t.label}
-            </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 8, color: C.muted, ...mono, marginRight: 10 }}>
+          {primaryTab === "f4-landing" ? `${selectedMsa.name} · ${TRACKED_MARKETS.length} tracked` : `${ALL_MSAS.length} total MSAs`}
+        </span>
+      </div>
+
+      {primaryTab === "f4-landing" && (
+        <div style={{ display: "flex", alignItems: "center", height: 26, background: C.panelAlt, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0, gap: 0 }}>
+          {SUB_TAB_DEFS.map((t, idx) => (
+            <React.Fragment key={t.id}>
+              {idx === 3 && <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />}
+              <button
+                onClick={() => setSubTab(t.id)}
+                style={{
+                  ...mono, fontSize: 8, fontWeight: subTab === t.id ? 700 : 400,
+                  padding: "0 10px", height: "100%", cursor: "pointer",
+                  background: subTab === t.id ? C.active : "transparent",
+                  color: subTab === t.id ? C.amber : C.muted,
+                  border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
+                }}
+              >
+                {t.label}
+              </button>
+            </React.Fragment>
           ))}
         </div>
       )}
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {renderContent()}
+        {primaryTab === "f4-landing" ? renderLandingContent() : renderAllMsasContent()}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
@@ -721,16 +742,3 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     </div>
   );
 }
-
-const hdrCell: React.CSSProperties = {
-  padding: "4px 6px", fontSize: 7, fontWeight: 700, color: "#4A5568",
-  letterSpacing: 0.5, borderRight: "1px solid #1E2538", borderBottom: "1px solid #2A3348",
-  textAlign: "center", cursor: "pointer", whiteSpace: "nowrap",
-  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
-};
-
-const dataCell: React.CSSProperties = {
-  padding: "4px 6px", textAlign: "center", borderRight: "1px solid #1E2538",
-  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
-  whiteSpace: "nowrap",
-};
