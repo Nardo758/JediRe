@@ -545,7 +545,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
       {/* Market Alerts + Near-Term Supply + Long-Term Dev Capacity */}
       <div style={{ display: 'flex', gap: 16 }}>
         {/* Market Alerts */}
-        <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ width: 320, flexShrink: 0, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -580,7 +580,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
         </div>
 
         {/* Near-Term Supply (18mo) */}
-        <div style={{ width: 280, flexShrink: 0, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
@@ -625,7 +625,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
         </div>
 
         {/* Long-Term Dev Capacity */}
-        <div style={{ width: 220, flexShrink: 0, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
           <div style={{
             display: 'flex',
             justifyContent: 'space-between',
