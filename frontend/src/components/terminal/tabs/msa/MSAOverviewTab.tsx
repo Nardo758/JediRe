@@ -454,6 +454,145 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
               <span>Contribution: <span style={{ color: tabColor, fontWeight: 700 }}>{totalPts > 0 ? '+' : ''}{totalPts}pts</span></span>
             </div>
           </div>
+
+          {/* Market Alerts + Near-Term Supply + Long-Term Dev Capacity — inside left column */}
+          <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+            {/* Market Alerts */}
+            <div style={{ width: 280, flexShrink: 0, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '6px 12px',
+                background: BT.bg.header,
+                borderBottom: `1px solid ${BT.border.subtle}`,
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
+                  Market Alerts
+                </span>
+                <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{MOCK_ALERTS.length} active</span>
+              </div>
+              <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {MOCK_ALERTS.map((alert, i) => {
+                  const severity = severityColors[alert.severity];
+                  return (
+                    <div key={i} style={{
+                      padding: 8,
+                      background: severity.bg,
+                      borderLeft: `3px solid ${severity.border}`,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: BT.text.primary }}>{alert.title}</span>
+                        <span style={{ fontSize: 9, color: BT.text.muted, flexShrink: 0, marginLeft: 8 }}>{alert.date}</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: BT.text.muted }}>{alert.impact}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Near-Term Supply (18mo) */}
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '6px 12px',
+                background: BT.bg.header,
+                borderBottom: `1px solid ${BT.border.subtle}`,
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
+                  Near-Term Supply (18mo)
+                </span>
+                <span style={{ fontSize: 9, color: BT.text.muted, ...mono }}>S-01→S-10</span>
+              </div>
+              <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {MOCK_NEAR_TERM_SUPPLY.map((metric, i) => (
+                  <div key={i} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '4px 8px',
+                    background: metric.warning ? `${BT.text.amber}11` : BT.bg.elevated,
+                    borderLeft: metric.warning ? `3px solid ${BT.text.amber}` : 'none',
+                    borderRadius: 3,
+                  }}>
+                    <span style={{ fontSize: 10, color: BT.text.muted }}>
+                      {metric.label}
+                      {metric.id && (
+                        <span style={{ fontSize: 8, color: BT.text.cyan, marginLeft: 4, ...mono }}>{metric.id}</span>
+                      )}
+                    </span>
+                    <span style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: metric.warning ? BT.text.amber : BT.text.primary,
+                      ...mono,
+                    }}>
+                      {metric.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Long-Term Dev Capacity */}
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '6px 12px',
+                background: BT.bg.header,
+                borderBottom: `1px solid ${BT.border.subtle}`,
+              }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.violet, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
+                  Long-Term Dev Capacity
+                </span>
+                <span style={{
+                  fontSize: 9,
+                  color: BT.text.violet,
+                  background: 'rgba(139,92,246,0.15)',
+                  padding: '2px 6px',
+                  ...mono,
+                }}>
+                  DC-01→DC-11
+                </span>
+              </div>
+              <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {MOCK_LONG_TERM_CAPACITY.map((metric, i) => (
+                  <div key={i} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '6px 8px',
+                    background: BT.bg.elevated,
+                    borderRadius: 3,
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 10, color: BT.text.muted }}>{metric.label}</div>
+                      <div style={{ fontSize: 8, color: BT.text.violet, ...mono }}>{metric.id}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: BT.text.primary, ...mono }}>{metric.value}</span>
+                      {metric.badge && (
+                        <span style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: BT.text.amber,
+                          background: 'rgba(245,158,11,0.15)',
+                          padding: '2px 6px',
+                          ...mono,
+                        }}>{metric.badge}</span>
+                      )}
+                      {metric.check && <span style={{ color: BT.text.green }}>✓</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* RIGHT: Commentary Side Panel */}
@@ -539,145 +678,6 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
               </div>
             </>
           )}
-        </div>
-      </div>
-
-      {/* Market Alerts + Near-Term Supply + Long-Term Dev Capacity */}
-      <div style={{ display: 'flex', gap: 16 }}>
-        {/* Market Alerts */}
-        <div style={{ width: 320, flexShrink: 0, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '6px 12px',
-            background: BT.bg.header,
-            borderBottom: `1px solid ${BT.border.subtle}`,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
-              Market Alerts
-            </span>
-            <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{MOCK_ALERTS.length} active</span>
-          </div>
-          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {MOCK_ALERTS.map((alert, i) => {
-              const severity = severityColors[alert.severity];
-              return (
-                <div key={i} style={{
-                  padding: 10,
-                  background: severity.bg,
-                  borderLeft: `3px solid ${severity.border}`,
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary }}>{alert.title}</span>
-                    <span style={{ fontSize: 10, color: BT.text.muted }}>{alert.date}</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: BT.text.muted }}>{alert.impact}</div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Near-Term Supply (18mo) */}
-        <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '6px 12px',
-            background: BT.bg.header,
-            borderBottom: `1px solid ${BT.border.subtle}`,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
-              Near-Term Supply (18mo)
-            </span>
-            <span style={{ fontSize: 9, color: BT.text.muted, ...mono }}>S-01→S-10</span>
-          </div>
-          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {MOCK_NEAR_TERM_SUPPLY.map((metric, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '6px 8px',
-                background: metric.warning ? `${BT.text.amber}11` : BT.bg.elevated,
-                borderLeft: metric.warning ? `3px solid ${BT.text.amber}` : 'none',
-                borderRadius: 3,
-              }}>
-                <span style={{ fontSize: 11, color: BT.text.muted }}>
-                  {metric.label}
-                  {metric.id && (
-                    <span style={{ fontSize: 9, color: BT.text.cyan, marginLeft: 6, ...mono }}>{metric.id}</span>
-                  )}
-                </span>
-                <span style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: metric.warning ? BT.text.amber : BT.text.primary,
-                  ...mono,
-                }}>
-                  {metric.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Long-Term Dev Capacity */}
-        <div style={{ flex: 1, ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '6px 12px',
-            background: BT.bg.header,
-            borderBottom: `1px solid ${BT.border.subtle}`,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.violet, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
-              Long-Term Dev Capacity
-            </span>
-            <span style={{
-              fontSize: 9,
-              color: BT.text.violet,
-              background: 'rgba(139,92,246,0.15)',
-              padding: '2px 6px',
-              ...mono,
-            }}>
-              DC-01→DC-11
-            </span>
-          </div>
-          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {MOCK_LONG_TERM_CAPACITY.map((metric, i) => (
-              <div key={i} style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '8px 8px',
-                background: BT.bg.elevated,
-                borderRadius: 3,
-              }}>
-                <div>
-                  <div style={{ fontSize: 11, color: BT.text.muted }}>{metric.label}</div>
-                  <div style={{ fontSize: 9, color: BT.text.violet, ...mono }}>{metric.id}</div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: BT.text.primary, ...mono }}>{metric.value}</span>
-                  {metric.badge && (
-                    <span style={{
-                      fontSize: 9,
-                      fontWeight: 700,
-                      color: BT.text.amber,
-                      background: 'rgba(245,158,11,0.15)',
-                      padding: '2px 6px',
-                      ...mono,
-                    }}>{metric.badge}</span>
-                  )}
-                  {metric.check && <span style={{ color: BT.text.green }}>✓</span>}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
