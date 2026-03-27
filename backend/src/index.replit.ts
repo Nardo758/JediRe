@@ -11,6 +11,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { requireAuth, optionalAuth } from './middleware/auth';
 import { getPool } from './database/connection';
+import { logger } from './utils/logger';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
@@ -541,6 +542,15 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
 
     if (strategyId) {
       try {
+        const userId = req.user?.id || req.userId;
+        const ownerCheck = await pool.query(
+          `SELECT id FROM strategy_definitions WHERE id = $1 AND (user_id = $2 OR user_id IS NULL OR scope = 'preset')`,
+          [strategyId, userId],
+        );
+        if (ownerCheck.rows.length === 0) {
+          return res.status(403).json({ success: false, error: 'Strategy not found or not authorized' });
+        }
+
         const strategyExec = new StrategyExecutionService(pool);
         const strategyResults = await strategyExec.executeStrategy(strategyId);
 
@@ -548,7 +558,7 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
           entityType: (entityType || 'msa') as 'msa' | 'submarket' | 'property',
           entityId: entityId || strategyId,
           signals: signalInputs,
-          userId: req.user?.id || req.userId,
+          userId,
         };
         const commentary = await commentaryAgent.execute(commentaryInput);
 
@@ -566,7 +576,7 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
               targetName: r.targetName,
               score: r.overallScore,
               rank: r.rank,
-              passed: r.conditionResults.every(c => !c.passed ? false : true),
+              passed: r.conditionResults.every(c => c.passed),
               conditionResults: r.conditionResults,
             })),
           },
