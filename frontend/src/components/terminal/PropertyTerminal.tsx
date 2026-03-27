@@ -29,11 +29,13 @@ import { apiClient } from '@/services/api.client';
 interface PropertyTerminalProps {
   dealId: string;
   deal?: any;
+  embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
 }
 
 export const PropertyTerminal: React.FC<PropertyTerminalProps> = ({
   dealId,
   deal: dealProp,
+  embedded = false,
 }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
   const [deal, setDeal] = useState<any>(dealProp || null);
@@ -199,21 +201,23 @@ export const PropertyTerminal: React.FC<PropertyTerminalProps> = ({
       flexDirection: 'column',
       height: '100%',
       background: BT.bg.terminal,
-      borderRadius: 10,
+      borderRadius: embedded ? 0 : 10,
       overflow: 'hidden',
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: embedded ? "'JetBrains Mono', monospace" : "'Inter', sans-serif",
     }}>
       {/* Global styles */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap');
       `}</style>
 
-      {/* Header - Property ticker */}
-      <TerminalHeader
-        property={propertyMetrics}
-        sparklineData={sparklineData}
-        isLive={true}
-      />
+      {/* Header - Property ticker - hidden when embedded */}
+      {!embedded && (
+        <TerminalHeader
+          property={propertyMetrics}
+          sparklineData={sparklineData}
+          isLive={true}
+        />
+      )}
 
       {/* Tab navigation */}
       <TerminalTabs
@@ -226,33 +230,35 @@ export const PropertyTerminal: React.FC<PropertyTerminalProps> = ({
       <div style={{
         flex: 1,
         overflow: 'auto',
-        padding: 20,
+        padding: embedded ? 12 : 20,
       }}>
         {renderTabContent()}
       </div>
 
-      {/* Footer ticker (optional) */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '6px 20px',
-        background: BT.bg.header,
-        borderTop: `1px solid ${BT.border.subtle}`,
-        fontSize: 10,
-        color: BT.text.dim,
-        gap: 16,
-        overflow: 'hidden',
-      }}>
-        <span style={{ color: BT.text.green }}>● FEDRATE 4.25%</span>
-        <span>|</span>
-        <span style={{ color: BT.text.cyan }}>10Y 4.18% (+0.02)</span>
-        <span>|</span>
-        <span style={{ color: BT.text.amber }}>SOFR 4.31%</span>
-        <span>|</span>
-        <span>ATL Vacancy 6.2%</span>
-        <span>|</span>
-        <span style={{ color: BT.text.green }}>Rent Growth +4.1% YoY</span>
-      </div>
+      {/* Footer ticker - hidden when embedded */}
+      {!embedded && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '6px 20px',
+          background: BT.bg.header,
+          borderTop: `1px solid ${BT.border.subtle}`,
+          fontSize: 10,
+          color: BT.text.dim,
+          gap: 16,
+          overflow: 'hidden',
+        }}>
+          <span style={{ color: BT.text.green }}>● FEDRATE 4.25%</span>
+          <span>|</span>
+          <span style={{ color: BT.text.cyan }}>10Y 4.18% (+0.02)</span>
+          <span>|</span>
+          <span style={{ color: BT.text.amber }}>SOFR 4.31%</span>
+          <span>|</span>
+          <span>ATL Vacancy 6.2%</span>
+          <span>|</span>
+          <span style={{ color: BT.text.green }}>Rent Growth +4.1% YoY</span>
+        </div>
+      )}
     </div>
   );
 };

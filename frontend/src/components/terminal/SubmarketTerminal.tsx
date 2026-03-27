@@ -69,12 +69,14 @@ interface SubmarketTerminalProps {
   submarket?: SubmarketData;
   onPropertySelect?: (propertyId: string) => void;
   onMsaNavigate?: () => void;
+  embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
 }
 
 export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
   submarketId,
   submarket: submarketProp,
   onPropertySelect,
+  embedded = false,
   onMsaNavigate,
 }) => {
   const [activeTab, setActiveTab] = useState<SubmarketTabKey>('overview');
@@ -240,46 +242,50 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
       flexDirection: 'column',
       height: '100%',
       background: BT.bg.terminal,
-      borderRadius: 10,
+      borderRadius: embedded ? 0 : 10,
       overflow: 'hidden',
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: embedded ? "'JetBrains Mono', monospace" : "'Inter', sans-serif",
     }}>
       {/* Global styles */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap');
       `}</style>
 
-      {/* Breadcrumb Navigation */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 20px',
-        background: BT.bg.header,
-        borderBottom: `1px solid ${BT.border.subtle}`,
-        fontSize: 11,
-      }}>
-        <span 
-          onClick={onMsaNavigate}
-          style={{ 
-            color: BT.text.cyan, 
-            cursor: 'pointer',
-            textDecoration: 'none',
-          }}
-        >
-          {submarket.msaName}
-        </span>
-        <span style={{ color: BT.text.dim }}>›</span>
-        <span style={{ color: BT.text.amber, fontWeight: 600 }}>
-          {submarket.name}
-        </span>
-      </div>
+      {/* Breadcrumb Navigation - hidden when embedded */}
+      {!embedded && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 20px',
+          background: BT.bg.header,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+          fontSize: 11,
+        }}>
+          <span 
+            onClick={onMsaNavigate}
+            style={{ 
+              color: BT.text.cyan, 
+              cursor: 'pointer',
+              textDecoration: 'none',
+            }}
+          >
+            {submarket.msaName}
+          </span>
+          <span style={{ color: BT.text.dim }}>›</span>
+          <span style={{ color: BT.text.amber, fontWeight: 600 }}>
+            {submarket.name}
+          </span>
+        </div>
+      )}
 
-      {/* Header - Submarket ticker */}
-      <SubmarketHeader
-        submarket={submarket}
-        sparklineData={sparklineData}
-      />
+      {/* Header - Submarket ticker - hidden when embedded */}
+      {!embedded && (
+        <SubmarketHeader
+          submarket={submarket}
+          sparklineData={sparklineData}
+        />
+      )}
 
       {/* Tab navigation */}
       <TerminalTabs
@@ -293,33 +299,35 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
       <div style={{
         flex: 1,
         overflow: 'auto',
-        padding: 20,
+        padding: embedded ? 12 : 20,
       }}>
         {renderTabContent()}
       </div>
 
-      {/* Footer ticker */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '6px 20px',
-        background: BT.bg.header,
-        borderTop: `1px solid ${BT.border.subtle}`,
-        fontSize: 10,
-        color: BT.text.dim,
-        gap: 16,
-        overflow: 'hidden',
-      }}>
-        <span style={{ color: BT.text.green }}>● {submarket.propertyCount} Properties</span>
-        <span>|</span>
-        <span style={{ color: BT.text.cyan }}>{submarket.totalUnits.toLocaleString()} Units</span>
-        <span>|</span>
-        <span style={{ color: BT.text.amber }}>Pipeline: {submarket.pipelineUnits.toLocaleString()} units</span>
-        <span>|</span>
-        <span>Absorption: {submarket.absorptionRate}%</span>
-        <span>|</span>
-        <span style={{ color: BT.text.green }}>Emp Growth +{submarket.employmentGrowth}%</span>
-      </div>
+      {/* Footer ticker - hidden when embedded */}
+      {!embedded && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '6px 20px',
+          background: BT.bg.header,
+          borderTop: `1px solid ${BT.border.subtle}`,
+          fontSize: 10,
+          color: BT.text.dim,
+          gap: 16,
+          overflow: 'hidden',
+        }}>
+          <span style={{ color: BT.text.green }}>● {submarket.propertyCount} Properties</span>
+          <span>|</span>
+          <span style={{ color: BT.text.cyan }}>{submarket.totalUnits.toLocaleString()} Units</span>
+          <span>|</span>
+          <span style={{ color: BT.text.amber }}>Pipeline: {submarket.pipelineUnits.toLocaleString()} units</span>
+          <span>|</span>
+          <span>Absorption: {submarket.absorptionRate}%</span>
+          <span>|</span>
+          <span style={{ color: BT.text.green }}>Emp Growth +{submarket.employmentGrowth}%</span>
+        </div>
+      )}
     </div>
   );
 };
