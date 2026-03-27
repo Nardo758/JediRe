@@ -216,11 +216,11 @@ export const StrategyBuilderPage: React.FC = () => {
   };
 
   const loadPreset = (strategy: Strategy) => {
-    setStrategyName(strategy.name);
-    setStrategyDescription(strategy.description);
-    setScope(strategy.scope);
-    setSelectedAssetClasses(strategy.assetClasses);
-    setConditions(strategy.conditions);
+    setStrategyName(strategy.name || '');
+    setStrategyDescription(strategy.description || '');
+    setScope(strategy.scope || 'submarket');
+    setSelectedAssetClasses(strategy.assetClasses || ['multifamily']);
+    setConditions(strategy.conditions || []);
     setActiveTab('builder');
   };
 
@@ -385,7 +385,7 @@ export const StrategyBuilderPage: React.FC = () => {
                       background: strategy.type === 'preset' ? `${COLORS.success}15` : `${COLORS.accent}15`,
                       color: strategy.type === 'preset' ? COLORS.success : COLORS.accent,
                     }}>
-                      {strategy.type.toUpperCase()}
+                      {(strategy.type || 'custom').toUpperCase()}
                     </span>
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 4 }}>
@@ -395,7 +395,7 @@ export const StrategyBuilderPage: React.FC = () => {
                     {strategy.description}
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
-                    {strategy.conditions.slice(0, 3).map((cond, i) => {
+                    {(strategy.conditions || []).slice(0, 3).map((cond, i) => {
                       const metric = metrics.find(m => m.id === cond.metricId);
                       const color = metric ? METRIC_COLORS[metric.category] || COLORS.textMuted : COLORS.textMuted;
                       return (
