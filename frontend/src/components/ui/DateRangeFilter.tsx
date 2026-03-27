@@ -22,7 +22,6 @@ interface DateRangeFilterProps {
   customStartDate?: string;
   customEndDate?: string;
   onCustomDatesChange?: (start: string, end: string) => void;
-  className?: string;
 }
 
 const rangeOptions: { value: DateRangeOption; label: string }[] = [
