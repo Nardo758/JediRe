@@ -340,7 +340,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
 
               {demos && (
                 <div style={{
-                  width: 280,
+                  width: 322,
                   flexShrink: 0,
                   background: BT.bg.panel,
                   border: `1px solid ${BT.border.subtle}`,
@@ -389,7 +389,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
         </div>
 
         <div style={{
-          width: 280,
+          width: 322,
           flexShrink: 0,
           border: `1px solid ${BT.border.subtle}`,
           borderLeft: `2px solid ${BT.text.amber}66`,
