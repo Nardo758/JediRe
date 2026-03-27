@@ -312,6 +312,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             onSubmarketSelect={handleSubmarketSelect}
             onPropertySelect={handlePropertySelect}
             onBackToMarkets={() => setLevel("landing")}
+            embedded={true}
           />
         </div>
       </div>
@@ -338,6 +339,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             submarketId={drillSubmarketId}
             onPropertySelect={handlePropertySelect}
             onMsaNavigate={() => setLevel("msa-terminal")}
+            embedded={true}
           />
         </div>
       </div>
@@ -439,7 +441,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillPropertyName.toUpperCase() || "PROPERTY"}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
-          <PropertyTerminal dealId={drillPropertyId} />
+          <PropertyTerminal dealId={drillPropertyId} embedded={true} />
         </div>
       </div>
     );

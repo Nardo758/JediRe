@@ -83,6 +83,7 @@ interface MSATerminalProps {
   onPropertySelect?: (propertyId: string) => void;
   onDealSelect?: (dealId: string) => void;
   onBackToMarkets?: () => void;
+  embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
 }
 
 export const MSATerminal: React.FC<MSATerminalProps> = ({
@@ -92,6 +93,7 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
   onPropertySelect,
   onDealSelect,
   onBackToMarkets,
+  embedded = false,
 }) => {
   const [activeTab, setActiveTab] = useState<MSATabKey>('overview');
   const [msa, setMsa] = useState<MSAData | null>(msaProp || null);
@@ -216,14 +218,16 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: BT.bg.primary,
+      background: embedded ? BT.bg.terminal : BT.bg.panel,
       color: BT.text.primary,
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      fontFamily: embedded ? "'JetBrains Mono', monospace" : "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
     }}>
-      {/* Header */}
-      <MSAHeader 
-        msa={msa} 
-      />
+      {/* Header - hidden when embedded */}
+      {!embedded && (
+        <MSAHeader 
+          msa={msa} 
+        />
+      )}
 
       {/* Tab Bar */}
       <TerminalTabs
@@ -236,39 +240,41 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
       <div style={{
         flex: 1,
         overflow: 'auto',
-        padding: 20,
+        padding: embedded ? 12 : 20,
       }}>
         {renderTabContent()}
       </div>
 
-      {/* Footer Status Bar */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '8px 16px',
-        background: BT.bg.elevated,
-        borderTop: `1px solid ${BT.border.subtle}`,
-        fontSize: 11,
-        color: BT.text.muted,
-      }}>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <span>MSA: {msa?.name || msaId}</span>
-          <span>·</span>
-          <span>{msa?.submarketCount || 0} Submarkets</span>
-          <span>·</span>
-          <span>{msa?.propertyCount?.toLocaleString() || 0} Properties</span>
-          <span>·</span>
-          <span>{msa?.totalUnits?.toLocaleString() || 0} Units</span>
+      {/* Footer Status Bar - hidden when embedded */}
+      {!embedded && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '8px 16px',
+          background: BT.bg.elevated,
+          borderTop: `1px solid ${BT.border.subtle}`,
+          fontSize: 11,
+          color: BT.text.muted,
+        }}>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <span>MSA: {msa?.name || msaId}</span>
+            <span>·</span>
+            <span>{msa?.submarketCount || 0} Submarkets</span>
+            <span>·</span>
+            <span>{msa?.propertyCount?.toLocaleString() || 0} Properties</span>
+            <span>·</span>
+            <span>{msa?.totalUnits?.toLocaleString() || 0} Units</span>
+          </div>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <span>Health: <span style={{ color: BT.text.green, fontWeight: 600 }}>{msa?.healthScore || 0}</span></span>
+            <span>·</span>
+            <span>Rank: #{msa?.rank || 0}/{msa?.totalRank || 0}</span>
+            <span>·</span>
+            <span style={{ color: BT.text.cyan }}>Use 0-9 for tabs</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <span>Health: <span style={{ color: BT.text.green, fontWeight: 600 }}>{msa?.healthScore || 0}</span></span>
-          <span>·</span>
-          <span>Rank: #{msa?.rank || 0}/{msa?.totalRank || 0}</span>
-          <span>·</span>
-          <span style={{ color: BT.text.cyan }}>Use 0-9 for tabs</span>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
