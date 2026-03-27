@@ -677,7 +677,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
 
         {/* RIGHT: Commentary Side Panel */}
         <div style={{
-          width: 280,
+          width: 322,
           flexShrink: 0,
           border: `1px solid ${BT.border.subtle}`,
           borderLeft: `2px solid ${BT.text.amber}66`,
