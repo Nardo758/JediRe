@@ -2,12 +2,14 @@
  * MSAEconomicsTab - Employment, population, income, sector composition
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Users, Briefcase, DollarSign, MapPin } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSAEconomicsTabProps {
   msaId: string;
@@ -16,6 +18,12 @@ interface MSAEconomicsTabProps {
 
 export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+
+  useEffect(() => {
+    fetchCommentary('msa', msaId, msaName);
+  }, [msaId, msaName]);
 
   const employmentData: ChartDataPoint[] = useMemo(() => [
     { date: '2020', employment: 2850, population: 5900 },
@@ -238,6 +246,12 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
           </DataTable>
         </TerminalSection>
       </div>
+
+      {commentary?.signalCommentary?.demand && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signal="demand" commentary={commentary.signalCommentary.demand} />
+        </div>
+      )}
     </div>
   );
 };

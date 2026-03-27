@@ -31,10 +31,24 @@ interface CompProperty {
   capRate?: number;
 }
 
+interface SignalContribution {
+  signal: string;
+  value: number;
+  weight: number;
+}
+
+interface GateResult {
+  strategy: string;
+  passed: boolean;
+  score: number;
+}
+
 interface StrategyScoreProps {
   score: number;
   strategy?: string;
   arbitrageFlag?: boolean;
+  signalContributions?: SignalContribution[];
+  gateResults?: GateResult[];
 }
 
 interface BloombergPropertyCardProps {
@@ -252,7 +266,7 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
             padding: '2px 6px',
             background: `${strategyScore.score >= 75 ? BT.text.green : strategyScore.score >= 55 ? BT.text.amber : BT.text.red}14`,
             border: `1px solid ${strategyScore.score >= 75 ? BT.text.green : strategyScore.score >= 55 ? BT.text.amber : BT.text.red}33`,
-            borderRadius: 3,
+            borderRadius: 0,
           }}>
             <span style={{
               fontSize: 11,
@@ -262,6 +276,37 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
             }}>
               {Math.round(strategyScore.score)}
             </span>
+            {strategyScore.signalContributions && strategyScore.signalContributions.length > 0 && (
+              <svg width={40} height={14} style={{ marginLeft: 2 }}>
+                {strategyScore.signalContributions.map((sc, i) => {
+                  const barH = Math.max(2, (sc.value / 100) * 12);
+                  const barW = Math.floor(40 / strategyScore.signalContributions!.length) - 1;
+                  return (
+                    <rect
+                      key={i}
+                      x={i * (barW + 1)}
+                      y={14 - barH}
+                      width={barW}
+                      height={barH}
+                      fill={sc.value >= 70 ? BT.text.green : sc.value >= 45 ? BT.text.amber : BT.text.red}
+                      opacity={0.8}
+                    />
+                  );
+                })}
+              </svg>
+            )}
+            {strategyScore.gateResults && strategyScore.gateResults.length > 0 && (
+              <div style={{ display: 'flex', gap: 1, marginLeft: 2 }}>
+                {strategyScore.gateResults.slice(0, 4).map((g, i) => (
+                  <span key={i} style={{
+                    width: 5,
+                    height: 5,
+                    borderRadius: '50%',
+                    background: g.passed ? BT.text.green : BT.text.red,
+                  }} />
+                ))}
+              </div>
+            )}
             {strategyScore.arbitrageFlag && (
               <span style={{ fontSize: 8, color: BT.text.cyan, fontWeight: 700 }}>ARB</span>
             )}

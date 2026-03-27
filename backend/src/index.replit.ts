@@ -498,13 +498,33 @@ app.get('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: any
   }
 });
 
+app.post('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: any, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { entityName, signals, forceRefresh } = req.body;
+
+    if (!['msa', 'submarket', 'property'].includes(entityType)) {
+      return res.status(400).json({ success: false, error: 'entityType must be msa, submarket, or property' });
+    }
+
+    const input: CommentaryInput = {
+      entityType: entityType as 'msa' | 'submarket' | 'property',
+      entityId,
+      entityName,
+      signals,
+      forceRefresh: forceRefresh === true,
+    };
+
+    const result = await commentaryAgent.execute(input);
+    res.json({ success: true, commentary: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) => {
   try {
-    const { dealId, signals, envelope } = req.body;
-
-    if (!dealId) {
-      return res.status(400).json({ success: false, error: 'dealId is required' });
-    }
+    const { dealId, entityType, entityId, strategyId, signals, envelope } = req.body;
 
     const signalInputs: StrategySignalInputs | undefined = signals ? {
       demandScore: signals.demandScore ?? 50,
@@ -515,6 +535,38 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
       budgetDistribution: signals.budgetDistribution,
       bedroomDemand: signals.bedroomDemand,
     } : undefined;
+
+    if (entityType && entityId) {
+      const commentaryInput: CommentaryInput = {
+        entityType: entityType as 'msa' | 'submarket' | 'property',
+        entityId,
+        signals: signalInputs,
+      };
+      const commentary = await commentaryAgent.execute(commentaryInput);
+      const filtered = strategyId
+        ? commentary.strategyScores.filter(s => s.strategy === strategyId)
+        : commentary.strategyScores;
+      return res.json({
+        success: true,
+        analysis: {
+          scores: filtered,
+          recommendedStrategy: commentary.recommendedStrategy,
+          arbitrageFlag: commentary.arbitrageFlag,
+          arbitrageDelta: commentary.arbitrageDelta,
+          jediScore: commentary.jediScore,
+          gateResults: commentary.strategyScores.map(s => ({
+            strategy: s.strategy,
+            score: s.score,
+            rank: s.rank,
+            passed: s.score >= 40,
+          })),
+        },
+      });
+    }
+
+    if (!dealId) {
+      return res.status(400).json({ success: false, error: 'dealId or (entityType + entityId) is required' });
+    }
 
     const result = envelope
       ? await strategyArbitrageEngine.analyzeWithEnvelope(dealId, envelope, signalInputs)

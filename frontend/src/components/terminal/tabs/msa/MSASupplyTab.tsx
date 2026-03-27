@@ -2,12 +2,14 @@
  * MSASupplyTab - Metro-wide supply pipeline, construction tracker, lease-up
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Building2, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SupplyNarrative, SignalCommentary } from '../../commentary';
 
 interface MSASupplyTabProps {
   msaId: string;
@@ -16,6 +18,12 @@ interface MSASupplyTabProps {
 
 export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+
+  useEffect(() => {
+    fetchCommentary('msa', msaId, msaName);
+  }, [msaId, msaName]);
 
   const deliveryData: ChartDataPoint[] = useMemo(() => {
     return [
@@ -231,6 +239,24 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
           </tbody>
         </DataTable>
       </TerminalSection>
+
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.supplyNarrative && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SupplyNarrative narrative={commentary.supplyNarrative} />
+            </div>
+          )}
+          {commentary.signalCommentary?.supply && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary
+                signal="supply"
+                commentary={commentary.signalCommentary.supply}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

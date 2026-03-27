@@ -2,12 +2,14 @@
  * MSACapitalTab - Transaction volume, cap rate trends, debt markets
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSACapitalTabProps {
   msaId: string;
@@ -16,6 +18,12 @@ interface MSACapitalTabProps {
 
 export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+
+  useEffect(() => {
+    fetchCommentary('msa', msaId, msaName);
+  }, [msaId, msaName]);
 
   const volumeData: ChartDataPoint[] = useMemo(() => [
     { date: 'Q1 24', volume: 850, capRate: 5.4 },
@@ -259,6 +267,12 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
           </tbody>
         </DataTable>
       </TerminalSection>
+
+      {commentary?.signalCommentary?.position && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signal="position" commentary={commentary.signalCommentary.position} />
+        </div>
+      )}
     </div>
   );
 };

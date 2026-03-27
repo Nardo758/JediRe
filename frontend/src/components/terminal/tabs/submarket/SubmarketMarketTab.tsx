@@ -2,11 +2,13 @@
  * SubmarketMarketTab - Supply pipeline, absorption, employment
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Building2, TrendingUp, TrendingDown, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../../TerminalChart';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SupplyNarrative, SignalCommentary } from '../../commentary';
 
 interface SubmarketMarketTabProps {
   submarketId: string;
@@ -25,6 +27,12 @@ interface PipelineProject {
 }
 
 export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarketId, submarket }) => {
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+
+  useEffect(() => {
+    fetchCommentary('submarket', submarketId, submarket.name);
+  }, [submarketId, submarket.name]);
   // Pipeline projects
   const pipelineProjects: PipelineProject[] = useMemo(() => [
     { id: '1', name: 'Tower at Buckhead Station', developer: 'Wood Partners', units: 400, expectedDelivery: 'Q3 2026', status: 'under_construction', class: 'A', percentComplete: 65 },
@@ -266,6 +274,21 @@ export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarke
           </div>
         </div>
       </div>
+
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.supplyNarrative && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SupplyNarrative narrative={commentary.supplyNarrative} />
+            </div>
+          )}
+          {commentary.signalCommentary?.momentum && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signal="momentum" commentary={commentary.signalCommentary.momentum} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

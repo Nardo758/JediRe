@@ -2,11 +2,13 @@
  * SubmarketOverviewTab - Key metrics, health score, trends
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Building2, Users, Briefcase, Home, Award, Activity } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../../TerminalChart';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { MarketNarrative, StrategyScoreBadge } from '../../commentary';
 
 interface SubmarketOverviewTabProps {
   submarketId: string;
@@ -14,6 +16,12 @@ interface SubmarketOverviewTabProps {
 }
 
 export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ submarketId, submarket }) => {
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+
+  useEffect(() => {
+    fetchCommentary('submarket', submarketId, submarket.name);
+  }, [submarketId, submarket.name]);
   // Calculate submarket health score
   const healthScore = useMemo(() => {
     const occupancyScore = Math.min(100, (submarket.occupancy / 95) * 100) * 0.25;
@@ -329,6 +337,40 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
           </li>
         </ul>
       </div>
+
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+            <MarketNarrative narrative={commentary.marketNarrative} />
+          </div>
+          <div style={{
+            flex: '0 0 120px',
+            ...terminalStyles.card,
+            padding: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <div style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: BT.text.amber,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginBottom: 6,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              JEDI
+            </div>
+            <StrategyScoreBadge
+              score={commentary.jediScore}
+              delta={commentary.arbitrageDelta}
+              size="md"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
