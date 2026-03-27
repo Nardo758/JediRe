@@ -28,6 +28,7 @@ import {
 } from '../components/deal/sections';
 import { Deal } from '../types/deal';
 import { apiClient } from '../services/api.client';
+import { BT } from '../components/deal/bloomberg-ui';
 
 export const DealPageEnhanced: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -72,10 +73,10 @@ export const DealPageEnhanced: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen" style={{ background: BT.bg.terminal }}>
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Loading enhanced deal page...</p>
+          <div className="inline-block animate-spin h-12 w-12 mb-4" style={{ borderRadius: '50%', border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}` }}></div>
+          <p style={{ color: BT.text.secondary }}>Loading enhanced deal page...</p>
         </div>
       </div>
     );
@@ -83,14 +84,15 @@ export const DealPageEnhanced: React.FC = () => {
 
   if (error || !deal) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen" style={{ background: BT.bg.terminal }}>
         <div className="text-center">
-          <div className="text-red-600 text-5xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{error || 'Deal not found'}</h2>
-          <p className="text-gray-600 mb-6">The requested deal could not be loaded.</p>
+          <div className="text-5xl mb-4" style={{ color: BT.text.red }}>⚠️</div>
+          <h2 className="text-2xl font-bold mb-2" style={{ color: BT.text.primary }}>{error || 'Deal not found'}</h2>
+          <p className="mb-6" style={{ color: BT.text.secondary }}>The requested deal could not be loaded.</p>
           <button
             onClick={handleBackToPipeline}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 transition-colors"
+            style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
           >
             ← Back to Deals
           </button>
@@ -100,35 +102,36 @@ export const DealPageEnhanced: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col" style={{ background: BT.bg.terminal }}>
       {/* Enhanced Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+      <div style={{ background: BT.bg.header }}>
         <div className="px-6 py-5">
           <div className="flex items-center justify-between">
             {/* Left: Back button + Deal info */}
             <div className="flex-1">
               <button
                 onClick={handleBackToPipeline}
-                className="text-sm text-blue-100 hover:text-white mb-2 flex items-center gap-1 transition-colors"
+                className="text-sm mb-2 flex items-center gap-1 transition-colors"
+                style={{ color: BT.text.secondary }}
               >
                 ← Back to Deals
               </button>
               <div>
-                <h1 className="text-2xl font-bold">{deal.name}</h1>
-                <div className="flex items-center gap-3 mt-2 text-sm text-blue-100">
+                <h1 className="text-2xl font-bold" style={{ color: BT.text.primary }}>{deal.name}</h1>
+                <div className="flex items-center gap-3 mt-2 text-sm" style={{ color: BT.text.secondary }}>
                   <span className="flex items-center gap-1">
                     <span className="font-medium">Type:</span> {deal.projectType || deal.dealType || 'N/A'}
                   </span>
-                  <span className="text-blue-300">|</span>
+                  <span style={{ color: BT.text.muted }}>|</span>
                   <span className="flex items-center gap-1">
                     <span className="font-medium">Stage:</span>
-                    <span className="px-2 py-0.5 bg-white/20 rounded-full text-xs font-medium">
+                    <span className="px-2 py-0.5 text-xs font-medium" style={{ background: BT.bg.active, color: BT.text.amber, borderRadius: 2 }}>
                       {deal.stage || 'Active'}
                     </span>
                   </span>
-                  <span className="text-blue-300">|</span>
+                  <span style={{ color: BT.text.muted }}>|</span>
                   <span className="flex items-center gap-1">
-                    ✨ <span className="font-medium">Enhanced View</span>
+                    ✨ <span className="font-medium" style={{ color: BT.text.amber }}>Enhanced View</span>
                   </span>
                 </div>
               </div>
@@ -138,18 +141,21 @@ export const DealPageEnhanced: React.FC = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => navigate(`/deals/${dealId}/view`)}
-                className="px-4 py-2 text-sm font-medium text-white bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+                className="px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: BT.text.primary, background: BT.bg.hover, borderRadius: 2 }}
               >
                 Standard View
               </button>
               <button
-                className="px-4 py-2 text-sm font-medium text-white bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+                className="px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: BT.text.primary, background: BT.bg.hover, borderRadius: 2 }}
                 onClick={() => console.log('Export deal')}
               >
                 📤 Export
               </button>
               <button
-                className="px-4 py-2 text-sm font-medium text-blue-600 bg-white rounded-lg hover:bg-blue-50 transition-colors"
+                className="px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: BT.bg.terminal, background: BT.text.cyan, borderRadius: 2 }}
                 onClick={() => console.log('Edit deal')}
               >
                 ✏️ Edit Deal
@@ -159,8 +165,8 @@ export const DealPageEnhanced: React.FC = () => {
         </div>
 
         {/* Section Quick Navigation - 15 Tabs (consolidated Market Intelligence) */}
-        <div className="px-6 py-2 bg-black/10 overflow-x-auto">
-          <div className="flex gap-2 text-xs text-blue-100">
+        <div className="px-6 py-2 overflow-x-auto" style={{ background: BT.bg.topBar }}>
+          <div className="flex gap-2 text-xs" style={{ color: BT.text.secondary }}>
             {[
               { id: 'overview', icon: '📊', title: 'Overview' },
               { id: 'map-view', icon: '🗺️', title: 'Map View' },
@@ -186,7 +192,8 @@ export const DealPageEnhanced: React.FC = () => {
                   const element = document.getElementById(`section-${section.id}`);
                   element?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
-                className="px-3 py-1 hover:bg-white/20 rounded transition-colors whitespace-nowrap"
+                className="px-3 py-1 transition-colors whitespace-nowrap"
+                style={{ borderRadius: 2, color: BT.text.secondary }}
               >
                 {section.icon} {section.title}
               </button>
@@ -198,7 +205,7 @@ export const DealPageEnhanced: React.FC = () => {
       {/* Scrollable content with 15 sections */}
       <div className="flex-1 overflow-auto">
         <div className="max-w-7xl mx-auto p-6 space-y-4">
-          
+
           {/* 1. Overview Section */}
           <div id="section-overview">
             <DealSection
@@ -326,7 +333,7 @@ export const DealPageEnhanced: React.FC = () => {
               title="Exit Strategy"
               isPremium={true}
             >
-              <div className="p-6 text-center text-[#64748b]">
+              <div className="p-6 text-center" style={{ color: BT.text.secondary }}>
                 <p className="text-sm">Exit strategy analysis has been integrated into the <strong>Debt, Equity & Exit</strong> module.</p>
               </div>
             </DealSection>
@@ -404,7 +411,8 @@ export const DealPageEnhanced: React.FC = () => {
       {/* Floating Action Button */}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-6 right-6 w-12 h-12 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-all hover:scale-110 flex items-center justify-center"
+        className="fixed bottom-6 right-6 w-12 h-12 flex items-center justify-center transition-all"
+        style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
         title="Back to top"
       >
         ↑
