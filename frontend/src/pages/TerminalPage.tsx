@@ -8,8 +8,7 @@ import { layersService } from "../services/layers.service";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
-import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
-import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
+import F4MarketsView from "./terminal/F4MarketsView";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -85,47 +84,7 @@ const STATIC_TASKS = [
   {id:"T05",title:"Pull 12-month rent rolls",deal:"Pipeline",pri:"med",due:"Mar 25",status:"TODO",owner:"R.Patel"},
 ];
 
-const MARKET_VITALS = [
-  {label:"Avg Effective Rent",value:"$1,908",sub:"/mo",change:"+3.0%",period:"90d",dir:"up"},
-  {label:"Vacancy Rate",value:"8.5",sub:"%",change:"-0.8%",period:"12wk",dir:"down"},
-  {label:"Avg Absorbed Units",value:"11,658",sub:" units",change:"steady",period:"wkly",dir:"flat"},
-  {label:"Rent Growth Trend",value:"+3.0",sub:"%",change:"Accelerating",period:"",dir:"up"},
-  {label:"Submarket Strength",value:"40th",sub:" pctl",change:"Below median",period:"",dir:"down"},
-];
 
-const SUBMARKETS = [
-  {name:"Midtown",props:52,units:"14,856",rent:"$2,056",vac:"10.1%",growth:"+3.0%",opp:"6.0/10",pressure:"seller"},
-  {name:"East Atlanta",props:23,units:"6,789",rent:"$2,031",vac:"15.4%",growth:"-0.6%",opp:"6.2/10",pressure:"seller"},
-  {name:"West End",props:53,units:"5,924",rent:"$1,977",vac:"10.5%",growth:"+1.2%",opp:"7.9/10",pressure:"buyer"},
-  {name:"Buckhead",props:39,units:"14,338",rent:"$1,883",vac:"9.8%",growth:"-0.5%",opp:"9.0/10",pressure:"buyer"},
-  {name:"Downtown",props:35,units:"8,473",rent:"$1,542",vac:"6.9%",growth:"+0.6%",opp:"5.1/10",pressure:"buyer"},
-];
-
-const PEER_MSA_DATA = [
-  { id:"atlanta-ga",      name:"Atlanta, GA",      props:1028, units:"250K", jedi:87, d30:"+4", trend:[78,80,81,82,83,84,85,86,87], rent:"$2,150", rentD:"+4.2%", vac:"5.8%", absorb:"2,840", pipeline:"15.8%", constraint:58, jobs:5.8, pop:"+2.1%", medInc:"$72,400", cap:"5.2%", cycle:"EXPANSION" },
-  { id:"raleigh-nc",      name:"Raleigh, NC",      props:480,  units:"98K",  jedi:85, d30:"+3", trend:[77,78,80,81,82,83,84,84,85], rent:"$1,740", rentD:"+3.9%", vac:"6.2%", absorb:"1,120", pipeline:"11.8%", constraint:72, jobs:5.5, pop:"+2.8%", medInc:"$78,200", cap:"5.0%", cycle:"EXPANSION" },
-  { id:"tampa-fl",        name:"Tampa, FL",         props:892,  units:"215K", jedi:82, d30:"+2", trend:[74,75,76,77,78,79,80,81,82], rent:"$1,908", rentD:"+3.0%", vac:"6.5%", absorb:"2,150", pipeline:"13.4%", constraint:64, jobs:5.2, pop:"+1.9%", medInc:"$65,800", cap:"5.4%", cycle:"LATE EXP" },
-  { id:"charlotte-nc",   name:"Charlotte, NC",    props:680,  units:"142K", jedi:82, d30:"+3", trend:[76,77,78,79,80,80,81,81,82], rent:"$1,680", rentD:"+3.5%", vac:"6.0%", absorb:"1,540", pipeline:"12.4%", constraint:68, jobs:5.2, pop:"+2.2%", medInc:"$68,400", cap:"5.2%", cycle:"EXPANSION" },
-  { id:"jacksonville-fl", name:"Jacksonville, FL", props:386,  units:"82K",  jedi:80, d30:"+5", trend:[70,72,73,74,75,76,77,79,80], rent:"$1,580", rentD:"+3.8%", vac:"5.4%", absorb:"980",   pipeline:"9.2%",  constraint:76, jobs:5.1, pop:"+2.4%", medInc:"$64,200", cap:"5.8%", cycle:"EXPANSION" },
-  { id:"orlando-fl",      name:"Orlando, FL",       props:714,  units:"178K", jedi:78, d30:"+1", trend:[72,73,74,74,75,76,77,77,78], rent:"$1,820", rentD:"+2.4%", vac:"7.1%", absorb:"1,680", pipeline:"16.2%", constraint:48, jobs:4.9, pop:"+1.7%", medInc:"$62,400", cap:"5.6%", cycle:"PEAK" },
-  { id:"miami-fl",        name:"Miami, FL",         props:1245, units:"310K", jedi:74, d30:"-2", trend:[80,79,78,77,76,75,75,74,74], rent:"$2,480", rentD:"+1.2%", vac:"8.4%", absorb:"1,920", pipeline:"18.6%", constraint:38, jobs:4.4, pop:"+0.8%", medInc:"$58,900", cap:"4.8%", cycle:"PEAK" },
-];
-const PEER_SUB_DATA = [
-  { name:"Midtown", props:52, units:"14,856", jedi:88, d30:"+3", trend:[80,82,83,84,85,86,86,87,88], rent:"$2,056", rentD:"+4.8%", rentSf:"$2.14", vac:"5.1%", absorb:"3.2%", pipeline:"12.4%", moSupply:14, opp:82, pressure:"BUYER", cap:"4.8%", ppu:"$245K", afford:"28%", review:4.2 },
-  { name:"Buckhead", props:39, units:"14,338", jedi:84, d30:"+1", trend:[78,79,80,81,82,82,83,83,84], rent:"$1,883", rentD:"+2.1%", rentSf:"$1.92", vac:"6.2%", absorb:"2.1%", pipeline:"8.8%", moSupply:11, opp:78, pressure:"BALANCED", cap:"5.0%", ppu:"$228K", afford:"31%", review:4.0 },
-  { name:"West End", props:53, units:"5,924", jedi:79, d30:"+6", trend:[68,70,72,73,74,75,76,78,79], rent:"$1,977", rentD:"+5.2%", rentSf:"$1.88", vac:"6.8%", absorb:"2.8%", pipeline:"6.2%", moSupply:8, opp:86, pressure:"BUYER", cap:"5.4%", ppu:"$185K", afford:"26%", review:3.8 },
-  { name:"East Atlanta", props:23, units:"6,789", jedi:72, d30:"-1", trend:[74,74,73,73,72,72,72,72,72], rent:"$2,031", rentD:"-0.6%", rentSf:"$1.95", vac:"8.4%", absorb:"0.8%", pipeline:"15.4%", moSupply:22, opp:62, pressure:"SELLER", cap:"5.8%", ppu:"$198K", afford:"33%", review:3.5 },
-  { name:"Downtown", props:35, units:"8,473", jedi:76, d30:"+2", trend:[70,71,72,73,73,74,75,75,76], rent:"$1,542", rentD:"+2.8%", rentSf:"$1.72", vac:"7.2%", absorb:"1.9%", pipeline:"14.8%", moSupply:18, opp:68, pressure:"BALANCED", cap:"5.6%", ppu:"$172K", afford:"24%", review:3.9 },
-  { name:"Sandy Springs", props:28, units:"9,120", jedi:81, d30:"+2", trend:[74,75,76,77,78,79,79,80,81], rent:"$1,920", rentD:"+3.4%", rentSf:"$1.98", vac:"5.8%", absorb:"2.4%", pipeline:"10.2%", moSupply:12, opp:74, pressure:"BUYER", cap:"5.2%", ppu:"$215K", afford:"27%", review:4.1 },
-];
-const PEER_PROP_DATA = [
-  { name:"Summit Ridge Apts", addr:"4200 Summit Ridge Pkwy", sub:"Midtown", jedi:86, d30:"+3", trend:[78,80,81,82,83,84,85,85,86], strat:"RENTAL", arbGap:8, units:240, year:1998, rent:"$1,385", rentD:"+3.8%", vsMkt:"+1.4%", revpau:"$1,312", occ:"92.4%", noi:"$2.34M", cap:"5.2%", ppu:"$188K", irr:"18.4%", traffic:74, review:4.1, risk:"LOW", stage:"DD" },
-  { name:"Westshore Innovation", addr:"2800 W Kennedy Blvd", sub:"Midtown", jedi:91, d30:"+5", trend:[82,83,85,86,87,88,89,90,91], strat:"BTS", arbGap:22, units:312, year:0, rent:"$2,180", rentD:"—", vsMkt:"+6.0%", revpau:"—", occ:"—", noi:"—", cap:"—", ppu:"—", irr:"24.3%", traffic:68, review:"—", risk:"MED", stage:"LOI" },
-  { name:"Piedmont Station", addr:"1400 Piedmont Ave", sub:"Midtown", jedi:82, d30:"+2", trend:[75,76,77,78,79,80,81,81,82], strat:"RENTAL", arbGap:5, units:186, year:2015, rent:"$2,240", rentD:"+2.1%", vsMkt:"+10.2%", revpau:"$2,128", occ:"95.1%", noi:"$4.12M", cap:"4.6%", ppu:"$265K", irr:"15.2%", traffic:82, review:4.4, risk:"LOW", stage:"PROSPECT" },
-  { name:"Colony Square Living", addr:"1197 Peachtree St", sub:"Midtown", jedi:79, d30:"-1", trend:[82,81,81,80,80,79,79,79,79], strat:"RENTAL", arbGap:3, units:420, year:2021, rent:"$2,580", rentD:"+0.4%", vsMkt:"+26.8%", revpau:"$2,451", occ:"93.8%", noi:"$8.64M", cap:"4.2%", ppu:"$312K", irr:"12.8%", traffic:88, review:4.6, risk:"LOW", stage:"LEAD" },
-  { name:"The Locale on 10th", addr:"1075 10th St NW", sub:"Midtown", jedi:84, d30:"+4", trend:[76,77,78,79,80,81,82,83,84], strat:"FLIP", arbGap:12, units:148, year:2002, rent:"$1,680", rentD:"+4.2%", vsMkt:"-17.4%", revpau:"$1,546", occ:"91.2%", noi:"$2.18M", cap:"5.8%", ppu:"$168K", irr:"21.5%", traffic:62, review:3.6, risk:"MED", stage:"DD" },
-  { name:"Skyline Lofts", addr:"880 Spring St NW", sub:"Midtown", jedi:77, d30:"+1", trend:[73,74,74,75,75,76,76,77,77], strat:"STR", arbGap:4, units:64, year:2008, rent:"$1,920", rentD:"+1.8%", vsMkt:"-5.6%", revpau:"$1,766", occ:"89.4%", noi:"$1.02M", cap:"6.2%", ppu:"$195K", irr:"12.4%", traffic:56, review:3.9, risk:"HIGH", stage:"LEAD" },
-];
 
 const PORTFOLIO_NAV = [
   {key:"F1",label:"DASHBOARD"},
@@ -496,8 +455,6 @@ export default function TerminalPage() {
   const [gridDrag, setGridDrag] = useState<{id:string,x:number,y:number}|null>(null);
   const [gridDragOver, setGridDragOver] = useState<string|null>(null);
 
-  const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"overview"|"detail"|"peers">("overview");
 
   const [emailFolder, setEmailFolder] = useState("inbox");
   const [emailSearch, setEmailSearch] = useState("");
@@ -1974,16 +1931,6 @@ export default function TerminalPage() {
   };
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
-  const MSA_OPTIONS = [
-    { id: "atlanta-ga",    name: "Atlanta, GA" },
-    { id: "raleigh-nc",    name: "Raleigh, NC" },
-    { id: "charlotte-nc",  name: "Charlotte, NC" },
-    { id: "tampa-fl",      name: "Tampa, FL" },
-    { id: "orlando-fl",    name: "Orlando, FL" },
-    { id: "miami-fl",      name: "Miami, FL" },
-    { id: "jacksonville-fl", name: "Jacksonville, FL" },
-  ];
-
   const viewMarketsCorpHealthData = {
     schi: corpHealthLive.schi ?? DEMO_SCHI,
     reHealth: corpHealthLive.reHealth ?? DEMO_RE_HEALTH,
@@ -2002,72 +1949,7 @@ export default function TerminalPage() {
   };
 
   const ViewMarkets = () => (
-    <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      {marketsView !== "overview" && (
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-          <button onClick={()=>setMarketsView("overview")} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>← OVERVIEW</button>
-          <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
-          <select
-            value={selectedMsaId}
-            onChange={e => setSelectedMsaId(e.target.value)}
-            style={{background:T.bg.input||T.bg.panel,color:T.text.amber,border:`1px solid ${T.border.medium}`,fontSize:10,fontFamily:T.font.mono,fontWeight:700,padding:"2px 6px",cursor:"pointer",outline:"none"}}
-          >
-            {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          <div style={{flex:1}}/>
-          <div style={{display:"flex",gap:2}}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
-              <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
-        {marketsView === "overview" && (
-          <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-            <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<Bd c={T.text.green}>LIVE DATA</Bd>}/>
-            <div style={{padding:"10px 10px 0"}}>
-              <div style={{fontSize:9,color:T.text.secondary,marginBottom:4,fontFamily:T.font.mono}}>THE DECISION THIS PAGE DRIVES:</div>
-              <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10,fontFamily:T.font.mono}}>Is this submarket getting stronger or weaker — and how fast?</div>
-            </div>
-            <div style={{display:"flex",gap:1,padding:"0 10px 10px",background:"transparent"}}>
-              {MARKET_VITALS.map((v,i) => (<MetricBox key={i} {...v} T={T}/>))}
-            </div>
-            <div style={{margin:"0 10px 10px",padding:"6px 10px",background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`}}>
-              <span style={{fontSize:9,color:T.text.secondary}}>Tracking 5 submarkets with 202 properties and 50,380 total units. Momentum signal: <span style={{fontWeight:700,color:T.text.amber}}>STRONG</span>. Top submarket: Midtown ($2,056 avg rent).</span>
-            </div>
-            <div style={{margin:"0 10px"}}>
-              <PanelHeader T={T} title="SUBMARKET COMPARISON"/>
-              <div style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
-                {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h => (
-                  <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
-                ))}
-              </div>
-              {SUBMARKETS.map((s,i) => (
-                <div key={i} onClick={()=>{setSelectedMsaId("atlanta-ga");setMarketsView("detail");}} style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer"}} onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=T.bg.active||T.bg.hover;}} onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=i%2===0?T.bg.panel:T.bg.panelAlt;}}>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.props}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.units}</div>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
-                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
-                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.opp}</div>
-                  <div style={{padding:"5px 6px",display:"flex",alignItems:"center"}}><Bd c={s.pressure==="seller"?T.text.red:T.text.green}>{s.pressure}</Bd></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-        {marketsView === "detail" && (
-          <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
-        )}
-        {marketsView === "peers" && (
-          <PeerComparisonPage embedded onViewDetail={() => setMarketsView("detail")} />
-        )}
-      </div>
-    </div>
+    <F4MarketsView corpHealthData={viewMarketsCorpHealthData} />
   );
 
   // ─── VIEW: F5 EMAIL ────────────────────────────────────────
@@ -2204,8 +2086,7 @@ export default function TerminalPage() {
     if (fkey !== "F4" || corpHealthLive.loaded || corpHealthLive.loading) return;
     setCorpHealthLive(prev => ({...prev, loading: true}));
 
-    const submarketIds = SUBMARKETS.map((_, i) => i + 1);
-    const firstSubmarketId = submarketIds[0] || 1;
+    const firstSubmarketId = 1;
 
     fetchSubmarketHealth(firstSubmarketId).catch(() => {});
     dealStoreFetchSubmarketHealth(firstSubmarketId).catch(() => {});
