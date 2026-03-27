@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { TrendingUp, TrendingDown, Target, Zap, Building2, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Zap, Building2, DollarSign, Users, Award, Shield, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../TerminalChart';
 
@@ -151,6 +151,300 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ dealId, deal }) => {
           </div>
           <div style={{ fontSize: 11, color: BT.text.muted, marginTop: 4 }}>
             Pro Forma + Strategy
+          </div>
+        </div>
+      </div>
+
+      {/* Sponsor / Developer Health */}
+      <div style={{
+        ...terminalStyles.panel,
+        padding: 16,
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 8, 
+          marginBottom: 16,
+          color: BT.text.cyan,
+          fontSize: 12,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+        }}>
+          <Users size={14} />
+          Sponsor / Developer Health
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
+          {/* Sponsor Info Card */}
+          <div style={{
+            background: BT.bg.cardHover,
+            borderRadius: 8,
+            padding: 16,
+            border: `1px solid ${BT.border.subtle}`,
+          }}>
+            <div style={{ 
+              fontSize: 16, 
+              fontWeight: 700, 
+              color: BT.text.primary,
+              marginBottom: 4,
+            }}>
+              {deal?.sponsor?.name || 'Greystar Real Estate'}
+            </div>
+            <div style={{ fontSize: 11, color: BT.text.muted, marginBottom: 12 }}>
+              {deal?.sponsor?.type || 'Private Equity / Developer'}
+            </div>
+            
+            {/* Credit Rating */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 12,
+              padding: '8px 12px',
+              background: BT.bg.terminal,
+              borderRadius: 6,
+            }}>
+              <Shield size={16} color={BT.text.green} />
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Credit Rating</div>
+                <div style={{ 
+                  fontSize: 14, 
+                  fontWeight: 700, 
+                  color: BT.text.green,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {deal?.sponsor?.creditRating || 'A-'}
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Outlook</div>
+                <div style={{ fontSize: 12, color: BT.text.green, fontWeight: 600 }}>Stable</div>
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>AUM</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: BT.text.primary }}>
+                  {deal?.sponsor?.aum || '$62B'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Founded</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: BT.text.primary }}>
+                  {deal?.sponsor?.founded || '1993'}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>HQ</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: BT.text.primary }}>
+                  {deal?.sponsor?.hq || 'Charleston, SC'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Track Record & Portfolio Health */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {/* Track Record Metrics */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(4, 1fr)',
+              gap: 10,
+            }}>
+              <div style={{
+                background: BT.bg.cardHover,
+                borderRadius: 6,
+                padding: 12,
+                textAlign: 'center',
+                border: `1px solid ${BT.border.subtle}`,
+              }}>
+                <div style={{ 
+                  fontSize: 22, 
+                  fontWeight: 700, 
+                  color: BT.text.green,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {deal?.sponsor?.dealsCompleted || 847}
+                </div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Deals Completed</div>
+              </div>
+              <div style={{
+                background: BT.bg.cardHover,
+                borderRadius: 6,
+                padding: 12,
+                textAlign: 'center',
+                border: `1px solid ${BT.border.subtle}`,
+              }}>
+                <div style={{ 
+                  fontSize: 22, 
+                  fontWeight: 700, 
+                  color: BT.text.cyan,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {deal?.sponsor?.avgIRR || '18.2'}%
+                </div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Avg Realized IRR</div>
+              </div>
+              <div style={{
+                background: BT.bg.cardHover,
+                borderRadius: 6,
+                padding: 12,
+                textAlign: 'center',
+                border: `1px solid ${BT.border.subtle}`,
+              }}>
+                <div style={{ 
+                  fontSize: 22, 
+                  fontWeight: 700, 
+                  color: BT.text.amber,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {deal?.sponsor?.successRate || '94'}%
+                </div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Success Rate</div>
+              </div>
+              <div style={{
+                background: BT.bg.cardHover,
+                borderRadius: 6,
+                padding: 12,
+                textAlign: 'center',
+                border: `1px solid ${BT.border.subtle}`,
+              }}>
+                <div style={{ 
+                  fontSize: 22, 
+                  fontWeight: 700, 
+                  color: BT.text.primary,
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {deal?.sponsor?.currentDeals || 156}
+                </div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Active Deals</div>
+              </div>
+            </div>
+
+            {/* Portfolio Health Indicators */}
+            <div style={{
+              background: BT.bg.cardHover,
+              borderRadius: 6,
+              padding: 12,
+              border: `1px solid ${BT.border.subtle}`,
+            }}>
+              <div style={{ 
+                fontSize: 11, 
+                fontWeight: 600, 
+                color: BT.text.amber, 
+                marginBottom: 10,
+                textTransform: 'uppercase',
+                letterSpacing: '0.03em',
+              }}>
+                Portfolio Health Indicators
+              </div>
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: BT.text.secondary }}>Avg Portfolio Occupancy</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: BT.text.green,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {deal?.sponsor?.avgOccupancy || '94.8'}%
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: BT.text.secondary }}>Debt Service Coverage</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: BT.text.green,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {deal?.sponsor?.avgDSCR || '1.48'}x
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: BT.text.secondary }}>Loan-to-Value</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: BT.text.cyan,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {deal?.sponsor?.avgLTV || '62'}%
+                    </span>
+                  </div>
+                </div>
+                <div style={{ 
+                  width: 1, 
+                  background: BT.border.subtle,
+                }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: BT.text.secondary }}>Defaults (5yr)</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: BT.text.green,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {deal?.sponsor?.defaults || '0'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: BT.text.secondary }}>Distressed Sales</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: BT.text.green,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {deal?.sponsor?.distressedSales || '0'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 11, color: BT.text.secondary }}>On Watchlist</span>
+                    <span style={{ 
+                      fontSize: 12, 
+                      fontWeight: 600, 
+                      color: BT.text.amber,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {deal?.sponsor?.watchlist || '3'} ({((deal?.sponsor?.watchlist || 3) / (deal?.sponsor?.currentDeals || 156) * 100).toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sponsor Score */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 14px',
+              background: `linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, ${BT.bg.cardHover} 100%)`,
+              borderRadius: 6,
+              border: `1px solid ${BT.text.green}44`,
+            }}>
+              <Award size={20} color={BT.text.green} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: BT.text.muted }}>Sponsor Health Score</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: BT.text.secondary }}>
+                  Strong track record with institutional-grade operations
+                </div>
+              </div>
+              <div style={{
+                fontSize: 24,
+                fontWeight: 700,
+                color: BT.text.green,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                {deal?.sponsor?.healthScore || 92}
+              </div>
+            </div>
           </div>
         </div>
       </div>
