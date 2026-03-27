@@ -6,6 +6,7 @@ import React, { useMemo } from 'react';
 import { Building2, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
+import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 
 interface MSASupplyTabProps {
@@ -115,12 +116,8 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         valueFormatter={(v) => v.toLocaleString()}
       />
 
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-          <Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Under Construction Tracker
-        </div>
-        <table style={{ ...terminalStyles.dataTable }}>
+      <TerminalSection title="Under Construction Tracker" icon={<Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <DataTable>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
@@ -154,15 +151,11 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </TerminalSection>
 
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-          <CheckCircle2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Active Lease-Up Tracker
-        </div>
-        <table style={{ ...terminalStyles.dataTable }}>
+      <TerminalSection title="Active Lease-Up Tracker" icon={<CheckCircle2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <DataTable>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
@@ -193,15 +186,11 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </TerminalSection>
 
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-          <Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Pipeline by Submarket
-        </div>
-        <table style={{ ...terminalStyles.dataTable }}>
+      <TerminalSection title="Pipeline by Submarket" icon={<Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <DataTable>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
@@ -240,8 +229,8 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </TerminalSection>
     </div>
   );
 };

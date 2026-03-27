@@ -6,6 +6,7 @@ import React, { useMemo } from 'react';
 import { Users, Briefcase, DollarSign, MapPin } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
+import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 
 interface MSAEconomicsTabProps {
@@ -128,10 +129,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div style={{ ...terminalStyles.panel, padding: 16 }}>
-          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-            Sector Composition
-          </div>
+        <TerminalSection title="Sector Composition">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {sectorComposition.map((s) => (
               <div key={s.sector} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -153,14 +151,10 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
               </div>
             ))}
           </div>
-        </div>
+        </TerminalSection>
 
-        <div style={{ ...terminalStyles.panel, padding: 16 }}>
-          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-            <DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            Income Distribution & Renter Propensity
-          </div>
-          <table style={{ ...terminalStyles.dataTable }}>
+        <TerminalSection title="Income Distribution & Renter Propensity" icon={<DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+          <DataTable>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Bracket</th>
@@ -183,17 +177,13 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </TerminalSection>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16 }}>
-        <div style={{ ...terminalStyles.panel, padding: 16 }}>
-          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-            <Briefcase size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            Top Employers
-          </div>
-          <table style={{ ...terminalStyles.dataTable }}>
+        <TerminalSection title="Top Employers" icon={<Briefcase size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+          <DataTable>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Company</th>
@@ -216,15 +206,11 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </TerminalSection>
 
-        <div style={{ ...terminalStyles.panel, padding: 16 }}>
-          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-            <MapPin size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-            Net Migration (Top Origins)
-          </div>
-          <table style={{ ...terminalStyles.dataTable }}>
+        <TerminalSection title="Net Migration (Top Origins)" icon={<MapPin size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+          <DataTable>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Origin</th>
@@ -249,8 +235,8 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </TerminalSection>
       </div>
     </div>
   );

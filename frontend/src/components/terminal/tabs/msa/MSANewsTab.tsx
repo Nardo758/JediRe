@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from 'react';
 import { Newspaper, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
+import { TerminalSection } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 
 interface MSANewsTabProps {
@@ -124,11 +125,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 12 }}>
-          <AlertTriangle size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Active Alerts
-        </div>
+      <TerminalSection title="Active Alerts" icon={<AlertTriangle size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {marketAlerts.map((alert) => (
             <div key={alert.id} style={{
@@ -151,7 +148,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
             </div>
           ))}
         </div>
-      </div>
+      </TerminalSection>
 
       <div style={{ ...terminalStyles.panel, padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
