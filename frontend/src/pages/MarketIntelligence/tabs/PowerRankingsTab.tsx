@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../../api/client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface PowerRankingsTabProps {
   marketId: string;
@@ -59,18 +60,18 @@ function matchesSize(units: number, filter: string): boolean {
   return true;
 }
 
-function scoreColor(score: number): string {
-  if (score >= 85) return 'bg-green-100 text-green-800';
-  if (score >= 70) return 'bg-emerald-50 text-emerald-700';
-  if (score >= 55) return 'bg-yellow-50 text-yellow-700';
-  return 'bg-red-50 text-red-700';
+function scoreColorStyle(score: number): React.CSSProperties {
+  if (score >= 85) return { background: `${BT.text.green}22`, color: BT.text.green };
+  if (score >= 70) return { background: `${BT.text.green}15`, color: BT.text.green };
+  if (score >= 55) return { background: `${BT.text.amber}22`, color: BT.text.amber };
+  return { background: `${BT.text.red}22`, color: BT.text.red };
 }
 
-function componentBarColor(score: number): string {
-  if (score >= 85) return 'bg-green-500';
-  if (score >= 70) return 'bg-emerald-400';
-  if (score >= 55) return 'bg-yellow-400';
-  return 'bg-red-400';
+function componentBarBg(score: number): string {
+  if (score >= 85) return BT.text.green;
+  if (score >= 70) return BT.text.green;
+  if (score >= 55) return BT.text.amber;
+  return BT.text.red;
 }
 
 const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
@@ -142,8 +143,8 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
   };
 
   const sortArrow = (key: SortKey) => {
-    if (sortKey !== key) return <span className="text-gray-300 ml-1">{'\u2195'}</span>;
-    return <span className="text-blue-500 ml-1">{sortAsc ? '\u2191' : '\u2193'}</span>;
+    if (sortKey !== key) return <span className="ml-1" style={{ color: BT.text.muted }}>{'\u2195'}</span>;
+    return <span className="ml-1" style={{ color: BT.text.cyan }}>{sortAsc ? '\u2191' : '\u2193'}</span>;
   };
 
   const COMPONENT_LABELS: { key: keyof PropertyRanking['components']; label: string; color: string }[] = [
@@ -163,10 +164,10 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
 
   if (!marketId || marketId === '') {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+      <div className="p-12 text-center" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <span className="text-4xl mb-4 block">{'\uD83C\uDFC6'}</span>
-        <h3 className="text-lg font-semibold text-gray-700">Power Rankings</h3>
-        <p className="text-sm text-gray-400 mt-2">Select a market to see property competitive rankings.</p>
+        <h3 className="text-lg font-semibold" style={{ color: BT.text.primary }}>Power Rankings</h3>
+        <p className="text-sm mt-2" style={{ color: BT.text.muted }}>Select a market to see property competitive rankings.</p>
       </div>
     );
   }
@@ -175,40 +176,41 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Power Rankings</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-xl font-bold" style={{ color: BT.text.primary }}>Power Rankings</h2>
+          <p className="text-sm" style={{ color: BT.text.secondary }}>
             Property Competitive Score (PCS) {'\u2014'} ranked across {totalProperties} multifamily properties
-            {isLive && <span className="text-emerald-600 font-medium ml-1">(Fulton County records)</span>}
+            {isLive && <span className="font-medium ml-1" style={{ color: BT.text.green }}>(Fulton County records)</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
           {loading && (
-            <span className="text-xs text-indigo-400 animate-pulse">Loading...</span>
+            <span className="text-xs animate-pulse" style={{ color: BT.text.cyan }}>Loading...</span>
           )}
           {!loading && isLive && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold" style={{ background: `${BT.text.green}22`, color: BT.text.green, borderRadius: 0 }}>
               {'\u25CF'} LIVE DATA
             </span>
           )}
           {!loading && !isLive && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold" style={{ background: BT.bg.header, color: BT.text.secondary, borderRadius: 0 }}>
               SAMPLE DATA
             </span>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="p-5" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Vantage Group Filters</span>
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: BT.text.secondary }}>Vantage Group Filters</span>
         </div>
         <div className="flex flex-wrap gap-4">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Class</label>
+            <label className="text-xs font-medium" style={{ color: BT.text.secondary }}>Class</label>
             <select
               value={classFilter}
               onChange={e => setClassFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-3 py-2 text-sm"
+              style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 0, background: BT.bg.input, color: BT.text.primary }}
             >
               {CLASS_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt === 'All' ? 'All Classes' : `Class ${opt}`}</option>
@@ -216,11 +218,12 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Vintage Decade</label>
+            <label className="text-xs font-medium" style={{ color: BT.text.secondary }}>Vintage Decade</label>
             <select
               value={vintageFilter}
               onChange={e => setVintageFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-3 py-2 text-sm"
+              style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 0, background: BT.bg.input, color: BT.text.primary }}
             >
               {VINTAGE_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt === 'All' ? 'All Vintages' : opt}</option>
@@ -228,11 +231,12 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-gray-500">Size (Units)</label>
+            <label className="text-xs font-medium" style={{ color: BT.text.secondary }}>Size (Units)</label>
             <select
               value={sizeFilter}
               onChange={e => setSizeFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="px-3 py-2 text-sm"
+              style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 0, background: BT.bg.input, color: BT.text.primary }}
             >
               {SIZE_OPTIONS.map(opt => (
                 <option key={opt} value={opt}>{opt === 'All' ? 'All Sizes' : `${opt} units`}</option>
@@ -243,7 +247,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
             <div className="flex items-end">
               <button
                 onClick={() => { setClassFilter('All'); setVintageFilter('All'); setSizeFilter('All'); }}
-                className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700 underline"
+                className="px-3 py-2 text-sm underline" style={{ color: BT.text.secondary }}
               >
                 Clear Filters
               </button>
@@ -252,92 +256,93 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900">Rankings Table</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
+      <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>Rankings Table</h3>
+          <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>
             Showing {filtered.length} of {rankings.length} properties {'\u00B7'} Click a row to view PCS breakdown
           </p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-16" onClick={() => handleSort('rank')}>
+              <tr style={{ background: BT.bg.panelAlt }}>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer w-16" style={{ color: BT.text.secondary }} onClick={() => handleSort('rank')}>
                   Rank {sortArrow('rank')}
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider w-16" style={{ color: BT.text.secondary }}>
                   Move
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 min-w-[180px]" onClick={() => handleSort('name')}>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider cursor-pointer min-w-[180px]" style={{ color: BT.text.secondary }} onClick={() => handleSort('name')}>
                   Property {sortArrow('name')}
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-20">
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider w-20" style={{ color: BT.text.secondary }}>
                   Class
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-20" onClick={() => handleSort('units')}>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider cursor-pointer w-20" style={{ color: BT.text.secondary }} onClick={() => handleSort('units')}>
                   Units {sortArrow('units')}
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider w-24" style={{ color: BT.text.secondary }}>
                   Submarket
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:text-gray-700 w-24" onClick={() => handleSort('pcsScore')}>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider cursor-pointer w-24" style={{ color: BT.text.secondary }} onClick={() => handleSort('pcsScore')}>
                   PCS Score {sortArrow('pcsScore')}
                 </th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider w-32" style={{ color: BT.text.secondary }}>
                   Trend
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {filtered.map(property => (
                 <React.Fragment key={property.id}>
                   <tr
-                    className={`hover:bg-gray-50 transition-colors cursor-pointer ${expandedRow === property.id ? 'bg-blue-50/40' : ''}`}
+                    className="transition-colors cursor-pointer"
+                    style={{ background: expandedRow === property.id ? `${BT.text.cyan}15` : undefined, borderBottom: `1px solid ${BT.border.subtle}` }}
                     onClick={() => setExpandedRow(expandedRow === property.id ? null : property.id)}
                   >
                     <td className="px-4 py-3">
-                      <span className="text-sm font-bold text-gray-700">#{property.rank}</span>
+                      <span className="text-sm font-bold" style={{ color: BT.text.primary }}>#{property.rank}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {property.movement > 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-xs font-bold text-green-600">
+                        <span className="inline-flex items-center gap-0.5 text-xs font-bold" style={{ color: BT.text.green }}>
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clipRule="evenodd" /></svg>
                           {property.movement}
                         </span>
                       )}
                       {property.movement < 0 && (
-                        <span className="inline-flex items-center gap-0.5 text-xs font-bold text-red-600">
+                        <span className="inline-flex items-center gap-0.5 text-xs font-bold" style={{ color: BT.text.red }}>
                           <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M14.707 10.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 12.586V5a1 1 0 012 0v7.586l2.293-2.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                           {Math.abs(property.movement)}
                         </span>
                       )}
                       {property.movement === 0 && (
-                        <span className="text-xs font-medium text-gray-400">{'\u2014'}</span>
+                        <span className="text-xs font-medium" style={{ color: BT.text.muted }}>{'\u2014'}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col">
-                        <span className="font-semibold text-gray-900">{property.name}</span>
-                        <span className="text-xs text-gray-400">
+                        <span className="font-semibold" style={{ color: BT.text.primary }}>{property.name}</span>
+                        <span className="text-xs" style={{ color: BT.text.muted }}>
                           {property.yearBuilt > 0 ? property.yearBuilt : 'N/A'}
-                          {property.owner && <span className="ml-2 text-gray-300">{'\u00B7'} {property.owner.length > 30 ? property.owner.slice(0, 28) + '...' : property.owner}</span>}
+                          {property.owner && <span className="ml-2" style={{ color: BT.text.muted }}>{'\u00B7'} {property.owner.length > 30 ? property.owner.slice(0, 28) + '...' : property.owner}</span>}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-bold ${
-                        property.class === 'A' ? 'bg-blue-100 text-blue-800' :
-                        property.class.startsWith('B') ? 'bg-amber-100 text-amber-800' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                      <span className="inline-block px-2 py-0.5 text-xs font-bold" style={{
+                        borderRadius: 0,
+                        background: property.class === 'A' ? `${BT.text.cyan}22` : property.class.startsWith('B') ? `${BT.text.amber}22` : BT.bg.header,
+                        color: property.class === 'A' ? BT.text.cyan : property.class.startsWith('B') ? BT.text.amber : BT.text.primary,
+                      }}>
                         {property.class}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-gray-600">{property.units.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-center text-xs text-gray-600">{property.submarket}</td>
+                    <td className="px-4 py-3 text-center" style={{ color: BT.text.secondary }}>{property.units.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-center text-xs" style={{ color: BT.text.secondary }}>{property.submarket}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className={`inline-block px-2.5 py-1 rounded-lg text-sm font-bold ${scoreColor(property.pcsScore)}`}>
+                      <span className="inline-block px-2.5 py-1 text-sm font-bold" style={{ borderRadius: 0, ...scoreColorStyle(property.pcsScore) }}>
                         {property.pcsScore}
                       </span>
                     </td>
@@ -367,13 +372,13 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                   {expandedRow === property.id && (
                     <tr>
                       <td colSpan={8} className="px-0 py-0">
-                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-t border-b border-blue-100 px-6 py-5">
+                        <div className="px-6 py-5" style={{ background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}`, borderBottom: `1px solid ${BT.border.subtle}` }}>
                           <div className="flex items-center justify-between mb-4">
                             <div>
-                              <h4 className="text-sm font-bold text-gray-900">PCS Score Breakdown {'\u2014'} {property.name}</h4>
-                              <p className="text-xs text-gray-500 mt-0.5">5-component Property Competitive Score</p>
+                              <h4 className="text-sm font-bold" style={{ color: BT.text.primary }}>PCS Score Breakdown {'\u2014'} {property.name}</h4>
+                              <p className="text-xs mt-0.5" style={{ color: BT.text.secondary }}>5-component Property Competitive Score</p>
                             </div>
-                            <span className={`inline-block px-3 py-1 rounded-lg text-lg font-bold ${scoreColor(property.pcsScore)}`}>
+                            <span className="inline-block px-3 py-1 text-lg font-bold" style={{ borderRadius: 0, ...scoreColorStyle(property.pcsScore) }}>
                               {property.pcsScore}
                             </span>
                           </div>
@@ -382,29 +387,29 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
                               const value = property.components[comp.key];
                               return (
                                 <div key={comp.key} className="flex items-center gap-3">
-                                  <span className="w-40 text-xs font-medium text-gray-700 flex-shrink-0">{comp.label}</span>
-                                  <div className="flex-1 bg-white/60 rounded-full h-5 overflow-hidden border border-gray-200/60">
+                                  <span className="w-40 text-xs font-medium flex-shrink-0" style={{ color: BT.text.primary }}>{comp.label}</span>
+                                  <div className="flex-1 h-5 overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
                                     <div
-                                      className={`h-5 rounded-full transition-all duration-500 ${componentBarColor(value)}`}
-                                      style={{ width: `${value}%` }}
+                                      className="h-5 transition-all duration-500"
+                                      style={{ width: `${value}%`, background: componentBarBg(value), borderRadius: 0 }}
                                     />
                                   </div>
-                                  <span className="w-10 text-right text-sm font-bold text-gray-800">{value}</span>
+                                  <span className="w-10 text-right text-sm font-bold" style={{ color: BT.text.primary }}>{value}</span>
                                 </div>
                               );
                             })}
                           </div>
-                          <div className="mt-4 pt-3 border-t border-blue-200/40 flex items-center justify-between">
-                            <div className="flex items-center gap-4 text-xs text-gray-500">
-                              <span>Class: <strong className="text-gray-700">{property.class}</strong></span>
-                              <span>Units: <strong className="text-gray-700">{property.units.toLocaleString()}</strong></span>
-                              <span>Year: <strong className="text-gray-700">{property.yearBuilt || 'N/A'}</strong></span>
-                              <span>Submarket: <strong className="text-gray-700">{property.submarket}</strong></span>
-                              {property.owner && <span>Owner: <strong className="text-gray-700">{property.owner}</strong></span>}
+                          <div className="mt-4 pt-3 flex items-center justify-between" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                            <div className="flex items-center gap-4 text-xs" style={{ color: BT.text.secondary }}>
+                              <span>Class: <strong style={{ color: BT.text.primary }}>{property.class}</strong></span>
+                              <span>Units: <strong style={{ color: BT.text.primary }}>{property.units.toLocaleString()}</strong></span>
+                              <span>Year: <strong style={{ color: BT.text.primary }}>{property.yearBuilt || 'N/A'}</strong></span>
+                              <span>Submarket: <strong style={{ color: BT.text.primary }}>{property.submarket}</strong></span>
+                              {property.owner && <span>Owner: <strong style={{ color: BT.text.primary }}>{property.owner}</strong></span>}
                             </div>
                             <button
                               onClick={e => { e.stopPropagation(); setExpandedRow(null); }}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              className="text-xs font-medium" style={{ color: BT.text.cyan }}
                             >
                               Close
                             </button>
@@ -417,7 +422,7 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-12 text-center" style={{ color: BT.text.muted }}>
                     {loading ? 'Loading rankings...' : 'No properties match the selected filters. Try adjusting your criteria.'}
                   </td>
                 </tr>
@@ -427,17 +432,17 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="p-5" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-start gap-3">
-          <div className="w-8 h-8 rounded-full bg-teal-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <span className="text-white text-xs font-bold">AI</span>
+          <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: BT.text.teal, borderRadius: 0 }}>
+            <span className="text-xs font-bold" style={{ color: BT.bg.terminal }}>AI</span>
           </div>
           <div>
-            <h4 className="text-sm font-semibold text-teal-800 mb-1">Rankings Insight</h4>
-            <p className="text-sm text-gray-700 leading-relaxed">
+            <h4 className="text-sm font-semibold mb-1" style={{ color: BT.text.teal }}>Rankings Insight</h4>
+            <p className="text-sm leading-relaxed" style={{ color: BT.text.primary }}>
               {topMovers.risers.length > 0 && (
                 <>
-                  <strong className="text-teal-700">Top Risers:</strong>{' '}
+                  <strong style={{ color: BT.text.teal }}>Top Risers:</strong>{' '}
                   {topMovers.risers.map((p, i) => (
                     <span key={p.id}>{i > 0 ? ', ' : ''}{p.name} (+{p.movement})</span>
                   ))}
@@ -446,14 +451,14 @@ const PowerRankingsTab: React.FC<PowerRankingsTabProps> = ({ marketId }) => {
               )}
               {topMovers.fallers.length > 0 && (
                 <>
-                  <strong className="text-red-600">Watch:</strong>{' '}
+                  <strong style={{ color: BT.text.red }}>Watch:</strong>{' '}
                   {topMovers.fallers.map((p, i) => (
                     <span key={p.id}>{i > 0 ? ', ' : ''}{p.name} ({p.movement})</span>
                   ))}
                   {' '}declining due to supply pressure and competitive dynamics.{' '}
                 </>
               )}
-              <strong className="text-blue-700">Opportunity:</strong> Properties ranked 6-15 with upward movement represent the best value-add targets {'\u2014'} improving fundamentals at lower entry points.
+              <strong style={{ color: BT.text.cyan }}>Opportunity:</strong> Properties ranked 6-15 with upward movement represent the best value-add targets {'\u2014'} improving fundamentals at lower entry points.
             </p>
           </div>
         </div>

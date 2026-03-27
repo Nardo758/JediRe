@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 const TRAFFIC_VITALS = [
   { id: 'physical-score', label: 'Avg Physical Score', value: '72', trend: '+3.2 (90d)', trendDirection: 'up' as const, sparklineData: [58, 62, 64, 60, 66, 68, 65, 70, 69, 72, 71, 72] },
@@ -29,7 +30,7 @@ const QUADRANT_DATA = {
   physicalScore: 72,
   digitalScore: 85,
   quadrant: 'Validated Winner',
-  quadrantColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+  quadrantColor: 'bt-quadrant',
   submarketRank: 3,
   submarketTotal: 18,
   trajectory: { direction: 'up' as const, delta: +4.2, confidence: 0.87 },
@@ -69,10 +70,10 @@ const ScoreGauge: React.FC<{ label: string; value: number }> = ({ label, value }
           <path d="M 10 65 A 55 55 0 0 1 120 65" fill="none" stroke={strokeColor} strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(angle / 180) * 173} 173`} />
         </svg>
         <div className="absolute inset-0 flex items-end justify-center pb-1">
-          <span className="text-2xl font-bold text-stone-900">{value}</span>
+          <span className="text-2xl font-bold" style={{ color: BT.text.primary }}>{value}</span>
         </div>
       </div>
-      <div className="text-xs font-semibold text-stone-600 mt-1">{label}</div>
+      <div className="text-xs font-semibold mt-1" style={{ color: BT.text.secondary }}>{label}</div>
     </div>
   );
 };
@@ -88,27 +89,27 @@ const TrafficIntelligencePage: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-cyan-500">
-        <div className="text-[10px] font-mono text-cyan-400 tracking-widest mb-1">THE DECISION THIS PAGE DRIVES</div>
+      <div className="p-4" style={{ background: BT.bg.terminal, color: BT.text.white, borderRadius: 0, borderLeft: `4px solid ${BT.text.cyan}` }}>
+        <div className="text-[10px] font-mono tracking-widest mb-1" style={{ color: BT.text.cyan }}>THE DECISION THIS PAGE DRIVES</div>
         <div className="text-lg font-semibold">How is this market performing in foot traffic, digital presence, and resident sentiment?</div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Traffic Vitals</h3>
+          <h3 className="text-lg font-bold" style={{ color: BT.text.primary }}>Traffic Vitals</h3>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono">MOCK DATA</span>
-            <span className="text-[10px] text-stone-400">18 properties | Atlanta submarket</span>
+            <span className="text-[10px] px-2 py-0.5 font-mono" style={{ background: `${BT.text.cyan}22`, color: BT.text.cyan, borderRadius: 0 }}>MOCK DATA</span>
+            <span className="text-[10px]" style={{ color: BT.text.muted }}>18 properties | Atlanta submarket</span>
           </div>
         </div>
 
         <div className="grid grid-cols-5 gap-4">
           {TRAFFIC_VITALS.map(vital => (
-            <div key={vital.id} className="border border-stone-200 rounded-lg p-3 hover:border-stone-300 transition-colors">
-              <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">{vital.label}</div>
-              <div className="text-xl font-bold text-stone-900">{vital.value}</div>
+            <div key={vital.id} className="p-3 transition-colors" style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="text-[10px] font-mono tracking-wider mb-1" style={{ color: BT.text.muted }}>{vital.label}</div>
+              <div className="text-xl font-bold" style={{ color: BT.text.primary }}>{vital.value}</div>
               <div className="flex items-center gap-1 mt-1">
-                <span className={`text-[10px] font-medium ${vital.trendDirection === 'up' ? 'text-emerald-600' : vital.trendDirection === 'down' ? 'text-red-500' : 'text-stone-500'}`}>
+                <span className="text-[10px] font-medium" style={{ color: vital.trendDirection === 'up' ? BT.text.green : vital.trendDirection === 'down' ? BT.text.red : BT.text.secondary }}>
                   {vital.trendDirection === 'up' ? '\u2191' : vital.trendDirection === 'down' ? '\u2193' : '\u2192'} {vital.trend}
                 </span>
               </div>
@@ -119,7 +120,7 @@ const TrafficIntelligencePage: React.FC = () => {
                   const range = max - min || 1;
                   const height = ((v - min) / range) * 100;
                   return (
-                    <div key={i} className={`flex-1 rounded-sm ${i === arr.length - 1 ? 'bg-cyan-500' : 'bg-stone-200'}`} style={{ height: `${Math.max(10, height)}%` }} />
+                    <div key={i} className="flex-1" style={{ height: `${Math.max(10, height)}%`, background: i === arr.length - 1 ? BT.text.cyan : BT.border.subtle, borderRadius: 0 }} />
                   );
                 })}
               </div>
@@ -128,70 +129,70 @@ const TrafficIntelligencePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-cyan-50 border border-cyan-200 rounded-xl px-5 py-3">
-        <p className="text-sm text-cyan-900">
+      <div className="px-5 py-3" style={{ background: `${BT.text.cyan}22`, border: `1px solid ${BT.text.cyan}44`, borderRadius: 0 }}>
+        <p className="text-sm" style={{ color: BT.text.cyan }}>
           Tracking 18 properties across Atlanta submarkets. Momentum signal: <strong>STRONG</strong>. Physical traffic up 3.2% with digital engagement accelerating +5.1% QoQ. Peak walk-in day: Saturday (23% of weekly volume).
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-bold text-stone-900">Traffic Score Card</h3>
+          <h3 className="text-lg font-bold" style={{ color: BT.text.primary }}>Traffic Score Card</h3>
         </div>
-        <p className="text-sm text-stone-500 mb-5">Physical and digital traffic scores with T-04 Quadrant classification</p>
+        <p className="text-sm mb-5" style={{ color: BT.text.secondary }}>Physical and digital traffic scores with T-04 Quadrant classification</p>
 
         <div className="grid grid-cols-3 gap-6 items-center">
           <ScoreGauge label="T-02 Physical Score" value={QUADRANT_DATA.physicalScore} />
           <ScoreGauge label="T-03 Digital Score" value={QUADRANT_DATA.digitalScore} />
           <div className="flex flex-col items-center gap-3">
-            <div className="text-[10px] font-mono text-stone-400 tracking-widest">T-04 QUADRANT</div>
-            <div className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold border ${QUADRANT_DATA.quadrantColor}`}>
+            <div className="text-[10px] font-mono tracking-widest" style={{ color: BT.text.muted }}>T-04 QUADRANT</div>
+            <div className="inline-flex items-center px-3 py-1.5 text-xs font-bold" style={{ borderRadius: 0, background: `${BT.text.green}22`, color: BT.text.green, border: `1px solid ${BT.text.green}44` }}>
               {QUADRANT_DATA.quadrant}
             </div>
-            <div className="text-[10px] text-stone-500 text-center">Based on physical + digital score intersection</div>
+            <div className="text-[10px] text-center" style={{ color: BT.text.secondary }}>Based on physical + digital score intersection</div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-5">
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-stone-900">Walk-In Prediction Curve</h3>
-            <div className="flex bg-stone-100 rounded-lg p-0.5">
-              <button onClick={() => setWalkInView('hourly')} className={`px-2.5 py-1 text-[10px] font-semibold rounded-md transition-colors ${walkInView === 'hourly' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>Hourly</button>
-              <button onClick={() => setWalkInView('daily')} className={`px-2.5 py-1 text-[10px] font-semibold rounded-md transition-colors ${walkInView === 'daily' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>Daily</button>
+            <h3 className="text-sm font-bold" style={{ color: BT.text.primary }}>Walk-In Prediction Curve</h3>
+            <div className="flex p-0.5" style={{ background: BT.bg.header, borderRadius: 0 }}>
+              <button onClick={() => setWalkInView('hourly')} className="px-2.5 py-1 text-[10px] font-semibold transition-colors" style={{ background: walkInView === 'hourly' ? BT.bg.panel : 'transparent', color: walkInView === 'hourly' ? BT.text.primary : BT.text.secondary, borderRadius: 0 }}>Hourly</button>
+              <button onClick={() => setWalkInView('daily')} className="px-2.5 py-1 text-[10px] font-semibold transition-colors" style={{ background: walkInView === 'daily' ? BT.bg.panel : 'transparent', color: walkInView === 'daily' ? BT.text.primary : BT.text.secondary, borderRadius: 0 }}>Daily</button>
             </div>
           </div>
           <div className="space-y-1.5">
             {walkInData.map((d, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="text-[10px] text-stone-500 w-8 text-right font-mono">{d.label}</span>
-                <div className="flex-1 bg-stone-100 rounded-full h-4 relative overflow-hidden">
-                  <div className="h-full rounded-full bg-cyan-400" style={{ width: `${(d.value / walkInMax) * 100}%` }} />
-                  <span className="absolute right-2 top-0 text-[9px] font-mono text-stone-600 leading-4">{d.value}</span>
+                <span className="text-[10px] w-8 text-right font-mono" style={{ color: BT.text.secondary }}>{d.label}</span>
+                <div className="flex-1 h-4 relative overflow-hidden" style={{ background: BT.bg.header, borderRadius: 0 }}>
+                  <div className="h-full" style={{ width: `${(d.value / walkInMax) * 100}%`, background: BT.text.cyan, borderRadius: 0 }} />
+                  <span className="absolute right-2 top-0 text-[9px] font-mono leading-4" style={{ color: BT.text.secondary }}>{d.value}</span>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-3 text-[10px] text-stone-400">
+          <div className="mt-3 text-[10px]" style={{ color: BT.text.muted }}>
             {walkInView === 'hourly' ? 'Peak hours: 1-3pm \u00B7 Plan tours during off-peak for better attention' : 'Saturday is busiest \u00B7 Consider extended weekend hours'}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
-          <h3 className="text-sm font-bold text-stone-900 mb-2">T-07 Trajectory</h3>
+        <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <h3 className="text-sm font-bold mb-2" style={{ color: BT.text.primary }}>T-07 Trajectory</h3>
           <div className="flex items-center gap-4 mb-4">
-            <div className={`flex items-center gap-2 text-3xl font-bold ${QUADRANT_DATA.trajectory.direction === 'up' ? 'text-emerald-600' : QUADRANT_DATA.trajectory.direction === 'down' ? 'text-red-600' : 'text-stone-600'}`}>
+            <div className="flex items-center gap-2 text-3xl font-bold" style={{ color: QUADRANT_DATA.trajectory.direction === 'up' ? BT.text.green : QUADRANT_DATA.trajectory.direction === 'down' ? BT.text.red : BT.text.secondary }}>
               {QUADRANT_DATA.trajectory.direction === 'up' ? '\u2191' : QUADRANT_DATA.trajectory.direction === 'down' ? '\u2193' : '\u2192'}
               <span className="text-xl">+{QUADRANT_DATA.trajectory.delta.toFixed(1)}%</span>
             </div>
             <div>
-              <div className="text-xs text-stone-500">13-week trend</div>
-              <div className="text-xs text-stone-400">Confidence: {(QUADRANT_DATA.trajectory.confidence * 100).toFixed(0)}%</div>
+              <div className="text-xs" style={{ color: BT.text.secondary }}>13-week trend</div>
+              <div className="text-xs" style={{ color: BT.text.muted }}>Confidence: {(QUADRANT_DATA.trajectory.confidence * 100).toFixed(0)}%</div>
             </div>
           </div>
-          <div className="bg-stone-50 rounded-lg p-3">
-            <div className="text-[10px] font-mono text-stone-400 tracking-widest mb-2">TRAJECTORY COMPONENTS</div>
+          <div className="p-3" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+            <div className="text-[10px] font-mono tracking-widest mb-2" style={{ color: BT.text.muted }}>TRAJECTORY COMPONENTS</div>
             <div className="space-y-1.5">
               {[
                 { label: 'Physical traffic velocity', value: '+2.8%', positive: true },
@@ -200,8 +201,8 @@ const TrafficIntelligencePage: React.FC = () => {
                 { label: 'Competitive pressure', value: '-3.7%', positive: false },
               ].map((c, i) => (
                 <div key={i} className="flex justify-between items-center text-xs">
-                  <span className="text-stone-600">{c.label}</span>
-                  <span className={`font-mono font-semibold ${c.positive ? 'text-emerald-600' : 'text-red-500'}`}>{c.value}</span>
+                  <span style={{ color: BT.text.secondary }}>{c.label}</span>
+                  <span className="font-mono font-semibold" style={{ color: c.positive ? BT.text.green : BT.text.red }}>{c.value}</span>
                 </div>
               ))}
             </div>
@@ -209,26 +210,26 @@ const TrafficIntelligencePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-sm font-bold text-stone-900 mb-1">Submarket Rank Position</h3>
-        <p className="text-xs text-stone-500 mb-4">Average traffic rank among submarket peers</p>
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <h3 className="text-sm font-bold mb-1" style={{ color: BT.text.primary }}>Submarket Rank Position</h3>
+        <p className="text-xs mb-4" style={{ color: BT.text.secondary }}>Average traffic rank among submarket peers</p>
         <div className="flex items-center gap-6">
           <div className="text-center">
             <div className="text-4xl font-bold text-cyan-600">#{QUADRANT_DATA.submarketRank}</div>
-            <div className="text-xs text-stone-500">of {QUADRANT_DATA.submarketTotal} properties</div>
+            <div className="text-xs" style={{ color: BT.text.secondary }}>of {QUADRANT_DATA.submarketTotal} properties</div>
           </div>
           <div className="flex-1">
-            <div className="relative h-8 bg-stone-100 rounded-full overflow-hidden">
+            <div className="relative h-8 overflow-hidden" style={{ background: BT.bg.header, borderRadius: 0 }}>
               {Array.from({ length: QUADRANT_DATA.submarketTotal }, (_, i) => {
                 const isSubject = i + 1 === QUADRANT_DATA.submarketRank;
                 const left = ((i + 0.5) / QUADRANT_DATA.submarketTotal) * 100;
                 return (
-                  <div key={i} className={`absolute top-1 bottom-1 rounded-full ${isSubject ? 'bg-cyan-500 z-10' : 'bg-stone-300'}`}
+                  <div key={i} className={`absolute top-1 bottom-1 ${isSubject ? 'z-10' : ''}`} style={{ background: isSubject ? BT.text.cyan : BT.border.medium, borderRadius: '50%' }}
                     style={{ left: `${left}%`, width: isSubject ? '12px' : '6px', transform: 'translateX(-50%)' }} />
                 );
               })}
             </div>
-            <div className="flex justify-between mt-1 text-[9px] text-stone-400">
+            <div className="flex justify-between mt-1 text-[9px]" style={{ color: BT.text.muted }}>
               <span>#1 (Best)</span>
               <span>#{QUADRANT_DATA.submarketTotal} (Worst)</span>
             </div>
@@ -240,49 +241,49 @@ const TrafficIntelligencePage: React.FC = () => {
             { label: 'Rank Change', value: '+2 spots', sub: 'Last 90 days' },
             { label: 'Gap to #1', value: '8.3 pts', sub: 'PCS score difference' },
           ].map((m, i) => (
-            <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
-              <div className="text-lg font-bold text-stone-900">{m.value}</div>
-              <div className="text-[10px] text-stone-500">{m.label}</div>
-              <div className="text-[9px] text-stone-400">{m.sub}</div>
+            <div key={i} className="p-3 text-center" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+              <div className="text-lg font-bold" style={{ color: BT.text.primary }}>{m.value}</div>
+              <div className="text-[10px]" style={{ color: BT.text.secondary }}>{m.label}</div>
+              <div className="text-[9px]" style={{ color: BT.text.muted }}>{m.sub}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-lg font-bold text-stone-900 mb-1">Google Reviews Sentiment Analysis</h3>
-        <p className="text-sm text-stone-500 mb-4">NLP-classified resident sentiment across 5 categories</p>
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <h3 className="text-lg font-bold mb-1" style={{ color: BT.text.primary }}>Google Reviews Sentiment Analysis</h3>
+        <p className="text-sm mb-4" style={{ color: BT.text.secondary }}>NLP-classified resident sentiment across 5 categories</p>
         <div className="space-y-3">
           {REVIEW_SENTIMENTS.map((s, i) => {
             const trendIcon = s.trend === 'improving' ? '\u2191' : s.trend === 'declining' ? '\u2193' : '\u2192';
-            const trendColor = s.trend === 'improving' ? 'text-emerald-600' : s.trend === 'declining' ? 'text-red-500' : 'text-stone-400';
+            const trendColorStyle = s.trend === 'improving' ? BT.text.green : s.trend === 'declining' ? BT.text.red : BT.text.muted;
             return (
               <div key={i} className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-stone-700 w-24">{s.category}</span>
-                <div className="flex-1 flex h-5 rounded-full overflow-hidden bg-stone-100">
-                  <div className="bg-emerald-400 h-full" style={{ width: `${s.positive}%` }} />
-                  <div className="bg-stone-300 h-full" style={{ width: `${s.neutral}%` }} />
-                  <div className="bg-red-400 h-full" style={{ width: `${s.negative}%` }} />
+                <span className="text-xs font-semibold w-24" style={{ color: BT.text.primary }}>{s.category}</span>
+                <div className="flex-1 flex h-5 overflow-hidden" style={{ background: BT.bg.header, borderRadius: 0 }}>
+                  <div className="h-full" style={{ width: `${s.positive}%`, background: BT.text.green }} />
+                  <div className="h-full" style={{ width: `${s.neutral}%`, background: BT.border.medium }} />
+                  <div className="h-full" style={{ width: `${s.negative}%`, background: BT.text.red }} />
                 </div>
                 <div className="flex items-center gap-1 w-20">
-                  <span className={`text-xs font-bold ${trendColor}`}>{trendIcon}</span>
-                  <span className="text-[10px] text-stone-500 capitalize">{s.trend}</span>
+                  <span className="text-xs font-bold" style={{ color: trendColorStyle }}>{trendIcon}</span>
+                  <span className="text-[10px] capitalize" style={{ color: BT.text.secondary }}>{s.trend}</span>
                 </div>
-                <span className="text-[10px] font-mono text-stone-400 w-24 text-right">{s.positive}% / {s.neutral}% / {s.negative}%</span>
+                <span className="text-[10px] font-mono w-24 text-right" style={{ color: BT.text.muted }}>{s.positive}% / {s.neutral}% / {s.negative}%</span>
               </div>
             );
           })}
         </div>
         <div className="mt-3 flex gap-4 text-[10px]">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block" /> Positive</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-stone-300 inline-block" /> Neutral</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block" /> Negative</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: BT.text.green, borderRadius: '50%' }} /> Positive</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: BT.border.medium, borderRadius: '50%' }} /> Neutral</span>
+          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 inline-block" style={{ background: BT.text.red, borderRadius: '50%' }} /> Negative</span>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
-        <h3 className="text-sm font-bold text-stone-900 mb-1">Review Sentiment Trend (12 Months)</h3>
-        <p className="text-xs text-stone-500 mb-4">Average sentiment score and review volume over time</p>
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <h3 className="text-sm font-bold mb-1" style={{ color: BT.text.primary }}>Review Sentiment Trend (12 Months)</h3>
+        <p className="text-xs mb-4" style={{ color: BT.text.secondary }}>Average sentiment score and review volume over time</p>
         <div className="relative h-40">
           <svg className="w-full h-full" viewBox="0 0 600 160" preserveAspectRatio="none">
             <line x1="0" y1="0" x2="0" y2="160" stroke="#e5e7eb" strokeWidth="1" />
@@ -309,11 +310,11 @@ const TrafficIntelligencePage: React.FC = () => {
           </svg>
           <div className="absolute bottom-0 left-0 right-0 flex justify-between px-2">
             {REVIEW_TREND.filter((_, i) => i % 3 === 0).map((d, i) => (
-              <span key={i} className="text-[9px] text-stone-400">{d.month}</span>
+              <span key={i} className="text-[9px]" style={{ color: BT.text.muted }}>{d.month}</span>
             ))}
           </div>
         </div>
-        <div className="mt-2 flex gap-6 text-[10px] text-stone-500">
+        <div className="mt-2 flex gap-6 text-[10px]" style={{ color: BT.text.secondary }}>
           <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-cyan-500 inline-block" /> Avg Sentiment</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 bg-cyan-500/15 inline-block rounded-sm" /> Review Volume</span>
         </div>

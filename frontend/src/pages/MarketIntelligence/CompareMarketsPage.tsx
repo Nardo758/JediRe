@@ -341,67 +341,67 @@ const CompareMarketsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-base font-semibold text-gray-900">AI Investment Recommendation + Entry Point Calculator</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Powered by DC-03, DC-07, DC-11, T-05</p>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>AI Investment Recommendation + Entry Point Calculator</h3>
+            <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>Powered by DC-03, DC-07, DC-11, T-05</p>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-gradient-to-br from-violet-50 to-blue-50 rounded-xl border border-violet-200 p-5">
+              <div className="p-5" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
                 <div className="flex items-start gap-2 mb-4">
                   <span className="text-xl">🤖</span>
-                  <h4 className="font-semibold text-gray-900">AI Investment Recommendation</h4>
+                  <h4 className="font-semibold" style={{ color: BT.text.primary }}>AI Investment Recommendation</h4>
                 </div>
                 <div className="space-y-3">
-                  <div className="bg-white/80 rounded-lg p-4 border border-white">
-                    <p className="font-semibold text-gray-900 mb-1">Atlanta, GA</p>
-                    <p className="text-sm text-gray-700">Strong demand fundamentals with D-09: 82. Supply building but DC-03: 58 provides moderate constraint. Pricing power intact at 72. <span className="font-bold text-green-700">VERDICT: ACCUMULATE B/B+ value-add in Midtown, Buckhead.</span></p>
+                  <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+                    <p className="font-semibold mb-1" style={{ color: BT.text.primary }}>Atlanta, GA</p>
+                    <p className="text-sm" style={{ color: BT.text.primary }}>Strong demand fundamentals with D-09: 82. Supply building but DC-03: 58 provides moderate constraint. Pricing power intact at 72. <span className="font-bold" style={{ color: BT.text.green }}>VERDICT: ACCUMULATE B/B+ value-add in Midtown, Buckhead.</span></p>
                   </div>
-                  <div className="bg-white/80 rounded-lg p-4 border border-white">
-                    <p className="font-semibold text-gray-900 mb-1">Charlotte, NC</p>
-                    <p className="text-sm text-gray-700">Supply wave past peak — deliveries declining. DC-11 adjusted rent forecast +4.2% suggests recovery. Strong absorption at T-05. <span className="font-bold text-green-700">VERDICT: BUY NOW — optimal entry window before rent recovery.</span></p>
+                  <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+                    <p className="font-semibold mb-1" style={{ color: BT.text.primary }}>Charlotte, NC</p>
+                    <p className="text-sm" style={{ color: BT.text.primary }}>Supply wave past peak — deliveries declining. DC-11 adjusted rent forecast +4.2% suggests recovery. Strong absorption at T-05. <span className="font-bold" style={{ color: BT.text.green }}>VERDICT: BUY NOW — optimal entry window before rent recovery.</span></p>
                   </div>
-                  <div className="bg-white/80 rounded-lg p-4 border border-white">
-                    <p className="font-semibold text-gray-900 mb-1">Nashville, TN</p>
-                    <p className="text-sm text-gray-700">Supply peaking Q1-Q2 2026 with DC-01: 48% capacity = more can come. Pricing power weak at 52. Concession drag 4.2%. <span className="font-bold text-amber-700">VERDICT: WAIT — monitor for supply wave peak confirmation.</span></p>
+                  <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+                    <p className="font-semibold mb-1" style={{ color: BT.text.primary }}>Nashville, TN</p>
+                    <p className="text-sm" style={{ color: BT.text.primary }}>Supply peaking Q1-Q2 2026 with DC-01: 48% capacity = more can come. Pricing power weak at 52. Concession drag 4.2%. <span className="font-bold" style={{ color: BT.text.amber }}>VERDICT: WAIT — monitor for supply wave peak confirmation.</span></p>
                   </div>
                 </div>
               </div>
 
               <div>
-                <h4 className="font-semibold text-gray-900 mb-3">Entry Point Calculator</h4>
+                <h4 className="font-semibold mb-3" style={{ color: BT.text.primary }}>Entry Point Calculator</h4>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="bg-gray-50">
-                        <th className="px-3 py-2 text-left font-semibold text-gray-500 text-xs">Metric</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700 text-xs">Atlanta</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700 text-xs">Charlotte</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-700 text-xs">Nashville</th>
+                      <tr style={{ background: BT.bg.panelAlt }}>
+                        <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: BT.text.secondary }}>Metric</th>
+                        <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: BT.text.primary }}>Atlanta</th>
+                        <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: BT.text.primary }}>Charlotte</th>
+                        <th className="px-3 py-2 text-left font-semibold text-xs" style={{ color: BT.text.primary }}>Nashville</th>
                       </tr>
                     </thead>
                     <tbody>
                       {entryPointData.map((row, idx) => (
-                        <tr key={idx} className="border-t border-gray-100">
-                          <td className="px-3 py-2.5 text-gray-700 font-medium text-xs">{row.metric}</td>
-                          <td className={`px-3 py-2.5 text-sm ${row.metric === 'DC-07 Pricing Push' && row.atlanta === 'STRONG' ? 'text-green-700 font-bold' : ''}`}>{row.atlanta}</td>
-                          <td className={`px-3 py-2.5 text-sm ${row.metric === 'Est. 5-Yr IRR' ? 'text-green-700 font-bold' : ''} ${row.metric === 'DC-07 Pricing Push' && row.charlotte === 'STRONG' ? 'text-green-700 font-bold' : ''}`}>{row.charlotte}</td>
-                          <td className={`px-3 py-2.5 text-sm ${row.metric === 'DC-07 Pricing Push' && row.nashville === 'WEAK' ? 'text-red-700 font-bold' : ''}`}>{row.nashville}</td>
+                        <tr key={idx} style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                          <td className="px-3 py-2.5 font-medium text-xs" style={{ color: BT.text.primary }}>{row.metric}</td>
+                          <td className={`px-3 py-2.5 text-sm ${row.metric === 'DC-07 Pricing Push' && row.atlanta === 'STRONG' ? 'font-bold' : ''}`} style={row.metric === 'DC-07 Pricing Push' && row.atlanta === 'STRONG' ? { color: BT.text.green } : {}}>{row.atlanta}</td>
+                          <td className={`px-3 py-2.5 text-sm ${row.metric === 'Est. 5-Yr IRR' ? 'font-bold' : ''} ${row.metric === 'DC-07 Pricing Push' && row.charlotte === 'STRONG' ? 'font-bold' : ''}`} style={row.metric === 'Est. 5-Yr IRR' || (row.metric === 'DC-07 Pricing Push' && row.charlotte === 'STRONG') ? { color: BT.text.green } : {}}>{row.charlotte}</td>
+                          <td className={`px-3 py-2.5 text-sm ${row.metric === 'DC-07 Pricing Push' && row.nashville === 'WEAK' ? 'font-bold' : ''}`} style={row.metric === 'DC-07 Pricing Push' && row.nashville === 'WEAK' ? { color: BT.text.red } : {}}>{row.nashville}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-xs text-blue-800">Charlotte's IRR improved from 14.2% → 14.8% when using supply-adjusted forecast (DC-11)</p>
+                <div className="mt-3 p-3" style={{ background: `${BT.text.cyan}22`, border: `1px solid ${BT.text.cyan}44`, borderRadius: 0 }}>
+                  <p className="text-xs" style={{ color: BT.text.cyan }}>Charlotte's IRR improved from 14.2% → 14.8% when using supply-adjusted forecast (DC-11)</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3 mt-6 pt-4 border-t border-gray-100">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">Export Comparison Report</button>
-              <button className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">Share with Partners</button>
+            <div className="flex flex-wrap gap-3 mt-6 pt-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+              <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ background: BT.text.cyan, color: BT.text.white, borderRadius: 0 }}>Export Comparison Report</button>
+              <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, borderRadius: 0 }}>Share with Partners</button>
             </div>
           </div>
         </div>

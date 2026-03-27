@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface OverviewTabProps {
   marketId: string;
@@ -52,21 +53,18 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
       title: 'Amazon announces 5,000 additional jobs at Midtown campus',
       impact: 'D-01 ratio improving. Midtown rent pressure likely.',
       borderColor: 'border-l-red-500',
-      bgColor: 'bg-red-50',
     },
     {
       date: 'Feb 12',
       title: 'Fulton County TAD extension approved for Westside BeltLine',
       impact: 'Tax incentive extends. Supply accelerant for BeltLine sub.',
       borderColor: 'border-l-yellow-500',
-      bgColor: 'bg-yellow-50',
     },
     {
       date: 'Feb 8',
       title: 'Q4 2025 rent report: Atlanta B-class up 4.8% vs A +2.1%',
       impact: 'Vintage spread widening (R-02). Value-add thesis confirmed.',
       borderColor: 'border-l-green-500',
-      bgColor: 'bg-green-50',
     },
   ];
 
@@ -92,53 +90,53 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Market Overview</h2>
-          <p className="text-sm text-gray-500">30-second market health check &middot; 25 outputs</p>
+          <h2 className="text-xl font-bold" style={{ color: BT.text.primary }}>Market Overview</h2>
+          <p className="text-sm" style={{ color: BT.text.secondary }}>30-second market health check &middot; 25 outputs</p>
         </div>
-        <span className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
+        <span className="text-xs font-medium px-3 py-1.5" style={{ color: BT.text.muted, background: BT.bg.panelAlt, borderRadius: 0 }}>
           {stats
-            ? <><span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>Live data connected</>
+            ? <><span className="inline-block w-2 h-2 mr-1 animate-pulse" style={{ background: BT.text.green, borderRadius: '50%' }}></span>Live data connected</>
             : isAtlanta ? '32% live data' : 'No live data'}
         </span>
       </div>
 
-      <div className="bg-gradient-to-r from-slate-50 to-blue-50 rounded-xl p-4">
+      <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {vitals.map((v, i) => (
-            <div key={i} className="bg-white/80 backdrop-blur rounded-xl border border-gray-200/60 p-4 text-center hover:shadow-sm transition-shadow relative">
-              <div className="text-[10px] font-mono text-blue-400 mb-1">{v.id}</div>
-              <div className="text-2xl font-bold text-gray-900">{v.value}</div>
-              <div className="text-xs font-semibold text-gray-700 mt-1">{v.label}</div>
-              <div className="text-[10px] text-gray-400">{v.sub}</div>
-              {v.live && <span className="absolute top-1 right-1 text-[8px] font-bold text-green-600 bg-green-50 px-1 py-0.5 rounded">LIVE</span>}
+            <div key={i} className="p-4 text-center relative" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="text-[10px] font-mono mb-1" style={{ color: BT.text.cyan }}>{v.id}</div>
+              <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>{v.value}</div>
+              <div className="text-xs font-semibold mt-1" style={{ color: BT.text.primary }}>{v.label}</div>
+              <div className="text-[10px]" style={{ color: BT.text.muted }}>{v.sub}</div>
+              {v.live && <span className="absolute top-1 right-1 text-[8px] font-bold px-1 py-0.5" style={{ color: BT.text.green, background: `${BT.text.green}22`, borderRadius: 0 }}>LIVE</span>}
             </div>
           ))}
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 px-5 py-3">
+      <div className="px-5 py-3" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center gap-4 text-sm">
-          <span className="text-gray-500 font-medium">{stats?.totalParcels ? stats.totalParcels.toLocaleString() : (isAtlanta ? '1,033K' : '0')} Parcels</span>
+          <span className="font-medium" style={{ color: BT.text.secondary }}>{stats?.totalParcels ? stats.totalParcels.toLocaleString() : (isAtlanta ? '1,033K' : '0')} Parcels</span>
           <div className="flex-1 flex items-center gap-3">
-            <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+            <div className="flex-1 h-3 overflow-hidden" style={{ background: BT.bg.header, borderRadius: 0 }}>
               <div
-                className="h-3 rounded-full bg-green-500 transition-all"
-                style={{ width: stats?.coveragePercent ? `${stats.coveragePercent}%` : (isAtlanta ? '60%' : '0%') }}
+                className="h-3 transition-all"
+                style={{ background: BT.text.green, borderRadius: 0, width: stats?.coveragePercent ? `${stats.coveragePercent}%` : (isAtlanta ? '60%' : '0%') }}
               />
             </div>
-            <span className="text-sm font-bold text-gray-700">{stats?.coveragePercent ?? (isAtlanta ? '60' : '0')}% Coverage</span>
+            <span className="text-sm font-bold" style={{ color: BT.text.primary }}>{stats?.coveragePercent ?? (isAtlanta ? '60' : '0')}% Coverage</span>
           </div>
-          <span className="text-gray-500">{stats?.totalProperties ? stats.totalProperties.toLocaleString() : (isAtlanta ? '1,028' : '0')} Props</span>
-          <span className="text-gray-500">{stats?.totalUnits ? stats.totalUnits.toLocaleString() : (isAtlanta ? '249,964' : '0')} units</span>
-          {stats && <span className="text-[8px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">LIVE</span>}
+          <span style={{ color: BT.text.secondary }}>{stats?.totalProperties ? stats.totalProperties.toLocaleString() : (isAtlanta ? '1,028' : '0')} Props</span>
+          <span style={{ color: BT.text.secondary }}>{stats?.totalUnits ? stats.totalUnits.toLocaleString() : (isAtlanta ? '249,964' : '0')} units</span>
+          {stats && <span className="text-[8px] font-bold px-1.5 py-0.5" style={{ color: BT.text.green, background: `${BT.text.green}22`, borderRadius: 0 }}>LIVE</span>}
         </div>
       </div>
 
       <div className="flex gap-5">
-        <div className="w-[60%] bg-white rounded-xl border border-gray-200 p-5">
+        <div className="w-[60%] p-5" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-gray-900">5-Signal Health Bar</h3>
-            <span className="text-xs text-gray-400">5 composites</span>
+            <h3 className="text-sm font-semibold" style={{ color: BT.text.primary }}>5-Signal Health Bar</h3>
+            <span className="text-xs" style={{ color: BT.text.muted }}>5 composites</span>
           </div>
           <div className="space-y-4">
             {healthSignals.map((signal) => {
@@ -148,16 +146,16 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold" style={{ color: group.color }}>{signal.label}</span>
-                      <span className="text-[10px] font-mono text-gray-400">{signal.outputId}</span>
+                      <span className="text-[10px] font-mono" style={{ color: BT.text.muted }}>{signal.outputId}</span>
                     </div>
                     <span className="text-sm font-bold" style={{ color: group.color }}>
                       {signal.score > 0 ? signal.score : '—'}
                     </span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-4 overflow-hidden">
+                  <div className="w-full h-4 overflow-hidden" style={{ background: BT.bg.header, borderRadius: 0 }}>
                     <div
-                      className="h-4 rounded-full transition-all duration-700"
-                      style={{ width: `${signal.score}%`, backgroundColor: group.color }}
+                      className="h-4 transition-all duration-700"
+                      style={{ width: `${signal.score}%`, backgroundColor: group.color, borderRadius: 0 }}
                     />
                   </div>
                 </div>
@@ -166,11 +164,11 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
           </div>
         </div>
 
-        <div className="w-[40%] bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
+        <div className="w-[40%] p-5 flex flex-col" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-[10px] font-semibold text-teal-600 bg-teal-50 px-2 py-0.5 rounded">AI MARKET SUMMARY</span>
+            <span className="text-[10px] font-semibold px-2 py-0.5" style={{ color: BT.text.teal, background: `${BT.text.teal}22`, borderRadius: 0 }}>AI MARKET SUMMARY</span>
           </div>
-          <div className="flex-1 text-sm text-gray-600 space-y-3">
+          <div className="flex-1 text-sm space-y-3" style={{ color: BT.text.secondary }}>
             {isAtlanta ? (
               <>
                 <p><strong>Demand:</strong> Atlanta continues to benefit from strong in-migration and corporate relocations. Job growth across tech and logistics sectors is outpacing apartment deliveries, creating favorable demand-supply dynamics. The jobs-to-apartment ratio of 1.8x remains well above the 1.2x national average.</p>
@@ -179,89 +177,93 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
                 <p><strong>Best Opportunities:</strong> East Atlanta and South DeKalb submarkets offer the strongest risk-adjusted returns due to lower supply pressure and improving demand fundamentals from BeltLine expansion.</p>
               </>
             ) : (
-              <p className="italic text-gray-400">AI narrative will be generated once market data is connected.</p>
+              <p className="italic" style={{ color: BT.text.muted }}>AI narrative will be generated once market data is connected.</p>
             )}
           </div>
-          <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs text-gray-400">Confidence:</span>
-            <span className="text-sm font-bold text-teal-600">{isAtlanta ? '78%' : '—'}</span>
+          <div className="mt-3 pt-3 flex items-center justify-between" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+            <span className="text-xs" style={{ color: BT.text.muted }}>Confidence:</span>
+            <span className="text-sm font-bold" style={{ color: BT.text.teal }}>{isAtlanta ? '78%' : '—'}</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="p-5" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900">Recent Market Intelligence</h3>
-          <span className="text-[10px] font-mono text-gray-400">R-10</span>
+          <h3 className="text-sm font-semibold" style={{ color: BT.text.primary }}>Recent Market Intelligence</h3>
+          <span className="text-[10px] font-mono" style={{ color: BT.text.muted }}>R-10</span>
         </div>
         <div className="space-y-3">
           {alerts.map((alert, i) => (
-            <div key={i} className={`border-l-4 ${alert.borderColor} ${alert.bgColor} rounded-r-lg p-4`}>
+            <div key={i} className="p-4" style={{
+              borderLeft: `4px solid ${alert.borderColor === 'border-l-red-500' ? BT.text.red : alert.borderColor === 'border-l-yellow-500' ? BT.text.amber : BT.text.green}`,
+              background: `${alert.borderColor === 'border-l-red-500' ? BT.text.red : alert.borderColor === 'border-l-yellow-500' ? BT.text.amber : BT.text.green}15`,
+              borderRadius: 0,
+            }}>
               <div className="flex items-start justify-between mb-1">
-                <span className="text-sm font-semibold text-gray-800">{alert.title}</span>
-                <span className="text-[10px] text-gray-400 flex-shrink-0 ml-3 mt-0.5">{alert.date}</span>
+                <span className="text-sm font-semibold" style={{ color: BT.text.primary }}>{alert.title}</span>
+                <span className="text-[10px] flex-shrink-0 ml-3 mt-0.5" style={{ color: BT.text.muted }}>{alert.date}</span>
               </div>
-              <div className="text-xs text-gray-600">
-                <span className="font-medium text-gray-500">Impact:</span> {alert.impact}
+              <div className="text-xs" style={{ color: BT.text.secondary }}>
+                <span className="font-medium" style={{ color: BT.text.secondary }}>Impact:</span> {alert.impact}
               </div>
             </div>
           ))}
         </div>
-        <button className="mt-4 text-sm font-medium text-blue-600 hover:text-blue-800">
+        <button className="mt-4 text-sm font-medium" style={{ color: BT.text.cyan }}>
           View All Intelligence →
         </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100" style={{ borderLeftWidth: 4, borderLeftColor: SIGNAL_GROUPS.SUPPLY.color }}>
-          <h3 className="text-base font-semibold text-gray-900">Supply Snapshot</h3>
-          <p className="text-sm text-gray-500 mt-0.5">Existing inventory, pipeline, and development capacity outlook</p>
+      <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `4px solid ${SIGNAL_GROUPS.SUPPLY.color}` }}>
+          <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>Supply Snapshot</h3>
+          <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>Existing inventory, pipeline, and development capacity outlook</p>
         </div>
         <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">NEAR-TERM (S-outputs: 2yr)</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.secondary }}>NEAR-TERM (S-outputs: 2yr)</h4>
             <div className="space-y-2.5">
               {nearTermMetrics.map((m, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50">
+                <div key={i} className="flex items-center justify-between py-1.5" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-700">{m.label}</span>
-                    {m.id && <span className="text-[10px] font-mono text-gray-400">({m.id})</span>}
+                    <span className="text-sm" style={{ color: BT.text.primary }}>{m.label}</span>
+                    {m.id && <span className="text-[10px] font-mono" style={{ color: BT.text.muted }}>({m.id})</span>}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-gray-900">{m.value}</span>
-                    {m.warning && <span className="text-yellow-500 text-xs">⚠</span>}
+                    <span className="text-sm font-semibold" style={{ color: BT.text.primary }}>{m.value}</span>
+                    {m.warning && <span className="text-xs" style={{ color: BT.text.amber }}>⚠</span>}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg">
-              <span className="text-xs font-semibold text-red-700">Verdict: </span>
-              <span className="text-xs text-red-600">
+            <div className="mt-4 p-3" style={{ background: `${BT.text.red}15`, border: `1px solid ${BT.text.red}33`, borderRadius: 0 }}>
+              <span className="text-xs font-semibold" style={{ color: BT.text.red }}>Verdict: </span>
+              <span className="text-xs" style={{ color: BT.text.red }}>
                 {isAtlanta ? 'Elevated near-term supply. Pipeline % exceeds 15% threshold. Monitor delivery clustering in Midtown corridor.' : 'Insufficient data for verdict.'}
               </span>
             </div>
           </div>
 
           <div>
-            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">LONG-TERM (DC-outputs: 10yr) ★</h4>
+            <h4 className="text-xs font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.secondary }}>LONG-TERM (DC-outputs: 10yr) ★</h4>
             <div className="space-y-2.5">
               {longTermMetrics.map((m, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50">
+                <div key={i} className="flex items-center justify-between py-1.5" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-700">{m.label}</span>
-                    {m.id && <span className="text-[10px] font-mono text-gray-400">({m.id})</span>}
+                    <span className="text-sm" style={{ color: BT.text.primary }}>{m.label}</span>
+                    {m.id && <span className="text-[10px] font-mono" style={{ color: BT.text.muted }}>({m.id})</span>}
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-gray-900">{m.value}</span>
-                    {m.badge && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700">{m.badge}</span>}
-                    {m.check && <span className="text-green-500">✓</span>}
+                    <span className="text-sm font-semibold" style={{ color: BT.text.primary }}>{m.value}</span>
+                    {m.badge && <span className="text-[10px] font-semibold px-1.5 py-0.5" style={{ background: `${BT.text.amber}22`, color: BT.text.amber, borderRadius: 0 }}>{m.badge}</span>}
+                    {m.check && <span style={{ color: BT.text.green }}>✓</span>}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-              <div className="text-xs font-semibold text-gray-600 mb-2">Supply Wave Forecast</div>
+            <div className="mt-4 p-3" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="text-xs font-semibold mb-2" style={{ color: BT.text.secondary }}>Supply Wave Forecast</div>
               <svg viewBox="0 0 200 60" className="w-full h-16">
                 <path
                   d="M10,50 Q30,48 50,35 Q70,20 90,12 Q110,8 120,10 Q140,15 160,28 Q180,42 190,48"
@@ -286,9 +288,9 @@ const OverviewTab: React.FC<OverviewTabProps> = ({ marketId }) => {
               </svg>
             </div>
 
-            <div className="mt-3 p-3 bg-green-50 border border-green-100 rounded-lg">
-              <span className="text-xs font-semibold text-green-700">Verdict: </span>
-              <span className="text-xs text-green-600">
+            <div className="mt-3 p-3" style={{ background: `${BT.text.green}15`, border: `1px solid ${BT.text.green}33`, borderRadius: 0 }}>
+              <span className="text-xs font-semibold" style={{ color: BT.text.green }}>Verdict: </span>
+              <span className="text-xs" style={{ color: BT.text.green }}>
                 {isAtlanta ? 'Moderate long-term constraint (58/100). Buildout runway of 8.6 years limits future oversupply. Low overhang risk supports acquisition thesis.' : 'Insufficient data for verdict.'}
               </span>
             </div>
