@@ -65,6 +65,7 @@ import { StrategyBuilderPage } from './pages/StrategyBuilderPage';
 import M08StrategyControlPanel from './pages/M08StrategyControlPanel';
 import TerminalPage from './pages/TerminalPage';
 import { OpportunitiesPage } from './pages/OpportunitiesPage';
+const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPage'));
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
@@ -121,6 +122,8 @@ function AppContent() {
             Root /terminal renders TerminalPage directly so ?fkey=Fn deep-links are preserved. */}
         <Route path="/terminal" element={<TerminalPage />} />
         <Route path="/terminal/:section" element={<TerminalPage />} />
+
+        <Route path="/docs/f4-commentary-spec" element={<Suspense fallback={<PageLoadingFallback />}><F4CommentarySpecPage /></Suspense>} />
 
         {/* Bloomberg Market Intelligence — base route redirects to terminal/markets */}
         <Route path="/market-intelligence" element={<Navigate to="/terminal/markets" replace />} />
