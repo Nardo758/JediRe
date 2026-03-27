@@ -99,7 +99,9 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   const images = property.images || [
-    { url: 'https://placehold.co/400x240/1a1f2e/4a5568?text=Property+Image', caption: 'Exterior' }
+    { url: 'https://placehold.co/400x240/1a1f2e/4a5568?text=Exterior', caption: 'Exterior' },
+    { url: 'https://placehold.co/400x240/1a1f2e/4a5568?text=Lobby', caption: 'Lobby' },
+    { url: 'https://placehold.co/400x240/1a1f2e/4a5568?text=Amenities', caption: 'Amenities' },
   ];
   
   const defaultComps: CompProperty[] = comps.length > 0 ? comps : [
@@ -254,111 +256,98 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
         </div>
       </div>
 
-      {/* Property Image Section */}
+      {/* Property Images Section - 3 images in a row */}
       <div style={{
-        position: 'relative',
-        height: 160,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: 2,
         background: BT.bg.panel,
-        overflow: 'hidden',
       }}>
-        <img 
-          src={images[currentImageIndex].url}
-          alt={images[currentImageIndex].caption || 'Property'}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-          }}
-        />
-        
-        {/* Image Navigation */}
-        {images.length > 1 && (
-          <>
-            <button
-              onClick={(e) => { e.stopPropagation(); prevImage(); }}
+        {[0, 1, 2].map((idx) => {
+          const img = images[idx] || images[0];
+          const isMain = idx === 0;
+          return (
+            <div
+              key={idx}
               style={{
-                position: 'absolute',
-                left: 8,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                background: `${BT.bg.terminal}cc`,
-                border: `1px solid ${BT.border.subtle}`,
-                color: BT.text.primary,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                position: 'relative',
+                height: isMain ? 140 : 140,
+                overflow: 'hidden',
                 cursor: 'pointer',
               }}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); nextImage(); }}
-              style={{
-                position: 'absolute',
-                right: 8,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                background: `${BT.bg.terminal}cc`,
-                border: `1px solid ${BT.border.subtle}`,
-                color: BT.text.primary,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentImageIndex(idx);
               }}
             >
-              <ChevronRight size={16} />
-            </button>
-            
-            {/* Image dots */}
-            <div style={{
-              position: 'absolute',
-              bottom: 8,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              display: 'flex',
-              gap: 4,
-            }}>
-              {images.map((_, i) => (
-                <div
-                  key={i}
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: i === currentImageIndex ? BT.text.amber : BT.text.muted,
-                    transition: 'background 0.2s',
-                  }}
-                />
-              ))}
+              <img 
+                src={img?.url || `https://placehold.co/400x240/1a1f2e/4a5568?text=Image+${idx + 1}`}
+                alt={img?.caption || `Property ${idx + 1}`}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transition: 'transform 0.2s ease',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              />
+              
+              {/* Caption overlay */}
+              {img?.caption && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  padding: '16px 8px 4px',
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                  fontSize: 9,
+                  color: BT.text.secondary,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.03em',
+                }}>
+                  {img.caption}
+                </div>
+              )}
+              
+              {/* More images indicator on last slot */}
+              {idx === 2 && images.length > 3 && (
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(0,0,0,0.6)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: BT.text.primary,
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}>
+                  +{images.length - 3} more
+                </div>
+              )}
             </div>
-          </>
-        )}
-
-        {/* Address overlay */}
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '20px 12px 8px',
-          background: 'linear-gradient(transparent, rgba(0,0,0,0.8))',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}>
-          <MapPin size={12} color={BT.text.amber} />
-          <span style={{ fontSize: 11, color: BT.text.primary }}>
-            {property.address}
-          </span>
-        </div>
+          );
+        })}
+      </div>
+      
+      {/* Address bar below images */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '6px 12px',
+        background: BT.bg.header,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+      }}>
+        <MapPin size={12} color={BT.text.amber} />
+        <span style={{ fontSize: 11, color: BT.text.primary }}>
+          {property.address}
+        </span>
+        <span style={{ marginLeft: 'auto', fontSize: 10, color: BT.text.muted }}>
+          {images.length} photos
+        </span>
       </div>
 
       {/* Key Metrics Row */}
