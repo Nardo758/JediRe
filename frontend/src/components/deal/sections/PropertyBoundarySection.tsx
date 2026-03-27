@@ -942,23 +942,23 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                         </p>
                       </div>
                       <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
-                        <p className="text-xs text-gray-500">Max Stories</p>
-                        <p className="font-semibold text-gray-900">{zoningDetail.max_stories || '--'}</p>
+                        <p className="text-xs" style={{ color: BT.text.secondary }}>Max Stories</p>
+                        <p className="font-semibold" style={{ color: BT.text.primary }}>{zoningDetail.max_stories || '--'}</p>
                       </div>
                       {(zoningDetail.max_lot_coverage != null || zoningDetail.max_lot_coverage_percent != null) && (() => {
                         const raw = parseFloat(zoningDetail.max_lot_coverage || zoningDetail.max_lot_coverage_percent);
                         const pct = raw <= 1 ? raw * 100 : raw;
                         return (
                           <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
-                            <p className="text-xs text-gray-500">Lot Coverage</p>
-                            <p className="font-semibold text-gray-900">{pct.toFixed(0)}%</p>
+                            <p className="text-xs" style={{ color: BT.text.secondary }}>Lot Coverage</p>
+                            <p className="font-semibold" style={{ color: BT.text.primary }}>{pct.toFixed(0)}%</p>
                           </div>
                         );
                       })()}
                       {zoningDetail.min_parking_per_unit != null && (
                         <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
-                          <p className="text-xs text-gray-500">Parking Ratio</p>
-                          <p className="font-semibold text-gray-900">{zoningDetail.min_parking_per_unit} per unit</p>
+                          <p className="text-xs" style={{ color: BT.text.secondary }}>Parking Ratio</p>
+                          <p className="font-semibold" style={{ color: BT.text.primary }}>{zoningDetail.min_parking_per_unit} per unit</p>
                         </div>
                       )}
                     </div>
