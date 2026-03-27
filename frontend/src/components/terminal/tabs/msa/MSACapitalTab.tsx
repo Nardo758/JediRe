@@ -116,7 +116,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
           <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
             Cap Rate by Class
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <table style={{ ...terminalStyles.dataTable }}>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Class</th>
@@ -152,7 +152,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
           <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
             Buyer Composition
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <table style={{ ...terminalStyles.dataTable }}>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Type</th>
@@ -196,7 +196,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
           <DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
           Debt Market Conditions
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ ...terminalStyles.dataTable }}>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Lender Type</th>
@@ -239,7 +239,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
           <Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
           Notable Recent Transactions
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ ...terminalStyles.dataTable }}>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Property</th>

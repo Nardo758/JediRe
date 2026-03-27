@@ -220,12 +220,30 @@ export const terminalStyles = {
     fontFamily: "'JetBrains Mono', monospace",
   },
 
-  // Metric label
   metricLabel: {
     fontSize: '10px',
     fontWeight: 600,
     color: BT.text.muted,
     letterSpacing: '0.06em',
     textTransform: 'uppercase' as const,
+  },
+
+  dataTable: {
+    width: '100%' as const,
+    borderCollapse: 'collapse' as const,
+    fontSize: '11px',
+  },
+
+  metricSubtext: {
+    fontSize: '10px',
+    color: BT.text.muted,
+  },
+
+  badge: {
+    padding: '2px 6px',
+    fontSize: '10px',
+    fontWeight: 600,
+    background: BT.bg.elevated,
+    borderRadius: 0,
   },
 };

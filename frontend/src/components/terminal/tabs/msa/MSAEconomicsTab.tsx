@@ -160,7 +160,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
             <DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Income Distribution & Renter Propensity
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <table style={{ ...terminalStyles.dataTable }}>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Bracket</th>
@@ -193,7 +193,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
             <Briefcase size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Top Employers
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <table style={{ ...terminalStyles.dataTable }}>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Company</th>
@@ -224,7 +224,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
             <MapPin size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Net Migration (Top Origins)
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <table style={{ ...terminalStyles.dataTable }}>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Origin</th>

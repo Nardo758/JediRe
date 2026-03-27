@@ -120,7 +120,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
           <Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
           Under Construction Tracker
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ ...terminalStyles.dataTable }}>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
@@ -162,7 +162,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
           <CheckCircle2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
           Active Lease-Up Tracker
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ ...terminalStyles.dataTable }}>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
@@ -201,7 +201,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
           <Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
           Pipeline by Submarket
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <table style={{ ...terminalStyles.dataTable }}>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
