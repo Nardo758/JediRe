@@ -497,7 +497,7 @@ export default function TerminalPage() {
   const [gridDragOver, setGridDragOver] = useState<string|null>(null);
 
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"cards"|"detail"|"peers">("cards");
+  const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
 
   const [emailFolder, setEmailFolder] = useState("inbox");
   const [emailSearch, setEmailSearch] = useState("");
@@ -2001,21 +2001,10 @@ export default function TerminalPage() {
       : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
   };
 
-  const MARKET_CARD_DATA: {id:string;name:string;state:string;units:string;capRate:string;vacancy:string;rentGrowth:string;jedi:number}[] = [
-    {id:"atlanta-ga",name:"Atlanta",state:"GA",units:"148K",capRate:"5.2%",vacancy:"6.9%",rentGrowth:"+3.8%",jedi:82},
-    {id:"raleigh-nc",name:"Raleigh",state:"NC",units:"62K",capRate:"4.9%",vacancy:"5.1%",rentGrowth:"+4.6%",jedi:88},
-    {id:"charlotte-nc",name:"Charlotte",state:"NC",units:"78K",capRate:"5.1%",vacancy:"6.2%",rentGrowth:"+3.2%",jedi:79},
-    {id:"tampa-fl",name:"Tampa",state:"FL",units:"95K",capRate:"5.4%",vacancy:"7.3%",rentGrowth:"+2.9%",jedi:74},
-    {id:"orlando-fl",name:"Orlando",state:"FL",units:"81K",capRate:"5.3%",vacancy:"6.8%",rentGrowth:"+3.1%",jedi:76},
-    {id:"miami-fl",name:"Miami",state:"FL",units:"112K",capRate:"4.7%",vacancy:"5.5%",rentGrowth:"+5.2%",jedi:85},
-    {id:"jacksonville-fl",name:"Jacksonville",state:"FL",units:"44K",capRate:"5.6%",vacancy:"7.8%",rentGrowth:"+2.4%",jedi:71},
-  ];
-
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      {marketsView !== "cards" && (
+      {marketsView === "detail" && (
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-          <button onClick={()=>setMarketsView("cards")} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>← ALL MARKETS</button>
           <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
           <select
             value={selectedMsaId}
@@ -2026,7 +2015,7 @@ export default function TerminalPage() {
           </select>
           <div style={{flex:1}}/>
           <div style={{display:"flex",gap:2}}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers"|"cards", string][]).map(([v,label]) => (
+            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
               <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
                 {label}
               </button>
@@ -2034,45 +2023,7 @@ export default function TerminalPage() {
           </div>
         </div>
       )}
-      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
-        {marketsView === "cards" && (
-          <div style={{padding:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-              <div>
-                <span style={{fontFamily:T.font.mono,fontSize:12,fontWeight:700,color:T.text.amber,letterSpacing:1}}>TRACKED MARKETS</span>
-                <span style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,marginLeft:10}}>{MARKET_CARD_DATA.length} MSAs</span>
-              </div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))",gap:12}}>
-              {MARKET_CARD_DATA.map(m => {
-                const jediColor = m.jedi >= 80 ? T.text.green : m.jedi >= 70 ? T.text.amber : T.text.red;
-                return (
-                  <div key={m.id} onClick={()=>{setSelectedMsaId(m.id);setMarketsView("detail");}} style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,padding:14,cursor:"pointer",transition:"border-color 0.15s,box-shadow 0.15s",borderTop:`3px solid ${jediColor}`}} onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.borderColor=T.text.amber;(e.currentTarget as HTMLDivElement).style.boxShadow=`0 2px 12px ${T.text.amber}22`;}} onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.borderColor=T.border.medium;(e.currentTarget as HTMLDivElement).style.boxShadow="none";}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                      <div>
-                        <span style={{fontFamily:T.font.mono,fontSize:12,fontWeight:700,color:T.text.primary}}>{m.name}</span>
-                        <span style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,marginLeft:6}}>{m.state}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:4}}>
-                        <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted}}>JEDI</span>
-                        <span style={{fontFamily:T.font.mono,fontSize:13,fontWeight:700,color:jediColor}}>{m.jedi}</span>
-                      </div>
-                    </div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
-                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>UNITS</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:T.text.primary}}>{m.units}</div></div>
-                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>CAP RATE</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:T.text.primary}}>{m.capRate}</div></div>
-                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>VACANCY</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:T.text.primary}}>{m.vacancy}</div></div>
-                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>RENT GROWTH</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:m.rentGrowth.startsWith("+")?T.text.green:T.text.red}}>{m.rentGrowth}</div></div>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
-                      <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.amber,fontWeight:600}}>VIEW DETAIL →</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
         {marketsView === "detail" && (
           <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
         )}
