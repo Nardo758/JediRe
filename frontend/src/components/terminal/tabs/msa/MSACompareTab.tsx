@@ -355,7 +355,13 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
 
       {commentary?.peerContext && (
         <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <PeerContext peerContext={commentary.peerContext} />
+          <PeerContext
+            summary={commentary.peerContext.summary}
+            peerRank={commentary.peerContext.peerRank}
+            peerTotal={commentary.peerContext.peerTotal}
+            topPeers={commentary.peerContext.topPeers}
+            currentScore={commentary.jediScore}
+          />
         </div>
       )}
     </div>

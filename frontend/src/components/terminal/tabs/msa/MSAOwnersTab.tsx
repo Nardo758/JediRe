@@ -564,7 +564,10 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
 
       {commentary?.riskOpportunity && (
         <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <RiskOpportunity riskOpportunity={commentary.riskOpportunity} />
+          <RiskOpportunity
+            risks={commentary.riskOpportunity.risks}
+            opportunities={commentary.riskOpportunity.opportunities}
+          />
         </div>
       )}
     </div>
