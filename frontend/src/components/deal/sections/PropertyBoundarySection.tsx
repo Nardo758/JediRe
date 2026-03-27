@@ -1047,13 +1047,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                       <><Zap size={16} /> Retrieve with AI Agent</>
                     )}
                   </button>
-                  <p className="text-xs text-gray-400 text-center">
+                  <p className="text-xs text-center" style={{ color: BT.text.secondary }}>
                     AI will research {zoningInfo.code} regulations for {detectedLocation?.city || deal?.city || 'this municipality'}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-sm text-gray-400">
+                  <p className="text-sm" style={{ color: BT.text.secondary }}>
                     {detectedLocation?.hasZoningData === false 
                       ? `Zoning data not yet available for ${detectedLocation.city}` 
                       : 'Draw boundary to lookup zoning code'}
@@ -1081,9 +1081,9 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         {/* Metrics Panel */}
         <div className="space-y-3">
           {/* Site Confirmation */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
             {hasBoundary ? (
-              <div className="flex items-center gap-2 text-green-700 mb-3">
+              <div className="flex items-center gap-2 mb-3" style={{ color: BT.text.green }}>
                 <CheckCircle size={16} />
                 <h3 className="text-sm font-semibold">Site Confirmed</h3>
               </div>

@@ -89,11 +89,11 @@ interface DealTab extends Tab {
   moduleId?: ModuleId;
 }
 
-const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
-  by_right: { label: 'By-Right', color: 'bg-green-900/20 text-green-300' },
-  overlay_bonus: { label: 'Overlay Bonus', color: 'bg-blue-900/20 text-blue-300' },
-  variance: { label: 'Variance', color: 'bg-amber-900/20 text-amber-300' },
-  rezone: { label: 'Full Rezone', color: 'bg-red-900/20 text-red-300' },
+const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; bg: string; color: string }> = {
+  by_right: { label: 'By-Right', bg: BT.bg.active, color: BT.text.green },
+  overlay_bonus: { label: 'Overlay Bonus', bg: BT.bg.active, color: BT.text.cyan },
+  variance: { label: 'Variance', bg: BT.bg.active, color: BT.text.amber },
+  rezone: { label: 'Full Rezone', bg: BT.bg.active, color: BT.text.red },
 };
 
 function normalizePath(raw: string): DevelopmentPath | null {
@@ -113,7 +113,7 @@ function DevPathBadge() {
   if (!key) return null;
   const cfg = DEV_PATH_CONFIG[key];
   return (
-    <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
+    <span className="text-xs font-medium px-3 py-1" style={{ borderRadius: 2, background: cfg.bg, color: cfg.color }}>
       {cfg.label}
     </span>
   );
@@ -131,7 +131,7 @@ interface ScreenProps {
 // ─── Module-level screen wrappers (stable references — prevents remount blink) ──
 const CollaborationSection = (props: ScreenProps) => {
   const dId = props?.dealId;
-  if (!dId) return <div className="p-4 text-sm text-slate-500">No deal selected</div>;
+  if (!dId) return <div className="p-4 text-sm" style={{ color: BT.text.secondary }}>No deal selected</div>;
   return (
     <div className="p-4 space-y-4">
       <DealTeamPanel dealId={dId} />
@@ -536,8 +536,8 @@ const DealDetailPage: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-slate-500">Loading deal...</span>
+          <div className="w-8 h-8 animate-spin" style={{ borderRadius: '50%', border: `2px solid ${BT.border.subtle}`, borderTop: `2px solid ${BT.text.cyan}` }} />
+          <span className="text-sm" style={{ color: BT.text.secondary }}>Loading deal...</span>
         </div>
       </div>
     );
