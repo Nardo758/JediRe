@@ -157,7 +157,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                   {['Submarket', 'MSA', 'JEDI', 'Rent', 'Rent Δ', 'Vac', 'Props', 'Units', 'DPP', 'CPP', 'Cycle'].map((h, i) => (
                     <th key={h} style={{
                       padding: '5px 12px',
-                      textAlign: i <= 1 ? 'left' : 'right' as any,
+                      textAlign: (i <= 1 ? 'left' : 'right') as React.CSSProperties['textAlign'],
                       fontSize: 10,
                       fontWeight: 500,
                       color: BT.text.muted,
