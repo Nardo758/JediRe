@@ -293,7 +293,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
       </div>
 
       {/* Main Content: Chart+Grid LEFT | Commentary RIGHT */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Signal Chart */}
           <div style={{
