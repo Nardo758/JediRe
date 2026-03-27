@@ -223,7 +223,6 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
       {/* Header */}
       <MSAHeader 
         msa={msa} 
-        onBack={onBackToMarkets}
       />
 
       {/* Tab Bar */}

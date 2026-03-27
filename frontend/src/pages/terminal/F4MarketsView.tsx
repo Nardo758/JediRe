@@ -1,6 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import BloombergMarketDetail from "../MarketIntelligence/BloombergMarketDetail";
 import PeerComparisonPage from "../MarketIntelligence/PeerComparisonPage";
+import { MSATerminal } from "../../components/terminal/MSATerminal";
+import { SubmarketTerminal } from "../../components/terminal/SubmarketTerminal";
+import { PropertyTerminal } from "../../components/terminal/PropertyTerminal";
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 const sans: React.CSSProperties = { fontFamily: "'IBM Plex Sans',sans-serif" };
@@ -14,11 +17,6 @@ const C = {
   blue: "#3B82F6", blueBg: "#1e3a5f",
   borderS: "#1E2538", borderM: "#2A3348",
 };
-
-interface SubComp {
-  name: string; msa: string; jedi: number; rent: string; rentD: string;
-  vac: string; pipe: string; opp: number; cap: string; isSub?: boolean;
-}
 
 interface CorpHealthData {
   alerts?: Array<{ id: string; text: string; severity: string }>;
@@ -50,18 +48,6 @@ function DeltaCell({ value }: { value: string | undefined }) {
   return <span style={{ fontSize: 9, fontWeight: 600, color: pos ? C.green : neg ? C.red : C.muted, ...mono }}>{s}</span>;
 }
 
-function MiniChart({ data, color = C.green, h = 80 }: { data: number[]; color?: string; h?: number }) {
-  const mx = Math.max(...data), mn = Math.min(...data), r = mx - mn || 1;
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * 100}%,${h - 8 - ((v - mn) / r) * (h - 16)}`).join(" ");
-  const area = pts + ` 100%,${h} 0%,${h}`;
-  return (
-    <svg width="100%" height={h} style={{ display: "block" }} preserveAspectRatio="none" viewBox={`0 0 100 ${h}`}>
-      <polygon points={area} fill={color + "12"} />
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
 function ThresholdVal({ value, thresholds, invert }: { value: string; thresholds: [number, number]; invert?: boolean }) {
   const n = parseFloat(value);
   let c: string;
@@ -69,65 +55,6 @@ function ThresholdVal({ value, thresholds, invert }: { value: string; thresholds
   else c = n >= thresholds[0] ? C.green : n >= thresholds[1] ? C.amber : C.red;
   return <span style={{ fontSize: 10, fontWeight: 600, color: c, ...mono }}>{value}</span>;
 }
-
-function PressureBadge({ p }: { p: string }) {
-  const colors: Record<string, string> = { BUYER: C.green, BALANCED: C.amber, SELLER: C.cyan };
-  return <Badge label={p} color={colors[p] || C.muted} />;
-}
-
-const MSA = {
-  name: "Atlanta, GA", full: "Atlanta-Sandy Springs-Roswell MSA",
-  props: 1028, units: "250,412", jedi: 87, d30: "+4", confidence: 84,
-  rent: "$2,150", rentD: "+4.2%", vac: "5.8%", absorb: "2,840/qtr",
-  pipeline: "39,565", pipelinePct: "15.8%", moSupply: "14.1",
-  pop: "6.2M", popD: "+2.1%", jobs: "3.1M", jobsD: "+2.8%",
-  medInc: "$72,400", incD: "+3.4%", afford: "30.2%",
-  cap: "5.2%", capD: "-20bps", ppu: "$218K", ppuD: "+8.4%",
-  cycle: "EXPANSION", cycleMonth: 38,
-};
-
-const MSA_RENT = [1820,1840,1860,1880,1920,1950,1980,2010,2050,2080,2120,2150];
-const MSA_VAC = [6.8,6.6,6.4,6.2,6.0,5.9,5.8,5.7,5.6,5.6,5.7,5.8];
-
-const MSA_SIGNALS = [
-  { id: "D", name: "DEMAND", score: 82, delta: "+3", weight: 30, color: C.green, desc: "Pop +2.1%, Employment +2.8%, Net migration +14K HH/yr. Amazon HQ expansion." },
-  { id: "S", name: "SUPPLY", score: 64, delta: "-2", weight: 25, color: C.red, desc: "39,565 pipeline units (15.8% of stock). 14.1 mo supply. Past-peak permits." },
-  { id: "M", name: "MOMENTUM", score: 78, delta: "+5", weight: 20, color: C.orange, desc: "Rent growth accelerating +4.2% YoY. Txn velocity +14%. Concessions falling." },
-  { id: "P", name: "POSITION", score: 72, delta: "+1", weight: 15, color: C.purple, desc: "40th pctl nationally. Top quartile SE region. Institutional capital inflow." },
-  { id: "R", name: "RISK", score: 28, delta: "-4", weight: 10, color: C.muted, desc: "Affordability 30.2% approaching threshold. Insurance +8% cap helps. Score inverted." },
-];
-
-const SUB = {
-  name: "Midtown", msa: "Atlanta, GA", props: 52, units: "14,856",
-  jedi: 88, d30: "+3", confidence: 82,
-  rent: "$2,056", rentD: "+4.8%", rentSf: "$2.14", vac: "5.1%",
-  absorb: "3.2%/qtr", absorbUnits: "476/qtr",
-  pipeline: "1,840", pipelinePct: "12.4%", moSupply: "14",
-  opp: 82, pressure: "BUYER",
-  cap: "4.8%", capD: "-15bps", ppu: "$245K", ppuD: "+11.2%",
-  pop: "48,200", popD: "+3.8%", jobs: "142K", jobsD: "+4.2%",
-  medInc: "$86,400", afford: "28.6%", review: 4.2, reviewCt: 2840,
-  topProp: "The Metropolitan", topPCS: 94, botProp: "Midtown Terrace", botPCS: 42,
-};
-
-const SUB_RENT = [1860,1880,1900,1920,1940,1960,1975,1990,2010,2025,2040,2056];
-
-const SUB_SIGNALS = [
-  { id: "D", name: "DEMAND", score: 88, delta: "+4", weight: 30, color: C.green, desc: "Tech corridor hiring +4.2%. Piedmont Park proximity. Walk score 92." },
-  { id: "S", name: "SUPPLY", score: 68, delta: "-1", weight: 25, color: C.orange, desc: "1,840 pipeline units (12.4%). Midtown Union Phase II delivers Q3 2026." },
-  { id: "M", name: "MOMENTUM", score: 84, delta: "+6", weight: 20, color: C.green, desc: "Rent growth +4.8% — fastest in MSA. Concessions at 18-mo low." },
-  { id: "P", name: "POSITION", score: 78, delta: "+2", weight: 15, color: C.purple, desc: "Top submarket by PCS. 12 of top-20 MSA properties located here." },
-  { id: "R", name: "RISK", score: 32, delta: "-3", weight: 10, color: C.muted, desc: "High price point ($245K/unit) limits exit buyer pool. Score inverted." },
-];
-
-const SUB_COMPS: SubComp[] = [
-  { name: "Midtown", msa: "Atlanta", jedi: 88, rent: "$2,056", rentD: "+4.8%", vac: "5.1%", pipe: "12.4%", opp: 82, cap: "4.8%", isSub: true },
-  { name: "Buckhead", msa: "Atlanta", jedi: 84, rent: "$1,883", rentD: "+2.1%", vac: "6.2%", pipe: "8.8%", opp: 78, cap: "5.0%" },
-  { name: "Sandy Springs", msa: "Atlanta", jedi: 81, rent: "$1,920", rentD: "+3.4%", vac: "5.8%", pipe: "10.2%", opp: 74, cap: "5.2%" },
-  { name: "Decatur", msa: "Atlanta", jedi: 83, rent: "$1,890", rentD: "+3.8%", vac: "4.8%", pipe: "5.4%", opp: 84, cap: "5.0%" },
-  { name: "West End", msa: "Atlanta", jedi: 79, rent: "$1,977", rentD: "+5.2%", vac: "6.8%", pipe: "6.2%", opp: 86, cap: "5.4%" },
-  { name: "Downtown", msa: "Atlanta", jedi: 76, rent: "$1,542", rentD: "+2.8%", vac: "7.2%", pipe: "14.8%", opp: 68, cap: "5.6%" },
-];
 
 const MSA_OPTIONS = [
   { id: "atlanta-ga", name: "Atlanta, GA" },
@@ -139,412 +66,670 @@ const MSA_OPTIONS = [
   { id: "jacksonville-fl", name: "Jacksonville, FL" },
 ];
 
-function MSAOverview({ onDrillToSubmarket }: { onDrillToSubmarket: () => void }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1, background: C.borderS, flex: 1, overflow: "auto" }}>
-      <div style={{ background: C.panel, padding: "12px 16px" }}>
-        <div style={{ fontSize: 9, letterSpacing: 2, color: C.amber, marginBottom: 6, ...mono }}>MARKET PRIMER · ATLANTA MSA</div>
-        <p style={{ fontSize: 11, color: C.secondary, lineHeight: 1.7, margin: 0, ...sans }}>
-          Atlanta is a <span style={{ color: C.primary, fontWeight: 600 }}>6.2M-person MSA</span> tracking <span style={{ color: C.cyan }}>{MSA.props.toLocaleString()} properties</span> and <span style={{ color: C.cyan }}>{MSA.units} units</span> across 8 submarkets.
-          The market is in <span style={{ color: C.green }}>month 38 of an expansion cycle</span> — employment growing <span style={{ color: C.green }}>+2.8% YoY</span> (14th consecutive positive month), population <span style={{ color: C.green }}>+2.1%</span> (3x national avg), and median household income <span style={{ color: C.green }}>+3.4%</span>.
-          Average effective rent reached <span style={{ color: C.green }}>$2,150/mo (+4.2% YoY)</span> with vacancy tightening to <span style={{ color: C.green }}>5.8%</span> — a 3-year low.
-          <span style={{ color: C.orange }}> Primary risk: </span> supply pipeline is elevated at <span style={{ color: C.orange }}>15.8% of existing stock</span> ({MSA.pipeline} units), translating to <span style={{ color: C.orange }}>14.1 months of supply</span> at current absorption.
-          However, absorption remains strong at <span style={{ color: C.green }}>2,840 units/quarter</span> and permit velocity is decelerating — suggesting past-peak supply.
-          <span style={{ color: C.amber }}> Affordability watch: </span> rent-to-income at 30.2%, approaching the 30% burdened threshold. Rent growth (+4.2%) is outpacing wage growth (+3.4%) for 2 consecutive quarters.
-          Platform JEDI Score: <span style={{ color: C.green, fontWeight: 600 }}>87 (+4 over 30d)</span> — Strong Opportunity. Best submarkets: Midtown (88), Decatur (83), Buckhead (84).
-        </p>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1 }}>
-        <div style={{ background: C.panel, padding: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: C.muted, ...mono }}>AVG RENT · 12MO</span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["1Y","3Y","5Y"].map((p,i) => <span key={i} style={{ fontSize: 7, padding: "1px 4px", background: i === 0 ? C.amber : "transparent", color: i === 0 ? C.bg : C.muted, ...mono, cursor: "pointer" }}>{p}</span>)}
-            </div>
-          </div>
-          <MiniChart data={MSA_RENT} color={C.green} h={90} />
-          <div style={{ marginTop: 8, borderTop: `1px solid ${C.borderS}`, paddingTop: 6 }}>
-            {[
-              { l: "Current Avg Rent", v: MSA.rent }, { l: "Rent Growth YoY", v: MSA.rentD, c: C.green },
-              { l: "Avg Rent/SF", v: "$1.92" }, { l: "vs National Avg", v: "+12.4%", c: C.green },
-              { l: "Concession Rate", v: "2.4%" }, { l: "RevPAU (Market)", v: "$1,986" },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-                <span style={{ fontSize: 9, color: C.muted, ...mono }}>{m.l}</span>
-                <span style={{ fontSize: 9, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ background: C.panel, padding: 14 }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: C.cyan, ...mono }}>SUPPLY-DEMAND BALANCE</span>
-          <div style={{ marginTop: 8 }}>
-            {[
-              { l: "Vacancy Rate", v: MSA.vac, c: C.green, spark: MSA_VAC as number[] | undefined }, { l: "Net Absorption", v: MSA.absorb },
-              { l: "Pipeline Units", v: MSA.pipeline }, { l: "Pipeline %", v: MSA.pipelinePct, c: C.orange },
-              { l: "Months of Supply", v: MSA.moSupply, c: C.orange }, { l: "Permit Velocity", v: "-8.2% YoY", c: C.green },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {m.spark && <Spark data={m.spark} color={m.c || C.green} />}
-                  <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.borderM}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: C.amber, ...mono }}>TRANSACTION ACTIVITY</span>
-            <div style={{ marginTop: 4 }}>
-              {[
-                { l: "Avg Cap Rate", v: MSA.cap }, { l: "Cap Δ YoY", v: MSA.capD, c: C.green },
-                { l: "Avg $/Unit", v: MSA.ppu }, { l: "$/Unit Δ YoY", v: MSA.ppuD, c: C.green },
-                { l: "Txn Volume (12mo)", v: "$4.2B" }, { l: "Deals Closed", v: "127" },
-              ].map((m,i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                  <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ background: C.panel, padding: 14 }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: C.muted, ...mono }}>ECONOMIC PROFILE</span>
-          <div style={{ marginTop: 8 }}>
-            {[
-              { l: "Population", v: MSA.pop }, { l: "Pop Growth", v: MSA.popD, c: C.green },
-              { l: "Employment", v: MSA.jobs }, { l: "Job Growth", v: MSA.jobsD, c: C.green },
-              { l: "Median HH Income", v: MSA.medInc }, { l: "Income Growth", v: MSA.incD, c: C.green },
-              { l: "Rent/Income Ratio", v: MSA.afford, c: C.orange }, { l: "Jobs/Apt Ratio", v: "5.8x" },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.borderM}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: C.purple, ...mono }}>CYCLE POSITION</span>
-            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-              <Badge label={MSA.cycle} color={C.green} />
-              <span style={{ fontSize: 9, color: C.secondary, ...mono }}>Month {MSA.cycleMonth}</span>
-            </div>
-            <div style={{ marginTop: 6, height: 6, background: C.bg, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ width: "65%", height: "100%", background: `linear-gradient(90deg, ${C.green}, ${C.amber})`, borderRadius: 3 }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-              {["Trough","Expansion","Peak","Contraction"].map((l,i) => <span key={i} style={{ fontSize: 7, color: C.muted, ...mono }}>{l}</span>)}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 1 }}>
-        <div style={{ background: C.panel, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <div style={{ fontSize: 8, color: C.muted, letterSpacing: 1.5, ...mono }}>MARKET JEDI</div>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", border: `3px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: `0 0 16px ${C.green}33` }}>
-            <span style={{ fontSize: 26, fontWeight: 800, color: C.green }}>{MSA.jedi}</span>
-            <span style={{ fontSize: 8, color: C.green, fontWeight: 600, ...mono }}>{MSA.d30} 30d</span>
-          </div>
-          <span style={{ fontSize: 8, color: C.muted, ...mono }}>Conf: {MSA.confidence}%</span>
-        </div>
-        <div style={{ background: C.panel, padding: 12 }}>
-          {MSA_SIGNALS.map(s => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-              <span style={{ fontSize: 8, color: C.muted, minWidth: 78, ...mono }}>{s.name} ({s.weight}%)</span>
-              <div style={{ flex: "0 0 120px", height: 5, background: C.bg, borderRadius: 1 }}>
-                <div style={{ height: "100%", width: `${s.score}%`, background: s.score >= 70 ? C.green : s.score >= 50 ? C.amber : C.red, borderRadius: 1 }} />
-              </div>
-              <ScoreCell value={s.score} size={10} />
-              <DeltaCell value={s.delta} />
-              <span style={{ fontSize: 8, color: C.muted, flex: 1, ...sans }}>{s.desc}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ background: C.panel, padding: "8px 12px", display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onDrillToSubmarket} style={{ ...mono, fontSize: 8, fontWeight: 700, letterSpacing: 1, color: C.bg, background: C.amber, border: "none", padding: "4px 12px", cursor: "pointer" }}>DRILL TO SUBMARKETS ▸</button>
-        </div>
-      </div>
-    </div>
-  );
+interface TrackedMarket {
+  id: string;
+  rank: number;
+  starred: boolean;
+  msa: string;
+  props: number;
+  units: string;
+  jedi: number;
+  d30: number;
+  trend: number[];
+  rent: string;
+  rentNum: number;
+  rentD: string;
+  vac: string;
+  vacNum: number;
+  absorb: string;
+  absorbNum: number;
+  pipeline: string;
+  pipelineNum: number;
+  costs: string;
+  costsNum: number;
+  dApt: string;
+  dAptNum: number;
+  popD: string;
+  popDNum: number;
+  medInc: string;
+  medIncNum: number;
+  cap: string;
+  capNum: number;
+  cycle: string;
 }
 
-function SubmarketOverview({ onBack }: { onBack: () => void }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1, background: C.borderS, flex: 1, overflow: "auto" }}>
-      <div style={{ background: C.panel, padding: "12px 16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <span style={{ fontSize: 9, letterSpacing: 2, color: C.amber, ...mono }}>SUBMARKET PRIMER · MIDTOWN, ATLANTA</span>
-          <button onClick={onBack} style={{ ...mono, fontSize: 8, fontWeight: 700, letterSpacing: 1, color: C.amber, background: "transparent", border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer" }}>◂ BACK TO MSA</button>
-        </div>
-        <p style={{ fontSize: 11, color: C.secondary, lineHeight: 1.7, margin: 0, ...sans }}>
-          Midtown is Atlanta's <span style={{ color: C.primary, fontWeight: 600 }}>premier multifamily submarket</span> with <span style={{ color: C.cyan }}>52 properties</span> totaling <span style={{ color: C.cyan }}>14,856 units</span>.
-          The submarket sits at the center of Atlanta's tech corridor with a <span style={{ color: C.green }}>walk score of 92</span> and direct Piedmont Park adjacency — commanding the MSA's highest rents at <span style={{ color: C.green }}>$2,056/mo (+4.8% YoY)</span>, the fastest growth rate in the metro.
-          Vacancy at <span style={{ color: C.green }}>5.1%</span> is the tightest in the MSA, and absorption at <span style={{ color: C.green }}>3.2%/quarter</span> is outpacing new deliveries.
-          <span style={{ color: C.orange }}> Supply watch: </span> 1,840 pipeline units (12.4% of stock) with Midtown Union Phase II (380 units) delivering Q3 2026 as the largest single project.
-          Buyer/seller pressure is firmly <span style={{ color: C.green }}>BUYER-dominated</span> — institutional capital is competing aggressively, compressing cap rates to <span style={{ color: C.primary }}>4.8% (-15bps YoY)</span>.
-          The top-ranked property is <span style={{ color: C.amberBright }}>The Metropolitan (PCS 94)</span>. The lowest is <span style={{ color: C.red }}>Midtown Terrace (PCS 42)</span> — a potential <span style={{ color: C.green }}>acquisition target</span> underperforming its vantage group.
-          Opportunity Score: <span style={{ color: C.green, fontWeight: 600 }}>82/100</span>. The combination of tight vacancy, accelerating rents, and institutional demand makes this the MSA's strongest deployment submarket.
-        </p>
-      </div>
+const TRACKED_MARKETS: TrackedMarket[] = [
+  { id: "atlanta-ga", rank: 1, starred: true, msa: "Atlanta, GA", props: 1028, units: "250K", jedi: 87, d30: 4, trend: [78,80,82,83,84,85,86,87], rent: "$2,150", rentNum: 2150, rentD: "+4.2%", vac: "5.8%", vacNum: 5.8, absorb: "2,840", absorbNum: 2840, pipeline: "15.8%", pipelineNum: 15.8, costs: "$8,200", costsNum: 8200, dApt: "58", dAptNum: 58, popD: "+2.1%", popDNum: 2.1, medInc: "$72,400", medIncNum: 72400, cap: "5.2%", capNum: 5.2, cycle: "EXPANSION" },
+  { id: "raleigh-nc", rank: 2, starred: true, msa: "Raleigh, NC", props: 480, units: "98K", jedi: 85, d30: 3, trend: [76,78,80,81,82,83,84,85], rent: "$1,740", rentNum: 1740, rentD: "+3.9%", vac: "6.2%", vacNum: 6.2, absorb: "1,120", absorbNum: 1120, pipeline: "11.8%", pipelineNum: 11.8, costs: "$7,200", costsNum: 7200, dApt: "72", dAptNum: 72, popD: "+2.8%", popDNum: 2.8, medInc: "$78,200", medIncNum: 78200, cap: "5.0%", capNum: 5.0, cycle: "EXPANSION" },
+  { id: "tampa-fl", rank: 3, starred: true, msa: "Tampa, FL", props: 892, units: "215K", jedi: 82, d30: 2, trend: [74,76,78,79,80,81,81,82], rent: "$1,908", rentNum: 1908, rentD: "+3.0%", vac: "6.5%", vacNum: 6.5, absorb: "2,150", absorbNum: 2150, pipeline: "13.4%", pipelineNum: 13.4, costs: "$9,100", costsNum: 9100, dApt: "64", dAptNum: 64, popD: "+1.9%", popDNum: 1.9, medInc: "$65,800", medIncNum: 65800, cap: "5.4%", capNum: 5.4, cycle: "LATE EXP" },
+  { id: "jacksonville-fl", rank: 4, starred: false, msa: "Jacksonville, FL", props: 386, units: "82K", jedi: 80, d30: 5, trend: [68,70,72,74,76,78,79,80], rent: "$1,580", rentNum: 1580, rentD: "+3.8%", vac: "5.4%", vacNum: 5.4, absorb: "980", absorbNum: 980, pipeline: "9.2%", pipelineNum: 9.2, costs: "$6,400", costsNum: 6400, dApt: "76", dAptNum: 76, popD: "+2.4%", popDNum: 2.4, medInc: "$64,200", medIncNum: 64200, cap: "5.8%", capNum: 5.8, cycle: "EXPANSION" },
+  { id: "orlando-fl", rank: 5, starred: false, msa: "Orlando, FL", props: 714, units: "178K", jedi: 78, d30: 1, trend: [72,73,74,75,76,77,77,78], rent: "$1,820", rentNum: 1820, rentD: "+2.4%", vac: "7.1%", vacNum: 7.1, absorb: "1,680", absorbNum: 1680, pipeline: "16.2%", pipelineNum: 16.2, costs: "$8,600", costsNum: 8600, dApt: "48", dAptNum: 48, popD: "+1.7%", popDNum: 1.7, medInc: "$62,400", medIncNum: 62400, cap: "5.6%", capNum: 5.6, cycle: "PEAK" },
+  { id: "miami-fl", rank: 6, starred: false, msa: "Miami, FL", props: 1245, units: "310K", jedi: 74, d30: -2, trend: [80,79,78,77,76,75,74,74], rent: "$2,480", rentNum: 2480, rentD: "+1.2%", vac: "8.4%", vacNum: 8.4, absorb: "1,920", absorbNum: 1920, pipeline: "18.6%", pipelineNum: 18.6, costs: "$12,200", costsNum: 12200, dApt: "38", dAptNum: 38, popD: "+0.8%", popDNum: 0.8, medInc: "$58,900", medIncNum: 58900, cap: "5.0%", capNum: 5.0, cycle: "PEAK" },
+];
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1 }}>
-        <div style={{ background: C.panel, padding: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: C.muted, ...mono }}>SUBMARKET RENT · 12MO</span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["1Y","3Y","5Y"].map((p,i) => <span key={i} style={{ fontSize: 7, padding: "1px 4px", background: i === 0 ? C.amber : "transparent", color: i === 0 ? C.bg : C.muted, ...mono, cursor: "pointer" }}>{p}</span>)}
-            </div>
-          </div>
-          <MiniChart data={SUB_RENT} color={C.green} h={90} />
-          <div style={{ marginTop: 8, borderTop: `1px solid ${C.borderS}`, paddingTop: 6 }}>
-            {[
-              { l: "Avg Rent", v: SUB.rent }, { l: "Rent Growth YoY", v: SUB.rentD, c: C.green },
-              { l: "Rent/SF", v: SUB.rentSf }, { l: "vs MSA Avg", v: "+$106 (+5.4%)", c: C.green },
-              { l: "RevPAU", v: "$1,951" }, { l: "Concession Rate", v: "1.8%" },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-                <span style={{ fontSize: 9, color: C.muted, ...mono }}>{m.l}</span>
-                <span style={{ fontSize: 9, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+type SortKey = "rank" | "msa" | "props" | "jedi" | "d30" | "rentNum" | "vacNum" | "absorbNum" | "pipelineNum" | "costsNum" | "dAptNum" | "popDNum" | "medIncNum" | "capNum" | "cycle";
 
-        <div style={{ background: C.panel, padding: 14 }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: C.cyan, ...mono }}>SUPPLY-DEMAND</span>
-          <div style={{ marginTop: 6 }}>
-            {[
-              { l: "Vacancy", v: SUB.vac, c: C.green }, { l: "Absorption", v: SUB.absorb },
-              { l: "Absorption (units)", v: SUB.absorbUnits }, { l: "Pipeline Units", v: SUB.pipeline },
-              { l: "Pipeline %", v: SUB.pipelinePct, c: C.orange }, { l: "Months Supply", v: SUB.moSupply, c: C.orange },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px solid ${C.borderM}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: C.amber, ...mono }}>TRANSACTIONS</span>
-            <div style={{ marginTop: 4 }}>
-              {[
-                { l: "Avg Cap Rate", v: SUB.cap }, { l: "Cap Δ", v: SUB.capD, c: C.green },
-                { l: "Avg $/Unit", v: SUB.ppu }, { l: "$/Unit Δ", v: SUB.ppuD, c: C.green },
-              ].map((m,i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                  <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 8, color: C.muted, ...mono }}>Pressure:</span>
-              <PressureBadge p={SUB.pressure} />
-            </div>
-          </div>
-        </div>
+const COL_DEFS: { key: SortKey; label: string; w: number; align?: "right" }[] = [
+  { key: "rank", label: "#", w: 28 },
+  { key: "msa", label: "MSA", w: 120 },
+  { key: "props", label: "PROPS", w: 52, align: "right" },
+  { key: "jedi", label: "JEDI\u25BC", w: 48, align: "right" },
+  { key: "d30", label: "\u039430", w: 36, align: "right" },
+  { key: "rentNum", label: "RENT", w: 56, align: "right" },
+  { key: "vacNum", label: "RENT \u0394", w: 48, align: "right" },
+  { key: "absorbNum", label: "VAC", w: 42, align: "right" },
+  { key: "pipelineNum", label: "ABSORB", w: 52, align: "right" },
+  { key: "costsNum", label: "PIPELN", w: 52, align: "right" },
+  { key: "dAptNum", label: "COSTS", w: 52, align: "right" },
+  { key: "popDNum", label: "$/APT", w: 42, align: "right" },
+  { key: "medIncNum", label: "POP \u0394", w: 48, align: "right" },
+  { key: "capNum", label: "MED INC", w: 56, align: "right" },
+];
 
-        <div style={{ background: C.panel, padding: 14 }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: C.muted, ...mono }}>DEMOGRAPHICS</span>
-          <div style={{ marginTop: 6 }}>
-            {[
-              { l: "Population", v: SUB.pop }, { l: "Pop Growth", v: SUB.popD, c: C.green },
-              { l: "Employment", v: SUB.jobs }, { l: "Job Growth", v: SUB.jobsD, c: C.green },
-              { l: "Med. HH Income", v: SUB.medInc }, { l: "Affordability", v: SUB.afford, c: C.green },
-              { l: "Avg Review", v: `${SUB.review}/5 (${SUB.reviewCt} reviews)` },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>{m.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: m.c || C.primary, ...mono }}>{m.v}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px solid ${C.borderM}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: C.purple, ...mono }}>POWER RANKINGS</span>
-            <div style={{ marginTop: 4 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>Top Property</span>
-                <span style={{ fontSize: 9, color: C.green, fontWeight: 600, ...mono }}>{SUB.topProp} (PCS {SUB.topPCS})</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>Bottom Property</span>
-                <span style={{ fontSize: 9, color: C.red, fontWeight: 600, ...mono }}>{SUB.botProp} (PCS {SUB.botPCS})</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-                <span style={{ fontSize: 9, color: C.secondary, ...sans }}>Opp Score</span>
-                <ScoreCell value={SUB.opp} size={12} />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 1 }}>
-        <div style={{ background: C.panel, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <div style={{ fontSize: 8, color: C.muted, letterSpacing: 1.5, ...mono }}>SUBMARKET JEDI</div>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", border: `3px solid ${C.green}`, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: `0 0 16px ${C.green}33` }}>
-            <span style={{ fontSize: 26, fontWeight: 800, color: C.green }}>{SUB.jedi}</span>
-            <span style={{ fontSize: 8, color: C.green, fontWeight: 600, ...mono }}>{SUB.d30} 30d</span>
-          </div>
-          <span style={{ fontSize: 8, color: C.muted, ...mono }}>Conf: {SUB.confidence}%</span>
-        </div>
-        <div style={{ background: C.panel, padding: 12 }}>
-          {SUB_SIGNALS.map(s => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-              <span style={{ fontSize: 8, color: C.muted, minWidth: 78, ...mono }}>{s.name} ({s.weight}%)</span>
-              <div style={{ flex: "0 0 120px", height: 5, background: C.bg, borderRadius: 1 }}>
-                <div style={{ height: "100%", width: `${s.score}%`, background: s.score >= 70 ? C.green : s.score >= 50 ? C.amber : C.red, borderRadius: 1 }} />
-              </div>
-              <ScoreCell value={s.score} size={10} />
-              <DeltaCell value={s.delta} />
-              <span style={{ fontSize: 8, color: C.muted, flex: 1, ...sans }}>{s.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ background: C.panel }}>
-        <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.borderS}` }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: C.muted, ...mono }}>PEER COMPARISON · SUBMARKETS IN MSA</span>
-        </div>
-        <div style={{ display: "flex", background: C.header, borderBottom: `1px solid ${C.borderM}` }}>
-          {[{ l: "Submarket", w: 110 },{ l: "JEDI", w: 44 },{ l: "Rent", w: 60 },{ l: "Rent Δ", w: 48 },{ l: "Vac", w: 44 },{ l: "Pipe %", w: 48 },{ l: "Opp", w: 40 },{ l: "Cap", w: 40 }].map((c,i) => (
-            <div key={i} style={{ width: c.w, minWidth: c.w, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: C.muted, letterSpacing: 0.5, borderRight: `1px solid ${C.borderS}`, ...mono }}>{c.l}</div>
-          ))}
-        </div>
-        {SUB_COMPS.map((c,i) => (
-          <div key={i} style={{ display: "flex", background: c.isSub ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt, borderBottom: `1px solid ${C.borderS}`, borderLeft: c.isSub ? `2px solid ${C.amber}` : "2px solid transparent", cursor: "pointer" }}
-            onMouseEnter={e => { if (!c.isSub) (e.currentTarget as HTMLDivElement).style.background = C.hover; }}
-            onMouseLeave={e => { if (!c.isSub) (e.currentTarget as HTMLDivElement).style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}>
-            <div style={{ width: 110, minWidth: 110, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}>
-              <span style={{ fontSize: 9, fontWeight: c.isSub ? 700 : 500, color: c.isSub ? C.amberBright : C.primary, ...sans }}>{c.name}</span>
-            </div>
-            <div style={{ width: 44, minWidth: 44, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}><ScoreCell value={c.jedi} /></div>
-            <div style={{ width: 60, minWidth: 60, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}><span style={{ fontSize: 10, fontWeight: 600, color: C.primary, ...mono }}>{c.rent}</span></div>
-            <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}><DeltaCell value={c.rentD} /></div>
-            <div style={{ width: 44, minWidth: 44, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}><ThresholdVal value={c.vac} thresholds={[5,8]} invert /></div>
-            <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}><ThresholdVal value={c.pipe} thresholds={[8,12]} invert /></div>
-            <div style={{ width: 40, minWidth: 40, padding: "4px 6px", borderRight: `1px solid ${C.borderS}` }}><ScoreCell value={c.opp} size={9} /></div>
-            <div style={{ width: 40, minWidth: 40, padding: "4px 6px" }}><span style={{ fontSize: 9, color: C.secondary, ...mono }}>{c.cap}</span></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+function computeMedian(markets: TrackedMarket[]) {
+  const med = (vals: number[]) => { const s = [...vals].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  return {
+    jedi: Math.round(med(markets.map(m => m.jedi))),
+    rent: `$${Math.round(med(markets.map(m => m.rentNum))).toLocaleString()}`,
+    rentD: `+${med(markets.map(m => parseFloat(m.rentD))).toFixed(1)}%`,
+    vac: `${med(markets.map(m => m.vacNum)).toFixed(1)}%`,
+    absorb: Math.round(med(markets.map(m => m.absorbNum))).toLocaleString(),
+    pipeline: `${med(markets.map(m => m.pipelineNum)).toFixed(1)}%`,
+    costs: `$${Math.round(med(markets.map(m => m.costsNum))).toLocaleString()}`,
+    dApt: Math.round(med(markets.map(m => m.dAptNum))).toString(),
+    popD: `+${med(markets.map(m => m.popDNum)).toFixed(1)}%`,
+    medInc: `$${Math.round(med(markets.map(m => m.medIncNum))).toLocaleString()}`,
+    cap: `${med(markets.map(m => m.capNum)).toFixed(1)}%`,
+  };
 }
+
+const SUBMARKET_INDEX = [
+  { name: "Midtown", msa: "Atlanta, GA", jedi: 88, rent: "$2,056", rentD: "+4.8%", vac: "5.1%", props: 52, units: "14.8K", opp: 82, cap: "4.8%", cycle: "EXPANSION" },
+  { name: "Buckhead", msa: "Atlanta, GA", jedi: 84, rent: "$1,883", rentD: "+2.1%", vac: "6.2%", props: 38, units: "11.2K", opp: 78, cap: "5.0%", cycle: "EXPANSION" },
+  { name: "Sandy Springs", msa: "Atlanta, GA", jedi: 81, rent: "$1,920", rentD: "+3.4%", vac: "5.8%", props: 44, units: "12.6K", opp: 74, cap: "5.2%", cycle: "EXPANSION" },
+  { name: "Downtown Tampa", msa: "Tampa, FL", jedi: 80, rent: "$1,850", rentD: "+3.2%", vac: "6.8%", props: 62, units: "18.4K", opp: 72, cap: "5.4%", cycle: "LATE EXP" },
+  { name: "Ybor City", msa: "Tampa, FL", jedi: 78, rent: "$1,720", rentD: "+4.1%", vac: "5.6%", props: 28, units: "8.2K", opp: 80, cap: "5.6%", cycle: "EXPANSION" },
+  { name: "South Beach", msa: "Miami, FL", jedi: 76, rent: "$2,890", rentD: "+0.8%", vac: "9.2%", props: 45, units: "15.6K", opp: 62, cap: "4.6%", cycle: "PEAK" },
+  { name: "Brickell", msa: "Miami, FL", jedi: 74, rent: "$3,120", rentD: "+0.4%", vac: "8.8%", props: 52, units: "18.2K", opp: 58, cap: "4.4%", cycle: "PEAK" },
+  { name: "Downtown Raleigh", msa: "Raleigh, NC", jedi: 86, rent: "$1,680", rentD: "+4.2%", vac: "5.4%", props: 32, units: "9.8K", opp: 84, cap: "5.2%", cycle: "EXPANSION" },
+];
+
+const PROPERTY_INDEX = [
+  { name: "The Metropolitan", submarket: "Midtown", msa: "Atlanta, GA", jedi: 94, units: 412, rent: "$2,450", occ: "96.2%", capRate: "4.6%", vintage: 2019, owner: "Greystar" },
+  { name: "Avalon Buckhead", submarket: "Buckhead", msa: "Atlanta, GA", jedi: 91, units: 380, rent: "$2,280", occ: "95.8%", capRate: "4.8%", vintage: 2017, owner: "AvalonBay" },
+  { name: "Camden Midtown", submarket: "Midtown", msa: "Atlanta, GA", jedi: 89, units: 305, rent: "$2,120", occ: "94.6%", capRate: "5.0%", vintage: 2015, owner: "Camden" },
+  { name: "Channel District Lofts", submarket: "Downtown Tampa", msa: "Tampa, FL", jedi: 85, units: 248, rent: "$1,920", occ: "93.4%", capRate: "5.2%", vintage: 2018, owner: "ZOM Living" },
+  { name: "Soleste Grand Central", submarket: "Brickell", msa: "Miami, FL", jedi: 82, units: 360, rent: "$3,280", occ: "91.2%", capRate: "4.4%", vintage: 2021, owner: "Estate" },
+  { name: "The Edison", submarket: "Downtown Raleigh", msa: "Raleigh, NC", jedi: 88, units: 280, rent: "$1,780", occ: "95.2%", capRate: "5.0%", vintage: 2020, owner: "Crescent" },
+  { name: "Midtown Terrace", submarket: "Midtown", msa: "Atlanta, GA", jedi: 42, units: 180, rent: "$1,420", occ: "88.4%", capRate: "6.2%", vintage: 1998, owner: "Local LLC" },
+  { name: "Nocatee Town Center", submarket: "Nocatee", msa: "Jacksonville, FL", jedi: 84, units: 320, rent: "$1,650", occ: "96.8%", capRate: "5.4%", vintage: 2022, owner: "NexMetro" },
+];
+
+type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
+type PrimaryTab = "overview" | "market-detail" | "peer-comp";
+type SubTab = "mkt-detail" | "msa-index" | "watchlist" | "submarket" | "property-stock";
 
 interface F4MarketsViewProps {
   corpHealthData?: CorpHealthData;
-  marketId?: string;
-  marketName?: string;
 }
 
-type F4Level = "msa" | "submarket" | "detail" | "peers";
+export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
+  const [level, setLevel] = useState<DrillLevel>("landing");
+  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("overview");
+  const [subTab, setSubTab] = useState<SubTab>("msa-index");
+  const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
+  const [drillMsaId, setDrillMsaId] = useState("");
+  const [drillMsaName, setDrillMsaName] = useState("");
+  const [drillSubmarketId, setDrillSubmarketId] = useState("");
+  const [drillPropertyId, setDrillPropertyId] = useState("");
+  const [sortCol, setSortCol] = useState<SortKey>("jedi");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [marketSearch, setMarketSearch] = useState("");
+  const [marketDropdownOpen, setMarketDropdownOpen] = useState(false);
 
-export default function F4MarketsView({ corpHealthData, marketId, marketName }: F4MarketsViewProps) {
-  const [level, setLevel] = useState<F4Level>("msa");
-  const [priorLevel, setPriorLevel] = useState<"msa" | "submarket">("msa");
-  const [selectedMsaId, setSelectedMsaId] = useState(marketId || "atlanta-ga");
+  const selectedMsa = MSA_OPTIONS.find(m => m.id === selectedMsaId) || MSA_OPTIONS[0];
+  const selectedMarketData = TRACKED_MARKETS.find(m => m.id === selectedMsaId);
 
-  const goToDetail = (target: "detail" | "peers") => {
-    if (level === "msa" || level === "submarket") setPriorLevel(level);
-    setLevel(target);
+  const sorted = useMemo(() => {
+    const s = [...TRACKED_MARKETS];
+    s.sort((a, b) => {
+      const av = a[sortCol as keyof TrackedMarket];
+      const bv = b[sortCol as keyof TrackedMarket];
+      if (typeof av === "number" && typeof bv === "number") return sortDir === "asc" ? av - bv : bv - av;
+      if (typeof av === "string" && typeof bv === "string") return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      return 0;
+    });
+    return s;
+  }, [sortCol, sortDir]);
+
+  const median = useMemo(() => computeMedian(TRACKED_MARKETS), []);
+
+  const handleSort = (col: SortKey) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("desc"); }
   };
 
-  const isSubmarket = level === "submarket" || (level !== "msa" && priorLevel === "submarket");
-  const lvl = isSubmarket ? SUB : MSA;
+  const handleDrillToMsa = (marketId: string) => {
+    const mkt = TRACKED_MARKETS.find(m => m.id === marketId);
+    setDrillMsaId(marketId);
+    setDrillMsaName(mkt?.msa || marketId);
+    setLevel("msa-terminal");
+  };
+
+  const handleSubmarketSelect = (submarketId: string) => {
+    setDrillSubmarketId(submarketId);
+    setLevel("submarket-terminal");
+  };
+
+  const handlePropertySelect = (propertyId: string) => {
+    setDrillPropertyId(propertyId);
+    setLevel("property-terminal");
+  };
+
+  const cycleColor = (c: string) => {
+    if (c === "EXPANSION") return C.green;
+    if (c === "LATE EXP") return C.amber;
+    if (c === "PEAK") return C.orange;
+    if (c === "CONTRACTION") return C.red;
+    return C.muted;
+  };
+
+  if (level === "msa-terminal") {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+          <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+            ← ALL MARKETS
+          </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>|</span>
+          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillMsaName.toUpperCase()} MSA</span>
+        </div>
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <MSATerminal
+            msaId={drillMsaId}
+            onSubmarketSelect={handleSubmarketSelect}
+            onPropertySelect={handlePropertySelect}
+            onBackToMarkets={() => setLevel("landing")}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (level === "submarket-terminal") {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+          <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+            ← ALL MARKETS
+          </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
+            {drillMsaName.toUpperCase()}
+          </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>SUBMARKET</span>
+        </div>
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <SubmarketTerminal
+            submarketId={drillSubmarketId}
+            onPropertySelect={handlePropertySelect}
+            onMsaNavigate={() => setLevel("msa-terminal")}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (level === "property-terminal") {
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+          <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+            ← ALL MARKETS
+          </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
+            {drillMsaName.toUpperCase()}
+          </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.cyan, border: "none", padding: "2px 6px", cursor: "pointer" }}>
+            SUBMARKET
+          </button>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>PROPERTY</span>
+        </div>
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <PropertyTerminal dealId={drillPropertyId} />
+        </div>
+      </div>
+    );
+  }
+
+  const filteredMsaOptions = MSA_OPTIONS.filter(m =>
+    m.name.toLowerCase().includes(marketSearch.toLowerCase())
+  );
+
+  const renderContent = () => {
+    if (primaryTab === "market-detail") {
+      return <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={corpHealthData} />;
+    }
+    if (primaryTab === "peer-comp") {
+      return <PeerComparisonPage embedded onViewDetail={() => setPrimaryTab("market-detail")} />;
+    }
+
+    if (subTab === "mkt-detail") {
+      return <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={corpHealthData} />;
+    }
+
+    if (subTab === "msa-index") {
+      return (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>All Markets</span>
+              <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {TRACKED_MARKETS.length} tracked markets · Sort by any column · Double-click row to drill to submarkets</span>
+            </div>
+            <span style={{ fontSize: 8, color: C.muted, ...mono }}>{COL_DEFS.length + 4} cols</span>
+          </div>
+
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
+              <thead>
+                <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
+                  <th style={{ ...hdrCell, width: 28 }}>#</th>
+                  <th style={{ ...hdrCell, width: 120, textAlign: "left" }} onClick={() => handleSort("msa")}>MSA</th>
+                  <th style={{ ...hdrCell, width: 52 }} onClick={() => handleSort("props")}>PROPS</th>
+                  <th style={{ ...hdrCell, width: 44 }}>UNITS</th>
+                  <th style={{ ...hdrCell, width: 48, color: C.amber }} onClick={() => handleSort("jedi")}>JEDI{sortCol === "jedi" ? (sortDir === "desc" ? "\u25BC" : "\u25B2") : "\u25BC"}</th>
+                  <th style={{ ...hdrCell, width: 36 }} onClick={() => handleSort("d30")}>\u039430</th>
+                  <th style={{ ...hdrCell, width: 56 }}>TREND</th>
+                  <th style={{ ...hdrCell, width: 56 }} onClick={() => handleSort("rentNum")}>RENT</th>
+                  <th style={{ ...hdrCell, width: 48 }}>RENT \u0394</th>
+                  <th style={{ ...hdrCell, width: 42 }} onClick={() => handleSort("vacNum")}>VAC</th>
+                  <th style={{ ...hdrCell, width: 52 }} onClick={() => handleSort("absorbNum")}>ABSORB</th>
+                  <th style={{ ...hdrCell, width: 52 }} onClick={() => handleSort("pipelineNum")}>PIPELN</th>
+                  <th style={{ ...hdrCell, width: 52 }}>COSTS</th>
+                  <th style={{ ...hdrCell, width: 42 }}>$/APT</th>
+                  <th style={{ ...hdrCell, width: 48 }} onClick={() => handleSort("popDNum")}>POP \u0394</th>
+                  <th style={{ ...hdrCell, width: 56 }} onClick={() => handleSort("medIncNum")}>MED INC</th>
+                  <th style={{ ...hdrCell, width: 44 }} onClick={() => handleSort("capNum")}>CAP</th>
+                  <th style={{ ...hdrCell, width: 76 }}>CYCLE</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ background: C.panelAlt, borderBottom: `1px solid ${C.borderM}` }}>
+                  <td style={dataCell}><span style={{ color: C.muted, fontStyle: "italic" }}>n</span></td>
+                  <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.muted }}>Median</span></td>
+                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+                  <td style={dataCell}><ScoreCell value={median.jedi} size={10} /></td>
+                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+                  <td style={dataCell}><span style={{ color: C.muted }}>─</span></td>
+                  <td style={dataCell}><span style={{ color: C.primary }}>{median.rent}</span></td>
+                  <td style={dataCell}><DeltaCell value={median.rentD} /></td>
+                  <td style={dataCell}><ThresholdVal value={median.vac} thresholds={[5, 8]} invert /></td>
+                  <td style={dataCell}><span style={{ color: C.primary }}>{median.absorb}</span></td>
+                  <td style={dataCell}><ThresholdVal value={median.pipeline} thresholds={[8, 14]} invert /></td>
+                  <td style={dataCell}><span style={{ color: C.primary }}>{median.costs}</span></td>
+                  <td style={dataCell}><span style={{ color: C.primary }}>{median.dApt}</span></td>
+                  <td style={dataCell}><DeltaCell value={median.popD} /></td>
+                  <td style={dataCell}><span style={{ color: C.primary }}>{median.medInc}</span></td>
+                  <td style={dataCell}><span style={{ color: C.primary }}>{median.cap}</span></td>
+                  <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+                </tr>
+                {sorted.map((m, i) => (
+                  <tr
+                    key={m.id}
+                    onDoubleClick={() => handleDrillToMsa(m.id)}
+                    style={{
+                      background: m.id === selectedMsaId ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt,
+                      borderBottom: `1px solid ${C.borderS}`,
+                      borderLeft: m.id === selectedMsaId ? `2px solid ${C.amber}` : "2px solid transparent",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = m.id === selectedMsaId ? C.amber + "0A" : i % 2 === 0 ? C.panel : C.panelAlt; }}
+                  >
+                    <td style={dataCell}>
+                      <span style={{ color: m.starred ? C.amber : C.muted, marginRight: 2 }}>{m.starred ? "★" : ""}</span>
+                      <span style={{ color: C.secondary }}>{m.rank}</span>
+                    </td>
+                    <td style={{ ...dataCell, textAlign: "left" }}>
+                      <span style={{ color: m.id === selectedMsaId ? C.amberBright : C.primary, fontWeight: m.id === selectedMsaId ? 700 : 500, ...sans }}>{m.msa}</span>
+                    </td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.props.toLocaleString()}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.units}</span></td>
+                    <td style={dataCell}><ScoreCell value={m.jedi} size={10} /></td>
+                    <td style={dataCell}><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></td>
+                    <td style={dataCell}><Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={44} h={12} /></td>
+                    <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></td>
+                    <td style={dataCell}><DeltaCell value={m.rentD} /></td>
+                    <td style={dataCell}><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></td>
+                    <td style={dataCell}><span style={{ color: C.primary }}>{m.absorb}</span></td>
+                    <td style={dataCell}><ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert /></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.costs}</span></td>
+                    <td style={dataCell}><span style={{ color: C.primary }}>{m.dApt}</span></td>
+                    <td style={dataCell}><DeltaCell value={m.popD} /></td>
+                    <td style={dataCell}><span style={{ color: C.primary }}>{m.medInc}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{m.cap}</span></td>
+                    <td style={dataCell}><Badge label={m.cycle} color={cycleColor(m.cycle)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    if (subTab === "watchlist") {
+      const watched = TRACKED_MARKETS.filter(m => m.starred);
+      return (
+        <div style={{ padding: 16 }}>
+          <div style={{ fontSize: 9, color: C.amber, letterSpacing: 1, marginBottom: 12, ...mono }}>WATCHLIST · {watched.length} MARKETS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {watched.map(m => (
+              <div key={m.id} onClick={() => handleDrillToMsa(m.id)} style={{ background: C.panel, border: `1px solid ${C.borderS}`, padding: 12, cursor: "pointer" }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.amber; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.borderS; }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, ...sans }}>{m.msa}</span>
+                  <ScoreCell value={m.jedi} size={14} />
+                </div>
+                <div style={{ display: "flex", gap: 16, fontSize: 9, color: C.secondary, ...mono }}>
+                  <span>Rent: <span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></span>
+                  <span>Vac: <ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></span>
+                  <span>Cap: {m.cap}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                  <Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={80} h={16} />
+                  <DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} />
+                  <Badge label={m.cycle} color={cycleColor(m.cycle)} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (subTab === "submarket") {
+      return (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Submarkets</span>
+            <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {SUBMARKET_INDEX.length} submarkets across tracked markets</span>
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
+              <thead>
+                <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
+                  {["SUBMARKET", "MSA", "JEDI", "RENT", "RENT \u0394", "VAC", "PROPS", "UNITS", "OPP", "CAP", "CYCLE"].map(h => (
+                    <th key={h} style={hdrCell}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {SUBMARKET_INDEX.map((s, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? C.panel : C.panelAlt, borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
+                    onDoubleClick={() => {
+                      const mkt = TRACKED_MARKETS.find(m => m.msa === s.msa);
+                      if (mkt) { setDrillMsaId(mkt.id); setDrillMsaName(mkt.msa); }
+                      setDrillSubmarketId(s.name.toLowerCase().replace(/\s+/g, "-"));
+                      setLevel("submarket-terminal");
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}>
+                    <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, ...sans }}>{s.name}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{s.msa}</span></td>
+                    <td style={dataCell}><ScoreCell value={s.jedi} size={10} /></td>
+                    <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{s.rent}</span></td>
+                    <td style={dataCell}><DeltaCell value={s.rentD} /></td>
+                    <td style={dataCell}><ThresholdVal value={s.vac} thresholds={[5, 8]} invert /></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{s.props}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{s.units}</span></td>
+                    <td style={dataCell}><ScoreCell value={s.opp} size={9} /></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{s.cap}</span></td>
+                    <td style={dataCell}><Badge label={s.cycle} color={cycleColor(s.cycle)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    if (subTab === "property-stock") {
+      return (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Property Stock</span>
+            <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_INDEX.length} key properties across tracked markets</span>
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
+              <thead>
+                <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
+                  {["PROPERTY", "SUBMARKET", "MSA", "JEDI", "UNITS", "RENT", "OCC", "CAP", "VINTAGE", "OWNER"].map(h => (
+                    <th key={h} style={hdrCell}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {PROPERTY_INDEX.map((p, i) => (
+                  <tr key={i} style={{ background: i % 2 === 0 ? C.panel : C.panelAlt, borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
+                    onDoubleClick={() => {
+                      const mkt = TRACKED_MARKETS.find(m => m.msa === p.msa);
+                      if (mkt) { setDrillMsaId(mkt.id); setDrillMsaName(mkt.msa); }
+                      setDrillSubmarketId(p.submarket.toLowerCase().replace(/\s+/g, "-"));
+                      setDrillPropertyId(p.name.toLowerCase().replace(/\s+/g, "-"));
+                      setLevel("property-terminal");
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}>
+                    <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{p.submarket}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{p.msa}</span></td>
+                    <td style={dataCell}><ScoreCell value={p.jedi} size={10} /></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{p.units}</span></td>
+                    <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{p.rent}</span></td>
+                    <td style={dataCell}><ThresholdVal value={p.occ} thresholds={[94, 91]} /></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{p.capRate}</span></td>
+                    <td style={dataCell}><span style={{ color: C.secondary }}>{p.vintage}</span></td>
+                    <td style={dataCell}><span style={{ color: C.muted }}>{p.owner}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <div style={{ flex: 1, overflow: "hidden", animation: "fadeIn 0.15s", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        {[
-          { id: "msa" as F4Level, label: marketName ? `MSA · ${marketName}` : "MSA · Atlanta, GA", icon: "INDEX" },
-          { id: "submarket" as F4Level, label: "Submarket · Midtown", icon: "SECTOR" },
-        ].map(l => (
-          <button key={l.id} onClick={() => setLevel(l.id)} style={{
-            ...mono, fontSize: 9, fontWeight: 600, padding: "0 12px", height: 24, cursor: "pointer",
-            background: level === l.id ? C.amber : "transparent",
-            color: level === l.id ? C.bg : C.secondary,
-            border: level === l.id ? "none" : `1px solid ${C.borderS}`,
-          }}>
-            <span style={{ fontSize: 7, opacity: 0.7, marginRight: 4 }}>{l.icon}</span>
-            {l.label}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>INDEX</span>
+        <span style={{ fontSize: 9, color: C.secondary, ...mono }}>MSA · {selectedMsa.name}</span>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>SECTOR</span>
+        <span style={{ fontSize: 9, color: C.secondary, ...mono }}>Submarket · Midtown</span>
+        <div style={{ flex: 1 }} />
+        {(["market-detail", "peer-comp"] as PrimaryTab[]).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setPrimaryTab(primaryTab === tab ? "overview" : tab)}
+            style={{
+              ...mono, fontSize: 9, fontWeight: primaryTab === tab ? 700 : 500, letterSpacing: 0.5,
+              padding: "3px 10px", cursor: "pointer",
+              background: primaryTab === tab ? C.active : "transparent",
+              color: primaryTab === tab ? C.amber : C.secondary,
+              border: `1px solid ${primaryTab === tab ? C.amber : C.borderS}`,
+            }}
+          >
+            {tab === "market-detail" ? "MARKET DETAIL" : "PEER COMP"}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
-        {(level === "detail" || level === "peers") && (
-          <div style={{ display: "flex", gap: 2 }}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as [F4Level, string][]).map(([v,label]) => (
-              <button key={v} onClick={() => setLevel(v)} style={{ background: level === v ? C.active : "transparent", color: level === v ? C.amber : C.secondary, border: `1px solid ${level === v ? C.amber : C.borderS}`, fontSize: 8, ...mono, fontWeight: level === v ? 700 : 400, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-        {(level === "msa" || level === "submarket") && (
-          <div style={{ display: "flex", gap: 2 }}>
-            <button onClick={() => goToDetail("detail")} style={{ ...mono, fontSize: 8, fontWeight: 600, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>
-              FULL INTEL →
-            </button>
-          </div>
-        )}
       </div>
 
-      <div style={{ padding: "4px 10px", background: isSubmarket ? C.purple + "15" : C.blueBg, borderBottom: `1px solid ${C.borderM}`, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-        {isSubmarket && <span onClick={() => setLevel("msa")} style={{ fontSize: 8, color: C.cyan, cursor: "pointer", ...mono }}>◀ Atlanta, GA</span>}
-        <span style={{ fontSize: 14, fontWeight: 800, color: C.amberBright, ...sans }}>{lvl.name}</span>
-        <span style={{ fontSize: 10, color: C.secondary, ...sans }}>{isSubmarket ? "Submarket Intelligence" : "Market Intelligence Dashboard"}</span>
+      <div style={{ padding: "4px 10px", background: C.blueBg, borderBottom: `1px solid ${C.borderM}`, display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 800, color: C.amberBright, ...sans }}>{selectedMsa.name}</span>
+        <span style={{ fontSize: 10, color: C.secondary, ...sans }}>Market Intelligence Dashboard</span>
         <span style={{ fontSize: 8, color: C.muted }}>|</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: C.green, ...mono }}>{lvl.rent}</span>
-        <DeltaCell value={lvl.rentD} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: C.green, ...mono }}>{selectedMarketData?.rent || "$2,150"}</span>
+        <DeltaCell value={selectedMarketData?.rentD || "+4.2%"} />
         <span style={{ fontSize: 8, color: C.muted }}>|</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>Vac</span>
-        <ThresholdVal value={lvl.vac} thresholds={[5,8]} invert />
+        <ThresholdVal value={selectedMarketData?.vac || "5.8%"} thresholds={[5, 8]} invert />
         <span style={{ fontSize: 8, color: C.muted }}>|</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>JEDI</span>
-        <ScoreCell value={lvl.jedi} size={12} />
-        <DeltaCell value={lvl.d30} />
+        <ScoreCell value={selectedMarketData?.jedi || 87} size={12} />
+        <DeltaCell value={selectedMarketData ? (selectedMarketData.d30 >= 0 ? `+${selectedMarketData.d30}` : `${selectedMarketData.d30}`) : "+4"} />
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 8, color: C.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-          {lvl.props} Properties · {lvl.units} Units
+          {selectedMarketData?.props || 1028} Properties · {selectedMarketData?.units || "250K"} Units
         </span>
       </div>
 
-      {(level === "detail" || level === "peers") && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => setLevel(priorLevel)} style={{ ...mono, fontSize: 8, fontWeight: 600, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "2px 8px", cursor: "pointer", letterSpacing: 0.5 }}>← OVERVIEW</button>
-          <span style={{ fontSize: 9, color: C.muted, ...mono, letterSpacing: 1 }}>MARKET</span>
-          <select
-            value={selectedMsaId}
-            onChange={e => setSelectedMsaId(e.target.value)}
-            style={{ background: C.panel, color: C.amber, border: `1px solid ${C.borderM}`, fontSize: 10, ...mono, fontWeight: 700, padding: "2px 6px", cursor: "pointer", outline: "none" }}
+      <div style={{ display: "flex", alignItems: "center", height: 30, background: C.panel, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+        <button
+          onClick={() => { setPrimaryTab("overview"); }}
+          style={{
+            ...mono, fontSize: 9, fontWeight: primaryTab === "overview" ? 700 : 500,
+            padding: "0 14px", height: "100%", cursor: "pointer",
+            background: primaryTab === "overview" ? C.active : "transparent",
+            color: primaryTab === "overview" ? C.amber : C.secondary,
+            border: "none", borderBottom: primaryTab === "overview" ? `2px solid ${C.amber}` : "2px solid transparent",
+          }}
+        >
+          OVERVIEW
+        </button>
+
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setMarketDropdownOpen(!marketDropdownOpen)}
+            style={{
+              ...mono, fontSize: 9, fontWeight: 500,
+              padding: "0 14px", height: 30, cursor: "pointer",
+              background: "transparent", color: C.secondary,
+              border: "none", display: "flex", alignItems: "center", gap: 4,
+            }}
           >
-            {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
+            MARKET <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 7 }}>▾</span>
+          </button>
+          {marketDropdownOpen && (
+            <div style={{ position: "absolute", top: 30, left: 0, zIndex: 100, background: C.panel, border: `1px solid ${C.borderM}`, minWidth: 220, boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+              <input
+                autoFocus
+                value={marketSearch}
+                onChange={e => setMarketSearch(e.target.value)}
+                placeholder="Search markets..."
+                style={{ width: "100%", padding: "6px 10px", background: C.bg, color: C.primary, border: "none", borderBottom: `1px solid ${C.borderS}`, fontSize: 10, ...mono, outline: "none", boxSizing: "border-box" }}
+              />
+              {filteredMsaOptions.map(m => (
+                <div
+                  key={m.id}
+                  onClick={() => { setSelectedMsaId(m.id); setMarketDropdownOpen(false); setMarketSearch(""); }}
+                  style={{
+                    padding: "6px 10px", cursor: "pointer", fontSize: 10, ...mono,
+                    color: m.id === selectedMsaId ? C.amber : C.primary,
+                    background: m.id === selectedMsaId ? C.active : "transparent",
+                    fontWeight: m.id === selectedMsaId ? 700 : 400,
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = C.hover; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = m.id === selectedMsaId ? C.active : "transparent"; }}
+                >
+                  {m.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {primaryTab === "overview" && (
+        <div style={{ display: "flex", alignItems: "center", height: 26, background: C.panelAlt, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0, gap: 0 }}>
+          {([
+            { id: "mkt-detail" as SubTab, label: "MKT DETAIL" },
+            { id: "msa-index" as SubTab, label: "MSA INDEX" },
+          ]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setSubTab(t.id)}
+              style={{
+                ...mono, fontSize: 8, fontWeight: subTab === t.id ? 700 : 400,
+                padding: "0 10px", height: "100%", cursor: "pointer",
+                background: subTab === t.id ? C.active : "transparent",
+                color: subTab === t.id ? C.amber : C.muted,
+                border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+          <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />
+          <button
+            onClick={() => setSubTab("watchlist")}
+            style={{
+              ...mono, fontSize: 8, fontWeight: subTab === "watchlist" ? 700 : 400,
+              padding: "0 10px", height: "100%", cursor: "pointer",
+              background: subTab === "watchlist" ? C.active : "transparent",
+              color: subTab === "watchlist" ? C.amber : C.muted,
+              border: "none", borderBottom: subTab === "watchlist" ? `1px solid ${C.amber}` : "1px solid transparent",
+              display: "flex", alignItems: "center", gap: 4,
+            }}
+          >
+            ▸ WATCHLIST ({TRACKED_MARKETS.filter(m => m.starred).length})
+          </button>
+          <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />
+          {([
+            { id: "submarket" as SubTab, label: "SUBMARKET" },
+            { id: "property-stock" as SubTab, label: "PROPERTY STOCK" },
+          ]).map(t => (
+            <button
+              key={t.id}
+              onClick={() => setSubTab(t.id)}
+              style={{
+                ...mono, fontSize: 8, fontWeight: subTab === t.id ? 700 : 400,
+                padding: "0 10px", height: "100%", cursor: "pointer",
+                background: subTab === t.id ? C.active : "transparent",
+                color: subTab === t.id ? C.amber : C.muted,
+                border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       )}
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {level === "msa" && <MSAOverview onDrillToSubmarket={() => setLevel("submarket")} />}
-        {level === "submarket" && <SubmarketOverview onBack={() => setLevel("msa")} />}
-        {level === "detail" && (
-          <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={corpHealthData} />
-        )}
-        {level === "peers" && (
-          <PeerComparisonPage embedded onViewDetail={() => setLevel("detail")} />
-        )}
+        {renderContent()}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Double-click row = drill down · Click column header = sort · ★ = subject property</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>{lvl.name} · JEDI {lvl.jedi} · {isSubmarket ? "Submarket" : "MSA"} Level</span>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
       </div>
     </div>
   );
 }
+
+const hdrCell: React.CSSProperties = {
+  padding: "4px 6px", fontSize: 7, fontWeight: 700, color: "#4A5568",
+  letterSpacing: 0.5, borderRight: "1px solid #1E2538", borderBottom: "1px solid #2A3348",
+  textAlign: "center", cursor: "pointer", whiteSpace: "nowrap",
+  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+};
+
+const dataCell: React.CSSProperties = {
+  padding: "4px 6px", textAlign: "center", borderRight: "1px solid #1E2538",
+  fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+  whiteSpace: "nowrap",
+};

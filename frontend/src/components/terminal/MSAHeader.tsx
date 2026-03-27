@@ -9,8 +9,8 @@ import { BT } from './theme';
 import { MSAData } from './MSATerminal';
 
 interface MSAHeaderProps {
-  msa: MSAData;
-  sparklineData: number[];
+  msa: MSAData | null;
+  sparklineData?: number[];
 }
 
 // Mini sparkline component
@@ -48,8 +48,9 @@ const MiniSparkline: React.FC<{ data: number[]; color: string; width?: number; h
 
 export const MSAHeader: React.FC<MSAHeaderProps> = ({
   msa,
-  sparklineData,
+  sparklineData = [],
 }) => {
+  if (!msa) return null;
   const rentTrend = msa.rentGrowth >= 0 ? 'up' : 'down';
 
   return (
