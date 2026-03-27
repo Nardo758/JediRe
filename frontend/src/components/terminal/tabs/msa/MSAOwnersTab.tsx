@@ -219,7 +219,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
           flex: 1,
           padding: 16,
           background: SIGNAL_STYLES.SELL.bg,
-          borderRadius: 8,
+          borderRadius: 0,
           borderLeft: `4px solid ${SIGNAL_STYLES.SELL.text}`,
         }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: SIGNAL_STYLES.SELL.text }}>
@@ -234,7 +234,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
           flex: 1,
           padding: 16,
           background: SIGNAL_STYLES.BUY.bg,
-          borderRadius: 8,
+          borderRadius: 0,
           borderLeft: `4px solid ${SIGNAL_STYLES.BUY.text}`,
         }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: SIGNAL_STYLES.BUY.text }}>
@@ -249,7 +249,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
           flex: 1,
           padding: 16,
           background: BT.bg.elevated,
-          borderRadius: 8,
+          borderRadius: 0,
         }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: BT.text.primary }}>
             5.2yr
@@ -263,7 +263,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
           flex: 1,
           padding: 16,
           background: BT.bg.elevated,
-          borderRadius: 8,
+          borderRadius: 0,
         }}>
           <div style={{ fontSize: 28, fontWeight: 700, color: BT.text.primary }}>
             42%
@@ -287,7 +287,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
               background: BT.bg.elevated,
               color: BT.text.primary,
               border: `1px solid ${BT.border.subtle}`,
-              borderRadius: 4,
+              borderRadius: 0,
               fontSize: 11,
             }}
           >
@@ -312,7 +312,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                       ? (style?.text || '#fff') 
                       : BT.text.secondary,
                     border: 'none',
-                    borderRadius: 4,
+                    borderRadius: 0,
                     fontSize: 11,
                     fontWeight: signalFilter === s ? 600 : 400,
                     cursor: 'pointer',
@@ -368,7 +368,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                         padding: '3px 8px',
                         background: `${OWNER_TYPE_COLORS[owner.type]}20`,
                         color: OWNER_TYPE_COLORS[owner.type],
-                        borderRadius: 4,
+                        borderRadius: 0,
                         fontSize: 10,
                         fontWeight: 600,
                       }}>
@@ -381,7 +381,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                           padding: '4px 10px',
                           background: signalStyle.bg,
                           color: signalStyle.text,
-                          borderRadius: 4,
+                          borderRadius: 0,
                           fontSize: 11,
                           fontWeight: 700,
                         }}>
@@ -465,7 +465,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                             padding: '2px 6px',
                                             background: prop.motivation > 70 ? 'rgba(239,68,68,0.15)' : 'rgba(107,114,128,0.15)',
                                             color: prop.motivation > 70 ? BT.accent.red : BT.text.muted,
-                                            borderRadius: 4,
+                                            borderRadius: 0,
                                             fontWeight: 600,
                                           }}>
                                             {prop.motivation}
@@ -493,7 +493,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                     <div key={i} style={{
                                       padding: 10,
                                       background: 'rgba(139,92,246,0.1)',
-                                      borderRadius: 6,
+                                      borderRadius: 0,
                                       borderLeft: `3px solid ${BT.text.violet}`,
                                     }}>
                                       <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary }}>
@@ -507,7 +507,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                           fontSize: 9,
                                           padding: '2px 6px',
                                           background: BT.bg.elevated,
-                                          borderRadius: 3,
+                                          borderRadius: 0,
                                           color: BT.text.violet,
                                         }}>
                                           DC-06: {land.probability}
@@ -516,7 +516,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                           fontSize: 9,
                                           padding: '2px 6px',
                                           background: BT.bg.elevated,
-                                          borderRadius: 3,
+                                          borderRadius: 0,
                                           color: BT.text.cyan,
                                         }}>
                                           {land.status}
@@ -545,7 +545,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
         gap: 24,
         padding: '12px 16px',
         background: BT.bg.card,
-        borderRadius: 8,
+        borderRadius: 0,
         border: `1px solid ${BT.border.subtle}`,
         fontSize: 11,
       }}>

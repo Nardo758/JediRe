@@ -13,6 +13,8 @@ export const BT = {
     active: '#1E2538',        // Active/selected
     header: '#0C0D10',        // Header bar
     elevated: '#1A1F2E',      // Elevated surface (buttons, cards)
+    card: '#0F1319',          // Card background (alias for panel)
+    cardHover: '#1A1F2E',     // Card hover state
   },
   
   // Borders
@@ -37,6 +39,8 @@ export const BT = {
     cyan: '#00BCD4',          // Info/accent
     blue: '#3B82F6',          // Links/actions
     purple: '#A855F7',        // Special
+    violet: '#8B5CF6',        // Violet accent
+    magenta: '#EC4899',       // Magenta accent
   },
   
   accent: {
@@ -117,7 +121,7 @@ export const fmt = {
 
 // Common styles
 export const terminalStyles = {
-  // Section label style
+  // Section label style (small uppercase label)
   sectionLabel: {
     fontSize: '10px',
     fontWeight: 700,
@@ -128,16 +132,53 @@ export const terminalStyles = {
     paddingBottom: '8px',
     borderBottom: `1px solid ${BT.border.subtle}`,
   },
-  
+
+  // Section title style (larger heading for tab sections)
+  sectionTitle: {
+    fontSize: '14px',
+    fontWeight: 700,
+    color: BT.text.primary,
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase' as const,
+    margin: 0,
+  },
+
   // Card style
   card: {
     background: BT.bg.panel,
     border: `1px solid ${BT.border.subtle}`,
-    borderRadius: '8px',
+    borderRadius: 0,
     padding: '16px',
   },
-  
-  // Table header cell
+
+  // Panel style (container section)
+  panel: {
+    background: BT.bg.panel,
+    border: `1px solid ${BT.border.subtle}`,
+    borderRadius: 0,
+  },
+
+  // Table header cell (canonical — used by complex tabs)
+  tableHeader: {
+    padding: '10px 12px',
+    fontSize: '10px',
+    fontWeight: 700,
+    color: BT.text.amber,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase' as const,
+    background: BT.bg.panelAlt,
+    borderBottom: `1px solid ${BT.border.medium}`,
+  },
+
+  // Table data cell (canonical — used by complex tabs)
+  tableCell: {
+    padding: '10px 12px',
+    fontSize: '12px',
+    color: BT.text.secondary,
+    borderBottom: `1px solid ${BT.border.subtle}`,
+  },
+
+  // Table header cell (alias)
   th: {
     padding: '10px 12px',
     fontSize: '10px',
@@ -148,29 +189,29 @@ export const terminalStyles = {
     background: BT.bg.panelAlt,
     borderBottom: `1px solid ${BT.border.medium}`,
   },
-  
-  // Table data cell
+
+  // Table data cell (alias)
   td: {
     padding: '10px 12px',
     fontSize: '12px',
     color: BT.text.secondary,
     borderBottom: `1px solid ${BT.border.subtle}`,
   },
-  
+
   // Value highlight (positive)
   valuePositive: {
     color: BT.text.green,
     fontFamily: "'JetBrains Mono', monospace",
     fontWeight: 600,
   },
-  
+
   // Value highlight (negative)
   valueNegative: {
     color: BT.text.red,
     fontFamily: "'JetBrains Mono', monospace",
     fontWeight: 600,
   },
-  
+
   // Metric value
   metricValue: {
     fontSize: '24px',
@@ -178,7 +219,7 @@ export const terminalStyles = {
     color: BT.text.primary,
     fontFamily: "'JetBrains Mono', monospace",
   },
-  
+
   // Metric label
   metricLabel: {
     fontSize: '10px',

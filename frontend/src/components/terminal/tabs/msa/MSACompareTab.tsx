@@ -133,7 +133,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
               background: m.selected ? BT.accent.blue : BT.bg.elevated,
               color: m.selected ? '#fff' : BT.text.secondary,
               border: 'none',
-              borderRadius: 6,
+              borderRadius: 0,
               fontSize: 12,
               fontWeight: 600,
               cursor: 'pointer',
@@ -304,7 +304,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
                 marginTop: 8,
                 padding: '4px 8px',
                 background: wins > 8 ? 'rgba(34,197,94,0.15)' : 'rgba(107,114,128,0.15)',
-                borderRadius: 4,
+                borderRadius: 0,
                 fontSize: 10,
                 color: wins > 8 ? BT.text.green : BT.text.muted,
               }}>
@@ -321,7 +321,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
         gap: 24,
         padding: '12px 16px',
         background: BT.bg.card,
-        borderRadius: 8,
+        borderRadius: 0,
         border: `1px solid ${BT.border.subtle}`,
         fontSize: 11,
         flexWrap: 'wrap',
@@ -334,7 +334,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
                 width: 10, 
                 height: 10, 
                 background: btColor.primary, 
-                borderRadius: 2,
+                borderRadius: 0,
               }} />
               <span style={{ color: BT.text.muted }}>{section.label}</span>
             </div>

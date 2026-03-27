@@ -66,7 +66,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
               style={{
                 padding: 12,
                 background: expandedNews === item.id ? BT.bg.cardHover : 'transparent',
-                borderRadius: 6,
+                borderRadius: 0,
                 border: `1px solid ${BT.border.subtle}`,
                 cursor: 'pointer',
               }}
@@ -90,7 +90,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
                     <span style={{
                       marginLeft: 'auto',
                       padding: '2px 6px',
-                      borderRadius: 3,
+                      borderRadius: 0,
                       background: item.impact === 'positive' ? `${BT.text.green}22` : item.impact === 'negative' ? `${BT.text.red}22` : `${BT.text.muted}22`,
                       color: item.impact === 'positive' ? BT.text.green : item.impact === 'negative' ? BT.text.red : BT.text.muted,
                       fontWeight: 600,
@@ -104,7 +104,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
                       marginTop: 10,
                       padding: 10,
                       background: BT.bg.terminal,
-                      borderRadius: 4,
+                      borderRadius: 0,
                       fontSize: 12,
                       color: BT.text.secondary,
                       borderLeft: `2px solid ${getCategoryColor(item.category)}`,

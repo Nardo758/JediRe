@@ -159,7 +159,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                 background: isActive ? style.btBg : BT.bg.elevated,
                 color: isActive ? style.btText : BT.text.secondary,
                 border: isActive ? `2px solid ${style.btText}` : `1px solid ${BT.border.subtle}`,
-                borderRadius: 6,
+                borderRadius: 0,
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -178,7 +178,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               background: 'transparent',
               color: BT.text.muted,
               border: `1px dashed ${BT.border.subtle}`,
-              borderRadius: 6,
+              borderRadius: 0,
               fontSize: 12,
               cursor: 'pointer',
             }}
@@ -211,7 +211,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                   gap: 4,
                   padding: '4px 8px',
                   background: col.headerBg,
-                  borderRadius: 4,
+                  borderRadius: 0,
                 }}>
                   <span style={{ fontSize: 10, color: col.color, fontWeight: 600 }}>{col.stage}</span>
                   <span style={{ 
@@ -220,7 +220,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                     color: col.color,
                     background: 'rgba(255,255,255,0.1)',
                     padding: '1px 6px',
-                    borderRadius: 10,
+                    borderRadius: 0,
                   }}>
                     {col.count}
                   </span>
@@ -245,7 +245,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               <div key={col.stage} style={{ 
                 flex: '0 0 240px',
                 background: BT.bg.elevated,
-                borderRadius: 8,
+                borderRadius: 0,
                 overflow: 'hidden',
               }}>
                 <div style={{
@@ -262,7 +262,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                     <div key={i} style={{
                       padding: 10,
                       background: BT.bg.card,
-                      borderRadius: 6,
+                      borderRadius: 0,
                       border: `1px solid ${BT.border.subtle}`,
                       cursor: 'pointer',
                     }}>
@@ -305,7 +305,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                   padding: '2px 8px',
                   background: BT.accent.blue,
                   color: '#fff',
-                  borderRadius: 4,
+                  borderRadius: 0,
                   fontSize: 10,
                   fontWeight: 700,
                 }}>
@@ -315,7 +315,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                   padding: '4px 10px',
                   background: QUADRANT_STYLES[FEATURED_DEAL.quadrant].btBg,
                   color: QUADRANT_STYLES[FEATURED_DEAL.quadrant].btText,
-                  borderRadius: 6,
+                  borderRadius: 0,
                   fontSize: 11,
                   fontWeight: 700,
                 }}>
@@ -325,7 +325,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                   padding: '4px 10px',
                   background: LIFECYCLE_STYLES[FEATURED_DEAL.lifecyclePhase].btBg,
                   color: LIFECYCLE_STYLES[FEATURED_DEAL.lifecyclePhase].btText,
-                  borderRadius: 6,
+                  borderRadius: 0,
                   fontSize: 11,
                   fontWeight: 700,
                 }}>
@@ -356,30 +356,30 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
 
           {/* Metrics Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12, marginBottom: 16 }}>
-            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: BT.text.muted }}>Arb Spread</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.green }}>{FEATURED_DEAL.arbSpread}</div>
             </div>
-            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: BT.text.muted }}>Loss-to-Lease</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary }}>{FEATURED_DEAL.lossToLease}</div>
               <div style={{ fontSize: 10, color: BT.accent.amber }}>{FEATURED_DEAL.ltlPct}</div>
             </div>
-            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: BT.text.muted }}>Motivation</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: FEATURED_DEAL.sellerMotivation > 70 ? BT.text.green : BT.accent.amber }}>
                 {FEATURED_DEAL.sellerMotivation}
               </div>
             </div>
-            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: BT.text.muted }}>Walk-Ins</div>
               <div style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary }}>{FEATURED_DEAL.walkIns}</div>
             </div>
-            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: BT.text.muted }}>Traffic Share</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.cyan }}>{FEATURED_DEAL.trafficShare}</div>
             </div>
-            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6, textAlign: 'center' }}>
+            <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0, textAlign: 'center' }}>
               <div style={{ fontSize: 10, color: BT.text.muted }}>TAR</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: FEATURED_DEAL.tar > 1 ? BT.text.green : BT.accent.red }}>
                 {FEATURED_DEAL.tar.toFixed(2)}
@@ -393,7 +393,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               padding: 12,
               background: 'rgba(34,197,94,0.1)',
               borderLeft: `3px solid ${BT.text.green}`,
-              borderRadius: 4,
+              borderRadius: 0,
               marginBottom: 16,
             }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: BT.text.green }}>
@@ -413,7 +413,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               background: BT.accent.blue,
               color: '#fff',
               border: 'none',
-              borderRadius: 6,
+              borderRadius: 0,
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
@@ -471,7 +471,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                       padding: '3px 8px',
                       background: quadrantStyle.btBg,
                       color: quadrantStyle.btText,
-                      borderRadius: 4,
+                      borderRadius: 0,
                       fontSize: 10,
                       fontWeight: 600,
                     }}>
@@ -483,7 +483,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                       padding: '3px 8px',
                       background: lifecycleStyle.btBg,
                       color: lifecycleStyle.btText,
-                      borderRadius: 4,
+                      borderRadius: 0,
                       fontSize: 10,
                       fontWeight: 600,
                     }}>
@@ -495,7 +495,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                       padding: '2px 8px',
                       background: scoreColor(deal.jedi).btBg,
                       color: scoreColor(deal.jedi).btText,
-                      borderRadius: 4,
+                      borderRadius: 0,
                       fontSize: 12,
                       fontWeight: 700,
                     }}>
@@ -523,7 +523,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                       background: BT.accent.blue,
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 4,
+                      borderRadius: 0,
                       fontSize: 10,
                       cursor: 'pointer',
                     }}>

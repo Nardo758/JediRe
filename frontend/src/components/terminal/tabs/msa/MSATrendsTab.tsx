@@ -158,7 +158,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                 background: timeRange === range ? BT.accent.blue : BT.bg.elevated,
                 color: timeRange === range ? '#fff' : BT.text.secondary,
                 border: 'none',
-                borderRadius: 4,
+                borderRadius: 0,
                 fontSize: 11,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -184,7 +184,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               color: correlation > 0.7 ? BT.text.green : correlation > 0.4 ? BT.accent.amber : BT.accent.red,
               background: correlation > 0.7 ? 'rgba(34,197,94,0.15)' : correlation > 0.4 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
               padding: '4px 8px',
-              borderRadius: 4,
+              borderRadius: 0,
             }}>
               r = {correlation.toFixed(2)}
             </span>
@@ -200,13 +200,13 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     width: `${(q.rentGrowth / 10) * 100}%`,
                     height: 12,
                     background: BT.text.green,
-                    borderRadius: 2,
+                    borderRadius: 0,
                   }} />
                   <div style={{
                     width: `${(q.trafficTrend / 10) * 100}%`,
                     height: 12,
                     background: BT.text.cyan,
-                    borderRadius: 2,
+                    borderRadius: 0,
                   }} />
                 </div>
                 <span style={{ width: 40, fontSize: 10, color: BT.text.secondary, textAlign: 'right' }}>
@@ -218,11 +218,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 12, height: 12, background: BT.text.green, borderRadius: 2 }} />
+              <span style={{ width: 12, height: 12, background: BT.text.green, borderRadius: 0 }} />
               <span style={{ fontSize: 10, color: BT.text.muted }}>Rent Growth</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 12, height: 12, background: BT.text.cyan, borderRadius: 2 }} />
+              <span style={{ width: 12, height: 12, background: BT.text.cyan, borderRadius: 0 }} />
               <span style={{ fontSize: 10, color: BT.text.muted }}>Traffic Trend</span>
             </div>
           </div>
@@ -260,7 +260,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               padding: 12,
               background: 'rgba(239,68,68,0.1)',
               borderLeft: `3px solid ${BT.accent.red}`,
-              borderRadius: 4,
+              borderRadius: 0,
             }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: BT.accent.red, marginBottom: 4 }}>
                 ⚠️ DIVERGENCE ALERT
@@ -285,7 +285,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               color: BT.text.violet,
               background: 'rgba(139,92,246,0.15)',
               padding: '2px 8px',
-              borderRadius: 4,
+              borderRadius: 0,
               fontFamily: 'monospace',
             }}>
               DC-08
@@ -301,7 +301,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                   background: supplyView === view ? BT.accent.blue : BT.bg.elevated,
                   color: supplyView === view ? '#fff' : BT.text.secondary,
                   border: 'none',
-                  borderRadius: 4,
+                  borderRadius: 0,
                   fontSize: 11,
                   cursor: 'pointer',
                 }}
@@ -329,7 +329,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     width: '80%',
                     height: `${(d.capacity / maxSupply) * 100}%`,
                     background: 'rgba(139,92,246,0.4)',
-                    borderRadius: '4px 4px 0 0',
+                    borderRadius: 0,
                     borderBottom: d.confirmed > 0 ? 'none' : undefined,
                   }} />
                 )}
@@ -338,7 +338,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     width: '80%',
                     height: `${(d.confirmed / maxSupply) * 100}%`,
                     background: BT.accent.blue,
-                    borderRadius: d.capacity > 0 ? '0 0 4px 4px' : 4,
+                    borderRadius: 0,
                   }} />
                 )}
               </div>
@@ -349,11 +349,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
         <div style={{ display: 'flex', gap: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, background: BT.accent.blue, borderRadius: 2 }} />
+            <span style={{ width: 12, height: 12, background: BT.accent.blue, borderRadius: 0 }} />
             <span style={{ fontSize: 10, color: BT.text.muted }}>Confirmed</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, background: 'rgba(139,92,246,0.4)', borderRadius: 2 }} />
+            <span style={{ width: 12, height: 12, background: 'rgba(139,92,246,0.4)', borderRadius: 0 }} />
             <span style={{ fontSize: 10, color: BT.text.muted }}>Capacity (probability-weighted)</span>
           </div>
         </div>
@@ -383,7 +383,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                     <span style={{
                       padding: '3px 10px',
-                      borderRadius: 4,
+                      borderRadius: 0,
                       background: phaseStyle.btBg,
                       color: phaseStyle.btText,
                       fontSize: 10,
@@ -420,11 +420,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 48, fontSize: 10, color: BT.text.muted }}>{d.quarter}</span>
                 <div style={{ flex: 1, display: 'flex', gap: 2, alignItems: 'flex-end', height: 20 }}>
-                  <div style={{ flex: 1, height: `${(d.aPlus / 3000) * 100}%`, background: '#22c55e', borderRadius: 2 }} title={`A+: $${d.aPlus}`} />
-                  <div style={{ flex: 1, height: `${(d.a / 3000) * 100}%`, background: '#3b82f6', borderRadius: 2 }} title={`A: $${d.a}`} />
-                  <div style={{ flex: 1, height: `${(d.bPlus / 3000) * 100}%`, background: '#f59e0b', borderRadius: 2 }} title={`B+: $${d.bPlus}`} />
-                  <div style={{ flex: 1, height: `${(d.b / 3000) * 100}%`, background: '#f97316', borderRadius: 2 }} title={`B: $${d.b}`} />
-                  <div style={{ flex: 1, height: `${(d.c / 3000) * 100}%`, background: '#ef4444', borderRadius: 2 }} title={`C: $${d.c}`} />
+                  <div style={{ flex: 1, height: `${(d.aPlus / 3000) * 100}%`, background: '#22c55e', borderRadius: 0 }} title={`A+: $${d.aPlus}`} />
+                  <div style={{ flex: 1, height: `${(d.a / 3000) * 100}%`, background: '#3b82f6', borderRadius: 0 }} title={`A: $${d.a}`} />
+                  <div style={{ flex: 1, height: `${(d.bPlus / 3000) * 100}%`, background: '#f59e0b', borderRadius: 0 }} title={`B+: $${d.bPlus}`} />
+                  <div style={{ flex: 1, height: `${(d.b / 3000) * 100}%`, background: '#f97316', borderRadius: 0 }} title={`B: $${d.b}`} />
+                  <div style={{ flex: 1, height: `${(d.c / 3000) * 100}%`, background: '#ef4444', borderRadius: 0 }} title={`C: $${d.c}`} />
                 </div>
               </div>
             ))}
@@ -438,7 +438,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               { label: 'C', color: '#ef4444' },
             ].map(item => (
               <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 10, height: 10, background: item.color, borderRadius: 2 }} />
+                <span style={{ width: 10, height: 10, background: item.color, borderRadius: 0 }} />
                 <span style={{ fontSize: 10, color: BT.text.muted }}>{item.label}</span>
               </div>
             ))}
@@ -454,7 +454,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
             {JEDI_SCORE_HISTORY.slice(-6).map((d, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 48, fontSize: 10, color: BT.text.muted }}>{d.quarter}</span>
-                <div style={{ flex: 1, position: 'relative', height: 16, background: BT.bg.elevated, borderRadius: 4 }}>
+                <div style={{ flex: 1, position: 'relative', height: 16, background: BT.bg.elevated, borderRadius: 0 }}>
                   <div style={{
                     position: 'absolute',
                     left: 0,
@@ -462,7 +462,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     width: `${d.composite}%`,
                     height: '100%',
                     background: `linear-gradient(90deg, ${BT.text.cyan} 0%, ${BT.text.green} 100%)`,
-                    borderRadius: 4,
+                    borderRadius: 0,
                   }} />
                   <span style={{
                     position: 'absolute',
@@ -530,7 +530,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     width: `${d.concessionPct * 10}%`,
                     height: 12,
                     background: BT.accent.red,
-                    borderRadius: 2,
+                    borderRadius: 0,
                   }} />
                   <span style={{ fontSize: 10, color: BT.accent.red }}>{d.concessionPct}%</span>
                 </div>
@@ -539,7 +539,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                     width: `${(d.occupancy - 85) * 6}%`,
                     height: 12,
                     background: BT.text.green,
-                    borderRadius: 2,
+                    borderRadius: 0,
                   }} />
                   <span style={{ fontSize: 10, color: BT.text.green }}>{d.occupancy}%</span>
                 </div>
@@ -548,11 +548,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           </div>
           <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, background: BT.accent.red, borderRadius: 2 }} />
+              <span style={{ width: 10, height: 10, background: BT.accent.red, borderRadius: 0 }} />
               <span style={{ fontSize: 10, color: BT.text.muted }}>Concession %</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, background: BT.text.green, borderRadius: 2 }} />
+              <span style={{ width: 10, height: 10, background: BT.text.green, borderRadius: 0 }} />
               <span style={{ fontSize: 10, color: BT.text.muted }}>Occupancy %</span>
             </div>
           </div>

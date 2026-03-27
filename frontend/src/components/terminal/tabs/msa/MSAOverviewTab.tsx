@@ -146,7 +146,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
           gap: 8,
           padding: '6px 12px',
           background: BT.bg.card,
-          borderRadius: 6,
+          borderRadius: 0,
           border: `1px solid ${BT.border.subtle}`,
         }}>
           <span style={{ 
@@ -169,7 +169,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
         gap: 12,
         padding: 16,
         background: `linear-gradient(135deg, ${BT.bg.card} 0%, rgba(59,130,246,0.05) 100%)`,
-        borderRadius: 8,
+        borderRadius: 0,
         border: `1px solid ${BT.border.subtle}`,
       }}>
         {MOCK_VITALS.map((vital, i) => (
@@ -218,7 +218,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                 color: BT.text.green,
                 background: 'rgba(34,197,94,0.15)',
                 padding: '2px 6px',
-                borderRadius: 4,
+                borderRadius: 0,
               }}>
                 LIVE
               </span>
@@ -243,14 +243,14 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
             flex: 1,
             height: 12,
             background: BT.bg.elevated,
-            borderRadius: 6,
+            borderRadius: 0,
             overflow: 'hidden',
           }}>
             <div style={{
               width: `${coveragePercent}%`,
               height: '100%',
               background: `linear-gradient(90deg, ${BT.text.green} 0%, ${BT.text.cyan} 100%)`,
-              borderRadius: 6,
+              borderRadius: 0,
               transition: 'width 0.3s ease',
             }} />
           </div>
@@ -310,14 +310,14 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                   <div style={{
                     height: 8,
                     background: BT.bg.elevated,
-                    borderRadius: 4,
+                    borderRadius: 0,
                     overflow: 'hidden',
                   }}>
                     <div style={{
                       width: `${signal.score}%`,
                       height: '100%',
                       background: btColor.primary,
-                      borderRadius: 4,
+                      borderRadius: 0,
                       transition: 'width 0.3s ease',
                     }} />
                   </div>
@@ -331,7 +331,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
             marginTop: 16,
             padding: 12,
             background: BT.bg.elevated,
-            borderRadius: 6,
+            borderRadius: 0,
             borderLeft: `3px solid ${BT.text.cyan}`,
           }}>
             <div style={{ fontSize: 10, color: BT.text.cyan, marginBottom: 4, fontFamily: 'monospace' }}>
@@ -356,7 +356,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                   padding: 12,
                   background: severity.bg,
                   borderLeft: `3px solid ${severity.border}`,
-                  borderRadius: 4,
+                  borderRadius: 0,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary }}>
@@ -392,7 +392,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                 alignItems: 'center',
                 padding: '8px 12px',
                 background: metric.warning ? 'rgba(245,158,11,0.1)' : BT.bg.elevated,
-                borderRadius: 4,
+                borderRadius: 0,
                 borderLeft: metric.warning ? `3px solid ${BT.text.amber}` : 'none',
               }}>
                 <div>
@@ -432,7 +432,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
               fontFamily: 'monospace',
               background: 'rgba(139,92,246,0.15)',
               padding: '2px 6px',
-              borderRadius: 4,
+              borderRadius: 0,
             }}>
               DC-01 → DC-11 ★
             </span>
@@ -445,7 +445,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                 alignItems: 'center',
                 padding: '10px 12px',
                 background: BT.bg.elevated,
-                borderRadius: 4,
+                borderRadius: 0,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 11, color: BT.text.muted }}>{metric.label}</span>
@@ -468,7 +468,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                       color: BT.text.amber,
                       background: 'rgba(245,158,11,0.15)',
                       padding: '2px 6px',
-                      borderRadius: 4,
+                      borderRadius: 0,
                     }}>
                       {metric.badge}
                     </span>
@@ -517,7 +517,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
                     <span style={{
                       padding: '2px 8px',
-                      borderRadius: 4,
+                      borderRadius: 0,
                       background: jediColor.btBg,
                       color: jediColor.btText,
                       fontWeight: 700,
@@ -543,7 +543,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                       background: BT.text.blue,
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 4,
+                      borderRadius: 0,
                       fontSize: 11,
                       fontWeight: 600,
                       cursor: 'pointer',

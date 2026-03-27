@@ -140,7 +140,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                   background: classFilter === opt ? BT.accent.blue : BT.bg.elevated,
                   color: classFilter === opt ? '#fff' : BT.text.secondary,
                   border: 'none',
-                  borderRadius: 4,
+                  borderRadius: 0,
                   fontSize: 11,
                   cursor: 'pointer',
                 }}
@@ -161,7 +161,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
               background: BT.bg.elevated,
               color: BT.text.primary,
               border: `1px solid ${BT.border.subtle}`,
-              borderRadius: 4,
+              borderRadius: 0,
               fontSize: 11,
             }}
           >
@@ -181,7 +181,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
               background: BT.bg.elevated,
               color: BT.text.primary,
               border: `1px solid ${BT.border.subtle}`,
-              borderRadius: 4,
+              borderRadius: 0,
               fontSize: 11,
             }}
           >
@@ -274,7 +274,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                       <span style={{
                         padding: '2px 8px',
                         background: BT.bg.elevated,
-                        borderRadius: 4,
+                        borderRadius: 0,
                         fontSize: 11,
                         fontWeight: 600,
                       }}>
@@ -289,7 +289,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                         padding: '4px 10px',
                         background: pcsColors.btBg,
                         color: pcsColors.btText,
-                        borderRadius: 6,
+                        borderRadius: 0,
                         fontSize: 14,
                         fontWeight: 700,
                       }}>
@@ -314,7 +314,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                             width: '100%',
                             height: 16,
                             background: BT.bg.elevated,
-                            borderRadius: 3,
+                            borderRadius: 0,
                             overflow: 'hidden',
                             position: 'relative',
                           }}>
@@ -322,7 +322,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                               width: `${val}%`,
                               height: '100%',
                               background: colors.btText,
-                              borderRadius: 3,
+                              borderRadius: 0,
                             }} />
                           </div>
                         </td>
@@ -358,14 +358,14 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                                       <div style={{
                                         height: 8,
                                         background: BT.bg.elevated,
-                                        borderRadius: 4,
+                                        borderRadius: 0,
                                         overflow: 'hidden',
                                       }}>
                                         <div style={{
                                           width: `${val}%`,
                                           height: '100%',
                                           background: colors.btText,
-                                          borderRadius: 4,
+                                          borderRadius: 0,
                                         }} />
                                       </div>
                                     </div>
@@ -380,19 +380,19 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                                 Performance Summary
                               </div>
                               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6 }}>
+                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
                                   <div style={{ fontSize: 10, color: BT.text.muted }}>vs Submarket Avg</div>
                                   <div style={{ fontSize: 16, fontWeight: 700, color: BT.text.green }}>
                                     +{(prop.pcsScore - 72).toFixed(0)} pts
                                   </div>
                                 </div>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6 }}>
+                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
                                   <div style={{ fontSize: 10, color: BT.text.muted }}>Percentile</div>
                                   <div style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary }}>
                                     Top {Math.round((prop.rank / MOCK_RANKINGS.length) * 100)}%
                                   </div>
                                 </div>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6 }}>
+                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
                                   <div style={{ fontSize: 10, color: BT.text.muted }}>Strongest</div>
                                   <div style={{ fontSize: 12, fontWeight: 600, color: BT.text.cyan }}>
                                     {PCS_COMPONENTS.reduce((best, c) => {
@@ -401,7 +401,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                                     }, PCS_COMPONENTS[0]).label}
                                   </div>
                                 </div>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 6 }}>
+                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
                                   <div style={{ fontSize: 10, color: BT.text.muted }}>Weakest</div>
                                   <div style={{ fontSize: 12, fontWeight: 600, color: BT.accent.amber }}>
                                     {PCS_COMPONENTS.reduce((worst, c) => {
@@ -425,7 +425,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                                   background: BT.accent.blue,
                                   color: '#fff',
                                   border: 'none',
-                                  borderRadius: 6,
+                                  borderRadius: 0,
                                   fontSize: 12,
                                   fontWeight: 600,
                                   cursor: 'pointer',
@@ -438,7 +438,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                                 background: 'transparent',
                                 color: BT.text.secondary,
                                 border: `1px solid ${BT.border.subtle}`,
-                                borderRadius: 6,
+                                borderRadius: 0,
                                 fontSize: 12,
                                 cursor: 'pointer',
                               }}>
@@ -463,7 +463,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
         gap: 24,
         padding: '12px 16px',
         background: BT.bg.card,
-        borderRadius: 8,
+        borderRadius: 0,
         border: `1px solid ${BT.border.subtle}`,
       }}>
         <div>

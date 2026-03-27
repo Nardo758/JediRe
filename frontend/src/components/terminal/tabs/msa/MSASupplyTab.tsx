@@ -119,14 +119,14 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
                   <div style={{
                     height: 8,
                     background: BT.bg.cardHover,
-                    borderRadius: 4,
+                    borderRadius: 0,
                     overflow: 'hidden',
                   }}>
                     <div style={{
                       height: '100%',
                       width: `${sub.pctOfTotal * 2}%`,
                       background: BT.text.amber,
-                      borderRadius: 4,
+                      borderRadius: 0,
                     }} />
                   </div>
                 </td>
