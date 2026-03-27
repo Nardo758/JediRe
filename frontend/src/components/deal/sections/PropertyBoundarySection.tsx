@@ -1115,22 +1115,22 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                     <p className="text-xs" style={{ color: BT.text.secondary }}>{detectedLocation.county}</p>
                   )}
                   {detectedLocation.hasZoningData ? (
-                    <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <span className="inline-flex items-center mt-1 px-2 py-0.5 text-xs font-medium" style={{ background: `${BT.text.green}22`, color: BT.text.green, borderRadius: 0 }}>
                       <CheckCircle size={10} className="mr-1" /> Zoning Data Available
                     </span>
                   ) : (
-                    <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    <span className="inline-flex items-center mt-1 px-2 py-0.5 text-xs font-medium" style={{ background: `${BT.text.amber}22`, color: BT.text.amber, borderRadius: 0 }}>
                       <AlertCircle size={10} className="mr-1" /> No Zoning Data
                     </span>
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400 mb-2">{hasBoundary ? 'Detecting...' : 'Draw boundary to detect'}</p>
+                <p className="text-sm mb-2" style={{ color: BT.text.secondary }}>{hasBoundary ? 'Detecting...' : 'Draw boundary to detect'}</p>
               )}
 
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4, marginTop: 8 }}>Zoning Designation</p>
               {zoningLoading ? (
-                <p className="text-sm text-gray-400 italic">Looking up zoning...</p>
+                <p className="text-sm italic" style={{ color: BT.text.secondary }}>Looking up zoning...</p>
               ) : zoningInfo ? (
                 <div>
                   <p className="text-sm font-medium text-gray-900">{zoningInfo.code}</p>
