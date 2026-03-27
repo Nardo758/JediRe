@@ -30,23 +30,25 @@ import { MSATrendsTab } from './tabs/msa/MSATrendsTab';
 import { MSANewsTab } from './tabs/msa/MSANewsTab';
 import { MSACompareTab } from './tabs/msa/MSACompareTab';
 import { MSAOwnersTab } from './tabs/msa/MSAOwnersTab';
+import { MSAPropertiesTab } from './tabs/msa/MSAPropertiesTab';
 
-// Tab configuration for MSA level - expanded with pre-Bloomberg content (11 tabs)
+// Tab configuration for MSA level - expanded with pre-Bloomberg content (12 tabs)
 export const MSA_TABS: TabDef[] = [
   { key: 'overview', label: 'OVERVIEW', num: 0 },
   { key: 'submarkets', label: 'SUBMARKETS', num: 1 },
   { key: 'deals', label: 'DEALS', num: 2 },
   { key: 'rankings', label: 'RANKINGS', num: 3 },
-  { key: 'owners', label: 'OWNERS', num: 4 },
-  { key: 'supply', label: 'SUPPLY', num: 5 },
-  { key: 'capital', label: 'CAPITAL', num: 6 },
-  { key: 'economics', label: 'ECONOMICS', num: 7 },
-  { key: 'trends', label: 'TRENDS', num: 8 },
-  { key: 'news', label: 'NEWS', num: 9 },
-  { key: 'compare', label: 'COMPARE', num: 10 },
+  { key: 'properties', label: 'PROPERTIES', num: 4 },
+  { key: 'owners', label: 'OWNERS', num: 5 },
+  { key: 'supply', label: 'SUPPLY', num: 6 },
+  { key: 'capital', label: 'CAPITAL', num: 7 },
+  { key: 'economics', label: 'ECONOMICS', num: 8 },
+  { key: 'trends', label: 'TRENDS', num: 9 },
+  { key: 'news', label: 'NEWS', num: 10 },
+  { key: 'compare', label: 'COMPARE', num: 11 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare';
+export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare';
 
 export interface MSAData {
   id: string;
@@ -188,6 +190,8 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         return <MSADealsTab msaId={msaId} msa={msa} onSelectDeal={onDealSelect} />;
       case 'rankings':
         return <MSAPowerRankingsTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
+      case 'properties':
+        return <MSAPropertiesTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'owners':
         return <MSAOwnersTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'supply':
