@@ -891,7 +891,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               </div>
               
               {zoningLoading ? (
-                <p className="text-sm text-gray-400 italic">Loading zoning information...</p>
+                <p className="text-sm italic" style={{ color: BT.text.secondary }}>Loading zoning information...</p>
               ) : zoningDetail ? (
                 <div className="space-y-4">
                   {/* Current Code Header */}
@@ -915,8 +915,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                     <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Development Standards</p>
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
-                        <p className="text-xs text-gray-500">Max Density</p>
-                        <p className="font-semibold text-gray-900">
+                        <p className="text-xs" style={{ color: BT.text.secondary }}>Max Density</p>
+                        <p className="font-semibold" style={{ color: BT.text.primary }}>
                           {zoningDetail.max_density_per_acre || zoningDetail.max_units_per_acre || '--'} units/acre
                         </p>
                       </div>
