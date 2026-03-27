@@ -618,10 +618,7 @@ const DealDetailPage: React.FC = () => {
                   border: 'none',
                   display: 'flex', alignItems: 'center', gap: 5,
                   whiteSpace: 'nowrap', flexShrink: 0,
-                  transition: 'background 0.1s, color 0.1s',
                 }}
-                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = `${BORDER}80`; e.currentTarget.style.color = TEXT; } }}
-                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = TEXT_MID; } }}
               >
                 <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.7, color: isActive ? BG_NAV : TEXT_DIM }}>{s.fkey}</span>
                 {s.short}
