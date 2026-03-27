@@ -293,7 +293,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
       </div>
 
       {/* Main Content: Chart+Grid LEFT | Commentary RIGHT */}
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Signal Chart */}
           <div style={{
@@ -323,7 +323,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
               </div>
             </div>
             <div style={{ padding: '8px 4px' }}>
-              <MultiLineChart labels={chart.labels} series={chart.series} height={140} />
+              <MultiLineChart labels={chart.labels} series={chart.series} height={220} />
             </div>
             <div style={{
               display: 'flex',
