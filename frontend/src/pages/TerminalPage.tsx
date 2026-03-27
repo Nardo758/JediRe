@@ -353,7 +353,7 @@ function StratBd({s,T}:{s:string;T:ThemeType}) {
 
 function RiskDot({level,T}:{level:string;T:ThemeType}) {
   const c=level==="HIGH"?T.text.red:level==="MED"?T.text.orange:T.text.green;
-  return <span style={{display:"flex",alignItems:"center",gap:3,fontSize:8,fontFamily:"'JetBrains Mono',monospace",fontWeight:600,color:c}}><span style={{width:5,height:5,borderRadius:"50%",background:c,...(level==="HIGH"?{animation:"glowR 2s infinite"}:{})}}/>{level}</span>;
+  return <span style={{display:"flex",alignItems:"center",gap:3,fontSize: 9,fontFamily:"'JetBrains Mono',monospace",fontWeight:600,color:c}}><span style={{width:5,height:5,borderRadius:"50%",background:c,...(level==="HIGH"?{animation:"glowR 2s infinite"}:{})}}/>{level}</span>;
 }
 
 function PanelHeader({title,subtitle,right,borderColor,T}:{title:string;subtitle?:string;right?:React.ReactNode;borderColor?:string;T:ThemeType}) {
@@ -361,7 +361,7 @@ function PanelHeader({title,subtitle,right,borderColor,T}:{title:string;subtitle
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,borderTop:borderColor?`2px solid ${borderColor}`:"none",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>{title}</span>
-        {subtitle&&<span style={{fontSize:8,color:T.text.secondary}}>{subtitle}</span>}
+        {subtitle&&<span style={{fontSize: 9,color:T.text.secondary}}>{subtitle}</span>}
       </div>
       {right&&<div style={{display:"flex",alignItems:"center",gap:6}}>{right}</div>}
     </div>
@@ -373,12 +373,12 @@ function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:stri
   const chColor = dir==="up"?T.text.green:dir==="down"?T.text.red:T.text.secondary;
   return (
     <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"8px 10px",flex:1}}>
-      <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,fontWeight:600,marginBottom:4}}>{label}</div>
+      <div style={{fontSize: 9,color:T.text.muted,letterSpacing:1,fontWeight:600,marginBottom:4}}>{label}</div>
       <div style={{display:"flex",alignItems:"baseline",gap:2}}>
         <span style={{fontSize:18,fontWeight:800,color:valColor}}>{value}</span>
         <span style={{fontSize:10,color:T.text.secondary}}>{sub}</span>
       </div>
-      {change && <div style={{fontSize:8,color:chColor,marginTop:2,fontWeight:600}}>{change}</div>}
+      {change && <div style={{fontSize: 9,color:chColor,marginTop:2,fontWeight:600}}>{change}</div>}
       <Spark data={[3,4,3,5,4,6,5,7,8]} color={color||chColor||T.text.amber} w={80} h={12}/>
     </div>
   );
@@ -943,7 +943,7 @@ export default function TerminalPage() {
         {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
         {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
         <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>{sorted.length} deals</span>
-        <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
+        <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
@@ -964,12 +964,12 @@ export default function TerminalPage() {
             onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)}
             style={{display:"grid",gridTemplateColumns:gc,background:selDealId===d.id?T.bg.active:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:selDealId===d.id?`2px solid ${T.text.amber}`:"2px solid transparent",animation:flashes[d.id]?"flash 0.7s ease-out":"none"}}
           >
-            <div style={{padding:4,fontSize:8,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
+            <div style={{padding:4,fontSize: 9,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}>
               <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{d.name}</div>
               <div style={{fontSize:9,color:T.text.muted}}>{d.addr}</div>
             </div>
-            <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}><div style={{fontSize:8,color:T.text.secondary}}>{d.market}</div></div>
+            <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`}}><div style={{fontSize: 9,color:T.text.secondary}}>{d.market}</div></div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>
               <span style={{fontSize:11,fontWeight:800,color:d.score>=80?T.text.green:d.score>=65?T.text.amber:d.score>0?T.text.red:T.text.muted}}>{d.score>0?d.score:"—"}</span>
             </div>
@@ -978,12 +978,12 @@ export default function TerminalPage() {
             </div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><StratBd s={d.strat} T={T}/></div>
             <div style={{padding:4,fontSize:9,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.irr}</div>
-            <div style={{padding:4,fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.em}</div>
+            <div style={{padding:4,fontSize: 9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.em}</div>
             <div style={{padding:4,fontSize:9,fontWeight:600,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.price}</div>
-            <div style={{padding:4,fontSize:8,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.ppu}</div>
+            <div style={{padding:4,fontSize: 9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}>{d.ppu}</div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><StageBd stage={d.stage} T={T}/></div>
             <div style={{padding:4,borderRight:`1px solid ${T.border.subtle}`,display:"flex",alignItems:"center"}}><RiskDot level={d.risk} T={T}/></div>
-            <div style={{padding:4,fontSize:8,color:d.days>30?T.text.orange:T.text.secondary,display:"flex",alignItems:"center"}}>{d.days>0?`${d.days}d`:"—"}</div>
+            <div style={{padding:4,fontSize: 9,color:d.days>30?T.text.orange:T.text.secondary,display:"flex",alignItems:"center"}}>{d.days>0?`${d.days}d`:"—"}</div>
           </div>
         ))}
         {selDealId&&(()=>{const d=sorted.find(x=>x.id===selDealId);return d?(
@@ -1047,23 +1047,23 @@ export default function TerminalPage() {
       {/* Header */}
       <PanelHeader T={T} title={mapTitle} subtitle={mapSubtitle}
         right={<div style={{display:"flex",gap:4}}>
-          <button onClick={()=>setMapCreating(c=>!c)} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"1px 6px",cursor:"pointer"}}>+ LAYER</button>
-          <button onClick={()=>{setMapOpen(false);setMapCreating(false);setMapSelDeal(null);}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0px 5px",cursor:"pointer"}}>✕</button>
+          <button onClick={()=>setMapCreating(c=>!c)} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"1px 6px",cursor:"pointer"}}>+ LAYER</button>
+          <button onClick={()=>{setMapOpen(false);setMapCreating(false);setMapSelDeal(null);}} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"0px 5px",cursor:"pointer"}}>✕</button>
         </div>}/>
 
       {/* ── Layer creation form ── */}
       {mapCreating&&(
         <div style={{padding:"8px 10px",background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.medium}`,animation:"fadeIn 0.12s",flexShrink:0}}>
-          <div style={{fontSize:8,fontWeight:700,color:T.text.cyan,letterSpacing:0.5,marginBottom:6}}>NEW MAP LAYER</div>
+          <div style={{fontSize: 9,fontWeight:700,color:T.text.cyan,letterSpacing:0.5,marginBottom:6}}>NEW MAP LAYER</div>
           <input autoFocus value={newMapName} onChange={e=>setNewMapName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addMapLayer();if(e.key==="Escape")setMapCreating(false);}} placeholder="Layer name…" style={{width:"100%",boxSizing:"border-box",fontFamily:T.font.mono,fontSize:9,background:T.bg.input,color:T.text.primary,border:`1px solid ${T.border.medium}`,padding:"4px 7px",marginBottom:6,outline:"none"}}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:6}}>
             {MAP_TYPES.map(mt=>(
-              <button key={mt.id} onClick={()=>setNewMapType(mt.id)} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,padding:"3px 0",cursor:"pointer",background:newMapType===mt.id?mt.color+"22":"transparent",color:newMapType===mt.id?mt.color:T.text.muted,border:`1px solid ${newMapType===mt.id?mt.color:T.border.subtle}`}}>{mt.label}</button>
+              <button key={mt.id} onClick={()=>setNewMapType(mt.id)} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,padding:"3px 0",cursor:"pointer",background:newMapType===mt.id?mt.color+"22":"transparent",color:newMapType===mt.id?mt.color:T.text.muted,border:`1px solid ${newMapType===mt.id?mt.color:T.border.subtle}`}}>{mt.label}</button>
             ))}
           </div>
           <div style={{display:"flex",gap:6}}>
-            <button onClick={addMapLayer} style={{flex:1,fontFamily:T.font.mono,fontSize:8,fontWeight:700,padding:"4px 0",cursor:"pointer",background:T.text.cyan,color:T.bg.terminal,border:"none"}}>CREATE</button>
-            <button onClick={()=>setMapCreating(false)} style={{fontFamily:T.font.mono,fontSize:8,padding:"4px 8px",cursor:"pointer",background:"transparent",color:T.text.muted,border:`1px solid ${T.border.subtle}`}}>CANCEL</button>
+            <button onClick={addMapLayer} style={{flex:1,fontFamily:T.font.mono,fontSize: 9,fontWeight:700,padding:"4px 0",cursor:"pointer",background:T.text.cyan,color:T.bg.terminal,border:"none"}}>CREATE</button>
+            <button onClick={()=>setMapCreating(false)} style={{fontFamily:T.font.mono,fontSize: 9,padding:"4px 8px",cursor:"pointer",background:"transparent",color:T.text.muted,border:`1px solid ${T.border.subtle}`}}>CANCEL</button>
           </div>
         </div>
       )}
@@ -1074,7 +1074,7 @@ export default function TerminalPage() {
           {mapLayers.map(layer=>{const mt=MAP_TYPES.find(m=>m.id===layer.type)||MAP_TYPES[0];return(
             <div key={layer.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.panel,opacity:layer.visible?1:0.45}}>
               <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:7,height:7,borderRadius:"50%",background:mt.color,flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}><div style={{fontSize:8,fontWeight:600,color:T.text.primary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{layer.name}</div><div style={{fontSize:7,color:mt.color,letterSpacing:0.3}}>{mt.label}</div></div>
+              <div style={{flex:1,minWidth:0}}><div style={{fontSize: 9,fontWeight:600,color:T.text.primary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{layer.name}</div><div style={{fontSize: 9,color:mt.color,letterSpacing:0.3}}>{mt.label}</div></div>
               <button onClick={()=>toggleLayerVis(layer.id)} style={{background:"transparent",border:`1px solid ${T.border.subtle}`,color:layer.visible?T.text.green:T.text.muted,padding:"1px 5px",fontSize:9,cursor:"pointer"}}>{layer.visible?"●":"○"}</button>
               <button onClick={()=>deleteLayer(layer.id)} style={{background:"transparent",border:`1px solid ${T.border.subtle}`,color:T.text.muted,padding:"1px 4px",fontSize:9,cursor:"pointer"}}>✕</button>
             </div>
@@ -1083,7 +1083,7 @@ export default function TerminalPage() {
       )}
       {mapLayers.length===0&&!mapCreating&&(
         <div style={{flexShrink:0,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.panelAlt}}>
-          <span style={{fontSize:7,color:T.text.muted,fontFamily:T.font.mono}}>No layers · click <span style={{color:T.text.cyan}}>+ LAYER</span> to create war maps &amp; heat maps</span>
+          <span style={{fontSize: 9,color:T.text.muted,fontFamily:T.font.mono}}>No layers · click <span style={{color:T.text.cyan}}>+ LAYER</span> to create war maps &amp; heat maps</span>
         </div>
       )}
 
@@ -1093,7 +1093,7 @@ export default function TerminalPage() {
           {Array.from({length:20}).map((_,i)=><line key={i} x1="0" y1={i*25} x2="100%" y2={i*25} stroke="#8B95A5" strokeWidth="0.5"/>)}
           {Array.from({length:16}).map((_,i)=><line key={`v${i}`} x1={i*22} y1="0" x2={i*22} y2="100%" stroke="#8B95A5" strokeWidth="0.5"/>)}
         </svg>
-        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:8,color:"#8B95A5",opacity:0.08,textAlign:"center",pointerEvents:"none",letterSpacing:1}}>MAPBOX GL JS<br/>ATLANTA MSA</div>
+        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize: 9,color:"#8B95A5",opacity:0.08,textAlign:"center",pointerEvents:"none",letterSpacing:1}}>MAPBOX GL JS<br/>ATLANTA MSA</div>
 
         {/* Pins — derived from current tab data */}
         {mapPins.map((pin,idx)=>{
@@ -1105,17 +1105,17 @@ export default function TerminalPage() {
           return (
             <div key={pin.id} onClick={e=>{e.stopPropagation();setMapSelDeal(sel?null:pin.id);}} style={{position:"absolute",left:pos.x,top:pos.y,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:sel?10:1}}>
               <div style={{width:sz,height:sz,borderRadius:"50%",background:layerColor,border:sel?`2px solid #fff`:`1px solid ${layerColor}`,opacity:sel?1:0.85,boxShadow:sel?`0 0 14px ${layerColor}88`:"none",transition:"all 0.12s"}}/>
-              {!sel&&<div style={{position:"absolute",top:"-14px",left:"50%",transform:"translateX(-50%)",fontSize:7,fontFamily:"monospace",color:c,fontWeight:700,whiteSpace:"nowrap",textShadow:"0 0 6px #000"}}>{pin.metricLabel}</div>}
+              {!sel&&<div style={{position:"absolute",top:"-14px",left:"50%",transform:"translateX(-50%)",fontSize: 9,fontFamily:"monospace",color:c,fontWeight:700,whiteSpace:"nowrap",textShadow:"0 0 6px #000"}}>{pin.metricLabel}</div>}
               {sel&&(
                 <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:T.bg.header,border:`1px solid ${T.border.bright}`,padding:"6px 8px",whiteSpace:"nowrap",zIndex:20,animation:"fadeIn 0.12s",minWidth:150}}>
                   <div style={{fontSize:9,fontWeight:700,color:T.text.white,fontFamily:"monospace",marginBottom:3}}>{pin.name}</div>
                   <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
                     <span style={{fontSize:10,fontWeight:800,color:c,fontFamily:"monospace"}}>{pin.metricLabel}</span>
-                    <span style={{fontSize:8,color:T.text.amber,fontFamily:"monospace"}}>{pin.irr}</span>
-                    <span style={{fontSize:7,fontWeight:700,padding:"1px 4px",background:T.text.purple+"22",color:T.text.purple,border:`1px solid ${T.text.purple}44`}}>{pin.strat}</span>
+                    <span style={{fontSize: 9,color:T.text.amber,fontFamily:"monospace"}}>{pin.irr}</span>
+                    <span style={{fontSize: 9,fontWeight:700,padding:"1px 4px",background:T.text.purple+"22",color:T.text.purple,border:`1px solid ${T.text.purple}44`}}>{pin.strat}</span>
                   </div>
-                  <div style={{fontSize:7,color:T.text.muted,marginBottom:4}}>{pin.stage} · {pin.addr}</div>
-                  <button onClick={()=>navigate(fkey==="F3"?`/deals/${pin.id}/detail`:`/deals/${pin.id}/detail`)} style={{fontFamily:"monospace",fontSize:7,fontWeight:700,color:T.text.amber,background:"transparent",border:"none",cursor:"pointer",padding:0,letterSpacing:0.3}}>OPEN CAPSULE →</button>
+                  <div style={{fontSize: 9,color:T.text.muted,marginBottom:4}}>{pin.stage} · {pin.addr}</div>
+                  <button onClick={()=>navigate(fkey==="F3"?`/deals/${pin.id}/detail`:`/deals/${pin.id}/detail`)} style={{fontFamily:"monospace",fontSize: 9,fontWeight:700,color:T.text.amber,background:"transparent",border:"none",cursor:"pointer",padding:0,letterSpacing:0.3}}>OPEN CAPSULE →</button>
                 </div>
               )}
             </div>
@@ -1123,7 +1123,7 @@ export default function TerminalPage() {
         })}
         {mapPins.length===0&&(
           <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-30%)",textAlign:"center"}}>
-            <div style={{fontSize:8,color:T.text.muted,fontFamily:T.font.mono}}>No {fkey==="F3"?"assets":"deals"} to plot</div>
+            <div style={{fontSize: 9,color:T.text.muted,fontFamily:T.font.mono}}>No {fkey==="F3"?"assets":"deals"} to plot</div>
           </div>
         )}
 
@@ -1132,11 +1132,11 @@ export default function TerminalPage() {
           {mapLegend.map(({c,l})=>(
             <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:c,opacity:0.85}}/>
-              <span style={{fontSize:7,color:T.text.muted,fontFamily:"monospace"}}>{l}</span>
+              <span style={{fontSize: 9,color:T.text.muted,fontFamily:"monospace"}}>{l}</span>
             </div>
           ))}
         </div>
-        <button onClick={()=>navigate("/map")} style={{position:"absolute",bottom:8,right:8,fontFamily:"monospace",fontSize:7,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"3px 8px",cursor:"pointer",zIndex:5}}>FULL MAP →</button>
+        <button onClick={()=>navigate("/map")} style={{position:"absolute",bottom:8,right:8,fontFamily:"monospace",fontSize: 9,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"3px 8px",cursor:"pointer",zIndex:5}}>FULL MAP →</button>
       </div>
     </div>
   );
@@ -1147,9 +1147,9 @@ export default function TerminalPage() {
       {STATIC_NEWS.map((n,i)=>(
         <div key={i} style={{display:"flex",gap:10,padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${T.text.amber}`}}>
           <div style={{flex:1}}>
-            <div style={{fontSize:8,color:T.text.amber,fontWeight:700,letterSpacing:1,marginBottom:3}}>IMPORTANT</div>
+            <div style={{fontSize: 9,color:T.text.amber,fontWeight:700,letterSpacing:1,marginBottom:3}}>IMPORTANT</div>
             <div style={{fontSize:10,color:T.text.primary,fontWeight:500,lineHeight:1.4}}>{n.hl}</div>
-            <div style={{fontSize:8,color:T.text.muted,marginTop:2}}>{n.time} ago</div>
+            <div style={{fontSize: 9,color:T.text.muted,marginTop:2}}>{n.time} ago</div>
           </div>
           <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize:9,fontWeight:700,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts} pts</div></div>
         </div>
@@ -1165,7 +1165,7 @@ export default function TerminalPage() {
             <div>
               <div style={{display:"flex",gap:6,marginBottom:4}}><StageBd stage={d.stage} T={T}/></div>
               <div style={{fontSize:12,fontWeight:700,color:T.text.primary}}>{d.name}</div>
-              <div style={{fontSize:8,color:T.text.secondary,marginTop:2}}>{d.addr}</div>
+              <div style={{fontSize: 9,color:T.text.secondary,marginTop:2}}>{d.addr}</div>
             </div>
             <span style={{fontSize:18,fontWeight:800,color:d.score>=80?T.text.green:d.score>=65?T.text.amber:d.score>0?T.text.red:T.text.muted}}>{d.score>0?d.score:"—"}</span>
           </div>
@@ -1185,9 +1185,9 @@ export default function TerminalPage() {
           {l:"Avg Days/Deal",v:liveDeals.length>0?String(Math.round(liveDeals.reduce((s,d)=>s+d.days,0)/liveDeals.length)):"—",sub:"avg time",c:T.text.amber},
         ].map((k,i)=>(
           <div key={i} style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"12px 14px"}}>
-            <div style={{fontSize:8,color:T.text.muted,letterSpacing:1,marginBottom:4}}>{k.l}</div>
+            <div style={{fontSize: 9,color:T.text.muted,letterSpacing:1,marginBottom:4}}>{k.l}</div>
             <div style={{fontSize:28,fontWeight:800,color:k.c}}>{k.v}</div>
-            <div style={{fontSize:8,color:T.text.secondary,marginTop:2}}>{k.sub}</div>
+            <div style={{fontSize: 9,color:T.text.secondary,marginTop:2}}>{k.sub}</div>
           </div>
         ))}
       </div>
@@ -1195,7 +1195,7 @@ export default function TerminalPage() {
         {Object.entries(stages).map(([s,c])=>(
           <div key={s} style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"8px 10px",textAlign:"center"}}>
             <div style={{fontSize:16,fontWeight:800,color:c>0?T.text.amber:T.text.muted}}>{c}</div>
-            <div style={{fontSize:7,color:T.text.muted,letterSpacing:1}}>{s}</div>
+            <div style={{fontSize: 9,color:T.text.muted,letterSpacing:1}}>{s}</div>
           </div>
         ))}
       </div>
@@ -1232,7 +1232,7 @@ export default function TerminalPage() {
           <span style={{fontSize:12,fontWeight:800,color:T.text.muted,minWidth:24}}>#{i+1}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{d.name}</div>
-            <div style={{fontSize:8,color:T.text.secondary}}>{d.market} · <StratBd s={d.strat} T={T}/></div>
+            <div style={{fontSize: 9,color:T.text.secondary}}>{d.market} · <StratBd s={d.strat} T={T}/></div>
           </div>
           <Spark data={d.trend} color={d.score>=80?T.text.green:T.text.amber} w={48} h={16}/>
           <div style={{textAlign:"right",minWidth:40}}>
@@ -1280,8 +1280,8 @@ export default function TerminalPage() {
         const avgScore=count>0?Math.round(liveDeals.filter(d=>d.strat.includes(row.abbr.slice(0,3))).reduce((a,d)=>a+d.score,0)/count):0;
         return(
           <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
-            <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:row.c}}>{row.s}</div><div style={{fontSize:8,color:T.text.secondary}}>{count} deal{count!==1?"s":""} in pipeline</div></div>
-            <div style={{textAlign:"right"}}><div style={{fontSize:22,fontWeight:800,color:row.c}}>{avgScore||"—"}</div><div style={{fontSize:7,color:T.text.muted}}>avg score</div></div>
+            <div style={{flex:1}}><div style={{fontSize:10,fontWeight:700,color:row.c}}>{row.s}</div><div style={{fontSize: 9,color:T.text.secondary}}>{count} deal{count!==1?"s":""} in pipeline</div></div>
+            <div style={{textAlign:"right"}}><div style={{fontSize:22,fontWeight:800,color:row.c}}>{avgScore||"—"}</div><div style={{fontSize: 9,color:T.text.muted}}>avg score</div></div>
           </div>
         );
       })}
@@ -1296,11 +1296,11 @@ export default function TerminalPage() {
           <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
             <div style={{width:110,fontSize:9,fontWeight:600,color:T.text.secondary}}>{r.l}</div>
             <div style={{fontSize:20,fontWeight:800,color:r.c,minWidth:64}}>{r.v}</div>
-            <div style={{fontSize:8,color:r.d.startsWith("+")?T.text.green:r.d.startsWith("-")?T.text.red:T.text.muted,minWidth:44}}>{r.d}</div>
+            <div style={{fontSize: 9,color:r.d.startsWith("+")?T.text.green:r.d.startsWith("-")?T.text.red:T.text.muted,minWidth:44}}>{r.d}</div>
             <Spark data={r.t} color={r.c} w={72} h={20}/>
           </div>
         ))}
-        <div style={{padding:"6px 10px",fontSize:7,color:T.text.muted}}>Source: Federal Reserve · Updated daily</div>
+        <div style={{padding:"6px 10px",fontSize: 9,color:T.text.muted}}>Source: Federal Reserve · Updated daily</div>
       </div>
     );
   };
@@ -1319,7 +1319,7 @@ export default function TerminalPage() {
             {pts.map((p,i)=>{const x=(i/(pts.length-1))*W,y=H-((p.v-mn)/rng)*H;return<g key={i}><circle cx={x} cy={y} r="3" fill={T.text.purple}/><text x={x} y={H+14} textAnchor="middle" fontSize="7" fill={T.text.muted}>{p.m}</text></g>;})}
           </svg>
         </div>
-        <div style={{marginTop:8,fontSize:8,color:T.text.muted}}>Inverted 2Y/10Y spread: <span style={{color:T.text.orange,fontWeight:700}}>-31bps</span></div>
+        <div style={{marginTop:8,fontSize: 9,color:T.text.muted}}>Inverted 2Y/10Y spread: <span style={{color:T.text.orange,fontWeight:700}}>-31bps</span></div>
       </div>
     );
   };
@@ -1330,13 +1330,13 @@ export default function TerminalPage() {
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column"}}>
         <div style={{display:"flex",gap:0,background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-          {channels.map(c=><button key={c} onClick={()=>setChan(c)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,padding:"4px 10px",cursor:"pointer",background:chan===c?T.text.orange:"transparent",color:chan===c?T.bg.terminal:T.text.secondary,border:"none"}}>{c}</button>)}
+          {channels.map(c=><button key={c} onClick={()=>setChan(c)} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,padding:"4px 10px",cursor:"pointer",background:chan===c?T.text.orange:"transparent",color:chan===c?T.bg.terminal:T.text.secondary,border:"none"}}>{c}</button>)}
         </div>
         <div style={{flex:1,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,position:"relative"}}>
-          <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:T.text.red,display:"inline-block",animation:"pulse 1.5s infinite"}}/><span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.red,letterSpacing:1}}>LIVE</span></div>
+          <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:T.text.red,display:"inline-block",animation:"pulse 1.5s infinite"}}/><span style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,color:T.text.red,letterSpacing:1}}>LIVE</span></div>
           <div style={{fontSize:24,color:"rgba(255,255,255,0.08)",fontWeight:800,letterSpacing:4}}>{chan.toUpperCase()}</div>
           <div style={{fontSize:9,color:"rgba(255,255,255,0.3)"}}>Stream requires authenticated account</div>
-          <button style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.orange,color:"#000",border:"none",padding:"5px 14px",cursor:"pointer",marginTop:4}}>CONNECT ACCOUNT</button>
+          <button style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,background:T.text.orange,color:"#000",border:"none",padding:"5px 14px",cursor:"pointer",marginTop:4}}>CONNECT ACCOUNT</button>
         </div>
       </div>
     );
@@ -1347,11 +1347,11 @@ export default function TerminalPage() {
     return (
       <div style={{flex:1,overflow:"auto"}}>
         <div style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr 1fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-          {["CLASS","TAMPA","MIAMI","ORLANDO","JACKSONVILLE"].map((h,i)=><div key={i} style={{padding:"4px 8px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>)}
+          {["CLASS","TAMPA","MIAMI","ORLANDO","JACKSONVILLE"].map((h,i)=><div key={i} style={{padding:"4px 8px",fontSize: 9,fontWeight:700,color:T.text.muted,letterSpacing:0.5,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>)}
         </div>
         {data.map((row,i)=>(
           <div key={i} style={{display:"grid",gridTemplateColumns:"80px 1fr 1fr 1fr 1fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
-            <div style={{padding:"6px 8px",fontSize:8,fontWeight:700,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{row.cls}</div>
+            <div style={{padding:"6px 8px",fontSize: 9,fontWeight:700,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{row.cls}</div>
             {row.markets.map((m,j)=><div key={j} style={{padding:"6px 8px",fontSize:10,fontWeight:700,color:parseFloat(m.v)>7?T.text.red:parseFloat(m.v)>6?T.text.orange:T.text.green,borderRight:`1px solid ${T.border.subtle}`}}>{m.v}</div>)}
           </div>
         ))}
@@ -1366,10 +1366,10 @@ export default function TerminalPage() {
         {reits.map((r,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
             <div style={{width:36,fontSize:9,fontWeight:800,color:r.c}}>{r.t}</div>
-            <div style={{flex:1,fontSize:8,color:T.text.secondary}}>{r.n}</div>
+            <div style={{flex:1,fontSize: 9,color:T.text.secondary}}>{r.n}</div>
             <div style={{fontSize:13,fontWeight:700,color:T.text.primary,minWidth:52,textAlign:"right"}}>{r.p}</div>
-            <div style={{fontSize:8,fontWeight:700,color:r.d.startsWith("+")?T.text.green:T.text.red,minWidth:38,textAlign:"right"}}>{r.d}</div>
-            <div style={{fontSize:8,color:r.ytd.startsWith("+")?T.text.green:T.text.red,minWidth:38,textAlign:"right"}}>{r.ytd} YTD</div>
+            <div style={{fontSize: 9,fontWeight:700,color:r.d.startsWith("+")?T.text.green:T.text.red,minWidth:38,textAlign:"right"}}>{r.d}</div>
+            <div style={{fontSize: 9,color:r.ytd.startsWith("+")?T.text.green:T.text.red,minWidth:38,textAlign:"right"}}>{r.ytd} YTD</div>
           </div>
         ))}
       </div>
@@ -1385,7 +1385,7 @@ export default function TerminalPage() {
             <div style={{flex:1,fontSize:9,color:T.text.secondary}}>{r.l}</div>
             <div style={{fontSize:16,fontWeight:800,color:r.c,minWidth:48}}>{r.v}</div>
             <div style={{fontSize:12,color:r.c,minWidth:12}}>{r.arr}</div>
-            <div style={{fontSize:7,color:T.text.muted,minWidth:130,textAlign:"right"}}>{r.note}</div>
+            <div style={{fontSize: 9,color:T.text.muted,minWidth:130,textAlign:"right"}}>{r.note}</div>
           </div>
         ))}
       </div>
@@ -1400,10 +1400,10 @@ export default function TerminalPage() {
           <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
             <div style={{flex:1,fontSize:9,color:T.text.secondary}}>{r.l}</div>
             <div style={{fontSize:12,fontWeight:700,color:T.text.amber,minWidth:96}}>{r.v}</div>
-            <div style={{fontSize:8,fontWeight:600,color:r.c,minWidth:80,textAlign:"right"}}>{r.d}</div>
+            <div style={{fontSize: 9,fontWeight:600,color:r.c,minWidth:80,textAlign:"right"}}>{r.d}</div>
           </div>
         ))}
-        <div style={{padding:"6px 12px",fontSize:7,color:T.text.muted}}>Spreads to SOFR 5.31% · Updated Mar 15</div>
+        <div style={{padding:"6px 12px",fontSize: 9,color:T.text.muted}}>Spreads to SOFR 5.31% · Updated Mar 15</div>
       </div>
     );
   };
@@ -1415,7 +1415,7 @@ export default function TerminalPage() {
       <div style={{flex:1,overflow:"auto"}}>
         {events.map((e,i)=>(
           <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${sColors[e.sev]}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
-            <div style={{width:40,textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:sColors[e.sev]}}>{e.days}</div><div style={{fontSize:6,color:T.text.muted}}>days</div></div>
+            <div style={{width:40,textAlign:"center"}}><div style={{fontSize:20,fontWeight:800,color:sColors[e.sev]}}>{e.days}</div><div style={{fontSize: 9,color:T.text.muted}}>days</div></div>
             <div style={{flex:1}}><div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{e.deal}</div><div style={{marginTop:2}}><Bd c={sColors[e.sev]}>{e.type}</Bd></div></div>
           </div>
         ))}
@@ -1432,7 +1432,7 @@ export default function TerminalPage() {
           <div key={i} style={{padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
               <span style={{fontSize:9,fontWeight:700,color:T.text.amber}}>{it.who}</span>
-              <div style={{display:"flex",gap:4,alignItems:"center"}}><Bd c={tc[it.threat]}>{it.threat}</Bd><span style={{fontSize:7,color:T.text.muted}}>{it.time}</span></div>
+              <div style={{display:"flex",gap:4,alignItems:"center"}}><Bd c={tc[it.threat]}>{it.threat}</Bd><span style={{fontSize: 9,color:T.text.muted}}>{it.time}</span></div>
             </div>
             <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.4}}>{it.action}</div>
             <div style={{marginTop:3}}><Bd c={T.text.cyan}>{it.impact}</Bd></div>
@@ -1444,7 +1444,7 @@ export default function TerminalPage() {
 
   const WidgetAIBrief = () => (
     <div style={{flex:1,overflow:"auto",padding:14}}>
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}><span style={{fontSize:9,fontWeight:700,color:T.text.green}}>● AI ONLINE</span><span style={{fontSize:8,color:T.text.muted}}>Generated {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span></div>
+      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}><span style={{fontSize:9,fontWeight:700,color:T.text.green}}>● AI ONLINE</span><span style={{fontSize: 9,color:T.text.muted}}>Generated {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span></div>
       <div style={{fontSize:10,fontWeight:700,color:T.text.primary,marginBottom:8,lineHeight:1.4}}>Good morning. Today's top priorities:</div>
       {[
         {n:"① Review Active DD",t:"Check outstanding due diligence items. Prioritize inspections and expiry dates.",c:T.text.red},
@@ -1472,8 +1472,8 @@ export default function TerminalPage() {
               <div style={{marginTop:3,display:"flex",gap:4,flexWrap:"wrap"}}><Bd c={T.text.amber}>{t.deal}</Bd><Bd c={pc[t.pri]}>{t.pri.toUpperCase()}</Bd></div>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontSize:8,fontWeight:700,color:sc[t.status]}}>{t.status}</div>
-              <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{t.due} · {t.owner}</div>
+              <div style={{fontSize: 9,fontWeight:700,color:sc[t.status]}}>{t.status}</div>
+              <div style={{fontSize: 9,color:T.text.muted,marginTop:2}}>{t.due} · {t.owner}</div>
             </div>
           </div>
         ))}
@@ -1520,7 +1520,7 @@ export default function TerminalPage() {
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:1}}>ADD WIDGET</div>
-                <div style={{fontSize:8,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWindows.length} on dashboard</div>
+                <div style={{fontSize: 9,color:T.text.muted,marginTop:1}}>{WIDGET_CATALOG.length} available · {dashWindows.length} on dashboard</div>
               </div>
               <button onClick={()=>setDashMenuOpen(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>✕ CLOSE</button>
             </div>
@@ -1530,7 +1530,7 @@ export default function TerminalPage() {
                 if(!items.length) return null;
                 return (
                   <div key={cat} style={{marginBottom:20}}>
-                    <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
+                    <div style={{fontSize: 9,fontWeight:700,color:T.text.muted,letterSpacing:1.5,marginBottom:8,paddingBottom:4,borderBottom:`1px solid ${T.border.subtle}`}}>{cat}</div>
                     <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
                       {items.map(w=>{
                         const added=dashWindows.includes(w.id);
@@ -1540,8 +1540,8 @@ export default function TerminalPage() {
                               <span style={{width:8,height:8,borderRadius:"50%",background:w.color,display:"inline-block",flexShrink:0}}/>
                               <span style={{fontSize:9,fontWeight:700,color:T.text.primary}}>{w.label}</span>
                             </div>
-                            <div style={{fontSize:7,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
-                            <button onClick={()=>{if(!added){openWindow(w.id);setDashMenuOpen(false);}else{closeWindow(w.id);}}} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:"pointer",letterSpacing:0.3}}>
+                            <div style={{fontSize: 9,color:T.text.muted,lineHeight:1.5,flex:1}}>{w.desc}</div>
+                            <button onClick={()=>{if(!added){openWindow(w.id);setDashMenuOpen(false);}else{closeWindow(w.id);}}} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,background:added?T.bg.active:"transparent",color:added?T.text.green:w.color,border:`1px solid ${added?T.text.green+"44":w.color}`,padding:"4px 0",cursor:"pointer",letterSpacing:0.3}}>
                               {added?"✓ OPEN":"+ ADD"}
                             </button>
                           </div>
@@ -1559,10 +1559,10 @@ export default function TerminalPage() {
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:32,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>DASHBOARD</span>
-            {dashWindows.length>0&&<span style={{fontSize:8,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
+            {dashWindows.length>0&&<span style={{fontSize: 9,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
           </div>
           <div style={{display:"flex",gap:6}}>
-            {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
+            {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
             <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
           </div>
         </div>
@@ -1589,7 +1589,7 @@ export default function TerminalPage() {
         )}
 
         {/* Widget grid (drag ghost cursor) */}
-        {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:300,pointerEvents:"none",fontFamily:T.font.mono,fontSize:8,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
+        {gridDrag&&(()=>{const m=WIDGET_CATALOG.find(w=>w.id===gridDrag.id);return m?<div style={{position:"fixed",left:gridDrag.x+10,top:gridDrag.y-16,background:T.bg.header,border:`1px solid ${m.color}`,padding:"3px 10px",zIndex:300,pointerEvents:"none",fontFamily:T.font.mono,fontSize: 9,fontWeight:700,color:m.color,boxShadow:"0 4px 16px rgba(0,0,0,0.5)"}}>⠿ {m.label}</div>:null;})()}
 
         {/* Widget grid */}
         {gridWidgets.length>0&&(
@@ -1618,13 +1618,13 @@ export default function TerminalPage() {
                       </div>
                       <div style={{display:"flex",gap:3,alignItems:"center"}}>
                         {(["sm","md","lg"] as const).map(s=>(
-                          <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
+                          <button key={s} onClick={()=>{setWidgetSizes(prev=>({...prev,[id]:s}));setWidgetHeights(prev=>{const n={...prev};delete n[id];return n;});}} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,padding:"1px 5px",cursor:"pointer",background:!customH&&sz===s?T.text.amber+"22":"transparent",color:!customH&&sz===s?T.text.amber:T.text.muted,border:`1px solid ${!customH&&sz===s?T.text.amber+"66":T.border.subtle}`,lineHeight:1.6}}>
                             {s.toUpperCase()}
                           </button>
                         ))}
                         <span style={{width:1,height:10,background:T.border.medium,display:"inline-block",margin:"0 2px"}}/>
                         {([1,2,3,4] as const).map(c=>{const active=(widgetCols[id]||2)===c;return(
-                          <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} col${c>1?"s":""}`} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
+                          <button key={c} onClick={()=>setWidgetCols(prev=>({...prev,[id]:c}))} title={`${c} col${c>1?"s":""}`} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,padding:"1px 4px",cursor:"pointer",background:active?T.text.cyan+"22":"transparent",color:active?T.text.cyan:T.text.muted,border:`1px solid ${active?T.text.cyan+"66":T.border.subtle}`,lineHeight:1.6}}>
                             {c}
                           </button>
                         );})}
@@ -1690,7 +1690,7 @@ export default function TerminalPage() {
     ];
 
     const TH = ({children}: {children: string}) => (
-      <th style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:1,textAlign:"left",padding:"6px 10px",borderBottom:`1px solid ${T.border.medium}`,fontWeight:700,whiteSpace:"nowrap"}}>{children}</th>
+      <th style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.muted,letterSpacing:1,textAlign:"left",padding:"6px 10px",borderBottom:`1px solid ${T.border.medium}`,fontWeight:700,whiteSpace:"nowrap"}}>{children}</th>
     );
     const TD = ({children,style}: {children:React.ReactNode,style?:React.CSSProperties}) => (
       <td style={{padding:"7px 10px",...style}}>{children}</td>
@@ -1705,7 +1705,7 @@ export default function TerminalPage() {
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:T.border.subtle,flexShrink:0}}>
           {kpis.map((m,i) => (
             <div key={i} style={{background:T.bg.panel,padding:"8px 10px"}}>
-              <div style={{fontSize:7,color:T.text.muted,letterSpacing:1}}>{m.l}</div>
+              <div style={{fontSize: 9,color:T.text.muted,letterSpacing:1}}>{m.l}</div>
               <div style={{fontSize:16,fontWeight:800,color:m.c,fontFamily:T.font.mono}}>{m.v}</div>
             </div>
           ))}
@@ -1714,13 +1714,13 @@ export default function TerminalPage() {
         {/* Sub-tab bar */}
         <div style={{display:"flex",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
           {F3_TABS.map(tab => (
-            <button key={tab} onClick={() => setF3Tab(tab)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,padding:"7px 14px",background:"transparent",color:f3Tab===tab?T.text.green:T.text.muted,borderBottom:f3Tab===tab?`2px solid ${T.text.green}`:"2px solid transparent",border:"none",cursor:"pointer",letterSpacing:0.5}}>
+            <button key={tab} onClick={() => setF3Tab(tab)} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,padding:"7px 14px",background:"transparent",color:f3Tab===tab?T.text.green:T.text.muted,borderBottom:f3Tab===tab?`2px solid ${T.text.green}`:"2px solid transparent",border:"none",cursor:"pointer",letterSpacing:0.5}}>
               {F3_LABELS[tab]}
             </button>
           ))}
           <div style={{flex:1}}/>
-          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
-          <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
+          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
+          <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
         </div>
 
         {/* Tab content */}
@@ -1747,10 +1747,10 @@ export default function TerminalPage() {
                           <TD><span style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.name}</span></TD>
                           <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket}</span></TD>
                           <TD><span style={{fontSize:14,fontWeight:800,color:asset.pcsScore>=70?T.text.green:asset.pcsScore>=50?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{asset.pcsScore}</span></TD>
-                          <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.rank}<span style={{fontSize:8,color:T.text.muted}}>/{asset.totalInSubmarket}</span></span></TD>
+                          <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.rank}<span style={{fontSize: 9,color:T.text.muted}}>/{asset.totalInSubmarket}</span></span></TD>
                           <TD><span style={{fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:asset.movement>0?T.text.green:asset.movement<0?T.text.red:T.text.muted}}>{asset.movement>0?`▲ +${asset.movement}`:asset.movement<0?`▼ ${asset.movement}`:"─"}</span></TD>
-                          <TD><span style={{fontSize:7,fontWeight:700,padding:"2px 6px",background:asset.trajectory==="improving"?T.text.green+"22":asset.trajectory==="declining"?T.text.red+"22":T.text.amber+"22",color:asset.trajectory==="improving"?T.text.green:asset.trajectory==="declining"?T.text.red:T.text.amber,border:`1px solid ${asset.trajectory==="improving"?T.text.green+"44":asset.trajectory==="declining"?T.text.red+"44":T.text.amber+"44"}`}}>{(asset.trajectory||"stable").toUpperCase()}</span></TD>
-                          <TD><button onClick={e=>{e.stopPropagation();navigate(`/deals/${asset.dealId}/detail`);}} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW DEAL →</button></TD>
+                          <TD><span style={{fontSize: 9,fontWeight:700,padding:"2px 6px",background:asset.trajectory==="improving"?T.text.green+"22":asset.trajectory==="declining"?T.text.red+"22":T.text.amber+"22",color:asset.trajectory==="improving"?T.text.green:asset.trajectory==="declining"?T.text.red:T.text.amber,border:`1px solid ${asset.trajectory==="improving"?T.text.green+"44":asset.trajectory==="declining"?T.text.red+"44":T.text.amber+"44"}`}}>{(asset.trajectory||"stable").toUpperCase()}</span></TD>
+                          <TD><button onClick={e=>{e.stopPropagation();navigate(`/deals/${asset.dealId}/detail`);}} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW DEAL →</button></TD>
                         </tr>
                       ))}
                     </tbody>
@@ -1775,10 +1775,10 @@ export default function TerminalPage() {
                           <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
                             <TD>
                               <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
-                              <div style={{fontSize:7,color:noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.muted,marginTop:1}}>{noiVar>5?"▲ OUTPERFORMING":noiVar<-10?"▼ UNDERPERFORMING":"● ON TRACK"}</div>
+                              <div style={{fontSize: 9,color:noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.muted,marginTop:1}}>{noiVar>5?"▲ OUTPERFORMING":noiVar<-10?"▼ UNDERPERFORMING":"● ON TRACK"}</div>
                             </TD>
                             <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket||"—"}</span></TD>
-                            <TD><span style={{fontSize:8,color:T.text.amber,fontFamily:T.font.mono}}>{asset.asset_type||"—"}</span></TD>
+                            <TD><span style={{fontSize: 9,color:T.text.amber,fontFamily:T.font.mono}}>{asset.asset_type||"—"}</span></TD>
                             <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.units||"—"}</span></TD>
                             <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{asset.actual_occupancy!=null?`${occ.toFixed(1)}%`:"—"}</span></TD>
                             <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_noi?`$${((asset.actual_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
@@ -1816,14 +1816,14 @@ export default function TerminalPage() {
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                             <div>
                               <div style={{fontSize:11,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"Asset"}</div>
-                              <div style={{fontSize:8,color:T.text.muted}}>{asset.address||""}</div>
+                              <div style={{fontSize: 9,color:T.text.muted}}>{asset.address||""}</div>
                             </div>
-                            <span style={{fontSize:7,fontWeight:700,padding:"3px 8px",background:statusC+"22",color:statusC,border:`1px solid ${statusC}44`}}>{status}</span>
+                            <span style={{fontSize: 9,fontWeight:700,padding:"3px 8px",background:statusC+"22",color:statusC,border:`1px solid ${statusC}44`}}>{status}</span>
                           </div>
                           <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:8}}>
                             {metrics.map((m,j) => (
                               <div key={j}>
-                                <div style={{fontSize:7,color:T.text.muted,letterSpacing:1,marginBottom:2}}>{m.l}</div>
+                                <div style={{fontSize: 9,color:T.text.muted,letterSpacing:1,marginBottom:2}}>{m.l}</div>
                                 <div style={{fontSize:11,fontWeight:700,fontFamily:T.font.mono,color:m.c||T.text.primary}}>{m.v}</div>
                               </div>
                             ))}
@@ -1854,17 +1854,17 @@ export default function TerminalPage() {
                             <tr key={asset.id||i} onClick={() => setPortfolioExpanded(prev => { const n=new Set(prev); if(n.has(asset.id)){n.delete(asset.id);}else{n.add(asset.id); if(!portfolioComps[asset.id]) loadCompSet(asset.id);} return n; })}
                               style={{borderBottom:`1px solid ${T.border.subtle}`,background:expanded?T.bg.hover:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
                               <TD><div style={{display:"flex",alignItems:"center",gap:6}}>
-                                <span style={{color:T.text.muted,fontSize:8,fontFamily:T.font.mono}}>{expanded?"▼":"▶"}</span>
+                                <span style={{color:T.text.muted,fontSize: 9,fontFamily:T.font.mono}}>{expanded?"▼":"▶"}</span>
                                 <div>
                                   <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
-                                  <div style={{fontSize:7,color:T.text.muted}}>{asset.asset_type||""}</div>
+                                  <div style={{fontSize: 9,color:T.text.muted}}>{asset.asset_type||""}</div>
                                 </div>
                               </div></TD>
                               <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent!=null?`$${(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
                               <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy!=null?`${(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
                               <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.cyan}}>{comps.length||"—"}</span></TD>
                               <TD onClick={e=>e.stopPropagation()}>
-                                <button onClick={() => loadCompSet(asset.id)} style={{fontFamily:T.font.mono,fontSize:7,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>
+                                <button onClick={() => loadCompSet(asset.id)} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>
                                   {loadingComp?"LOADING…":comps.length>0?"REFRESH":"LOAD COMPS"}
                                 </button>
                               </TD>
@@ -1884,8 +1884,8 @@ export default function TerminalPage() {
                                 <td style={{padding:"5px 10px 5px 32px",fontSize:9,color:T.text.secondary}}>{comp.comp_name||comp.comp_property_address||"—"}</td>
                                 <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent!=null?`$${comp.avg_rent}`:"—"}</td>
                                 <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy!=null?`${comp.occupancy}%`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:8,color:T.text.muted}}>{comp.distance_miles!=null?`${comp.distance_miles}mi`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:8,fontWeight:700,fontFamily:T.font.mono,color:(comp.match_score??0)>=80?T.text.green:(comp.match_score??0)>=60?T.text.amber:T.text.muted}}>{comp.match_score!=null?`${comp.match_score}% match`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize: 9,color:T.text.muted}}>{comp.distance_miles!=null?`${comp.distance_miles}mi`:"—"}</td>
+                                <td style={{padding:"5px 10px",fontSize: 9,fontWeight:700,fontFamily:T.font.mono,color:(comp.match_score??0)>=80?T.text.green:(comp.match_score??0)>=60?T.text.amber:T.text.muted}}>{comp.match_score!=null?`${comp.match_score}% match`:"—"}</td>
                               </tr>
                             ))}
                           </>
@@ -1909,16 +1909,16 @@ export default function TerminalPage() {
             return (
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:5,height:5,borderRadius:"50%",background:T.text.cyan,flexShrink:0}}/>
-                <span style={{fontSize:7,fontWeight:700,color:T.text.white,letterSpacing:0.5,marginRight:4}}>CORP HEALTH</span>
+                <span style={{fontSize: 9,fontWeight:700,color:T.text.white,letterSpacing:0.5,marginRight:4}}>CORP HEALTH</span>
                 <div style={{textAlign:"center"}}>
                   <div style={{fontSize:15,fontWeight:800,lineHeight:1,color:s>=60?T.text.green:s>=40?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{s.toFixed(0)}</div>
-                  <div style={{fontSize:6,color:T.text.muted}}>SCHI</div>
+                  <div style={{fontSize: 9,color:T.text.muted}}>SCHI</div>
                 </div>
                 <div style={{width:1,height:20,background:T.border.subtle}}/>
                 <div style={{display:"flex",gap:12}}>
-                  <div style={{fontSize:8,color:T.text.secondary}}>Divergence <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
-                  <div style={{fontSize:8,color:T.text.secondary}}>Top Employer <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
-                  <div style={{fontSize:8,color:T.text.secondary}}>HHI <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
+                  <div style={{fontSize: 9,color:T.text.secondary}}>Divergence <span style={{fontWeight:700,color:Math.abs(d)>15?T.text.amber:T.text.green}}>{(d>0?"+":"")+d.toFixed(1)}</span></div>
+                  <div style={{fontSize: 9,color:T.text.secondary}}>Top Employer <span style={{fontWeight:600,color:T.text.primary}}>{topEmp}</span></div>
+                  <div style={{fontSize: 9,color:T.text.secondary}}>HHI <span style={{fontWeight:600,color:h<0.1?T.text.green:T.text.red}}>{h.toFixed(3)}</span></div>
                 </div>
                 <div style={{marginLeft:"auto"}}>
                   <Spark data={[68,67,69,70,68,69,s]} color={s>=60?T.text.green:T.text.amber} w={56} h={14}/>
@@ -1975,15 +1975,15 @@ export default function TerminalPage() {
             {folders.map(f=>(
               <div key={f.id} onClick={()=>setEmailFolder(f.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",background:emailFolder===f.id?T.bg.active:"transparent",borderLeft:emailFolder===f.id?`2px solid ${T.text.amber}`:"2px solid transparent"}}>
                 <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:emailFolder===f.id?T.text.amber:T.text.secondary}}>{f.label}</span>
-                {f.count>0&&<span style={{fontSize:7,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,padding:"1px 5px"}}>{f.count}</span>}
+                {f.count>0&&<span style={{fontSize: 9,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,padding:"1px 5px"}}>{f.count}</span>}
               </div>
             ))}
             <div style={{height:1,background:T.border.subtle,margin:"6px 0"}}/>
-            <div style={{padding:"6px 12px 3px"}}><span style={{fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:1}}>LABELS</span></div>
+            <div style={{padding:"6px 12px 3px"}}><span style={{fontSize: 9,fontWeight:700,color:T.text.muted,letterSpacing:1}}>LABELS</span></div>
             {["LOI","DD","DEBT","ZONING","URGENT","SCORE","LP"].map(tag=>(
               <div key={tag} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",cursor:"pointer"}}>
                 <span style={{width:6,height:6,borderRadius:"50%",background:TAG_COLORS[tag]||T.text.muted,display:"inline-block",flexShrink:0}}/>
-                <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.secondary}}>{tag}</span>
+                <span style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.secondary}}>{tag}</span>
               </div>
             ))}
           </div>
@@ -2004,10 +2004,10 @@ export default function TerminalPage() {
                     <span style={{fontSize:9,fontWeight:e.unread?700:500,color:e.unread?T.text.primary:T.text.secondary}}>{e.from}</span>
                     {e.unread&&<span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>}
                   </div>
-                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
+                  <span style={{fontSize: 9,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
                 </div>
-                <div style={{fontSize:8,fontWeight:e.unread?600:400,color:e.unread?T.text.primary:T.text.secondary,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</div>
-                <div style={{fontSize:7,color:T.text.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.preview}</div>
+                <div style={{fontSize: 9,fontWeight:e.unread?600:400,color:e.unread?T.text.primary:T.text.secondary,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</div>
+                <div style={{fontSize: 9,color:T.text.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.preview}</div>
                 <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
                   {e.tag&&<Bd c={TAG_COLORS[e.tag]||T.text.muted}>{e.tag}</Bd>}
                 </div>
@@ -2023,12 +2023,12 @@ export default function TerminalPage() {
                 <div style={{fontSize:13,fontWeight:700,color:T.text.primary,marginBottom:4}}>{activeEmail.subject}</div>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                   <span style={{fontSize:9,fontWeight:600,color:T.text.amber}}>{activeEmail.from}</span>
-                  <span style={{fontSize:8,color:T.text.muted}}>· {activeEmail.time}</span>
+                  <span style={{fontSize: 9,color:T.text.muted}}>· {activeEmail.time}</span>
                   {activeEmail.tag&&<Bd c={TAG_COLORS[activeEmail.tag]||T.text.muted}>{activeEmail.tag}</Bd>}
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:8}}>
                   {["REPLY","FORWARD"].map(a=>(
-                    <button key={a} onClick={()=>setFkey("F5")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
+                    <button key={a} onClick={()=>setFkey("F5")} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
                   ))}
                 </div>
               </div>
@@ -2052,7 +2052,7 @@ export default function TerminalPage() {
   // ─── VIEW: F7 STRATEGIES ───────────────────────────────────
   const ViewStrategies = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F7")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F7")} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
         {[
           {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
@@ -2066,7 +2066,7 @@ export default function TerminalPage() {
               <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
             </div>
             <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.5,marginBottom:6}}>{row.desc}</div>
-            <div style={{fontSize:8,color:T.text.muted}}>Best markets: <span style={{color:T.text.amber,fontWeight:600}}>{row.best}</span></div>
+            <div style={{fontSize: 9,color:T.text.muted}}>Best markets: <span style={{color:T.text.amber,fontWeight:600}}>{row.best}</span></div>
           </div>
         ))}
       </div>
@@ -2152,13 +2152,13 @@ export default function TerminalPage() {
   const renderBottomTab = () => {
     if(bottomTab==="alerts") return liveAlerts.map((a,i)=>{
       const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
-      return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:8,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:7,color:T.text.muted}}>{a.time}</span></div>;
+      return <div key={i} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize: 9,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize: 9,color:T.text.muted}}>{a.time}</span></div>;
     });
     if(bottomTab==="news") return liveNews.map((n,i)=>(
       <div key={i} id={`news-row-${n.id}`} style={{display:"flex",gap:6,padding:"5px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
-        <span style={{fontSize:8,color:T.text.muted,minWidth:34}}>{n.time}</span>
+        <span style={{fontSize: 9,color:T.text.muted,minWidth:34}}>{n.time}</span>
         <div style={{flex:1}}><div style={{fontSize:9,color:T.text.primary,lineHeight:1.3}}>{n.hl}</div>{n.affects.length>0&&<div style={{display:"flex",gap:3,marginTop:2}}>{n.affects.map((a,j)=><Bd key={j} c={T.text.amber}>{a}</Bd>)}</div>}</div>
-        <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize:8,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div><div style={{fontSize:8,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</div></div>
+        <div style={{textAlign:"right",minWidth:50}}><div style={{fontSize: 9,fontWeight:700,color:n.impact.includes("+")?T.text.green:T.text.red}}>{n.impact}</div><div style={{fontSize: 9,color:n.pts.startsWith("+")?T.text.green:T.text.red}}>{n.pts}</div></div>
       </div>
     ));
     if(bottomTab==="email") return liveEmails.map((e,i)=>(
@@ -2170,16 +2170,16 @@ export default function TerminalPage() {
           </div>
           <div style={{fontSize:9,color:e.unread?T.text.primary:T.text.secondary,fontWeight:e.unread?600:400,lineHeight:1.3}}>{e.subject}</div>
         </div>
-        <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
+        <span style={{fontSize: 9,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
       </div>
     ));
     if(bottomTab==="agents") return (
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
         {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"5px 8px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}><span style={{fontSize:8,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary}}>{a.name}</span></span><span style={{fontSize:7,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
-            <div style={{fontSize:8,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
-            <div style={{fontSize:7,color:T.text.muted,marginTop:1}}>{a.t} ago · {a.m} msgs</div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}><span style={{fontSize: 9,fontWeight:700,color:T.text.purple}}>{a.id} <span style={{color:T.text.primary}}>{a.name}</span></span><span style={{fontSize: 9,color:a.st==="ON"?T.text.green:T.text.muted}}>{a.st}</span></div>
+            <div style={{fontSize: 9,color:T.text.secondary,lineHeight:1.3}}>{a.act}</div>
+            <div style={{fontSize: 9,color:T.text.muted,marginTop:1}}>{a.t} ago · {a.m} msgs</div>
           </div>
         ))}
       </div>
@@ -2194,8 +2194,8 @@ export default function TerminalPage() {
             <div style={{marginTop:2,display:"flex",gap:4}}><Bd c={T.text.amber}>{t.deal}</Bd><Bd c={pc[t.pri]}>{t.pri.toUpperCase()}</Bd></div>
           </div>
           <div style={{textAlign:"right",flexShrink:0}}>
-            <div style={{fontSize:8,fontWeight:700,color:sc[t.status]}}>{t.status}</div>
-            <div style={{fontSize:7,color:T.text.muted,marginTop:1}}>{t.due} · {t.owner}</div>
+            <div style={{fontSize: 9,fontWeight:700,color:sc[t.status]}}>{t.status}</div>
+            <div style={{fontSize: 9,color:T.text.muted,marginTop:1}}>{t.due} · {t.owner}</div>
           </div>
         </div>
       ));
@@ -2203,7 +2203,7 @@ export default function TerminalPage() {
     if(bottomTab==="media") return (
       <div style={{display:"flex",gap:0,height:"100%"}}>
         <div style={{flex:1,borderRight:`1px solid ${T.border.subtle}`,overflow:"auto",padding:"6px 10px"}}>
-          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>LIVE TV</div>
+          <div style={{fontSize: 9,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>LIVE TV</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4}}>
             {TV_CHANNELS.map(ch=>{
               const isOpen=mediaWindows.some(w=>w.id===`tv-${ch.id}`);
@@ -2212,14 +2212,14 @@ export default function TerminalPage() {
                   style={{background:T.bg.panel,border:`1px solid ${isOpen?ch.color:T.border.subtle}`,padding:"8px 8px",cursor:"pointer",textAlign:"center",position:"relative"}}>
                   {isOpen&&<span style={{position:"absolute",top:3,right:4,width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/>}
                   <div style={{fontSize:10,fontWeight:700,color:isOpen?ch.color:T.text.primary,letterSpacing:0.5}}>{ch.label}</div>
-                  <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>{isOpen?"WATCHING":"Click to open"}</div>
+                  <div style={{fontSize: 9,color:T.text.muted,marginTop:2}}>{isOpen?"WATCHING":"Click to open"}</div>
                 </div>
               );
             })}
           </div>
         </div>
         <div style={{flex:1,borderRight:`1px solid ${T.border.subtle}`,overflow:"auto",padding:"6px 10px"}}>
-          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>NEWS FEEDS</div>
+          <div style={{fontSize: 9,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>NEWS FEEDS</div>
           {NEWS_SOURCES.map(src=>{
             const isOpen=mediaWindows.some(w=>w.id===`rss-${src.id}`);
             return (
@@ -2227,7 +2227,7 @@ export default function TerminalPage() {
                 <span style={{width:6,height:6,borderRadius:"50%",background:src.color,flexShrink:0,display:"inline-block"}}/>
                 <span style={{fontSize:9,fontWeight:600,color:T.text.primary,flex:1}}>{src.label}</span>
                 <button onClick={()=>{openMediaWindow({id:`rss-${src.id}`,type:"rss",title:src.label,color:src.color,rssUrl:src.rss});fetchRss(src.rss);}}
-                  style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:isOpen?src.color+"22":"transparent",color:isOpen?src.color:T.text.muted,border:`1px solid ${isOpen?src.color:T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
+                  style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,background:isOpen?src.color+"22":"transparent",color:isOpen?src.color:T.text.muted,border:`1px solid ${isOpen?src.color:T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
                   {isOpen?"OPEN":"OPEN FEED"}
                 </button>
               </div>
@@ -2235,14 +2235,14 @@ export default function TerminalPage() {
           })}
         </div>
         <div style={{flex:1,overflow:"auto",padding:"6px 10px"}}>
-          <div style={{fontSize:8,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>SOCIAL / X</div>
+          <div style={{fontSize: 9,fontWeight:700,color:T.text.muted,letterSpacing:1,marginBottom:6}}>SOCIAL / X</div>
           {SOCIAL_DEFAULTS.map(s=>{
             const isOpen=mediaWindows.some(w=>w.id===`social-${s.id}`);
             return (
               <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:`1px solid ${T.border.subtle}`}}>
                 <span style={{fontSize:9,fontWeight:600,color:T.text.primary,flex:1}}>{s.label}</span>
                 <button onClick={()=>openMediaWindow({id:`social-${s.id}`,type:"social",title:s.label,color:"#1DA1F2",handle:s.handle})}
-                  style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,background:isOpen?"#1DA1F222":"transparent",color:isOpen?"#1DA1F2":T.text.muted,border:`1px solid ${isOpen?"#1DA1F2":T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
+                  style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,background:isOpen?"#1DA1F222":"transparent",color:isOpen?"#1DA1F2":T.text.muted,border:`1px solid ${isOpen?"#1DA1F2":T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>
                   {isOpen?"OPEN":"OPEN"}
                 </button>
               </div>
@@ -2273,7 +2273,7 @@ export default function TerminalPage() {
             <a key={i} href={item.link} target="_blank" rel="noopener noreferrer"
               style={{display:"block",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,textDecoration:"none",background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
               <div style={{fontSize:9,fontWeight:600,color:T.text.primary,lineHeight:1.4}}>{item.title}</div>
-              <div style={{fontSize:7,color:T.text.muted,marginTop:2}}>
+              <div style={{fontSize: 9,color:T.text.muted,marginTop:2}}>
                 {item.pubDate ? new Date(item.pubDate).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : ""}
                 {item.source && ` · ${item.source}`}
               </div>
@@ -2281,7 +2281,7 @@ export default function TerminalPage() {
           ))}
           <div style={{padding:"6px 10px"}}>
             <button onClick={() => { if(win.rssUrl) { setRssCache(prev => { const ns = {...prev}; delete ns[win.rssUrl!]; return ns; }); fetchRss(win.rssUrl); } }}
-              style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"3px 10px",cursor:"pointer",width:"100%"}}>
+              style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"3px 10px",cursor:"pointer",width:"100%"}}>
               REFRESH
             </button>
           </div>
@@ -2351,15 +2351,15 @@ export default function TerminalPage() {
                       <span style={{width:6,height:6,borderRadius:"50%",background:w.color,flexShrink:0,display:"inline-block"}}/>
                       <div style={{flex:1}}>
                         <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{w.title}</div>
-                        <div style={{fontSize:7,color:T.text.muted}}>{w.type.toUpperCase()}{mediaWinStates[w.id]?.minimized?" · minimized":""}</div>
+                        <div style={{fontSize: 9,color:T.text.muted}}>{w.type.toUpperCase()}{mediaWinStates[w.id]?.minimized?" · minimized":""}</div>
                       </div>
                       <button onClick={(e)=>{e.stopPropagation();closeMediaWindow(w.id);}}
-                        style={{fontSize:8,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 4px"}}>✕</button>
+                        style={{fontSize: 9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 4px"}}>✕</button>
                     </div>
                   ))}
                   <div style={{padding:"4px 10px",borderTop:`1px solid ${T.border.medium}`}}>
                     <button onClick={()=>{setMediaWindows([]);setMediaWinStates({});setMediaWinDropdown(false);}}
-                      style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>
+                      style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>
                       CLOSE ALL
                     </button>
                   </div>
@@ -2474,10 +2474,10 @@ export default function TerminalPage() {
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <span style={{width:7,height:7,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
                 <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{meta.label}</span>
-                <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
+                <span style={{fontSize: 9,color:T.text.muted,opacity:0.6}}>{meta.category}</span>
               </div>
               <div style={{display:"flex",gap:2,alignItems:"center"}}>
-                <button onClick={(e)=>{e.stopPropagation();dockWidget(id);}} title="Dock back to grid" style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,color:T.text.cyan,background:T.text.cyan+"11",border:`1px solid ${T.text.cyan}33`,cursor:"pointer",padding:"1px 6px",lineHeight:1.5,letterSpacing:0.3,marginRight:2}}>↙ DOCK</button>
+                <button onClick={(e)=>{e.stopPropagation();dockWidget(id);}} title="Dock back to grid" style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,color:T.text.cyan,background:T.text.cyan+"11",border:`1px solid ${T.text.cyan}33`,cursor:"pointer",padding:"1px 6px",lineHeight:1.5,letterSpacing:0.3,marginRight:2}}>↙ DOCK</button>
                 <button onClick={(e)=>{e.stopPropagation();minimizeWindow(id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
                 <button onClick={(e)=>{e.stopPropagation();maximizeWindow(id);}} title={isMax?"Restore":"Maximize"} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>{isMax?"❐":"□"}</button>
                 <button onClick={(e)=>{e.stopPropagation();closeWindow(id);}} title="Close" style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>✕</button>
@@ -2496,7 +2496,7 @@ export default function TerminalPage() {
             const meta=WIDGET_CATALOG.find(w=>w.id===id);
             if(!meta) return null;
             return (
-              <button key={id} onClick={()=>minimizeWindow(id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${meta.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+              <button key={id} onClick={()=>minimizeWindow(id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:T.bg.panel,border:`1px solid ${meta.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
                 <span style={{width:5,height:5,borderRadius:"50%",background:meta.color,display:"inline-block"}}/>
                 {meta.label}
               </button>
@@ -2533,8 +2533,8 @@ export default function TerminalPage() {
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <span style={{width:7,height:7,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
                 <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.primary,letterSpacing:0.3}}>{win.title}</span>
-                <span style={{fontSize:7,color:T.text.muted,opacity:0.6}}>{win.type.toUpperCase()}</span>
-                {win.type==="tv"&&<span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/><span style={{fontSize:7,color:T.text.red,fontWeight:700}}>LIVE</span></span>}
+                <span style={{fontSize: 9,color:T.text.muted,opacity:0.6}}>{win.type.toUpperCase()}</span>
+                {win.type==="tv"&&<span style={{display:"flex",alignItems:"center",gap:3}}><span style={{width:5,height:5,borderRadius:"50%",background:T.text.red,animation:"pulse 1.5s infinite"}}/><span style={{fontSize: 9,color:T.text.red,fontWeight:700}}>LIVE</span></span>}
               </div>
               <div style={{display:"flex",gap:2,alignItems:"center"}}>
                 <button onClick={(e)=>{e.stopPropagation();minimizeMediaWindow(win.id);}} title="Minimize" style={{fontFamily:T.font.mono,fontSize:12,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 5px",lineHeight:1}}>—</button>
@@ -2552,7 +2552,7 @@ export default function TerminalPage() {
       {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).length>0&&(
         <div style={{position:"fixed",bottom:236,left:"50%",transform:"translateX(-50%)",display:"flex",gap:4,zIndex:9997,background:T.bg.header,border:`1px solid ${T.border.medium}`,padding:"4px 8px",boxShadow:"0 4px 16px rgba(0,0,0,0.4)"}}>
           {mediaWindows.filter(w=>mediaWinStates[w.id]?.minimized).map(win=>(
-            <button key={win.id} onClick={()=>minimizeMediaWindow(win.id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:T.bg.panel,border:`1px solid ${win.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
+            <button key={win.id} onClick={()=>minimizeMediaWindow(win.id)} style={{display:"flex",alignItems:"center",gap:4,fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:T.bg.panel,border:`1px solid ${win.color}44`,color:T.text.secondary,padding:"3px 10px",cursor:"pointer"}}>
               <span style={{width:5,height:5,borderRadius:"50%",background:win.color,display:"inline-block"}}/>
               {win.title}
             </button>

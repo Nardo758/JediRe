@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { Deal, Property } from '../../types';
 import { api } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -71,7 +72,7 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         type: 'fill',
         source: 'deal-boundary',
         paint: {
-          'fill-color': '#3b82f6',
+          'fill-color': BT.text.cyan,
           'fill-opacity': 0.1
         }
       });
@@ -81,7 +82,7 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         type: 'line',
         source: 'deal-boundary',
         paint: {
-          'line-color': '#2563eb',
+          'line-color': BT.text.cyan,
           'line-width': 3
         }
       });
@@ -92,9 +93,9 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         source: 'deal-boundary',
         paint: {
           'circle-radius': 10,
-          'circle-color': '#3b82f6',
+          'circle-color': BT.text.cyan,
           'circle-stroke-width': 3,
-          'circle-stroke-color': '#2563eb'
+          'circle-stroke-color': BT.text.cyan
         }
       });
     }
@@ -117,7 +118,7 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
       const response = await api.deals.properties(deal.id);
       const data = response.data?.data || response.data || [];
       setProperties(Array.isArray(data) ? data : []);
-      
+
       if (map.current && Array.isArray(data) && data.length > 0) {
         addPropertiesToMap(map.current, data);
       }
@@ -161,16 +162,16 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
         'circle-color': [
           'match',
           ['get', 'class'],
-          'A', '#10b981',
-          'A+', '#059669',
-          'B', '#3b82f6',
-          'B+', '#2563eb',
-          'C', '#f59e0b',
-          'C+', '#d97706',
-          '#6b7280'
+          'A', BT.text.green,
+          'A+', BT.text.green,
+          'B', BT.text.cyan,
+          'B+', BT.text.cyan,
+          'C', BT.text.amber,
+          'C+', BT.text.amber,
+          BT.text.muted
         ],
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff'
+        'circle-stroke-color': BT.border.bright
       }
     });
 
@@ -197,26 +198,34 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
   return (
     <div className="relative h-full">
       <div ref={mapContainer} className="absolute inset-0" />
-      
+
       {/* Legend */}
-      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 z-10">
-        <h3 className="font-semibold text-sm mb-2">Legend</h3>
-        <div className="space-y-1 text-xs">
+      <div
+        className="absolute top-4 left-4 p-4 z-10"
+        style={{
+          background: BT.bg.panel,
+          border: `1px solid ${BT.border.medium}`,
+          borderRadius: 0,
+          fontFamily: BT.font.label,
+        }}
+      >
+        <h3 style={{ color: BT.text.primary, fontFamily: BT.font.mono, fontSize: '11px', fontWeight: 600, marginBottom: '8px' }}>Legend</h3>
+        <div className="space-y-1" style={{ fontSize: '10px' }}>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white"></div>
-            <span>Deal Boundary</span>
+            <div className="w-3 h-3" style={{ borderRadius: '50%', background: BT.text.cyan, border: `2px solid ${BT.border.bright}` }}></div>
+            <span style={{ color: BT.text.secondary }}>Deal Boundary</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white"></div>
-            <span>Class A/A+ Property</span>
+            <div className="w-3 h-3" style={{ borderRadius: '50%', background: BT.text.green, border: `2px solid ${BT.border.bright}` }}></div>
+            <span style={{ color: BT.text.secondary }}>Class A/A+ Property</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-blue-600 border-2 border-white"></div>
-            <span>Class B/B+ Property</span>
+            <div className="w-3 h-3" style={{ borderRadius: '50%', background: BT.text.cyan, border: `2px solid ${BT.border.bright}` }}></div>
+            <span style={{ color: BT.text.secondary }}>Class B/B+ Property</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-yellow-500 border-2 border-white"></div>
-            <span>Class C/C+ Property</span>
+            <div className="w-3 h-3" style={{ borderRadius: '50%', background: BT.text.amber, border: `2px solid ${BT.border.bright}` }}></div>
+            <span style={{ color: BT.text.secondary }}>Class C/C+ Property</span>
           </div>
         </div>
       </div>
@@ -224,40 +233,58 @@ export const DealMapView: React.FC<DealMapViewProps> = ({ deal }) => {
 
       {/* Selected property popup */}
       {selectedProperty && (
-        <div className="absolute bottom-4 left-4 right-4 bg-white rounded-lg shadow-xl p-4 z-10 max-w-md">
+        <div
+          className="absolute bottom-4 left-4 right-4 p-4 z-10 max-w-md"
+          style={{
+            background: BT.bg.panel,
+            border: `1px solid ${BT.border.medium}`,
+            borderRadius: 0,
+            fontFamily: BT.font.label,
+          }}
+        >
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h3 className="font-semibold text-lg">{selectedProperty.address}</h3>
-              <p className="text-sm text-gray-600">
+              <h3 style={{ fontWeight: 600, fontSize: '14px', color: BT.text.primary }}>{selectedProperty.address}</h3>
+              <p style={{ fontSize: '11px', color: BT.text.secondary }}>
                 {selectedProperty.beds && `${selectedProperty.beds} bed`}
-                {selectedProperty.baths && ` • ${selectedProperty.baths} bath`}
-                {selectedProperty.sqft && ` • ${selectedProperty.sqft} sqft`}
+                {selectedProperty.baths && ` \u2022 ${selectedProperty.baths} bath`}
+                {selectedProperty.sqft && ` \u2022 ${selectedProperty.sqft} sqft`}
               </p>
             </div>
             <button
               onClick={() => setSelectedProperty(null)}
-              className="text-gray-400 hover:text-gray-600"
+              style={{ color: BT.text.muted }}
             >
-              ✕
+              \u2715
             </button>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-2xl font-bold text-gray-900">
+              <span style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                 ${selectedProperty.rent?.toLocaleString()}
               </span>
-              <span className="text-sm text-gray-600">/mo</span>
+              <span style={{ fontSize: '11px', color: BT.text.secondary }}>/mo</span>
             </div>
             {selectedProperty.building_class && (
-              <span className="px-3 py-1 bg-gray-100 rounded-full text-sm font-medium">
+              <span
+                className="px-3 py-1"
+                style={{
+                  background: BT.bg.active,
+                  color: BT.text.primary,
+                  borderRadius: '2px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  fontFamily: BT.font.mono,
+                }}
+              >
                 Class {selectedProperty.building_class}
               </span>
             )}
           </div>
           {selectedProperty.comparableScore && (
-            <div className="mt-2 pt-2 border-t border-gray-200">
-              <div className="text-xs text-gray-600">Comparable Score</div>
-              <div className="text-sm font-semibold text-blue-600">
+            <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ fontSize: '10px', color: BT.text.secondary }}>Comparable Score</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, color: BT.text.cyan }}>
                 {(selectedProperty.comparableScore * 100).toFixed(0)}%
               </div>
             </div>

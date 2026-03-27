@@ -424,7 +424,7 @@ const KVCard: React.FC<{
   compact?: boolean;
 }> = ({ label, value, note, compact = false }) => (
   <div style={{ background: BT.bgCard, padding: compact ? '8px 12px' : '12px 14px' }}>
-    <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{label}</div>
+    <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{label}</div>
     <div style={{ fontSize: compact ? 14 : 17, fontWeight: 700, color: BT.amberL, ...bMono }}>{value}</div>
     {note && <div style={{ fontSize: 9, color: BT.td, marginTop: 3, ...bMono }}>{note}</div>}
   </div>
@@ -479,7 +479,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
 
               {signals.length > 0 ? (
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>5 MASTER SIGNALS</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>5 MASTER SIGNALS</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {signals.map((s) => {
                     const sc = s.score >= 80 ? BT.greenL : s.score >= 60 ? BT.amberL : BT.redL;
@@ -487,7 +487,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
                     return (
                       <button key={s.id} onClick={() => navigateToTab(s.moduleLink)} style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 8, color: BT.td, width: 72, textAlign: 'left', ...bMono }}>
+                          <span style={{ fontSize: 9, color: BT.td, width: 72, textAlign: 'left', ...bMono }}>
                             {s.name.toUpperCase()} <span style={{ color: BT.borderX }}>({s.weight}%)</span>
                           </span>
                           <div style={{ flex: 1, height: 5, background: BT.border, borderRadius: 3, overflow: 'hidden' }}>
@@ -505,7 +505,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
               </div>
               ) : (
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>5 MASTER SIGNALS</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>5 MASTER SIGNALS</div>
                 <p style={{ fontSize: 10, color: BT.td, ...bSans }}>Signal breakdown not yet available. Run analysis to populate.</p>
               </div>
               )}
@@ -515,7 +515,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 0' }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 22, fontWeight: 700, color: BT.td, marginBottom: 6, ...bMono }}>—</div>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>JEDI SCORE</div>
+              <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, ...bMono }}>JEDI SCORE</div>
               <p style={{ fontSize: 10, color: BT.td, ...bSans }}>Score will populate after analysis completes</p>
             </div>
           </div>
@@ -524,7 +524,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
 
         {/* Strategy Verdict Panel */}
         <div style={{ background: BT.bgCard, borderRadius: 10, border: `1px solid ${BT.border}`, padding: '16px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>STRATEGY VERDICT</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>STRATEGY VERDICT</div>
           {strategyVerdict ? (
           <>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
@@ -542,7 +542,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
           {strategyVerdict.isArbitrage && (
             <div style={{ background: BT.amberBg, border: `1px solid ${BT.amber}30`, borderRadius: 6, padding: '8px 12px', marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <span style={{ fontSize: 8, fontWeight: 700, color: BT.amber, letterSpacing: 1, ...bMono }}>ARBITRAGE</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: BT.amber, letterSpacing: 1, ...bMono }}>ARBITRAGE</span>
                 <span style={{ fontSize: 10, color: BT.amberL, ...bMono }}>+{strategyVerdict.arbitrageGap}pt gap</span>
               </div>
               <p style={{ fontSize: 9, color: BT.amberL, lineHeight: 1.5, margin: 0, ...bSans }}>{strategyVerdict.insight}</p>
@@ -571,7 +571,7 @@ const DealHeader: React.FC<DealHeaderProps> = ({
 
           {ddTotal > 0 && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BT.border}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5, ...bMono }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 5, ...bMono }}>
                 <span>DUE DILIGENCE</span>
                 <span style={{ color: ddDone === ddTotal ? BT.greenL : BT.amberL }}>{ddDone}/{ddTotal}</span>
               </div>
@@ -656,7 +656,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
       <SectionHead title="Operating Intelligence" right="M05 Market · M09 ProForma" accent={BT.green} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
         <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>OCCUPANCY & RENT</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>OCCUPANCY & RENT</div>
           {[
             { l: 'Physical Occupancy', v: occ, c: BT.greenL },
             { l: 'Economic Occupancy', v: occ !== '—' ? occ : '—', c: BT.greenL },
@@ -676,9 +676,9 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
         </div>
 
         <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>NOI INTELLIGENCE</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>NOI INTELLIGENCE</div>
           <div style={{ background: BT.orangeBg, border: `1px solid ${BT.orange}30`, borderRadius: 6, padding: '10px 12px', marginBottom: 10 }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: BT.orangeL, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>PLATFORM ADJUSTMENT ACTIVE</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: BT.orangeL, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6, ...bMono }}>PLATFORM ADJUSTMENT ACTIVE</div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 11, color: BT.td, ...bSans }}>Broker NOI</span>
               <span style={{ fontSize: 11, color: BT.td, textDecoration: 'line-through', ...bMono }}>{noiValue !== '—' ? noiValue : '—'}</span>
@@ -781,7 +781,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
       <SectionHead title="Due Diligence + Module Access" accent={BT.amber} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT.border }}>
         <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>DD CHECKLIST</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>DD CHECKLIST</div>
           {deal?.stateData?.ddItems && deal.stateData.ddItems.length > 0 ? (
             deal.stateData.ddItems.map((item: any, i: number) => (
               <DDItem key={i} label={item.l} done={item.done} />
@@ -796,7 +796,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           )}
         </div>
         <div style={{ background: BT.bgCard, padding: '14px 16px' }}>
-          <div style={{ fontSize: 8, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>MODULE ACCESS</div>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BT.td, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10, ...bMono }}>MODULE ACCESS</div>
           {[
             { key: 'F2', label: 'PROPERTY & ZONING', hint: 'Parcels · Entitlement · Setbacks', tab: 'zoning' },
             { key: 'F3', label: 'MARKET & DEMAND', hint: 'Trade area · Absorption · Rents', tab: 'market' },
@@ -808,7 +808,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } satisfies React.CSSProperties}>
-              <span style={{ fontSize: 8, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3, padding: '2px 5px', flexShrink: 0, ...bMono }}>{m.key}</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3, padding: '2px 5px', flexShrink: 0, ...bMono }}>{m.key}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: BT.tm, ...bSans }}>{m.label}</div>
                 <div style={{ fontSize: 9, color: BT.td, ...bSans }}>{m.hint}</div>
@@ -1060,7 +1060,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
                 <div style={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${dotColor}`, background: step.done ? `${BT.green}20` : step.active ? `${BT.amber}20` : BT.bgPanel, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: step.active ? `0 0 8px ${BT.amber}60` : 'none' }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: textColor, ...bMono }}>{step.done ? '✓' : i + 1}</span>
                 </div>
-                <div style={{ fontSize: 8, marginTop: 6, textAlign: 'center', lineHeight: 1.3, maxWidth: 70, color: textColor, fontWeight: 600, ...bSans }}>{step.n}</div>
+                <div style={{ fontSize: 9, marginTop: 6, textAlign: 'center', lineHeight: 1.3, maxWidth: 70, color: textColor, fontWeight: 600, ...bSans }}>{step.n}</div>
               </div>
             );
           })}
@@ -1073,7 +1073,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
                 <div style={{ width: 28, height: 28, borderRadius: '50%', border: `2px solid ${BT.border}`, background: BT.bgPanel, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: BT.td, ...bMono }}>{i + 1}</span>
                 </div>
-                <div style={{ fontSize: 8, marginTop: 4, color: BT.td, fontWeight: 500, ...bSans }}>{step.n}</div>
+                <div style={{ fontSize: 9, marginTop: 4, color: BT.td, fontWeight: 500, ...bSans }}>{step.n}</div>
               </div>
             ))}
           </div>
@@ -1103,7 +1103,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${BT.border}`, background: BT.bgPanel }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: BT.tm, ...bSans }}>{buildingConfig.label}</span>
-            <span style={{ fontSize: 8, fontWeight: 700, color: BT.violL, background: `${BT.violet}25`, border: `1px solid ${BT.violet}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT.violL, background: `${BT.violet}25`, border: `1px solid ${BT.violet}50`, borderRadius: 3, padding: '2px 6px', letterSpacing: 1, ...bMono }}>
               {buildingConfig.units} UNITS
             </span>
           </div>
@@ -1127,7 +1127,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             { l: 'Parking', v: `${buildingConfig.parkingSpaces} spaces`, c: BT.ts },
           ].map((m, i) => (
             <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
+              <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
               <div style={{ fontSize: m.small ? 11 : 13, fontWeight: 700, color: m.c, ...bSans }}>{m.v}</div>
             </div>
           ))}
@@ -1141,7 +1141,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             { l: 'BTS EM', v: buildingConfig.btsEm, c: BT.greenL },
           ].map((m, i) => (
             <div key={i} style={{ background: BT.bgCard, padding: '10px 12px' }}>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
+              <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, ...bMono }}>{m.l}</div>
               <div style={{ fontSize: 13, fontWeight: 700, color: m.c, ...bMono }}>{m.v}</div>
             </div>
           ))}
@@ -1181,7 +1181,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             <thead>
               <tr style={{ background: BT.bgPanel, borderBottom: `1px solid ${BT.border}` }}>
                 {['UNIT TYPE', 'COUNT', 'MIX %', 'AVG SQFT', 'TARGET RENT', 'RENT PSF', 'MONTHLY REV', 'ANN. REVENUE'].map((h, i) => (
-                  <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 8, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
+                  <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 9, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -1300,8 +1300,8 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
                         <div style={{ fontSize: 11, fontWeight: 600, color: row.isSubject ? BT.blueL : BT.tm }}>{row.name}</div>
                         {row.isSubject ? (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                            <span style={{ fontSize: 7, fontWeight: 700, color: BT.blueL, background: `${BT.blue}25`, border: `1px solid ${BT.blue}50`, borderRadius: 2, padding: '1px 4px', letterSpacing: 1 }}>SUBJECT</span>
-                            <span style={{ fontSize: 8, color: BT.ts }}>{row.note}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: BT.blueL, background: `${BT.blue}25`, border: `1px solid ${BT.blue}50`, borderRadius: 2, padding: '1px 4px', letterSpacing: 1 }}>SUBJECT</span>
+                            <span style={{ fontSize: 9, color: BT.ts }}>{row.note}</span>
                           </div>
                         ) : (
                           <div style={{ fontSize: 9, color: BT.td }}>{row.units}u · {row.vintage}{row.note ? ` · ${row.note}` : ''}</div>
@@ -1398,10 +1398,10 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
                 <div style={{ flex: 1, height: 16, background: BT.bgPanel, position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', height: '100%', background: barColor, opacity: 0.25, left: `${left}%`, width: `${width}%` }} />
                   <div style={{ position: 'absolute', height: '100%', borderLeft: `2px solid ${barColor}`, display: 'flex', alignItems: 'center', paddingLeft: 4, left: `${left}%`, width: `${width}%` }}>
-                    <span style={{ fontSize: 8, fontWeight: 700, color: textColor, ...bMono }}>{ph.dur}mo</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: textColor, ...bMono }}>{ph.dur}mo</span>
                   </div>
                 </div>
-                <span style={{ fontSize: 8, fontWeight: 700, width: 40, textAlign: 'right', color: textColor, ...bMono }}>
+                <span style={{ fontSize: 9, fontWeight: 700, width: 40, textAlign: 'right', color: textColor, ...bMono }}>
                   {ph.status === 'done' ? '✓' : ph.status === 'active' ? 'ACTIVE' : ''}
                 </span>
               </div>
@@ -1415,7 +1415,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
           {hasTimelineData && (
           <div style={{ display: 'flex', marginTop: 8, borderTop: `1px solid ${BT.border}`, paddingTop: 6, paddingLeft: 108, paddingRight: 48 }}>
             {[0, 6, 12, 18, 24, 30, 36, 42, 48].filter(m => m <= TOTAL_MO + 6).map(m => (
-              <div key={m} style={{ flex: 1, fontSize: 8, color: BT.td, ...bMono }}>M{m}</div>
+              <div key={m} style={{ flex: 1, fontSize: 9, color: BT.td, ...bMono }}>M{m}</div>
             ))}
           </div>
           )}
@@ -1429,7 +1429,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
             <div style={{ padding: '10px 12px', background: BT.amberBg, border: `1px solid ${BT.amber}40`, borderRadius: 3 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: BT.amberL, letterSpacing: 1, ...bMono }}>BUILD-TO-SELL</span>
-                <span style={{ fontSize: 7, fontWeight: 700, color: BT.greenL, background: `${BT.green}25`, border: `1px solid ${BT.greenL}50`, padding: '1px 5px', borderRadius: 2, letterSpacing: 1 }}>WIN</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: BT.greenL, background: `${BT.green}25`, border: `1px solid ${BT.greenL}50`, padding: '1px 5px', borderRadius: 2, letterSpacing: 1 }}>WIN</span>
               </div>
               {[
                 { l: 'Revenue', v: computedReturns?.totalRevenue ? `$${(computedReturns.totalRevenue / 1_000_000).toFixed(1)}M` : assumptions?.totalRevenue ? `$${(assumptions.totalRevenue / 1_000_000).toFixed(1)}M` : '—' },
@@ -1455,7 +1455,7 @@ const DevOverview: React.FC<DevOverviewProps> = ({ deal, navigateToTab, financia
                   <span style={{ fontSize: 10, fontWeight: 600, color: BT.ts, ...bMono }}>{r.v}</span>
                 </div>
               ))}
-              <div style={{ fontSize: 8, color: BT.td, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BT.border}`, lineHeight: 1.5, ...bSans }}>
+              <div style={{ fontSize: 9, color: BT.td, marginTop: 10, paddingTop: 8, borderTop: `1px solid ${BT.border}`, lineHeight: 1.5, ...bSans }}>
                 BTS outperforms · Exit cap 5.0%
               </div>
             </div>
@@ -1679,7 +1679,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
             { l: 'PARKING', v: deal.parking?.spaces ? `${deal.parking.spaces} spaces (${deal.parking.ratio || '—'}/unit)` : '—' },
           ].map((f, i) => (
             <div key={i} style={{ padding: '6px 8px' }}>
-              <div style={{ fontSize: 8, color: BT.td, letterSpacing: 1, ...bMono }}>{f.l}</div>
+              <div style={{ fontSize: 9, color: BT.td, letterSpacing: 1, ...bMono }}>{f.l}</div>
               <div style={{ fontSize: 11, fontWeight: 500, color: BT.text, marginTop: 2, ...bSans }}>{f.v}</div>
             </div>
           ))}
@@ -1884,13 +1884,13 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
                 <thead>
                   <tr style={{ background: BT.bgPanel, borderBottom: `2px solid ${BT.border}` }}>
                     {['Type', 'Count', 'Avg SF', 'Current Rent', 'Target Rent', 'Δ Rent', 'Δ %'].map((h, i) => (
-                      <th key={i} style={{ padding: '7px 10px', textAlign: i > 0 ? 'right' : 'left', fontSize: 8, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
+                      <th key={i} style={{ padding: '7px 10px', textAlign: i > 0 ? 'right' : 'left', fontSize: 9, color: BT.td, fontWeight: 700, letterSpacing: 1.2 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {existingMix.length > 0 && (
-                    <tr><td colSpan={7} style={{ padding: '5px 10px', fontSize: 8, letterSpacing: 2, color: BT.blueL, background: BT.bg, ...bMono }}>EXISTING ({existingUnits} UNITS)</td></tr>
+                    <tr><td colSpan={7} style={{ padding: '5px 10px', fontSize: 9, letterSpacing: 2, color: BT.blueL, background: BT.bg, ...bMono }}>EXISTING ({existingUnits} UNITS)</td></tr>
                   )}
                   {existingMix.map((u, i) => {
                     const delta = u.targetRent - u.currentRent;
@@ -1907,7 +1907,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
                     );
                   })}
                   {expansionMix.length > 0 && (
-                    <tr><td colSpan={7} style={{ padding: '5px 10px', fontSize: 8, letterSpacing: 2, color: BT.violL, background: BT.bg, ...bMono }}>EXPANSION (+{expansionUnits} UNITS)</td></tr>
+                    <tr><td colSpan={7} style={{ padding: '5px 10px', fontSize: 9, letterSpacing: 2, color: BT.violL, background: BT.bg, ...bMono }}>EXPANSION (+{expansionUnits} UNITS)</td></tr>
                   )}
                   {expansionMix.map((u, i) => (
                     <tr key={`x${i}`} style={{ borderBottom: `1px solid ${BT.border}`, background: i % 2 === 0 ? BT.bgCard : BT.bgPanel }}>
@@ -2028,7 +2028,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
                 <div style={{ height: 7, background: BT.bgPanel, borderRadius: 3, overflow: 'hidden' }}>
                   <div style={{ width: `${Math.min(d.pctDrawn * 100, 100)}%`, height: '100%', background: BT.amber, borderRadius: 3, transition: 'width 0.5s' }} />
                 </div>
-                <div style={{ fontSize: 8, color: BT.td, marginTop: 2, textAlign: 'right', ...bMono }}>{(d.pctDrawn * 100).toFixed(0)}% drawn</div>
+                <div style={{ fontSize: 9, color: BT.td, marginTop: 2, textAlign: 'right', ...bMono }}>{(d.pctDrawn * 100).toFixed(0)}% drawn</div>
               </div>
             )) : (
               <div style={{ textAlign: 'center', padding: '16px 0' }}>
@@ -2064,7 +2064,7 @@ const RedevelopmentOverview: React.FC<RedevelopmentOverviewProps> = ({ deal, nav
               const displayV = step.value > 0 ? `$${(step.value / 1_000_000).toFixed(1)}M` : '—';
               return (
                 <div key={i} style={{ textAlign: 'center', padding: '8px 6px', minWidth: 66 }}>
-                  <div style={{ fontSize: 8, color: BT.td, marginBottom: 2, ...bMono }}>{step.label}</div>
+                  <div style={{ fontSize: 9, color: BT.td, marginBottom: 2, ...bMono }}>{step.label}</div>
                   <div style={{ fontSize: step.bold ? 15 : 12, fontWeight: 700, color: step.color, ...bMono }}>{displayV}</div>
                 </div>
               );

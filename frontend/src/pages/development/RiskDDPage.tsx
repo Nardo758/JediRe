@@ -221,7 +221,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
         ]}
         right={
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {isLoading && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>LOADING...</span>}
+            {isLoading && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>LOADING...</span>}
             <Bd c={compColor}>COMPOSITE {compositeScore.toFixed(0)}</Bd>
             {isLive && <Bd c={BT.text.green}>LIVE</Bd>}
           </div>
@@ -261,15 +261,15 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                       <DataRow label="DRIVER" value={cat.driver.length > 36 ? cat.driver.slice(0, 35) + '…' : cat.driver} valueColor={BT.text.primary} />
                       <DataRow label="MITIGATION" value={cat.mitigation.length > 36 ? cat.mitigation.slice(0, 35) + '…' : cat.mitigation} valueColor={BT.text.secondary} />
                       <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>30D TREND</span>
-                        <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: trendC }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>30D TREND</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: trendC }}>
                           {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} {trendArrow(cat.trendDirection)}
                         </span>
                       </div>
                       <div style={{ padding: '4px 8px 6px', borderTop: `1px solid ${BT.border.subtle}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                          <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>CONFIDENCE BAND</span>
-                          <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>{confLo}–{confHi}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>CONFIDENCE BAND</span>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{confLo}–{confHi}</span>
                         </div>
                         <div style={{ position: 'relative', height: 4, background: `${bc}20`, borderRadius: 2 }}>
                           <div style={{
@@ -298,7 +298,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
               >
                 <div style={{ padding: '8px 10px', display: 'flex', gap: 16, alignItems: 'center' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>COMPOSITE</span>
+                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>COMPOSITE</span>
                     <span style={{ fontFamily: MONO, fontSize: 22, fontWeight: 700, color: compColor }}>
                       {compositeScore.toFixed(0)}<span style={{ fontSize: 10, color: BT.text.muted }}>/100</span>
                     </span>
@@ -309,7 +309,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                       return (
                         <div key={cat.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
                           <Spark data={cat.sparkline} color={tc} w={48} h={14} />
-                          <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
                             {cat.id.slice(0, 3).toUpperCase()}
                           </span>
                         </div>
@@ -373,10 +373,10 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                         display: 'flex', flexDirection: 'column', gap: 4,
                         borderLeft: `2px solid ${color}`,
                       }}>
-                        <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.primary }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.primary }}>
                           {cat.abbr}
                         </span>
-                        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
                           {cat.name}
                         </span>
                         <Bd c={color}>{label}</Bd>
@@ -385,7 +385,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                   })}
                 </div>
                 <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>STATUS LEGEND:</span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>STATUS LEGEND:</span>
                   <Bd c={BT.text.green}>COMPLETE</Bd>
                   <Bd c={BT.text.amber}>PENDING</Bd>
                   <Bd c={BT.text.red}>BLOCKED</Bd>

@@ -988,20 +988,20 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             {projection?.marketIntelligence && (
-              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.green, fontFamily: 'var(--bt-mono)' }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.green, fontFamily: 'var(--bt-mono)' }}>
                 OCC {((projection.periods[0]?.adjOccPct ?? 0) * 100).toFixed(0)}%
               </span>
             )}
             {dataSource === 'uploaded' && (
-              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.green, background: `${BT2.text.green}12`, border: `1px solid ${BT2.text.green}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>LIVE</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.green, background: `${BT2.text.green}12`, border: `1px solid ${BT2.text.green}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>LIVE</span>
             )}
             {dataSource === 'blended' && (
-              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.met.physTraffic, background: `${BT2.met.physTraffic}12`, border: `1px solid ${BT2.met.physTraffic}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>BLENDED</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.met.physTraffic, background: `${BT2.met.physTraffic}12`, border: `1px solid ${BT2.met.physTraffic}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>BLENDED</span>
             )}
             {dataSource === 'predicted' && (
-              <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.amber, background: `${BT2.text.amber}12`, border: `1px solid ${BT2.text.amber}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>PREDICTED</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.amber, background: `${BT2.text.amber}12`, border: `1px solid ${BT2.text.amber}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>PREDICTED</span>
             )}
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'transparent', color: BT2.text.secondary, border: `1px solid ${BT2.border.subtle}`, cursor: 'pointer', fontSize: 8, fontFamily: 'var(--bt-mono)' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'transparent', color: BT2.text.secondary, border: `1px solid ${BT2.border.subtle}`, cursor: 'pointer', fontSize: 9, fontFamily: 'var(--bt-mono)' }}>
               <Upload size={10} />
               {uploading ? 'UPLOADING...' : 'UPLOAD'}
               <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} style={{ display: 'none' }} />

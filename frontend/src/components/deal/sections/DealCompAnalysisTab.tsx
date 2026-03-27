@@ -11,13 +11,14 @@ import {
   Building2,
   AlertCircle,
 } from 'lucide-react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 type TierKey = 'trade_area' | 'submarket' | 'msa';
 
-const TIER_CONFIG: Record<TierKey, { label: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
-  trade_area: { label: 'Trade Area Comps', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200', icon: '📍' },
-  submarket: { label: 'Submarket Comps', color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: '🏘️' },
-  msa: { label: 'MSA Comps', color: 'text-violet-700', bgColor: 'bg-violet-50', borderColor: 'border-violet-200', icon: '🌆' },
+const TIER_CONFIG: Record<TierKey, { label: string; colorHex: string; icon: string }> = {
+  trade_area: { label: 'Trade Area Comps', colorHex: BT.text.green, icon: '📍' },
+  submarket: { label: 'Submarket Comps', colorHex: BT.text.cyan, icon: '🏘️' },
+  msa: { label: 'MSA Comps', colorHex: BT.text.purple, icon: '🌆' },
 };
 
 interface CompSetSummary {
@@ -65,56 +66,63 @@ function CompRow({
   onToggleCompSet: (comp: TieredCompProperty) => void;
   toggling: boolean;
 }) {
-  const scoreColor = comp.match_score >= 70 ? 'text-emerald-600' : comp.match_score >= 50 ? 'text-amber-600' : 'text-stone-500';
-  const scoreBg = comp.match_score >= 70 ? 'bg-emerald-500' : comp.match_score >= 50 ? 'bg-amber-500' : 'bg-stone-400';
+  const scoreColorHex = comp.match_score >= 70 ? BT.text.green : comp.match_score >= 50 ? BT.text.amber : BT.text.muted;
+  const scoreBgHex = comp.match_score >= 70 ? BT.text.green : comp.match_score >= 50 ? BT.text.amber : BT.text.muted;
 
   return (
-    <tr className="border-t border-stone-100 hover:bg-stone-50/50 transition-colors">
+    <tr className="transition-colors" style={{ borderTop: `1px solid ${BT.border.subtle}` }}
+      onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
       <td className="px-3 py-2.5 text-center">
-        <span className="text-xs font-mono text-stone-400">{rank}</span>
+        <span className="text-xs font-mono" style={{ color: BT.text.muted }}>{rank}</span>
       </td>
       <td className="px-3 py-2.5">
-        <div className="text-xs font-semibold text-stone-900 truncate max-w-[200px]">{comp.name || comp.address}</div>
-        <div className="text-[10px] text-stone-400 truncate max-w-[200px]">{comp.address}</div>
+        <div className="text-xs font-semibold truncate max-w-[200px]" style={{ color: BT.text.primary }}>{comp.name || comp.address}</div>
+        <div className="text-[10px] truncate max-w-[200px]" style={{ color: BT.text.muted }}>{comp.address}</div>
       </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">{comp.units || '—'}</td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">{comp.year_built || '—'}</td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">{comp.stories || '—'}</td>
+      <td className="px-3 py-2.5 text-center text-xs font-mono" style={{ color: BT.text.secondary }}>{comp.units || '—'}</td>
+      <td className="px-3 py-2.5 text-center text-xs font-mono" style={{ color: BT.text.secondary }}>{comp.year_built || '—'}</td>
+      <td className="px-3 py-2.5 text-center text-xs font-mono" style={{ color: BT.text.secondary }}>{comp.stories || '—'}</td>
       <td className="px-3 py-2.5 text-center">
         {comp.class_code ? (
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-            comp.class_code.startsWith('A') ? 'bg-blue-50 text-blue-600' :
-            comp.class_code.startsWith('B') ? 'bg-amber-50 text-amber-600' :
-            'bg-stone-100 text-stone-500'
-          }`}>{comp.class_code}</span>
-        ) : <span className="text-xs text-stone-300">—</span>}
+          <span className="text-[10px] font-bold px-1.5 py-0.5" style={{
+            borderRadius: 0,
+            background: comp.class_code.startsWith('A') ? `${BT.text.cyan}11` :
+              comp.class_code.startsWith('B') ? `${BT.text.amber}11` : BT.bg.panelAlt,
+            color: comp.class_code.startsWith('A') ? BT.text.cyan :
+              comp.class_code.startsWith('B') ? BT.text.amber : BT.text.muted
+          }}>{comp.class_code}</span>
+        ) : <span className="text-xs" style={{ color: BT.text.muted }}>—</span>}
       </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">
+      <td className="px-3 py-2.5 text-center text-xs font-mono" style={{ color: BT.text.secondary }}>
         {comp.distance_miles != null ? `${comp.distance_miles} mi` : '—'}
       </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-bold font-mono ${scoreColor}`}>{Math.round(comp.match_score)}</span>
-          <div className="w-12 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${scoreBg}`} style={{ width: `${Math.min(100, comp.match_score)}%` }} />
+          <span className="text-xs font-bold font-mono" style={{ color: scoreColorHex }}>{Math.round(comp.match_score)}</span>
+          <div className="w-12 h-1.5 overflow-hidden" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+            <div className="h-full" style={{ width: `${Math.min(100, comp.match_score)}%`, background: scoreBgHex, borderRadius: 0 }} />
           </div>
         </div>
       </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">
+      <td className="px-3 py-2.5 text-center text-xs font-mono" style={{ color: BT.text.secondary }}>
         {comp.avg_rent != null && comp.avg_rent > 0 ? `$${comp.avg_rent.toLocaleString()}` : '—'}
       </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">
+      <td className="px-3 py-2.5 text-center text-xs font-mono" style={{ color: BT.text.secondary }}>
         {comp.occupancy != null ? `${comp.occupancy}%` : '—'}
       </td>
       <td className="px-3 py-2.5 text-center">
         <button
           onClick={() => onToggleCompSet(comp)}
           disabled={toggling}
-          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
-            comp.in_comp_set
-              ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300'
-              : 'bg-stone-100 text-stone-600 border border-stone-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'
-          } ${toggling ? 'opacity-50 cursor-wait' : ''}`}
+          className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-semibold transition-all ${toggling ? 'opacity-50 cursor-wait' : ''}`}
+          style={{
+            borderRadius: 0,
+            background: comp.in_comp_set ? `${BT.text.green}22` : BT.bg.panelAlt,
+            color: comp.in_comp_set ? BT.text.green : BT.text.secondary,
+            border: `1px solid ${comp.in_comp_set ? BT.text.green : BT.border.medium}`,
+          }}
         >
           {comp.in_comp_set ? (
             <><Check className="h-3 w-3" /> In Set</>
@@ -143,20 +151,21 @@ function TierSection({
   const inSetCount = comps.filter(c => c.in_comp_set).length;
 
   return (
-    <div className={`border ${config.borderColor} rounded-lg overflow-hidden`}>
+    <div className="overflow-hidden" style={{ border: `1px solid ${config.colorHex}44`, borderRadius: 0 }}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className={`w-full flex items-center justify-between px-4 py-3 ${config.bgColor} hover:opacity-90 transition-opacity`}
+        className="w-full flex items-center justify-between px-4 py-3 hover:opacity-90 transition-opacity"
+        style={{ background: `${config.colorHex}11` }}
       >
         <div className="flex items-center gap-2">
-          {expanded ? <ChevronDown className="h-4 w-4 text-stone-500" /> : <ChevronRight className="h-4 w-4 text-stone-500" />}
-          <span className="text-sm font-bold text-stone-900">{config.icon} {config.label}</span>
-          <span className="text-xs text-stone-500 font-mono">({comps.length} properties)</span>
+          {expanded ? <ChevronDown className="h-4 w-4" style={{ color: BT.text.secondary }} /> : <ChevronRight className="h-4 w-4" style={{ color: BT.text.secondary }} />}
+          <span className="text-sm font-bold" style={{ color: BT.text.primary }}>{config.icon} {config.label}</span>
+          <span className="text-xs font-mono" style={{ color: BT.text.secondary }}>({comps.length} properties)</span>
           {inSetCount > 0 && (
-            <span className="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">{inSetCount} in set</span>
+            <span className="text-[10px] font-bold px-2 py-0.5" style={{ background: BT.text.green, color: BT.bg.terminal, borderRadius: 0 }}>{inSetCount} in set</span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-stone-500">
+        <div className="flex items-center gap-3 text-[10px]" style={{ color: BT.text.secondary }}>
           {comps.length > 0 && (
             <>
               <span>Avg Units: {Math.round(comps.reduce((s, c) => s + c.units, 0) / comps.length)}</span>
@@ -169,12 +178,12 @@ function TierSection({
       </button>
 
       {expanded && (
-        <div className="bg-white">
+        <div style={{ background: BT.bg.panel }}>
           {comps.length === 0 ? (
             <div className="text-center py-8">
-              <MapPin className="h-6 w-6 text-stone-300 mx-auto mb-2" />
-              <p className="text-xs text-stone-400">No properties found at this geographic level</p>
-              <p className="text-[10px] text-stone-300 mt-1">
+              <MapPin className="h-6 w-6 mx-auto mb-2" style={{ color: BT.text.muted }} />
+              <p className="text-xs" style={{ color: BT.text.secondary }}>No properties found at this geographic level</p>
+              <p className="text-[10px] mt-1" style={{ color: BT.text.muted }}>
                 {tier === 'trade_area' && 'No geocoded properties within the trade area radius'}
                 {tier === 'submarket' && 'Deal location does not fall within a defined submarket boundary'}
                 {tier === 'msa' && 'Deal location does not fall within a defined MSA boundary'}
@@ -184,18 +193,18 @@ function TierSection({
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-stone-50 text-left">
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider w-10">#</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-14">UNITS</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">BUILT</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">STORIES</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-14">CLASS</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">DIST</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-24">MATCH</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-20">RENT</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">OCC</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-24">COMP SET</th>
+                  <tr className="text-left" style={{ background: BT.bg.header }}>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider w-10" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>#</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>PROPERTY</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-14" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>UNITS</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-16" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>BUILT</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-16" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>STORIES</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-14" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>CLASS</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-16" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>DIST</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-24" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>MATCH</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-20" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>RENT</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-16" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>OCC</th>
+                    <th className="px-3 py-2 text-[10px] font-mono tracking-wider text-center w-24" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>COMP SET</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -316,8 +325,8 @@ const DealCompAnalysisTab: React.FC = () => {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600 mx-auto mb-3" />
-          <p className="text-sm text-stone-500">Discovering comps across geographic tiers...</p>
+          <div className="animate-spin h-8 w-8 mx-auto mb-3" style={{ border: `2px solid ${BT.text.purple}`, borderTopColor: 'transparent', borderRadius: 0 }} />
+          <p className="text-sm" style={{ color: BT.text.secondary }}>Discovering comps across geographic tiers...</p>
         </div>
       </div>
     );
@@ -325,10 +334,10 @@ const DealCompAnalysisTab: React.FC = () => {
 
   if (error) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <AlertCircle className="h-6 w-6 text-red-400 mx-auto mb-2" />
-        <p className="text-sm text-red-700 font-medium">{error}</p>
-        <button onClick={fetchTieredComps} className="mt-3 text-xs text-red-600 hover:text-red-800 font-medium">
+      <div className="p-6 text-center" style={{ background: `${BT.text.red}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <AlertCircle className="h-6 w-6 mx-auto mb-2" style={{ color: BT.text.red }} />
+        <p className="text-sm font-medium" style={{ color: BT.text.red }}>{error}</p>
+        <button onClick={fetchTieredComps} className="mt-3 text-xs font-medium" style={{ color: BT.text.red }}>
           Retry
         </button>
       </div>
@@ -339,29 +348,30 @@ const DealCompAnalysisTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-violet-500">
-        <div className="text-[10px] font-mono text-violet-400 tracking-widest mb-1">COMP ANALYSIS</div>
+      <div className="p-4" style={{ background: BT.bg.panel, color: BT.text.primary, borderRadius: 0, borderLeft: `4px solid ${BT.text.purple}` }}>
+        <div className="text-[10px] font-mono tracking-widest mb-1" style={{ color: BT.text.purple, fontFamily: BT.font.mono }}>COMP ANALYSIS</div>
         <div className="text-lg font-semibold">
           {dealInfo?.name || 'Deal'} — Geographic Comp Discovery
         </div>
-        <div className="text-xs text-stone-400 mt-1">
+        <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>
           {totalComps} properties discovered across {[tiers.trade_area.length > 0 && 'Trade Area', tiers.submarket.length > 0 && 'Submarket', tiers.msa.length > 0 && 'MSA'].filter(Boolean).join(', ')} tiers
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-4">
+      <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-emerald-600" />
+            <Building2 className="h-5 w-5" style={{ color: BT.text.green }} />
             <div>
-              <h3 className="text-sm font-bold text-stone-900">Your Comp Set</h3>
-              <p className="text-[10px] text-stone-400">{summary.count} properties selected</p>
+              <h3 className="text-sm font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Your Comp Set</h3>
+              <p className="text-[10px]" style={{ color: BT.text.muted }}>{summary.count} properties selected</p>
             </div>
           </div>
           <button
             onClick={handleResetToDefaults}
             disabled={resetting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 rounded-lg hover:bg-stone-50 text-xs text-stone-600 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors disabled:opacity-50"
+            style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary }}
           >
             <RotateCcw className={`h-3.5 w-3.5 ${resetting ? 'animate-spin' : ''}`} />
             {resetting ? 'Resetting...' : 'Reset to Defaults'}
@@ -370,26 +380,26 @@ const DealCompAnalysisTab: React.FC = () => {
 
         {summary.count > 0 ? (
           <div className="grid grid-cols-4 gap-3">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-emerald-600 tracking-wider">PROPERTIES</div>
-              <div className="text-xl font-bold text-emerald-700">{summary.count}</div>
+            <div className="p-3 text-center" style={{ background: `${BT.text.green}11`, border: `1px solid ${BT.text.green}44`, borderRadius: 0 }}>
+              <div className="text-[10px] font-mono tracking-wider" style={{ color: BT.text.green, fontFamily: BT.font.mono }}>PROPERTIES</div>
+              <div className="text-xl font-bold" style={{ color: BT.text.green, fontFamily: BT.font.mono }}>{summary.count}</div>
             </div>
-            <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">AVG UNITS</div>
-              <div className="text-xl font-bold text-stone-800">{summary.avgUnits ?? '—'}</div>
+            <div className="p-3 text-center" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="text-[10px] font-mono tracking-wider" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>AVG UNITS</div>
+              <div className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{summary.avgUnits ?? '—'}</div>
             </div>
-            <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">AVG DISTANCE</div>
-              <div className="text-xl font-bold text-stone-800">{summary.avgDistance != null ? `${summary.avgDistance} mi` : '—'}</div>
+            <div className="p-3 text-center" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="text-[10px] font-mono tracking-wider" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>AVG DISTANCE</div>
+              <div className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{summary.avgDistance != null ? `${summary.avgDistance} mi` : '—'}</div>
             </div>
-            <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">AVG MATCH</div>
-              <div className="text-xl font-bold text-stone-800">{summary.avgMatchScore ?? '—'}</div>
+            <div className="p-3 text-center" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="text-[10px] font-mono tracking-wider" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>AVG MATCH</div>
+              <div className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{summary.avgMatchScore ?? '—'}</div>
             </div>
           </div>
         ) : (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-            <p className="text-xs text-amber-700">No properties in your comp set. Use the "Add to Set" buttons below to build your competitive analysis.</p>
+          <div className="p-4 text-center" style={{ background: `${BT.text.amber}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+            <p className="text-xs" style={{ color: BT.text.amber }}>No properties in your comp set. Use the "Add to Set" buttons below to build your competitive analysis.</p>
           </div>
         )}
       </div>
@@ -405,13 +415,14 @@ const DealCompAnalysisTab: React.FC = () => {
       ))}
 
       {totalComps === 0 && (
-        <div className="bg-stone-50 border border-stone-200 rounded-lg p-8 text-center">
-          <MapPin className="h-8 w-8 text-stone-300 mx-auto mb-3" />
-          <p className="text-sm text-stone-500 font-medium">No comparable properties found</p>
-          <p className="text-xs text-stone-400 mt-1">This may be because property records in this area lack geocoded coordinates. Try the auto-discovery feature or add comps manually.</p>
+        <div className="p-8 text-center" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <MapPin className="h-8 w-8 mx-auto mb-3" style={{ color: BT.text.muted }} />
+          <p className="text-sm font-medium" style={{ color: BT.text.secondary }}>No comparable properties found</p>
+          <p className="text-xs mt-1" style={{ color: BT.text.muted }}>This may be because property records in this area lack geocoded coordinates. Try the auto-discovery feature or add comps manually.</p>
           <button
             onClick={handleResetToDefaults}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-xs font-medium transition-colors"
+            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium transition-colors"
+            style={{ background: BT.text.purple, color: BT.bg.terminal, borderRadius: 0 }}
           >
             <RotateCcw className="h-3.5 w-3.5" />
             Run Auto-Discovery

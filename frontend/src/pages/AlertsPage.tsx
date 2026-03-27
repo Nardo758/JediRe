@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Building2, ArrowLeft, Bell, Plus, Trash2, Edit2, MapPin, DollarSign, Home, TrendingUp, CheckCircle, X } from 'lucide-react';
+import { BT } from '../components/deal/bloomberg-ui';
 
 interface Alert {
   id: string;
@@ -23,7 +24,7 @@ export default function AlertsPage() {
   const [showCreate, setShowCreate] = useState(false);
 
   const toggleStatus = (id: string) => {
-    setAlerts(alerts.map(a => 
+    setAlerts(alerts.map(a =>
       a.id === id ? { ...a, status: a.status === 'active' ? 'paused' : 'active' } : a
     ));
   };
@@ -33,22 +34,23 @@ export default function AlertsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <div className="min-h-screen" style={{ background: BT.bg.terminal }}>
+      <header className="sticky top-0 z-10" style={{ background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Link to="/app" className="text-gray-400 hover:text-gray-600">
+              <Link to="/app" style={{ color: BT.text.muted }}>
                 <ArrowLeft className="w-5 h-5" />
               </Link>
               <div className="flex items-center gap-2">
-                <Bell className="w-8 h-8 text-blue-600" />
-                <span className="text-xl font-bold text-gray-900">Alerts & Watchlists</span>
+                <Bell className="w-8 h-8" style={{ color: BT.text.cyan }} />
+                <span className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>Alerts & Watchlists</span>
               </div>
             </div>
             <button
               onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium"
+              style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
             >
               <Plus className="w-4 h-4" /> Create Alert
             </button>
@@ -59,49 +61,56 @@ export default function AlertsPage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-4">
           {alerts.map(alert => (
-            <div key={alert.id} className="bg-white rounded-xl p-6 border border-gray-200">
+            <div key={alert.id} className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-start gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    alert.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-                  }`}>
+                  <div
+                    className="w-10 h-10 flex items-center justify-center"
+                    style={{
+                      borderRadius: 2,
+                      background: alert.status === 'active' ? BT.bg.active : BT.bg.hover,
+                      color: alert.status === 'active' ? BT.text.green : BT.text.muted,
+                    }}
+                  >
                     <Bell className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{alert.name}</h3>
-                    <p className="text-sm text-gray-500">{alert.criteria}</p>
+                    <h3 className="font-semibold" style={{ color: BT.text.primary }}>{alert.name}</h3>
+                    <p className="text-sm" style={{ color: BT.text.secondary }}>{alert.criteria}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => toggleStatus(alert.id)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      alert.status === 'active' 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-gray-100 text-gray-600'
-                    }`}
+                    className="px-3 py-1 text-xs font-medium"
+                    style={{
+                      borderRadius: 2,
+                      background: alert.status === 'active' ? BT.bg.active : BT.bg.hover,
+                      color: alert.status === 'active' ? BT.text.green : BT.text.secondary,
+                    }}
                   >
                     {alert.status === 'active' ? 'Active' : 'Paused'}
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+              <div className="flex items-center justify-between pt-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
                 <div className="flex items-center gap-6 text-sm">
-                  <span className="text-gray-500">
-                    <span className="font-medium text-gray-900">{alert.matches}</span> matches
+                  <span style={{ color: BT.text.secondary }}>
+                    <span className="font-medium" style={{ color: BT.text.primary }}>{alert.matches}</span> matches
                   </span>
-                  <span className="text-gray-500">
-                    Last triggered: <span className="text-gray-700">{alert.lastTriggered}</span>
+                  <span style={{ color: BT.text.secondary }}>
+                    Last triggered: <span style={{ color: BT.text.primary }}>{alert.lastTriggered}</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded">
+                  <button className="p-2" style={{ color: BT.text.muted, borderRadius: 2 }}>
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     onClick={() => deleteAlert(alert.id)}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    className="p-2"
+                    style={{ color: BT.text.muted, borderRadius: 2 }}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -113,12 +122,13 @@ export default function AlertsPage() {
 
         {alerts.length === 0 && (
           <div className="text-center py-16">
-            <Bell className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No alerts yet</h3>
-            <p className="text-gray-500 mb-6">Create your first alert to get notified about new opportunities.</p>
+            <Bell className="w-16 h-16 mx-auto mb-4" style={{ color: BT.text.muted }} />
+            <h3 className="text-lg font-medium mb-2" style={{ color: BT.text.primary }}>No alerts yet</h3>
+            <p className="mb-6" style={{ color: BT.text.secondary }}>Create your first alert to get notified about new opportunities.</p>
             <button
               onClick={() => setShowCreate(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+              className="px-4 py-2 font-medium"
+              style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
             >
               Create Alert
             </button>
@@ -126,29 +136,36 @@ export default function AlertsPage() {
         )}
 
         {showCreate && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl w-full max-w-lg">
-              <div className="flex items-center justify-between p-4 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Create New Alert</h3>
-                <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600">
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(0,0,0,0.7)' }}>
+            <div className="w-full max-w-lg" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="flex items-center justify-between p-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <h3 className="font-semibold" style={{ color: BT.text.primary }}>Create New Alert</h3>
+                <button onClick={() => setShowCreate(false)} style={{ color: BT.text.muted }}>
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Alert Name</label>
+                  <label className="block text-sm font-medium mb-1" style={{ color: BT.text.secondary }}>Alert Name</label>
                   <input
                     id="alert-name"
                     name="alertName"
                     type="text"
                     placeholder="e.g., Austin Under $400k"
                     aria-label="Alert name"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2"
+                    style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.subtle}`, borderRadius: 0, outline: 'none' }}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Alert Type</label>
-                  <select id="alert-type" name="alertType" aria-label="Alert type" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <label className="block text-sm font-medium mb-1" style={{ color: BT.text.secondary }}>Alert Type</label>
+                  <select
+                    id="alert-type"
+                    name="alertType"
+                    aria-label="Alert type"
+                    className="w-full px-4 py-2"
+                    style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}
+                  >
                     <option>New Listing</option>
                     <option>Price Drop</option>
                     <option>Score Change</option>
@@ -156,8 +173,14 @@ export default function AlertsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Market</label>
-                  <select id="alert-market" name="alertMarket" aria-label="Market" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                  <label className="block text-sm font-medium mb-1" style={{ color: BT.text.secondary }}>Market</label>
+                  <select
+                    id="alert-market"
+                    name="alertMarket"
+                    aria-label="Market"
+                    className="w-full px-4 py-2"
+                    style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}
+                  >
                     <option>Austin, TX</option>
                     <option>Dallas, TX</option>
                     <option>Houston, TX</option>
@@ -166,30 +189,32 @@ export default function AlertsPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Min Price</label>
+                    <label className="block text-sm font-medium mb-1" style={{ color: BT.text.secondary }}>Min Price</label>
                     <input
                       id="alert-min-price"
                       name="alertMinPrice"
                       type="number"
                       placeholder="$0"
                       aria-label="Minimum price"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2"
+                      style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.subtle}`, borderRadius: 0, outline: 'none' }}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Max Price</label>
+                    <label className="block text-sm font-medium mb-1" style={{ color: BT.text.secondary }}>Max Price</label>
                     <input
                       id="alert-max-price"
                       name="alertMaxPrice"
                       type="number"
                       placeholder="$500,000"
                       aria-label="Maximum price"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-4 py-2"
+                      style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.subtle}`, borderRadius: 0, outline: 'none' }}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Minimum Score</label>
+                  <label className="block text-sm font-medium mb-1" style={{ color: BT.text.secondary }}>Minimum Score</label>
                   <input
                     id="alert-min-score"
                     name="alertMinScore"
@@ -200,23 +225,25 @@ export default function AlertsPage() {
                     aria-label="Minimum score"
                     className="w-full"
                   />
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <div className="flex justify-between text-xs" style={{ color: BT.text.secondary }}>
                     <span>0</span>
                     <span>50</span>
                     <span>100</span>
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 p-4 border-t border-gray-200">
+              <div className="flex justify-end gap-3 p-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
                 <button
                   onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2"
+                  style={{ border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, borderRadius: 2, background: 'transparent' }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => setShowCreate(false)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                  className="px-4 py-2 font-medium"
+                  style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
                 >
                   Create Alert
                 </button>

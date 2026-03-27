@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 import { AnalysisStatus } from '@/services/dealAnalysis.service';
 
 export interface ActionStatusPanelProps {
@@ -28,116 +29,105 @@ export const ActionStatusPanel: React.FC<ActionStatusPanelProps> = ({
 
   const getPhaseIcon = () => {
     switch (status.phase) {
-      case 'initializing':
-        return '🔄';
-      case 'analyzing':
-        return '🔍';
-      case 'generating':
-        return '✨';
-      case 'complete':
-        return '✅';
-      case 'error':
-        return '❌';
-      default:
-        return '🔄';
+      case 'initializing': return '🔄';
+      case 'analyzing': return '🔍';
+      case 'generating': return '✨';
+      case 'complete': return '✅';
+      case 'error': return '❌';
+      default: return '🔄';
     }
   };
 
-  const getPhaseColor = () => {
+  const getAccentColor = () => {
     switch (status.phase) {
-      case 'complete':
-        return 'bg-green-50 border-green-200';
-      case 'error':
-        return 'bg-red-50 border-red-200';
-      default:
-        return 'bg-blue-50 border-blue-200';
+      case 'complete': return BT.text.green;
+      case 'error': return BT.text.red;
+      default: return BT.text.cyan;
     }
   };
 
-  const getProgressColor = () => {
-    switch (status.phase) {
-      case 'complete':
-        return 'bg-green-500';
-      case 'error':
-        return 'bg-red-500';
-      default:
-        return 'bg-blue-500';
-    }
-  };
+  const accent = getAccentColor();
 
   return (
     <div
-      className={`rounded-lg border-2 p-6 ${getPhaseColor()} transition-all duration-300 ${
-        autoHiding ? 'opacity-50 scale-95' : 'opacity-100'
-      }`}
+      className="p-6 transition-all duration-300"
+      style={{
+        background: BT.bg.panel,
+        border: `1px solid ${accent}33`,
+        borderLeft: `2px solid ${accent}`,
+        borderRadius: 0,
+        fontFamily: BT.font.mono,
+        opacity: autoHiding ? 0.5 : 1,
+        transform: autoHiding ? 'scale(0.95)' : 'scale(1)',
+      }}
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="text-3xl">{getPhaseIcon()}</div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 style={{ fontSize: 14, fontWeight: 600, color: BT.text.primary }}>
               {status.phase === 'complete'
                 ? 'Analysis Complete'
                 : status.phase === 'error'
                 ? 'Analysis Failed'
                 : 'Analyzing Deal'}
             </h3>
-            <p className="text-sm text-gray-600">
+            <p style={{ fontSize: 10, color: BT.text.secondary }}>
               {dealType} • {propertyType}
             </p>
           </div>
         </div>
         {status.currentAction && (
-          <div className="text-sm font-medium text-gray-700">{status.currentAction}</div>
+          <div style={{ fontSize: 10, fontWeight: 500, color: BT.text.secondary }}>{status.currentAction}</div>
         )}
       </div>
 
       {status.phase !== 'complete' && status.phase !== 'error' && (
         <div className="mb-4">
-          <div className="flex justify-between text-sm text-gray-600 mb-2">
+          <div className="flex justify-between mb-2" style={{ fontSize: 10, color: BT.text.secondary }}>
             <span>{status.message}</span>
             <span>{status.progress}%</span>
           </div>
-          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="w-full h-2 overflow-hidden" style={{ background: BT.bg.header }}>
             <div
-              className={`h-full ${getProgressColor()} transition-all duration-500 ease-out`}
-              style={{ width: `${status.progress}%` }}
+              className="h-full transition-all duration-500 ease-out"
+              style={{ width: `${status.progress}%`, background: accent }}
             >
-              <div className="w-full h-full animate-pulse bg-white opacity-20"></div>
+              <div className="w-full h-full opacity-20" style={{ animation: 'pulse 2s infinite', background: BT.text.primary }}></div>
             </div>
           </div>
         </div>
       )}
 
       {status.phase === 'complete' && (
-        <div className="text-sm text-green-700">
-          <p className="font-medium mb-2">Strategy recommendations are ready!</p>
-          <p className="text-green-600">View results below</p>
+        <div style={{ fontSize: 10 }}>
+          <p style={{ fontWeight: 500, color: BT.text.green, marginBottom: 4 }}>Strategy recommendations are ready!</p>
+          <p style={{ color: BT.text.green }}>View results below</p>
         </div>
       )}
 
       {status.phase === 'error' && status.error && (
-        <div className="text-sm text-red-700">
-          <p className="font-medium mb-1">An error occurred:</p>
-          <p className="text-red-600">{status.error}</p>
+        <div style={{ fontSize: 10 }}>
+          <p style={{ fontWeight: 500, color: BT.text.red, marginBottom: 4 }}>An error occurred:</p>
+          <p style={{ color: BT.text.red }}>{status.error}</p>
         </div>
       )}
 
       {status.phase === 'analyzing' && (
         <div className="mt-4 space-y-2">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+          <div className="flex items-center gap-2" style={{ fontSize: 10, color: BT.text.secondary }}>
+            <div style={{ width: 4, height: 4, borderRadius: '50%', background: BT.text.cyan, animation: 'glow 2s infinite' }}></div>
             <span>Processing property data...</span>
           </div>
           {status.progress > 30 && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <div className="flex items-center gap-2" style={{ fontSize: 10, color: BT.text.secondary }}>
+              <div style={{ width: 4, height: 4, borderRadius: '50%', background: BT.text.cyan, animation: 'glow 2s infinite' }}></div>
               <span>Evaluating market conditions...</span>
             </div>
           )}
           {status.progress > 60 && (
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <div className="flex items-center gap-2" style={{ fontSize: 10, color: BT.text.secondary }}>
+              <div style={{ width: 4, height: 4, borderRadius: '50%', background: BT.text.cyan, animation: 'glow 2s infinite' }}></div>
               <span>Generating strategy recommendations...</span>
             </div>
           )}

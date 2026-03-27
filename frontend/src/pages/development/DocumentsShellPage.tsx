@@ -193,7 +193,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                 { label: 'EXPIRED', value: String(stats.expired), color: stats.expired > 0 ? BT.text.red : BT.text.green },
               ].map(kpi => (
                 <div key={kpi.label} style={{ background: BT.bg.panel, padding: '10px 14px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, color: BT.text.muted, marginBottom: 4, ...mono }}>{kpi.label}</div>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: BT.text.muted, marginBottom: 4, ...mono }}>{kpi.label}</div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: kpi.color, ...mono }}>{kpi.value}</div>
                 </div>
               ))}
@@ -209,7 +209,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                 </div>
                 <button
                   onClick={() => setShowUpload(true)}
-                  style={{ ...mono, fontSize: 8, fontWeight: 700, letterSpacing: 0.5, color: BT.bg.terminal, background: BT.text.amber, border: 'none', padding: '4px 12px', cursor: 'pointer' }}
+                  style={{ ...mono, fontSize: 9, fontWeight: 700, letterSpacing: 0.5, color: BT.bg.terminal, background: BT.text.amber, border: 'none', padding: '4px 12px', cursor: 'pointer' }}
                 >
                   Upload Now
                 </button>
@@ -266,7 +266,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
               <div style={{ margin: 12, padding: 20, border: `2px dashed ${BT.text.cyan}44`, background: BT.bg.panelAlt, textAlign: 'center' }}>
                 <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>📤</div>
                 <div style={{ fontSize: 10, color: BT.text.secondary, ...sans }}>Drag & drop files here, or click to browse</div>
-                <button onClick={() => setShowUpload(false)} style={{ ...mono, fontSize: 8, color: BT.text.muted, background: 'transparent', border: `1px solid ${BT.border.subtle}`, padding: '3px 10px', cursor: 'pointer', marginTop: 10 }}>Cancel</button>
+                <button onClick={() => setShowUpload(false)} style={{ ...mono, fontSize: 9, color: BT.text.muted, background: 'transparent', border: `1px solid ${BT.border.subtle}`, padding: '3px 10px', cursor: 'pointer', marginTop: 10 }}>Cancel</button>
               </div>
             )}
 
@@ -284,7 +284,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                 <div>
                   <div style={{ display: 'flex', padding: '4px 8px', borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.header }}>
                     {[{ l: 'Name', w: '40%' }, { l: 'Category', w: '15%' }, { l: 'Size', w: '12%' }, { l: 'Status', w: '12%' }, { l: 'Date', w: '21%' }].map(h => (
-                      <div key={h.l} style={{ width: h.w, fontSize: 7, fontWeight: 700, letterSpacing: 1, color: BT.text.muted, padding: '2px 4px', ...mono }}>{h.l}</div>
+                      <div key={h.l} style={{ width: h.w, fontSize: 9, fontWeight: 700, letterSpacing: 1, color: BT.text.muted, padding: '2px 4px', ...mono }}>{h.l}</div>
                     ))}
                   </div>
                   {filtered.map((f, i) => (
@@ -296,16 +296,16 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                         <span style={{ fontSize: 10, fontWeight: 500, color: BT.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', ...sans }}>{f.original_filename}</span>
                       </div>
                       <div style={{ width: '15%', padding: '0 4px' }}>
-                        <span style={{ fontSize: 8, color: BT.text.muted, ...mono }}>{f.category.replace(/_/g, ' ').toUpperCase()}</span>
+                        <span style={{ fontSize: 9, color: BT.text.muted, ...mono }}>{f.category.replace(/_/g, ' ').toUpperCase()}</span>
                       </div>
                       <div style={{ width: '12%', padding: '0 4px' }}>
                         <span style={{ fontSize: 9, color: BT.text.secondary, ...mono }}>{fmtSize(f.file_size)}</span>
                       </div>
                       <div style={{ width: '12%', padding: '0 4px' }}>
-                        <span style={{ fontSize: 8, fontWeight: 700, color: statusColor(f.status), background: statusColor(f.status) + '18', padding: '1px 6px', letterSpacing: 0.5, ...mono }}>{statusLabel(f.status)}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: statusColor(f.status), background: statusColor(f.status) + '18', padding: '1px 6px', letterSpacing: 0.5, ...mono }}>{statusLabel(f.status)}</span>
                       </div>
                       <div style={{ width: '21%', padding: '0 4px' }}>
-                        <span style={{ fontSize: 8, color: BT.text.muted, ...mono }}>{new Date(f.created_at).toLocaleDateString()}</span>
+                        <span style={{ fontSize: 9, color: BT.text.muted, ...mono }}>{new Date(f.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                   ))}
@@ -320,7 +320,7 @@ export function DocumentsShellPage({ dealId: propDealId, deal }: DocumentsShellP
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}` }}>
                         <span style={{ fontSize: 12 }}>📁</span>
                         <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.5, color: BT.text.amber, ...mono }}>{cat.replace(/_/g, ' ').toUpperCase()}</span>
-                        <span style={{ fontSize: 8, color: BT.text.muted, ...mono }}>{catFiles.length} files</span>
+                        <span style={{ fontSize: 9, color: BT.text.muted, ...mono }}>{catFiles.length} files</span>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, padding: 8 }}>
                         {catFiles.map(f => (
@@ -363,12 +363,12 @@ function FileCard({ file }: { file: FileItem }) {
       <div style={{ fontSize: 9, fontWeight: 600, color: BT.text.primary, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%', fontFamily: BT.font.label }}>
         {file.original_filename}
       </div>
-      <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.font.mono }}>
+      <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.font.mono }}>
         {isFolder ? `${8} files` : fmtSize(file.file_size)}
       </div>
       {!isFolder && (
         <span style={{
-          fontSize: 7, fontWeight: 700, letterSpacing: 0.5,
+          fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
           color: statusColor(file.status), background: statusColor(file.status) + '18',
           padding: '1px 6px', fontFamily: BT.font.mono,
         }}>
@@ -385,7 +385,7 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
       <div style={{ fontSize: 36, marginBottom: 8, opacity: 0.3 }}>📄</div>
       <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.secondary, marginBottom: 4, fontFamily: BT.font.mono }}>No files match</div>
       <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 12, fontFamily: BT.font.label }}>Upload documents or adjust your filters</div>
-      <button onClick={onUpload} style={{ fontFamily: BT.font.mono, fontSize: 8, fontWeight: 700, color: BT.text.cyan, background: 'transparent', border: `1px solid ${BT.text.cyan}44`, padding: '4px 12px', cursor: 'pointer' }}>Upload File</button>
+      <button onClick={onUpload} style={{ fontFamily: BT.font.mono, fontSize: 9, fontWeight: 700, color: BT.text.cyan, background: 'transparent', border: `1px solid ${BT.text.cyan}44`, padding: '4px 12px', cursor: 'pointer' }}>Upload File</button>
     </div>
   );
 }

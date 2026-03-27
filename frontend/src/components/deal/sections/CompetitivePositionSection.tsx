@@ -379,16 +379,16 @@ export const CompetitivePositionSection: React.FC<CompetitivePositionSectionProp
             <div className="absolute inset-0 border-l border-b border-stone-300" />
 
             <div className="absolute left-0 top-0 w-1/2 h-1/2 bg-emerald-50/40 rounded-tl-lg">
-              <span className="absolute top-1 left-1 text-[8px] font-mono text-emerald-500">Hidden Gem</span>
+              <span className="absolute top-1 left-1 text-[9px] font-mono text-emerald-500">Hidden Gem</span>
             </div>
             <div className="absolute right-0 top-0 w-1/2 h-1/2 bg-blue-50/40 rounded-tr-lg">
-              <span className="absolute top-1 right-1 text-[8px] font-mono text-blue-500">Validated Winner</span>
+              <span className="absolute top-1 right-1 text-[9px] font-mono text-blue-500">Validated Winner</span>
             </div>
             <div className="absolute left-0 bottom-0 w-1/2 h-1/2 bg-stone-100/40 rounded-bl-lg">
-              <span className="absolute bottom-1 left-1 text-[8px] font-mono text-stone-400">Dead Weight</span>
+              <span className="absolute bottom-1 left-1 text-[9px] font-mono text-stone-400">Dead Weight</span>
             </div>
             <div className="absolute right-0 bottom-0 w-1/2 h-1/2 bg-red-50/40 rounded-br-lg">
-              <span className="absolute bottom-1 right-1 text-[8px] font-mono text-red-400">Hype Risk</span>
+              <span className="absolute bottom-1 right-1 text-[9px] font-mono text-red-400">Hype Risk</span>
             </div>
 
             {MOCK_TRADE_AREA_COMPS.map((comp, idx) => {

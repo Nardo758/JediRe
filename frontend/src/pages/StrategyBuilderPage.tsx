@@ -378,7 +378,7 @@ export const StrategyBuilderPage: React.FC = () => {
                   }}>
                     <span style={{ fontSize: 14 }}>📊</span>
                     <span style={{
-                      fontSize: 8,
+                      fontSize: 9,
                       fontWeight: 600,
                       padding: '2px 8px',
                       borderRadius: 10,
@@ -402,7 +402,7 @@ export const StrategyBuilderPage: React.FC = () => {
                         <span
                           key={i}
                           style={{
-                            fontSize: 8,
+                            fontSize: 9,
                             padding: '2px 6px',
                             borderRadius: 4,
                             background: `${color}10`,
@@ -438,7 +438,7 @@ export const StrategyBuilderPage: React.FC = () => {
                         style={{
                           padding: '3px 10px',
                           borderRadius: 4,
-                          fontSize: 8,
+                          fontSize: 9,
                           fontWeight: 600,
                           cursor: 'pointer',
                           border: `1px solid ${COLORS.accent}40`,
@@ -456,7 +456,7 @@ export const StrategyBuilderPage: React.FC = () => {
                         style={{
                           padding: '3px 10px',
                           borderRadius: 4,
-                          fontSize: 8,
+                          fontSize: 9,
                           fontWeight: 600,
                           cursor: 'pointer',
                           border: `1px solid ${COLORS.success}40`,
@@ -591,7 +591,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           key={v}
                           onClick={() => setPeerVintage(v)}
                           style={{
-                            padding: '4px 8px', fontSize: 8, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
+                            padding: '4px 8px', fontSize: 9, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
                             border: `1px solid ${peerVintage === v ? COLORS.warning + '60' : COLORS.border}`,
                             background: peerVintage === v ? COLORS.warning + '10' : 'transparent',
                             color: peerVintage === v ? COLORS.warning : COLORS.textDim,
@@ -616,7 +616,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           key={t.id}
                           onClick={() => setPeerTypology(t.id)}
                           style={{
-                            padding: '4px 8px', fontSize: 8, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
+                            padding: '4px 8px', fontSize: 9, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
                             border: `1px solid ${peerTypology === t.id ? COLORS.cyan + '60' : COLORS.border}`,
                             background: peerTypology === t.id ? COLORS.cyan + '10' : 'transparent',
                             color: peerTypology === t.id ? COLORS.cyan : COLORS.textDim,
@@ -682,7 +682,7 @@ export const StrategyBuilderPage: React.FC = () => {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                             <span style={{
-                              fontSize: 8,
+                              fontSize: 9,
                               color: metricColor,
                               padding: '1px 6px',
                               borderRadius: 3,
@@ -694,7 +694,7 @@ export const StrategyBuilderPage: React.FC = () => {
                               {metric?.name || cond.metricId}
                             </span>
                             {cond.required && (
-                              <span style={{ fontSize: 7, fontWeight: 700, color: COLORS.error }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: COLORS.error }}>
                                 REQUIRED
                               </span>
                             )}
@@ -769,7 +769,7 @@ export const StrategyBuilderPage: React.FC = () => {
                               style={{
                                 padding: '2px 8px',
                                 borderRadius: 3,
-                                fontSize: 8,
+                                fontSize: 9,
                                 fontWeight: 600,
                                 cursor: 'pointer',
                                 border: `1px solid ${cond.required ? COLORS.error + '40' : COLORS.border}`,
@@ -854,7 +854,7 @@ export const StrategyBuilderPage: React.FC = () => {
                       style={{
                         padding: '2px 8px',
                         borderRadius: 4,
-                        fontSize: 8,
+                        fontSize: 9,
                         fontWeight: 600,
                         cursor: 'pointer',
                         border: `1px solid ${!catalogFilter ? COLORS.accent + '40' : COLORS.border}`,
@@ -873,7 +873,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           style={{
                             padding: '2px 8px',
                             borderRadius: 4,
-                            fontSize: 8,
+                            fontSize: 9,
                             fontWeight: 600,
                             cursor: 'pointer',
                             border: `1px solid ${catalogFilter === cat ? color + '40' : COLORS.border}`,
@@ -915,7 +915,7 @@ export const StrategyBuilderPage: React.FC = () => {
                             }}
                           >
                             <span style={{
-                              fontSize: 8,
+                              fontSize: 9,
                               fontFamily: 'monospace',
                               color,
                               padding: '1px 6px',
@@ -930,7 +930,7 @@ export const StrategyBuilderPage: React.FC = () => {
                               <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.text }}>
                                 {m.name}
                               </div>
-                              <div style={{ fontSize: 8, color: COLORS.textDim }}>
+                              <div style={{ fontSize: 9, color: COLORS.textDim }}>
                                 {m.description.slice(0, 80)}...
                               </div>
                             </div>
@@ -1040,7 +1040,7 @@ export const StrategyBuilderPage: React.FC = () => {
                       const color = m ? METRIC_COLORS[m.category] : COLORS.textMuted;
                       return (
                         <div key={c.id} style={{
-                          fontSize: 8,
+                          fontSize: 9,
                           color: c.required ? COLORS.text : COLORS.textMuted,
                           padding: '2px 0',
                           fontFamily: 'monospace',
@@ -1054,7 +1054,7 @@ export const StrategyBuilderPage: React.FC = () => {
                       );
                     })
                   ) : (
-                    <div style={{ fontSize: 8, color: COLORS.textDim }}>Add conditions to see preview</div>
+                    <div style={{ fontSize: 9, color: COLORS.textDim }}>Add conditions to see preview</div>
                   )}
                 </div>
 
@@ -1092,7 +1092,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.text }}>
                             {r.name}
                           </div>
-                          <div style={{ fontSize: 8, color: COLORS.textDim }}>
+                          <div style={{ fontSize: 9, color: COLORS.textDim }}>
                             {r.market}
                           </div>
                         </div>
@@ -1105,14 +1105,14 @@ export const StrategyBuilderPage: React.FC = () => {
                           }}>
                             {r.score}
                           </div>
-                          <div style={{ fontSize: 7, color: COLORS.textDim }}>score</div>
+                          <div style={{ fontSize: 9, color: COLORS.textDim }}>score</div>
                         </div>
                       </div>
                     ))
                   ) : conditions.length > 0 ? (
                     <div style={{ textAlign: 'center', padding: '16px 10px' }}>
                       <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 4 }}>No matching geographies found.</div>
-                      <div style={{ fontSize: 8, color: COLORS.textDim }}>Ensure market data has been ingested for the selected scope.</div>
+                      <div style={{ fontSize: 9, color: COLORS.textDim }}>Ensure market data has been ingested for the selected scope.</div>
                     </div>
                   ) : null}
                 </div>

@@ -182,7 +182,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
   };
   const thStyle: React.CSSProperties = {
     padding: '6px 10px', textAlign: 'left', borderBottom: `1px solid ${T.border}`,
-    background: T.dimBg, fontSize: 7, fontWeight: 700, color: T.amber,
+    background: T.dimBg, fontSize: 9, fontWeight: 700, color: T.amber,
     letterSpacing: 1.5, whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none', ...mono,
   };
   const btnStyle = (active = false): React.CSSProperties => ({
@@ -192,7 +192,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
     borderRadius: 2, padding: '4px 10px', cursor: 'pointer', ...mono,
   });
   const signalCode = (code: string) => (
-    <span style={{ fontSize: 7, color: T.muted, marginLeft: 5, ...mono }}>{code}</span>
+    <span style={{ fontSize: 9, color: T.muted, marginLeft: 5, ...mono }}>{code}</span>
   );
 
   const totalPages = Math.ceil(total / 50);
@@ -210,14 +210,14 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                 ? <><span style={{ color: T.green }}>●</span> LIVE · {total.toLocaleString()} PROPERTIES</>
                 : isAtlanta ? '27% LIVE DATA' : 'NO LIVE DATA'}
             </span>
-            {loading && <span style={{ fontSize: 8, color: T.cyan, ...mono }}>LOADING…</span>}
+            {loading && <span style={{ fontSize: 9, color: T.cyan, ...mono }}>LOADING…</span>}
           </div>
           <span style={{ fontSize: 9, color: T.muted, ...mono }}>P-01 · P-02 · M-01 · M-06 · C-01</span>
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '10px 14px', alignItems: 'flex-end' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
-            <span style={{ fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>SUBMARKET</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>SUBMARKET</span>
             <select value={filters.submarket} onChange={e => updateFilter(f => ({ ...f, submarket: e.target.value }))} style={inputStyle}>
               <option value="">ALL SUBMARKETS</option>
               {Object.entries(NEIGHBORHOOD_NAMES).sort((a, b) => a[1].localeCompare(b[1])).map(([code, name]) => (
@@ -226,25 +226,25 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 110 }}>
-            <span style={{ fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>MIN YEAR</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>MIN YEAR</span>
             <input type="number" placeholder="e.g. 2000" value={filters.minYear} onChange={e => updateFilter(f => ({ ...f, minYear: e.target.value }))} style={inputStyle} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 110 }}>
-            <span style={{ fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>UNITS RANGE</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>UNITS RANGE</span>
             <div style={{ display: 'flex', gap: 4 }}>
               <input type="number" placeholder="Min" value={filters.minUnits} onChange={e => updateFilter(f => ({ ...f, minUnits: e.target.value }))} style={{ ...inputStyle, width: '50%' }} />
               <input type="number" placeholder="Max" value={filters.maxUnits} onChange={e => updateFilter(f => ({ ...f, maxUnits: e.target.value }))} style={{ ...inputStyle, width: '50%' }} />
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
-            <span style={{ fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>$/UNIT RANGE</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>$/UNIT RANGE</span>
             <div style={{ display: 'flex', gap: 4 }}>
               <input type="number" placeholder="Min" value={filters.minPrice} onChange={e => updateFilter(f => ({ ...f, minPrice: e.target.value }))} style={{ ...inputStyle, width: '50%' }} />
               <input type="number" placeholder="Max" value={filters.maxPrice} onChange={e => updateFilter(f => ({ ...f, maxPrice: e.target.value }))} style={{ ...inputStyle, width: '50%' }} />
             </div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 160 }}>
-            <span style={{ fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>SEARCH</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>SEARCH</span>
             <input type="text" placeholder="Search properties…" value={filters.search} onChange={e => updateFilter(f => ({ ...f, search: e.target.value }))} style={inputStyle} />
           </div>
         </div>
@@ -364,7 +364,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
         </div>
 
         <div style={{ padding: '4px 14px', borderTop: `1px solid ${T.border}`, background: T.dimBg }}>
-          <span style={{ fontSize: 8, color: T.muted, ...mono }}>
+          <span style={{ fontSize: 9, color: T.muted, ...mono }}>
             SOURCES: P-01 (address/units/year) · P-02 (class) · M-01 (rent) · M-06 (occ) · C-01 (JEDI) · P-04 (owner)
           </span>
         </div>
@@ -378,7 +378,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: T.text, ...mono }}>{selectedProperty.property}</span>
                 <span style={{ fontSize: 12, fontWeight: 800, color: jediColor(selectedProperty.jedi), ...mono }}>JEDI {selectedProperty.jedi}</span>
-                <span style={{ fontSize: 7, fontWeight: 700, color: classColor(selectedProperty.class), background: classColor(selectedProperty.class) + '18', padding: '1px 5px', borderRadius: 2, ...mono }}>{selectedProperty.class}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: classColor(selectedProperty.class), background: classColor(selectedProperty.class) + '18', padding: '1px 5px', borderRadius: 2, ...mono }}>{selectedProperty.class}</span>
               </div>
               <span style={{ fontSize: 9, color: T.secondary, ...mono }}>{selectedProperty.address}</span>
               <div style={{ fontSize: 9, color: T.muted, marginTop: 3, ...mono }}>
@@ -408,7 +408,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   <span style={{ fontSize: 10, color: T.secondary, ...mono }}>Loss-to-Lease</span>
                   <span style={{ fontSize: 10, fontWeight: 600, color: T.green, ...mono }}>
                     {selectedProperty.lossToLease} = {selectedProperty.lossToLeasePct}
-                    <span style={{ fontSize: 7, fontWeight: 700, color: T.green, background: T.green + '18', padding: '1px 5px', borderRadius: 2, marginLeft: 5, ...mono }}>VALUE</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '18', padding: '1px 5px', borderRadius: 2, marginLeft: 5, ...mono }}>VALUE</span>
                     {signalCode('P-03')}
                   </span>
                 </div>
@@ -436,7 +436,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   <span style={{ fontSize: 10, fontWeight: 600, color: T.text, ...mono }}>
                     {selectedProperty.sellerMotivation}/100
                     {selectedProperty.sellerMotivation >= 70 && (
-                      <span style={{ fontSize: 7, fontWeight: 700, color: T.amber, background: T.amber + '18', padding: '1px 5px', borderRadius: 2, marginLeft: 5, ...mono }}>MOTIVATED</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, background: T.amber + '18', padding: '1px 5px', borderRadius: 2, marginLeft: 5, ...mono }}>MOTIVATED</span>
                     )}
                     {signalCode('P-05')}
                   </span>
@@ -449,7 +449,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: T.violet, letterSpacing: 2, ...mono }}>PROPERTY ASSESSMENT</span>
                 {selectedProperty.enrichmentSource != null ? (
-                  <span style={{ fontSize: 8, fontWeight: 700, color: T.violet, background: T.violet + '18', padding: '2px 6px', borderRadius: 2, ...mono }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.violet, background: T.violet + '18', padding: '2px 6px', borderRadius: 2, ...mono }}>
                     {selectedProperty.enrichmentSource}{selectedProperty.enrichedAt && ` · ${new Date(selectedProperty.enrichedAt).toLocaleDateString()}`}
                   </span>
                 ) : selectedProperty.county != null ? (
@@ -501,7 +501,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
             <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${SIGNAL_GROUPS.TRAFFIC?.color || T.cyan}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: T.cyan, letterSpacing: 2, ...mono }}>TRAFFIC INTELLIGENCE</span>
-                <span style={{ fontSize: 7, fontWeight: 700, color: T.cyan, background: T.cyan + '18', padding: '1px 4px', borderRadius: 2, ...mono }}>NEW</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: T.cyan, background: T.cyan + '18', padding: '1px 4px', borderRadius: 2, ...mono }}>NEW</span>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {[
@@ -531,7 +531,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
             <div style={{ padding: '12px 16px', borderRight: `1px solid ${T.border}`, borderLeft: `3px solid ${T.pink}`, gridColumn: '1 / -1' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: T.pink, letterSpacing: 2, ...mono }}>TRADE AREA</span>
-                <span style={{ fontSize: 7, fontWeight: 700, color: T.pink, background: T.pink + '18', padding: '1px 4px', borderRadius: 2, ...mono }}>NEW</span>
+                <span style={{ fontSize: 9, fontWeight: 700, color: T.pink, background: T.pink + '18', padding: '1px 4px', borderRadius: 2, ...mono }}>NEW</span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

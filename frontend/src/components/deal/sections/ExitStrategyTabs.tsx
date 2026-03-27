@@ -216,7 +216,7 @@ const YearSelector: React.FC<{
         >
           Y{y}
           {isOpt && (
-            <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-[7px] font-bold text-green-500 tracking-wide">
+            <span className="absolute -bottom-3 left-1/2 -translate-x-1/2 text-[9px] font-bold text-green-500 tracking-wide">
               BEST
             </span>
           )}

@@ -486,7 +486,7 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
 
               {/* 12-mo vacancy sparkline */}
               <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.faint}` }}>
-                <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 3 }}>
+                <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace", marginBottom: 3 }}>
                   12-MO VACANCY
                 </div>
                 <MiniLine data={trendData[u.key]} dataKey="vac" color={u.color} />
@@ -573,7 +573,7 @@ function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
           {/* Interpretation */}
           <div style={{ marginTop: 18, padding: 12, background: C.card, borderRadius: 8,
             border: `1px solid ${C.border}` }}>
-            <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 8 }}>INTERPRETATION</div>
+            <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace", marginBottom: 8 }}>INTERPRETATION</div>
             {gaps.filter(g => Math.abs(g.gap) > 3).sort((a, b) => b.gap - a.gap).map(g => (
               <div key={g.key} style={{ display: "flex", gap: 7, marginBottom: 7, alignItems: "flex-start" }}>
                 <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: "monospace", fontSize: 11, flexShrink: 0 }}>
@@ -641,13 +641,13 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
             <div style={{ color: C.dim, fontSize: 10, marginBottom: 10 }}>{f.label}</div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
               <div>
-                <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 4 }}>ALLOWED</div>
+                <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace", marginBottom: 4 }}>ALLOWED</div>
                 <NumInput value={f.val} min={1} max={9999999} width={f.w} suffix={f.suffix}
                   onChange={v => onZoningChange({ ...zoning, [f.key]: v })} />
               </div>
               {f.your !== null && (
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 4 }}>YOUR PROGRAM</div>
+                  <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace", marginBottom: 4 }}>YOUR PROGRAM</div>
                   <div style={{ color: f.over ? C.red : C.text, fontFamily: "monospace",
                     fontSize: 13, fontWeight: 700 }}>
                     {Math.round(f.your).toLocaleString()}
@@ -1460,7 +1460,7 @@ export default function UnitMixIntelligence() {
                   <div style={{ color, fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>
                     {g.gap > 0 ? "+" : ""}{g.gap.toFixed(1)}pp
                   </div>
-                  <div style={{ color: dl.color, fontSize: 8, fontFamily: "monospace" }}>
+                  <div style={{ color: dl.color, fontSize: 9, fontFamily: "monospace" }}>
                     {dl.label.slice(0,4)}
                   </div>
                 </div>

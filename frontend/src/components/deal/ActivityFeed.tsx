@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../services/api.client';
 import { Activity, MessageSquare, UserPlus, FileText, TrendingUp, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -24,22 +25,22 @@ interface ActivityFeedProps {
 }
 
 const ACTION_CONFIG: Record<string, { icon: any; color: string; label: string }> = {
-  deal_created: { icon: FileText, color: 'text-blue-500', label: 'created a deal' },
-  deal_updated: { icon: FileText, color: 'text-blue-500', label: 'updated deal' },
-  collaborator_added: { icon: UserPlus, color: 'text-green-500', label: 'added collaborator' },
-  collaborator_removed: { icon: UserPlus, color: 'text-red-500', label: 'removed collaborator' },
-  collaborator_updated: { icon: UserPlus, color: 'text-amber-500', label: 'updated collaborator' },
-  comment_added: { icon: MessageSquare, color: 'text-indigo-500', label: 'commented' },
-  comment_replied: { icon: MessageSquare, color: 'text-indigo-400', label: 'replied to comment' },
-  comment_resolved: { icon: CheckCircle, color: 'text-green-500', label: 'resolved comment' },
-  proforma_updated: { icon: TrendingUp, color: 'text-purple-500', label: 'updated pro forma' },
-  score_changed: { icon: TrendingUp, color: 'text-amber-500', label: 'score changed' },
-  stage_changed: { icon: Activity, color: 'text-cyan-500', label: 'changed stage' },
-  task_created: { icon: CheckCircle, color: 'text-blue-500', label: 'created task' },
-  task_completed: { icon: CheckCircle, color: 'text-green-500', label: 'completed task' },
-  member_joined: { icon: UserPlus, color: 'text-green-500', label: 'joined' },
-  document_uploaded: { icon: FileText, color: 'text-blue-500', label: 'uploaded document' },
-  strategy_run: { icon: TrendingUp, color: 'text-purple-500', label: 'ran strategy analysis' },
+  deal_created: { icon: FileText, color: BT.text.cyan, label: 'created a deal' },
+  deal_updated: { icon: FileText, color: BT.text.cyan, label: 'updated deal' },
+  collaborator_added: { icon: UserPlus, color: BT.text.green, label: 'added collaborator' },
+  collaborator_removed: { icon: UserPlus, color: BT.text.red, label: 'removed collaborator' },
+  collaborator_updated: { icon: UserPlus, color: BT.text.amber, label: 'updated collaborator' },
+  comment_added: { icon: MessageSquare, color: BT.text.purple, label: 'commented' },
+  comment_replied: { icon: MessageSquare, color: BT.text.purple, label: 'replied to comment' },
+  comment_resolved: { icon: CheckCircle, color: BT.text.green, label: 'resolved comment' },
+  proforma_updated: { icon: TrendingUp, color: BT.text.purple, label: 'updated pro forma' },
+  score_changed: { icon: TrendingUp, color: BT.text.amber, label: 'score changed' },
+  stage_changed: { icon: Activity, color: BT.text.cyan, label: 'changed stage' },
+  task_created: { icon: CheckCircle, color: BT.text.cyan, label: 'created task' },
+  task_completed: { icon: CheckCircle, color: BT.text.green, label: 'completed task' },
+  member_joined: { icon: UserPlus, color: BT.text.green, label: 'joined' },
+  document_uploaded: { icon: FileText, color: BT.text.cyan, label: 'uploaded document' },
+  strategy_run: { icon: TrendingUp, color: BT.text.purple, label: 'ran strategy analysis' },
 };
 
 function timeAgo(dateStr: string): string {
@@ -92,13 +93,13 @@ export function ActivityFeed({ dealId, orgId, limit = 20, compact = false }: Act
   if (loading && activities.length === 0) {
     return (
       <div className="p-4">
-        <div className="animate-pulse space-y-3">
+        <div className="space-y-3" style={{ opacity: 0.5 }}>
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex gap-2">
-              <div className="w-6 h-6 bg-slate-200 rounded-full" />
+              <div className="w-6 h-6 rounded-full" style={{ background: BT.bg.header }} />
               <div className="flex-1">
-                <div className="h-3 bg-slate-200 rounded w-3/4 mb-1" />
-                <div className="h-2 bg-slate-200 rounded w-1/2" />
+                <div className="h-3 mb-1" style={{ background: BT.bg.header, width: '75%' }} />
+                <div className="h-2" style={{ background: BT.bg.header, width: '50%' }} />
               </div>
             </div>
           ))}
@@ -110,19 +111,19 @@ export function ActivityFeed({ dealId, orgId, limit = 20, compact = false }: Act
   if (activities.length === 0) {
     return (
       <div className="p-6 text-center">
-        <Activity size={24} className="text-slate-300 mx-auto mb-2" />
-        <p className="text-xs text-slate-500">No activity yet</p>
+        <Activity size={24} style={{ color: BT.text.muted }} className="mx-auto mb-2" />
+        <p style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.font.mono }}>No activity yet</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+    <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0, fontFamily: BT.font.mono }}>
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center gap-2">
-          <Activity size={14} className="text-slate-500" />
-          <span className="text-sm font-semibold text-slate-700">Activity</span>
-          <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">
+          <Activity size={14} style={{ color: BT.text.secondary }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary }}>Activity</span>
+          <span style={{ fontSize: 9, background: BT.bg.active, color: BT.text.secondary, padding: '1px 6px', fontWeight: 500, borderRadius: 2 }}>
             {total}
           </span>
         </div>
@@ -132,32 +133,32 @@ export function ActivityFeed({ dealId, orgId, limit = 20, compact = false }: Act
         {activities.map((entry) => {
           const config = ACTION_CONFIG[entry.action] || {
             icon: AlertCircle,
-            color: 'text-slate-400',
+            color: BT.text.muted,
             label: entry.action.replace(/_/g, ' '),
           };
           const Icon = config.icon;
           const meta = entry.metadata || {};
 
           return (
-            <div key={entry.id} className="px-4 py-2.5 border-b border-slate-50 hover:bg-slate-50 flex gap-3">
-              <div className={`mt-0.5 flex-shrink-0 ${config.color}`}>
+            <div key={entry.id} className="px-4 py-2.5 flex gap-3" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <div className="mt-0.5 flex-shrink-0" style={{ color: config.color }}>
                 <Icon size={14} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs text-slate-700">
-                  <span className="font-medium">{entry.user_name}</span>
+                <div style={{ fontSize: 10, color: BT.text.secondary }}>
+                  <span style={{ fontWeight: 500, color: BT.text.primary }}>{entry.user_name}</span>
                   {' '}{config.label}
                   {meta.deal_name && (
-                    <span className="text-slate-500"> on <span className="font-medium">{meta.deal_name}</span></span>
+                    <span style={{ color: BT.text.muted }}> on <span style={{ fontWeight: 500 }}>{meta.deal_name}</span></span>
                   )}
                   {meta.collaborator_name && (
-                    <span className="text-slate-500"> — {meta.collaborator_name}</span>
+                    <span style={{ color: BT.text.muted }}> — {meta.collaborator_name}</span>
                   )}
                   {meta.content_preview && (
-                    <span className="text-slate-400 italic"> "{meta.content_preview}"</span>
+                    <span style={{ color: BT.text.muted, fontStyle: 'italic' }}> "{meta.content_preview}"</span>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">
+                <div className="mt-0.5" style={{ fontSize: 9, color: BT.text.muted }}>
                   {timeAgo(entry.created_at)}
                 </div>
               </div>
@@ -167,22 +168,22 @@ export function ActivityFeed({ dealId, orgId, limit = 20, compact = false }: Act
       </div>
 
       {total > limit && (
-        <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-          <span className="text-[10px] text-slate-400">
+        <div className="px-4 py-2 flex items-center justify-between" style={{ background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}` }}>
+          <span style={{ fontSize: 9, color: BT.text.muted }}>
             {page * limit + 1}–{Math.min((page + 1) * limit, total)} of {total}
           </span>
           <div className="flex gap-2">
             <button
               onClick={() => setPage(Math.max(0, page - 1))}
               disabled={page === 0}
-              className="text-[10px] text-blue-600 hover:text-blue-700 disabled:text-slate-300"
+              style={{ fontSize: 9, color: page === 0 ? BT.text.muted : BT.text.cyan, background: 'transparent', border: 'none', cursor: page === 0 ? 'default' : 'pointer', fontFamily: BT.font.mono }}
             >
               Prev
             </button>
             <button
               onClick={() => setPage(page + 1)}
               disabled={(page + 1) * limit >= total}
-              className="text-[10px] text-blue-600 hover:text-blue-700 disabled:text-slate-300"
+              style={{ fontSize: 9, color: (page + 1) * limit >= total ? BT.text.muted : BT.text.cyan, background: 'transparent', border: 'none', cursor: (page + 1) * limit >= total ? 'default' : 'pointer', fontFamily: BT.font.mono }}
             >
               Next
             </button>

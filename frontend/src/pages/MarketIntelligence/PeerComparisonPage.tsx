@@ -45,7 +45,7 @@ function Spark({ data, color = T.green, w = 52, h = 14 }: { data: number[]; colo
 }
 
 function Badge({ label, color }: { label: string; color: string }) {
-  return <span style={{ ...mono, fontSize: 8, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>;
+  return <span style={{ ...mono, fontSize: 9, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>;
 }
 
 function ScoreCell({ value, size = 11 }: { value: number | string; size?: number }) {
@@ -65,7 +65,7 @@ function HeaderCell({ children, width, sortable, sorted, onClick, align = "left"
   children: React.ReactNode; width: number; sortable?: boolean; sorted?: boolean; onClick?: () => void; align?: string;
 }) {
   return (
-    <div onClick={onClick} style={{ width, minWidth: width, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: sorted ? T.amber : T.muted, letterSpacing: 0.5, borderRight: `1px solid ${T.borderS}`, cursor: sortable ? "pointer" : "default", userSelect: "none", textAlign: align as any, ...mono, flexShrink: 0 }}>
+    <div onClick={onClick} style={{ width, minWidth: width, padding: "3px 6px", fontSize: 9, fontWeight: 700, color: sorted ? T.amber : T.muted, letterSpacing: 0.5, borderRight: `1px solid ${T.borderS}`, cursor: sortable ? "pointer" : "default", userSelect: "none", textAlign: align as any, ...mono, flexShrink: 0 }}>
       {children}{sorted && <span style={{ marginLeft: 2 }}>▼</span>}
     </div>
   );
@@ -172,7 +172,7 @@ function MSAGrid({ onDrill, watched, toggleWatch, showWatchedOnly }: {
       {/* Median row */}
       <div style={{ display: "flex", background: T.amber + "08", borderBottom: `1px solid ${T.amber}33`, flexShrink: 0 }}>
         <DataCell width={28} />
-        <DataCell width={28}><span style={{ fontSize: 8, color: T.amber, ...mono }}>M</span></DataCell>
+        <DataCell width={28}><span style={{ fontSize: 9, color: T.amber, ...mono }}>M</span></DataCell>
         <DataCell width={144}><span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>Median</span></DataCell>
         <DataCell width={48}><span style={{ fontSize: 9, color: T.amber, ...mono }}>—</span></DataCell>
         <DataCell width={52}><span style={{ fontSize: 9, color: T.amber, ...mono }}>—</span></DataCell>
@@ -209,7 +209,7 @@ function MSAGrid({ onDrill, watched, toggleWatch, showWatchedOnly }: {
                 title={watched.has(d.name) ? "Remove from watchlist" : "Add to watchlist"}
               >{watched.has(d.name) ? "★" : "☆"}</button>
             </DataCell>
-            <DataCell width={28}><span style={{ fontSize: 8, color: T.muted, ...mono }}>{i + 1}</span></DataCell>
+            <DataCell width={28}><span style={{ fontSize: 9, color: T.muted, ...mono }}>{i + 1}</span></DataCell>
             <DataCell width={144}><span style={{ fontSize: 10, fontWeight: 600, color: T.primary, ...sans }}>{d.name}</span></DataCell>
             <DataCell width={48}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{d.props.toLocaleString()}</span></DataCell>
             <DataCell width={52}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{d.units}</span></DataCell>
@@ -302,7 +302,7 @@ function SubmarketGrid({ market, onDrill, watched, toggleWatch, showWatchedOnly 
                 title={watched.has(d.name) ? "Remove from watchlist" : "Add to watchlist"}
               >{watched.has(d.name) ? "★" : "☆"}</button>
             </DataCell>
-            <DataCell width={28}><span style={{ fontSize: 8, color: T.muted, ...mono }}>{i + 1}</span></DataCell>
+            <DataCell width={28}><span style={{ fontSize: 9, color: T.muted, ...mono }}>{i + 1}</span></DataCell>
             <DataCell width={128}><span style={{ fontSize: 10, fontWeight: 600, color: T.primary, ...sans }}>{d.name}</span></DataCell>
             <DataCell width={44}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{d.props}</span></DataCell>
             <DataCell width={56}><span style={{ fontSize: 9, color: T.secondary, ...mono }}>{d.units}</span></DataCell>
@@ -390,11 +390,11 @@ function PropertyGrid({ submarket }: { submarket: string }) {
               onMouseEnter={e => { if (sel !== i && !isSubject) (e.currentTarget as HTMLElement).style.background = T.hover; }}
               onMouseLeave={e => { if (sel !== i) (e.currentTarget as HTMLElement).style.background = isSubject ? T.amber + "0A" : i % 2 === 0 ? T.panel : T.panelAlt; }}
             >
-              <DataCell width={28}><span style={{ fontSize: 8, color: isSubject ? T.amber : T.muted, ...mono }}>{isSubject ? "▸" : i + 1}</span></DataCell>
+              <DataCell width={28}><span style={{ fontSize: 9, color: isSubject ? T.amber : T.muted, ...mono }}>{isSubject ? "▸" : i + 1}</span></DataCell>
               <DataCell width={156}>
                 <div>
                   <div style={{ fontSize: 9, fontWeight: 600, color: isSubject ? T.amberBright : T.primary, ...sans }}>{d.name}</div>
-                  <div style={{ fontSize: 7, color: T.muted }}>{d.addr}</div>
+                  <div style={{ fontSize: 9, color: T.muted }}>{d.addr}</div>
                 </div>
               </DataCell>
               <DataCell width={44}><ScoreCell value={d.jedi} /></DataCell>
@@ -477,7 +477,7 @@ export default function PeerComparisonPage({ embedded = false, onViewDetail }: P
             <span style={{ fontSize: 9, color: T.muted }}>|</span>
             <span style={{ fontSize: 9, color: T.secondary }}>F4 · PEER COMPARISON</span>
           </div>
-          <span style={{ fontSize: 8, color: T.muted }}>MSA → SUBMARKET → PROPERTY · Double-click to drill</span>
+          <span style={{ fontSize: 9, color: T.muted }}>MSA → SUBMARKET → PROPERTY · Double-click to drill</span>
         </div>
       )}
 
@@ -519,15 +519,15 @@ export default function PeerComparisonPage({ embedded = false, onViewDetail }: P
         {level !== "property" && (
           <button
             onClick={() => setShowWatchedOnly(v => !v)}
-            style={{ background: showWatchedOnly ? T.amber + "22" : "transparent", border: `1px solid ${showWatchedOnly ? T.amber : T.borderS}`, color: showWatchedOnly ? T.amber : T.secondary, padding: "1px 8px", fontSize: 8, cursor: "pointer", ...mono, borderRadius: 2, display: "flex", alignItems: "center", gap: 4 }}
-          >★ WATCHLIST {watched.size > 0 && <span style={{ fontSize: 7, color: T.amber }}>({watched.size})</span>}</button>
+            style={{ background: showWatchedOnly ? T.amber + "22" : "transparent", border: `1px solid ${showWatchedOnly ? T.amber : T.borderS}`, color: showWatchedOnly ? T.amber : T.secondary, padding: "1px 8px", fontSize: 9, cursor: "pointer", ...mono, borderRadius: 2, display: "flex", alignItems: "center", gap: 4 }}
+          >★ WATCHLIST {watched.size > 0 && <span style={{ fontSize: 9, color: T.amber }}>({watched.size})</span>}</button>
         )}
         {/* Level toggle pills */}
         <div style={{ display: "flex", gap: 4 }}>
           {([["msa", "MSA INDEX"], ["submarket", "SUBMARKET"], ["property", "PROPERTY STOCK"]] as [Level, string][]).map(([lvl, label]) => (
             <span
               key={lvl}
-              style={{ fontSize: 8, fontWeight: level === lvl ? 700 : 400, color: level === lvl ? T.bg : T.secondary, background: level === lvl ? T.amber : "transparent", padding: "2px 8px", cursor: "pointer", border: `1px solid ${level === lvl ? T.amber : T.borderS}`, ...mono }}
+              style={{ fontSize: 9, fontWeight: level === lvl ? 700 : 400, color: level === lvl ? T.bg : T.secondary, background: level === lvl ? T.amber : "transparent", padding: "2px 8px", cursor: "pointer", border: `1px solid ${level === lvl ? T.amber : T.borderS}`, ...mono }}
               onClick={() => { setLevel(lvl); setContext(lvl === "msa" ? "All Markets" : lvl === "submarket" ? "Atlanta, GA" : "Midtown"); }}
             >{label}</span>
           ))}
@@ -544,7 +544,7 @@ export default function PeerComparisonPage({ embedded = false, onViewDetail }: P
           {level === "property" && "6 properties · ▸ = subject property · Click column header to sort"}
         </span>
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>{colCount} cols</span>
+        <span style={{ fontSize: 9, color: T.muted, ...mono }}>{colCount} cols</span>
       </div>
 
       {/* GRID */}
@@ -556,8 +556,8 @@ export default function PeerComparisonPage({ embedded = false, onViewDetail }: P
 
       {/* FOOTER */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "3px 10px", background: T.topBar, borderTop: `1px solid ${T.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>Double-click row → drill down · Click column header → sort · ▸ = subject property</span>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>PEER COMPARISON · {level.toUpperCase()} LEVEL</span>
+        <span style={{ fontSize: 9, color: T.muted, ...mono }}>Double-click row → drill down · Click column header → sort · ▸ = subject property</span>
+        <span style={{ fontSize: 9, color: T.muted, ...mono }}>PEER COMPARISON · {level.toUpperCase()} LEVEL</span>
       </div>
     </div>
   );
