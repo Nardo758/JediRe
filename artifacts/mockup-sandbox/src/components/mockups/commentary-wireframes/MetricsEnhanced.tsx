@@ -116,8 +116,8 @@ export function MetricsEnhanced() {
     <div className="min-h-screen bg-[#0a0e17] text-[#e2e8f0] font-mono text-[13px]">
       {/* HEADER */}
       <div className="bg-[#111827] border-b border-[#1e293b] px-4 py-2 flex justify-between items-center">
-        <span className="text-[#94a3b8] text-[11px] uppercase tracking-widest">Strategy Metrics Integration — MSA → Submarket → Property</span>
-        <span className="text-[10px] text-[#94a3b8]">Strategy: <span className="text-[#14b8a6]">Core Plus Value-Add</span> | D:30% S:25% M:20% P:15% R:10%</span>
+        <span className="text-[#f59e0b] text-[11px] uppercase tracking-widest font-bold">Strategy Metrics Integration — MSA → Submarket → Property</span>
+        <span className="text-[10px] text-[#94a3b8]">Strategy: <span className="text-[#f59e0b]">Core Plus Value-Add</span> | D:30% S:25% M:20% P:15% R:10%</span>
       </div>
 
       {/* ======= MSA LEVEL ======= */}
@@ -125,8 +125,8 @@ export function MetricsEnhanced() {
         <div className="flex items-center gap-3 mb-3">
           <span className="text-[15px] font-bold">MSA: ATLANTA, GA</span>
           <span className="flex items-center gap-1 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse inline-block"></span> LIVE</span>
-          <span className="ml-auto px-2 py-0.5 bg-[#14b8a6]/20 text-[#14b8a6] text-[11px] rounded">JEDI 78</span>
-          <span className="px-2 py-0.5 bg-[#f59e0b]/20 text-[#f59e0b] text-[11px] rounded">⚡ Δ22</span>
+          <span className="ml-auto px-2 py-0.5 bg-[#f59e0b]/20 text-[#f59e0b] text-[11px] rounded font-bold">JEDI 78</span>
+          <span className="px-2 py-0.5 bg-[#f59e0b]/10 border border-[#f59e0b]/30 text-[#f59e0b] text-[11px] rounded">⚡ Δ22</span>
           <span className="px-2 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[11px] rounded">Score: 78/100</span>
         </div>
 
@@ -206,9 +206,9 @@ export function MetricsEnhanced() {
           </div>
 
           {/* RIGHT: Commentary Side Panel */}
-          <div className="w-[280px] flex-shrink-0 border-l-2 border-[#14b8a6]/40 pl-4 space-y-3">
+          <div className="w-[280px] flex-shrink-0 border-l-2 border-[#f59e0b]/40 pl-4 space-y-3">
             <div>
-              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Market Narrative</div>
+              <div className="text-[10px] uppercase text-[#f59e0b] tracking-wider mb-1 border-b border-[#f59e0b]/30 pb-1 font-bold">Market Narrative</div>
               <p className="text-[11px] text-[#94a3b8] leading-relaxed mb-2">
                 Atlanta continues to demonstrate resilient fundamentals despite elevated supply pipeline. Demand drivers remain strong with 1.8% population growth and a favorable 1.24 jobs ratio.
               </p>
@@ -217,14 +217,14 @@ export function MetricsEnhanced() {
               </p>
             </div>
             <div>
-              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Investment Thesis</div>
+              <div className="text-[10px] uppercase text-[#f59e0b] tracking-wider mb-1 border-b border-[#f59e0b]/30 pb-1 font-bold">Investment Thesis</div>
               <div className="space-y-1 text-[11px]">
                 <div className="flex gap-2"><span className="text-[#22c55e]">✓</span><span className="text-[#94a3b8]">Population growth exceeds national avg</span></div>
                 <div className="flex gap-2"><span className="text-[#22c55e]">✓</span><span className="text-[#94a3b8]">Employment diversification reducing risk</span></div>
                 <div className="flex gap-2"><span className="text-[#f59e0b]">⚠</span><span className="text-[#94a3b8]">Supply deliveries may pressure occupancy</span></div>
                 <div className="flex gap-2"><span className="text-[#ef4444]">✗</span><span className="text-[#94a3b8]">Insurance costs escalating in Cobb County</span></div>
               </div>
-              <div className="mt-2 px-2 py-1 bg-[#14b8a6]/10 border border-[#14b8a6]/30 text-[#14b8a6] text-[11px] text-center rounded">SELECTIVE BUY</div>
+              <div className="mt-2 px-2 py-1 bg-[#f59e0b]/10 border border-[#f59e0b]/30 text-[#f59e0b] text-[11px] text-center rounded font-bold">SELECTIVE BUY</div>
             </div>
           </div>
         </div>
@@ -235,9 +235,9 @@ export function MetricsEnhanced() {
       {/* ======= SUBMARKET LEVEL ======= */}
       <div className="p-4">
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-[#94a3b8] text-[11px] cursor-pointer hover:text-[#14b8a6]">← Back to MSA</span>
+          <span className="text-[#94a3b8] text-[11px] cursor-pointer hover:text-[#f59e0b]">← Back to MSA</span>
           <span className="text-[15px] font-bold">SUBMARKET: MIDTOWN ATLANTA</span>
-          <span className="ml-auto px-2 py-0.5 bg-[#14b8a6]/20 text-[#14b8a6] text-[11px] rounded">JEDI 87</span>
+          <span className="ml-auto px-2 py-0.5 bg-[#f59e0b]/20 text-[#f59e0b] text-[11px] rounded font-bold">JEDI 87</span>
           <span className="px-2 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[11px] rounded">91/100</span>
         </div>
 
@@ -246,7 +246,7 @@ export function MetricsEnhanced() {
             {/* Submarket Metrics Table (compact like the screenshot) */}
             <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden mb-3">
               <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between">
-                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Submarket Index</span>
+                <span className="text-[11px] uppercase text-[#f59e0b] tracking-wider font-bold">Submarket Index</span>
                 <span className="text-[10px] text-[#94a3b8]">8 submarkets across tracked markets</span>
               </div>
               <table className="w-full text-[12px]">
@@ -280,9 +280,9 @@ export function MetricsEnhanced() {
           </div>
 
           {/* RIGHT: Commentary */}
-          <div className="w-[280px] flex-shrink-0 border-l-2 border-[#14b8a6]/40 pl-4 space-y-3">
+          <div className="w-[280px] flex-shrink-0 border-l-2 border-[#f59e0b]/40 pl-4 space-y-3">
             <div>
-              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Submarket Narrative</div>
+              <div className="text-[10px] uppercase text-[#f59e0b] tracking-wider mb-1 border-b border-[#f59e0b]/30 pb-1 font-bold">Submarket Narrative</div>
               <p className="text-[11px] text-[#94a3b8] leading-relaxed">
                 Midtown ranks as the top-performing submarket in the Atlanta MSA with a 91 strategy score. Class B repositioning offers a 340bps spread to Class A rents.
               </p>
@@ -300,11 +300,12 @@ export function MetricsEnhanced() {
       {/* ======= PROPERTY LEVEL ======= */}
       <div className="p-4">
         <div className="flex items-center gap-3 mb-3">
-          <span className="text-[#94a3b8] text-[11px] cursor-pointer hover:text-[#14b8a6]">← Back to Submarket</span>
+          <span className="text-[#94a3b8] text-[11px] cursor-pointer hover:text-[#f59e0b]">← Back to Submarket</span>
           <span className="text-[15px] font-bold">PROPERTY: MIDTOWN PLACE APARTMENTS</span>
-          <span className="text-[11px] text-[#94a3b8]">245 Units | Built 2018 | Class A</span>
-          <span className="ml-auto px-2 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[11px] rounded">86/100</span>
-          <span className="px-2 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/30 text-[#22c55e] text-[11px] rounded">ACQUIRE</span>
+          <span className="px-1.5 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[10px] rounded font-bold">A</span>
+          <span className="text-[11px] text-[#94a3b8]">245 Units | Built 2018</span>
+          <span className="ml-auto px-2 py-0.5 bg-[#f59e0b]/20 text-[#f59e0b] text-[11px] rounded font-bold">JEDI 86</span>
+          <span className="px-2 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/30 text-[#22c55e] text-[11px] rounded font-bold">ACQUIRE</span>
         </div>
 
         <div className="flex gap-4">
@@ -312,7 +313,7 @@ export function MetricsEnhanced() {
             {/* Property Gate Results */}
             <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden mb-3">
               <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between">
-                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Strategy Gate Results</span>
+                <span className="text-[11px] uppercase text-[#f59e0b] tracking-wider font-bold">Strategy Gate Results</span>
                 <span className="text-[10px] text-[#94a3b8]">12/14 Passed | 2 Soft Fails (-8pts)</span>
               </div>
               <table className="w-full text-[12px]">
@@ -345,7 +346,7 @@ export function MetricsEnhanced() {
             {/* Signal Contribution */}
             <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
               <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b]">
-                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Signal Contribution</span>
+                <span className="text-[11px] uppercase text-[#f59e0b] tracking-wider font-bold">Signal Contribution</span>
               </div>
               <div className="p-3 grid grid-cols-5 gap-2">
                 <SignalBar label="Demand" pts={24} max={30} color="#14b8a6" />
@@ -361,9 +362,9 @@ export function MetricsEnhanced() {
           </div>
 
           {/* RIGHT: Property Commentary */}
-          <div className="w-[280px] flex-shrink-0 border-l-2 border-[#14b8a6]/40 pl-4 space-y-3">
+          <div className="w-[280px] flex-shrink-0 border-l-2 border-[#f59e0b]/40 pl-4 space-y-3">
             <div>
-              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Property Analysis</div>
+              <div className="text-[10px] uppercase text-[#f59e0b] tracking-wider mb-1 border-b border-[#f59e0b]/30 pb-1 font-bold">Property Analysis</div>
               <p className="text-[11px] text-[#94a3b8] leading-relaxed">
                 Strong acquisition candidate. Above-market occupancy (97.2%) and rent growth (+5.8%) with a 2018 vintage align well with Core Plus Value-Add strategy.
               </p>
@@ -384,7 +385,7 @@ export function MetricsEnhanced() {
 
       {/* FOOTER */}
       <div className="bg-[#111827] border-t border-[#1e293b] px-4 py-2 flex justify-between text-[10px] text-[#94a3b8]">
-        <span>Strategy: <span className="text-[#14b8a6]">Core Plus Value-Add</span> | D:30% S:25% M:20% P:15% R:10% | Gates: 14</span>
+        <span>Strategy: <span className="text-[#f59e0b]">Core Plus Value-Add</span> | D:30% S:25% M:20% P:15% R:10% | Gates: 14</span>
         <span>Last Refreshed: 2 hrs ago</span>
       </div>
     </div>
@@ -496,8 +497,8 @@ function SubRow({ name, msa, jedi, rent, rentD, vac, props, units, dpp, cpp, cyc
   const cycleColor = cycle === 'EXPANSION' ? 'text-[#22c55e] bg-[#22c55e]/10' : cycle === 'PEAK' ? 'text-[#f59e0b] bg-[#f59e0b]/10' : cycle ? 'text-[#f59e0b] bg-[#f59e0b]/10' : 'text-[#94a3b8]';
 
   return (
-    <tr className={`border-b ${last ? 'border-transparent' : 'border-[#1e293b]/50'} ${highlight ? 'bg-[#14b8a6]/5' : ''} hover:bg-[#1a2332]`}>
-      <td className={`px-3 py-1.5 ${highlight ? 'text-[#14b8a6] font-bold' : 'text-[#e2e8f0]'}`}>{name}</td>
+    <tr className={`border-b ${last ? 'border-transparent' : 'border-[#1e293b]/50'} ${highlight ? 'bg-[#f59e0b]/5' : ''} hover:bg-[#1a2332]`}>
+      <td className={`px-3 py-1.5 ${highlight ? 'text-[#f59e0b] font-bold' : 'text-[#e2e8f0]'}`}>{name}</td>
       <td className="px-3 py-1.5 text-[#94a3b8]">{msa}</td>
       <td className="px-3 py-1.5 text-right text-[#f59e0b] font-bold">{jedi}</td>
       <td className="px-3 py-1.5 text-right text-[#e2e8f0]">{rent}</td>
