@@ -10,6 +10,7 @@ import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
 import F4MarketsView from "./terminal/F4MarketsView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
+import { StrategyBuilderPage } from "./StrategyBuilderPage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -2060,7 +2061,7 @@ export default function TerminalPage() {
             <button onClick={()=>setShowStrategyBuilder(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>← BACK</button>
             <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>STRATEGY BUILDER</span>
           </div>
-          <M08StrategyBuilderPage />
+          <StrategyBuilderPage />
         </div>
       );
     }
