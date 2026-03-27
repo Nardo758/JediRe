@@ -229,6 +229,131 @@ export function MetricsEnhanced() {
         </div>
       </div>
 
+      {/* ======= ALERTS + SUPPLY SECTIONS ======= */}
+      <div className="px-4 pb-4">
+        <div className="flex gap-4">
+          {/* Market Alerts */}
+          <div className="flex-1 bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
+            <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between items-center">
+              <span className="text-[11px] uppercase text-[#f59e0b] tracking-wider font-bold">Market Alerts</span>
+              <span className="text-[10px] text-[#94a3b8]">3 active</span>
+            </div>
+            <div className="p-3 space-y-2">
+              <div className="p-2.5 bg-[#ef4444]/10 border-l-[3px] border-[#ef4444]">
+                <div className="flex justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-[#e2e8f0]">Amazon announces 5,000 jobs at Midtown campus</span>
+                  <span className="text-[10px] text-[#94a3b8]">Feb 18</span>
+                </div>
+                <div className="text-[10px] text-[#94a3b8]">D-01 ratio improving. Midtown rent pressure likely.</div>
+              </div>
+              <div className="p-2.5 bg-[#f59e0b]/10 border-l-[3px] border-[#f59e0b]">
+                <div className="flex justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-[#e2e8f0]">Fulton County TAD extension approved for BeltLine</span>
+                  <span className="text-[10px] text-[#94a3b8]">Feb 12</span>
+                </div>
+                <div className="text-[10px] text-[#94a3b8]">Tax incentive extends. Supply accelerant for BeltLine sub.</div>
+              </div>
+              <div className="p-2.5 bg-[#22c55e]/10 border-l-[3px] border-[#22c55e]">
+                <div className="flex justify-between mb-1">
+                  <span className="text-[11px] font-semibold text-[#e2e8f0]">Q4 rent report: B-class up +4.8% vs A +2.1%</span>
+                  <span className="text-[10px] text-[#94a3b8]">Feb 8</span>
+                </div>
+                <div className="text-[10px] text-[#94a3b8]">Vintage spread widening (R-02). Value-add thesis confirmed.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Near-Term Supply (18mo) */}
+          <div className="w-[280px] flex-shrink-0 bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
+            <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between items-center">
+              <span className="text-[11px] uppercase text-[#f59e0b] tracking-wider font-bold">Near-Term Supply (18mo)</span>
+              <span className="text-[9px] text-[#94a3b8] font-mono">S-01→S-10</span>
+            </div>
+            <div className="p-3 space-y-1.5">
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#0a0e17] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Existing Stock <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-01</span></span>
+                <span className="text-[12px] font-semibold text-[#e2e8f0]">249,964</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#0a0e17] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Under Construction <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-02</span></span>
+                <span className="text-[12px] font-semibold text-[#e2e8f0]">32,400</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#0a0e17] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Permitted <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-03</span></span>
+                <span className="text-[12px] font-semibold text-[#e2e8f0]">7,200</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#f59e0b]/10 border-l-[3px] border-[#f59e0b] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Pipeline %</span>
+                <span className="text-[12px] font-semibold text-[#f59e0b]">15.8%</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#0a0e17] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Absorption Runway <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-04</span></span>
+                <span className="text-[12px] font-semibold text-[#e2e8f0]">22.4 mo</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#f59e0b]/10 border-l-[3px] border-[#f59e0b] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Delivery Clusters <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-05</span></span>
+                <span className="text-[12px] font-semibold text-[#f59e0b]">3</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#0a0e17] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Permit Momentum <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-06</span></span>
+                <span className="text-[12px] font-semibold text-[#e2e8f0]">0.85x</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-1.5 bg-[#0a0e17] rounded">
+                <span className="text-[11px] text-[#94a3b8]">Vintage Breakdown <span className="text-[9px] text-[#00bcd4] font-mono ml-1">S-10</span></span>
+                <span className="text-[11px] font-semibold text-[#e2e8f0]">&lt;2000: 42% | 00-15: 35% | 15+: 23%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Long-Term Dev Capacity */}
+          <div className="w-[220px] flex-shrink-0 bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
+            <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between items-center">
+              <span className="text-[11px] uppercase text-[#8b5cf6] tracking-wider font-bold">Long-Term Dev Capacity</span>
+              <span className="text-[9px] text-[#8b5cf6]/60 font-mono bg-[#8b5cf6]/15 px-1.5 py-0.5 rounded">DC-01→DC-11</span>
+            </div>
+            <div className="p-3 space-y-2">
+              <div className="flex justify-between items-center px-2 py-2 bg-[#0a0e17] rounded">
+                <div>
+                  <div className="text-[11px] text-[#94a3b8]">Capacity Ratio</div>
+                  <div className="text-[9px] text-[#8b5cf6] font-mono">DC-01</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold text-[#e2e8f0]">32%</span>
+                  <span className="text-[9px] font-bold text-[#f59e0b] bg-[#f59e0b]/15 px-1.5 py-0.5 rounded">MOD</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-center px-2 py-2 bg-[#0a0e17] rounded">
+                <div>
+                  <div className="text-[11px] text-[#94a3b8]">Buildout Timeline</div>
+                  <div className="text-[9px] text-[#8b5cf6] font-mono">DC-02</div>
+                </div>
+                <span className="text-[13px] font-bold text-[#e2e8f0]">8.6 yr</span>
+              </div>
+              <div className="flex justify-between items-center px-2 py-2 bg-[#0a0e17] rounded">
+                <div>
+                  <div className="text-[11px] text-[#94a3b8]">Constraint Score</div>
+                  <div className="text-[9px] text-[#8b5cf6] font-mono">DC-03</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold text-[#e2e8f0]">58/100</span>
+                  <span className="text-[9px] font-bold text-[#f59e0b] bg-[#f59e0b]/15 px-1.5 py-0.5 rounded">MOD</span>
+                </div>
+              </div>
+              <div className="flex justify-between items-center px-2 py-2 bg-[#0a0e17] rounded">
+                <div>
+                  <div className="text-[11px] text-[#94a3b8]">Overhang Risk</div>
+                  <div className="text-[9px] text-[#8b5cf6] font-mono">DC-04</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-bold text-[#22c55e]">LOW</span>
+                  <span className="text-[#22c55e]">✓</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="border-t border-[#1e293b] mx-4"></div>
 
       {/* ======= SUBMARKET LEVEL ======= */}
