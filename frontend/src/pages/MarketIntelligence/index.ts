@@ -10,3 +10,4 @@ export { default as ActiveOwnersPage } from './ActiveOwnersPage';
 export { default as FutureSupplyPage } from './FutureSupplyPage';
 export { default as TrafficIntelligencePage } from './TrafficIntelligencePage';
 export { default as CompetitivePositionPage } from './CompetitivePositionPage';
+export { default as F4MarketsPage } from './F4MarketsPage';
