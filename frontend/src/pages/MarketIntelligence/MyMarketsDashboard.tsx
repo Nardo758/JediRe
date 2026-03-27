@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 // Placeholder tab components (will be enhanced in Phase 2)
 import OverviewTab from './tabs/OverviewTab';
@@ -53,33 +54,34 @@ const MyMarketsDashboard: React.FC = () => {
   const isRealData = marketId === 'atlanta';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen" style={{ background: BT.bg.terminal }}>
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
+      <div style={{ background: BT.bg.header, color: BT.text.primary }}>
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => navigate('/terminal', { state: { fkey: 'F4' } })}
-                className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
+                className="p-2 hover:opacity-80 transition-colors"
+                style={{ borderRadius: 0 }}
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div>
-                <h1 className="text-2xl font-bold">{getMarketName()}</h1>
-                <p className="text-blue-100 text-sm mt-1">Market Intelligence Dashboard</p>
+                <h1 className="text-2xl font-bold" style={{ color: BT.text.primary }}>{getMarketName()}</h1>
+                <p className="text-sm mt-1" style={{ color: BT.text.secondary }}>Market Intelligence Dashboard</p>
               </div>
             </div>
             <div className="flex items-center space-x-3">
               {isRealData ? (
-                <span className="px-3 py-1.5 bg-green-500 bg-opacity-30 border border-green-300 text-white text-sm font-medium rounded-lg">
-                  🟢 Real Data: 1,028 Properties
+                <span className="px-3 py-1.5 border text-sm font-medium" style={{ background: BT.text.green + '22', borderColor: BT.text.green + '55', color: BT.text.primary, borderRadius: 0 }}>
+                  Real Data: 1,028 Properties
                 </span>
               ) : (
-                <span className="px-3 py-1.5 bg-gray-500 bg-opacity-30 border border-gray-300 text-white text-sm font-medium rounded-lg">
-                  ⚪ Mock Data
+                <span className="px-3 py-1.5 border text-sm font-medium" style={{ background: BT.bg.active, borderColor: BT.border.medium, color: BT.text.primary, borderRadius: 0 }}>
+                  Mock Data
                 </span>
               )}
             </div>
@@ -88,42 +90,43 @@ const MyMarketsDashboard: React.FC = () => {
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
+      <div className="border-b sticky top-0 z-10" style={{ background: BT.bg.panel, borderColor: BT.border.subtle }}>
         <div className="max-w-7xl mx-auto px-6">
           <nav className="flex space-x-8">
             {TABS.map((tab) => {
               const isActive = activeTab === tab.id;
               const dataPercentage = Math.round((tab.realOutputs / tab.outputs) * 100);
-              
+
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`relative py-4 px-2 border-b-2 font-medium text-sm transition-colors ${
+                  className="relative py-4 px-2 border-b-2 font-medium text-sm transition-colors"
+                  style={
                     isActive
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
+                      ? { borderBottomColor: BT.text.cyan, color: BT.text.cyan }
+                      : { borderBottomColor: 'transparent', color: BT.text.secondary }
+                  }
                 >
                   <div className="flex items-center space-x-2">
                     <span className="text-lg">{tab.icon}</span>
                     <span>{tab.label}</span>
                   </div>
                   <div className="flex items-center space-x-2 mt-1">
-                    <span className="text-xs text-gray-500">{tab.outputs} outputs</span>
+                    <span className="text-xs" style={{ color: BT.text.secondary }}>{tab.outputs} outputs</span>
                     {isRealData && (
-                      <span className={`text-xs font-medium ${
-                        dataPercentage >= 50 ? 'text-green-600' :
-                        dataPercentage >= 25 ? 'text-yellow-600' :
-                        'text-gray-600'
-                      }`}>
+                      <span className="text-xs font-medium" style={{
+                        color: dataPercentage >= 50 ? BT.text.green :
+                        dataPercentage >= 25 ? BT.text.amber :
+                        BT.text.secondary
+                      }}>
                         {dataPercentage}% real
                       </span>
                     )}
                   </div>
                   {/* Active indicator */}
                   {isActive && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"></div>
+                    <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ background: BT.text.cyan }}></div>
                   )}
                 </button>
               );
