@@ -472,6 +472,7 @@ app.get('/api/v1/apartment-sync/rent-comps', requireAuth, async (req: any, res) 
 // Commentary + Strategy Scoring Endpoints
 import { CommentaryAgent, CommentaryInput } from './agents/commentary.agent';
 import { strategyArbitrageEngine, StrategySignalInputs } from './services/module-wiring/strategy-arbitrage-engine';
+import { StrategyExecutionService } from './services/strategyExecution.service';
 
 const commentaryAgent = new CommentaryAgent();
 
@@ -489,6 +490,7 @@ app.get('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: any
       entityId,
       entityName: entityName as string | undefined,
       forceRefresh: forceRefresh === 'true',
+      userId: req.user?.id || req.userId,
     };
 
     const result = await commentaryAgent.execute(input);
@@ -513,6 +515,7 @@ app.post('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: an
       entityName,
       signals,
       forceRefresh: forceRefresh === true,
+      userId: req.user?.id || req.userId,
     };
 
     const result = await commentaryAgent.execute(input);
@@ -536,11 +539,49 @@ app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) 
       bedroomDemand: signals.bedroomDemand,
     } : undefined;
 
+    if (strategyId) {
+      try {
+        const strategyExec = new StrategyExecutionService(pool);
+        const strategyResults = await strategyExec.executeStrategy(strategyId);
+
+        const commentaryInput: CommentaryInput = {
+          entityType: (entityType || 'msa') as 'msa' | 'submarket' | 'property',
+          entityId: entityId || strategyId,
+          signals: signalInputs,
+          userId: req.user?.id || req.userId,
+        };
+        const commentary = await commentaryAgent.execute(commentaryInput);
+
+        return res.json({
+          success: true,
+          analysis: {
+            strategyResults: strategyResults.slice(0, 25),
+            scores: commentary.strategyScores,
+            recommendedStrategy: commentary.recommendedStrategy,
+            arbitrageFlag: commentary.arbitrageFlag,
+            arbitrageDelta: commentary.arbitrageDelta,
+            jediScore: commentary.jediScore,
+            gateResults: strategyResults.slice(0, 10).map(r => ({
+              targetId: r.targetId,
+              targetName: r.targetName,
+              score: r.overallScore,
+              rank: r.rank,
+              passed: r.conditionResults.every(c => !c.passed ? false : true),
+              conditionResults: r.conditionResults,
+            })),
+          },
+        });
+      } catch (stratErr: any) {
+        logger.warn('Strategy execution failed, falling back to arbitrage engine', { error: stratErr.message });
+      }
+    }
+
     if (entityType && entityId) {
       const commentaryInput: CommentaryInput = {
         entityType: entityType as 'msa' | 'submarket' | 'property',
         entityId,
         signals: signalInputs,
+        userId: req.user?.id || req.userId,
       };
       const commentary = await commentaryAgent.execute(commentaryInput);
       const filtered = strategyId

@@ -162,8 +162,10 @@ export class CommentaryAgent {
   ): Promise<CommentarySection> {
     const context: AICallContext = {
       userId: userId || 'system',
+      stripeCustomerId: '',
       agentId: 'commentary',
       operationType: 'commentary_generation',
+      surface: 'web',
       dealId: undefined,
     };
 
