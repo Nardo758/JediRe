@@ -1,9 +1,9 @@
 /**
- * MSASupplyTab - Metro-wide supply pipeline
+ * MSASupplyTab - Metro-wide supply pipeline, construction tracker, lease-up
  */
 
 import React, { useMemo } from 'react';
-import { Building2, Hammer, Clock, CheckCircle2 } from 'lucide-react';
+import { Building2, Hammer, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { MSAData } from '../../MSATerminal';
@@ -14,6 +14,8 @@ interface MSASupplyTabProps {
 }
 
 export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
+  const msaName = msa?.name || msaId || 'Atlanta';
+
   const deliveryData: ChartDataPoint[] = useMemo(() => {
     return [
       { date: 'Q1 25', delivered: 4200, absorbed: 4500 },
@@ -26,17 +28,41 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   }, []);
 
   const pipelineBySubmarket = useMemo(() => [
-    { name: 'Downtown', units: 3800, pctOfTotal: 13.3 },
-    { name: 'Midtown', units: 3200, pctOfTotal: 11.2 },
-    { name: 'Buckhead', units: 2840, pctOfTotal: 10.0 },
-    { name: 'Perimeter', units: 2400, pctOfTotal: 8.4 },
-    { name: 'West Midtown', units: 2100, pctOfTotal: 7.4 },
-    { name: 'Other', units: 14160, pctOfTotal: 49.7 },
+    { name: 'Downtown', units: 3800, pctOfTotal: 13.3, status: 'HIGH' },
+    { name: 'Midtown', units: 3200, pctOfTotal: 11.2, status: 'HIGH' },
+    { name: 'Buckhead', units: 2840, pctOfTotal: 10.0, status: 'MOD' },
+    { name: 'Perimeter', units: 2400, pctOfTotal: 8.4, status: 'MOD' },
+    { name: 'West Midtown', units: 2100, pctOfTotal: 7.4, status: 'MOD' },
+    { name: 'Other', units: 14160, pctOfTotal: 49.7, status: 'LOW' },
+  ], []);
+
+  const constructionTracker = useMemo(() => [
+    { project: 'Novel Midtown', submarket: 'Midtown', units: 340, class: 'A', delivery: 'Q2 2026', pctComplete: 78, developer: 'Crescent Communities' },
+    { project: 'AMLI Buckhead', submarket: 'Buckhead', units: 280, class: 'A', delivery: 'Q3 2026', pctComplete: 62, developer: 'AMLI Residential' },
+    { project: 'Alexan West End', submarket: 'West End', units: 220, class: 'A-', delivery: 'Q4 2026', pctComplete: 45, developer: 'Trammell Crow' },
+    { project: 'Modera Decatur', submarket: 'Decatur', units: 190, class: 'B+', delivery: 'Q1 2027', pctComplete: 28, developer: 'Mill Creek' },
+    { project: 'Station R', submarket: 'Reynoldstown', units: 160, class: 'A-', delivery: 'Q2 2027', pctComplete: 15, developer: 'Portman Holdings' },
+  ], []);
+
+  const leaseUpTracker = useMemo(() => [
+    { project: 'The Hamilton', submarket: 'Midtown', units: 310, monthsOpen: 8, occupancy: 82, velocity: 22, targetDate: 'Aug 2026' },
+    { project: 'Broadstone Perimeter', submarket: 'Perimeter', units: 260, monthsOpen: 5, occupancy: 64, velocity: 28, targetDate: 'Nov 2026' },
+    { project: 'Elan Sandy Springs', submarket: 'Sandy Springs', units: 200, monthsOpen: 3, occupancy: 42, velocity: 18, targetDate: 'Feb 2027' },
   ], []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Summary Stats */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ ...terminalStyles.sectionTitle }}>
+            {msaName} — Supply Pipeline
+          </h2>
+          <span style={{ color: BT.text.muted, fontSize: 12 }}>
+            Construction, deliveries, lease-up tracking
+          </span>
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, color: BT.text.amber, marginBottom: 8 }}>
@@ -78,7 +104,6 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      {/* Delivery vs Absorption Chart */}
       <TerminalChart
         title="Delivery vs Absorption (Units)"
         data={deliveryData}
@@ -90,7 +115,87 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         valueFormatter={(v) => v.toLocaleString()}
       />
 
-      {/* Pipeline by Submarket */}
+      <div style={{ ...terminalStyles.panel, padding: 16 }}>
+        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
+          <Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+          Under Construction Tracker
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Class</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Delivery</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Developer</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', width: 120 }}>Progress</th>
+            </tr>
+          </thead>
+          <tbody>
+            {constructionTracker.map((proj) => (
+              <tr key={proj.project} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{proj.project}</td>
+                <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>{proj.submarket}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{proj.units}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                  <span style={{ padding: '2px 6px', background: BT.bg.elevated, fontSize: 10, fontWeight: 600 }}>{proj.class}</span>
+                </td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.amber }}>{proj.delivery}</td>
+                <td style={{ ...terminalStyles.tableCell, color: BT.text.muted, fontSize: 10 }}>{proj.developer}</td>
+                <td style={{ ...terminalStyles.tableCell }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ flex: 1, height: 6, background: BT.bg.elevated, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${proj.pctComplete}%`, background: BT.text.cyan }} />
+                    </div>
+                    <span style={{ fontSize: 10, color: BT.text.primary, fontFamily: "'JetBrains Mono'" }}>{proj.pctComplete}%</span>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ ...terminalStyles.panel, padding: 16 }}>
+        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
+          <CheckCircle2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+          Active Lease-Up Tracker
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Months Open</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Occupancy</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Velocity/mo</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Stabilize By</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leaseUpTracker.map((proj) => (
+              <tr key={proj.project} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{proj.project}</td>
+                <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>{proj.submarket}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{proj.units}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{proj.monthsOpen}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
+                  <span style={{ color: proj.occupancy >= 90 ? BT.text.green : proj.occupancy >= 70 ? BT.text.amber : BT.text.primary, fontWeight: 600 }}>
+                    {proj.occupancy}%
+                  </span>
+                </td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.cyan }}>
+                  {proj.velocity}
+                </td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>{proj.targetDate}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       <div style={{ ...terminalStyles.panel, padding: 16 }}>
         <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
           <Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
@@ -98,36 +203,38 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
           <thead>
-            <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <th style={{ ...terminalStyles.th, textAlign: 'left' }}>Submarket</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Pipeline Units</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>% of Total</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'left', width: 200 }}>Distribution</th>
+            <tr>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Pipeline Units</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>% of Total</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Pressure</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', width: 200 }}>Distribution</th>
             </tr>
           </thead>
           <tbody>
             {pipelineBySubmarket.map((sub) => (
               <tr key={sub.name} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <td style={{ ...terminalStyles.td, fontWeight: 500 }}>{sub.name}</td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
+                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{sub.name}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
                   {sub.units.toLocaleString()}
                 </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', color: BT.text.amber }}>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.amber }}>
                   {sub.pctOfTotal.toFixed(1)}%
                 </td>
-                <td style={{ ...terminalStyles.td }}>
-                  <div style={{
-                    height: 8,
-                    background: BT.bg.cardHover,
-                    borderRadius: 0,
-                    overflow: 'hidden',
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                  <span style={{
+                    padding: '2px 6px',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    background: sub.status === 'HIGH' ? `${BT.accent.red}22` : sub.status === 'MOD' ? `${BT.text.amber}22` : `${BT.text.green}22`,
+                    color: sub.status === 'HIGH' ? BT.accent.red : sub.status === 'MOD' ? BT.text.amber : BT.text.green,
                   }}>
-                    <div style={{
-                      height: '100%',
-                      width: `${sub.pctOfTotal * 2}%`,
-                      background: BT.text.amber,
-                      borderRadius: 0,
-                    }} />
+                    {sub.status}
+                  </span>
+                </td>
+                <td style={{ ...terminalStyles.tableCell }}>
+                  <div style={{ height: 8, background: BT.bg.cardHover, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${sub.pctOfTotal * 2}%`, background: BT.text.amber }} />
                   </div>
                 </td>
               </tr>

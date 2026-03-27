@@ -444,23 +444,23 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                   <tbody>
                                     {portfolio.map((prop, i) => (
                                       <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                                        <td style={{ padding: '8px 4px', fontSize: 11 }}>
+                                        <td style={{ ...terminalStyles.tableCell, fontSize: 11 }}>
                                           <div style={{ fontWeight: 500 }}>{prop.name}</div>
                                           <div style={{ fontSize: 9, color: BT.text.muted }}>
                                             {prop.submarket} · {prop.class} · {prop.yearBuilt}
                                           </div>
                                         </td>
-                                        <td style={{ padding: '8px 4px', fontSize: 11, textAlign: 'right' }}>{prop.units}</td>
-                                        <td style={{ padding: '8px 4px', fontSize: 11, textAlign: 'right' }}>{prop.holdYears}yr</td>
-                                        <td style={{ padding: '8px 4px', fontSize: 11, textAlign: 'right' }}>
+                                        <td style={{ ...terminalStyles.tableCell, fontSize: 11, textAlign: 'right' }}>{prop.units}</td>
+                                        <td style={{ ...terminalStyles.tableCell, fontSize: 11, textAlign: 'right' }}>{prop.holdYears}yr</td>
+                                        <td style={{ ...terminalStyles.tableCell, fontSize: 11, textAlign: 'right' }}>
                                           <span style={{ color: prop.pcsPercentile < 40 ? BT.accent.red : BT.text.primary }}>
                                             #{prop.pcsRank}
                                           </span>
                                         </td>
-                                        <td style={{ padding: '8px 4px', fontSize: 11, textAlign: 'center', color: BT.accent.amber }}>
+                                        <td style={{ ...terminalStyles.tableCell, fontSize: 11, textAlign: 'center', color: BT.accent.amber }}>
                                           {prop.debtMaturity}
                                         </td>
-                                        <td style={{ padding: '8px 4px', fontSize: 11, textAlign: 'right' }}>
+                                        <td style={{ ...terminalStyles.tableCell, fontSize: 11, textAlign: 'right' }}>
                                           <span style={{
                                             padding: '2px 6px',
                                             background: prop.motivation > 70 ? 'rgba(239,68,68,0.15)' : 'rgba(107,114,128,0.15)',

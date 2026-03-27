@@ -1,9 +1,9 @@
 /**
- * MSACapitalTab - Transaction volume, cap rate trends
+ * MSACapitalTab - Transaction volume, cap rate trends, debt markets
  */
 
 import React, { useMemo } from 'react';
-import { DollarSign, TrendingUp, Building2 } from 'lucide-react';
+import { DollarSign, TrendingUp, Building2, AlertTriangle } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { MSAData } from '../../MSATerminal';
@@ -14,6 +14,8 @@ interface MSACapitalTabProps {
 }
 
 export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
+  const msaName = msa?.name || msaId || 'Atlanta';
+
   const volumeData: ChartDataPoint[] = useMemo(() => [
     { date: 'Q1 24', volume: 850, capRate: 5.4 },
     { date: 'Q2 24', volume: 1100, capRate: 5.3 },
@@ -29,9 +31,45 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
     { property: 'Alexan Buckhead', units: 290, price: 62, ppu: 214, cap: 5.5, buyer: 'Greystar', date: 'Nov 24' },
   ], []);
 
+  const capRateByClass = useMemo(() => [
+    { class: 'A', current: 4.6, prior: 4.8, change: -20, spread: 125 },
+    { class: 'B+', current: 5.1, prior: 5.4, change: -30, spread: 175 },
+    { class: 'B', current: 5.5, prior: 5.8, change: -30, spread: 215 },
+    { class: 'B-', current: 5.9, prior: 6.2, change: -30, spread: 255 },
+    { class: 'C', current: 6.4, prior: 6.6, change: -20, spread: 305 },
+  ], []);
+
+  const debtMarketData = useMemo(() => [
+    { lender: 'Agency (Freddie)', rate: '5.85%', ltv: '75%', term: '10yr', spread: '+165', status: 'Active' },
+    { lender: 'Agency (Fannie)', rate: '5.90%', ltv: '75%', term: '10yr', spread: '+170', status: 'Active' },
+    { lender: 'CMBS', rate: '6.25%', ltv: '70%', term: '10yr', spread: '+205', status: 'Selective' },
+    { lender: 'Life Co', rate: '5.70%', ltv: '65%', term: '7yr', spread: '+145', status: 'Active' },
+    { lender: 'Bank', rate: '6.50%', ltv: '65%', term: '5yr', spread: '+225', status: 'Tight' },
+    { lender: 'Bridge', rate: '7.25%', ltv: '80%', term: '3yr', spread: '+300', status: 'Active' },
+  ], []);
+
+  const buyerActivity = useMemo(() => [
+    { type: 'Private Equity', pctVolume: 34, dealCount: 43, avgSize: '$62M', trend: 'up' },
+    { type: 'REIT', pctVolume: 22, dealCount: 28, avgSize: '$85M', trend: 'up' },
+    { type: 'Institution', pctVolume: 18, dealCount: 12, avgSize: '$142M', trend: 'flat' },
+    { type: 'Family Office', pctVolume: 14, dealCount: 26, avgSize: '$38M', trend: 'down' },
+    { type: 'Syndicator', pctVolume: 8, dealCount: 14, avgSize: '$22M', trend: 'down' },
+    { type: 'Developer', pctVolume: 4, dealCount: 4, avgSize: '$48M', trend: 'flat' },
+  ], []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Summary Stats */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ ...terminalStyles.sectionTitle }}>
+            {msaName} — Capital Markets
+          </h2>
+          <span style={{ color: BT.text.muted, fontSize: 12 }}>
+            Transaction volume, cap rates, debt markets
+          </span>
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, color: BT.text.green, marginBottom: 8 }}>
@@ -63,7 +101,6 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      {/* Volume & Cap Rate Chart */}
       <TerminalChart
         title="Transaction Volume ($M) & Cap Rate Trend"
         data={volumeData}
@@ -74,7 +111,129 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         valueFormatter={(v) => `$${v}M`}
       />
 
-      {/* Recent Deals */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ ...terminalStyles.panel, padding: 16 }}>
+          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
+            Cap Rate by Class
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Class</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Current</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Prior Yr</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Chg (bps)</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Spread</th>
+              </tr>
+            </thead>
+            <tbody>
+              {capRateByClass.map((row) => (
+                <tr key={row.class} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <td style={{ ...terminalStyles.tableCell, fontWeight: 600 }}>{row.class}</td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.cyan }}>
+                    {row.current.toFixed(1)}%
+                  </td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.muted }}>
+                    {row.prior.toFixed(1)}%
+                  </td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.green }}>
+                    {row.change}
+                  </td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.amber }}>
+                    +{row.spread}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ ...terminalStyles.panel, padding: 16 }}>
+          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
+            Buyer Composition
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Type</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>% Vol</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Deals</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Avg Size</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {buyerActivity.map((row) => (
+                <tr key={row.type} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{row.type}</td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                      <div style={{ width: 40, height: 6, background: BT.bg.elevated, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${row.pctVolume * 2.5}%`, background: BT.accent.blue }} />
+                      </div>
+                      <span style={{ fontFamily: "'JetBrains Mono'" }}>{row.pctVolume}%</span>
+                    </div>
+                  </td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{row.dealCount}</td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.green }}>{row.avgSize}</td>
+                  <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                    <span style={{
+                      color: row.trend === 'up' ? BT.text.green : row.trend === 'down' ? BT.accent.red : BT.text.muted,
+                      fontWeight: 600,
+                    }}>
+                      {row.trend === 'up' ? '▲' : row.trend === 'down' ? '▼' : '▬'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ ...terminalStyles.panel, padding: 16 }}>
+        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
+          <DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+          Debt Market Conditions
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Lender Type</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Rate</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Max LTV</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Term</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Spread</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Availability</th>
+            </tr>
+          </thead>
+          <tbody>
+            {debtMarketData.map((row) => (
+              <tr key={row.lender} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{row.lender}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.cyan }}>
+                  {row.rate}
+                </td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{row.ltv}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>{row.term}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.amber }}>{row.spread}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                  <span style={{
+                    padding: '2px 8px',
+                    background: row.status === 'Active' ? `${BT.text.green}22` : row.status === 'Tight' ? `${BT.accent.red}22` : `${BT.text.amber}22`,
+                    color: row.status === 'Active' ? BT.text.green : row.status === 'Tight' ? BT.accent.red : BT.text.amber,
+                    fontSize: 10,
+                    fontWeight: 600,
+                  }}>
+                    {row.status}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       <div style={{ ...terminalStyles.panel, padding: 16 }}>
         <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
           <Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
@@ -82,32 +241,32 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
           <thead>
-            <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <th style={{ ...terminalStyles.th, textAlign: 'left' }}>Property</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Units</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Price</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>$/Unit</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Cap</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'left' }}>Buyer</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Date</th>
+            <tr>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Property</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Price</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>$/Unit</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Cap</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Buyer</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Date</th>
             </tr>
           </thead>
           <tbody>
             {recentDeals.map((deal, i) => (
               <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <td style={{ ...terminalStyles.td, fontWeight: 500 }}>{deal.property}</td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right' }}>{deal.units.toLocaleString()}</td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', color: BT.text.green, fontWeight: 600 }}>
+                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{deal.property}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{deal.units.toLocaleString()}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.green, fontWeight: 600 }}>
                   ${deal.price}M
                 </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
                   ${deal.ppu}K
                 </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', color: BT.text.cyan }}>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.cyan }}>
                   {deal.cap}%
                 </td>
-                <td style={{ ...terminalStyles.td, color: BT.text.secondary }}>{deal.buyer}</td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', color: BT.text.muted }}>{deal.date}</td>
+                <td style={{ ...terminalStyles.tableCell, color: BT.text.secondary }}>{deal.buyer}</td>
+                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.muted }}>{deal.date}</td>
               </tr>
             ))}
           </tbody>
