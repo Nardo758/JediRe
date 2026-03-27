@@ -546,14 +546,15 @@ const DealDetailPage: React.FC = () => {
   if (!deal) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <div className="text-6xl text-slate-300">
+        <div className="text-6xl" style={{ color: BT.text.muted }}>
           <Building2 size={64} />
         </div>
-        <h2 className="text-xl font-semibold text-slate-700">Deal not found</h2>
-        <p className="text-sm text-slate-500">This deal may have been deleted or you don't have access.</p>
+        <h2 className="text-xl font-semibold" style={{ color: BT.text.primary }}>Deal not found</h2>
+        <p className="text-sm" style={{ color: BT.text.secondary }}>This deal may have been deleted or you don't have access.</p>
         <button
           onClick={() => navigate('/deals')}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+          className="px-4 py-2 transition-colors text-sm font-medium"
+          style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
         >
           Back to Deal Capsules
         </button>
@@ -674,8 +675,8 @@ const DealDetailPage: React.FC = () => {
           const lat = centroid ? centroid[1] : 33.749;
           const lng = centroid ? centroid[0] : -84.388;
           return (
-            <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6">
-              <div className="rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.7)' }}>
+              <div className="max-w-2xl w-full max-h-[85vh] overflow-y-auto" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-[#E8E6E1]">Define Trade Area</h2>

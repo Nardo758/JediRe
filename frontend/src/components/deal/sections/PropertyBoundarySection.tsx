@@ -1088,14 +1088,14 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 <h3 className="text-sm font-semibold">Site Confirmed</h3>
               </div>
             ) : (
-              <div className="flex items-center gap-2 text-yellow-700 mb-3">
+              <div className="flex items-center gap-2 mb-3" style={{ color: BT.text.amber }}>
                 <AlertCircle size={16} />
                 <h3 className="text-sm font-semibold">Draw Boundary to Confirm</h3>
               </div>
             )}
 
             {/* Property Info */}
-            <div className="mb-3 pb-3 border-b border-gray-100">
+            <div className="mb-3 pb-3 border-b">
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4 }}>Property Address</p>
               <p className="text-sm font-medium text-gray-900">
                 {deal?.address || deal?.propertyAddress || deal?.property_address || detectedLocation?.address || 'Not specified'}
@@ -1106,7 +1106,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             </div>
 
             {/* Municipality & Zoning */}
-            <div className="mb-3 pb-3 border-b border-gray-100">
+            <div className="mb-3 pb-3 border-b">
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4 }}>Municipality</p>
               {detectedLocation ? (
                 <div className="mb-2">
@@ -1153,7 +1153,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             </div>
 
             {/* Site Metrics */}
-            <div className="mb-3 pb-3 border-b border-gray-100">
+            <div className="mb-3 pb-3 border-b">
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Site Metrics</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
@@ -1245,7 +1245,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             )}
             <div className="space-y-2">
               {Object.entries(boundary.setbacks).map(([key, value]) => (
-                <div key={key} className="flex justify-between items-center py-1.5 border-b border-gray-100 last:border-0">
+                <div key={key} className="flex justify-between items-center py-1.5 border-b last:border-0">
                   <span className="text-sm text-gray-600 capitalize">{key} Setback</span>
                   <span className="text-sm font-semibold text-gray-900">{value} ft</span>
                 </div>
