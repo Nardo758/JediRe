@@ -2,17 +2,19 @@
  * MSATerminal - Bloomberg-style MSA/Metro analytics dashboard
  * Top level in the hierarchy: MSA → Submarket → Property
  * 
- * Tabs (10 total - integrated from pre-Bloomberg):
- * [0] OVERVIEW      - Metro stats, 5-Signal Health Bar, alerts, supply metrics
+ * Tabs (12 total):
+ * [0] OVERVIEW      - Signal chart+metrics, commentary, alerts, supply, dev capacity
  * [1] SUBMARKETS    - 14-column matrix with Dev Capacity signals
  * [2] DEALS         - Pipeline kanban, quadrant filter, opportunities
  * [3] RANKINGS      - Power Rankings with PCS scores
- * [4] SUPPLY        - Supply wave forecast, phases
- * [5] CAPITAL       - Transaction volume, cap rate trends
- * [6] ECONOMICS     - Employment, population, income trends
- * [7] TRENDS        - Correlation, rent by vintage, JEDI history
- * [8] NEWS          - Metro market news
- * [9] COMPARE       - Compare to peer MSAs
+ * [4] PROPERTIES    - Property listings and search
+ * [5] OWNERS        - Owner analysis and portfolio data
+ * [6] SUPPLY        - Supply wave forecast, phases
+ * [7] CAPITAL       - Transaction volume, cap rate trends
+ * [8] ECONOMICS     - Employment, population, income trends
+ * [9] TRENDS        - Correlation, rent by vintage, JEDI history
+ * [10] NEWS         - Metro market news
+ * [11] COMPARE      - Compare to peer MSAs
  */
 
 import React, { useState, useEffect } from 'react';
@@ -31,9 +33,7 @@ import { MSANewsTab } from './tabs/msa/MSANewsTab';
 import { MSACompareTab } from './tabs/msa/MSACompareTab';
 import { MSAOwnersTab } from './tabs/msa/MSAOwnersTab';
 import { MSAPropertiesTab } from './tabs/msa/MSAPropertiesTab';
-import { MSACommentaryTab } from './tabs/msa/MSACommentaryTab';
 
-// Tab configuration for MSA level - expanded with pre-Bloomberg content (12 tabs)
 export const MSA_TABS: TabDef[] = [
   { key: 'overview', label: 'OVERVIEW', num: 0 },
   { key: 'submarkets', label: 'SUBMARKETS', num: 1 },
@@ -47,10 +47,9 @@ export const MSA_TABS: TabDef[] = [
   { key: 'trends', label: 'TRENDS', num: 9 },
   { key: 'news', label: 'NEWS', num: 10 },
   { key: 'compare', label: 'COMPARE', num: 11 },
-  { key: 'commentary', label: 'COMMENTARY', num: 12 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare' | 'commentary';
+export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare';
 
 export interface MSAData {
   id: string;
@@ -210,8 +209,6 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         return <MSANewsTab msaId={msaId} msa={msa} />;
       case 'compare':
         return <MSACompareTab msaId={msaId} msa={msa} />;
-      case 'commentary':
-        return <MSACommentaryTab msaId={msaId} msa={msa} />;
       default:
         return null;
     }
