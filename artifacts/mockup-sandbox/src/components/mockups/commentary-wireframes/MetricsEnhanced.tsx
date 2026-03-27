@@ -155,17 +155,17 @@ export function MetricsEnhanced() {
                 />
               </div>
               {/* Tab Controls below chart */}
-              <div className="flex gap-0 border-t border-[#1e293b]">
+              <div className="flex gap-1 px-3 py-2 border-t border-[#1e293b] bg-[#0f1729]">
                 {TABS.map(tab => (
                   <button
                     key={tab.key}
                     onClick={() => setActiveTab(tab.key)}
-                    className={`flex-1 px-2 py-1.5 text-[10px] uppercase tracking-wider transition-colors border-r border-[#1e293b] last:border-r-0 ${
+                    className={`px-3 py-1 text-[10px] uppercase tracking-wider rounded transition-colors ${
                       activeTab === tab.key
-                        ? 'bg-[#1a2332] text-[#e2e8f0]'
-                        : 'bg-[#0f1729] text-[#94a3b8] hover:text-[#e2e8f0] hover:bg-[#1a2332]'
+                        ? 'text-[#e2e8f0]'
+                        : 'text-[#94a3b8] hover:text-[#e2e8f0] hover:bg-[#1a2332]'
                     }`}
-                    style={activeTab === tab.key ? { color: tab.color, borderBottom: `2px solid ${tab.color}` } : {}}
+                    style={activeTab === tab.key ? { color: tab.color, backgroundColor: `${tab.color}18`, border: `1px solid ${tab.color}40` } : {}}
                   >
                     {tab.label}
                   </button>
