@@ -187,7 +187,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   const [drillMsaId, setDrillMsaId] = useState("");
   const [drillMsaName, setDrillMsaName] = useState("");
   const [drillSubmarketId, setDrillSubmarketId] = useState("");
+  const [drillSubmarketName, setDrillSubmarketName] = useState("");
   const [drillPropertyId, setDrillPropertyId] = useState("");
+  const [drillPropertyName, setDrillPropertyName] = useState("");
   const [sortCol, setSortCol] = useState<SortKey>("jedi");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [allMsaSortCol, setAllMsaSortCol] = useState<SortKey>("jedi");
@@ -248,11 +250,15 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
 
   const handleSubmarketSelect = (submarketId: string) => {
     setDrillSubmarketId(submarketId);
+    const sub = SUBMARKET_INDEX.find(s => s.name.toLowerCase().replace(/\s+/g, "-") === submarketId);
+    setDrillSubmarketName(sub?.name || submarketId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
     setLevel("submarket-terminal");
   };
 
   const handlePropertySelect = (propertyId: string) => {
     setDrillPropertyId(propertyId);
+    const prop = PROPERTY_INDEX.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === propertyId);
+    setDrillPropertyName(prop?.name || propertyId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
     setLevel("property-terminal");
   };
 
@@ -295,7 +301,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+          <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
@@ -304,7 +310,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             {drillMsaName.toUpperCase()}
           </button>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
-          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>SUBMARKET</span>
+          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillSubmarketName.toUpperCase() || "SUBMARKET"}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
           <SubmarketTerminal
@@ -321,7 +327,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+          <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
@@ -331,10 +337,10 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           </button>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
           <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.cyan, border: "none", padding: "2px 6px", cursor: "pointer" }}>
-            SUBMARKET
+            {drillSubmarketName.toUpperCase() || "SUBMARKET"}
           </button>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
-          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>PROPERTY</span>
+          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillPropertyName.toUpperCase() || "PROPERTY"}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
           <PropertyTerminal dealId={drillPropertyId} />
@@ -512,6 +518,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
                       const mkt = TRACKED_MARKETS.find(m => m.msa === s.msa);
                       if (mkt) { setDrillMsaId(mkt.id); setDrillMsaName(mkt.msa); }
                       setDrillSubmarketId(s.name.toLowerCase().replace(/\s+/g, "-"));
+                      setDrillSubmarketName(s.name);
                       setLevel("submarket-terminal");
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
@@ -563,7 +570,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
                       const mkt = TRACKED_MARKETS.find(m => m.msa === p.msa);
                       if (mkt) { setDrillMsaId(mkt.id); setDrillMsaName(mkt.msa); }
                       setDrillSubmarketId(p.submarket.toLowerCase().replace(/\s+/g, "-"));
+                      setDrillSubmarketName(p.submarket);
                       setDrillPropertyId(p.name.toLowerCase().replace(/\s+/g, "-"));
+                      setDrillPropertyName(p.name);
                       setLevel("property-terminal");
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
