@@ -42,6 +42,7 @@ import { apiClient } from '../services/api.client';
 import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
 
@@ -353,6 +354,8 @@ const DealDetailPage: React.FC = () => {
   const developmentEnvelope = useDealStore((s) => s.developmentEnvelope);
   const selectedDevelopmentPathId = useDealStore((s) => s.selectedDevelopmentPathId);
   const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea, setGeographicStats } = useTradeAreaStore();
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
@@ -644,6 +647,21 @@ const DealDetailPage: React.FC = () => {
                 onBlur={e => { e.currentTarget.style.borderColor = BORDER; }}
               />
             </div>
+            {/* Theme toggle */}
+            <button
+              onClick={() => setTheme(isDark ? 'light' : 'dark')}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                height: '100%', padding: '0 10px',
+                background: 'transparent', border: 'none',
+                borderLeft: `1px solid ${BORDER}`,
+                cursor: 'pointer', fontSize: 12,
+                color: TEXT_DIM,
+              }}
+            >
+              {isDark ? '☀' : '☾'}
+            </button>
             {/* Presence indicator */}
             <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', paddingLeft: 10, paddingRight: 10 }}>
               {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
