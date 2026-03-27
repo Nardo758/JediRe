@@ -196,23 +196,23 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-[#f8fafc] rounded-lg border border-[#e2e8f0] p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="text-xl font-bold text-[#0f172a]">Exit & Capital Overview</h2>
-            <p className="text-[13px] text-[#64748b] mt-1">
+            <h2 className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Exit & Capital Overview</h2>
+            <p className="text-[13px] mt-1" style={{ color: BT.text.secondary }}>
               Three factors define the optimal exit window — rent growth, interest rates, and supply pipeline
             </p>
           </div>
           <div className="text-right">
-            <div className="text-[13px] font-medium text-[#64748b]">Optimal Window</div>
-            <div className="text-2xl font-extrabold text-emerald-600">Q3 2026</div>
+            <div className="text-[13px] font-medium" style={{ color: BT.text.secondary }}>Optimal Window</div>
+            <div className="text-2xl font-extrabold" style={{ color: BT.text.green, fontFamily: BT.font.mono }}>Q3 2026</div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
           Three-Factor Convergence Chart
         </h3>
         <div className="flex justify-center overflow-x-auto">
@@ -425,30 +425,31 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
           sparkline={rentSparkline(SUPPLY_DELIVERING, 80, 24, '#f59e0b')}
           trend="up"
         />
-        <div className="bg-white rounded-lg border border-[#e2e8f0] p-4">
+        <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
           <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <Target className="w-6 h-6 text-emerald-600" />
+            <div className="w-12 h-12 flex items-center justify-center flex-shrink-0" style={{ background: `${BT.text.green}11`, borderRadius: 0 }}>
+              <Target className="w-6 h-6" style={{ color: BT.text.green }} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-[#64748b]">Exit Score</div>
-              <div className="text-2xl font-bold text-[#0f172a]">{gaugeScore}</div>
-              <div className="text-[11px] text-[#64748b]">/ 100</div>
+              <div className="text-[13px] font-medium" style={{ color: BT.text.secondary }}>Exit Score</div>
+              <div className="text-2xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{gaugeScore}</div>
+              <div className="text-[11px]" style={{ color: BT.text.secondary }}>/ 100</div>
             </div>
           </div>
           <div className="mt-3">
-            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div className="w-full h-3 overflow-hidden" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
               <div
-                className="h-full rounded-full transition-all"
+                className="h-full transition-all"
                 style={{
                   width: `${gaugeScore}%`,
-                  background: gaugeScore >= 70 ? '#10b981' : gaugeScore >= 40 ? '#f59e0b' : '#ef4444',
+                  background: gaugeScore >= 70 ? BT.text.green : gaugeScore >= 40 ? BT.text.amber : BT.text.red,
+                  borderRadius: 0,
                 }}
               />
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-[#94a3b8]">Weak</span>
-              <span className="text-[10px] text-[#94a3b8]">Strong</span>
+              <span className="text-[10px]" style={{ color: BT.text.muted }}>Weak</span>
+              <span className="text-[10px]" style={{ color: BT.text.muted }}>Strong</span>
             </div>
           </div>
         </div>
