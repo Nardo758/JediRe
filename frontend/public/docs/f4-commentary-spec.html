@@ -8,6 +8,14 @@
 @page {
   size: letter;
   margin: 1in 1.25in;
+  @top-left { content: "F4 Markets Tab — Commentary Enhancement Specification"; font-size: 8pt; color: #1E3A5F; font-family: Arial, sans-serif; }
+  @top-right { content: "Page " counter(page); font-size: 8pt; color: #1E3A5F; font-family: Arial, sans-serif; }
+  @bottom-center { content: "JEDI RE — Confidential"; font-size: 8pt; color: #999; font-family: Arial, sans-serif; }
+}
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-center { content: none; }
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -593,7 +601,8 @@ ol li::before {
 
 <div class="print-header">
   <span>F4 Markets Tab — Commentary Enhancement Specification</span>
-  <span>JEDI RE &bull; Internal Technical Specification</span>
+  <span class="print-page-number"></span>
+  <span>JEDI RE</span>
 </div>
 <div class="print-footer">JEDI RE — Confidential &bull; Version 1.0 &bull; March 2026</div>
 
