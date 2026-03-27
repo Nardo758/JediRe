@@ -393,6 +393,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
                   >
                     <td style={dataCell}>
                       <span style={{ color: m.starred ? C.amber : C.muted, marginRight: 2 }}>{m.starred ? "★" : ""}</span>
+                      {m.id === selectedMsaId && <span style={{ color: C.amberBright, marginRight: 1, fontSize: 8 }}>*</span>}
                       <span style={{ color: C.secondary }}>{m.rank}</span>
                     </td>
                     <td style={{ ...dataCell, textAlign: "left" }}>
@@ -713,7 +714,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Double-click row = drill down · Click column header = sort · ★ = subject property</span>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Double-click row = drill down · Click column header = sort · * = subject property · ★ = watchlist</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
       </div>
