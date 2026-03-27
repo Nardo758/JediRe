@@ -393,7 +393,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                 padding: '8px 12px',
                 background: metric.warning ? 'rgba(245,158,11,0.1)' : BT.bg.elevated,
                 borderRadius: 4,
-                borderLeft: metric.warning ? `3px solid ${BT.accent.amber}` : 'none',
+                borderLeft: metric.warning ? `3px solid ${BT.text.amber}` : 'none',
               }}>
                 <div>
                   <span style={{ fontSize: 11, color: BT.text.muted }}>{metric.label}</span>
@@ -411,7 +411,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                 <span style={{ 
                   fontSize: 13, 
                   fontWeight: 600, 
-                  color: metric.warning ? BT.accent.amber : BT.text.primary,
+                  color: metric.warning ? BT.text.amber : BT.text.primary,
                 }}>
                   {metric.value}
                 </span>
@@ -465,7 +465,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                     <span style={{
                       fontSize: 9,
                       fontWeight: 700,
-                      color: BT.accent.amber,
+                      color: BT.text.amber,
                       background: 'rgba(245,158,11,0.15)',
                       padding: '2px 6px',
                       borderRadius: 4,
@@ -540,7 +540,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                     <button style={{
                       padding: '4px 12px',
-                      background: BT.accent.blue,
+                      background: BT.text.blue,
                       color: '#fff',
                       border: 'none',
                       borderRadius: 4,

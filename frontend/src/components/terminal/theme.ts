@@ -12,6 +12,7 @@ export const BT = {
     hover: '#1A1F2E',         // Hover state
     active: '#1E2538',        // Active/selected
     header: '#0C0D10',        // Header bar
+    elevated: '#1A1F2E',      // Elevated surface (buttons, cards)
   },
   
   // Borders
@@ -38,6 +39,15 @@ export const BT = {
     purple: '#A855F7',        // Special
   },
   
+  accent: {
+    red: '#FF4757',
+    amber: '#F5A623',
+    blue: '#3B82F6',
+    green: '#00D26A',
+    cyan: '#00BCD4',
+    purple: '#A855F7',
+  },
+
   // Chart colors (for multi-line charts)
   chart: {
     line1: '#00D26A',         // Green
