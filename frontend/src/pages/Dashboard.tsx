@@ -11,6 +11,7 @@ import { Button } from '../components/shared/Button';
 import { AssetsSection } from '../components/dashboard/AssetsSection';
 import { KeyFindingsSection } from '../components/dashboard/KeyFindingsSection';
 import { DealCard } from '../components/deal/DealCard';
+import { BT } from '@/components/deal/bloomberg-ui';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
@@ -30,7 +31,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDeals();
-    
+
     if (location.state?.openCreateDeal) {
       navigate('/deals/create');
       window.history.replaceState({}, document.title);
@@ -91,14 +92,14 @@ export const Dashboard: React.FC = () => {
     if (isDrawing) {
       draw.current.deleteAll();
       draw.current.changeMode('draw_polygon');
-      
+
       if (centerPoint) {
         map.current.flyTo({
           center: centerPoint,
           zoom: 16,
           duration: 1500,
         });
-        
+
         new mapboxgl.Marker({ color: '#3B82F6' })
           .setLngLat(centerPoint)
           .addTo(map.current);
@@ -154,7 +155,7 @@ export const Dashboard: React.FC = () => {
         el.className = 'custom-map-marker';
         el.style.cursor = 'pointer';
         el.style.fontSize = '24px';
-        
+
         const icon = getLayerIcon(layerId);
         el.innerHTML = icon;
 
@@ -318,44 +319,44 @@ export const Dashboard: React.FC = () => {
     const pipelineValue = Array.isArray(deals) ? deals.reduce((sum, d) => sum + (d.budget || 0), 0) : 0;
     const activeDeals = Array.isArray(deals) ? deals.filter(d => !['POST_CLOSE', 'ARCHIVED', 'MARKET_NOTE'].includes(d.state || '')) : [];
     const portfolioAssets = Array.isArray(deals) ? deals.filter(d => d.dealCategory === 'portfolio' && d.state === 'POST_CLOSE') : [];
-    const avgDays = Array.isArray(deals) && deals.length > 0 
-      ? Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length) 
+    const avgDays = Array.isArray(deals) && deals.length > 0
+      ? Math.round(deals.reduce((sum, d) => sum + (d.daysInStation || 0), 0) / deals.length)
       : 0;
 
     return (
       <div className="space-y-4 max-w-full">
         {/* KPI Cards - Top Row */}
         <div className="grid grid-cols-4 gap-3 max-w-full overflow-hidden">
-          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
-            <div className="text-xs font-medium text-gray-600 mb-1">Total Pipeline</div>
-            <div className="text-2xl font-bold text-gray-900">
+          <div className="p-4 overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-xs font-medium mb-1" style={{ color: BT.text.secondary }}>Total Pipeline</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>
               ${(pipelineValue / 1000000).toFixed(1)}M
             </div>
-            <div className="text-xs text-gray-500 mt-1">{Array.isArray(deals) ? deals.length : 0} deals</div>
+            <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>{Array.isArray(deals) ? deals.length : 0} deals</div>
           </div>
-          
-          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
-            <div className="text-xs font-medium text-gray-600 mb-1">Active Deals</div>
-            <div className="text-2xl font-bold text-blue-600">
+
+          <div className="p-4 overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-xs font-medium mb-1" style={{ color: BT.text.secondary }}>Active Deals</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.cyan }}>
               {activeDeals.length}
             </div>
-            <div className="text-xs text-gray-500 mt-1">in progress</div>
+            <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>in progress</div>
           </div>
-          
-          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
-            <div className="text-xs font-medium text-gray-600 mb-1">Portfolio Assets</div>
-            <div className="text-2xl font-bold text-green-600">
+
+          <div className="p-4 overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-xs font-medium mb-1" style={{ color: BT.text.secondary }}>Portfolio Assets</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.green }}>
               {portfolioAssets.length}
             </div>
-            <div className="text-xs text-gray-500 mt-1">owned</div>
+            <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>owned</div>
           </div>
-          
-          <div className="bg-white rounded-lg border border-gray-200 p-4 overflow-hidden">
-            <div className="text-xs font-medium text-gray-600 mb-1">Avg Days/Deal</div>
-            <div className="text-2xl font-bold text-gray-900">
+
+          <div className="p-4 overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-xs font-medium mb-1" style={{ color: BT.text.secondary }}>Avg Days/Deal</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>
               {avgDays}
             </div>
-            <div className="text-xs text-red-600 mt-1 font-medium">{hotDeals.length} need attention</div>
+            <div className="text-xs mt-1 font-medium" style={{ color: BT.text.red }}>{hotDeals.length} need attention</div>
           </div>
         </div>
 
@@ -369,24 +370,24 @@ export const Dashboard: React.FC = () => {
           {/* Right Column - Deals (60% - 3 cols) */}
           <div className="col-span-3 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-700">MY DEALS</h2>
+              <h2 className="text-sm font-semibold" style={{ color: BT.text.secondary }}>MY DEALS</h2>
               {Array.isArray(deals) && deals.length > 0 && (
                 <Button onClick={() => navigate('/deals/create')} size="sm" variant="secondary">
                   + New
                 </Button>
               )}
             </div>
-            
+
             {isLoading ? (
-              <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-gray-200">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+              <div className="text-center py-8" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}`, color: BT.text.secondary }}>
+                <div className="h-8 w-8 mx-auto mb-3" style={{ border: `2px solid ${BT.text.cyan}`, borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                 <p className="text-sm">Loading deals...</p>
               </div>
             ) : !Array.isArray(deals) || deals.length === 0 ? (
-              <div className="text-center py-8 bg-white rounded-lg border border-gray-200">
+              <div className="text-center py-8" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
                 <div className="text-4xl mb-3">🏢</div>
-                <h3 className="text-base font-semibold text-gray-900 mb-2">No deals yet</h3>
-                <p className="text-sm text-gray-500 mb-4 max-w-sm mx-auto">
+                <h3 className="text-base font-semibold mb-2" style={{ color: BT.text.primary }}>No deals yet</h3>
+                <p className="text-sm mb-4 max-w-sm mx-auto" style={{ color: BT.text.secondary }}>
                   Create your first deal to get started
                 </p>
                 <Button onClick={() => navigate('/deals/create')} size="sm">
@@ -397,8 +398,8 @@ export const Dashboard: React.FC = () => {
               <>
                 {/* Hot Deals Alert */}
                 {hotDeals.length > 0 && (
-                  <div className="mb-3 p-2.5 bg-orange-50 border border-orange-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-orange-800">
+                  <div className="mb-3 p-2.5" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`, borderRadius: 0 }}>
+                    <div className="flex items-center gap-2 text-sm" style={{ color: BT.text.orange }}>
                       <span className="text-base">🔥</span>
                       <span className="font-semibold">
                         {hotDeals.length} deal{hotDeals.length > 1 ? 's' : ''} need attention
@@ -413,7 +414,7 @@ export const Dashboard: React.FC = () => {
                     <DealCard key={deal.id} deal={deal} />
                   ))}
                 </div>
-                
+
                 {deals.length > 6 && (
                   <div className="mt-3 text-center">
                     <Button onClick={() => navigate('/deals')} size="sm" variant="secondary">
@@ -431,7 +432,7 @@ export const Dashboard: React.FC = () => {
           {/* Portfolio Assets (3 cols) */}
           <div className="col-span-3 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-gray-700">PORTFOLIO ASSETS</h2>
+              <h2 className="text-sm font-semibold" style={{ color: BT.text.secondary }}>PORTFOLIO ASSETS</h2>
               <Button onClick={() => navigate('/assets-owned')} size="sm" variant="secondary">
                 View All →
               </Button>
@@ -441,17 +442,17 @@ export const Dashboard: React.FC = () => {
 
           {/* Quick Actions (2 cols) */}
           <div className="col-span-2 overflow-hidden">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3">QUICK ACTIONS</h2>
-            <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
-              <Button 
+            <h2 className="text-sm font-semibold mb-3" style={{ color: BT.text.secondary }}>QUICK ACTIONS</h2>
+            <div className="p-4 space-y-3" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+              <Button
                 onClick={() => navigate('/deals/create')}
                 className="w-full"
                 size="md"
               >
                 + Create New Deal
               </Button>
-              
-              <Button 
+
+              <Button
                 onClick={() => navigate('/properties')}
                 className="w-full"
                 variant="secondary"
@@ -459,8 +460,8 @@ export const Dashboard: React.FC = () => {
               >
                 🔍 Search Properties
               </Button>
-              
-              <Button 
+
+              <Button
                 onClick={() => navigate('/market-data')}
                 className="w-full"
                 variant="secondary"
@@ -468,8 +469,8 @@ export const Dashboard: React.FC = () => {
               >
                 📊 Market Analysis
               </Button>
-              
-              <Button 
+
+              <Button
                 onClick={() => navigate('/news-intel')}
                 className="w-full"
                 variant="secondary"
@@ -477,10 +478,10 @@ export const Dashboard: React.FC = () => {
               >
                 📰 News Intelligence
               </Button>
-              
-              <div className="pt-3 border-t border-gray-200">
-                <div className="text-xs text-gray-600 mb-2">Need help?</div>
-                <Button 
+
+              <div className="pt-3" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                <div className="text-xs mb-2" style={{ color: BT.text.secondary }}>Need help?</div>
+                <Button
                   onClick={() => window.open('/help', '_blank')}
                   className="w-full text-sm"
                   variant="secondary"
@@ -499,7 +500,7 @@ export const Dashboard: React.FC = () => {
   const renderMap = () => (
     <div className="absolute inset-0">
       <div ref={mapContainer} className="absolute inset-0" />
-      
+
       {isDrawing && (
         <DrawingControlPanel
           onComplete={() => {
@@ -513,14 +514,14 @@ export const Dashboard: React.FC = () => {
           }}
         />
       )}
-      
+
       {mapError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: BT.bg.panel }}>
           <div className="text-center p-8">
             <div className="text-6xl mb-4">🗺️</div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">Map View</h3>
-            <p className="text-sm text-gray-500">Map requires a Mapbox token to display.</p>
-            <p className="text-xs text-gray-400 mt-1">Set VITE_MAPBOX_TOKEN in environment variables.</p>
+            <h3 className="text-lg font-semibold mb-2" style={{ color: BT.text.secondary }}>Map View</h3>
+            <p className="text-sm" style={{ color: BT.text.secondary }}>Map requires a Mapbox token to display.</p>
+            <p className="text-xs mt-1" style={{ color: BT.text.muted }}>Set VITE_MAPBOX_TOKEN in environment variables.</p>
           </div>
         </div>
       )}

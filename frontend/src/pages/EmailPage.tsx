@@ -1090,7 +1090,7 @@ export function EmailPage() {
                       textTransform: "uppercase" as const, marginBottom: 8, cursor: "pointer",
                       display: "flex", alignItems: "center", gap: 4, userSelect: "none" as const,
                     }}>
-                      <span style={{ fontSize: 8, transition: "transform 0.15s", transform: propPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
+                      <span style={{ fontSize: 9, transition: "transform 0.15s", transform: propPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
                       Extracted Property ({emailIntel.propertyExtractions.length})
                     </div>
                     {propPanelOpen && emailIntel.propertyExtractions.map((prop: any, i: number) => (
@@ -1111,7 +1111,7 @@ export function EmailPage() {
                         </div>
                         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                           <span style={{
-                            fontSize: 8, fontFamily: FONTS.mono, padding: "1px 5px", borderRadius: 2,
+                            fontSize: 9, fontFamily: FONTS.mono, padding: "1px 5px", borderRadius: 2,
                             color: prop.status === 'auto-created' ? T.accent.green : prop.status === 'requires-review' ? T.accent.amber : T.text.tertiary,
                             background: prop.status === 'auto-created' ? `${T.accent.green}15` : prop.status === 'requires-review' ? `${T.accent.amber}15` : T.bg.tertiary,
                           }}>{prop.status || 'pending'}</span>
@@ -1139,7 +1139,7 @@ export function EmailPage() {
                       textTransform: "uppercase" as const, marginBottom: 8, cursor: "pointer",
                       display: "flex", alignItems: "center", gap: 4, userSelect: "none" as const,
                     }}>
-                      <span style={{ fontSize: 8, transition: "transform 0.15s", transform: newsPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
+                      <span style={{ fontSize: 9, transition: "transform 0.15s", transform: newsPanelOpen ? "rotate(90deg)" : "rotate(0deg)" }}>{"\u25B6"}</span>
                       Private Intelligence
                     </div>
                     {newsPanelOpen && (
@@ -1369,7 +1369,7 @@ export function EmailPage() {
                           {prop.pin_address || prop.property_name || 'Property'}
                         </div>
                         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                          <span style={{ fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2, color: prop.status === 'auto-created' ? T.accent.green : T.accent.amber, background: prop.status === 'auto-created' ? `${T.accent.green}15` : `${T.accent.amber}15` }}>{prop.status || 'pending'}</span>
+                          <span style={{ fontSize: 9, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2, color: prop.status === 'auto-created' ? T.accent.green : T.accent.amber, background: prop.status === 'auto-created' ? `${T.accent.green}15` : `${T.accent.amber}15` }}>{prop.status || 'pending'}</span>
                           {prop.status === 'requires-review' && (
                             <button onClick={() => { inboxService.approveExtraction(prop.id).then(() => { if (selectedEmail) inboxService.getEmailIntel(selectedEmail.id).then(r => { if (r.success) setEmailIntel(r.data); }); }); }} style={{ marginLeft: "auto", fontSize: 9, fontFamily: FONTS.mono, padding: "2px 8px", background: T.accent.blue, border: "none", borderRadius: 3, color: "#fff", cursor: "pointer" }}>Approve</button>
                           )}
@@ -1383,7 +1383,7 @@ export function EmailPage() {
                     <div style={{ fontSize: 10, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: 1 }}>Private Intelligence</div>
                     <div style={{ padding: "8px 10px", background: T.bg.card, border: `1px solid ${T.border.subtle}`, borderRadius: 6 }}>
                       {emailIntel.newsExtraction.event_type && (
-                        <div style={{ fontSize: 8, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 3, textTransform: "uppercase" as const }}>{emailIntel.newsExtraction.event_type}</div>
+                        <div style={{ fontSize: 9, fontFamily: FONTS.mono, color: T.accent.purple, marginBottom: 3, textTransform: "uppercase" as const }}>{emailIntel.newsExtraction.event_type}</div>
                       )}
                       <div style={{ fontSize: 11, color: T.text.primary, fontWeight: 500, marginBottom: 2 }}>{emailIntel.newsExtraction.title}</div>
                       <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 4 }}>{emailIntel.newsExtraction.summary}</div>
@@ -1677,12 +1677,12 @@ export function EmailPage() {
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
                         <span style={{
-                          fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                          fontSize: 9, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
                           color: task.status === 'completed' ? T.accent.green : task.status === 'in_progress' ? T.accent.blue : T.text.tertiary,
                           background: task.status === 'completed' ? `${T.accent.green}15` : task.status === 'in_progress' ? `${T.accent.blue}15` : T.bg.tertiary,
                         }}>{task.status}</span>
                         <span style={{
-                          fontSize: 8, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
+                          fontSize: 9, fontFamily: FONTS.mono, padding: "1px 4px", borderRadius: 2,
                           color: task.priority === 'urgent' ? T.accent.red : task.priority === 'high' ? T.accent.amber : T.text.tertiary,
                           background: task.priority === 'urgent' ? `${T.accent.red}15` : task.priority === 'high' ? `${T.accent.amber}15` : T.bg.tertiary,
                         }}>{task.priority}</span>

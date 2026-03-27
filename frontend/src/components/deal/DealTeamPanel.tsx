@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../services/api.client';
 import { Users, UserPlus, X, ChevronDown } from 'lucide-react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface Collaborator {
   id: string;
@@ -20,11 +21,11 @@ interface DealTeamPanelProps {
   dealId: string;
 }
 
-const PERMISSION_COLORS: Record<string, string> = {
-  admin: 'bg-red-100 text-red-700',
-  edit: 'bg-blue-100 text-blue-700',
-  comment: 'bg-green-100 text-green-700',
-  view: 'bg-slate-100 text-slate-600',
+const PERMISSION_STYLES: Record<string, { bg: string; text: string }> = {
+  admin: { bg: BT.bg.active, text: BT.text.red },
+  edit: { bg: BT.bg.active, text: BT.text.cyan },
+  comment: { bg: BT.bg.active, text: BT.text.green },
+  view: { bg: BT.bg.active, text: BT.text.secondary },
 };
 
 export function DealTeamPanel({ dealId }: DealTeamPanelProps) {
@@ -98,31 +99,42 @@ export function DealTeamPanel({ dealId }: DealTeamPanelProps) {
     }
   };
 
+  const inputStyle: React.CSSProperties = {
+    fontSize: '11px',
+    fontFamily: BT.font.label,
+    border: `1px solid ${BT.border.medium}`,
+    borderRadius: 0,
+    background: BT.bg.input,
+    color: BT.text.primary,
+    outline: 'none',
+  };
+
   if (loading) {
     return (
       <div className="p-4">
         <div className="animate-pulse space-y-3">
-          <div className="h-4 bg-slate-200 rounded w-1/3" />
-          <div className="h-10 bg-slate-200 rounded" />
-          <div className="h-10 bg-slate-200 rounded" />
+          <div className="h-4 w-1/3" style={{ background: BT.bg.active, borderRadius: '2px' }} />
+          <div className="h-10" style={{ background: BT.bg.active, borderRadius: '2px' }} />
+          <div className="h-10" style={{ background: BT.bg.active, borderRadius: '2px' }} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+    <div className="overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+      <div className="px-4 py-3 flex items-center justify-between" style={{ background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
         <div className="flex items-center gap-2">
-          <Users size={14} className="text-slate-500" />
-          <span className="text-sm font-semibold text-slate-700">Deal Collaborators</span>
-          <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">
+          <Users size={14} style={{ color: BT.text.muted }} />
+          <span style={{ fontSize: '11px', fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.mono }}>Deal Collaborators</span>
+          <span className="px-1.5 py-0.5" style={{ fontSize: '10px', background: BT.bg.active, color: BT.text.secondary, borderRadius: '2px', fontWeight: 500, fontFamily: BT.font.mono }}>
             {collaborators.length}
           </span>
         </div>
         <button
           onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          className="flex items-center gap-1"
+          style={{ fontSize: '10px', fontWeight: 500, color: BT.text.cyan, fontFamily: BT.font.mono, background: 'transparent', border: 'none', cursor: 'pointer' }}
         >
           <UserPlus size={12} />
           Add
@@ -130,28 +142,31 @@ export function DealTeamPanel({ dealId }: DealTeamPanelProps) {
       </div>
 
       {showAddForm && (
-        <div className="p-3 bg-blue-50 border-b border-blue-100">
+        <div className="p-3" style={{ background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.medium}` }}>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <input
               type="text"
               placeholder="Name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              className="text-xs px-2.5 py-1.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="px-2.5 py-1.5"
+              style={inputStyle}
             />
             <input
               type="email"
               placeholder="Email"
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
-              className="text-xs px-2.5 py-1.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="px-2.5 py-1.5"
+              style={inputStyle}
             />
           </div>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <select
               value={newRole}
               onChange={(e) => setNewRole(e.target.value)}
-              className="text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="px-2.5 py-1.5"
+              style={inputStyle}
             >
               <option value="member">Member</option>
               <option value="analyst">Analyst</option>
@@ -163,7 +178,8 @@ export function DealTeamPanel({ dealId }: DealTeamPanelProps) {
             <select
               value={newPermission}
               onChange={(e) => setNewPermission(e.target.value)}
-              className="text-xs px-2.5 py-1.5 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="px-2.5 py-1.5"
+              style={inputStyle}
             >
               <option value="view">View</option>
               <option value="comment">Comment</option>
@@ -171,18 +187,20 @@ export function DealTeamPanel({ dealId }: DealTeamPanelProps) {
               <option value="admin">Admin</option>
             </select>
           </div>
-          {error && <p className="text-xs text-red-600 mb-2">{error}</p>}
+          {error && <p style={{ fontSize: '10px', color: BT.text.red, fontFamily: BT.font.label, marginBottom: '8px' }}>{error}</p>}
           <div className="flex gap-2">
             <button
               onClick={handleAdd}
               disabled={submitting || !newName.trim() || !newEmail.trim()}
-              className="text-xs font-medium px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="px-3 py-1.5 disabled:opacity-50"
+              style={{ fontSize: '10px', fontWeight: 500, fontFamily: BT.font.mono, background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, border: 'none', cursor: 'pointer' }}
             >
               {submitting ? 'Adding...' : 'Add Collaborator'}
             </button>
             <button
               onClick={() => { setShowAddForm(false); setError(null); }}
-              className="text-xs font-medium px-3 py-1.5 text-slate-600 hover:text-slate-800"
+              style={{ fontSize: '10px', fontWeight: 500, fontFamily: BT.font.mono, color: BT.text.secondary, background: 'transparent', border: 'none', cursor: 'pointer' }}
+              className="px-3 py-1.5"
             >
               Cancel
             </button>
@@ -192,52 +210,74 @@ export function DealTeamPanel({ dealId }: DealTeamPanelProps) {
 
       {collaborators.length === 0 ? (
         <div className="p-6 text-center">
-          <Users size={24} className="text-slate-300 mx-auto mb-2" />
-          <p className="text-xs text-slate-500">No collaborators yet</p>
+          <Users size={24} style={{ color: BT.text.muted }} className="mx-auto mb-2" />
+          <p style={{ fontSize: '10px', color: BT.text.muted, fontFamily: BT.font.label }}>No collaborators yet</p>
           <button
             onClick={() => setShowAddForm(true)}
-            className="mt-2 text-xs font-medium text-blue-600 hover:text-blue-700"
+            className="mt-2"
+            style={{ fontSize: '10px', fontWeight: 500, color: BT.text.cyan, fontFamily: BT.font.mono, background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
             Add your first collaborator
           </button>
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
-          {collaborators.map((c) => (
-            <div key={c.id} className="px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 group">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold flex-shrink-0">
-                  {c.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-xs font-medium text-slate-800 truncate">{c.name}</div>
-                  <div className="text-[10px] text-slate-400 truncate">{c.email}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-slate-400 capitalize">{c.role}</span>
-                <div className="relative">
-                  <select
-                    value={c.permission_level}
-                    onChange={(e) => handlePermissionChange(c.id, e.target.value)}
-                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded appearance-none cursor-pointer pr-4 ${PERMISSION_COLORS[c.permission_level] || PERMISSION_COLORS.view}`}
+        <div>
+          {collaborators.map((c, idx) => {
+            const ps = PERMISSION_STYLES[c.permission_level] || PERMISSION_STYLES.view;
+            return (
+              <div
+                key={c.id}
+                className="px-4 py-2.5 flex items-center justify-between group"
+                style={{ borderBottom: idx < collaborators.length - 1 ? `1px solid ${BT.border.subtle}` : 'none' }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className="w-7 h-7 flex items-center justify-center flex-shrink-0"
+                    style={{ borderRadius: '50%', background: BT.bg.active, color: BT.text.secondary, fontSize: '9px', fontWeight: 700, fontFamily: BT.font.mono }}
                   >
-                    <option value="view">View</option>
-                    <option value="comment">Comment</option>
-                    <option value="edit">Edit</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <ChevronDown size={8} className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    {c.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate" style={{ fontSize: '11px', fontWeight: 500, color: BT.text.primary, fontFamily: BT.font.label }}>{c.name}</div>
+                    <div className="truncate" style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>{c.email}</div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleRemove(c.id)}
-                  className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
-                >
-                  <X size={12} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: '9px', color: BT.text.muted, textTransform: 'capitalize', fontFamily: BT.font.label }}>{c.role}</span>
+                  <div className="relative">
+                    <select
+                      value={c.permission_level}
+                      onChange={(e) => handlePermissionChange(c.id, e.target.value)}
+                      className="appearance-none cursor-pointer pr-4"
+                      style={{
+                        fontSize: '9px',
+                        fontWeight: 500,
+                        fontFamily: BT.font.mono,
+                        padding: '2px 16px 2px 6px',
+                        borderRadius: '2px',
+                        background: ps.bg,
+                        color: ps.text,
+                        border: 'none',
+                      }}
+                    >
+                      <option value="view">View</option>
+                      <option value="comment">Comment</option>
+                      <option value="edit">Edit</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <ChevronDown size={8} className="absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: ps.text }} />
+                  </div>
+                  <button
+                    onClick={() => handleRemove(c.id)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: BT.text.muted, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

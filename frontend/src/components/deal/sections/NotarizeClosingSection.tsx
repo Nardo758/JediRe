@@ -262,7 +262,7 @@ export function NotarizeClosingSection({ dealId, deal }: NotarizeClosingSectionP
                 {signers.map((s, i) => (
                   <div key={s.id || i} className="flex items-center justify-between px-3 py-2 bg-slate-50 rounded text-xs">
                     <div className="flex items-center gap-2">
-                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white ${
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
                         s.status === 'completed' ? 'bg-green-500' : s.kba_verified ? 'bg-amber-500' : 'bg-slate-300'
                       }`}>
                         {s.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}

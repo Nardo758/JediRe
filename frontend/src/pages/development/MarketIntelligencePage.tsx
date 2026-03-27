@@ -231,8 +231,8 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
       {/* Refresh control */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
-        {cached && <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
-        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 8, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
+        {cached && <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
+        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 9, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
           <RefreshCw size={10} />
           REFRESH DATA
         </button>

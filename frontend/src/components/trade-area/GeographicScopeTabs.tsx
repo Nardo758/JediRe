@@ -77,7 +77,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
               borderRight: `1px solid ${BORDER}`,
               cursor: 'pointer',
               fontFamily: MONO,
-              fontSize: 8,
+              fontSize: 9,
               letterSpacing: '0.08em',
               color: AMBER_DIM,
               whiteSpace: 'nowrap',
@@ -86,7 +86,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = AMBER; (e.currentTarget as HTMLElement).style.background = BG_HOVER; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = AMBER_DIM; (e.currentTarget as HTMLElement).style.background = 'none'; }}
           >
-            <span style={{ fontSize: 7, opacity: 0.7 }}>+</span>
+            <span style={{ fontSize: 9, opacity: 0.7 }}>+</span>
             <span>TRADE AREA</span>
           </button>
         )}
@@ -121,7 +121,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
             >
               {/* Scope label */}
               <span style={{
-                fontSize: 8,
+                fontSize: 9,
                 fontWeight: 700,
                 letterSpacing: '0.1em',
                 color: isActive ? TEXT_ACTIVE : TEXT_SEC,
@@ -132,7 +132,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
               {/* Stat line */}
               {statLine && (
                 <span style={{
-                  fontSize: 8,
+                  fontSize: 9,
                   letterSpacing: '0.04em',
                   color: isActive ? '#C8922A' : TEXT_DIM,
                   fontWeight: 400,
@@ -158,7 +158,7 @@ export const GeographicScopeTabs: React.FC<GeographicScopeTabsProps> = ({
               borderLeft: `1px solid ${BORDER}`,
               cursor: 'pointer',
               fontFamily: MONO,
-              fontSize: 7,
+              fontSize: 9,
               letterSpacing: '0.1em',
               color: TEXT_DIM,
               transition: 'color 0.12s, background 0.12s',

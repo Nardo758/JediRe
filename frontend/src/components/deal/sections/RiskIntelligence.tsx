@@ -369,9 +369,9 @@ export const RiskIntelligence: React.FC<RiskIntelligenceProps> = ({ deal, dealId
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: T.text.primary, letterSpacing: 0.8, fontFamily: mono }}>RISK INTELLIGENCE</span>
-            <span style={{ fontSize: 8, color: T.text.muted, fontFamily: mono }}>M14 | Due Diligence · Exposure · Mitigation</span>
-            <span style={{ fontSize: 6, fontWeight: 700, color: '#FF4757', background: '#FF475715', border: '1px solid #FF475730', padding: '0 3px', borderRadius: 2, fontFamily: mono }}>RISK</span>
-            <span style={{ fontSize: 6, fontWeight: 700, color: '#F5A623', background: '#F5A62315', border: '1px solid #F5A62330', padding: '0 3px', borderRadius: 2, fontFamily: mono }}>DD</span>
+            <span style={{ fontSize: 9, color: T.text.muted, fontFamily: mono }}>M14 | Due Diligence · Exposure · Mitigation</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#FF4757', background: '#FF475715', border: '1px solid #FF475730', padding: '0 3px', borderRadius: 2, fontFamily: mono }}>RISK</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#F5A623', background: '#F5A62315', border: '1px solid #F5A62330', padding: '0 3px', borderRadius: 2, fontFamily: mono }}>DD</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <BLiveBadge live={isLiveData} />
@@ -520,15 +520,15 @@ const RiskCard: React.FC<{
       {isExpanded && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${T.border.subtle}` }}>
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>DRIVER</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>DRIVER</div>
             <p style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.driver}</p>
           </div>
           <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.green, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>OFFSET</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.text.green, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>OFFSET</div>
             <p style={{ fontSize: 10, color: T.text.green, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.offsetting}</p>
           </div>
           <div>
-            <div style={{ fontSize: 8, fontWeight: 700, color: T.text.amber, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>MITIGATION</div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.text.amber, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 3, fontFamily: mono }}>MITIGATION</div>
             <p style={{ fontSize: 10, color: T.text.amber, lineHeight: 1.5, margin: 0, fontFamily: sans }}>{category.mitigation}</p>
           </div>
         </div>

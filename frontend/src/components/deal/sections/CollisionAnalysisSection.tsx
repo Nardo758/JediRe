@@ -277,7 +277,7 @@ const CollisionAnalysisSection: React.FC = () => {
     return (
       <div className="flex items-center justify-center py-16">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-blue-700 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 animate-spin" style={{ border: `2px solid ${BT.text.cyan}`, borderTopColor: 'transparent', borderRadius: 0 }} />
           <span className="text-sm">Loading collision analysis...</span>
         </div>
       </div>
@@ -295,29 +295,31 @@ const CollisionAnalysisSection: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`px-4 py-2 rounded-lg font-bold text-lg ${
-            collision.overall_score >= 80 ? 'bg-neutral-800 text-emerald-400 border border-green-700' :
-            collision.overall_score >= 60 ? 'bg-neutral-700 text-amber-400 border border-amber-700' :
-            'bg-neutral-800 text-red-400 border border-red-700'
-          }`}>
+          <div className="px-4 py-2 font-bold text-lg" style={{
+            background: BT.bg.panelAlt,
+            color: collision.overall_score >= 80 ? BT.text.green : collision.overall_score >= 60 ? BT.text.amber : BT.text.red,
+            border: `1px solid ${collision.overall_score >= 80 ? BT.text.green : collision.overall_score >= 60 ? BT.text.amber : BT.text.red}`,
+            borderRadius: 0,
+            fontFamily: BT.font.mono
+          }}>
             {collision.overall_score}/100
           </div>
         </div>
       </div>
 
       {!hasRealData && (
-        <div className="bg-neutral-700 border border-amber-700 rounded-lg p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="p-4 flex items-start gap-3" style={{ background: `${BT.text.amber}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: BT.text.amber }} />
           <div>
-            <div className="font-medium text-amber-400">Limited Deal Data</div>
-            <div className="text-sm text-amber-400">
+            <div className="font-medium" style={{ color: BT.text.amber }}>Limited Deal Data</div>
+            <div className="text-sm" style={{ color: BT.text.amber }}>
               This analysis uses available data. Add property details, market research, and financial assumptions to improve accuracy.
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex gap-1 rounded-lg p-1">
+      <div className="flex gap-1 p-1" style={{ borderRadius: 0 }}>
         {[
           { id: 'overview', label: 'Overview', icon: BarChart3 },
           { id: 'layers', label: 'Three Layers', icon: Target },
@@ -328,11 +330,12 @@ const CollisionAnalysisSection: React.FC = () => {
             <button
               key={tab.id}
               onClick={() => setSubTab(tab.id as any)}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-sm font-medium transition-all ${
-                subTab === tab.id
-                  ? 'bg-neutral-900 shadow-dark'
-                  : 'text-neutral-400 hover:text-neutral-400'
-              }`}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium transition-all"
+              style={{
+                background: subTab === tab.id ? BT.bg.active : 'transparent',
+                color: subTab === tab.id ? BT.text.primary : BT.text.muted,
+                borderRadius: 0,
+              }}
             >
               <Icon className="w-4 h-4" />
               {tab.label}
@@ -401,8 +404,8 @@ const CollisionAnalysisSection: React.FC = () => {
               />
             </div>
 
-            <div className="rounded-lg border p-6">
-              <h3 className="text-lg font-semibold mb-4">Collision Highlights</h3>
+            <div className="p-6" style={{ borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+              <h3 className="text-lg font-semibold mb-4" style={{ fontFamily: BT.font.display }}>Collision Highlights</h3>
               <div className="space-y-4">
                 {Object.entries(collision)
                   .filter(([key]) => key !== 'overall_score')
@@ -412,16 +415,16 @@ const CollisionAnalysisSection: React.FC = () => {
                     return (
                       <div key={key} className="flex items-start gap-3">
                         {isGood ? (
-                          <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                          <CheckCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: BT.text.green }} />
                         ) : (
-                          <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: BT.text.amber }} />
                         )}
                         <div className="flex-1">
                           <div className="flex items-center justify-between mb-1">
                             <div className="font-medium">
                               {DIMENSION_LABELS[key] || key.replace(/_/g, ' ')}
                             </div>
-                            <div className={`text-sm font-semibold ${isGood ? 'text-emerald-400' : 'text-amber-400'}`}>
+                            <div className="text-sm font-semibold" style={{ color: isGood ? BT.text.green : BT.text.amber, fontFamily: BT.font.mono }}>
                               {dim.score}/100
                             </div>
                           </div>
@@ -435,56 +438,56 @@ const CollisionAnalysisSection: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-            <div className="rounded-lg border p-6">
-              <h3 className="font-semibold mb-4">Deal Summary</h3>
+            <div className="p-6" style={{ borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+              <h3 className="font-semibold mb-4" style={{ fontFamily: BT.font.display }}>Deal Summary</h3>
               <div className="space-y-3 text-sm">
                 <div>
-                  <div className="text-neutral-400 mb-1">Deal</div>
+                  <div className="mb-1" style={{ color: BT.text.secondary }}>Deal</div>
                   <div className="font-medium">{dealName}</div>
                 </div>
                 {layers.layer1.asking_price > 0 && (
                   <div>
-                    <div className="text-neutral-400 mb-1">Asking Price</div>
-                    <div className="font-medium">
+                    <div className="mb-1" style={{ color: BT.text.secondary }}>Asking Price</div>
+                    <div className="font-medium" style={{ fontFamily: BT.font.mono }}>
                       ${(layers.layer1.asking_price / 1000000).toFixed(1)}M
                     </div>
                   </div>
                 )}
                 {deal?.state && (
                   <div>
-                    <div className="text-neutral-400 mb-1">Status</div>
-                    <span className="inline-block px-2 py-1 bg-neutral-800 text-blue-300 rounded text-xs font-medium">
+                    <div className="mb-1" style={{ color: BT.text.secondary }}>Status</div>
+                    <span className="inline-block px-2 py-1 text-xs font-medium" style={{ background: BT.bg.panelAlt, color: BT.text.cyan, borderRadius: 0 }}>
                       {deal.state}
                     </span>
                   </div>
                 )}
                 {layers.layer1.cap_rate > 0 && (
                   <div>
-                    <div className="text-neutral-400 mb-1">Cap Rate</div>
-                    <div className="font-medium">{layers.layer1.cap_rate.toFixed(1)}%</div>
+                    <div className="mb-1" style={{ color: BT.text.secondary }}>Cap Rate</div>
+                    <div className="font-medium" style={{ fontFamily: BT.font.mono }}>{layers.layer1.cap_rate.toFixed(1)}%</div>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="rounded-lg border p-6">
-              <h3 className="font-semibold mb-4">Investment Criteria</h3>
+            <div className="p-6" style={{ borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+              <h3 className="font-semibold mb-4" style={{ fontFamily: BT.font.display }}>Investment Criteria</h3>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <div className="text-neutral-400 mb-1">Target IRR</div>
-                  <div className="font-semibold">{layers.layer3.target_irr}%</div>
+                  <div className="mb-1" style={{ color: BT.text.secondary }}>Target IRR</div>
+                  <div className="font-semibold" style={{ fontFamily: BT.font.mono }}>{layers.layer3.target_irr}%</div>
                 </div>
                 <div>
-                  <div className="text-neutral-400 mb-1">Hold Period</div>
-                  <div className="font-semibold">{layers.layer3.preferred_hold_period} yrs</div>
+                  <div className="mb-1" style={{ color: BT.text.secondary }}>Hold Period</div>
+                  <div className="font-semibold" style={{ fontFamily: BT.font.mono }}>{layers.layer3.preferred_hold_period} yrs</div>
                 </div>
                 <div>
-                  <div className="text-neutral-400 mb-1">Exit Cap</div>
-                  <div className="font-semibold">{layers.layer3.exit_cap_assumption}%</div>
+                  <div className="mb-1" style={{ color: BT.text.secondary }}>Exit Cap</div>
+                  <div className="font-semibold" style={{ fontFamily: BT.font.mono }}>{layers.layer3.exit_cap_assumption}%</div>
                 </div>
                 <div>
-                  <div className="text-neutral-400 mb-1">Max LTV</div>
-                  <div className="font-semibold">{layers.layer3.max_ltv}%</div>
+                  <div className="mb-1" style={{ color: BT.text.secondary }}>Max LTV</div>
+                  <div className="font-semibold" style={{ fontFamily: BT.font.mono }}>{layers.layer3.max_ltv}%</div>
                 </div>
               </div>
             </div>
@@ -494,30 +497,30 @@ const CollisionAnalysisSection: React.FC = () => {
 
       {subTab === 'layers' && (
         <div className="space-y-6">
-          <div className="bg-neutral-800 border border-blue-700 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-300 mb-2">Three-Layer Intelligence System</h3>
-            <p className="text-sm text-blue-300 mb-3">
+          <div className="p-4" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.text.cyan}44`, borderRadius: 0 }}>
+            <h3 className="font-semibold mb-2" style={{ color: BT.text.cyan, fontFamily: BT.font.display }}>Three-Layer Intelligence System</h3>
+            <p className="text-sm mb-3" style={{ color: BT.text.cyan }}>
               Deal data is preserved as-is. Platform provides reality check. You decide final assumptions.
             </p>
             <div className="grid grid-cols-3 gap-4 text-xs">
-              <div className="rounded p-2">
-                <div className="font-semibold text-blue-300 mb-1">Layer 1: Truth</div>
-                <div className="text-blue-300">Broker's claims (never changed)</div>
+              <div className="p-2" style={{ borderRadius: 0 }}>
+                <div className="font-semibold mb-1" style={{ color: BT.text.cyan }}>Layer 1: Truth</div>
+                <div style={{ color: BT.text.cyan }}>Broker's claims (never changed)</div>
               </div>
-              <div className="rounded p-2">
-                <div className="font-semibold text-purple-300 mb-1">Layer 2: Reality Check</div>
-                <div className="text-purple-300">Market data (comparison only)</div>
+              <div className="p-2" style={{ borderRadius: 0 }}>
+                <div className="font-semibold mb-1" style={{ color: BT.text.purple }}>Layer 2: Reality Check</div>
+                <div style={{ color: BT.text.purple }}>Market data (comparison only)</div>
               </div>
-              <div className="rounded p-2">
-                <div className="font-semibold text-green-400 mb-1">Layer 3: Your Model</div>
-                <div className="text-green-400">Your assumptions (pro forma)</div>
+              <div className="p-2" style={{ borderRadius: 0 }}>
+                <div className="font-semibold mb-1" style={{ color: BT.text.green }}>Layer 3: Your Model</div>
+                <div style={{ color: BT.text.green }}>Your assumptions (pro forma)</div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-lg border-2 border-blue-700 p-6">
+          <div className="p-6" style={{ borderRadius: 0, border: `2px solid ${BT.text.cyan}` }}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-blue-300 font-bold">1</div>
+              <div className="w-10 h-10 flex items-center justify-center font-bold" style={{ background: BT.bg.panelAlt, borderRadius: 0, color: BT.text.cyan }}>1</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 1: Deal Data (Preserved)</h3>
                 <p className="text-sm">Original broker claims — never modified by platform</p>
@@ -555,7 +558,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   {Object.entries(layers.layer1.broker_claims).map(([key, value]) => (
                     <div key={key}>
-                      <span className="text-neutral-400 capitalize">{key.replace(/_/g, ' ')}: </span>
+                      <span className="capitalize" style={{ color: BT.text.secondary }}>{key.replace(/_/g, ' ')}: </span>
                       <span className="font-medium">{value}</span>
                     </div>
                   ))}
@@ -564,9 +567,9 @@ const CollisionAnalysisSection: React.FC = () => {
             )}
           </div>
 
-          <div className="rounded-lg border-2 border-purple-700 p-6">
+          <div className="p-6" style={{ borderRadius: 0, border: `2px solid ${BT.text.purple}` }}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-purple-300 font-bold">2</div>
+              <div className="w-10 h-10 flex items-center justify-center font-bold" style={{ background: BT.bg.panelAlt, borderRadius: 0, color: BT.text.purple }}>2</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 2: Platform Intelligence (Reality Check)</h3>
                 <p className="text-sm">Market data for comparison — does not override deal data</p>
@@ -594,7 +597,7 @@ const CollisionAnalysisSection: React.FC = () => {
               <div>
                 <div className="text-sm mb-1">Employment Growth</div>
                 <div className="font-semibold">
-                  {layers.layer2.employment_growth > 0 ? <span className="text-emerald-400">+{layers.layer2.employment_growth}%</span> : 'Not set'}
+                  {layers.layer2.employment_growth > 0 ? <span style={{ color: BT.text.green }}>+{layers.layer2.employment_growth}%</span> : 'Not set'}
                 </div>
               </div>
             </div>
@@ -604,7 +607,7 @@ const CollisionAnalysisSection: React.FC = () => {
                 <div className="space-y-2 text-sm">
                   {layers.layer2.comp_sales.map((comp, idx) => (
                     <div key={idx} className="flex justify-between">
-                      <span className="text-neutral-400">{comp.address}</span>
+                      <span style={{ color: BT.text.secondary }}>{comp.address}</span>
                       <span className="font-medium">${(comp.price_per_unit / 1000).toFixed(0)}K/unit @ {comp.cap_rate}%</span>
                     </div>
                   ))}
@@ -613,9 +616,9 @@ const CollisionAnalysisSection: React.FC = () => {
             )}
           </div>
 
-          <div className="rounded-lg border-2 border-green-700 p-6">
+          <div className="p-6" style={{ borderRadius: 0, border: `2px solid ${BT.text.green}` }}>
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center text-green-400 font-bold">3</div>
+              <div className="w-10 h-10 flex items-center justify-center font-bold" style={{ background: BT.bg.panelAlt, borderRadius: 0, color: BT.text.green }}>3</div>
               <div>
                 <h3 className="text-lg font-semibold">Layer 3: Your Model (Pro Forma Input)</h3>
                 <p className="text-sm">Your adjusted assumptions — used in financial models</p>
@@ -626,21 +629,21 @@ const CollisionAnalysisSection: React.FC = () => {
               <div className="text-sm font-medium mb-3">Your Adjusted Assumptions:</div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="text-neutral-400">1BR Rent: </span>
-                  <span className="font-semibold text-green-400">
+                  <span style={{ color: BT.text.secondary }}>1BR Rent: </span>
+                  <span className="font-semibold" style={{ color: BT.text.green }}>
                     {layers.layer3.adjusted_rent_1br ? `$${layers.layer3.adjusted_rent_1br.toLocaleString()}` : 'Using broker'}
                   </span>
                   {layers.layer1.avg_rent_1br > 0 && (
-                    <span className="text-neutral-400 ml-1">(broker ${layers.layer1.avg_rent_1br.toLocaleString()})</span>
+                    <span className="ml-1" style={{ color: BT.text.secondary }}>(broker ${layers.layer1.avg_rent_1br.toLocaleString()})</span>
                   )}
                 </div>
                 <div>
-                  <span className="text-neutral-400">Occupancy: </span>
-                  <span className="font-semibold text-green-400">
+                  <span style={{ color: BT.text.secondary }}>Occupancy: </span>
+                  <span className="font-semibold" style={{ color: BT.text.green }}>
                     {layers.layer3.adjusted_occupancy ? `${layers.layer3.adjusted_occupancy}%` : 'Using broker'}
                   </span>
                   {layers.layer1.occupancy > 0 && (
-                    <span className="text-neutral-400 ml-1">(broker {layers.layer1.occupancy}%)</span>
+                    <span className="ml-1" style={{ color: BT.text.secondary }}>(broker {layers.layer1.occupancy}%)</span>
                   )}
                 </div>
               </div>
@@ -673,17 +676,17 @@ const CollisionAnalysisSection: React.FC = () => {
 
       {subTab === 'collision' && (
         <div className="space-y-6">
-          <div className="bg-gradient-to-r from-neutral-800 to-neutral-900 border border-blue-700 rounded-lg p-6">
+          <div className="p-6" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.text.cyan}44`, borderRadius: 0 }}>
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-2xl font-bold">Collision Analysis</h3>
-              <div className={`text-3xl font-bold ${
-                collision.overall_score >= 80 ? 'text-emerald-400' :
-                collision.overall_score >= 60 ? 'text-amber-400' : 'text-red-400'
-              }`}>
+              <h3 className="text-2xl font-bold" style={{ fontFamily: BT.font.display }}>Collision Analysis</h3>
+              <div className="text-3xl font-bold" style={{
+                color: collision.overall_score >= 80 ? BT.text.green : collision.overall_score >= 60 ? BT.text.amber : BT.text.red,
+                fontFamily: BT.font.mono
+              }}>
                 {collision.overall_score}/100
               </div>
             </div>
-            <p className="text-neutral-400">
+            <p style={{ color: BT.text.secondary }}>
               Personalized analysis based on property data, market intelligence, and your investment criteria.
             </p>
           </div>
@@ -692,23 +695,19 @@ const CollisionAnalysisSection: React.FC = () => {
             .filter(([key]) => key !== 'overall_score')
             .map(([key, data]) => {
               const dim = data as CollisionDimension;
-              const colors = {
-                high: 'border-green-700 bg-neutral-800/50',
-                medium: 'border-amber-700 bg-neutral-700/50',
-                low: 'border-red-700 bg-neutral-800/50'
+              const levelColors = {
+                high: { border: BT.text.green, color: BT.text.green },
+                medium: { border: BT.text.amber, color: BT.text.amber },
+                low: { border: BT.text.red, color: BT.text.red }
               };
               const level = dim.score >= 80 ? 'high' : dim.score >= 60 ? 'medium' : 'low';
               const icon = DIMENSION_ICONS[key] || <AlertTriangle className="w-5 h-5" />;
 
               return (
-                <div key={key} className={`bg-neutral-900 rounded-lg border-2 p-6 ${colors[level]}`}>
+                <div key={key} className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `2px solid ${levelColors[level].border}` }}>
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${
-                        level === 'high' ? 'bg-neutral-800 text-emerald-400' :
-                        level === 'medium' ? 'bg-neutral-700 text-amber-400' :
-                        'bg-neutral-800 text-red-400'
-                      }`}>
+                      <div className="p-2" style={{ background: BT.bg.panelAlt, borderRadius: 0, color: levelColors[level].color }}>
                         {icon}
                       </div>
                       <h4 className="text-lg font-semibold">
@@ -723,12 +722,12 @@ const CollisionAnalysisSection: React.FC = () => {
 
                   <div className="mb-4">
                     <div className="text-sm font-medium uppercase tracking-wide mb-2">Analysis</div>
-                    <p className="text-neutral-400">{dim.insight}</p>
+                    <p style={{ color: BT.text.secondary }}>{dim.insight}</p>
                   </div>
 
-                  <div className="rounded-lg p-4 border">
+                  <div className="p-4" style={{ borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
                     <div className="text-sm font-medium uppercase tracking-wide mb-1">Recommended Action</div>
-                    <p className="text-neutral-400 font-medium">{dim.recommended_action}</p>
+                    <p className="font-medium" style={{ color: BT.text.secondary }}>{dim.recommended_action}</p>
                   </div>
                 </div>
               );

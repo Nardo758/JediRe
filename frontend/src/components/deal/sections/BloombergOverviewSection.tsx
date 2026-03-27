@@ -428,7 +428,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         subtitle="M01 · Deal Intelligence"
         borderColor={BTV.text.amber}
         right={
-          <span style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>
+          <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>
             {deal?.name || deal?.address?.split(',')[0] || 'Deal'}
           </span>
         }
@@ -439,7 +439,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
 
         {/* Col A — JEDI Score Gauge */}
         <div style={{ background: BTV.bg.panel, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-          <div style={{ fontSize: 8, color: BTV.text.muted, letterSpacing: 1.5, ...MONO }}>JEDI SCORE</div>
+          <div style={{ fontSize: 9, color: BTV.text.muted, letterSpacing: 1.5, ...MONO }}>JEDI SCORE</div>
           {scoreLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0' }}>
               <Skel w={80} h={80} />
@@ -457,12 +457,12 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                   {jediScoreData ? score : '--'}
                 </span>
                 {jediScoreData?.delta30d != null && (
-                  <span style={{ fontSize: 8, color: jediScoreData.delta30d >= 0 ? BTV.text.green : BTV.text.red, fontWeight: 600, ...MONO }}>
+                  <span style={{ fontSize: 9, color: jediScoreData.delta30d >= 0 ? BTV.text.green : BTV.text.red, fontWeight: 600, ...MONO }}>
                     {jediScoreData.delta30d >= 0 ? '+' : ''}{jediScoreData.delta30d} 30d
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>Confidence: {jediScoreData?.confidence ?? '--'}%</div>
+              <div style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>Confidence: {jediScoreData?.confidence ?? '--'}%</div>
               <Spark data={trendData} color={sc} w={100} h={20} />
               <Bd c={sc}>{jediScoreData ? jediScoreData.verdict : 'PENDING'}</Bd>
             </>
@@ -485,7 +485,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                 const sources = SIGNAL_SOURCES[s.name] || [];
                 return (
                   <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
-                    <span style={{ fontSize: 7, color: BTV.text.muted, minWidth: 72, ...MONO }}>
+                    <span style={{ fontSize: 9, color: BTV.text.muted, minWidth: 72, ...MONO }}>
                       {s.name} ({s.weight}%)
                     </span>
                     <div style={{ width: 44, height: 5, background: BTV.bg.terminal, flexShrink: 0 }}>
@@ -509,7 +509,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                       background: BTV.bg.terminal,
                       borderTop: s.win ? `2px solid ${BTV.text.amber}` : '2px solid transparent',
                     }}>
-                      <div style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>{s.l}</div>
+                      <div style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>{s.l}</div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: s.win ? BTV.text.amber : BTV.text.secondary, ...MONO }}>{s.v}</div>
                     </div>
                   ))}
@@ -522,12 +522,12 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         {/* Col C — Deal Details */}
         <div style={{ background: BTV.bg.panel }}>
           <div style={{ padding: '5px 8px', background: BTV.bg.header, borderBottom: `1px solid ${BTV.border.subtle}` }}>
-            <span style={{ fontSize: 8, fontWeight: 700, color: BTV.text.white, letterSpacing: 0.5, ...MONO }}>DEAL DETAILS</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BTV.text.white, letterSpacing: 0.5, ...MONO }}>DEAL DETAILS</span>
           </div>
           {deal?.address && (
             <div style={{ padding: '3px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
-              <div style={{ fontSize: 6, color: BTV.text.muted, letterSpacing: 0.5, marginBottom: 1, ...MONO }}>ADDRESS</div>
-              <div style={{ fontSize: 7, color: BTV.text.secondary, ...MONO, lineHeight: 1.3 }}>
+              <div style={{ fontSize: 9, color: BTV.text.muted, letterSpacing: 0.5, marginBottom: 1, ...MONO }}>ADDRESS</div>
+              <div style={{ fontSize: 9, color: BTV.text.secondary, ...MONO, lineHeight: 1.3 }}>
                 {deal.address}
               </div>
             </div>
@@ -594,7 +594,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1fr 0.5fr', background: BTV.bg.header, borderBottom: `1px solid ${BTV.border.medium}` }}>
           {['ASSUMPTION', 'BROKER', 'PLATFORM (JEDI)', 'YOU (USER)', 'FLAG'].map((h, i) => (
             <div key={i} style={{
-              padding: '3px 8px', fontSize: 7, fontWeight: 700,
+              padding: '3px 8px', fontSize: 9, fontWeight: 700,
               color: [BTV.text.muted, BTV.text.cyan, BTV.text.green, BTV.text.purple, BTV.text.orange][i],
               borderRight: `1px solid ${BTV.border.subtle}`, ...MONO,
             }}>
@@ -608,7 +608,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
             background: ri % 2 === 0 ? BTV.bg.panel : BTV.bg.panelAlt,
             borderBottom: `1px solid ${BTV.border.subtle}`,
           }}>
-            <div style={{ padding: '3px 8px', fontSize: 8, fontWeight: 600, color: BTV.text.primary, display: 'flex', alignItems: 'center', gap: 4, borderRight: `1px solid ${BTV.border.subtle}`, ...MONO }}>
+            <div style={{ padding: '3px 8px', fontSize: 9, fontWeight: 600, color: BTV.text.primary, display: 'flex', alignItems: 'center', gap: 4, borderRight: `1px solid ${BTV.border.subtle}`, ...MONO }}>
               {row.mc && <span style={{ width: 3, height: 3, borderRadius: '50%', background: row.mc, flexShrink: 0 }} />}
               {row.a}
             </div>
@@ -628,14 +628,14 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
             { h: 'YOUR MODEL', irrVal: irrUser, emVal: emStr, c: BTV.text.purple },
           ].map((col, i) => (
             <div key={i} style={{ background: BTV.bg.panel, padding: 5, borderTop: `2px solid ${col.c}` }}>
-              <div style={{ fontSize: 7, fontWeight: 700, color: col.c, letterSpacing: 0.8, marginBottom: 2, ...MONO }}>{col.h}</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: col.c, letterSpacing: 0.8, marginBottom: 2, ...MONO }}>{col.h}</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div>
-                  <span style={{ fontSize: 6, color: BTV.text.muted, ...MONO }}>IRR </span>
+                  <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>IRR </span>
                   <span style={{ fontSize: 9, fontWeight: 700, color: col.c, ...MONO }}>{col.irrVal}</span>
                 </div>
                 <div>
-                  <span style={{ fontSize: 6, color: BTV.text.muted, ...MONO }}>EM </span>
+                  <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>EM </span>
                   <span style={{ fontSize: 9, fontWeight: 700, color: col.c, ...MONO }}>{col.emVal}</span>
                 </div>
               </div>
@@ -644,22 +644,22 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         </div>
         {showCollision && (
           <div style={{ padding: 4, background: `${BTV.text.orange}08`, borderLeft: `3px solid ${BTV.text.orange}` }}>
-            <span style={{ fontSize: 8, color: BTV.text.orange, fontWeight: 600, ...MONO }}>COLLISION: </span>
-            <span style={{ fontSize: 8, color: BTV.text.secondary, ...MONO }}>{collisionMsg}</span>
+            <span style={{ fontSize: 9, color: BTV.text.orange, fontWeight: 600, ...MONO }}>COLLISION: </span>
+            <span style={{ fontSize: 9, color: BTV.text.secondary, ...MONO }}>{collisionMsg}</span>
           </div>
         )}
       </div>
 
       {/* ── Row 4: AI Intelligence Brief ── */}
       <div style={{ background: BTV.bg.panel, padding: 8, borderBottom: `1px solid ${BTV.border.subtle}`, flexShrink: 0 }}>
-        <div style={{ fontSize: 8, fontWeight: 700, color: BTV.text.cyan, letterSpacing: 0.8, marginBottom: 6, ...MONO }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: BTV.text.cyan, letterSpacing: 0.8, marginBottom: 6, ...MONO }}>
           AI INTELLIGENCE BRIEF
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {aiBriefs.map((b, i) => (
             <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               <Bd c={b.c}>{b.cat}</Bd>
-              <span style={{ fontSize: 8, color: BTV.text.secondary, lineHeight: 1.5, ...MONO }}>{b.msg}</span>
+              <span style={{ fontSize: 9, color: BTV.text.secondary, lineHeight: 1.5, ...MONO }}>{b.msg}</span>
             </div>
           ))}
         </div>
@@ -689,7 +689,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         <SectionPanel title="DEAL TEAM" borderColor={BTV.text.purple}>
           {teamToShow.length === 0 ? (
             <div style={{ padding: '14px 8px', textAlign: 'center' }}>
-              <span style={{ fontSize: 8, color: BTV.text.muted, ...MONO }}>No team members assigned</span>
+              <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>No team members assigned</span>
             </div>
           ) : (
             teamToShow.map((m: any, i: number) => {
@@ -700,9 +700,9 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <Bd c={BTV.text.purple}>{String(role).toUpperCase().slice(0, 8)}</Bd>
-                    <span style={{ fontSize: 8, color: BTV.text.primary, ...MONO }}>{name}</span>
+                    <span style={{ fontSize: 9, color: BTV.text.primary, ...MONO }}>{name}</span>
                   </div>
-                  <span style={{ fontSize: 7, color: BTV.text.muted, ...MONO }}>{lastActive ? fmtAgo(lastActive) : '—'}</span>
+                  <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>{lastActive ? fmtAgo(lastActive) : '—'}</span>
                 </div>
               );
             })
@@ -713,7 +713,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         <SectionPanel title="RECENT ACTIVITY" borderColor={BTV.text.cyan}>
           {activity.length === 0 ? (
             <div style={{ padding: '14px 8px', textAlign: 'center' }}>
-              <span style={{ fontSize: 8, color: BTV.text.muted, ...MONO }}>No recent activity</span>
+              <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>No recent activity</span>
             </div>
           ) : (
             activity.map((a: any, i: number) => {
@@ -725,8 +725,8 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                 : BTV.text.secondary;
               return (
                 <div key={i} style={{ display: 'flex', gap: 6, padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
-                  <span style={{ fontSize: 7, color: BTV.text.muted, minWidth: 20, flexShrink: 0, ...MONO }}>{ts ? fmtAgo(ts) : '—'}</span>
-                  <span style={{ fontSize: 8, color, ...MONO, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{msg}</span>
+                  <span style={{ fontSize: 9, color: BTV.text.muted, minWidth: 20, flexShrink: 0, ...MONO }}>{ts ? fmtAgo(ts) : '—'}</span>
+                  <span style={{ fontSize: 9, color, ...MONO, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{msg}</span>
                 </div>
               );
             })

@@ -662,7 +662,7 @@ function TemplateRadarChart({ weights }: { weights: SignalWeights }) {
     <ResponsiveContainer width="100%" height={140}>
       <RadarChart cx="50%" cy="50%" outerRadius={50} data={data}>
         <PolarGrid stroke={bdr.subtle} />
-        <PolarAngleAxis dataKey="subject" tick={{ fill: text.muted, fontSize: 8, fontFamily: font.mono }} />
+        <PolarAngleAxis dataKey="subject" tick={{ fill: text.muted, fontSize: 9, fontFamily: font.mono }} />
         <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
         <Radar name="weights" dataKey="value" stroke={text.purple} fill={text.purple} fillOpacity={0.25} />
         <ReTooltip

@@ -545,7 +545,7 @@ function TrafficValidationTab() {
                 <div style={{ fontSize:9, color:T.textDim, fontFamily:T.mono }}>{r.before}</div>
                 <div style={{ fontSize:9, color:T.green, fontFamily:T.mono, fontWeight:700 }}>→ {r.after}</div>
                 <div style={{
-                  fontSize:8, fontFamily:T.mono, fontWeight:700,
+                  fontSize: 9, fontFamily:T.mono, fontWeight:700,
                   color: r.status === "APPLIED" ? T.green : T.amber,
                   background: r.status === "APPLIED" ? "rgba(34,197,94,0.1)" : "rgba(245,158,11,0.1)",
                   borderRadius:3, padding:"1px 5px",
@@ -659,7 +659,7 @@ function PlatformFeedTab() {
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:9, color:T.text, fontFamily:T.mono }}>{item.label}</div>
                 </div>
-                <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono, background:T.panel, borderRadius:3, padding:"1px 5px" }}>{item.freq}</div>
+                <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono, background:T.panel, borderRadius:3, padding:"1px 5px" }}>{item.freq}</div>
               </div>
             ))}
           </div>
@@ -667,7 +667,7 @@ function PlatformFeedTab() {
           {/* Arrow */}
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"0 20px", gap:4 }}>
             <div style={{ fontSize:24, color:T.amber }}>⟹</div>
-            <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono, textAlign:"center" }}>FEEDS</div>
+            <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono, textAlign:"center" }}>FEEDS</div>
           </div>
 
           {/* Destinations */}
@@ -687,12 +687,12 @@ function PlatformFeedTab() {
                   </div>
                   <div style={{ display:"flex", gap:4 }}>
                     <span style={{
-                      fontSize:8, fontFamily:T.mono, fontWeight:700,
+                      fontSize: 9, fontFamily:T.mono, fontWeight:700,
                       color:impactColor[feed.impact], background:`${impactColor[feed.impact]}18`,
                       borderRadius:3, padding:"1px 5px",
                     }}>{feed.impact}</span>
                     <span style={{
-                      fontSize:8, fontFamily:T.mono, fontWeight:700,
+                      fontSize: 9, fontFamily:T.mono, fontWeight:700,
                       color:statusColor[feed.status], background:`${statusColor[feed.status]}18`,
                       borderRadius:3, padding:"1px 5px",
                     }}>{feed.status}</span>
@@ -771,13 +771,13 @@ function PlatformFeedTab() {
             { module:"M26 Tax", before:87, after:94, label:"Accuracy" },
           ].map((item, i) => (
             <div key={i} style={{ background:T.surface, borderRadius:5, padding:10, border:`1px solid ${T.border}`, textAlign:"center" }}>
-              <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono, marginBottom:6 }}>{item.module}</div>
+              <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono, marginBottom:6 }}>{item.module}</div>
               <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:4, marginBottom:4 }}>
                 <span style={{ fontSize:11, color:T.textDim, fontFamily:T.mono }}>{item.before}</span>
                 <span style={{ fontSize:9, color:T.green }}>→</span>
                 <span style={{ fontSize:14, fontWeight:700, color:T.green, fontFamily:T.mono }}>{item.after}</span>
               </div>
-              <div style={{ fontSize:8, color:T.textDim }}>{item.label}</div>
+              <div style={{ fontSize: 9, color:T.textDim }}>{item.label}</div>
               <div style={{
                 marginTop:6, height:3, borderRadius:2, background:T.border, overflow:"hidden"
               }}>
@@ -846,7 +846,7 @@ function DealBibleTab() {
               <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:8, alignItems:"center", padding:"5px 0", borderBottom:`1px solid ${T.border}` }}>
                 <div style={{ fontSize:9, color:T.textMid, fontFamily:T.mono }}>{label}</div>
                 <div style={{ fontSize:9, color:T.amber, fontFamily:T.mono, fontWeight:600 }}>{val}</div>
-                <div style={{ fontSize:8, color:T.textDim }}>→</div>
+                <div style={{ fontSize: 9, color:T.textDim }}>→</div>
                 <div style={{ fontSize:9, color:T.cyan, fontFamily:T.mono }}>{current}</div>
               </div>
             ))}
@@ -868,7 +868,7 @@ function DealBibleTab() {
               <div key={i} style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:8, alignItems:"center", padding:"5px 0", borderBottom:`1px solid ${T.border}` }}>
                 <div style={{ fontSize:9, color:T.textMid, fontFamily:T.mono }}>{label}</div>
                 <div style={{ fontSize:9, color:T.text, fontFamily:T.mono, fontWeight:600 }}>{val}</div>
-                <div style={{ fontSize:8, color:T.textDim }}>{note}</div>
+                <div style={{ fontSize: 9, color:T.textDim }}>{note}</div>
               </div>
             ))}
           </div>
@@ -890,14 +890,14 @@ function DealBibleTab() {
               <div key={i} style={{ display:"grid", gridTemplateColumns:"80px 90px 1fr 1fr 40px 120px", gap:10, alignItems:"center", padding:"8px 0", borderBottom:`1px solid ${T.border}` }}>
                 <div style={{ fontSize:9, color:T.amber, fontFamily:T.mono, fontWeight:700 }}>{d.date}</div>
                 <div style={{
-                  fontSize:8, fontFamily:T.mono, fontWeight:700,
+                  fontSize: 9, fontFamily:T.mono, fontWeight:700,
                   color: {ACQUISITION:T.blue,FINANCING:T.purple,CAPEX:T.green,STRATEGY:T.amber,LEASING:T.cyan,EXIT:T.red,"EXIT TIMING":T.red}[d.type] || T.textDim,
                   textAlign:"center",
                 }}>{d.type}</div>
                 <div style={{ fontSize:9, color:T.textMid }}>{d.decision}</div>
                 <div style={{ fontSize:9, color:T.text }}>{d.outcome}</div>
                 <div style={{ fontSize:9, color:T.green, fontFamily:T.mono, textAlign:"center" }}>{d.jedi}</div>
-                <div style={{ fontSize:8, color:T.green, fontFamily:T.mono }}>{d.status}</div>
+                <div style={{ fontSize: 9, color:T.green, fontFamily:T.mono }}>{d.status}</div>
               </div>
             ))}
           </div>
@@ -1073,24 +1073,24 @@ export function M22PostCloseIntelligence() {
             { label:"Hold", value:DEAL.holdPeriod },
           ].map(k => (
             <div key={k.label}>
-              <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono }}>{k.label}</div>
+              <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono }}>{k.label}</div>
               <div style={{ fontSize:10, color:T.text, fontFamily:T.mono, fontWeight:600 }}>{k.value}</div>
             </div>
           ))}
         </div>
         <div style={{ marginLeft:"auto", display:"flex", gap:16, alignItems:"center" }}>
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono }}>JEDI @ UW</div>
+            <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono }}>JEDI @ UW</div>
             <div style={{ fontSize:14, fontWeight:700, color:T.amber, fontFamily:T.mono }}>{DEAL.jediScoreAtUnderwriting}</div>
           </div>
           <div style={{ fontSize:16, color:T.green }}>→</div>
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono }}>JEDI NOW</div>
+            <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono }}>JEDI NOW</div>
             <div style={{ fontSize:14, fontWeight:700, color:T.green, fontFamily:T.mono }}>{DEAL.jediScoreNow}</div>
           </div>
           <div style={{ width:1, height:20, background:T.border }} />
           <div style={{ textAlign:"center" }}>
-            <div style={{ fontSize:8, color:T.textDim, fontFamily:T.mono }}>ELAPSED</div>
+            <div style={{ fontSize: 9, color:T.textDim, fontFamily:T.mono }}>ELAPSED</div>
             <div style={{ fontSize:10, color:T.cyan, fontFamily:T.mono, fontWeight:700 }}>{elapsed}</div>
           </div>
           <div style={{

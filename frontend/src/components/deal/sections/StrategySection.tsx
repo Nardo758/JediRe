@@ -340,13 +340,13 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: BT2_TEXT_S, letterSpacing: 0.8, fontFamily: BT2_MONO_S }}>STRATEGY ARBITRAGE</span>
-          <span style={{ fontSize: 8, color: BT2_SEC_S, fontFamily: BT2_MONO_S }}>M08 | BTS · Flip · Rental · STR</span>
+          <span style={{ fontSize: 9, color: BT2_SEC_S, fontFamily: BT2_MONO_S }}>M08 | BTS · Flip · Rental · STR</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {isLiveData ? (
-            <span style={{ fontSize: 7, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 5px', fontFamily: BT2_MONO_S }}>LIVE</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 5px', fontFamily: BT2_MONO_S }}>LIVE</span>
           ) : (
-            <span style={{ fontSize: 7, fontWeight: 700, color: BT2_AMBER_S, background: '#1a1200', border: `1px solid ${BT2_AMBER_S}40`, padding: '1px 5px', fontFamily: BT2_MONO_S }}>SAMPLE</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT2_AMBER_S, background: '#1a1200', border: `1px solid ${BT2_AMBER_S}40`, padding: '1px 5px', fontFamily: BT2_MONO_S }}>SAMPLE</span>
           )}
         </div>
       </div>
@@ -361,7 +361,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              fontFamily: BT2_MONO_S, fontSize: 8, fontWeight: activeTab === tab.id ? 700 : 500,
+              fontFamily: BT2_MONO_S, fontSize: 9, fontWeight: activeTab === tab.id ? 700 : 500,
               padding: '0 14px', background: 'transparent', border: 'none',
               borderBottom: activeTab === tab.id ? `2px solid ${BT2_PURPLE}` : '2px solid transparent',
               color: activeTab === tab.id ? BT2_PURPLE : BT2_SEC_S,
@@ -1524,7 +1524,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
                   <th key={s.strategy_id} className="py-2 px-3 text-center">
                     <div className="flex flex-col items-center gap-1">
                       {isWin && (
-                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full tracking-wider"
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full tracking-wider"
                           style={{ background: '#F5A623', color: '#0A0E17' }}>
                           ★ TOP
                         </span>
@@ -1556,7 +1556,7 @@ const M08ScoreMatrix: React.FC<{ scores: M08StrategyScore[]; onRecalculate: () =
               <td className="py-2 px-3 font-mono text-[#8B95A5] font-bold text-[10px] tracking-widest">GATE</td>
               {primaryScores.map(s => (
                 <td key={s.strategy_id} className="py-2 px-3 text-center">
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] font-bold border ${
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                     s.gate_result === 'PASS'
                       ? 'bg-emerald-900/20 text-emerald-300 border-emerald-400/30'
                       : 'bg-red-900/20 text-red-400 border-red-400/30'
@@ -1844,7 +1844,7 @@ const ROIComparison: React.FC<{ scores: M08StrategyScore[] }> = ({ scores }) => 
                 <div className="text-base font-bold font-mono" style={{ color: d.color }}>
                   {d.hasData ? `${d.value.toFixed(1)}${d.unit}` : '—'}
                 </div>
-                <div className="text-[8px] font-mono text-[#4a5568] mt-0.5">{d.label}</div>
+                <div className="text-[9px] font-mono text-[#4a5568] mt-0.5">{d.label}</div>
               </div>
             ))}
           </div>

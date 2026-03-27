@@ -1,4 +1,5 @@
 import React from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 import { DealSidebarProps } from '../../types';
 import { Badge } from '../shared/Badge';
 
@@ -98,12 +99,12 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
 
   const handleModuleClick = (moduleName: string) => {
     const unlocked = isModuleUnlocked(moduleName);
-    
+
     if (!unlocked) {
       alert('This module will be available once the analysis is complete.');
       return;
     }
-    
+
     if (isModuleEnabled(moduleName)) {
       onModuleChange(moduleName);
     } else {
@@ -112,12 +113,12 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
   };
 
   return (
-    <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
+    <div className="w-64 flex flex-col" style={{ background: BT.bg.panel, borderRight: `1px solid ${BT.border.subtle}`, fontFamily: BT.font.mono }}>
       <div className="flex-1 overflow-y-auto p-4">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        <h3 style={{ fontSize: 9, fontWeight: 600, color: BT.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>
           {isOwned ? 'Asset Modules' : 'Deal Modules'}
         </h3>
-        
+
         <div className="space-y-1">
           {visibleModules.map(moduleName => {
             const enabled = isModuleEnabled(moduleName);
@@ -132,29 +133,29 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
                 key={moduleName}
                 onClick={() => handleModuleClick(moduleName)}
                 disabled={isLocked}
-                className={`
-                  w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition
-                  ${isActive 
-                    ? 'bg-blue-50 text-blue-700 font-semibold' 
-                    : enabled && unlocked
-                      ? 'text-gray-700 hover:bg-gray-50'
-                      : 'text-gray-400 cursor-not-allowed'
-                  }
-                `}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left transition"
+                style={{
+                  background: isActive ? BT.bg.active : 'transparent',
+                  color: isActive ? BT.text.cyan : enabled && unlocked ? BT.text.secondary : BT.text.muted,
+                  fontWeight: isActive ? 600 : 400,
+                  borderRadius: 0,
+                  borderLeft: isActive ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+                  cursor: isLocked ? 'not-allowed' : 'pointer',
+                }}
               >
                 <span className="text-xl">{moduleIcons[moduleName] || '📋'}</span>
                 <div className="flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm">{moduleLabels[moduleName] || moduleName}</span>
+                    <span style={{ fontSize: 10 }}>{moduleLabels[moduleName] || moduleName}</span>
                     <div className="flex items-center gap-1">
                       {badge}
                       {!enabled && upgradeMsg && (
-                        <span className="text-xs text-blue-600">🔒</span>
+                        <span style={{ fontSize: 9, color: BT.text.cyan }}>🔒</span>
                       )}
                     </div>
                   </div>
                   {!enabled && upgradeMsg && (
-                    <span className="text-xs text-gray-500">{upgradeMsg}</span>
+                    <span style={{ fontSize: 9, color: BT.text.muted }}>{upgradeMsg}</span>
                   )}
                 </div>
               </button>
@@ -163,24 +164,24 @@ export const DealSidebar: React.FC<DealSidebarProps> = ({
         </div>
       </div>
 
-      <div className="p-4 border-t border-gray-200 bg-gray-50">
-        <div className="text-xs text-gray-600 space-y-1">
+      <div className="p-4" style={{ borderTop: `1px solid ${BT.border.subtle}`, background: BT.bg.panelAlt }}>
+        <div className="space-y-1" style={{ fontSize: 9, color: BT.text.secondary }}>
           {isOwned && (
             <div className="flex justify-between mb-2">
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+              <span style={{ padding: '2px 6px', borderRadius: 2, fontSize: 9, fontWeight: 700, background: `${BT.text.green}22`, color: BT.text.green, letterSpacing: 0.5 }}>
                 Owned Asset
               </span>
             </div>
           )}
           <div className="flex justify-between">
             <span>Created:</span>
-            <span className="font-medium">
+            <span style={{ fontWeight: 500 }}>
               {new Date(deal.createdAt).toLocaleDateString()}
             </span>
           </div>
           <div className="flex justify-between">
             <span>Last Updated:</span>
-            <span className="font-medium">
+            <span style={{ fontWeight: 500 }}>
               {new Date(deal.updatedAt).toLocaleDateString()}
             </span>
           </div>

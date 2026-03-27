@@ -89,11 +89,11 @@ interface DealTab extends Tab {
   moduleId?: ModuleId;
 }
 
-const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
-  by_right: { label: 'By-Right', color: 'bg-green-900/20 text-green-300' },
-  overlay_bonus: { label: 'Overlay Bonus', color: 'bg-blue-900/20 text-blue-300' },
-  variance: { label: 'Variance', color: 'bg-amber-900/20 text-amber-300' },
-  rezone: { label: 'Full Rezone', color: 'bg-red-900/20 text-red-300' },
+const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; bg: string; color: string }> = {
+  by_right: { label: 'By-Right', bg: BT.bg.active, color: BT.text.green },
+  overlay_bonus: { label: 'Overlay Bonus', bg: BT.bg.active, color: BT.text.cyan },
+  variance: { label: 'Variance', bg: BT.bg.active, color: BT.text.amber },
+  rezone: { label: 'Full Rezone', bg: BT.bg.active, color: BT.text.red },
 };
 
 function normalizePath(raw: string): DevelopmentPath | null {
@@ -113,7 +113,7 @@ function DevPathBadge() {
   if (!key) return null;
   const cfg = DEV_PATH_CONFIG[key];
   return (
-    <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
+    <span className="text-xs font-medium px-3 py-1" style={{ borderRadius: 2, background: cfg.bg, color: cfg.color }}>
       {cfg.label}
     </span>
   );
@@ -131,7 +131,7 @@ interface ScreenProps {
 // ─── Module-level screen wrappers (stable references — prevents remount blink) ──
 const CollaborationSection = (props: ScreenProps) => {
   const dId = props?.dealId;
-  if (!dId) return <div className="p-4 text-sm text-slate-500">No deal selected</div>;
+  if (!dId) return <div className="p-4 text-sm" style={{ color: BT.text.secondary }}>No deal selected</div>;
   return (
     <div className="p-4 space-y-4">
       <DealTeamPanel dealId={dId} />
@@ -173,7 +173,7 @@ const OverviewScreen = (props: ScreenProps) => {
               onClick={() => setSecondaryTab(secondaryTab === t.id ? null : t.id)}
               style={{
                 fontFamily: "'JetBrains Mono','Fira Code',monospace",
-                fontSize: 8, fontWeight: secondaryTab === t.id ? 700 : 500,
+                fontSize: 9, fontWeight: secondaryTab === t.id ? 700 : 500,
                 padding: '5px 12px',
                 background: 'transparent',
                 border: 'none',
@@ -277,7 +277,7 @@ const ExecutionScreen = (props: ScreenProps) => {
             key={t.id}
             onClick={() => setActive(t.id)}
             style={{
-              fontFamily: BT.font.mono, fontSize: 8, fontWeight: active === t.id ? 700 : 500,
+              fontFamily: BT.font.mono, fontSize: 9, fontWeight: active === t.id ? 700 : 500,
               padding: '0 14px', background: 'transparent', border: 'none',
               borderBottom: active === t.id ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
               color: active === t.id ? BT.text.cyan : BT.text.secondary,
@@ -536,8 +536,8 @@ const DealDetailPage: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-slate-500">Loading deal...</span>
+          <div className="w-8 h-8 animate-spin" style={{ borderRadius: '50%', border: `2px solid ${BT.border.subtle}`, borderTop: `2px solid ${BT.text.cyan}` }} />
+          <span className="text-sm" style={{ color: BT.text.secondary }}>Loading deal...</span>
         </div>
       </div>
     );
@@ -546,14 +546,15 @@ const DealDetailPage: React.FC = () => {
   if (!deal) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <div className="text-6xl text-slate-300">
+        <div className="text-6xl" style={{ color: BT.text.muted }}>
           <Building2 size={64} />
         </div>
-        <h2 className="text-xl font-semibold text-slate-700">Deal not found</h2>
-        <p className="text-sm text-slate-500">This deal may have been deleted or you don't have access.</p>
+        <h2 className="text-xl font-semibold" style={{ color: BT.text.primary }}>Deal not found</h2>
+        <p className="text-sm" style={{ color: BT.text.secondary }}>This deal may have been deleted or you don't have access.</p>
         <button
           onClick={() => navigate('/deals')}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+          className="px-4 py-2 transition-colors text-sm font-medium"
+          style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
         >
           Back to Deal Capsules
         </button>
@@ -637,7 +638,7 @@ const DealDetailPage: React.FC = () => {
                 type="text"
                 placeholder="⌕  SEARCH DEAL..."
                 style={{
-                  fontFamily: MONO, fontSize: 8, fontWeight: 500,
+                  fontFamily: MONO, fontSize: 9, fontWeight: 500,
                   background: '#0D1117', color: TEXT,
                   border: `1px solid ${BORDER}`,
                   padding: '3px 10px', width: 160, letterSpacing: 0.4,
@@ -674,8 +675,8 @@ const DealDetailPage: React.FC = () => {
           const lat = centroid ? centroid[1] : 33.749;
           const lng = centroid ? centroid[0] : -84.388;
           return (
-            <div className="fixed inset-0 bg-black bg-opacity-70 z-50 flex items-center justify-center p-6">
-              <div className="rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.7)' }}>
+              <div className="max-w-2xl w-full max-h-[85vh] overflow-y-auto" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-bold text-[#E8E6E1]">Define Trade Area</h2>

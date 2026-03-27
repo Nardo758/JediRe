@@ -1,6 +1,16 @@
 import { Building2, Home, DollarSign, TrendingUp, Newspaper, Calendar } from 'lucide-react';
 import { useAppStore } from '@/store';
 import { ModuleType } from '@/types';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const MODULE_COLORS: Record<string, string> = {
+  blue: BT.text.cyan,
+  indigo: BT.text.cyan,
+  green: BT.text.green,
+  purple: BT.text.purple,
+  orange: BT.text.orange,
+  pink: BT.text.red,
+};
 
 const modules: { type: ModuleType; label: string; icon: any; color: string }[] = [
   { type: 'zoning', label: 'Zoning', icon: Building2, color: 'blue' },
@@ -19,32 +29,38 @@ export default function ModuleToggle() {
       {modules.map((module) => {
         const Icon = module.icon;
         const isActive = activeModules.includes(module.type);
+        const accentColor = MODULE_COLORS[module.color] || BT.text.cyan;
 
         return (
           <button
             key={module.type}
             onClick={() => toggleModule(module.type)}
-            className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
-              isActive
-                ? `bg-${module.color}-50 border-2 border-${module.color}-500`
-                : 'bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
-            }`}
+            className="w-full flex items-center gap-3 p-3 transition-all"
+            style={{
+              borderRadius: 0,
+              background: isActive ? `${accentColor}11` : BT.bg.panelAlt,
+              border: `2px solid ${isActive ? accentColor : BT.border.subtle}`,
+            }}
           >
             <Icon
-              className={`w-5 h-5 ${
-                isActive ? `text-${module.color}-600` : 'text-gray-400'
-              }`}
+              className="w-5 h-5"
+              style={{ color: isActive ? accentColor : BT.text.muted }}
             />
             <span
-              className={`font-medium ${
-                isActive ? `text-${module.color}-900` : 'text-gray-600'
-              }`}
+              className="font-medium"
+              style={{
+                color: isActive ? BT.text.primary : BT.text.secondary,
+                fontFamily: BT.font.label,
+              }}
             >
               {module.label}
             </span>
             {isActive && (
               <div className="ml-auto">
-                <div className={`w-2 h-2 bg-${module.color}-500 rounded-full`}></div>
+                <div
+                  className="w-2 h-2"
+                  style={{ background: accentColor, borderRadius: '50%' }}
+                ></div>
               </div>
             )}
           </button>

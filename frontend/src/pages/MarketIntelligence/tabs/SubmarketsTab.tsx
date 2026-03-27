@@ -191,13 +191,13 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
                   <span style={{ fontSize: 9, color: T.muted }}>☐</span>
                 </th>
                 <th style={{ padding: '6px 10px', textAlign: 'left', borderBottom: `1px solid ${T.border}`, minWidth: 120, position: 'sticky', left: 0, background: T.dimBg, zIndex: 10 }}>
-                  <span style={{ fontSize: 7, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>SUBMARKET</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>SUBMARKET</span>
                 </th>
                 {TABLE_COLUMNS.map(col => (
                   <th key={col.key} style={{ padding: '6px 8px', textAlign: 'center', borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                      <span style={{ fontSize: 7, fontWeight: 700, color: col.isNew ? T.violet : T.amber, letterSpacing: 1.5, ...mono }}>{col.label}</span>
-                      <span style={{ fontSize: 7, color: col.isNew ? T.violet + '99' : T.muted, ...mono }}>({col.code})</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: col.isNew ? T.violet : T.amber, letterSpacing: 1.5, ...mono }}>{col.label}</span>
+                      <span style={{ fontSize: 9, color: col.isNew ? T.violet + '99' : T.muted, ...mono }}>({col.code})</span>
                     </div>
                   </th>
                 ))}
@@ -223,7 +223,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
                         {sub.name}
                       </button>
                       {sub._live && (
-                        <span style={{ fontSize: 7, fontWeight: 700, color: T.green, background: T.green + '18', padding: '1px 4px', borderRadius: 2, ...mono }}>LIVE</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '18', padding: '1px 4px', borderRadius: 2, ...mono }}>LIVE</span>
                       )}
                     </div>
                   </td>
@@ -241,7 +241,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
         {/* AI VERDICT */}
         <div style={{ padding: '8px 14px', background: T.cyan + '08', borderTop: `1px solid ${T.border}`, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ width: 22, height: 22, borderRadius: '50%', background: T.cyan + '20', border: `1px solid ${T.cyan}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
-            <span style={{ fontSize: 7, fontWeight: 700, color: T.cyan, ...mono }}>AI</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.cyan, ...mono }}>AI</span>
           </div>
           <div>
             <span style={{ fontSize: 9, fontWeight: 700, color: T.cyan, letterSpacing: 1, ...mono }}>AI VERDICT · </span>
@@ -466,7 +466,7 @@ const SubmarketsTab: React.FC<SubmarketsTabProps> = ({ marketId, summary }) => {
                             <div style={{ width: '100%', background: T.border, borderRadius: 2, height: `${pct}%`, minHeight: 4 }}>
                               <div style={{ width: '100%', height: '100%', background: chart.color, borderRadius: 2, opacity: 0.7 }} />
                             </div>
-                            <span style={{ fontSize: 8, color: T.secondary, ...mono, textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
+                            <span style={{ fontSize: 9, color: T.secondary, ...mono, textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub.name}</span>
                           </div>
                         );
                       })}

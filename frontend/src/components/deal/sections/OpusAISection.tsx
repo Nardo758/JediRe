@@ -12,6 +12,7 @@ import { opusService } from '../../../services/opus.service';
 import { OpusDealContext, OpusRecommendationResult, OpusRecommendation } from '../../../types/opus.types';
 
 import { apiClient } from '@/services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 import {
   competitionData as mockCompetitionData,
@@ -56,8 +57,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '📊',
     description: 'Financial analysis, returns, and risk management',
     focus: ['Financial viability', 'Return metrics', 'Cash flow', 'Risk assessment', 'Value creation'],
-    color: 'blue',
-    gradient: 'from-blue-500 to-blue-600'
+    color: BT.text.cyan,
+    gradient: BT.text.cyan
   },
   accountant: {
     id: 'accountant',
@@ -65,8 +66,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '💰',
     description: 'Numbers deep-dive, tax implications, and GAAP compliance',
     focus: ['Financial details', 'Tax strategy', 'Accounting standards', 'Audit readiness', 'Cost analysis'],
-    color: 'green',
-    gradient: 'from-green-500 to-green-600'
+    color: BT.text.green,
+    gradient: BT.text.green
   },
   marketing: {
     id: 'marketing',
@@ -74,8 +75,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '📈',
     description: 'Market positioning, branding, and lease-up strategy',
     focus: ['Market positioning', 'Branding', 'Lease-up', 'Tenant attraction', 'Competitive advantage'],
-    color: 'purple',
-    gradient: 'from-purple-500 to-purple-600'
+    color: BT.text.purple,
+    gradient: BT.text.purple
   },
   developer: {
     id: 'developer',
@@ -83,8 +84,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '🏗️',
     description: 'Construction feasibility, value-add, and renovations',
     focus: ['Construction quality', 'Value-add potential', 'Renovation ROI', 'Development risk', 'Timeline'],
-    color: 'orange',
-    gradient: 'from-orange-500 to-orange-600'
+    color: BT.text.orange,
+    gradient: BT.text.orange
   },
   legal: {
     id: 'legal',
@@ -92,8 +93,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '⚖️',
     description: 'Contracts, compliance, and legal risk assessment',
     focus: ['Contract review', 'Regulatory compliance', 'Legal risks', 'Liability', 'Documentation'],
-    color: 'gray',
-    gradient: 'from-gray-600 to-gray-700'
+    color: BT.text.secondary,
+    gradient: BT.text.secondary
   },
   lender: {
     id: 'lender',
@@ -101,8 +102,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '🏦',
     description: 'Debt perspective, underwriting, and financing',
     focus: ['Creditworthiness', 'Collateral value', 'Debt service', 'LTV ratio', 'Market conditions'],
-    color: 'indigo',
-    gradient: 'from-indigo-500 to-indigo-600'
+    color: BT.text.cyan,
+    gradient: BT.text.cyan
   },
   acquisitions: {
     id: 'acquisitions',
@@ -110,8 +111,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '🎯',
     description: 'Deal sourcing, negotiations, and acquisition strategy',
     focus: ['Deal structure', 'Pricing strategy', 'Negotiation leverage', 'Market timing', 'Competition'],
-    color: 'red',
-    gradient: 'from-red-500 to-red-600'
+    color: BT.text.red,
+    gradient: BT.text.red
   },
   'asset-manager': {
     id: 'asset-manager',
@@ -119,8 +120,8 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     icon: '📉',
     description: 'Operations optimization and NOI maximization',
     focus: ['Operational efficiency', 'NOI optimization', 'Expense control', 'Revenue growth', 'Performance'],
-    color: 'teal',
-    gradient: 'from-teal-500 to-teal-600'
+    color: BT.text.cyan,
+    gradient: BT.text.cyan
   }
 };
 
@@ -239,14 +240,14 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
       {/* Header with Mode Indicator */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className={`px-4 py-2 rounded-full text-sm font-semibold ${
-            isPipeline 
-              ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white' 
-              : 'bg-gradient-to-r from-green-500 to-green-600 text-white'
-          }`}>
+          <div className="px-4 py-2 text-sm font-semibold" style={{
+            background: isPipeline ? BT.text.cyan : BT.text.green,
+            color: BT.bg.terminal,
+            borderRadius: 0
+          }}>
             {isPipeline ? '🎯 Acquisition Analysis' : '🏢 Performance Analysis'}
           </div>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm" style={{ color: BT.text.secondary }}>
             Powered by Claude Opus
           </div>
         </div>
@@ -255,13 +256,15 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
           <button
             onClick={() => analyzeWithRole(selectedRole)}
             disabled={loading}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+            style={{ color: BT.text.cyan, background: `${BT.text.cyan}11`, border: `1px solid ${BT.border.medium}`, borderRadius: 0 }}
           >
             {loading ? '🔄 Analyzing...' : '🔄 Re-analyze'}
           </button>
           <button
             onClick={exportToPDF}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium transition-colors"
+            style={{ color: BT.text.primary, background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 0 }}
           >
             📄 Export PDF
           </button>
@@ -361,8 +364,8 @@ interface RoleSelectorProps {
 
 const RoleSelector: React.FC<RoleSelectorProps> = ({ selectedRole, onRoleChange, disabled }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">
+    <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+      <h3 className="text-lg font-bold mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
         Select AI Analyst Role
       </h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -371,22 +374,20 @@ const RoleSelector: React.FC<RoleSelectorProps> = ({ selectedRole, onRoleChange,
             key={persona.id}
             onClick={() => onRoleChange(persona.id)}
             disabled={disabled}
-            className={`
-              relative p-4 rounded-lg border-2 transition-all duration-200
-              ${selectedRole === persona.id
-                ? `border-${persona.color}-500 bg-${persona.color}-50`
-                : 'border-gray-200 bg-white hover:border-gray-300'
-              }
-              ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            `}
+            className={`relative p-4 transition-all duration-200 ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            style={{
+              borderRadius: 0,
+              border: `2px solid ${selectedRole === persona.id ? persona.color : BT.border.subtle}`,
+              background: selectedRole === persona.id ? `${persona.color}11` : BT.bg.panelAlt,
+            }}
           >
             <div className="text-3xl mb-2">{persona.icon}</div>
-            <div className="text-sm font-semibold text-gray-900">{persona.name}</div>
-            <div className="text-xs text-gray-500 mt-1 line-clamp-2">{persona.description}</div>
-            
+            <div className="text-sm font-semibold" style={{ color: BT.text.primary }}>{persona.name}</div>
+            <div className="text-xs mt-1 line-clamp-2" style={{ color: BT.text.secondary }}>{persona.description}</div>
+
             {selectedRole === persona.id && (
-              <div className={`absolute top-2 right-2 w-6 h-6 bg-gradient-to-br ${persona.gradient} rounded-full flex items-center justify-center`}>
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center" style={{ background: persona.color, borderRadius: 0 }}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="white">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
@@ -404,21 +405,21 @@ interface LoadingStateProps {
 
 const LoadingState: React.FC<LoadingStateProps> = ({ persona }) => {
   return (
-    <div className={`bg-gradient-to-br ${persona.gradient} rounded-xl p-8 text-white`}>
+    <div className="p-8" style={{ background: persona.color, borderRadius: 0, color: BT.bg.terminal }}>
       <div className="flex items-center justify-center gap-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-white border-t-transparent"></div>
+        <div className="animate-spin h-12 w-12" style={{ border: `4px solid ${BT.bg.terminal}`, borderTopColor: 'transparent', borderRadius: 0 }}></div>
         <div>
           <div className="text-2xl font-bold mb-1">
             {persona.icon} {persona.name} Analyzing...
           </div>
-          <div className="text-white/80">
+          <div style={{ opacity: 0.8 }}>
             Reviewing all deal data through {persona.name.toLowerCase()} lens
           </div>
         </div>
       </div>
       <div className="mt-6 grid grid-cols-2 md:grid-cols-5 gap-2">
         {persona.focus.map((focus, i) => (
-          <div key={i} className="text-sm text-white/60 animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>
+          <div key={i} className="text-sm animate-pulse" style={{ opacity: 0.6, animationDelay: `${i * 100}ms` }}>
             ✓ {focus}
           </div>
         ))}
@@ -434,15 +435,16 @@ interface ErrorStateProps {
 
 const ErrorState: React.FC<ErrorStateProps> = ({ error, onRetry }) => {
   return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+    <div className="p-6" style={{ background: `${BT.text.red}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
       <div className="flex items-start gap-4">
         <div className="text-4xl">⚠️</div>
         <div className="flex-1">
-          <h3 className="text-lg font-bold text-red-900 mb-2">Analysis Failed</h3>
-          <p className="text-red-700 mb-4">{error}</p>
+          <h3 className="text-lg font-bold mb-2" style={{ color: BT.text.red }}>Analysis Failed</h3>
+          <p className="mb-4" style={{ color: BT.text.red }}>{error}</p>
           <button
             onClick={onRetry}
-            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+            className="px-4 py-2 text-sm font-medium transition-colors"
+            style={{ color: BT.bg.terminal, background: BT.text.red, borderRadius: 0 }}
           >
             Try Again
           </button>
@@ -469,14 +471,14 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
 }) => {
   const getRecommendationConfig = (rec: OpusRecommendation) => {
     const configs: Record<OpusRecommendation, { label: string; color: string; gradient: string; emoji: string }> = {
-      'strong-buy': { label: 'STRONG BUY', color: 'green', gradient: 'from-green-500 to-green-600', emoji: '🚀' },
-      'buy': { label: 'BUY', color: 'green', gradient: 'from-green-400 to-green-500', emoji: '✅' },
-      'hold': { label: 'HOLD', color: 'yellow', gradient: 'from-yellow-400 to-yellow-500', emoji: '⏸️' },
-      'pass': { label: 'PASS', color: 'orange', gradient: 'from-orange-400 to-orange-500', emoji: '⚠️' },
-      'strong-pass': { label: 'STRONG PASS', color: 'red', gradient: 'from-red-500 to-red-600', emoji: '❌' },
-      'optimize': { label: 'OPTIMIZE', color: 'blue', gradient: 'from-blue-500 to-blue-600', emoji: '⚡' },
-      'hold-asset': { label: 'HOLD ASSET', color: 'teal', gradient: 'from-teal-400 to-teal-500', emoji: '🏢' },
-      'sell': { label: 'SELL', color: 'purple', gradient: 'from-purple-500 to-purple-600', emoji: '💸' }
+      'strong-buy': { label: 'STRONG BUY', color: BT.text.green, gradient: BT.text.green, emoji: '🚀' },
+      'buy': { label: 'BUY', color: BT.text.green, gradient: BT.text.green, emoji: '✅' },
+      'hold': { label: 'HOLD', color: BT.text.amber, gradient: BT.text.amber, emoji: '⏸️' },
+      'pass': { label: 'PASS', color: BT.text.orange, gradient: BT.text.orange, emoji: '⚠️' },
+      'strong-pass': { label: 'STRONG PASS', color: BT.text.red, gradient: BT.text.red, emoji: '❌' },
+      'optimize': { label: 'OPTIMIZE', color: BT.text.cyan, gradient: BT.text.cyan, emoji: '⚡' },
+      'hold-asset': { label: 'HOLD ASSET', color: BT.text.cyan, gradient: BT.text.cyan, emoji: '🏢' },
+      'sell': { label: 'SELL', color: BT.text.purple, gradient: BT.text.purple, emoji: '💸' }
     };
     return configs[rec] || configs.hold;
   };
@@ -484,7 +486,7 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
   const recConfig = getRecommendationConfig(analysis.recommendation);
 
   return (
-    <div className={`bg-gradient-to-br ${recConfig.gradient} rounded-xl text-white overflow-hidden`}>
+    <div className="overflow-hidden" style={{ background: recConfig.color, borderRadius: 0, color: BT.bg.terminal }}>
       <div className="p-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -501,16 +503,16 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
             </div>
 
             <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-                <div className="text-sm text-white/70 mb-1">Deal Score</div>
+              <div className="p-3" style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 0 }}>
+                <div className="text-sm mb-1" style={{ opacity: 0.7 }}>Deal Score</div>
                 <div className="text-2xl font-bold">{analysis.score.toFixed(1)}/10</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-                <div className="text-sm text-white/70 mb-1">Confidence</div>
+              <div className="p-3" style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 0 }}>
+                <div className="text-sm mb-1" style={{ opacity: 0.7 }}>Confidence</div>
                 <div className="text-2xl font-bold">{analysis.confidence}%</div>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
-                <div className="text-sm text-white/70 mb-1">Model</div>
+              <div className="p-3" style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 0 }}>
+                <div className="text-sm mb-1" style={{ opacity: 0.7 }}>Model</div>
                 <div className="text-xs font-medium mt-1">Claude Opus</div>
               </div>
             </div>
@@ -519,14 +521,16 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
           <div className="flex gap-2">
             <button
               onClick={onCopy}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+              className="p-2 transition-colors"
+              style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 0 }}
               title="Copy to clipboard"
             >
               📋
             </button>
             <button
               onClick={onToggle}
-              className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+              className="p-2 transition-colors"
+              style={{ background: 'rgba(0,0,0,0.2)', borderRadius: 0 }}
             >
               {expanded ? '▼' : '▶'}
             </button>
@@ -534,9 +538,9 @@ const RecommendationCard: React.FC<RecommendationCardProps> = ({
         </div>
 
         {expanded && (
-          <div className="mt-4 pt-4 border-t border-white/20">
+          <div className="mt-4 pt-4" style={{ borderTop: '1px solid rgba(0,0,0,0.2)' }}>
             <div className="prose prose-invert max-w-none">
-              <p className="text-white/90 leading-relaxed whitespace-pre-wrap">
+              <p className="leading-relaxed whitespace-pre-wrap" style={{ opacity: 0.9 }}>
                 {analysis.reasoning || analysis.executiveSummary}
               </p>
             </div>
@@ -556,21 +560,23 @@ interface InsightsCardProps {
 
 const InsightsCard: React.FC<InsightsCardProps> = ({ insights, persona, expanded, onToggle }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
-      <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+    <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+      <div
+        className="p-6 cursor-pointer flex items-center justify-between transition-colors"
         onClick={onToggle}
+        onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 bg-gradient-to-br ${persona.gradient} rounded-lg flex items-center justify-center text-2xl`}>
+          <div className="w-12 h-12 flex items-center justify-center text-2xl" style={{ background: persona.color, borderRadius: 0 }}>
             💡
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Key Insights</h3>
-            <p className="text-sm text-gray-500">{insights.length} critical findings</p>
+            <h3 className="text-lg font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Key Insights</h3>
+            <p className="text-sm" style={{ color: BT.text.secondary }}>{insights.length} critical findings</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button style={{ color: BT.text.muted }}>
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -578,11 +584,11 @@ const InsightsCard: React.FC<InsightsCardProps> = ({ insights, persona, expanded
       {expanded && (
         <div className="px-6 pb-6 space-y-3">
           {insights.map((insight, i) => (
-            <div key={i} className="flex gap-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
-              <div className={`flex-shrink-0 w-6 h-6 bg-gradient-to-br ${persona.gradient} rounded-full flex items-center justify-center text-white text-xs font-bold`}>
+            <div key={i} className="flex gap-3 p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+              <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-xs font-bold" style={{ background: persona.color, color: BT.bg.terminal, borderRadius: 0 }}>
                 {i + 1}
               </div>
-              <div className="flex-1 text-gray-700">{insight}</div>
+              <div className="flex-1" style={{ color: BT.text.secondary }}>{insight}</div>
             </div>
           ))}
         </div>
@@ -601,32 +607,34 @@ interface RisksCardProps {
 const RisksCard: React.FC<RisksCardProps> = ({ risks, persona, expanded, onToggle }) => {
   const getRiskColor = (level: string) => {
     const colors: Record<string, string> = {
-      critical: 'red',
-      high: 'orange',
-      medium: 'yellow',
-      low: 'green'
+      critical: BT.text.red,
+      high: BT.text.orange,
+      medium: BT.text.amber,
+      low: BT.text.green
     };
-    return colors[level] || 'gray';
+    return colors[level] || BT.text.secondary;
   };
 
   const sortedRisks = [...risks].sort((a, b) => (b.priority || 5) - (a.priority || 5));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
-      <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+    <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+      <div
+        className="p-6 cursor-pointer flex items-center justify-between transition-colors"
         onClick={onToggle}
+        onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center text-2xl">
+          <div className="w-12 h-12 flex items-center justify-center text-2xl" style={{ background: BT.text.red, borderRadius: 0 }}>
             ⚠️
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Risks</h3>
-            <p className="text-sm text-gray-500">{risks.length} identified risks</p>
+            <h3 className="text-lg font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Risks</h3>
+            <p className="text-sm" style={{ color: BT.text.secondary }}>{risks.length} identified risks</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button style={{ color: BT.text.muted }}>
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -634,35 +642,35 @@ const RisksCard: React.FC<RisksCardProps> = ({ risks, persona, expanded, onToggl
       {expanded && (
         <div className="px-6 pb-6 space-y-3">
           {sortedRisks.map((risk, i) => (
-            <div key={risk.id || i} className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="p-4 bg-gray-50">
+            <div key={risk.id || i} className="overflow-hidden" style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="p-4" style={{ background: BT.bg.panelAlt }}>
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full bg-${getRiskColor(risk.level)}-100 text-${getRiskColor(risk.level)}-700`}>
+                    <span className="px-2 py-1 text-xs font-semibold" style={{ background: `${getRiskColor(risk.level)}22`, color: getRiskColor(risk.level), borderRadius: 0 }}>
                       {risk.level?.toUpperCase()}
                     </span>
-                    <span className="text-xs text-gray-500">{risk.category}</span>
+                    <span className="text-xs" style={{ color: BT.text.secondary }}>{risk.category}</span>
                   </div>
-                  <div className="text-xs font-medium text-gray-500">
+                  <div className="text-xs font-medium" style={{ color: BT.text.secondary }}>
                     Priority: {risk.priority}/10
                   </div>
                 </div>
-                <div className="font-medium text-gray-900 mb-2">{risk.description}</div>
+                <div className="font-medium mb-2" style={{ color: BT.text.primary }}>{risk.description}</div>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-500">Impact:</span>
-                    <span className="ml-2 font-medium text-gray-900">{risk.impact}</span>
+                    <span style={{ color: BT.text.secondary }}>Impact:</span>
+                    <span className="ml-2 font-medium" style={{ color: BT.text.primary }}>{risk.impact}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Probability:</span>
-                    <span className="ml-2 font-medium text-gray-900">{risk.probability}%</span>
+                    <span style={{ color: BT.text.secondary }}>Probability:</span>
+                    <span className="ml-2 font-medium" style={{ color: BT.text.primary }}>{risk.probability}%</span>
                   </div>
                 </div>
               </div>
               {risk.mitigation && (
-                <div className="p-4 bg-white border-t border-gray-200">
-                  <div className="text-xs font-semibold text-gray-500 mb-1">MITIGATION STRATEGY</div>
-                  <div className="text-sm text-gray-700">{risk.mitigation}</div>
+                <div className="p-4" style={{ background: BT.bg.panel, borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <div className="text-xs font-semibold mb-1" style={{ color: BT.text.secondary }}>MITIGATION STRATEGY</div>
+                  <div className="text-sm" style={{ color: BT.text.secondary }}>{risk.mitigation}</div>
                 </div>
               )}
             </div>
@@ -684,21 +692,23 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
   const sortedOpps = [...opportunities].sort((a, b) => (b.priority || 5) - (a.priority || 5));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
-      <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+    <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+      <div
+        className="p-6 cursor-pointer flex items-center justify-between transition-colors"
         onClick={onToggle}
+        onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center text-2xl">
+          <div className="w-12 h-12 flex items-center justify-center text-2xl" style={{ background: BT.text.green, borderRadius: 0 }}>
             🎯
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Opportunities</h3>
-            <p className="text-sm text-gray-500">{opportunities.length} value creation opportunities</p>
+            <h3 className="text-lg font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Opportunities</h3>
+            <p className="text-sm" style={{ color: BT.text.secondary }}>{opportunities.length} value creation opportunities</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button style={{ color: BT.text.muted }}>
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -706,27 +716,27 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
       {expanded && (
         <div className="px-6 pb-6 space-y-3">
           {sortedOpps.map((opp, i) => (
-            <div key={opp.id || i} className="border border-gray-200 rounded-lg p-4">
+            <div key={opp.id || i} className="p-4" style={{ border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">
+                  <span className="px-2 py-1 text-xs font-semibold" style={{ background: `${BT.text.green}22`, color: BT.text.green, borderRadius: 0 }}>
                     {opp.type}
                   </span>
                 </div>
                 {opp.potentialValue && (
-                  <div className="text-lg font-bold text-green-600">
+                  <div className="text-lg font-bold" style={{ color: BT.text.green }}>
                     +${opp.potentialValue.toLocaleString()}
                   </div>
                 )}
               </div>
-              <div className="font-medium text-gray-900 mb-3">{opp.description}</div>
-              
+              <div className="font-medium mb-3" style={{ color: BT.text.primary }}>{opp.description}</div>
+
               {opp.requirements && opp.requirements.length > 0 && (
                 <div className="mb-3">
-                  <div className="text-xs font-semibold text-gray-500 mb-2">REQUIREMENTS</div>
+                  <div className="text-xs font-semibold mb-2" style={{ color: BT.text.secondary }}>REQUIREMENTS</div>
                   <div className="flex flex-wrap gap-2">
                     {opp.requirements.map((req: string, j: number) => (
-                      <span key={j} className="px-2 py-1 text-xs bg-gray-100 text-gray-700 rounded">
+                      <span key={j} className="px-2 py-1 text-xs" style={{ background: BT.bg.panelAlt, color: BT.text.secondary, borderRadius: 0 }}>
                         {req}
                       </span>
                     ))}
@@ -736,11 +746,11 @@ const OpportunitiesCard: React.FC<OpportunitiesCardProps> = ({ opportunities, pe
 
               <div className="flex items-center justify-between text-sm">
                 <div>
-                  <span className="text-gray-500">Success Probability:</span>
-                  <span className="ml-2 font-medium text-gray-900">{opp.probability}%</span>
+                  <span style={{ color: BT.text.secondary }}>Success Probability:</span>
+                  <span className="ml-2 font-medium" style={{ color: BT.text.primary }}>{opp.probability}%</span>
                 </div>
                 {opp.timeline && (
-                  <div className="text-gray-500">Timeline: <span className="font-medium text-gray-900">{opp.timeline}</span></div>
+                  <div style={{ color: BT.text.secondary }}>Timeline: <span className="font-medium" style={{ color: BT.text.primary }}>{opp.timeline}</span></div>
                 )}
               </div>
             </div>
@@ -761,10 +771,10 @@ interface ActionItemsCardProps {
 const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, persona, expanded, onToggle }) => {
   const getPriorityConfig = (priority: string) => {
     const configs: Record<string, { color: string; emoji: string }> = {
-      urgent: { color: 'red', emoji: '🔥' },
-      high: { color: 'orange', emoji: '⚡' },
-      medium: { color: 'yellow', emoji: '📌' },
-      low: { color: 'green', emoji: '📋' }
+      urgent: { color: BT.text.red, emoji: '🔥' },
+      high: { color: BT.text.orange, emoji: '⚡' },
+      medium: { color: BT.text.amber, emoji: '📌' },
+      low: { color: BT.text.green, emoji: '📋' }
     };
     return configs[priority] || configs.medium;
   };
@@ -775,21 +785,23 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, persona,
   });
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
-      <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+    <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+      <div
+        className="p-6 cursor-pointer flex items-center justify-between transition-colors"
         onClick={onToggle}
+        onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 bg-gradient-to-br ${persona.gradient} rounded-lg flex items-center justify-center text-2xl`}>
+          <div className="w-12 h-12 flex items-center justify-center text-2xl" style={{ background: persona.color, borderRadius: 0 }}>
             ✅
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">Action Items</h3>
-            <p className="text-sm text-gray-500">{actionItems.length} recommended actions</p>
+            <h3 className="text-lg font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Action Items</h3>
+            <p className="text-sm" style={{ color: BT.text.secondary }}>{actionItems.length} recommended actions</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button style={{ color: BT.text.muted }}>
           {expanded ? '▼' : '▶'}
         </button>
       </div>
@@ -799,21 +811,21 @@ const ActionItemsCard: React.FC<ActionItemsCardProps> = ({ actionItems, persona,
           {sortedActions.map((action, i) => {
             const config = getPriorityConfig(action.priority);
             return (
-              <div key={action.id || i} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
+              <div key={action.id || i} className="flex items-start gap-3 p-3 transition-colors" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
                 <div className="flex-shrink-0 text-xl">{config.emoji}</div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className={`px-2 py-0.5 text-xs font-semibold rounded bg-${config.color}-100 text-${config.color}-700`}>
+                    <span className="px-2 py-0.5 text-xs font-semibold" style={{ background: `${config.color}22`, color: config.color, borderRadius: 0 }}>
                       {action.priority.toUpperCase()}
                     </span>
-                    <span className="text-xs text-gray-500">{action.category}</span>
+                    <span className="text-xs" style={{ color: BT.text.secondary }}>{action.category}</span>
                     {action.timeframe && (
-                      <span className="text-xs text-gray-500">• {action.timeframe}</span>
+                      <span className="text-xs" style={{ color: BT.text.secondary }}>• {action.timeframe}</span>
                     )}
                   </div>
-                  <div className="text-sm font-medium text-gray-900">{action.action}</div>
+                  <div className="text-sm font-medium" style={{ color: BT.text.primary }}>{action.action}</div>
                   {action.owner && (
-                    <div className="text-xs text-gray-500 mt-1">Owner: {action.owner}</div>
+                    <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>Owner: {action.owner}</div>
                   )}
                 </div>
               </div>
@@ -841,33 +853,35 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
   onToggle 
 }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200">
-      <div 
-        className="p-6 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+    <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+      <div
+        className="p-6 cursor-pointer flex items-center justify-between transition-colors"
         onClick={onToggle}
+        onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >
         <div className="flex items-center gap-3">
-          <div className={`w-12 h-12 bg-gradient-to-br ${persona.gradient} rounded-lg flex items-center justify-center text-2xl`}>
+          <div className="w-12 h-12 flex items-center justify-center text-2xl" style={{ background: persona.color, borderRadius: 0 }}>
             {persona.icon}
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900">{persona.name} Deep Dive</h3>
-            <p className="text-sm text-gray-500">Role-specific analysis and recommendations</p>
+            <h3 className="text-lg font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>{persona.name} Deep Dive</h3>
+            <p className="text-sm" style={{ color: BT.text.secondary }}>Role-specific analysis and recommendations</p>
           </div>
         </div>
-        <button className="text-gray-400 hover:text-gray-600">
+        <button style={{ color: BT.text.muted }}>
           {expanded ? '▼' : '▶'}
         </button>
       </div>
 
       {expanded && (
         <div className="px-6 pb-6">
-          <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+          <div className="p-6" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
             <div className="mb-4">
-              <h4 className="font-semibold text-gray-900 mb-2">Focus Areas</h4>
+              <h4 className="font-semibold mb-2" style={{ color: BT.text.primary }}>Focus Areas</h4>
               <div className="flex flex-wrap gap-2">
                 {persona.focus.map((focus, i) => (
-                  <span key={i} className={`px-3 py-1 text-sm rounded-full bg-gradient-to-br ${persona.gradient} text-white`}>
+                  <span key={i} className="px-3 py-1 text-sm" style={{ background: persona.color, color: BT.bg.terminal, borderRadius: 0 }}>
                     {focus}
                   </span>
                 ))}
@@ -877,11 +891,11 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
             <div className="space-y-4">
               {analysis.strengths.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-green-700 mb-2">✅ Strengths</h4>
+                  <h4 className="font-semibold mb-2" style={{ color: BT.text.green }}>✅ Strengths</h4>
                   <ul className="space-y-1">
                     {analysis.strengths.map((strength, i) => (
-                      <li key={i} className="text-sm text-gray-700 flex gap-2">
-                        <span className="text-green-500">•</span>
+                      <li key={i} className="text-sm flex gap-2" style={{ color: BT.text.secondary }}>
+                        <span style={{ color: BT.text.green }}>•</span>
                         {strength}
                       </li>
                     ))}
@@ -891,11 +905,11 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
 
               {analysis.weaknesses.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-red-700 mb-2">⚠️ Weaknesses</h4>
+                  <h4 className="font-semibold mb-2" style={{ color: BT.text.red }}>⚠️ Weaknesses</h4>
                   <ul className="space-y-1">
                     {analysis.weaknesses.map((weakness, i) => (
-                      <li key={i} className="text-sm text-gray-700 flex gap-2">
-                        <span className="text-red-500">•</span>
+                      <li key={i} className="text-sm flex gap-2" style={{ color: BT.text.secondary }}>
+                        <span style={{ color: BT.text.red }}>•</span>
                         {weakness}
                       </li>
                     ))}
@@ -905,11 +919,11 @@ const RoleSpecificAnalysis: React.FC<RoleSpecificAnalysisProps> = ({
 
               {analysis.assumptions.length > 0 && (
                 <div>
-                  <h4 className="font-semibold text-blue-700 mb-2">📋 Key Assumptions</h4>
+                  <h4 className="font-semibold mb-2" style={{ color: BT.text.cyan }}>📋 Key Assumptions</h4>
                   <ul className="space-y-1">
                     {analysis.assumptions.map((assumption, i) => (
-                      <li key={i} className="text-sm text-gray-700 flex gap-2">
-                        <span className="text-blue-500">•</span>
+                      <li key={i} className="text-sm flex gap-2" style={{ color: BT.text.secondary }}>
+                        <span style={{ color: BT.text.cyan }}>•</span>
                         {assumption}
                       </li>
                     ))}
@@ -930,28 +944,28 @@ interface AnalysisMetadataProps {
 
 const AnalysisMetadata: React.FC<AnalysisMetadataProps> = ({ analysis }) => {
   return (
-    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+    <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <div className="text-gray-500 mb-1">Analysis Date</div>
-          <div className="font-medium text-gray-900">
+          <div className="mb-1" style={{ color: BT.text.secondary }}>Analysis Date</div>
+          <div className="font-medium" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
             {new Date(analysis.analysisDate).toLocaleDateString()}
           </div>
         </div>
         <div>
-          <div className="text-gray-500 mb-1">Model Version</div>
-          <div className="font-medium text-gray-900">{analysis.modelVersion}</div>
+          <div className="mb-1" style={{ color: BT.text.secondary }}>Model Version</div>
+          <div className="font-medium" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{analysis.modelVersion}</div>
         </div>
         {analysis.tokensUsed && (
           <div>
-            <div className="text-gray-500 mb-1">Tokens Used</div>
-            <div className="font-medium text-gray-900">{analysis.tokensUsed.toLocaleString()}</div>
+            <div className="mb-1" style={{ color: BT.text.secondary }}>Tokens Used</div>
+            <div className="font-medium" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{analysis.tokensUsed.toLocaleString()}</div>
           </div>
         )}
         {analysis.processingTime && (
           <div>
-            <div className="text-gray-500 mb-1">Processing Time</div>
-            <div className="font-medium text-gray-900">{(analysis.processingTime / 1000).toFixed(2)}s</div>
+            <div className="mb-1" style={{ color: BT.text.secondary }}>Processing Time</div>
+            <div className="font-medium" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{(analysis.processingTime / 1000).toFixed(2)}s</div>
           </div>
         )}
       </div>

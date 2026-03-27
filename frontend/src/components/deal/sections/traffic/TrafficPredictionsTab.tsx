@@ -386,7 +386,7 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
                         style={{ height: `${barH}%` }}
                       />
                     </div>
-                    <span className="text-[8px] text-stone-400 font-mono">{h}</span>
+                    <span className="text-[9px] text-stone-400 font-mono">{h}</span>
                   </div>
                 );
               })}

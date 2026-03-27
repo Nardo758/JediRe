@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Filter, Target, Clock, Layers, Bookmark, ChevronDown } from 'lucide-react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface FiltersBarProps {
   onStrategyChange?: (strategy: string) => void;
@@ -22,26 +23,46 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-3">
+    <div className="px-6 py-3" style={{ background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
       <div className="flex items-center gap-4 flex-wrap">
         <div className="relative">
           <button
             onClick={() => setShowStrategyDropdown(!showStrategyDropdown)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors"
+            style={{
+              background: BT.bg.panelAlt,
+              color: BT.text.secondary,
+              borderRadius: 0,
+              fontFamily: BT.font.label,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = BT.bg.panelAlt)}
           >
             <Filter className="w-4 h-4" />
             <span>Strategy: {strategy}</span>
             <ChevronDown className="w-4 h-4" />
           </button>
           {showStrategyDropdown && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[160px]">
+            <div
+              className="absolute top-full left-0 mt-1 z-50 min-w-[160px]"
+              style={{
+                background: BT.bg.panel,
+                border: `1px solid ${BT.border.medium}`,
+                borderRadius: 0,
+              }}
+            >
               {strategies.map((s) => (
                 <button
                   key={s}
                   onClick={() => handleStrategySelect(s)}
-                  className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg ${
-                    s === strategy ? 'bg-blue-50 text-blue-600' : 'text-gray-700'
-                  }`}
+                  className="w-full text-left px-4 py-2 text-sm"
+                  style={{
+                    background: s === strategy ? `${BT.text.cyan}11` : 'transparent',
+                    color: s === strategy ? BT.text.cyan : BT.text.secondary,
+                    fontFamily: BT.font.label,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = s === strategy ? `${BT.text.cyan}11` : 'transparent')}
                 >
                   {s}
                 </button>
@@ -50,9 +71,12 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
           )}
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
-          <Target className="w-4 h-4 text-gray-600" />
-          <span className="text-sm text-gray-600">Score</span>
+        <div
+          className="flex items-center gap-2 px-4 py-2"
+          style={{ background: BT.bg.panelAlt, borderRadius: 0 }}
+        >
+          <Target className="w-4 h-4" style={{ color: BT.text.secondary }} />
+          <span className="text-sm" style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>Score</span>
           <input
             id="filters-min-score"
             name="filtersMinScore"
@@ -64,16 +88,24 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
               onScoreChange?.(val);
             }}
             aria-label="Minimum opportunity score"
-            className="w-12 text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none text-center"
+            className="w-12 text-sm font-medium border-none focus:outline-none text-center"
+            style={{
+              background: 'transparent',
+              color: BT.text.primary,
+              fontFamily: BT.font.mono,
+            }}
             min={0}
             max={100}
           />
-          <span className="text-sm text-gray-500">+</span>
+          <span className="text-sm" style={{ color: BT.text.muted }}>+</span>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
-          <Clock className="w-4 h-4 text-gray-600" />
-          <span className="text-sm text-gray-600">Timeline</span>
+        <div
+          className="flex items-center gap-2 px-4 py-2"
+          style={{ background: BT.bg.panelAlt, borderRadius: 0 }}
+        >
+          <Clock className="w-4 h-4" style={{ color: BT.text.secondary }} />
+          <span className="text-sm" style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>Timeline</span>
           <select
             id="filters-timeline"
             name="filtersTimeline"
@@ -84,7 +116,12 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
               onTimelineChange?.(val);
             }}
             aria-label="Timeline filter"
-            className="text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none"
+            className="text-sm font-medium border-none focus:outline-none"
+            style={{
+              background: 'transparent',
+              color: BT.text.primary,
+              fontFamily: BT.font.mono,
+            }}
           >
             <option value={3}>3 months</option>
             <option value={6}>6 months</option>
@@ -93,13 +130,33 @@ export default function FiltersBar({ onStrategyChange, onScoreChange, onTimeline
           </select>
         </div>
 
-        <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors">
+        <button
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors"
+          style={{
+            background: BT.bg.panelAlt,
+            color: BT.text.secondary,
+            borderRadius: 0,
+            fontFamily: BT.font.label,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = BT.bg.panelAlt)}
+        >
           <Layers className="w-4 h-4" />
           <span>Modules</span>
           <ChevronDown className="w-4 h-4" />
         </button>
 
-        <button className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors">
+        <button
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium transition-colors"
+          style={{
+            background: BT.bg.panelAlt,
+            color: BT.text.secondary,
+            borderRadius: 0,
+            fontFamily: BT.font.label,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = BT.bg.panelAlt)}
+        >
           <Bookmark className="w-4 h-4" />
           <span>Saved Searches</span>
         </button>

@@ -237,7 +237,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         ]}
         right={
           kpiLoading
-            ? <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LOADING...</span>
+            ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>LOADING...</span>
             : kpi
               ? <Bd c={BT.met.financial}>LIVE MODEL</Bd>
               : <Bd c={BT.text.secondary}>NO MODEL</Bd>
@@ -311,53 +311,53 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                   background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
                   borderBottom: `1px solid ${BT.border.subtle}`,
                 }}>
-                  <div style={{ flex: 2, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.secondary, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ flex: 2, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.secondary, display: 'flex', alignItems: 'center', gap: 4 }}>
                     {row.label}
                     {collisionDot(row.brokerRaw, row.platformRaw)}
                   </div>
-                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.cyan,   textAlign: 'right' as const }}>{row.brokerFmt}</div>
-                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.purple, textAlign: 'right' as const }}>{row.platformFmt}</div>
-                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 8, color: BT.text.amber,  textAlign: 'right' as const }}>—</div>
+                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.cyan,   textAlign: 'right' as const }}>{row.brokerFmt}</div>
+                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.purple, textAlign: 'right' as const }}>{row.platformFmt}</div>
+                  <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.amber,  textAlign: 'right' as const }}>—</div>
                 </div>
               ))}
               {/* Returns row */}
               <div style={{ display: 'flex', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
-                <div style={{ flex: 2, padding: '5px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.primary }}>
+                <div style={{ flex: 2, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.primary }}>
                   RETURNS
                 </div>
-                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.met.financial, textAlign: 'right' as const }}>
+                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.met.financial, textAlign: 'right' as const }}>
                   {kpi ? fmtPct(kpi.irr) : '—'} <span style={{ color: BT.text.muted, fontWeight: 400 }}>IRR</span>
                 </div>
-                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.amber, textAlign: 'right' as const }}>
+                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber, textAlign: 'right' as const }}>
                   {kpi ? fmtX(kpi.equityMultiple) : '—'} <span style={{ color: BT.text.muted, fontWeight: 400 }}>EM</span>
                 </div>
-                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.met.occupancy, textAlign: 'right' as const }}>
+                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.met.occupancy, textAlign: 'right' as const }}>
                   {kpi ? fmtPct(kpi.cashOnCash) : '—'} <span style={{ color: BT.text.muted, fontWeight: 400 }}>CoC</span>
                 </div>
               </div>
               {/* Sensitivity grid */}
               <div style={{ padding: '6px 10px 8px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 5, letterSpacing: 0.5 }}>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 5, letterSpacing: 0.5 }}>
                   SENSITIVITY: IRR by Exit Cap Rate × Rent Growth
                 </div>
                 <div style={{ display: 'flex' }}>
                   <div style={{ width: 60 }} />
                   {SENSITIVITY_GROWTH.map(g => (
-                    <div key={g} style={{ flex: 1, textAlign: 'center' as const, fontFamily: MONO, fontSize: 7, color: BT.text.muted, paddingBottom: 3 }}>
+                    <div key={g} style={{ flex: 1, textAlign: 'center' as const, fontFamily: MONO, fontSize: 9, color: BT.text.muted, paddingBottom: 3 }}>
                       {g}% RG
                     </div>
                   ))}
                 </div>
                 {SENSITIVITY_CAPS.map((cap, ri) => (
                   <div key={cap} style={{ display: 'flex', alignItems: 'center' }}>
-                    <div style={{ width: 60, fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{cap}% Cap</div>
+                    <div style={{ width: 60, fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{cap}% Cap</div>
                     {sensitivityGrid[ri].map((irr, ci) => {
                       const norm = maxIrr > minIrr ? (irr - minIrr) / (maxIrr - minIrr) : 0.5;
                       const cellColor = norm >= 0.66 ? BT.met.financial : norm >= 0.33 ? BT.text.amber : BT.text.red;
                       return (
                         <div key={ci} style={{
                           flex: 1, textAlign: 'center' as const, padding: '2px 0',
-                          fontFamily: MONO, fontSize: 8, fontWeight: 700, color: cellColor,
+                          fontFamily: MONO, fontSize: 9, fontWeight: 700, color: cellColor,
                         }}>
                           {fmtPct(irr)}
                         </div>
@@ -459,7 +459,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                         width: `${t.pct}%`, background: t.color,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        <span style={{ fontFamily: MONO, fontSize: 7, fontWeight: 700, color: BT.bg.terminal }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.bg.terminal }}>
                           {t.pct}%
                         </span>
                       </div>
@@ -523,14 +523,14 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                     const barH = Math.max(10, ((s.fwdIdx + 1) / (maxExitFwdIdx + 1)) * 48);
                     return (
                       <div key={s.key} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                        <span style={{ fontFamily: MONO, fontSize: 7, color: s.color, fontWeight: 700 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: s.color, fontWeight: 700 }}>
                           {fmtPct(s.returns.irr)}
                         </span>
                         <div style={{
                           width: '100%', height: barH, background: s.color,
                           borderRadius: '2px 2px 0 0', opacity: 0.85,
                         }} />
-                        <span style={{ fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
                           {s.fwdIdx === 0 ? 'NOW' : `+${(s.fwdIdx / 4).toFixed(0)}Y`}
                         </span>
                       </div>

@@ -384,10 +384,10 @@ const SupplyPipelinePage: React.FC = () => {
         ]}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: BT2.font.mono }}>HORIZON:</span>
+            <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: BT2.font.mono }}>HORIZON:</span>
             {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
               <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
-                fontSize: 7, padding: '1px 6px', fontFamily: BT2.font.mono,
+                fontSize: 9, padding: '1px 6px', fontFamily: BT2.font.mono,
                 background: timeHorizon === horizon ? `${BT2.met.supply}20` : 'transparent',
                 border: timeHorizon === horizon ? `1px solid ${BT2.met.supply}60` : `1px solid ${BT2.border.medium}`,
                 color: timeHorizon === horizon ? BT2.met.supply : BT2.text.secondary,
@@ -740,7 +740,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                     <div>
                       <div style={{ color: BT2.text.white, fontWeight: 600 }}>{project.name}</div>
                       {project.delayMonths && project.delayMonths > 0 && (
-                        <div style={{ fontSize: 7, color: BT2.text.red, marginTop: 2 }}>
+                        <div style={{ fontSize: 9, color: BT2.text.red, marginTop: 2 }}>
                           ⚠ Delayed {project.delayMonths}mo
                         </div>
                       )}
@@ -751,7 +751,7 @@ const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({
                 { value: formatNumber(project.units), color: BT2.text.white, weight: 600 },
                 {
                   value: (
-                    <span style={{ fontSize: 7, padding: '1px 4px', background: `${getPhaseColor(project.phase)}20`, color: getPhaseColor(project.phase) }}>
+                    <span style={{ fontSize: 9, padding: '1px 4px', background: `${getPhaseColor(project.phase)}20`, color: getPhaseColor(project.phase) }}>
                       {project.phase.replace('_', ' ').toUpperCase()}
                     </span>
                   ),
