@@ -679,8 +679,11 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
         <div style={{
           width: 280,
           flexShrink: 0,
+          border: `1px solid ${BT.border.subtle}`,
           borderLeft: `2px solid ${BT.text.amber}66`,
-          paddingLeft: 16,
+          padding: 16,
+          background: BT.bg.panel,
+          borderRadius: 4,
         }}>
           {commentary ? (
             <>
