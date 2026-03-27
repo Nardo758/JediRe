@@ -1005,7 +1005,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                       <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Conditional Uses</p>
                       <div className="flex flex-wrap gap-1.5">
                         {zoningDetail.conditional_uses.map((use: string, i: number) => (
-                          <span key={i} className="inline-block px-2 py-0.5 bg-yellow-50 text-yellow-700 text-xs rounded-full border border-yellow-200">
+                          <span key={i} className="inline-block px-2 py-0.5 text-xs" style={{ background: `${BT.text.amber}11`, color: BT.text.amber, borderRadius: 0, border: `1px solid ${BT.text.amber}33` }}>
                             {use.replace(/_/g, ' ')}
                           </span>
                         ))}
@@ -1015,13 +1015,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
                   {/* Source Info */}
                   {(zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url || parcelSource?.planningUrl) && (
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 mt-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs mt-2" style={{ color: BT.text.secondary }}>
                       <span>Definition:</span>
                       {parcelSource?.planningUrl && (
-                        <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Planning & Zoning</a>
+                        <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" style={{ color: BT.text.green }}>Planning & Zoning</a>
                       )}
                       {(zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url) && (
-                        <a href={zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url} target="_blank" rel="noopener noreferrer" className="text-violet-600 hover:underline">Municipal Code</a>
+                        <a href={zoningDetail.municode_search_url || zoningDetail.municode_url || zoningDetail.source_url} target="_blank" rel="noopener noreferrer" style={{ color: BT.text.purple }}>Municipal Code</a>
                       )}
                       {zoningDetail.last_verified_at && (
                         <span>(Verified: {new Date(zoningDetail.last_verified_at).toLocaleDateString()})</span>
