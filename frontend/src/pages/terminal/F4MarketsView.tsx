@@ -440,14 +440,16 @@ function SubmarketOverview({ onBack }: { onBack: () => void }) {
 
 interface F4MarketsViewProps {
   corpHealthData?: CorpHealthData;
+  marketId?: string;
+  marketName?: string;
 }
 
 type F4Level = "msa" | "submarket" | "detail" | "peers";
 
-export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
+export default function F4MarketsView({ corpHealthData, marketId, marketName }: F4MarketsViewProps) {
   const [level, setLevel] = useState<F4Level>("msa");
   const [priorLevel, setPriorLevel] = useState<"msa" | "submarket">("msa");
-  const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
+  const [selectedMsaId, setSelectedMsaId] = useState(marketId || "atlanta-ga");
 
   const goToDetail = (target: "detail" | "peers") => {
     if (level === "msa" || level === "submarket") setPriorLevel(level);
@@ -461,7 +463,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     <div style={{ flex: 1, overflow: "hidden", animation: "fadeIn 0.15s", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
         {[
-          { id: "msa" as F4Level, label: "MSA · Atlanta, GA", icon: "INDEX" },
+          { id: "msa" as F4Level, label: marketName ? `MSA · ${marketName}` : "MSA · Atlanta, GA", icon: "INDEX" },
           { id: "submarket" as F4Level, label: "Submarket · Midtown", icon: "SECTOR" },
         ].map(l => (
           <button key={l.id} onClick={() => setLevel(l.id)} style={{

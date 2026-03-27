@@ -6,8 +6,8 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  MapPin, Search, ArrowUpDown, TrendingUp, TrendingDown, 
-  Award, Building2, Users, Grid, List, Filter
+  MapPin, Search, 
+  Award, Users, Grid, List, Filter
 } from 'lucide-react';
 import { BT } from '../../components/terminal/theme';
 
@@ -33,7 +33,12 @@ interface MSACard {
 type ViewMode = 'grid' | 'table';
 type SortKey = 'rank' | 'name' | 'avgRent' | 'rentGrowth' | 'healthScore' | 'population';
 
-export const F4MarketsPage: React.FC = () => {
+interface F4MarketsPageProps {
+  onSelectMarket?: (marketId: string, marketName: string) => void;
+  embedded?: boolean;
+}
+
+export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, embedded }) => {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,18 +48,18 @@ export const F4MarketsPage: React.FC = () => {
 
   // Mock MSA data
   const markets: MSACard[] = useMemo(() => [
-    { id: 'atlanta', name: 'Atlanta', state: 'GA', region: 'Southeast', population: 6200000, populationGrowth: 1.8, submarketCount: 24, propertyCount: 1847, totalUnits: 485000, avgRent: 1680, rentGrowth: 4.2, occupancy: 94.1, avgCapRate: 5.3, pipelineUnits: 28500, healthScore: 82, rank: 5 },
-    { id: 'dallas', name: 'Dallas', state: 'TX', region: 'Southwest', population: 7900000, populationGrowth: 2.1, submarketCount: 32, propertyCount: 2450, totalUnits: 620000, avgRent: 1620, rentGrowth: 3.8, occupancy: 93.2, avgCapRate: 5.2, pipelineUnits: 42000, healthScore: 80, rank: 6 },
-    { id: 'phoenix', name: 'Phoenix', state: 'AZ', region: 'Southwest', population: 5000000, populationGrowth: 2.5, submarketCount: 18, propertyCount: 1320, totalUnits: 380000, avgRent: 1620, rentGrowth: 3.5, occupancy: 93.5, avgCapRate: 5.4, pipelineUnits: 24000, healthScore: 78, rank: 9 },
-    { id: 'charlotte', name: 'Charlotte', state: 'NC', region: 'Southeast', population: 2700000, populationGrowth: 2.2, submarketCount: 14, propertyCount: 980, totalUnits: 245000, avgRent: 1580, rentGrowth: 5.1, occupancy: 94.5, avgCapRate: 5.0, pipelineUnits: 18000, healthScore: 86, rank: 3 },
-    { id: 'austin', name: 'Austin', state: 'TX', region: 'Southwest', population: 2400000, populationGrowth: 2.8, submarketCount: 12, propertyCount: 720, totalUnits: 195000, avgRent: 1750, rentGrowth: 2.5, occupancy: 91.8, avgCapRate: 4.9, pipelineUnits: 22000, healthScore: 75, rank: 8 },
-    { id: 'nashville', name: 'Nashville', state: 'TN', region: 'Southeast', population: 2000000, populationGrowth: 1.9, submarketCount: 10, propertyCount: 620, totalUnits: 165000, avgRent: 1720, rentGrowth: 4.8, occupancy: 94.1, avgCapRate: 5.1, pipelineUnits: 12000, healthScore: 84, rank: 4 },
-    { id: 'raleigh', name: 'Raleigh', state: 'NC', region: 'Southeast', population: 1500000, populationGrowth: 2.4, submarketCount: 8, propertyCount: 480, totalUnits: 125000, avgRent: 1580, rentGrowth: 5.5, occupancy: 95.2, avgCapRate: 4.8, pipelineUnits: 8500, healthScore: 90, rank: 2 },
-    { id: 'tampa', name: 'Tampa', state: 'FL', region: 'Southeast', population: 3200000, populationGrowth: 1.6, submarketCount: 16, propertyCount: 1150, totalUnits: 295000, avgRent: 1780, rentGrowth: 4.2, occupancy: 93.8, avgCapRate: 5.3, pipelineUnits: 21000, healthScore: 79, rank: 7 },
-    { id: 'denver', name: 'Denver', state: 'CO', region: 'Mountain', population: 2900000, populationGrowth: 1.2, submarketCount: 15, propertyCount: 890, totalUnits: 245000, avgRent: 1850, rentGrowth: 2.8, occupancy: 94.2, avgCapRate: 5.0, pipelineUnits: 15000, healthScore: 81, rank: 5 },
-    { id: 'seattle', name: 'Seattle', state: 'WA', region: 'Pacific', population: 4000000, populationGrowth: 1.1, submarketCount: 18, propertyCount: 1050, totalUnits: 285000, avgRent: 2150, rentGrowth: 3.2, occupancy: 94.5, avgCapRate: 4.6, pipelineUnits: 18000, healthScore: 83, rank: 4 },
-    { id: 'miami', name: 'Miami', state: 'FL', region: 'Southeast', population: 6200000, populationGrowth: 1.4, submarketCount: 22, propertyCount: 1680, totalUnits: 420000, avgRent: 2280, rentGrowth: 5.8, occupancy: 95.1, avgCapRate: 4.5, pipelineUnits: 32000, healthScore: 88, rank: 1 },
-    { id: 'orlando', name: 'Orlando', state: 'FL', region: 'Southeast', population: 2700000, populationGrowth: 1.8, submarketCount: 14, propertyCount: 920, totalUnits: 235000, avgRent: 1720, rentGrowth: 4.5, occupancy: 94.0, avgCapRate: 5.2, pipelineUnits: 17500, healthScore: 81, rank: 6 },
+    { id: 'atlanta-ga', name: 'Atlanta', state: 'GA', region: 'Southeast', population: 6200000, populationGrowth: 1.8, submarketCount: 24, propertyCount: 1847, totalUnits: 485000, avgRent: 1680, rentGrowth: 4.2, occupancy: 94.1, avgCapRate: 5.3, pipelineUnits: 28500, healthScore: 82, rank: 5 },
+    { id: 'dallas-tx', name: 'Dallas', state: 'TX', region: 'Southwest', population: 7900000, populationGrowth: 2.1, submarketCount: 32, propertyCount: 2450, totalUnits: 620000, avgRent: 1620, rentGrowth: 3.8, occupancy: 93.2, avgCapRate: 5.2, pipelineUnits: 42000, healthScore: 80, rank: 6 },
+    { id: 'phoenix-az', name: 'Phoenix', state: 'AZ', region: 'Southwest', population: 5000000, populationGrowth: 2.5, submarketCount: 18, propertyCount: 1320, totalUnits: 380000, avgRent: 1620, rentGrowth: 3.5, occupancy: 93.5, avgCapRate: 5.4, pipelineUnits: 24000, healthScore: 78, rank: 9 },
+    { id: 'charlotte-nc', name: 'Charlotte', state: 'NC', region: 'Southeast', population: 2700000, populationGrowth: 2.2, submarketCount: 14, propertyCount: 980, totalUnits: 245000, avgRent: 1580, rentGrowth: 5.1, occupancy: 94.5, avgCapRate: 5.0, pipelineUnits: 18000, healthScore: 86, rank: 3 },
+    { id: 'austin-tx', name: 'Austin', state: 'TX', region: 'Southwest', population: 2400000, populationGrowth: 2.8, submarketCount: 12, propertyCount: 720, totalUnits: 195000, avgRent: 1750, rentGrowth: 2.5, occupancy: 91.8, avgCapRate: 4.9, pipelineUnits: 22000, healthScore: 75, rank: 8 },
+    { id: 'nashville-tn', name: 'Nashville', state: 'TN', region: 'Southeast', population: 2000000, populationGrowth: 1.9, submarketCount: 10, propertyCount: 620, totalUnits: 165000, avgRent: 1720, rentGrowth: 4.8, occupancy: 94.1, avgCapRate: 5.1, pipelineUnits: 12000, healthScore: 84, rank: 4 },
+    { id: 'raleigh-nc', name: 'Raleigh', state: 'NC', region: 'Southeast', population: 1500000, populationGrowth: 2.4, submarketCount: 8, propertyCount: 480, totalUnits: 125000, avgRent: 1580, rentGrowth: 5.5, occupancy: 95.2, avgCapRate: 4.8, pipelineUnits: 8500, healthScore: 90, rank: 2 },
+    { id: 'tampa-fl', name: 'Tampa', state: 'FL', region: 'Southeast', population: 3200000, populationGrowth: 1.6, submarketCount: 16, propertyCount: 1150, totalUnits: 295000, avgRent: 1780, rentGrowth: 4.2, occupancy: 93.8, avgCapRate: 5.3, pipelineUnits: 21000, healthScore: 79, rank: 7 },
+    { id: 'denver-co', name: 'Denver', state: 'CO', region: 'Mountain', population: 2900000, populationGrowth: 1.2, submarketCount: 15, propertyCount: 890, totalUnits: 245000, avgRent: 1850, rentGrowth: 2.8, occupancy: 94.2, avgCapRate: 5.0, pipelineUnits: 15000, healthScore: 81, rank: 5 },
+    { id: 'seattle-wa', name: 'Seattle', state: 'WA', region: 'Pacific', population: 4000000, populationGrowth: 1.1, submarketCount: 18, propertyCount: 1050, totalUnits: 285000, avgRent: 2150, rentGrowth: 3.2, occupancy: 94.5, avgCapRate: 4.6, pipelineUnits: 18000, healthScore: 83, rank: 4 },
+    { id: 'miami-fl', name: 'Miami', state: 'FL', region: 'Southeast', population: 6200000, populationGrowth: 1.4, submarketCount: 22, propertyCount: 1680, totalUnits: 420000, avgRent: 2280, rentGrowth: 5.8, occupancy: 95.1, avgCapRate: 4.5, pipelineUnits: 32000, healthScore: 88, rank: 1 },
+    { id: 'orlando-fl', name: 'Orlando', state: 'FL', region: 'Southeast', population: 2700000, populationGrowth: 1.8, submarketCount: 14, propertyCount: 920, totalUnits: 235000, avgRent: 1720, rentGrowth: 4.5, occupancy: 94.0, avgCapRate: 5.2, pipelineUnits: 17500, healthScore: 81, rank: 6 },
   ], []);
 
   const regions = useMemo(() => 
@@ -93,8 +98,12 @@ export const F4MarketsPage: React.FC = () => {
     return result;
   }, [markets, searchQuery, regionFilter, sortBy, sortDir]);
 
-  const handleMarketClick = (marketId: string) => {
-    navigate(`/markets/${marketId}`);
+  const handleMarketClick = (market: MSACard) => {
+    if (onSelectMarket) {
+      onSelectMarket(market.id, market.name);
+    } else {
+      navigate(`/markets/${market.id}`);
+    }
   };
 
   const getHealthColor = (score: number) => {
@@ -105,7 +114,7 @@ export const F4MarketsPage: React.FC = () => {
 
   return (
     <div style={{
-      minHeight: '100vh',
+      minHeight: embedded ? 0 : '100vh',
       background: BT.bg.terminal,
       color: BT.text.primary,
       fontFamily: "'Inter', sans-serif",
@@ -257,7 +266,7 @@ export const F4MarketsPage: React.FC = () => {
             {filteredMarkets.map((market) => (
               <div
                 key={market.id}
-                onClick={() => handleMarketClick(market.id)}
+                onClick={() => handleMarketClick(market)}
                 style={{
                   background: BT.bg.panel,
                   borderRadius: 8,
@@ -416,7 +425,7 @@ export const F4MarketsPage: React.FC = () => {
                 {filteredMarkets.map((market) => (
                   <tr
                     key={market.id}
-                    onClick={() => handleMarketClick(market.id)}
+                    onClick={() => handleMarketClick(market)}
                     style={{ 
                       borderBottom: `1px solid ${BT.border.subtle}`,
                       cursor: 'pointer',
@@ -477,30 +486,31 @@ export const F4MarketsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Footer */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        display: 'flex',
-        alignItems: 'center',
-        padding: '8px 32px',
-        background: BT.bg.header,
-        borderTop: `1px solid ${BT.border.subtle}`,
-        fontSize: 10,
-        color: BT.text.dim,
-        gap: 16,
-      }}>
-        <span style={{ color: BT.text.green }}>● {filteredMarkets.length} Markets</span>
-        <span>|</span>
-        <span>{filteredMarkets.reduce((sum, m) => sum + m.submarketCount, 0)} Submarkets</span>
-        <span>|</span>
-        <span>{filteredMarkets.reduce((sum, m) => sum + m.propertyCount, 0).toLocaleString()} Properties</span>
-        <span>|</span>
-        <span>{(filteredMarkets.reduce((sum, m) => sum + m.totalUnits, 0) / 1000000).toFixed(1)}M Units</span>
-        <span style={{ marginLeft: 'auto' }}>Press 0-7 to navigate tabs when viewing a market</span>
-      </div>
+      {!embedded && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          alignItems: 'center',
+          padding: '8px 32px',
+          background: BT.bg.header,
+          borderTop: `1px solid ${BT.border.subtle}`,
+          fontSize: 10,
+          color: BT.text.dim,
+          gap: 16,
+        }}>
+          <span style={{ color: BT.text.green }}>● {filteredMarkets.length} Markets</span>
+          <span>|</span>
+          <span>{filteredMarkets.reduce((sum, m) => sum + m.submarketCount, 0)} Submarkets</span>
+          <span>|</span>
+          <span>{filteredMarkets.reduce((sum, m) => sum + m.propertyCount, 0).toLocaleString()} Properties</span>
+          <span>|</span>
+          <span>{(filteredMarkets.reduce((sum, m) => sum + m.totalUnits, 0) / 1000000).toFixed(1)}M Units</span>
+          <span style={{ marginLeft: 'auto' }}>Click a market to view details</span>
+        </div>
+      )}
     </div>
   );
 };

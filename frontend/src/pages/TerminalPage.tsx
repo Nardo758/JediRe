@@ -9,6 +9,7 @@ import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
 import F4MarketsView from "./terminal/F4MarketsView";
+import { F4MarketsPage } from "./MarketIntelligence/F4MarketsPage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -459,6 +460,7 @@ export default function TerminalPage() {
   const [emailFolder, setEmailFolder] = useState("inbox");
   const [emailSearch, setEmailSearch] = useState("");
   const [selEmail, setSelEmail] = useState<number|null>(null);
+  const [f4SelectedMarket, setF4SelectedMarket] = useState<{id:string;name:string}|null>(null);
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -1948,9 +1950,25 @@ export default function TerminalPage() {
       : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
   };
 
-  const ViewMarkets = () => (
-    <F4MarketsView corpHealthData={viewMarketsCorpHealthData} />
-  );
+  const ViewMarkets = () => {
+    if (f4SelectedMarket) {
+      return (
+        <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`}}>
+            <button onClick={()=>setF4SelectedMarket(null)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",color:T.text.amber,border:`1px solid ${T.text.amber}44`,padding:"3px 10px",cursor:"pointer",letterSpacing:0.5}}>← ALL MARKETS</button>
+            <span style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted}}>|</span>
+            <span style={{fontFamily:T.font.mono,fontSize:10,color:T.text.primary,fontWeight:600}}>{f4SelectedMarket.name.toUpperCase()} MSA</span>
+          </div>
+          <div style={{flex:1,overflow:"auto"}}>
+            <F4MarketsView corpHealthData={viewMarketsCorpHealthData} marketId={f4SelectedMarket.id} marketName={`${f4SelectedMarket.name}, ${f4SelectedMarket.id.split('-').pop()?.toUpperCase()}`} />
+          </div>
+        </div>
+      );
+    }
+    return (
+      <F4MarketsPage embedded onSelectMarket={(id,name)=>setF4SelectedMarket({id,name})} />
+    );
+  };
 
   // ─── VIEW: F5 EMAIL ────────────────────────────────────────
   const ViewEmail = () => {
