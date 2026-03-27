@@ -132,15 +132,16 @@ const PORTFOLIO_NAV = [
   {key:"F2",label:"PIPELINE"},
   {key:"F3",label:"PORTFOLIO"},
   {key:"F4",label:"MARKETS"},
-  {key:"F5",label:"NEWS"},
-  {key:"F6",label:"STRATEGIES"},
-  {key:"F7",label:"REPORTS"},
-  {key:"F8",label:"SETTINGS"},
+  {key:"F5",label:"EMAIL"},
+  {key:"F6",label:"NEWS"},
+  {key:"F7",label:"STRATEGIES"},
+  {key:"F8",label:"REPORTS"},
+  {key:"F9",label:"SETTINGS"},
 ];
 
 const FKEY_SLUG: Record<string,string> = {
   F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
-  F5:"news",      F6:"strategies", F7:"reports", F8:"settings",
+  F5:"email",     F6:"news",     F7:"strategies", F8:"reports", F9:"settings",
 };
 const SLUG_FKEY: Record<string,string> = Object.fromEntries(
   Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
@@ -496,7 +497,11 @@ export default function TerminalPage() {
   const [gridDragOver, setGridDragOver] = useState<string|null>(null);
 
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
+  const [marketsView, setMarketsView] = useState<"cards"|"detail"|"peers">("cards");
+
+  const [emailFolder, setEmailFolder] = useState("inbox");
+  const [emailSearch, setEmailSearch] = useState("");
+  const [selEmail, setSelEmail] = useState<number|null>(null);
   interface CorpEmployer { company:string; ticker:string|null; employees:number|null; share:number; chs:number|null; tier:string|null; delta:number|null; submarket?:string; naics?:string; sector?:string; momentum?:string }
   interface CorpAlert { severity:string; message:string; time:string }
   interface DivSubmarket { name:string; msa:string|null; schi:number; divergence:number; signal:string; reHealth:number; hhi:number; top5Share:number; employerCount:number; publicCount:number }
@@ -821,7 +826,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8" };
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9" };
       if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
@@ -1996,11 +2001,21 @@ export default function TerminalPage() {
       : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
   };
 
+  const MARKET_CARD_DATA: {id:string;name:string;state:string;units:string;capRate:string;vacancy:string;rentGrowth:string;jedi:number}[] = [
+    {id:"atlanta-ga",name:"Atlanta",state:"GA",units:"148K",capRate:"5.2%",vacancy:"6.9%",rentGrowth:"+3.8%",jedi:82},
+    {id:"raleigh-nc",name:"Raleigh",state:"NC",units:"62K",capRate:"4.9%",vacancy:"5.1%",rentGrowth:"+4.6%",jedi:88},
+    {id:"charlotte-nc",name:"Charlotte",state:"NC",units:"78K",capRate:"5.1%",vacancy:"6.2%",rentGrowth:"+3.2%",jedi:79},
+    {id:"tampa-fl",name:"Tampa",state:"FL",units:"95K",capRate:"5.4%",vacancy:"7.3%",rentGrowth:"+2.9%",jedi:74},
+    {id:"orlando-fl",name:"Orlando",state:"FL",units:"81K",capRate:"5.3%",vacancy:"6.8%",rentGrowth:"+3.1%",jedi:76},
+    {id:"miami-fl",name:"Miami",state:"FL",units:"112K",capRate:"4.7%",vacancy:"5.5%",rentGrowth:"+5.2%",jedi:85},
+    {id:"jacksonville-fl",name:"Jacksonville",state:"FL",units:"44K",capRate:"5.6%",vacancy:"7.8%",rentGrowth:"+2.4%",jedi:71},
+  ];
+
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      {/* MSA selector / view toggle bar — hidden when Peer Comp is active (it has its own nav bar) */}
-      {marketsView === "detail" && (
+      {marketsView !== "cards" && (
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <button onClick={()=>setMarketsView("cards")} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>← ALL MARKETS</button>
           <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
           <select
             value={selectedMsaId}
@@ -2011,7 +2026,7 @@ export default function TerminalPage() {
           </select>
           <div style={{flex:1}}/>
           <div style={{display:"flex",gap:2}}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
+            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers"|"cards", string][]).map(([v,label]) => (
               <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
                 {label}
               </button>
@@ -2019,8 +2034,45 @@ export default function TerminalPage() {
           </div>
         </div>
       )}
-      {/* Content */}
-      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
+        {marketsView === "cards" && (
+          <div style={{padding:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <div>
+                <span style={{fontFamily:T.font.mono,fontSize:12,fontWeight:700,color:T.text.amber,letterSpacing:1}}>TRACKED MARKETS</span>
+                <span style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,marginLeft:10}}>{MARKET_CARD_DATA.length} MSAs</span>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(260px, 1fr))",gap:12}}>
+              {MARKET_CARD_DATA.map(m => {
+                const jediColor = m.jedi >= 80 ? T.text.green : m.jedi >= 70 ? T.text.amber : T.text.red;
+                return (
+                  <div key={m.id} onClick={()=>{setSelectedMsaId(m.id);setMarketsView("detail");}} style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,padding:14,cursor:"pointer",transition:"border-color 0.15s,box-shadow 0.15s",borderTop:`3px solid ${jediColor}`}} onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.borderColor=T.text.amber;(e.currentTarget as HTMLDivElement).style.boxShadow=`0 2px 12px ${T.text.amber}22`;}} onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.borderColor=T.border.medium;(e.currentTarget as HTMLDivElement).style.boxShadow="none";}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                      <div>
+                        <span style={{fontFamily:T.font.mono,fontSize:12,fontWeight:700,color:T.text.primary}}>{m.name}</span>
+                        <span style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,marginLeft:6}}>{m.state}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:4}}>
+                        <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted}}>JEDI</span>
+                        <span style={{fontFamily:T.font.mono,fontSize:13,fontWeight:700,color:jediColor}}>{m.jedi}</span>
+                      </div>
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>UNITS</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:T.text.primary}}>{m.units}</div></div>
+                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>CAP RATE</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:T.text.primary}}>{m.capRate}</div></div>
+                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>VACANCY</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:T.text.primary}}>{m.vacancy}</div></div>
+                      <div><div style={{fontFamily:T.font.mono,fontSize:7,color:T.text.muted,letterSpacing:0.5,marginBottom:2}}>RENT GROWTH</div><div style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,color:m.rentGrowth.startsWith("+")?T.text.green:T.text.red}}>{m.rentGrowth}</div></div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
+                      <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.amber,fontWeight:600}}>VIEW DETAIL →</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {marketsView === "detail" && (
           <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
         )}
@@ -2030,17 +2082,105 @@ export default function TerminalPage() {
       </div>
     </div>
   );
-  // ─── VIEW: F5 NEWS (NewsIntelligencePage) ─────────────────
+
+  // ─── VIEW: F5 EMAIL ────────────────────────────────────────
+  const ViewEmail = () => {
+    const TAG_COLORS:Record<string,string>={LOI:T.text.cyan,URGENT:T.text.red,DD:T.text.amber,DEBT:T.text.purple,ZONING:T.text.orange,LP:T.text.secondary,SCORE:T.text.green};
+    const folders=[{id:"inbox",label:"INBOX",count:STATIC_EMAILS.filter(e=>e.unread).length},{id:"sent",label:"SENT",count:0},{id:"starred",label:"STARRED",count:1},{id:"all",label:"ALL MAIL",count:STATIC_EMAILS.length}];
+    const filtered=STATIC_EMAILS.filter(e=>{
+      const matchFolder=emailFolder==="all"||e.folder===emailFolder||(emailFolder==="starred"&&(e as any).starred);
+      const matchSearch=!emailSearch||e.from.toLowerCase().includes(emailSearch.toLowerCase())||e.subject.toLowerCase().includes(emailSearch.toLowerCase());
+      return matchFolder&&matchSearch;
+    });
+    const activeEmail=STATIC_EMAILS.find(e=>e.id===selEmail)||null;
+    return (
+      <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
+        <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
+          <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
+            <button onClick={()=>setFkey("F5")} style={{width:"100%",fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
+          </div>
+          <div style={{flex:1,overflow:"auto"}}>
+            {folders.map(f=>(
+              <div key={f.id} onClick={()=>setEmailFolder(f.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",background:emailFolder===f.id?T.bg.active:"transparent",borderLeft:emailFolder===f.id?`2px solid ${T.text.amber}`:"2px solid transparent"}}>
+                <span style={{fontFamily:T.font.mono,fontSize:9,fontWeight:600,color:emailFolder===f.id?T.text.amber:T.text.secondary}}>{f.label}</span>
+                {f.count>0&&<span style={{fontSize:7,fontWeight:700,background:T.text.amber+"22",color:T.text.amber,padding:"1px 5px"}}>{f.count}</span>}
+              </div>
+            ))}
+            <div style={{height:1,background:T.border.subtle,margin:"6px 0"}}/>
+            <div style={{padding:"6px 12px 3px"}}><span style={{fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:1}}>LABELS</span></div>
+            {["LOI","DD","DEBT","ZONING","URGENT","SCORE","LP"].map(tag=>(
+              <div key={tag} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px",cursor:"pointer"}}>
+                <span style={{width:6,height:6,borderRadius:"50%",background:TAG_COLORS[tag]||T.text.muted,display:"inline-block",flexShrink:0}}/>
+                <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.secondary}}>{tag}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{width:300,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0}}>
+          <div style={{padding:"5px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:4,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"2px 7px",height:22}}>
+              <span style={{fontSize:9,color:T.text.muted}}>⌕</span>
+              <input value={emailSearch} onChange={e=>setEmailSearch(e.target.value)} placeholder="Search mail…" style={{flex:1,background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:9,color:T.text.primary}}/>
+            </div>
+          </div>
+          <div style={{flex:1,overflow:"auto"}}>
+            {filtered.length===0&&<div style={{padding:20,textAlign:"center",fontSize:9,color:T.text.muted}}>No messages</div>}
+            {filtered.map(e=>(
+              <div key={e.id} onClick={()=>setSelEmail(e.id)} style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:selEmail===e.id?T.bg.active:e.unread?T.text.amber+"06":T.bg.panel,borderLeft:selEmail===e.id?`2px solid ${T.text.amber}`:e.unread?`2px solid ${T.text.orange}`:`2px solid transparent`}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:9,fontWeight:e.unread?700:500,color:e.unread?T.text.primary:T.text.secondary}}>{e.from}</span>
+                    {e.unread&&<span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>}
+                  </div>
+                  <span style={{fontSize:7,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
+                </div>
+                <div style={{fontSize:8,fontWeight:e.unread?600:400,color:e.unread?T.text.primary:T.text.secondary,marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject}</div>
+                <div style={{fontSize:7,color:T.text.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.preview}</div>
+                <div style={{display:"flex",gap:4,marginTop:4,flexWrap:"wrap"}}>
+                  {e.tag&&<Bd c={TAG_COLORS[e.tag]||T.text.muted}>{e.tag}</Bd>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+          {!activeEmail&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{fontSize:10,color:T.text.muted}}>Select an email to read</div></div>}
+          {activeEmail&&(
+            <>
+              <div style={{padding:"10px 16px",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.text.primary,marginBottom:4}}>{activeEmail.subject}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontSize:9,fontWeight:600,color:T.text.amber}}>{activeEmail.from}</span>
+                  <span style={{fontSize:8,color:T.text.muted}}>· {activeEmail.time}</span>
+                  {activeEmail.tag&&<Bd c={TAG_COLORS[activeEmail.tag]||T.text.muted}>{activeEmail.tag}</Bd>}
+                </div>
+                <div style={{display:"flex",gap:6,marginTop:8}}>
+                  {["REPLY","FORWARD"].map(a=>(
+                    <button key={a} onClick={()=>setFkey("F5")} style={{fontFamily:T.font.mono,fontSize:7,fontWeight:600,background:T.bg.input,color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer"}}>{a}</button>
+                  ))}
+                </div>
+              </div>
+              <div style={{flex:1,overflow:"auto",padding:"16px 18px"}}>
+                <pre style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:10,color:T.text.primary,lineHeight:"1.7",whiteSpace:"pre-wrap",margin:0}}>{activeEmail.body}</pre>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ─── VIEW: F6 NEWS (NewsIntelligencePage) ─────────────────
   const ViewNews = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <NewsIntelligencePage />
     </div>
   );
 
-  // ─── VIEW: F6 STRATEGIES ───────────────────────────────────
+  // ─── VIEW: F7 STRATEGIES ───────────────────────────────────
   const ViewStrategies = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F6")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F7")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
         {[
           {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
@@ -2048,7 +2188,7 @@ export default function TerminalPage() {
           {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
           {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
         ].map((row,i)=>(
-          <div key={i} onClick={()=>setFkey("F6")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+          <div key={i} onClick={()=>setFkey("F7")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
               <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
               <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
@@ -2128,10 +2268,11 @@ export default function TerminalPage() {
       case "F2": return DealGrid();
       case "F3": return ViewPortfolio();
       case "F4": return ViewMarkets();
-      case "F5": return ViewNews();
-      case "F6": return ViewStrategies();
-      case "F7": return ViewReports();
-      case "F8": return ViewSettings();
+      case "F5": return ViewEmail();
+      case "F6": return ViewNews();
+      case "F7": return ViewStrategies();
+      case "F8": return ViewReports();
+      case "F9": return ViewSettings();
       default: return null;
     }
   };
