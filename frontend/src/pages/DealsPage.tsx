@@ -1,6 +1,6 @@
 /**
  * Pipeline Page (Deals) - Grid View as default content
- * 
+ *
  * Content: Pipeline grid with 20+ tracking columns
  * Map: Deal boundaries color-coded by tier
  */
@@ -13,6 +13,7 @@ import { useDealStore } from '../stores/dealStore';
 import { DataGrid } from '../components/grid/DataGrid';
 import { ColumnDef, PipelineDeal, GridSort } from '../types/grid';
 import { apiClient } from '../services/api.client';
+import { BT } from '../components/deal/bloomberg-ui';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -23,11 +24,11 @@ type TabType = 'all' | 'active' | 'closed';
 type QuadrantType = 'Hidden Gem' | 'Validated Winner' | 'Hype Risk' | 'Dead Weight';
 type RankTier = 'Top 10' | 'Top 25' | 'Top 50' | 'All';
 
-const quadrantColors: Record<QuadrantType, string> = {
-  'Hidden Gem': 'bg-emerald-100 text-emerald-700',
-  'Validated Winner': 'bg-blue-100 text-blue-700',
-  'Hype Risk': 'bg-amber-100 text-amber-700',
-  'Dead Weight': 'bg-red-100 text-red-700',
+const quadrantStyles: Record<QuadrantType, { background: string; color: string }> = {
+  'Hidden Gem': { background: BT.bg.active, color: BT.text.green },
+  'Validated Winner': { background: BT.bg.active, color: BT.text.cyan },
+  'Hype Risk': { background: BT.bg.active, color: BT.text.amber },
+  'Dead Weight': { background: BT.bg.active, color: BT.text.red },
 };
 
 const quadrantOptions: QuadrantType[] = ['Hidden Gem', 'Validated Winner', 'Hype Risk', 'Dead Weight'];
@@ -76,9 +77,9 @@ const columns: ColumnDef[] = [
     width: 200,
     render: (value, row) => (
       <div>
-        <div className="font-medium text-gray-900">{value || '—'}</div>
+        <div className="font-medium" style={{ color: BT.text.primary }}>{value || '—'}</div>
         {row.days_in_stage > 30 && (
-          <span className="text-xs text-orange-600">Stalled {row.days_in_stage}d</span>
+          <span className="text-xs" style={{ color: BT.text.orange }}>Stalled {row.days_in_stage}d</span>
         )}
       </div>
     ),
@@ -94,7 +95,7 @@ const columns: ColumnDef[] = [
     width: 70,
     align: 'right',
     render: (value) => (
-      <span className={value > 30 ? 'text-orange-600 font-semibold' : 'text-gray-900'}>
+      <span className={value > 30 ? 'font-semibold' : ''} style={{ color: value > 30 ? BT.text.orange : BT.text.primary }}>
         {value || 0}
       </span>
     ),
@@ -109,20 +110,21 @@ const columns: ColumnDef[] = [
     render: (value) =>
       value ? (
         <span
-          className={`font-semibold ${
-            value >= 85
-              ? 'text-green-600'
+          className="font-semibold"
+          style={{
+            color: value >= 85
+              ? BT.text.green
               : value >= 70
-              ? 'text-blue-600'
+              ? BT.text.cyan
               : value >= 50
-              ? 'text-yellow-600'
-              : 'text-gray-600'
-          }`}
+              ? BT.text.amber
+              : BT.text.secondary,
+          }}
         >
           {value}
         </span>
       ) : (
-        <span className="text-gray-400">—</span>
+        <span style={{ color: BT.text.muted }}>—</span>
       ),
   },
   { key: 'ask_price', label: 'Ask Price', sortable: true, filterable: true, width: 130, align: 'right', format: formatCurrency },
@@ -135,9 +137,9 @@ const columns: ColumnDef[] = [
     align: 'right',
     render: (value, row) => (
       <div>
-        <div className="font-medium text-gray-900">{formatCurrency(value)}</div>
+        <div className="font-medium" style={{ color: BT.text.primary }}>{formatCurrency(value)}</div>
         {row.ask_price && value && value < row.ask_price && (
-          <div className="text-xs text-green-600">${Math.round((row.ask_price - value) / 1000000)}M gap</div>
+          <div className="text-xs" style={{ color: BT.text.green }}>${Math.round((row.ask_price - value) / 1000000)}M gap</div>
         )}
       </div>
     ),
@@ -152,9 +154,9 @@ const columns: ColumnDef[] = [
     align: 'right',
     render: (value, row) => (
       <div>
-        <div className="font-medium text-gray-900">{formatPercent(value)}</div>
+        <div className="font-medium" style={{ color: BT.text.primary }}>{formatPercent(value)}</div>
         {row.broker_projected_irr && value && value > row.broker_projected_irr && (
-          <div className="text-xs text-green-600">+{(Number(value) - Number(row.broker_projected_irr)).toFixed(1)}%</div>
+          <div className="text-xs" style={{ color: BT.text.green }}>+{(Number(value) - Number(row.broker_projected_irr)).toFixed(1)}%</div>
         )}
       </div>
     ),
@@ -169,20 +171,24 @@ const columns: ColumnDef[] = [
     render: (value) =>
       value ? (
         <span
-          className={`px-2 py-1 rounded-full text-xs font-medium ${
-            value === 'build_to_sell' || value === 'Build-to-Sell'
-              ? 'bg-green-100 text-green-700'
-              : value === 'flip' || value === 'Flip'
-              ? 'bg-blue-100 text-blue-700'
-              : value === 'rental' || value === 'Rental'
-              ? 'bg-purple-100 text-purple-700'
-              : 'bg-gray-100 text-gray-700'
-          }`}
+          className="px-2 py-1 text-xs font-medium"
+          style={{
+            borderRadius: 2,
+            background: BT.bg.active,
+            color:
+              value === 'build_to_sell' || value === 'Build-to-Sell'
+                ? BT.text.green
+                : value === 'flip' || value === 'Flip'
+                ? BT.text.cyan
+                : value === 'rental' || value === 'Rental'
+                ? BT.text.purple
+                : BT.text.secondary,
+          }}
         >
           {value.replace('_', ' ')}
         </span>
       ) : (
-        <span className="text-gray-400">—</span>
+        <span style={{ color: BT.text.muted }}>—</span>
       ),
   },
   {
@@ -201,7 +207,7 @@ const columns: ColumnDef[] = [
     filterable: true,
     width: 110,
     align: 'center',
-    render: (value) => (value ? <span className="text-orange-600 font-medium">Risk</span> : <span className="text-gray-400">—</span>),
+    render: (value) => (value ? <span className="font-medium" style={{ color: BT.text.orange }}>Risk</span> : <span style={{ color: BT.text.muted }}>—</span>),
   },
   {
     key: 'imbalance_score',
@@ -212,7 +218,7 @@ const columns: ColumnDef[] = [
     align: 'right',
     render: (value) =>
       value ? (
-        <span className={`font-medium ${value >= 70 ? 'text-green-600' : value >= 40 ? 'text-yellow-600' : 'text-red-600'}`}>
+        <span className="font-medium" style={{ color: value >= 70 ? BT.text.green : value >= 40 ? BT.text.amber : BT.text.red }}>
           {value}
         </span>
       ) : (
@@ -227,18 +233,18 @@ const columns: ColumnDef[] = [
     width: 110,
     align: 'center',
     render: (value, row) => {
-      if (!value) return <span className="text-gray-400">—</span>;
+      if (!value) return <span style={{ color: BT.text.muted }}>—</span>;
       const movement = row.pcs_movement || 0;
       return (
         <div className="flex items-center justify-center gap-1.5">
-          <span className="font-semibold text-gray-900">#{value}</span>
+          <span className="font-semibold" style={{ color: BT.text.primary }}>#{value}</span>
           {movement !== 0 && (
-            <span className={`inline-flex items-center text-xs font-medium ${movement > 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <span className="inline-flex items-center text-xs font-medium" style={{ color: movement > 0 ? BT.text.green : BT.text.red }}>
               {movement > 0 ? '▲' : '▼'}{Math.abs(movement)}
             </span>
           )}
           {movement === 0 && (
-            <span className="inline-flex items-center text-xs text-gray-400">—</span>
+            <span className="inline-flex items-center text-xs" style={{ color: BT.text.muted }}>—</span>
           )}
         </div>
       );
@@ -252,10 +258,10 @@ const columns: ColumnDef[] = [
     width: 150,
     align: 'center',
     render: (value) => {
-      if (!value) return <span className="text-gray-400">—</span>;
-      const colorClass = quadrantColors[value as QuadrantType] || 'bg-gray-100 text-gray-700';
+      if (!value) return <span style={{ color: BT.text.muted }}>—</span>;
+      const style = quadrantStyles[value as QuadrantType] || { background: BT.bg.active, color: BT.text.secondary };
       return (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClass}`}>
+        <span className="px-2 py-1 text-xs font-medium" style={{ borderRadius: 2, background: style.background, color: style.color }}>
           {value}
         </span>
       );
@@ -269,17 +275,18 @@ const columns: ColumnDef[] = [
     width: 110,
     align: 'right',
     render: (value) => {
-      if (value === null || value === undefined) return <span className="text-gray-400">—</span>;
-      const color = value >= 80 ? 'text-green-600' : value >= 60 ? 'text-blue-600' : value >= 40 ? 'text-yellow-600' : 'text-red-600';
+      if (value === null || value === undefined) return <span style={{ color: BT.text.muted }}>—</span>;
+      const color = value >= 80 ? BT.text.green : value >= 60 ? BT.text.cyan : value >= 40 ? BT.text.amber : BT.text.red;
+      const barColor = value >= 80 ? BT.text.green : value >= 60 ? BT.text.cyan : value >= 40 ? BT.text.amber : BT.text.red;
       return (
         <div className="flex items-center justify-end gap-2">
-          <div className="w-12 bg-gray-200 rounded-full h-1.5">
+          <div className="w-12 h-1.5" style={{ background: BT.bg.hover, borderRadius: 1 }}>
             <div
-              className={`h-1.5 rounded-full ${value >= 80 ? 'bg-green-500' : value >= 60 ? 'bg-blue-500' : value >= 40 ? 'bg-yellow-500' : 'bg-red-500'}`}
-              style={{ width: `${Math.min(100, value)}%` }}
+              className="h-1.5"
+              style={{ width: `${Math.min(100, value)}%`, background: barColor, borderRadius: 1 }}
             />
           </div>
-          <span className={`font-semibold ${color}`}>{value}</span>
+          <span className="font-semibold" style={{ color }}>{value}</span>
         </div>
       );
     },
@@ -297,16 +304,20 @@ const columns: ColumnDef[] = [
     render: (value) =>
       value !== null && value !== undefined ? (
         <div className="flex items-center justify-end gap-2">
-          <div className="w-16 bg-gray-200 rounded-full h-2">
+          <div className="w-16 h-2" style={{ background: BT.bg.hover, borderRadius: 1 }}>
             <div
-              className={`h-2 rounded-full ${value >= 80 ? 'bg-green-500' : value >= 50 ? 'bg-yellow-500' : 'bg-blue-500'}`}
-              style={{ width: `${Math.min(100, value)}%` }}
+              className="h-2"
+              style={{
+                width: `${Math.min(100, value)}%`,
+                background: value >= 80 ? BT.text.green : value >= 50 ? BT.text.amber : BT.text.cyan,
+                borderRadius: 1,
+              }}
             />
           </div>
-          <span className="text-xs text-gray-600">{value}%</span>
+          <span className="text-xs" style={{ color: BT.text.secondary }}>{value}%</span>
         </div>
       ) : (
-        <span className="text-gray-400">—</span>
+        <span style={{ color: BT.text.muted }}>—</span>
       ),
   },
 ];
@@ -388,7 +399,6 @@ export function DealsPage() {
       const response = await apiClient.get(`${API_URL}/grid/pipeline?${params.toString()}`);
       const dataToUse = intelData || intelligenceData;
       const deals = (response.data.deals || []).map((deal: PipelineDeal, index: number) => {
-        // Try to get real intelligence data, fall back to mock if not available
         const intelligence = dataToUse.get(deal.id) || mockIntelligenceData[index % mockIntelligenceData.length];
         return {
           ...deal,
@@ -506,9 +516,9 @@ export function DealsPage() {
     if (error) {
       return (
         <div className="p-6">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-800">{error}</p>
-            <button onClick={() => loadGridDeals()} className="mt-2 text-red-600 hover:text-red-800 font-medium">
+          <div className="p-4" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+            <p style={{ color: BT.text.red }}>{error}</p>
+            <button onClick={() => loadGridDeals()} className="mt-2 font-medium" style={{ color: BT.text.red }}>
               Retry
             </button>
           </div>
@@ -518,50 +528,58 @@ export function DealsPage() {
 
     return (
       <div className="h-full flex flex-col">
-        <div className="flex items-center gap-1 px-4 pt-3 pb-2 border-b border-gray-200 bg-white flex-shrink-0">
+        <div className="flex items-center gap-1 px-4 pt-3 pb-2 flex-shrink-0" style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel }}>
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                activeTab === tab.id
-                  ? 'bg-blue-100 text-blue-700'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors"
+              style={{
+                borderRadius: 2,
+                background: activeTab === tab.id ? BT.bg.active : 'transparent',
+                color: activeTab === tab.id ? BT.text.cyan : BT.text.secondary,
+              }}
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
             </button>
           ))}
-          <div className="ml-auto text-xs text-gray-500">{filteredDeals.length} deals</div>
+          <div className="ml-auto text-xs" style={{ color: BT.text.secondary }}>{filteredDeals.length} deals</div>
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 border-b border-gray-200 flex-shrink-0 flex-wrap">
-          <span className="text-xs font-medium text-gray-500 mr-1">Quadrant:</span>
-          {quadrantOptions.map((q) => (
-            <button
-              key={q}
-              onClick={() => setQuadrantFilter(quadrantFilter === q ? null : q)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                quadrantFilter === q
-                  ? quadrantColors[q]
-                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'
-              }`}
-            >
-              {q}
-            </button>
-          ))}
-          <div className="w-px h-5 bg-gray-300 mx-1" />
-          <span className="text-xs font-medium text-gray-500 mr-1">Rank:</span>
+        <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0 flex-wrap" style={{ background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <span className="text-xs font-medium mr-1" style={{ color: BT.text.secondary }}>Quadrant:</span>
+          {quadrantOptions.map((q) => {
+            const qStyle = quadrantStyles[q];
+            return (
+              <button
+                key={q}
+                onClick={() => setQuadrantFilter(quadrantFilter === q ? null : q)}
+                className="px-2.5 py-1 text-xs font-medium transition-colors"
+                style={{
+                  borderRadius: 2,
+                  background: quadrantFilter === q ? qStyle.background : 'transparent',
+                  color: quadrantFilter === q ? qStyle.color : BT.text.secondary,
+                  border: quadrantFilter === q ? 'none' : `1px solid ${BT.border.subtle}`,
+                }}
+              >
+                {q}
+              </button>
+            );
+          })}
+          <div className="w-px h-5 mx-1" style={{ background: BT.border.subtle }} />
+          <span className="text-xs font-medium mr-1" style={{ color: BT.text.secondary }}>Rank:</span>
           {rankTierOptions.map((tier) => (
             <button
               key={tier}
               onClick={() => setRankTierFilter(tier)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                rankTierFilter === tier
-                  ? 'bg-indigo-100 text-indigo-700'
-                  : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-100'
-              }`}
+              className="px-2.5 py-1 text-xs font-medium transition-colors"
+              style={{
+                borderRadius: 2,
+                background: rankTierFilter === tier ? BT.bg.active : 'transparent',
+                color: rankTierFilter === tier ? BT.text.purple : BT.text.secondary,
+                border: rankTierFilter === tier ? 'none' : `1px solid ${BT.border.subtle}`,
+              }}
             >
               {tier}
             </button>
@@ -569,7 +587,8 @@ export function DealsPage() {
           {(quadrantFilter || rankTierFilter !== 'All') && (
             <button
               onClick={() => { setQuadrantFilter(null); setRankTierFilter('All'); }}
-              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 underline"
+              className="px-2 py-1 text-xs underline"
+              style={{ color: BT.text.secondary }}
             >
               Clear filters
             </button>
@@ -593,20 +612,20 @@ export function DealsPage() {
   const renderMap = () => (
     <>
       <div ref={mapContainer} className="absolute inset-0" />
-      <div className="absolute bottom-6 left-6 bg-white rounded-lg shadow-lg p-4 z-10">
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">Deal Tiers</h3>
+      <div className="absolute bottom-6 left-6 p-4 z-10" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+        <h3 className="text-sm font-semibold mb-2" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>Deal Tiers</h3>
         <div className="space-y-1.5 text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-yellow-500" />
-            <span>Basic</span>
+            <div className="w-4 h-4" style={{ background: BT.text.amber, borderRadius: 2 }} />
+            <span style={{ color: BT.text.primary }}>Basic</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-blue-500" />
-            <span>Pro</span>
+            <div className="w-4 h-4" style={{ background: BT.text.cyan, borderRadius: 2 }} />
+            <span style={{ color: BT.text.primary }}>Pro</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded bg-green-500" />
-            <span>Enterprise</span>
+            <div className="w-4 h-4" style={{ background: BT.text.green, borderRadius: 2 }} />
+            <span style={{ color: BT.text.primary }}>Enterprise</span>
           </div>
         </div>
       </div>
