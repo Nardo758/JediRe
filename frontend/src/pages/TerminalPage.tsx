@@ -2016,7 +2016,7 @@ export default function TerminalPage() {
           </select>
           <div style={{flex:1}}/>
           <div style={{display:"flex",gap:2}}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers"|"overview", string][]).map(([v,label]) => (
+            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
               <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
                 {label}
               </button>
