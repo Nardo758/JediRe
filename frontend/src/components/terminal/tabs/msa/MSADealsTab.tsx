@@ -539,18 +539,21 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
         </DataTable>
       </CardSection>
 
-      {commentary?.investmentThesis && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <InvestmentThesis
-            recommendation={commentary.investmentThesis.recommendation}
-            points={commentary.investmentThesis.points}
-          />
-        </div>
-      )}
-
-      {commentary?.signalCommentary?.momentum && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.investmentThesis && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <InvestmentThesis
+                recommendation={commentary.investmentThesis.recommendation}
+                points={commentary.investmentThesis.points}
+              />
+            </div>
+          )}
+          {commentary.signalCommentary?.momentum && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+            </div>
+          )}
         </div>
       )}
     </div>

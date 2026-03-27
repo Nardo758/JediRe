@@ -582,9 +582,18 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
         </div>
       </div>
 
-      {commentary?.signalCommentary?.demand && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.signalCommentary?.demand && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+            </div>
+          )}
+          {commentary.signalCommentary?.supply && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+            </div>
+          )}
         </div>
       )}
     </div>

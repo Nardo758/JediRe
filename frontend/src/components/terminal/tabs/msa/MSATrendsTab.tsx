@@ -10,7 +10,7 @@ import { CardSection, DataTable } from '../../TerminalLayouts';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SUPPLY_WAVE_STYLES, SupplyWavePhase } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import { SignalCommentary } from '../../commentary';
+import { SignalCommentary, SupplyNarrative } from '../../commentary';
 
 interface MSATrendsTabProps {
   msaId: string;
@@ -561,9 +561,18 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      {commentary?.signalCommentary?.momentum && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.signalCommentary?.momentum && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+            </div>
+          )}
+          {commentary.supplyNarrative && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SupplyNarrative narrative={commentary.supplyNarrative} />
+            </div>
+          )}
         </div>
       )}
     </div>

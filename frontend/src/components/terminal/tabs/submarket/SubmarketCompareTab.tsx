@@ -7,7 +7,7 @@ import { BarChart3, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import { PeerContext } from '../../commentary';
+import { PeerContext, SignalCommentary } from '../../commentary';
 
 interface SubmarketCompareTabProps {
   submarketId: string;
@@ -242,14 +242,23 @@ export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submar
         <span><span style={{ color: BT.text.red }}>●</span> Worse than {submarket.name}</span>
       </div>
 
-      {commentary?.peerContext && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <PeerContext
-            summary={commentary.peerContext.summary}
-            peerRank={commentary.peerContext.peerRank}
-            peerTotal={commentary.peerContext.peerTotal}
-            topPeers={commentary.peerContext.topPeers}
-          />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.peerContext && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <PeerContext
+                summary={commentary.peerContext.summary}
+                peerRank={commentary.peerContext.peerRank}
+                peerTotal={commentary.peerContext.peerTotal}
+                topPeers={commentary.peerContext.topPeers}
+              />
+            </div>
+          )}
+          {commentary.signalCommentary?.position && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+            </div>
+          )}
         </div>
       )}
     </div>

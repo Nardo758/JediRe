@@ -133,9 +133,18 @@ export const SubmarketFinancialsTab: React.FC<SubmarketFinancialsTabProps> = ({ 
         </table>
       </div>
 
-      {commentary?.signalCommentary?.supply && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.signalCommentary?.supply && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+            </div>
+          )}
+          {commentary.signalCommentary?.momentum && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+            </div>
+          )}
         </div>
       )}
     </div>

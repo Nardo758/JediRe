@@ -8,7 +8,7 @@ import { BT, fmt, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../../TerminalChart';
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import { MarketNarrative, StrategyScoreBadge } from '../../commentary';
+import { MarketNarrative, StrategyScoreBadge, InvestmentThesis } from '../../commentary';
 
 interface SubmarketOverviewTabProps {
   submarketId: string;
@@ -339,37 +339,48 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
       </div>
 
       {commentary && (
-        <div style={{ display: 'flex', gap: 16 }}>
-          <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-            <MarketNarrative narrative={commentary.marketNarrative} />
-          </div>
-          <div style={{
-            flex: '0 0 120px',
-            ...terminalStyles.card,
-            padding: 16,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <div style={{
-              fontSize: 9,
-              fontWeight: 700,
-              color: BT.text.amber,
-              textTransform: 'uppercase',
-              letterSpacing: '0.06em',
-              marginBottom: 6,
-              fontFamily: "'JetBrains Mono', monospace",
-            }}>
-              JEDI
+        <>
+          <div style={{ display: 'flex', gap: 16 }}>
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <MarketNarrative narrative={commentary.marketNarrative} />
             </div>
-            <StrategyScoreBadge
-              score={commentary.jediScore}
-              delta={commentary.arbitrageDelta}
-              size="md"
-            />
+            <div style={{
+              flex: '0 0 120px',
+              ...terminalStyles.card,
+              padding: 16,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <div style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color: BT.text.amber,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                marginBottom: 6,
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+                JEDI
+              </div>
+              <StrategyScoreBadge
+                score={commentary.jediScore}
+                delta={commentary.arbitrageDelta}
+                size="md"
+              />
+            </div>
           </div>
-        </div>
+          {commentary.investmentThesis && (
+            <div style={{ ...terminalStyles.card, padding: 16 }}>
+              <InvestmentThesis
+                recommendation={commentary.investmentThesis.recommendation}
+                points={commentary.investmentThesis.points}
+                compact
+              />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -9,7 +9,7 @@ import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { PCSComponents, calculatePCS, scoreColor } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import { SignalCommentary } from '../../commentary';
+import { SignalCommentary, PeerContext } from '../../commentary';
 
 interface MSAPowerRankingsTabProps {
   msaId: string;
@@ -485,9 +485,25 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
         </div>
       </div>
 
-      {commentary?.signalCommentary?.position && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.signalCommentary?.position && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+            </div>
+          )}
+          {commentary.peerContext && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <PeerContext
+                summary={commentary.peerContext.summary}
+                peerRank={commentary.peerContext.peerRank}
+                peerTotal={commentary.peerContext.peerTotal}
+                topPeers={commentary.peerContext.topPeers}
+                currentScore={commentary.jediScore}
+                compact
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

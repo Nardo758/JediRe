@@ -244,9 +244,18 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      {commentary?.signalCommentary?.risk && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.risk} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.signalCommentary?.risk && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.risk} />
+            </div>
+          )}
+          {commentary.signalCommentary?.demand && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+            </div>
+          )}
         </div>
       )}
     </div>

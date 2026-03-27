@@ -9,7 +9,7 @@ import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import { RiskOpportunity } from '../../commentary';
+import { RiskOpportunity, SignalCommentary } from '../../commentary';
 
 interface MSAOwnersTabProps {
   msaId: string;
@@ -562,12 +562,21 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
         </div>
       </div>
 
-      {commentary?.riskOpportunity && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <RiskOpportunity
-            risks={commentary.riskOpportunity.risks}
-            opportunities={commentary.riskOpportunity.opportunities}
-          />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.riskOpportunity && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <RiskOpportunity
+                risks={commentary.riskOpportunity.risks}
+                opportunities={commentary.riskOpportunity.opportunities}
+              />
+            </div>
+          )}
+          {commentary.signalCommentary?.position && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -268,9 +268,18 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         </DataTable>
       </TerminalSection>
 
-      {commentary?.signalCommentary?.position && (
-        <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+      {commentary && (
+        <div style={{ display: 'flex', gap: 16 }}>
+          {commentary.signalCommentary?.position && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+            </div>
+          )}
+          {commentary.signalCommentary?.risk && (
+            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
+              <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.risk} />
+            </div>
+          )}
         </div>
       )}
     </div>
