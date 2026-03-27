@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { ZoningAgent } from './zoning.agent';
 import { SupplyAgent } from './supply.agent';
 import { CashFlowAgent } from './cashflow.agent';
+import { CommentaryAgent } from './commentary.agent';
 import { IntelligenceContextService } from '../services/intelligence-context.service';
 
 interface TaskInput {
@@ -35,6 +36,7 @@ export class AgentOrchestrator {
     this.agents.set('zoning_analysis', new ZoningAgent());
     this.agents.set('supply_analysis', new SupplyAgent());
     this.agents.set('cashflow_analysis', new CashFlowAgent());
+    this.agents.set('commentary_generation', new CommentaryAgent());
 
     // Initialize intelligence service
     this.intelligenceService = new IntelligenceContextService(getPool());

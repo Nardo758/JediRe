@@ -1,11 +1,21 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BT } from '../../theme';
 import type { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import {
+  MarketNarrative,
+  InvestmentThesis,
+  RiskOpportunity,
+  PeerContext,
+  SupplyNarrative,
+  StrategyScoreBadge,
+} from '../../commentary';
 
 interface SubmarketCommentaryTabProps {
   submarketId: string;
   submarket: SubmarketData | null;
   onSelectSubmarket?: (submarketId: string) => void;
+  onPropertySelect?: (propertyId: string) => void;
 }
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
@@ -46,6 +56,13 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 }) => {
   const subName = submarket?.name || submarketId.charAt(0).toUpperCase() + submarketId.slice(1);
   const msaName = submarket?.msaName || 'Atlanta, GA';
+
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+
+  useEffect(() => {
+    fetchCommentary('submarket', submarketId, subName);
+  }, [submarketId, subName]);
 
   return (
     <div style={{ display: 'flex', gap: 16 }}>
@@ -151,68 +168,117 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
         borderLeft: `2px solid ${BT.text.amber}66`,
         paddingLeft: 16,
       }}>
-        <div style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: BT.text.amber,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          borderBottom: `1px solid ${BT.text.amber}44`,
-          paddingBottom: 4,
-          marginBottom: 8,
-          ...mono,
-        }}>
-          Submarket Narrative
-        </div>
-        <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 12px 0' }}>
-          {subName} ranks as the top-performing submarket in the {msaName} MSA
-          with a {submarket?.healthScore || 91} strategy score. Class B repositioning
-          offers a 340bps spread to Class A rents, making it the primary opportunity
-          within the Core Plus Value-Add strategy.
-        </p>
-
-        <div style={{
-          padding: '8px 10px',
-          background: `${BT.text.green}14`,
-          border: `1px solid ${BT.text.green}44`,
-          borderRadius: 3,
-          marginBottom: 16,
-        }}>
-          <div style={{ fontSize: 10, color: BT.text.green, textTransform: 'uppercase', marginBottom: 2, fontWeight: 700, ...mono }}>
-            Top Opportunity
-          </div>
-          <div style={{ fontSize: 11, color: BT.text.primary }}>
-            Class B repositioning — 340bps spread to Class A
-          </div>
-        </div>
-
-        <div style={{
-          fontSize: 10,
-          fontWeight: 700,
-          color: BT.text.amber,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          borderBottom: `1px solid ${BT.text.amber}44`,
-          paddingBottom: 4,
-          marginBottom: 8,
-          ...mono,
-        }}>
-          Market Signals
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {[
-            { label: 'Avg Rent', value: submarket?.avgRent ? `$${submarket.avgRent.toLocaleString()}` : '$1,820', color: BT.text.primary },
-            { label: 'Rent Growth', value: `+${submarket?.rentGrowth || 5.2}%`, color: BT.text.green },
-            { label: 'Occupancy', value: `${submarket?.occupancy || 96.1}%`, color: BT.text.green },
-            { label: 'Pipeline', value: `${(submarket?.pipelineUnits || 2100).toLocaleString()} units`, color: BT.text.primary },
-            { label: 'Absorption', value: `${submarket?.absorptionRate || 94}%`, color: BT.text.green },
-          ].map(item => (
-            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, ...mono }}>
-              <span style={{ color: BT.text.muted }}>{item.label}</span>
-              <span style={{ color: item.color, fontWeight: 600 }}>{item.value}</span>
+        {commentary ? (
+          <>
+            <MarketNarrative narrative={commentary.marketNarrative} compact />
+            <InvestmentThesis
+              recommendation={commentary.investmentThesis.recommendation}
+              points={commentary.investmentThesis.points}
+              compact
+            />
+            <div style={{ marginTop: 12, marginBottom: 12 }}>
+              <div style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: BT.text.amber,
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                borderBottom: `1px solid ${BT.text.amber}44`,
+                paddingBottom: 4,
+                marginBottom: 8,
+                ...mono,
+              }}>
+                Strategy Score
+              </div>
+              <StrategyScoreBadge
+                score={commentary.jediScore}
+                delta={commentary.arbitrageDelta}
+                size="lg"
+              />
+              <div style={{ fontSize: 10, color: BT.text.muted, ...mono, marginTop: 4 }}>
+                {commentary.recommendedStrategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              </div>
             </div>
-          ))}
-        </div>
+            <RiskOpportunity
+              risks={commentary.riskOpportunity.risks}
+              opportunities={commentary.riskOpportunity.opportunities}
+              compact
+            />
+            <PeerContext
+              summary={commentary.peerContext.summary}
+              peerRank={commentary.peerContext.peerRank}
+              peerTotal={commentary.peerContext.peerTotal}
+              topPeers={commentary.peerContext.topPeers}
+              currentScore={commentary.jediScore}
+              compact
+            />
+            <SupplyNarrative narrative={commentary.supplyNarrative} compact />
+          </>
+        ) : (
+          <>
+            <div style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: BT.text.amber,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              borderBottom: `1px solid ${BT.text.amber}44`,
+              paddingBottom: 4,
+              marginBottom: 8,
+              ...mono,
+            }}>
+              Submarket Narrative
+            </div>
+            <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 12px 0' }}>
+              {subName} ranks as the top-performing submarket in the {msaName} MSA.
+              Class B repositioning offers a 340bps spread to Class A rents, making it
+              the primary opportunity within the Core Plus Value-Add strategy.
+            </p>
+
+            <div style={{
+              padding: '8px 10px',
+              background: `${BT.text.green}14`,
+              border: `1px solid ${BT.text.green}44`,
+              borderRadius: 3,
+              marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 10, color: BT.text.green, textTransform: 'uppercase', marginBottom: 2, fontWeight: 700, ...mono }}>
+                Top Opportunity
+              </div>
+              <div style={{ fontSize: 11, color: BT.text.primary }}>
+                Class B repositioning — 340bps spread to Class A
+              </div>
+            </div>
+
+            <div style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: BT.text.amber,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              borderBottom: `1px solid ${BT.text.amber}44`,
+              paddingBottom: 4,
+              marginBottom: 8,
+              ...mono,
+            }}>
+              Market Signals
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {[
+                { label: 'Avg Rent', value: submarket?.avgRent ? `$${submarket.avgRent.toLocaleString()}` : '$1,820', color: BT.text.primary },
+                { label: 'Rent Growth', value: `+${submarket?.rentGrowth || 5.2}%`, color: BT.text.green },
+                { label: 'Occupancy', value: `${submarket?.occupancy || 96.1}%`, color: BT.text.green },
+                { label: 'Pipeline', value: `${(submarket?.pipelineUnits || 2100).toLocaleString()} units`, color: BT.text.primary },
+                { label: 'Absorption', value: `${submarket?.absorptionRate || 94}%`, color: BT.text.green },
+              ].map(item => (
+                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, ...mono }}>
+                  <span style={{ color: BT.text.muted }}>{item.label}</span>
+                  <span style={{ color: item.color, fontWeight: 600 }}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,8 @@ import React, { useState, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { SIGNAL_GROUPS, SignalGroupId, BT_SIGNAL_COLORS, ALL_OUTPUTS, scoreColor } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { MarketNarrative, InvestmentThesis, StrategyScoreBadge } from '../../commentary';
 
 interface MSAOverviewTabProps {
   msaId: string;
@@ -121,6 +123,13 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
 
   const msaName = msa?.name || msaId || 'Atlanta';
   const msaState = msa?.state || 'GA';
+
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+
+  useEffect(() => {
+    fetchCommentary('msa', msaId, msaName);
+  }, [msaId, msaName]);
 
   // Severity colors for Bloomberg theme
   const severityColors = {
@@ -542,7 +551,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                     <button style={{
                       padding: '4px 12px',
                       background: BT.text.blue,
-                      color: '#fff',
+                      color: BT.text.primary,
                       border: 'none',
                       borderRadius: 0,
                       fontSize: 11,
@@ -558,6 +567,55 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
           </tbody>
         </DataTable>
       </div>
+
+      {commentary && (
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
+            <MarketNarrative narrative={commentary.marketNarrative} />
+          </div>
+          <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
+            <InvestmentThesis
+              recommendation={commentary.investmentThesis.recommendation}
+              points={commentary.investmentThesis.points}
+            />
+          </div>
+          <div style={{
+            flex: '0 0 160px',
+            ...terminalStyles.card,
+            padding: 20,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <div style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: BT.text.amber,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginBottom: 8,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              JEDI Score
+            </div>
+            <StrategyScoreBadge
+              score={commentary.jediScore}
+              delta={commentary.arbitrageDelta}
+              size="lg"
+            />
+            <div style={{
+              fontSize: 10,
+              color: BT.text.muted,
+              fontFamily: "'JetBrains Mono', monospace",
+              marginTop: 6,
+              textAlign: 'center',
+            }}>
+              {commentary.recommendedStrategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

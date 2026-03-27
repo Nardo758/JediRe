@@ -469,6 +469,63 @@ app.get('/api/v1/apartment-sync/rent-comps', requireAuth, async (req: any, res) 
   }
 });
 
+// Commentary + Strategy Scoring Endpoints
+import { CommentaryAgent, CommentaryInput } from './agents/commentary.agent';
+import { strategyArbitrageEngine, StrategySignalInputs } from './services/module-wiring/strategy-arbitrage-engine';
+
+const commentaryAgent = new CommentaryAgent();
+
+app.get('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: any, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { forceRefresh, entityName } = req.query;
+
+    if (!['msa', 'submarket', 'property'].includes(entityType)) {
+      return res.status(400).json({ success: false, error: 'entityType must be msa, submarket, or property' });
+    }
+
+    const input: CommentaryInput = {
+      entityType: entityType as 'msa' | 'submarket' | 'property',
+      entityId,
+      entityName: entityName as string | undefined,
+      forceRefresh: forceRefresh === 'true',
+    };
+
+    const result = await commentaryAgent.execute(input);
+    res.json({ success: true, commentary: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) => {
+  try {
+    const { dealId, signals, envelope } = req.body;
+
+    if (!dealId) {
+      return res.status(400).json({ success: false, error: 'dealId is required' });
+    }
+
+    const signalInputs: StrategySignalInputs | undefined = signals ? {
+      demandScore: signals.demandScore ?? 50,
+      supplyScore: signals.supplyScore ?? 50,
+      momentumScore: signals.momentumScore ?? 50,
+      positionScore: signals.positionScore ?? 50,
+      riskScore: signals.riskScore ?? 50,
+      budgetDistribution: signals.budgetDistribution,
+      bedroomDemand: signals.bedroomDemand,
+    } : undefined;
+
+    const result = envelope
+      ? await strategyArbitrageEngine.analyzeWithEnvelope(dealId, envelope, signalInputs)
+      : await strategyArbitrageEngine.analyze(dealId, signalInputs);
+
+    res.json({ success: true, analysis: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));

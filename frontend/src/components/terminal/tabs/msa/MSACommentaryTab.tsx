@@ -1,6 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BT } from '../../theme';
 import type { MSAData } from '../../MSATerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import {
+  MarketNarrative,
+  InvestmentThesis,
+  RiskOpportunity,
+  PeerContext,
+  SupplyNarrative,
+  StrategyScoreBadge,
+} from '../../commentary';
 
 interface MSACommentaryTabProps {
   msaId: string;
@@ -140,6 +149,14 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
   const msaName = msa?.name || msaId.charAt(0).toUpperCase() + msaId.slice(1);
   const jediScore = msa?.healthScore || 78;
   const totalPts = rows.reduce((s, r) => s + parseInt(r.pts), 0);
+
+  const { fetchCommentary, getCommentary, isLoading } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  const loading = isLoading('msa', msaId);
+
+  useEffect(() => {
+    fetchCommentary('msa', msaId, msaName);
+  }, [msaId, msaName]);
 
   return (
     <div style={{ display: 'flex', gap: 16 }}>
@@ -309,60 +326,84 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
         borderLeft: `2px solid ${BT.text.amber}66`,
         paddingLeft: 16,
       }}>
-        <SectionHeader>Market Narrative</SectionHeader>
-        <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 8px 0' }}>
-          {msaName}'s multifamily market continues to demonstrate resilient fundamentals despite
-          elevated supply pipeline. Demand drivers remain strong with {msa?.populationGrowth || 1.8}%
-          population growth and a favorable {msa?.employmentGrowth || 2.4}% employment trajectory.
-        </p>
-        <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 16px 0' }}>
-          Near-term supply pressure from {(msa?.pipelineUnits || 18400).toLocaleString()} units
-          delivering in H2 2026 warrants selective positioning in core submarkets with
-          established demand profiles.
-        </p>
+        {commentary ? (
+          <>
+            <MarketNarrative narrative={commentary.marketNarrative} compact />
+            <InvestmentThesis
+              recommendation={commentary.investmentThesis.recommendation}
+              points={commentary.investmentThesis.points}
+              compact
+            />
+            <div style={{ marginTop: 12, marginBottom: 12 }}>
+              <SectionHeader>Strategy Score</SectionHeader>
+              <StrategyScoreBadge
+                score={commentary.jediScore}
+                delta={commentary.arbitrageDelta}
+                size="lg"
+              />
+              <div style={{ fontSize: 10, color: BT.text.muted, ...mono, marginTop: 4 }}>
+                {commentary.recommendedStrategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+              </div>
+            </div>
+            <RiskOpportunity
+              risks={commentary.riskOpportunity.risks}
+              opportunities={commentary.riskOpportunity.opportunities}
+              compact
+            />
+            <PeerContext
+              summary={commentary.peerContext.summary}
+              peerRank={commentary.peerContext.peerRank}
+              peerTotal={commentary.peerContext.peerTotal}
+              topPeers={commentary.peerContext.topPeers}
+              currentScore={commentary.jediScore}
+              compact
+            />
+            <SupplyNarrative narrative={commentary.supplyNarrative} compact />
+          </>
+        ) : (
+          <>
+            <SectionHeader>Market Narrative</SectionHeader>
+            <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 8px 0' }}>
+              {msaName}'s multifamily market continues to demonstrate resilient fundamentals despite
+              elevated supply pipeline. Demand drivers remain strong with {msa?.populationGrowth || 1.8}%
+              population growth and a favorable {msa?.employmentGrowth || 2.4}% employment trajectory.
+            </p>
+            <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 16px 0' }}>
+              Near-term supply pressure from {(msa?.pipelineUnits || 18400).toLocaleString()} units
+              delivering in H2 2026 warrants selective positioning in core submarkets with
+              established demand profiles.
+            </p>
 
-        <SectionHeader>Investment Thesis</SectionHeader>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
-          <ThesisItem icon="✓" color={BT.text.green}>Population growth exceeds national avg</ThesisItem>
-          <ThesisItem icon="✓" color={BT.text.green}>Employment diversification reducing risk</ThesisItem>
-          <ThesisItem icon="⚠" color={BT.text.amber}>Supply deliveries may pressure occupancy</ThesisItem>
-          <ThesisItem icon="✗" color={BT.text.red}>Insurance costs escalating in Cobb County</ThesisItem>
-        </div>
-        <div style={{
-          padding: '6px 8px',
-          background: `${BT.text.amber}14`,
-          border: `1px solid ${BT.text.amber}44`,
-          borderRadius: 3,
-          textAlign: 'center',
-          fontSize: 11,
-          fontWeight: 700,
-          color: BT.text.amber,
-          ...mono,
-        }}>
-          SELECTIVE BUY
-        </div>
-
-        <div style={{ marginTop: 16 }}>
-          <SectionHeader>Strategy Score</SectionHeader>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-            <span style={{ fontSize: 24, fontWeight: 800, color: BT.text.amber, ...mono }}>{jediScore}</span>
-            <span style={{ fontSize: 11, color: BT.text.muted, ...mono }}>/100</span>
-            <span style={{
-              marginLeft: 'auto',
-              padding: '2px 6px',
-              background: `${BT.text.amber}18`,
-              border: `1px solid ${BT.text.amber}33`,
-              borderRadius: 2,
-              fontSize: 9,
+            <SectionHeader>Investment Thesis</SectionHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+              <ThesisItem icon="✓" color={BT.text.green}>Population growth exceeds national avg</ThesisItem>
+              <ThesisItem icon="✓" color={BT.text.green}>Employment diversification reducing risk</ThesisItem>
+              <ThesisItem icon="⚠" color={BT.text.amber}>Supply deliveries may pressure occupancy</ThesisItem>
+              <ThesisItem icon="✗" color={BT.text.red}>Insurance costs escalating in Cobb County</ThesisItem>
+            </div>
+            <div style={{
+              padding: '6px 8px',
+              background: `${BT.text.amber}14`,
+              border: `1px solid ${BT.text.amber}44`,
+              borderRadius: 3,
+              textAlign: 'center',
+              fontSize: 11,
               fontWeight: 700,
               color: BT.text.amber,
               ...mono,
-            }}>⚡ Δ22</span>
-          </div>
-          <div style={{ fontSize: 10, color: BT.text.muted, ...mono }}>
-            Core Plus Value-Add
-          </div>
-        </div>
+            }}>
+              SELECTIVE BUY
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <SectionHeader>Strategy Score</SectionHeader>
+              <StrategyScoreBadge score={jediScore} delta={22} size="lg" />
+              <div style={{ fontSize: 10, color: BT.text.muted, ...mono, marginTop: 4 }}>
+                Core Plus Value-Add
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

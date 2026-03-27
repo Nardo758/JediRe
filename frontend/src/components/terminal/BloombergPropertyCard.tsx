@@ -31,6 +31,12 @@ interface CompProperty {
   capRate?: number;
 }
 
+interface StrategyScoreProps {
+  score: number;
+  strategy?: string;
+  arbitrageFlag?: boolean;
+}
+
 interface BloombergPropertyCardProps {
   property: {
     id: string;
@@ -54,6 +60,7 @@ interface BloombergPropertyCardProps {
   sparklineData?: number[];
   onClick?: () => void;
   showComps?: boolean;
+  strategyScore?: StrategyScoreProps;
 }
 
 // Mini sparkline component
@@ -95,6 +102,7 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
   sparklineData = [],
   onClick,
   showComps = true,
+  strategyScore,
 }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
@@ -235,6 +243,30 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
             </span>
           )}
         </div>
+
+        {strategyScore && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '2px 6px',
+            background: `${strategyScore.score >= 75 ? BT.text.green : strategyScore.score >= 55 ? BT.text.amber : BT.text.red}14`,
+            border: `1px solid ${strategyScore.score >= 75 ? BT.text.green : strategyScore.score >= 55 ? BT.text.amber : BT.text.red}33`,
+            borderRadius: 3,
+          }}>
+            <span style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: strategyScore.score >= 75 ? BT.text.green : strategyScore.score >= 55 ? BT.text.amber : BT.text.red,
+              fontFamily: "'JetBrains Mono', monospace",
+            }}>
+              {Math.round(strategyScore.score)}
+            </span>
+            {strategyScore.arbitrageFlag && (
+              <span style={{ fontSize: 8, color: BT.text.cyan, fontWeight: 700 }}>ARB</span>
+            )}
+          </div>
+        )}
 
         {/* Live indicator */}
         <div style={{
