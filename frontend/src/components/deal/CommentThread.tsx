@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../services/api.client';
 import { MessageSquare, Send, CheckCircle, Reply, ChevronDown, ChevronRight } from 'lucide-react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface Comment {
   id: string;
@@ -54,34 +55,39 @@ function CommentBubble({
   const hasReplies = comment.replies && comment.replies.length > 0;
 
   return (
-    <div className={depth > 0 ? 'ml-6 border-l-2 border-slate-100 pl-3' : ''}>
-      <div className={`py-2 ${isResolved ? 'opacity-60' : ''}`}>
+    <div className={depth > 0 ? 'ml-6 pl-3' : ''} style={depth > 0 ? { borderLeft: `2px solid ${BT.border.subtle}` } : {}}>
+      <div className="py-2" style={{ opacity: isResolved ? 0.6 : 1 }}>
         <div className="flex items-start gap-2">
-          <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-[9px] font-bold text-slate-500 flex-shrink-0 mt-0.5">
+          <div
+            className="w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5"
+            style={{ borderRadius: '50%', background: BT.bg.active, fontSize: '9px', fontWeight: 700, color: BT.text.muted, fontFamily: BT.font.mono }}
+          >
             {comment.author_name.split(/[@.\s]/).filter(Boolean).map(s => s[0]).join('').toUpperCase().slice(0, 2)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-700">{comment.author_name}</span>
-              <span className="text-[10px] text-slate-400">{timeAgo(comment.created_at)}</span>
+              <span style={{ fontSize: '10px', fontWeight: 500, color: BT.text.primary, fontFamily: BT.font.mono }}>{comment.author_name}</span>
+              <span style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>{timeAgo(comment.created_at)}</span>
               {isResolved && (
-                <span className="text-[9px] font-medium text-green-600 bg-green-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                <span className="px-1.5 py-0.5 flex items-center gap-0.5" style={{ fontSize: '9px', fontWeight: 500, color: BT.text.green, background: BT.bg.active, borderRadius: '2px' }}>
                   <CheckCircle size={8} /> Resolved
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-600 mt-0.5 whitespace-pre-wrap">{comment.content}</p>
+            <p className="mt-0.5 whitespace-pre-wrap" style={{ fontSize: '11px', color: BT.text.secondary, fontFamily: BT.font.label }}>{comment.content}</p>
             {depth === 0 && !isResolved && (
               <div className="flex items-center gap-3 mt-1">
                 <button
                   onClick={() => onReply(comment.id)}
-                  className="text-[10px] text-slate-400 hover:text-blue-600 flex items-center gap-0.5"
+                  className="flex items-center gap-0.5"
+                  style={{ fontSize: '9px', color: BT.text.muted, background: 'transparent', border: 'none', cursor: 'pointer' }}
                 >
                   <Reply size={10} /> Reply
                 </button>
                 <button
                   onClick={() => onResolve(comment.id)}
-                  className="text-[10px] text-slate-400 hover:text-green-600 flex items-center gap-0.5"
+                  className="flex items-center gap-0.5"
+                  style={{ fontSize: '9px', color: BT.text.muted, background: 'transparent', border: 'none', cursor: 'pointer' }}
                 >
                   <CheckCircle size={10} /> Resolve
                 </button>
@@ -95,7 +101,8 @@ function CommentBubble({
         <>
           <button
             onClick={() => setShowReplies(!showReplies)}
-            className="text-[10px] text-slate-400 hover:text-slate-600 flex items-center gap-0.5 ml-8 mb-1"
+            className="flex items-center gap-0.5 ml-8 mb-1"
+            style={{ fontSize: '9px', color: BT.text.muted, background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
             {showReplies ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
             {comment.replies.length} {comment.replies.length === 1 ? 'reply' : 'replies'}
@@ -216,17 +223,17 @@ export function CommentThread({ dealId, moduleAnchor, showResolved = false }: Co
   };
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+    <div className="overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+      <div className="px-4 py-2.5 flex items-center justify-between" style={{ background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
         <div className="flex items-center gap-2">
-          <MessageSquare size={14} className="text-slate-500" />
-          <span className="text-sm font-semibold text-slate-700">Comments</span>
+          <MessageSquare size={14} style={{ color: BT.text.muted }} />
+          <span style={{ fontSize: '11px', fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.mono }}>Comments</span>
           {moduleAnchor && (
-            <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded capitalize">
+            <span className="px-1.5 py-0.5" style={{ fontSize: '9px', color: BT.text.muted, background: BT.bg.active, borderRadius: '2px', textTransform: 'capitalize', fontFamily: BT.font.label }}>
               {moduleAnchor.replace(/-/g, ' ')}
             </span>
           )}
-          <span className="text-xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">
+          <span className="px-1.5 py-0.5" style={{ fontSize: '10px', background: BT.bg.active, color: BT.text.secondary, borderRadius: '2px', fontWeight: 500, fontFamily: BT.font.mono }}>
             {comments.length}
           </span>
         </div>
@@ -235,9 +242,10 @@ export function CommentThread({ dealId, moduleAnchor, showResolved = false }: Co
             type="checkbox"
             checked={showResolvedToggle}
             onChange={(e) => setShowResolvedToggle(e.target.checked)}
-            className="w-3 h-3 rounded border-slate-300"
+            className="w-3 h-3"
+            style={{ borderRadius: '2px' }}
           />
-          <span className="text-[10px] text-slate-500">Show resolved</span>
+          <span style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>Show resolved</span>
         </label>
       </div>
 
@@ -247,10 +255,10 @@ export function CommentThread({ dealId, moduleAnchor, showResolved = false }: Co
             <div className="animate-pulse space-y-3">
               {[1, 2].map((i) => (
                 <div key={i} className="flex gap-2">
-                  <div className="w-6 h-6 bg-slate-200 rounded-full" />
+                  <div className="w-6 h-6" style={{ borderRadius: '50%', background: BT.bg.active }} />
                   <div className="flex-1">
-                    <div className="h-3 bg-slate-200 rounded w-3/4 mb-1" />
-                    <div className="h-8 bg-slate-200 rounded" />
+                    <div className="h-3 w-3/4 mb-1" style={{ background: BT.bg.active, borderRadius: '2px' }} />
+                    <div className="h-8" style={{ background: BT.bg.active, borderRadius: '2px' }} />
                   </div>
                 </div>
               ))}
@@ -258,30 +266,31 @@ export function CommentThread({ dealId, moduleAnchor, showResolved = false }: Co
           </div>
         ) : comments.length === 0 ? (
           <div className="p-6 text-center">
-            <MessageSquare size={20} className="text-slate-300 mx-auto mb-1" />
-            <p className="text-xs text-slate-500">No comments yet</p>
+            <MessageSquare size={20} style={{ color: BT.text.muted }} className="mx-auto mb-1" />
+            <p style={{ fontSize: '10px', color: BT.text.muted, fontFamily: BT.font.label }}>No comments yet</p>
           </div>
         ) : (
-          <div className="px-4 py-2 divide-y divide-slate-100">
-            {comments.map((comment) => (
-              <CommentBubble
-                key={comment.id}
-                comment={comment}
-                dealId={dealId}
-                onReply={(id) => setReplyingTo(id)}
-                onResolve={handleResolve}
-              />
+          <div className="px-4 py-2">
+            {comments.map((comment, idx) => (
+              <div key={comment.id} style={idx < comments.length - 1 ? { borderBottom: `1px solid ${BT.border.subtle}` } : {}}>
+                <CommentBubble
+                  comment={comment}
+                  dealId={dealId}
+                  onReply={(id) => setReplyingTo(id)}
+                  onResolve={handleResolve}
+                />
+              </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="p-3 border-t border-slate-200 bg-slate-50">
+      <div className="p-3" style={{ borderTop: `1px solid ${BT.border.medium}`, background: BT.bg.header }}>
         {replyingTo && (
-          <div className="text-[10px] text-blue-600 mb-1 flex items-center gap-1">
+          <div className="mb-1 flex items-center gap-1" style={{ fontSize: '9px', color: BT.text.cyan }}>
             <Reply size={10} />
             Replying to comment
-            <button onClick={() => setReplyingTo(null)} className="text-slate-400 hover:text-slate-600 ml-1">&times;</button>
+            <button onClick={() => setReplyingTo(null)} style={{ color: BT.text.muted, marginLeft: '4px', background: 'transparent', border: 'none', cursor: 'pointer' }}>&times;</button>
           </div>
         )}
         <div className="flex gap-2">
@@ -291,12 +300,22 @@ export function CommentThread({ dealId, moduleAnchor, showResolved = false }: Co
             onChange={(e) => setNewContent(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
             placeholder={replyingTo ? 'Write a reply...' : 'Add a comment...'}
-            className="flex-1 text-xs px-3 py-1.5 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 px-3 py-1.5"
+            style={{
+              fontSize: '11px',
+              fontFamily: BT.font.label,
+              border: `1px solid ${BT.border.medium}`,
+              borderRadius: 0,
+              background: BT.bg.input,
+              color: BT.text.primary,
+              outline: 'none',
+            }}
           />
           <button
             onClick={handleSubmit}
             disabled={submitting || !newContent.trim()}
-            className="px-2.5 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            className="px-2.5 py-1.5 disabled:opacity-50"
+            style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, border: 'none', cursor: 'pointer' }}
           >
             <Send size={12} />
           </button>
