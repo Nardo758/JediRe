@@ -1095,24 +1095,24 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             )}
 
             {/* Property Info */}
-            <div className="mb-3 pb-3 border-b">
+            <div className="mb-3 pb-3" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4 }}>Property Address</p>
-              <p className="text-sm font-medium text-gray-900">
+              <p className="text-sm font-medium" style={{ color: BT.text.primary }}>
                 {deal?.address || deal?.propertyAddress || deal?.property_address || detectedLocation?.address || 'Not specified'}
               </p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm" style={{ color: BT.text.secondary }}>
                 {[detectedLocation?.city || deal?.city || deal?.municipality, detectedLocation?.state || deal?.state].filter(Boolean).join(', ') || '--'}
               </p>
             </div>
 
             {/* Municipality & Zoning */}
-            <div className="mb-3 pb-3 border-b">
+            <div className="mb-3 pb-3" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4 }}>Municipality</p>
               {detectedLocation ? (
                 <div className="mb-2">
-                  <p className="text-sm font-medium text-gray-900">{detectedLocation.city}, {detectedLocation.state}</p>
+                  <p className="text-sm font-medium" style={{ color: BT.text.primary }}>{detectedLocation.city}, {detectedLocation.state}</p>
                   {detectedLocation.county && (
-                    <p className="text-xs text-gray-500">{detectedLocation.county}</p>
+                    <p className="text-xs" style={{ color: BT.text.secondary }}>{detectedLocation.county}</p>
                   )}
                   {detectedLocation.hasZoningData ? (
                     <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -1153,7 +1153,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
             </div>
 
             {/* Site Metrics */}
-            <div className="mb-3 pb-3 border-b">
+            <div className="mb-3 pb-3" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Site Metrics</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
