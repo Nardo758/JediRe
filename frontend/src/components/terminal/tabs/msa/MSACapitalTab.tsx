@@ -6,6 +6,7 @@ import React, { useMemo } from 'react';
 import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
+import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 
 interface MSACapitalTabProps {
@@ -112,11 +113,8 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div style={{ ...terminalStyles.panel, padding: 16 }}>
-          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-            Cap Rate by Class
-          </div>
-          <table style={{ ...terminalStyles.dataTable }}>
+        <TerminalSection title="Cap Rate by Class">
+          <DataTable>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Class</th>
@@ -145,14 +143,11 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </TerminalSection>
 
-        <div style={{ ...terminalStyles.panel, padding: 16 }}>
-          <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-            Buyer Composition
-          </div>
-          <table style={{ ...terminalStyles.dataTable }}>
+        <TerminalSection title="Buyer Composition">
+          <DataTable>
             <thead>
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Type</th>
@@ -187,16 +182,12 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </DataTable>
+        </TerminalSection>
       </div>
 
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-          <DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Debt Market Conditions
-        </div>
-        <table style={{ ...terminalStyles.dataTable }}>
+      <TerminalSection title="Debt Market Conditions" icon={<DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <DataTable>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Lender Type</th>
@@ -231,15 +222,11 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </TerminalSection>
 
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-          <Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Notable Recent Transactions
-        </div>
-        <table style={{ ...terminalStyles.dataTable }}>
+      <TerminalSection title="Notable Recent Transactions" icon={<Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <DataTable>
           <thead>
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Property</th>
@@ -270,8 +257,8 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </TerminalSection>
     </div>
   );
 };
