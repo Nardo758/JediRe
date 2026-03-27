@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { DataTable } from '../../TerminalLayouts';
 import { PCSComponents, calculatePCS, scoreColor } from '../../signalGroups';
 
 interface MSAPowerRankingsTabProps {
@@ -194,7 +195,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
 
       {/* Rankings Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <DataTable>
           <thead>
             <tr style={{ background: BT.bg.elevated }}>
               <th 
@@ -454,7 +455,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
               );
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Legend */}

@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { DataTable } from '../../TerminalLayouts';
 import { scoreColor } from '../../signalGroups';
 
 interface MSAOwnersTabProps {
@@ -328,7 +329,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
 
       {/* Owners Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <DataTable>
           <thead>
             <tr style={{ background: BT.bg.elevated }}>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', minWidth: 200 }}>Owner</th>
@@ -430,7 +431,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                 Portfolio ({portfolio.length} properties)
                               </div>
                               {portfolio.length > 0 ? (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <DataTable>
                                   <thead>
                                     <tr>
                                       <th style={{ ...terminalStyles.tableHeader, fontSize: 10, textAlign: 'left' }}>Property</th>
@@ -474,7 +475,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                                       </tr>
                                     ))}
                                   </tbody>
-                                </table>
+                                </DataTable>
                               ) : (
                                 <div style={{ color: BT.text.muted, fontSize: 11 }}>
                                   Portfolio details not available
@@ -536,7 +537,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
               );
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
 
       {/* Legend */}

@@ -17,6 +17,25 @@ export const TerminalSection: React.FC<TerminalSectionProps> = ({ title, icon, c
   </div>
 );
 
+interface CardSectionProps {
+  title: string;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  titleStyle?: React.CSSProperties;
+  noPadding?: boolean;
+}
+
+export const CardSection: React.FC<CardSectionProps> = ({ title, children, style, titleStyle, noPadding }) => (
+  <div style={{ ...terminalStyles.card, padding: noPadding ? 0 : 20, overflow: noPadding ? 'hidden' : undefined, ...style }}>
+    {title && (
+      <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16, ...titleStyle }}>
+        {title}
+      </h3>
+    )}
+    {children}
+  </div>
+);
+
 interface MetricCardProps {
   label: string;
   value: string | number;

@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { DataTable } from '../../TerminalLayouts';
 import { SIGNAL_GROUPS, SignalGroupId, BT_SIGNAL_COLORS, ALL_OUTPUTS, scoreColor } from '../../signalGroups';
 
 interface MSAOverviewTabProps {
@@ -491,7 +492,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
           </h3>
           <span style={{ fontSize: 10, color: BT.text.muted }}>Click to drill down</span>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <DataTable>
           <thead>
             <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
@@ -555,7 +556,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
               );
             })}
           </tbody>
-        </table>
+        </DataTable>
       </div>
     </div>
   );

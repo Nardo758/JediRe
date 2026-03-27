@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { CardSection, DataTable } from '../../TerminalLayouts';
 import {
   QUADRANT_STYLES,
   Quadrant,
@@ -425,11 +426,8 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
       )}
 
       {/* Compact Deal List */}
-      <div style={{ ...terminalStyles.card, padding: 20 }}>
-        <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
-          Opportunity Rankings
-        </h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <CardSection title="Opportunity Rankings">
+        <DataTable>
           <thead>
             <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'center', width: 50 }}>#</th>
@@ -534,8 +532,8 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               );
             })}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </CardSection>
     </div>
   );
 };

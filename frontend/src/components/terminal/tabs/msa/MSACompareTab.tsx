@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { DataTable } from '../../TerminalLayouts';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SignalGroupId } from '../../signalGroups';
 
 interface MSACompareTabProps {
@@ -147,7 +148,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
       {/* Comparison Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+          <DataTable style={{ minWidth: 600 }}>
             <thead>
               <tr style={{ background: BT.bg.elevated }}>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', minWidth: 180, position: 'sticky', left: 0, background: BT.bg.elevated, zIndex: 1 }}>
@@ -264,7 +265,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 

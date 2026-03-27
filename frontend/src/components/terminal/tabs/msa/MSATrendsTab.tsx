@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { CardSection, DataTable } from '../../TerminalLayouts';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SUPPLY_WAVE_STYLES, SupplyWavePhase } from '../../signalGroups';
 
@@ -360,11 +361,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       </div>
 
       {/* Row 3: Supply Wave Phases */}
-      <div style={{ ...terminalStyles.card, padding: 20 }}>
-        <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
-          Market Supply Wave Phases
-        </h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <CardSection title="Market Supply Wave Phases">
+        <DataTable>
           <thead>
             <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Market</th>
@@ -405,8 +403,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               );
             })}
           </tbody>
-        </table>
-      </div>
+        </DataTable>
+      </CardSection>
 
       {/* Row 4: Rent by Vintage + JEDI History */}
       <div style={{ display: 'flex', gap: 20 }}>
@@ -492,7 +490,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
             Transaction Activity
           </h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <DataTable>
             <thead>
               <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', fontSize: 10 }}>Date</th>
@@ -513,7 +511,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
 
         {/* Concession Tracking */}

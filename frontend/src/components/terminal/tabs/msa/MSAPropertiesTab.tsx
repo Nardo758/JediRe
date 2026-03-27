@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { DataTable } from '../../TerminalLayouts';
 import { scoreColor, BT_SIGNAL_COLORS } from '../../signalGroups';
 
 interface MSAPropertiesTabProps {
@@ -343,7 +344,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
       {/* Data Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
+          <DataTable style={{ minWidth: 1200 }}>
             <thead>
               <tr style={{ background: BT.bg.elevated }}>
                 <th style={{ ...terminalStyles.tableHeader, width: 40 }}>
@@ -541,7 +542,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                 );
               })}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 

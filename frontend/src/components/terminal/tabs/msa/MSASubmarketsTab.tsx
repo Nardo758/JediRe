@@ -6,6 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
+import { DataTable } from '../../TerminalLayouts';
 import { 
   SIGNAL_GROUPS, 
   SignalGroupId, 
@@ -313,7 +314,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
       {/* Main Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
+          <DataTable style={{ minWidth: 1200 }}>
             <thead>
               <tr style={{ background: BT.bg.elevated }}>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'center', width: 40 }}>
@@ -500,7 +501,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                 </React.Fragment>
               ))}
             </tbody>
-          </table>
+          </DataTable>
         </div>
       </div>
 
