@@ -970,15 +970,15 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                       <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Required Setbacks</p>
                       <div className="grid grid-cols-3 gap-2 text-sm">
                         <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2 text-center">
-                          <p className="text-xs text-gray-500">Front</p>
-                          <p className="font-semibold">{zoningDetail.min_front_setback_ft ?? zoningDetail.setback_front_ft ?? '--'} ft</p>
+                          <p className="text-xs" style={{ color: BT.text.secondary }}>Front</p>
+                          <p className="font-semibold" style={{ color: BT.text.primary }}>{zoningDetail.min_front_setback_ft ?? zoningDetail.setback_front_ft ?? '--'} ft</p>
                         </div>
                         <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2 text-center">
-                          <p className="text-xs text-gray-500">Side</p>
-                          <p className="font-semibold">{zoningDetail.min_side_setback_ft ?? zoningDetail.setback_side_ft ?? '--'} ft</p>
+                          <p className="text-xs" style={{ color: BT.text.secondary }}>Side</p>
+                          <p className="font-semibold" style={{ color: BT.text.primary }}>{zoningDetail.min_side_setback_ft ?? zoningDetail.setback_side_ft ?? '--'} ft</p>
                         </div>
                         <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2 text-center">
-                          <p className="text-xs text-gray-500">Rear</p>
+                          <p className="text-xs" style={{ color: BT.text.secondary }}>Rear</p>
                           <p className="font-semibold">{zoningDetail.min_rear_setback_ft ?? zoningDetail.setback_rear_ft ?? '--'} ft</p>
                         </div>
                       </div>
@@ -991,7 +991,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                       <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Permitted Uses (By Right)</p>
                       <div className="flex flex-wrap gap-1.5">
                         {zoningDetail.permitted_uses.map((use: string, i: number) => (
-                          <span key={i} className="inline-block px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full border border-green-200">
+                          <span key={i} className="inline-block px-2 py-0.5 text-xs" style={{ background: `${BT.text.green}11`, color: BT.text.green, borderRadius: 0, border: `1px solid ${BT.text.green}33` }}>
                             {use.replace(/_/g, ' ')}
                           </span>
                         ))}
