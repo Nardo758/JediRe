@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SIGNAL_GROUPS } from './signalGroups';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface MarketForComparison {
   id: string;
@@ -121,37 +122,37 @@ const CompareMarketsPage: React.FC = () => {
     { metric: 'Est. Equity Multiple', atlanta: '1.88x', charlotte: '1.92x', nashville: '1.58x' },
   ];
 
-  const getCellColor = (metricKey: string, marketId: string) => {
+  const getCellStyle = (metricKey: string, marketId: string): { className: string; style: React.CSSProperties } => {
     const dataToUse = Object.keys(marketData).length > 0 ? marketData : MOCK_DATA;
     const selectedIds = selectedMarkets.map(m => m.id as MarketId);
     const values = selectedIds
       .map(id => dataToUse[id]?.[metricKey]?.raw ?? 0)
       .filter(v => v !== 0);
     const current = dataToUse[marketId]?.[metricKey]?.raw ?? 0;
-    
-    if (values.length < 2 || current === 0) return '';
+
+    if (values.length < 2 || current === 0) return { className: '', style: {} };
     const max = Math.max(...values);
     const min = Math.min(...values);
-    if (max === min) return '';
-    if (current === max) return 'text-green-700 bg-green-50 font-bold';
-    if (current === min) return 'text-red-700 bg-red-50 font-bold';
-    return '';
+    if (max === min) return { className: '', style: {} };
+    if (current === max) return { className: 'font-bold', style: { color: BT.text.green, background: `${BT.text.green}22` } };
+    if (current === min) return { className: 'font-bold', style: { color: BT.text.red, background: `${BT.text.red}22` } };
+    return { className: '', style: {} };
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200">
+    <div className="min-h-screen" style={{ background: BT.bg.terminal }}>
+      <div style={{ background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <button onClick={() => navigate('/terminal', { state: { fkey: 'F4' } })} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <button onClick={() => navigate('/terminal', { state: { fkey: 'F4' } })} className="p-2 transition-colors" style={{ borderRadius: 0 }}>
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Compare Markets</h1>
-                <p className="text-sm text-gray-500 mt-0.5">Cross-MSA allocation decisions</p>
+                <h1 className="text-2xl font-bold" style={{ color: BT.text.primary }}>Compare Markets</h1>
+                <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>Cross-MSA allocation decisions</p>
               </div>
             </div>
           </div>
@@ -159,10 +160,10 @@ const CompareMarketsPage: React.FC = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-base font-semibold text-gray-900">Market Selector</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Pick 2-4 MSAs to compare · {selectedCount} selected</p>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>Market Selector</h3>
+            <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>Pick 2-4 MSAs to compare · {selectedCount} selected</p>
           </div>
           <div className="p-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -170,34 +171,37 @@ const CompareMarketsPage: React.FC = () => {
                 <button
                   key={market.id}
                   onClick={() => toggleMarket(market.id)}
-                  className={`p-4 rounded-xl border-2 transition-all text-left ${
-                    market.selected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-white'
-                  }`}
+                  className="p-4 transition-all text-left"
+                  style={{
+                    borderRadius: 0,
+                    border: `2px solid ${market.selected ? BT.text.cyan : BT.border.subtle}`,
+                    background: market.selected ? `${BT.text.cyan}22` : BT.bg.panel,
+                  }}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold text-gray-900">{market.name}</span>
+                    <span className="font-semibold" style={{ color: BT.text.primary }}>{market.name}</span>
                     {market.selected && (
-                      <span className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <span className="w-5 h-5 flex items-center justify-center" style={{ background: BT.text.cyan, borderRadius: '50%' }}>
+                        <svg className="w-3 h-3" style={{ color: BT.text.white }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-gray-500">{market.state}</span>
+                  <span className="text-xs" style={{ color: BT.text.secondary }}>{market.state}</span>
                 </button>
               ))}
             </div>
             {selectedCount < 2 && (
-              <p className="text-xs text-amber-600 mt-3">Select at least 2 markets to compare</p>
+              <p className="text-xs mt-3" style={{ color: BT.text.amber }}>Select at least 2 markets to compare</p>
             )}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-base font-semibold text-gray-900">Radar Chart (8 Axes)</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Multi-dimensional market comparison</p>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>Radar Chart (8 Axes)</h3>
+            <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>Multi-dimensional market comparison</p>
           </div>
           <div className="p-6">
             <div className="flex items-center justify-center py-4">
@@ -255,25 +259,25 @@ const CompareMarketsPage: React.FC = () => {
               {selectedMarkets.map((m, i) => (
                 <div key={m.id} className="flex items-center gap-2 text-sm">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: radarColors[i % radarColors.length] }}></div>
-                  <span className="text-gray-700 font-medium">{m.name}</span>
+                  <span className="font-medium" style={{ color: BT.text.primary }}>{m.name}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-base font-semibold text-gray-900">Side-by-Side Metrics Table</h3>
-            <p className="text-sm text-gray-500 mt-0.5">All D, S, M outputs + Dev Capacity + Traffic</p>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>Side-by-Side Metrics Table</h3>
+            <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>All D, S, M outputs + Dev Capacity + Traffic</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50">
-                  <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs w-48">Output</th>
+                <tr style={{ background: BT.bg.panelAlt }}>
+                  <th className="px-4 py-3 text-left font-semibold text-xs w-48" style={{ color: BT.text.secondary }}>Output</th>
                   {selectedMarkets.map(m => (
-                    <th key={m.id} className="px-4 py-3 text-left font-semibold text-gray-700 text-xs">{m.name}</th>
+                    <th key={m.id} className="px-4 py-3 text-left font-semibold text-xs" style={{ color: BT.text.primary }}>{m.name}</th>
                   ))}
                 </tr>
               </thead>
@@ -281,17 +285,18 @@ const CompareMarketsPage: React.FC = () => {
                 {METRIC_SECTIONS.map((section) => (
                   <React.Fragment key={section.label}>
                     <tr>
-                      <td colSpan={selectedMarkets.length + 1} className="px-4 py-2 bg-gray-100 font-bold text-xs text-gray-600 uppercase tracking-wider">{section.label}</td>
+                      <td colSpan={selectedMarkets.length + 1} className="px-4 py-2 font-bold text-xs uppercase tracking-wider" style={{ background: BT.bg.header, color: BT.text.secondary }}>{section.label}</td>
                     </tr>
                     {section.rows.map((row) => (
-                      <tr key={row} className="border-t border-gray-100">
-                        <td className="px-4 py-2.5 text-gray-700 font-medium text-xs">{row}</td>
+                      <tr key={row} style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                        <td className="px-4 py-2.5 font-medium text-xs" style={{ color: BT.text.primary }}>{row}</td>
                         {selectedMarkets.map(m => {
                           const dataToUse = Object.keys(marketData).length > 0 ? marketData : MOCK_DATA;
                           const value = dataToUse[m.id]?.[row]?.value ?? '—';
+                          const cellStyle = getCellStyle(row, m.id);
                           return (
-                            <td key={m.id} className={`px-4 py-2.5 text-sm ${getCellColor(row, m.id)}`}>
-                              {loading ? <span className="text-gray-400">...</span> : value}
+                            <td key={m.id} className={`px-4 py-2.5 text-sm ${cellStyle.className}`} style={cellStyle.style}>
+                              {loading ? <span style={{ color: BT.text.muted }}>...</span> : value}
                             </td>
                           );
                         })}
@@ -304,10 +309,10 @@ const CompareMarketsPage: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h3 className="text-base font-semibold text-gray-900">Trend Comparison Charts</h3>
-            <p className="text-sm text-gray-500 mt-0.5">Toggle between key metrics</p>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <h3 className="text-base font-semibold" style={{ color: BT.text.primary }}>Trend Comparison Charts</h3>
+            <p className="text-sm mt-0.5" style={{ color: BT.text.secondary }}>Toggle between key metrics</p>
           </div>
           <div className="p-4">
             <div className="flex flex-wrap gap-2 mb-6">
@@ -315,19 +320,22 @@ const CompareMarketsPage: React.FC = () => {
                 <button
                   key={label}
                   onClick={() => setActiveChart(label)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    activeChart === label ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                  className="px-3 py-1.5 text-sm font-medium transition-colors"
+                  style={{
+                    borderRadius: 0,
+                    background: activeChart === label ? BT.text.cyan : BT.bg.header,
+                    color: activeChart === label ? BT.text.white : BT.text.secondary,
+                  }}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 h-64 flex items-center justify-center">
+            <div className="h-64 flex items-center justify-center" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px dashed ${BT.border.subtle}` }}>
               <div className="text-center">
                 <div className="text-3xl mb-2">📈</div>
-                <p className="text-sm font-medium text-gray-500">{activeChart} — Trend Comparison</p>
-                <p className="text-xs text-gray-400 mt-1">{selectedMarkets.map(m => m.name).join(' vs ')}</p>
+                <p className="text-sm font-medium" style={{ color: BT.text.secondary }}>{activeChart} — Trend Comparison</p>
+                <p className="text-xs mt-1" style={{ color: BT.text.muted }}>{selectedMarkets.map(m => m.name).join(' vs ')}</p>
               </div>
             </div>
           </div>
