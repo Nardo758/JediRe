@@ -146,7 +146,7 @@ export function MetricsEnhanced() {
                   ))}
                 </div>
               </div>
-              <div className="px-3 py-2">
+              <div className="px-1 py-2">
                 <MultiLineChart
                   labels={chart.labels}
                   series={chart.series}
@@ -401,10 +401,10 @@ function MultiLineChart({ labels, series, height, accentColor }: { labels: strin
   const yMax = max + pad;
   const yRange = yMax - yMin;
 
-  const w = 600;
+  const w = 800;
   const h = height;
-  const leftPad = 40;
-  const rightPad = 10;
+  const leftPad = 0;
+  const rightPad = 0;
   const topPad = 10;
   const botPad = 24;
   const plotW = w - leftPad - rightPad;
@@ -420,9 +420,6 @@ function MultiLineChart({ labels, series, height, accentColor }: { labels: strin
         return (
           <g key={i}>
             <line x1={leftPad} y1={y} x2={w - rightPad} y2={y} stroke="#1e293b" strokeWidth="0.5" />
-            <text x={leftPad - 4} y={y + 3} textAnchor="end" fill="#94a3b8" fontSize="8" fontFamily="monospace">
-              {tick < 1 ? tick.toFixed(2) : tick >= 1000 ? `${(tick / 1000).toFixed(1)}K` : tick.toFixed(1)}
-            </text>
           </g>
         );
       })}
