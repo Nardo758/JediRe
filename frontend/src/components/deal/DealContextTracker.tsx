@@ -4,6 +4,7 @@ import { ActivityFeedItem } from './context/ActivityFeedItem';
 import { TimelineView } from './context/TimelineView';
 import { KeyMoment } from './context/KeyMoment';
 import { api } from '../../services/api';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface DealContextTrackerProps {
   dealId: string;
@@ -30,7 +31,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
   const loadData = async () => {
     try {
       setLoading(true);
-      
+
       // Load activities
       const activitiesResponse = await api.get(`/deals/${dealId}/activity`);
       setActivities(activitiesResponse.data.data || []);
@@ -77,14 +78,15 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
   });
 
   return (
-    <div className="bg-white rounded-lg shadow-sm">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
       {/* Header */}
-      <div className="border-b px-6 py-4">
+      <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-bold text-gray-900">Deal Context</h2>
+          <h2 style={{ fontSize: BT.fontSize.xl, fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>Deal Context</h2>
           <button
             onClick={loadData}
-            className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            className="px-4 py-2 transition-colors"
+            style={{ fontSize: BT.fontSize.base, background: BT.bg.hover, color: BT.text.secondary, fontFamily: BT.font.mono, borderRadius: 0, border: `1px solid ${BT.border.subtle}`, cursor: 'pointer' }}
           >
             🔄 Refresh
           </button>
@@ -94,34 +96,49 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
         <div className="flex gap-2">
           <button
             onClick={() => setViewMode('activity')}
-            className={`
-              px-4 py-2 rounded-lg font-medium transition-all
-              ${viewMode === 'activity' 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
-            `}
+            className="px-4 py-2 transition-all"
+            style={{
+              fontWeight: 500,
+              fontFamily: BT.font.mono,
+              fontSize: BT.fontSize.base,
+              borderRadius: 0,
+              border: 'none',
+              cursor: 'pointer',
+              background: viewMode === 'activity' ? BT.text.cyan : BT.bg.hover,
+              color: viewMode === 'activity' ? BT.bg.terminal : BT.text.secondary,
+            }}
           >
             📋 Activity Feed
           </button>
           <button
             onClick={() => setViewMode('timeline')}
-            className={`
-              px-4 py-2 rounded-lg font-medium transition-all
-              ${viewMode === 'timeline' 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
-            `}
+            className="px-4 py-2 transition-all"
+            style={{
+              fontWeight: 500,
+              fontFamily: BT.font.mono,
+              fontSize: BT.fontSize.base,
+              borderRadius: 0,
+              border: 'none',
+              cursor: 'pointer',
+              background: viewMode === 'timeline' ? BT.text.cyan : BT.bg.hover,
+              color: viewMode === 'timeline' ? BT.bg.terminal : BT.text.secondary,
+            }}
           >
             📅 Timeline
           </button>
           <button
             onClick={() => setViewMode('moments')}
-            className={`
-              px-4 py-2 rounded-lg font-medium transition-all
-              ${viewMode === 'moments' 
-                ? 'bg-blue-600 text-white shadow-md' 
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}
-            `}
+            className="px-4 py-2 transition-all"
+            style={{
+              fontWeight: 500,
+              fontFamily: BT.font.mono,
+              fontSize: BT.fontSize.base,
+              borderRadius: 0,
+              border: 'none',
+              cursor: 'pointer',
+              background: viewMode === 'moments' ? BT.text.cyan : BT.bg.hover,
+              color: viewMode === 'moments' ? BT.bg.terminal : BT.text.secondary,
+            }}
           >
             ⭐ Key Moments
           </button>
@@ -131,7 +148,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
       {/* Content */}
       <div className="p-6">
         {loading ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>
             Loading context...
           </div>
         ) : (
@@ -147,7 +164,8 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
                     aria-label="Filter activity type"
-                    className="border border-gray-300 rounded-lg px-3 py-2"
+                    className="px-3 py-2"
+                    style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, fontFamily: BT.font.mono, borderRadius: 0 }}
                   >
                     <option value="all">All Activity</option>
                     <option value="email_received">📧 Emails</option>
@@ -161,7 +179,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
 
                 {/* Activity List */}
                 {filteredActivities.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
+                  <div className="text-center py-12" style={{ color: BT.text.muted, fontFamily: BT.font.label }}>
                     No activity yet. Create tasks or upload documents to get started.
                   </div>
                 ) : (
@@ -185,7 +203,7 @@ export const DealContextTracker: React.FC<DealContextTrackerProps> = ({
             {viewMode === 'moments' && (
               <div>
                 {keyMoments.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
+                  <div className="text-center py-12" style={{ color: BT.text.muted, fontFamily: BT.font.label }}>
                     No key moments yet. Key decisions and milestones will appear here.
                   </div>
                 ) : (

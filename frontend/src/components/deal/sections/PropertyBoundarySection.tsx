@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface PropertyBoundarySectionProps {
   deal?: any;
@@ -733,19 +734,19 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       {!embedded && (
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <MapPin className="text-blue-600" size={24} />
+            <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
+              <MapPin size={24} style={{ color: BT.text.cyan }} />
               Property Boundary & Site Plan
             </h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm mt-1" style={{ color: BT.text.secondary }}>
               Define site boundary - becomes source of truth for zoning and 3D design
             </p>
           </div>
           
           {hasBoundary && (
             <div className="flex items-center gap-2 text-sm">
-              <CheckCircle className="text-green-600" size={16} />
-              <span className="text-green-700 font-medium">Boundary Defined</span>
+              <CheckCircle size={16} style={{ color: BT.text.green }} />
+              <span className="font-medium" style={{ color: BT.text.green }}>Boundary Defined</span>
             </div>
           )}
         </div>
@@ -753,22 +754,22 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
       {/* Error message */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-          <AlertCircle className="text-red-600 flex-shrink-0" size={20} />
+        <div className="p-4 flex items-start gap-3" style={{ background: `${BT.text.red}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <AlertCircle className="flex-shrink-0" size={20} style={{ color: BT.text.red }} />
           <div>
-            <p className="text-red-800 font-medium">Error</p>
-            <p className="text-red-600 text-sm">{error}</p>
+            <p className="font-medium" style={{ color: BT.text.red }}>Error</p>
+            <p className="text-sm" style={{ color: BT.text.red }}>{error}</p>
           </div>
         </div>
       )}
 
       {geocodingAddress && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="p-4" style={{ background: `${BT.text.cyan}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
           <div className="flex items-center gap-3">
-            <Loader2 className="text-blue-600 flex-shrink-0 animate-spin" size={20} />
+            <Loader2 className="flex-shrink-0 animate-spin" size={20} style={{ color: BT.text.cyan }} />
             <div>
-              <p className="text-blue-800 font-medium">Locating Site</p>
-              <p className="text-blue-700 text-sm">
+              <p className="font-medium" style={{ color: BT.text.cyan }}>Locating Site</p>
+              <p className="text-sm" style={{ color: BT.text.cyan }}>
                 Mapping the deal address and detecting municipality...
               </p>
             </div>
@@ -777,12 +778,12 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
       )}
 
       {!hasBoundary && !geocodingAddress && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+        <div className="p-4" style={{ background: `${BT.text.amber}11`, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
           <div className="flex items-start gap-3">
-            <AlertCircle className="text-yellow-600 flex-shrink-0" size={20} />
+            <AlertCircle className="flex-shrink-0" size={20} style={{ color: BT.text.amber }} />
             <div>
-              <p className="text-yellow-800 font-medium">Boundary Not Defined</p>
-              <p className="text-yellow-700 text-sm">
+              <p className="font-medium" style={{ color: BT.text.amber }}>Boundary Not Defined</p>
+              <p className="text-sm" style={{ color: BT.text.amber }}>
                 {detectedLocation
                   ? 'Site pin placed from deal address. Draw the property boundary around the pin to confirm the site outline.'
                   : 'Draw the property boundary to unlock site intelligence, zoning analysis, and 3D design.'}
@@ -796,11 +797,12 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
         {/* Map Container */}
         <div className="lg:col-span-2 space-y-3">
           {/* Drawing Tools */}
-          <div className="bg-white rounded-lg border border-gray-200 p-3">
+          <div className="p-3" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
             <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={startDrawing}
-                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 transition-colors text-sm font-medium"
+                style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
               >
                 <Edit3 size={16} />
                 Draw Boundary
@@ -809,7 +811,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               <button
                 onClick={handleSave}
                 disabled={!hasBoundary || saving}
-                className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors text-sm font-medium"
+                style={{ background: BT.text.green, color: BT.bg.terminal, borderRadius: 0 }}
               >
                 <Save size={16} />
                 {saving ? 'Saving...' : 'Save Boundary'}
@@ -818,7 +821,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               <button
                 onClick={handleClear}
                 disabled={!hasBoundary}
-                className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors text-sm font-medium"
+                style={{ background: BT.text.red, color: BT.bg.terminal, borderRadius: 0 }}
               >
                 <Trash2 size={16} />
                 Clear
@@ -827,7 +831,8 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               <button
                 onClick={handleExportGeoJSON}
                 disabled={!hasBoundary}
-                className="flex items-center gap-2 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                className="flex items-center gap-2 px-3 py-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors text-sm font-medium"
+                style={{ background: BT.bg.active, color: BT.text.primary, borderRadius: 0 }}
               >
                 <Download size={16} />
                 Export GeoJSON
