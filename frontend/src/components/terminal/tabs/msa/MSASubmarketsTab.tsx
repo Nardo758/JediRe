@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BT } from '../../theme';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { MarketNarrative, InvestmentThesis, PeerContext } from '../../commentary';
 
 interface MSASubmarketsTabProps {
   msaId: string;
@@ -399,115 +400,39 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
           flexDirection: 'column',
           gap: 12,
         }}>
-          <div>
-            <div style={{
-              fontSize: 10,
-              textTransform: 'uppercase',
-              color: BT.text.amber,
-              letterSpacing: '0.05em',
-              marginBottom: 4,
-              borderBottom: `1px solid ${BT.text.amber}44`,
-              paddingBottom: 4,
-              fontWeight: 700,
-              ...mono,
-            }}>Submarket Narrative</div>
-            {loading ? (
-              <div style={{ fontSize: 11, color: BT.text.muted }}>Generating analysis...</div>
-            ) : commentary?.marketNarrative ? (
-              <>
-                <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 8px 0' }}>
-                  {commentary.marketNarrative.summary}
-                </p>
-                <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: 0 }}>
-                  {commentary.marketNarrative.cyclePosition}
-                </p>
-              </>
-            ) : (
-              <>
-                <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 8px 0' }}>
-                  {selectedData?.name || 'Midtown'} ranks as the top-performing submarket in the {msaName} MSA with a {selectedData?.jedi || 88} strategy score. Class B repositioning offers a 340bps spread to Class A rents.
-                </p>
-                <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: 0 }}>
-                  Near-term supply pressure remains manageable with {selectedData?.vac || '5.1%'} vacancy and strong absorption fundamentals.
-                </p>
-              </>
-            )}
-          </div>
+          {loading ? (
+            <div style={{ fontSize: 11, color: BT.text.muted }}>Generating analysis...</div>
+          ) : commentary?.marketNarrative ? (
+            <MarketNarrative narrative={commentary.marketNarrative} compact />
+          ) : (
+            <MarketNarrative
+              narrative={{
+                title: 'Submarket Narrative',
+                content: `${selectedData?.name || 'Midtown'} ranks as the top-performing submarket in the ${msaName} MSA with a ${selectedData?.jedi || 88} strategy score. Class B repositioning offers a 340bps spread to Class A rents. Near-term supply pressure remains manageable with ${selectedData?.vac || '5.1%'} vacancy and strong absorption fundamentals.`,
+                sentiment: 'bullish',
+              }}
+              compact
+            />
+          )}
 
-          <div>
-            <div style={{
-              fontSize: 10,
-              textTransform: 'uppercase',
-              color: BT.text.amber,
-              letterSpacing: '0.05em',
-              marginBottom: 4,
-              borderBottom: `1px solid ${BT.text.amber}44`,
-              paddingBottom: 4,
-              fontWeight: 700,
-              ...mono,
-            }}>Investment Thesis</div>
-            {commentary?.investmentThesis ? (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {commentary.investmentThesis.points.map((pt: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                      <span style={{ color: pt.color === 'green' ? BT.text.green : pt.color === 'amber' ? BT.text.amber : BT.text.red }}>
-                        {pt.icon || (pt.color === 'green' ? '✓' : pt.color === 'amber' ? '⚠' : '✗')}
-                      </span>
-                      <span style={{ color: BT.text.secondary }}>{pt.text}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{
-                  marginTop: 8,
-                  padding: '4px 8px',
-                  background: `${BT.text.amber}15`,
-                  border: `1px solid ${BT.text.amber}44`,
-                  color: BT.text.amber,
-                  fontSize: 11,
-                  textAlign: 'center',
-                  fontWeight: 700,
-                  ...mono,
-                }}>
-                  {commentary.investmentThesis.recommendation}
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                    <span style={{ color: BT.text.green }}>✓</span>
-                    <span style={{ color: BT.text.secondary }}>Population growth exceeds national avg</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                    <span style={{ color: BT.text.green }}>✓</span>
-                    <span style={{ color: BT.text.secondary }}>Employment diversification reducing risk</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                    <span style={{ color: BT.text.amber }}>⚠</span>
-                    <span style={{ color: BT.text.secondary }}>Supply deliveries may pressure occupancy</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
-                    <span style={{ color: BT.text.red }}>✗</span>
-                    <span style={{ color: BT.text.secondary }}>Insurance costs escalating in Cobb County</span>
-                  </div>
-                </div>
-                <div style={{
-                  marginTop: 8,
-                  padding: '4px 8px',
-                  background: `${BT.text.amber}15`,
-                  border: `1px solid ${BT.text.amber}44`,
-                  color: BT.text.amber,
-                  fontSize: 11,
-                  textAlign: 'center',
-                  fontWeight: 700,
-                  ...mono,
-                }}>
-                  SELECTIVE BUY
-                </div>
-              </>
-            )}
-          </div>
+          {commentary?.investmentThesis ? (
+            <InvestmentThesis
+              recommendation={commentary.investmentThesis.recommendation}
+              points={commentary.investmentThesis.points}
+              compact
+            />
+          ) : (
+            <InvestmentThesis
+              recommendation="SELECTIVE BUY"
+              points={[
+                { icon: '✓', color: 'green', text: 'Population growth exceeds national avg' },
+                { icon: '✓', color: 'green', text: 'Employment diversification reducing risk' },
+                { icon: '⚠', color: 'amber', text: 'Supply deliveries may pressure occupancy' },
+                { icon: '✗', color: 'red', text: 'Insurance costs escalating in Cobb County' },
+              ]}
+              compact
+            />
+          )}
 
           <div style={{
             padding: '8px 10px',
@@ -520,22 +445,13 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
           </div>
 
           {commentary?.peerContext && (
-            <div>
-              <div style={{
-                fontSize: 10,
-                textTransform: 'uppercase',
-                color: BT.text.amber,
-                letterSpacing: '0.05em',
-                marginBottom: 4,
-                borderBottom: `1px solid ${BT.text.amber}44`,
-                paddingBottom: 4,
-                fontWeight: 700,
-                ...mono,
-              }}>Peer Context</div>
-              <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: 0 }}>
-                {commentary.peerContext.summary}
-              </p>
-            </div>
+            <PeerContext
+              summary={commentary.peerContext.summary}
+              peerRank={commentary.peerContext.peerRank}
+              peerTotal={commentary.peerContext.peerTotal}
+              topPeers={commentary.peerContext.topPeers}
+              compact
+            />
           )}
         </div>
       </div>

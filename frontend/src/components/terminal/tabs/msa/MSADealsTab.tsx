@@ -17,7 +17,7 @@ import {
   scoreColor,
 } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import { SignalCommentary } from '../../commentary';
+import { SignalCommentary, InvestmentThesis } from '../../commentary';
 
 interface MSADealsTabProps {
   msaId: string;
@@ -538,6 +538,15 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
           </tbody>
         </DataTable>
       </CardSection>
+
+      {commentary?.investmentThesis && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <InvestmentThesis
+            recommendation={commentary.investmentThesis.recommendation}
+            points={commentary.investmentThesis.points}
+          />
+        </div>
+      )}
 
       {commentary?.signalCommentary?.momentum && (
         <div style={{ ...terminalStyles.card, padding: 16 }}>
