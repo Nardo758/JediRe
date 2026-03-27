@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { DollarSign, TrendingUp, Building2, AlertTriangle } from 'lucide-react';
+import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { MSAData } from '../../MSATerminal';

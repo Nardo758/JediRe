@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Users, Briefcase, DollarSign, TrendingUp, MapPin } from 'lucide-react';
+import { Users, Briefcase, DollarSign, MapPin } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { MSAData } from '../../MSATerminal';

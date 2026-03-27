@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { Building2, Hammer, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Building2, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { MSAData } from '../../MSATerminal';
