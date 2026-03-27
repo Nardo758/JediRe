@@ -455,38 +455,37 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
           Exit Scenarios
         </h3>
         <div className="grid grid-cols-3 gap-3">
           {SCENARIOS.map((s, i) => {
             const isSelected = selectedScenario === i;
-            const borderColor = s.color === 'amber' ? 'border-amber-400' : s.color === 'emerald' ? 'border-emerald-400' : 'border-red-400';
-            const bgColor = s.color === 'amber' ? 'bg-amber-50' : s.color === 'emerald' ? 'bg-emerald-50' : 'bg-red-50';
-            const textColor = s.color === 'amber' ? 'text-amber-600' : s.color === 'emerald' ? 'text-emerald-600' : 'text-red-600';
+            const colorHex = s.color === 'amber' ? BT.text.amber : s.color === 'emerald' ? BT.text.green : BT.text.red;
             return (
               <button
                 key={i}
                 onClick={() => setSelectedScenario(i)}
-                className={`text-left p-4 rounded-lg border-2 transition-all ${
-                  isSelected
-                    ? `${borderColor} ${bgColor}`
-                    : 'border-[#e2e8f0] bg-white hover:border-gray-300'
-                }`}
+                className="text-left p-4 transition-all"
+                style={{
+                  borderRadius: 0,
+                  border: `2px solid ${isSelected ? colorHex : BT.border.subtle}`,
+                  background: isSelected ? `${colorHex}11` : BT.bg.panelAlt,
+                }}
               >
-                <div className={`text-[11px] font-bold uppercase tracking-wider ${textColor}`}>
+                <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colorHex }}>
                   {s.label}
                 </div>
-                <div className="text-xl font-extrabold text-[#0f172a] mt-1">{s.quarter}</div>
-                <div className="text-[13px] text-[#64748b] mt-1">
+                <div className="text-xl font-extrabold mt-1" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{s.quarter}</div>
+                <div className="text-[13px] mt-1" style={{ color: BT.text.secondary }}>
                   {s.irr}% IRR · {s.multiple}x
                 </div>
               </button>
             );
           })}
         </div>
-        <p className="text-[11px] text-[#94a3b8] mt-3">See Exit Windows tab for detailed year-by-year analysis</p>
+        <p className="text-[11px] mt-3" style={{ color: BT.text.muted }}>See Exit Windows tab for detailed year-by-year analysis</p>
       </div>
 
       <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
