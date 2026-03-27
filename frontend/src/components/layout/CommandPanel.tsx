@@ -160,7 +160,6 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
         style={{
           background: T.bg.panel,
           borderLeft: `1px solid ${T.border.medium}`,
-          boxShadow: '-4px 0 24px rgba(0,0,0,0.5)',
         }}
       >
         <div style={{
@@ -207,7 +206,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
               padding: '8px 12px',
               background: T.bg.input,
               border: `1px solid ${T.border.medium}`,
-              borderRadius: 6,
+              borderRadius: 2,
               color: T.text.primary,
               fontSize: T.fontSize.base,
               fontFamily: T.font.mono,
@@ -270,7 +269,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
                       key={strategy.id}
                       style={{
                         border: `1px solid ${T.border.subtle}`,
-                        borderRadius: 6,
+                        borderRadius: 2,
                         padding: 12,
                         background: T.bg.panelAlt,
                       }}
@@ -295,7 +294,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
                               fontSize: T.fontSize.xs,
                               fontFamily: T.font.mono,
                               fontWeight: 700,
-                              borderRadius: 3,
+                              borderRadius: 2,
                               border: `1px solid ${strategy.type === 'preset' ? T.text.cyan : T.text.purple}`,
                               background: `${strategy.type === 'preset' ? T.text.cyan : T.text.purple}22`,
                               color: strategy.type === 'preset' ? T.text.cyan : T.text.purple,
@@ -318,7 +317,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
                           style={{
                             width: '100%',
                             padding: '6px 0',
-                            borderRadius: 4,
+                            borderRadius: 2,
                             border: `1px solid ${T.text.amber}44`,
                             background: `${T.text.amber}15`,
                             color: T.text.amber,
@@ -358,7 +357,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
                             color: T.text.green,
                             background: `${T.text.green}15`,
                             padding: '4px 8px',
-                            borderRadius: 4,
+                            borderRadius: 2,
                             fontFamily: T.font.mono,
                           }}>
                             ✓ {running!.matchCount} matches
@@ -371,7 +370,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
                                   fontSize: T.fontSize.xs,
                                   background: T.bg.header,
                                   padding: '4px 8px',
-                                  borderRadius: 4,
+                                  borderRadius: 2,
                                   display: 'flex',
                                   justifyContent: 'space-between',
                                   fontFamily: T.font.mono,
@@ -455,7 +454,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
                       width: '100%',
                       textAlign: 'left',
                       padding: '8px 12px',
-                      borderRadius: 6,
+                      borderRadius: 2,
                       border: 'none',
                       background: 'transparent',
                       color: T.text.secondary,
@@ -498,7 +497,7 @@ export const CommandPanel: React.FC<CommandPanelProps> = ({ isOpen, onClose }) =
               padding: '2px 6px',
               background: T.bg.active,
               border: `1px solid ${T.border.medium}`,
-              borderRadius: 3,
+              borderRadius: 2,
               color: T.text.amber,
               fontFamily: T.font.mono,
               fontSize: T.fontSize.xs,

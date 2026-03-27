@@ -5,6 +5,7 @@ import {
   ArrowLeft, Shield, Zap,
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 import { SystemHealthSection } from './sections/SystemHealthSection';
 import { UserManagementSection } from './sections/UserManagementSection';
 import { DealOversightSection } from './sections/DealOversightSection';
@@ -54,22 +55,23 @@ export function AdminDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex flex-col">
-      <div className="bg-white border-b border-[#e2e8f0]">
+    <div className="min-h-screen flex flex-col" style={{ background: BT.bg.terminal, fontFamily: BT.font.label }}>
+      <div style={{ background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="max-w-[1400px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Link to="/dashboard" className="p-1.5 rounded-md hover:bg-gray-100">
-                <ArrowLeft className="w-4 h-4 text-gray-500" />
+              <Link to="/dashboard" className="p-1.5" style={{ borderRadius: 2 }}>
+                <ArrowLeft className="w-4 h-4" style={{ color: BT.text.secondary }} />
               </Link>
               <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-600" />
-                <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
+                <Shield className="w-5 h-5" style={{ color: BT.text.cyan }} />
+                <h1 className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Admin Panel</h1>
               </div>
-              
+
               <Link
                 to="/admin/command-center"
-                className="ml-4 flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                className="ml-4 flex items-center gap-2 px-4 py-2 text-sm font-medium"
+                style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
               >
                 <Zap className="w-4 h-4" />
                 Command Center
@@ -78,20 +80,20 @@ export function AdminDashboard() {
             {stats && (
               <div className="hidden md:flex items-center gap-6 text-sm">
                 <div>
-                  <span className="text-gray-500">Users </span>
-                  <span className="font-semibold text-gray-900">{Number(stats.user_count).toLocaleString()}</span>
+                  <span style={{ color: BT.text.secondary }}>Users </span>
+                  <span className="font-semibold" style={{ color: BT.text.primary }}>{Number(stats.user_count).toLocaleString()}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Deals </span>
-                  <span className="font-semibold text-gray-900">{Number(stats.deal_count).toLocaleString()}</span>
+                  <span style={{ color: BT.text.secondary }}>Deals </span>
+                  <span className="font-semibold" style={{ color: BT.text.primary }}>{Number(stats.deal_count).toLocaleString()}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Properties </span>
-                  <span className="font-semibold text-gray-900">{Number(stats.property_count).toLocaleString()}</span>
+                  <span style={{ color: BT.text.secondary }}>Properties </span>
+                  <span className="font-semibold" style={{ color: BT.text.primary }}>{Number(stats.property_count).toLocaleString()}</span>
                 </div>
                 <div>
-                  <span className="text-gray-500">Scenarios </span>
-                  <span className="font-semibold text-gray-900">{Number(stats.scenario_count).toLocaleString()}</span>
+                  <span style={{ color: BT.text.secondary }}>Scenarios </span>
+                  <span className="font-semibold" style={{ color: BT.text.primary }}>{Number(stats.scenario_count).toLocaleString()}</span>
                 </div>
               </div>
             )}
@@ -100,19 +102,20 @@ export function AdminDashboard() {
       </div>
 
       <div className="flex-1 flex max-w-[1400px] mx-auto w-full">
-        <nav className="w-52 flex-shrink-0 bg-white border-r border-[#e2e8f0] py-4">
+        <nav className="w-52 flex-shrink-0 py-4" style={{ background: BT.bg.panel, borderRight: `1px solid ${BT.border.subtle}` }}>
           <div className="space-y-0.5 px-2">
             {TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === tab.key
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium transition-colors"
+                style={{
+                  borderRadius: 2,
+                  background: activeTab === tab.key ? BT.bg.active : 'transparent',
+                  color: activeTab === tab.key ? BT.text.amber : BT.text.secondary,
+                }}
               >
-                <span className={activeTab === tab.key ? 'text-blue-600' : 'text-gray-400'}>
+                <span style={{ color: activeTab === tab.key ? BT.text.amber : BT.text.muted }}>
                   {tab.icon}
                 </span>
                 {tab.label}
@@ -120,17 +123,19 @@ export function AdminDashboard() {
             ))}
           </div>
 
-          <div className="mt-6 px-2 pt-4 border-t border-gray-100">
-            <div className="text-xs font-medium text-gray-400 uppercase px-3 mb-2">Tools</div>
+          <div className="mt-6 px-2 pt-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-xs font-medium uppercase px-3 mb-2" style={{ color: BT.text.muted }}>Tools</div>
             <Link
               to="/admin/data-tracker"
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm"
+              style={{ borderRadius: 2, color: BT.text.secondary }}
             >
               Data Tracker
             </Link>
             <Link
               to="/admin/property-coverage"
-              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-sm"
+              style={{ borderRadius: 2, color: BT.text.secondary }}
             >
               Property Coverage
             </Link>

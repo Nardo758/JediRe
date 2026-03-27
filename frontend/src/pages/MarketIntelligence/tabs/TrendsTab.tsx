@@ -28,7 +28,7 @@ interface CorrelationReport {
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
 const badge = (color: string): React.CSSProperties => ({
-  fontSize: 8, fontWeight: 700, color, background: color + '20',
+  fontSize: 9, fontWeight: 700, color, background: color + '20',
   padding: '1px 6px', borderRadius: 2, letterSpacing: 1, ...mono,
 });
 const insightBox = (color: string): React.CSSProperties => ({
@@ -244,8 +244,8 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
           <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, ...mono }}>{metric.id}</span>
           <span style={{ fontSize: 10, fontWeight: 600, color: s.color }}>{metric.name}</span>
           <span style={{ fontSize: 9, fontWeight: 700, color: s.color, ...mono }}>{s.icon} {metric.signal}</span>
-          <span style={{ fontSize: 8, fontWeight: 700, color: confColor[metric.confidence], background: confColor[metric.confidence] + '20', padding: '1px 4px', borderRadius: 2, ...mono }}>{metric.confidence.toUpperCase()}</span>
-          <span style={{ fontSize: 8, color: T.muted, ...mono }}>Lead: {metric.leadTime}</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: confColor[metric.confidence], background: confColor[metric.confidence] + '20', padding: '1px 4px', borderRadius: 2, ...mono }}>{metric.confidence.toUpperCase()}</span>
+          <span style={{ fontSize: 9, color: T.muted, ...mono }}>Lead: {metric.leadTime}</span>
         </div>
         {metric.actionable && <div style={{ fontSize: 10, color: s.color, marginTop: 3 }}>{metric.actionable}</div>}
         {metric.xValue !== null && (
@@ -263,7 +263,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
     <div key={metric.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
       <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, width: 50, ...mono }}>{metric.id}</span>
       <span style={{ fontSize: 9, color: T.secondary, flex: 1 }}>{metric.name}</span>
-      <span style={{ fontSize: 8, color: T.muted, fontStyle: 'italic', ...mono }}>
+      <span style={{ fontSize: 9, color: T.muted, fontStyle: 'italic', ...mono }}>
         {metric.missingData[0] || 'pending'}
       </span>
     </div>
@@ -332,8 +332,8 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
               {DEMAND_SIGNALS.map(s => (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 6px', borderRadius: 2 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 8, color: s.ok ? T.green : T.amber, ...mono }}>{s.ok ? '✓' : '⚠'}</span>
-                    <span style={{ fontSize: 8, color: T.muted, ...mono, width: 32 }}>{s.id}</span>
+                    <span style={{ fontSize: 9, color: s.ok ? T.green : T.amber, ...mono }}>{s.ok ? '✓' : '⚠'}</span>
+                    <span style={{ fontSize: 9, color: T.muted, ...mono, width: 32 }}>{s.id}</span>
                     <span style={{ fontSize: 10, color: T.secondary }}>{s.name}</span>
                   </div>
                   <span style={{ fontSize: 10, fontWeight: 700, color: T.text, ...mono }}>{s.value}</span>
@@ -343,7 +343,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             <div style={{ ...insightBox(T.green), marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: T.green, ...mono }}>STRONG DEMAND</span>
-                <span style={{ fontSize: 8, color: T.green, ...mono }}>Confidence: 82%</span>
+                <span style={{ fontSize: 9, color: T.green, ...mono }}>Confidence: 82%</span>
               </div>
               <p style={{ fontSize: 9, color: T.secondary, lineHeight: 1.5 }}>
                 Atlanta job growth at 2.8× apartments ratio. Net migration +48K/yr sustains demand pressure. Household formation outpaces supply in Class B/C segments.
@@ -359,8 +359,8 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
               {SUPPLY_SIGNALS.map(s => (
                 <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 6px', borderRadius: 2 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 8, color: s.ok ? T.green : T.amber, ...mono }}>{s.ok ? '✓' : '⚠'}</span>
-                    <span style={{ fontSize: 8, color: T.muted, ...mono, width: 32 }}>{s.id}</span>
+                    <span style={{ fontSize: 9, color: s.ok ? T.green : T.amber, ...mono }}>{s.ok ? '✓' : '⚠'}</span>
+                    <span style={{ fontSize: 9, color: T.muted, ...mono, width: 32 }}>{s.id}</span>
                     <span style={{ fontSize: 10, color: T.secondary }}>{s.name}</span>
                   </div>
                   <span style={{ fontSize: 10, fontWeight: 700, color: T.text, ...mono }}>{s.value}</span>
@@ -370,7 +370,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             <div style={{ ...insightBox(T.amber), marginTop: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>MODERATE SUPPLY RISK</span>
-                <span style={{ fontSize: 8, color: T.amber, ...mono }}>Confidence: 68%</span>
+                <span style={{ fontSize: 9, color: T.amber, ...mono }}>Confidence: 68%</span>
               </div>
               <p style={{ fontSize: 9, color: T.secondary, lineHeight: 1.5 }}>
                 14-month absorption runway elevated from Class A deliveries in Midtown/Buckhead. Permit momentum slowing (−12%). Construction costs filtering marginal projects.
@@ -663,7 +663,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
                   {l}
                 </span>
               ))}
-              <span style={{ fontSize: 8, color: T.muted, ...mono }}>Bubble size = unit count</span>
+              <span style={{ fontSize: 9, color: T.muted, ...mono }}>Bubble size = unit count</span>
             </div>
             <div style={insightBox(T.amber)}>
               <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>CAP RATES · </span>
@@ -877,10 +877,10 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             <span style={badge('#6366f1')}>CI ENGINE</span>
             {correlationLoading && <span style={{ fontSize: 9, color: T.violet, ...mono }}>Loading live data…</span>}
             {!correlationLoading && !correlationError && correlationReport && (
-              <span style={{ fontSize: 8, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE DATA</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE DATA</span>
             )}
             {correlationError && (
-              <span style={{ fontSize: 8, fontWeight: 700, color: T.amber, background: T.amber + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>SAMPLE DATA</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, background: T.amber + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>SAMPLE DATA</span>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -954,7 +954,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>AFFORDABILITY CEILING GAUGE</span>
             <span style={badge('#6366f1')}>CI ENGINE</span>
-            {liveAffordabilityRatio !== null && <span style={{ fontSize: 8, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE</span>}
+            {liveAffordabilityRatio !== null && <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE</span>}
           </div>
           <span style={{
             fontSize: 11, fontWeight: 800, color: AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green,
@@ -1004,12 +1004,12 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
               {AFFORDABILITY_DATA.historicalPercents.map((pct, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{
-                    width: 28, height: 18, borderRadius: 2, fontSize: 8, fontWeight: 700,
+                    width: 28, height: 18, borderRadius: 2, fontSize: 9, fontWeight: 700,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', ...mono,
                     background: pct > AFFORDABILITY_DATA.thresholdPercent ? T.red + '30' : T.green + '20',
                     color: pct > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green,
                   }}>{pct}</div>
-                  <span style={{ fontSize: 7, color: T.muted, ...mono, marginTop: 2 }}>{CORRELATION_QUARTERS[i]?.quarter.replace(' ', '\n') || ''}</span>
+                  <span style={{ fontSize: 9, color: T.muted, ...mono, marginTop: 2 }}>{CORRELATION_QUARTERS[i]?.quarter.replace(' ', '\n') || ''}</span>
                 </div>
               ))}
             </div>
@@ -1032,7 +1032,7 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>RENT RUNWAY INDICATOR</span>
             <span style={badge('#6366f1')}>CI ENGINE</span>
-            {liveRentRunway && <span style={{ fontSize: 8, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE</span>}
+            {liveRentRunway && <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE</span>}
           </div>
           <span style={{ fontSize: 9, color: T.muted, ...mono }}>When wages outpace rents, the gap = runway (COR-04)</span>
         </div>

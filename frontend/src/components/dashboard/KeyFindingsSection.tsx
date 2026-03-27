@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface Finding {
   id: string;
@@ -166,9 +167,9 @@ const CATEGORY_CONFIG = {
 };
 
 const PRIORITY_ACCENT = {
-  urgent: { border: 'border-l-red-500', dot: 'bg-red-500', label: 'Urgent', labelClass: 'text-red-700 bg-red-50' },
-  important: { border: 'border-l-amber-500', dot: 'bg-amber-500', label: 'Important', labelClass: 'text-amber-700 bg-amber-50' },
-  info: { border: 'border-l-sky-500', dot: 'bg-sky-500', label: 'Info', labelClass: 'text-sky-700 bg-sky-50' },
+  urgent: { borderColor: BT.text.red, dotColor: BT.text.red, label: 'Urgent', labelColor: BT.text.red, labelBg: `${BT.text.red}18` },
+  important: { borderColor: BT.text.amber, dotColor: BT.text.amber, label: 'Important', labelColor: BT.text.amber, labelBg: `${BT.text.amber}18` },
+  info: { borderColor: BT.text.cyan, dotColor: BT.text.cyan, label: 'Info', labelColor: BT.text.cyan, labelBg: `${BT.text.cyan}18` },
 };
 
 const TYPE_ICON: Record<string, string> = {
@@ -178,17 +179,17 @@ const TYPE_ICON: Record<string, string> = {
   action: '⚡',
 };
 
-function getScoreColor(score: number): string {
-  if (score >= 80) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
-  if (score >= 60) return 'text-sky-700 bg-sky-50 border-sky-200';
-  if (score >= 40) return 'text-amber-700 bg-amber-50 border-amber-200';
-  return 'text-red-700 bg-red-50 border-red-200';
+function getScoreStyle(score: number): { color: string; background: string; borderColor: string } {
+  if (score >= 80) return { color: BT.text.green, background: `${BT.text.green}18`, borderColor: `${BT.text.green}44` };
+  if (score >= 60) return { color: BT.text.cyan, background: `${BT.text.cyan}18`, borderColor: `${BT.text.cyan}44` };
+  if (score >= 40) return { color: BT.text.amber, background: `${BT.text.amber}18`, borderColor: `${BT.text.amber}44` };
+  return { color: BT.text.red, background: `${BT.text.red}18`, borderColor: `${BT.text.red}44` };
 }
 
 function getChangeIndicator(change: number): { icon: string; color: string } {
-  if (change > 0) return { icon: '▲', color: 'text-emerald-600' };
-  if (change < 0) return { icon: '▼', color: 'text-red-600' };
-  return { icon: '—', color: 'text-gray-500' };
+  if (change > 0) return { icon: '▲', color: BT.text.green };
+  if (change < 0) return { icon: '▼', color: BT.text.red };
+  return { icon: '—', color: BT.text.secondary };
 }
 
 export const KeyFindingsSection: React.FC = () => {
@@ -222,10 +223,10 @@ export const KeyFindingsSection: React.FC = () => {
       }
 
       const data = await response.json();
-      
+
       if (data.success) {
         setFindings(data.data);
-        
+
         // Auto-select first category with findings (prioritize actions > insights > news > market)
         const priorityOrder: CategoryKey[] = ['actions', 'insights', 'news', 'market'];
         const firstWithData = priorityOrder.find(key => data.data[key]?.length > 0);
@@ -318,16 +319,16 @@ export const KeyFindingsSection: React.FC = () => {
     return date.toLocaleDateString();
   };
 
-  const totalFindings = findings.news.length + findings.market.length + 
+  const totalFindings = findings.news.length + findings.market.length +
                         findings.insights.length + findings.actions.length;
 
   const activeFindings = findings[activeTab] || [];
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center justify-center py-8">
-          <div className="text-gray-500">Loading key findings...</div>
+          <div style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>Loading key findings...</div>
         </div>
       </div>
     );
@@ -335,30 +336,33 @@ export const KeyFindingsSection: React.FC = () => {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center justify-center py-8">
-          <div className="text-red-500">{error}</div>
+          <div style={{ color: BT.text.red }}>{error}</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
+      <div className="px-6 py-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Key Findings</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {totalFindings === 0 
-                ? 'All caught up! No urgent findings.' 
+            <h2 className="text-lg font-semibold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Key Findings</h2>
+            <p className="text-sm mt-0.5" style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>
+              {totalFindings === 0
+                ? 'All caught up! No urgent findings.'
                 : `${totalFindings} finding${totalFindings !== 1 ? 's' : ''} requiring attention`}
             </p>
           </div>
           <button
             onClick={fetchFindings}
-            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            className="text-sm font-medium"
+            style={{ color: BT.text.cyan }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
           >
             Refresh
           </button>
@@ -366,7 +370,7 @@ export const KeyFindingsSection: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200">
+      <div style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="flex overflow-x-auto">
           {(Object.keys(CATEGORY_CONFIG) as CategoryKey[]).map((category) => {
             const count = findings[category]?.length || 0;
@@ -377,20 +381,36 @@ export const KeyFindingsSection: React.FC = () => {
               <button
                 key={category}
                 onClick={() => setActiveTab(category)}
-                className={`
-                  flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap
-                  ${isActive 
-                    ? 'border-blue-600 text-blue-600' 
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'}
-                `}
+                className="flex items-center gap-2 px-4 py-3 whitespace-nowrap transition-colors"
+                style={{
+                  borderBottom: `2px solid ${isActive ? BT.text.cyan : 'transparent'}`,
+                  color: isActive ? BT.text.cyan : BT.text.secondary,
+                  fontFamily: BT.font.label,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.color = BT.text.primary;
+                    e.currentTarget.style.borderBottomColor = BT.border.medium;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.color = BT.text.secondary;
+                    e.currentTarget.style.borderBottomColor = 'transparent';
+                  }
+                }}
               >
                 <span className="text-lg">{config.icon}</span>
                 <span className="font-medium">{config.label}</span>
                 {count > 0 && (
-                  <span className={`
-                    ml-1 px-2 py-0.5 text-xs font-semibold rounded-full
-                    ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}
-                  `}>
+                  <span
+                    className="ml-1 px-2 py-0.5 text-xs font-semibold"
+                    style={{
+                      borderRadius: 2,
+                      background: isActive ? `${BT.text.cyan}22` : BT.bg.panelAlt,
+                      color: isActive ? BT.text.cyan : BT.text.secondary,
+                    }}
+                  >
                     {count}
                   </span>
                 )}
@@ -405,7 +425,7 @@ export const KeyFindingsSection: React.FC = () => {
         {activeFindings.length === 0 ? (
           <div className="py-12 text-center">
             <div className="text-5xl mb-3">{CATEGORY_CONFIG[activeTab].icon}</div>
-            <p className="text-gray-500">{CATEGORY_CONFIG[activeTab].emptyMessage}</p>
+            <p style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>{CATEGORY_CONFIG[activeTab].emptyMessage}</p>
           </div>
         ) : (
           <>
@@ -420,12 +440,21 @@ export const KeyFindingsSection: React.FC = () => {
                 <button
                   key={finding.id}
                   onClick={() => handleFindingClick(finding)}
-                  className={`
-                    w-full text-left rounded-lg border border-stone-200 bg-white
-                    border-l-4 ${accent.border}
-                    hover:border-stone-300 hover:shadow-md transition-all duration-150
-                    group
-                  `}
+                  className="w-full text-left group"
+                  style={{
+                    borderRadius: 0,
+                    border: `1px solid ${BT.border.subtle}`,
+                    borderLeft: `4px solid ${accent.borderColor}`,
+                    background: BT.bg.panel,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = BT.border.medium;
+                    e.currentTarget.style.borderLeftColor = accent.borderColor;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = BT.border.subtle;
+                    e.currentTarget.style.borderLeftColor = accent.borderColor;
+                  }}
                 >
                   <div className="p-4">
                     <div className="flex items-start gap-3">
@@ -433,66 +462,137 @@ export const KeyFindingsSection: React.FC = () => {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <h3 className="font-semibold text-stone-900 text-sm leading-snug">
+                          <h3 className="font-semibold text-sm leading-snug" style={{ color: BT.text.primary, fontFamily: BT.font.label }}>
                             {finding.title}
                           </h3>
-                          <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded ${accent.labelClass}`}>
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5"
+                            style={{
+                              borderRadius: 2,
+                              color: accent.labelColor,
+                              background: accent.labelBg,
+                            }}
+                          >
                             {accent.label}
                           </span>
                         </div>
 
-                        <p className="text-sm text-stone-600 leading-relaxed mb-2.5">
+                        <p className="text-sm leading-relaxed mb-2.5" style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>
                           {finding.description}
                         </p>
 
                         <div className="flex items-center gap-2 flex-wrap">
-                          {hasScore && (
-                            <span className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-md border ${getScoreColor(meta.jediScore)}`}>
-                              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                              JEDI {meta.jediScore}
-                            </span>
-                          )}
+                          {hasScore && (() => {
+                            const scoreStyle = getScoreStyle(meta.jediScore);
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1"
+                                style={{
+                                  borderRadius: 2,
+                                  color: scoreStyle.color,
+                                  background: scoreStyle.background,
+                                  border: `1px solid ${scoreStyle.borderColor}`,
+                                }}
+                              >
+                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                                JEDI {meta.jediScore}
+                              </span>
+                            );
+                          })()}
 
                           {hasChange && changeInfo && (
-                            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-md bg-stone-50 border border-stone-200 ${changeInfo.color}`}>
+                            <span
+                              className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: BT.bg.panelAlt,
+                                border: `1px solid ${BT.border.subtle}`,
+                                color: changeInfo.color,
+                              }}
+                            >
                               {changeInfo.icon} {Math.abs(meta.change).toFixed(1)}%
                             </span>
                           )}
 
                           {meta.verdict && (
-                            <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-1 rounded-md bg-stone-100 text-stone-600 border border-stone-200">
+                            <span
+                              className="text-[10px] font-medium uppercase tracking-wide px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: BT.bg.panelAlt,
+                                color: BT.text.secondary,
+                                border: `1px solid ${BT.border.subtle}`,
+                              }}
+                            >
                               {meta.verdict.replace(/_/g, ' ')}
                             </span>
                           )}
 
                           {meta.category && (
-                            <span className="text-xs px-2 py-1 rounded-md bg-stone-100 text-stone-700">
+                            <span
+                              className="text-xs px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: BT.bg.panelAlt,
+                                color: BT.text.secondary,
+                              }}
+                            >
                               {meta.category}
                             </span>
                           )}
 
                           {meta.affectedDeals > 0 && (
-                            <span className="text-xs px-2 py-1 rounded-md bg-stone-100 text-stone-600">
+                            <span
+                              className="text-xs px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: BT.bg.panelAlt,
+                                color: BT.text.secondary,
+                              }}
+                            >
                               {meta.affectedDeals} deal{meta.affectedDeals !== 1 ? 's' : ''}
                             </span>
                           )}
 
                           {meta.location && (
-                            <span className="text-xs px-2 py-1 rounded-md bg-stone-50 text-stone-500 border border-stone-200">
+                            <span
+                              className="text-xs px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: BT.bg.panelAlt,
+                                color: BT.text.muted,
+                                border: `1px solid ${BT.border.subtle}`,
+                              }}
+                            >
                               📍 {meta.location}
                             </span>
                           )}
 
                           {meta.state && (
-                            <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-1 rounded-md bg-stone-100 text-stone-600">
+                            <span
+                              className="text-[10px] font-medium uppercase tracking-wide px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: BT.bg.panelAlt,
+                                color: BT.text.secondary,
+                              }}
+                            >
                               {meta.state}
                             </span>
                           )}
 
                           {meta.recommendationCount > 0 && (
-                            <span className="text-xs px-2 py-1 rounded-md bg-sky-50 text-sky-700 border border-sky-200">
+                            <span
+                              className="text-xs px-2 py-1"
+                              style={{
+                                borderRadius: 2,
+                                background: `${BT.text.cyan}18`,
+                                color: BT.text.cyan,
+                                border: `1px solid ${BT.text.cyan}44`,
+                              }}
+                            >
                               {meta.recommendationCount} rec{meta.recommendationCount !== 1 ? 's' : ''}
                             </span>
                           )}
@@ -500,11 +600,12 @@ export const KeyFindingsSection: React.FC = () => {
                       </div>
 
                       <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        <span className="text-[11px] text-stone-400 whitespace-nowrap">
+                        <span className="text-[11px] whitespace-nowrap" style={{ color: BT.text.muted }}>
                           {getTimeSince(finding.timestamp)}
                         </span>
                         <svg
-                          className="w-4 h-4 text-stone-300 group-hover:text-stone-500 transition-colors"
+                          className="w-4 h-4 transition-colors"
+                          style={{ color: BT.text.muted }}
                           fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -525,7 +626,10 @@ export const KeyFindingsSection: React.FC = () => {
                     else if (activeTab === 'insights') navigate('/deals');
                     else if (activeTab === 'actions') navigate('/deals');
                   }}
-                  className="text-sm text-sky-600 hover:text-sky-700 font-medium"
+                  className="text-sm font-medium"
+                  style={{ color: BT.text.cyan }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.8')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
                 >
                   View All {CATEGORY_CONFIG[activeTab].label} →
                 </button>

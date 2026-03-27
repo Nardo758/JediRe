@@ -170,7 +170,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
             onClick={() => checkCompletionStatus()}
             style={{
               display: 'flex', alignItems: 'center', gap: 4,
-              fontFamily: MONO, fontSize: 8, color: BT2.text.secondary,
+              fontFamily: MONO, fontSize: 9, color: BT2.text.secondary,
               background: 'transparent', border: `1px solid ${BT2.border.subtle}`,
               padding: '2px 8px', cursor: 'pointer',
             }}
@@ -191,7 +191,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           flexShrink: 0,
         }}>
           <Lock size={10} style={{ color: BT2.text.amber }} />
-          <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: MONO }}>{statusMessage}</span>
+          <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: MONO }}>{statusMessage}</span>
         </div>
       )}
 

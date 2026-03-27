@@ -16,7 +16,7 @@ export const BT = {
     hover:    '#1E2538',
     active:   '#252D40',
     input:    '#0D1117',
-    topBar:   '#06080E',
+    topBar:   '#050810',
   },
   text: {
     primary:   '#E8ECF1',
@@ -54,7 +54,7 @@ export const BT = {
     label:   "'IBM Plex Sans',sans-serif",
   },
   fontSize: {
-    xs:   '8px',
+    xs:   '9px',
     sm:   '9px',
     md:   '10px',
     base: '11px',
@@ -63,9 +63,7 @@ export const BT = {
     xxl:  '20px',
     hero: '32px',
   },
-  gradient: {
-    tealCyan: 'linear-gradient(135deg, #00E5A0, #00B4D8)',
-  },
+  // No gradients — terminal aesthetic uses solid colors only
 } as const;
 
 const MONO = BT.font.mono;
@@ -255,7 +253,7 @@ export function Bd({ children, c, onClick }: {
     <span
       onClick={onClick}
       style={{
-        fontFamily: MONO, fontSize: 8, fontWeight: 700, color: c,
+        fontFamily: MONO, fontSize: 9, fontWeight: 700, color: c,
         background: `${c}18`, border: `1px solid ${c}33`,
         padding: '1px 5px', letterSpacing: 0.5, textTransform: 'uppercase' as const,
         whiteSpace: 'nowrap' as const, cursor: onClick ? 'pointer' : 'default',
@@ -281,7 +279,7 @@ export function RiskDot({ level }: { level: 'HIGH' | 'MED' | 'LOW' | string }) {
   const c = level === 'HIGH' ? BT.text.red : level === 'MED' ? BT.text.orange : BT.text.green;
   const anim = level === 'HIGH' ? 'bt-glowR 2s infinite' : level === 'LOW' ? 'bt-glow 2s infinite' : 'none';
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 8, fontFamily: MONO, fontWeight: 600, color: c }}>
+    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, fontFamily: MONO, fontWeight: 600, color: c }}>
       <span style={{ width: 5, height: 5, borderRadius: '50%', background: c, animation: anim }} />
       {level}
     </span>
@@ -292,7 +290,7 @@ export function RiskDot({ level }: { level: 'HIGH' | 'MED' | 'LOW' | string }) {
 export function MetricTag({ label, color }: { label: string; color: string }) {
   return (
     <span style={{
-      fontSize: 6, color, background: `${color}12`, padding: '0 3px',
+      fontSize: 9, color, background: `${color}12`, padding: '0 3px',
       borderRadius: 2, whiteSpace: 'nowrap' as const, fontFamily: MONO, fontWeight: 600,
     }}>
       {label}
@@ -321,7 +319,7 @@ export function PanelHeader({
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8, fontFamily: MONO }}>{title}</span>
-        {subtitle && <span style={{ fontSize: 8, color: BT.text.secondary, fontFamily: MONO }}>{subtitle}</span>}
+        {subtitle && <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>{subtitle}</span>}
         {metrics && (
           <div style={{ display: 'flex', gap: 2 }}>
             {metrics.map((m, i) => <MetricTag key={i} label={m.l} color={m.c} />)}
@@ -364,7 +362,7 @@ export function SectionPanel({
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5, fontFamily: MONO }}>{title}</span>
-            {subtitle && <span style={{ fontSize: 7, color: BT.text.secondary, fontFamily: MONO }}>{subtitle}</span>}
+            {subtitle && <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>{subtitle}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             {metrics && metrics.map((m, i) => <MetricTag key={i} label={m.l} color={m.c} />)}
@@ -396,11 +394,11 @@ export function DataRow({
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         {metricColor && <span style={{ width: 3, height: 3, borderRadius: '50%', background: metricColor }} />}
-        <span style={{ fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, fontFamily: MONO }}>{label}</span>
+        <span style={{ fontSize: 9, color: BT.text.muted, letterSpacing: 0.5, fontFamily: MONO }}>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
         <span style={{ fontSize: 9, fontWeight: 700, color: valueColor ?? BT.text.amber, fontFamily: MONO }}>{value}</span>
-        {sub && <span style={{ fontSize: 7, color: BT.text.secondary, fontFamily: MONO }}>{sub}</span>}
+        {sub && <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>{sub}</span>}
       </div>
     </div>
   );
@@ -417,13 +415,13 @@ export function MiniBar({
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
       {label && (
-        <span style={{ fontSize: 7, color: BT.text.muted, minWidth: 60, letterSpacing: 0.5, fontFamily: MONO }}>{label}</span>
+        <span style={{ fontSize: 9, color: BT.text.muted, minWidth: 60, letterSpacing: 0.5, fontFamily: MONO }}>{label}</span>
       )}
       <div style={{ flex: 1, height: 4, background: BT.bg.terminal, borderRadius: 1 }}>
         <div style={{ height: '100%', width: `${pct}%`, background: bc, borderRadius: 1 }} />
       </div>
       {showVal && (
-        <span style={{ fontSize: 8, fontWeight: 700, color: bc, minWidth: 20, textAlign: 'right' as const, fontFamily: MONO }}>{value}</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: bc, minWidth: 20, textAlign: 'right' as const, fontFamily: MONO }}>{value}</span>
       )}
     </div>
   );
@@ -452,7 +450,7 @@ export function SubTabBar({
           key={i}
           onClick={() => setActive(i)}
           style={{
-            fontFamily: MONO, fontSize: 8, fontWeight: active === i ? 700 : 500,
+            fontFamily: MONO, fontSize: 9, fontWeight: active === i ? 700 : 500,
             padding: '5px 12px',
             background: 'transparent',
             border: 'none',
@@ -475,7 +473,7 @@ export function SubTabBar({
 export function VerifiedLink({ source }: { source: string }) {
   return (
     <span style={{
-      fontSize: 7, color: BT.text.teal, cursor: 'pointer',
+      fontSize: 9, color: BT.text.teal, cursor: 'pointer',
       textDecoration: 'underline', textDecorationStyle: 'dotted' as const,
       fontFamily: MONO,
     }}>
@@ -547,9 +545,9 @@ export function KpiTile({
       padding: '6px 8px',
       display: 'flex', flexDirection: 'column' as const, gap: 2,
     }}>
-      <div style={{ fontSize: 7, color: BT.text.muted, letterSpacing: 0.8, fontFamily: MONO }}>{label}</div>
+      <div style={{ fontSize: 9, color: BT.text.muted, letterSpacing: 0.8, fontFamily: MONO }}>{label}</div>
       <div style={{ fontSize: 16, fontWeight: 800, color: c, fontFamily: MONO }}>{value}</div>
-      {sub && <div style={{ fontSize: 7, color: BT.text.secondary, fontFamily: MONO }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>{sub}</div>}
       {spark && <Spark data={spark} color={c} w={80} h={12} />}
     </div>
   );
@@ -562,7 +560,7 @@ export function TableHeader({ cols }: { cols: Array<{ label: string; color?: str
       {cols.map((c, i) => (
         <div key={i} style={{
           padding: '4px 8px',
-          fontSize: 7, fontWeight: 700,
+          fontSize: 9, fontWeight: 700,
           color: c.color ?? BT.text.muted,
           letterSpacing: 0.8, fontFamily: MONO,
           flex: c.flex ?? 1,
@@ -596,7 +594,7 @@ export function TableRow({
       {cells.map((c, i) => (
         <div key={i} style={{
           padding: '4px 8px',
-          fontSize: 8, fontWeight: c.weight ?? 500,
+          fontSize: 9, fontWeight: c.weight ?? 500,
           color: c.color ?? BT.text.secondary,
           fontFamily: MONO, flex: c.flex ?? 1,
           borderRight: `1px solid ${BT.border.subtle}`,
@@ -627,8 +625,8 @@ export function BCard({ children, style: s }: { children: React.ReactNode; style
 
 export function BLiveBadge({ live }: { live: boolean }) {
   return live ? (
-    <span style={{ fontSize: 7, fontWeight: 700, color: BT.text.green, background: `${BT.text.green}18`, border: `1px solid ${BT.text.green}40`, borderRadius: 2, padding: '1px 4px', letterSpacing: 0.5, fontFamily: MONO }}>LIVE</span>
+    <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.green, background: `${BT.text.green}18`, border: `1px solid ${BT.text.green}40`, borderRadius: 2, padding: '1px 4px', letterSpacing: 0.5, fontFamily: MONO }}>LIVE</span>
   ) : (
-    <span style={{ fontSize: 7, fontWeight: 700, color: BT.text.muted, background: `${BT.text.muted}18`, border: `1px solid ${BT.text.muted}40`, borderRadius: 2, padding: '1px 4px', letterSpacing: 0.5, fontFamily: MONO }}>EST</span>
+    <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, background: `${BT.text.muted}18`, border: `1px solid ${BT.text.muted}40`, borderRadius: 2, padding: '1px 4px', letterSpacing: 0.5, fontFamily: MONO }}>EST</span>
   );
 }

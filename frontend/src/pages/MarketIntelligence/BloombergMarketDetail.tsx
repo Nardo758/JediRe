@@ -110,12 +110,12 @@ function VitalCard({ v }: { v: Vital }) {
   const chColor = v.dir === 'up' ? C.text.green : v.dir === 'down' ? C.text.red : C.text.secondary;
   return (
     <div style={{ background: C.bg.card, border: `1px solid ${C.border.subtle}`, padding: '8px 10px', flex: 1, minWidth: 110 }}>
-      <div style={{ fontSize: 8, color: C.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4, fontFamily: C.font.mono }}>{v.label.toUpperCase()}</div>
+      <div style={{ fontSize: 9, color: C.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4, fontFamily: C.font.mono }}>{v.label.toUpperCase()}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
         <span style={{ fontSize: 18, fontWeight: 800, color: valColor, fontFamily: C.font.mono }}>{v.value}</span>
         <span style={{ fontSize: 10, color: C.text.secondary, fontFamily: C.font.mono }}>{v.sub}</span>
       </div>
-      {v.change && <div style={{ fontSize: 8, color: chColor, marginTop: 2, fontWeight: 600, fontFamily: C.font.mono }}>{v.change}{v.period ? ` (${v.period})` : ''}</div>}
+      {v.change && <div style={{ fontSize: 9, color: chColor, marginTop: 2, fontWeight: 600, fontFamily: C.font.mono }}>{v.change}{v.period ? ` (${v.period})` : ''}</div>}
     </div>
   );
 }
@@ -176,22 +176,22 @@ const BloombergMarketDetail: React.FC<BloombergMarketDetailProps> = ({ marketId,
 
         {/* Status badge */}
         {status === 'loading' && (
-          <span style={{ fontSize: 8, color: C.text.amber, border: `1px solid ${C.text.amber}55`, padding: '1px 6px', animation: 'pulse 1.5s infinite' }}>LOADING…</span>
+          <span style={{ fontSize: 9, color: C.text.amber, border: `1px solid ${C.text.amber}55`, padding: '1px 6px', animation: 'pulse 1.5s infinite' }}>LOADING…</span>
         )}
         {status === 'live' && (
-          <span style={{ fontSize: 8, color: C.text.green, border: `1px solid ${C.text.green}55`, padding: '1px 6px' }}>● LIVE</span>
+          <span style={{ fontSize: 9, color: C.text.green, border: `1px solid ${C.text.green}55`, padding: '1px 6px' }}>● LIVE</span>
         )}
         {status === 'cached' && (
-          <span style={{ fontSize: 8, color: C.text.amber, border: `1px solid ${C.text.amber}55`, padding: '1px 6px' }}>CACHED</span>
+          <span style={{ fontSize: 9, color: C.text.amber, border: `1px solid ${C.text.amber}55`, padding: '1px 6px' }}>CACHED</span>
         )}
         {status === 'error' && (
-          <span style={{ fontSize: 8, color: C.text.red, border: `1px solid ${C.text.red}55`, padding: '1px 6px' }}>DATA FEED OFFLINE</span>
+          <span style={{ fontSize: 9, color: C.text.red, border: `1px solid ${C.text.red}55`, padding: '1px 6px' }}>DATA FEED OFFLINE</span>
         )}
 
         {lastFetched && (
-          <span style={{ fontSize: 8, color: C.text.muted }}>{lastFetched.toLocaleTimeString('en-US', { hour12: false })}</span>
+          <span style={{ fontSize: 9, color: C.text.muted }}>{lastFetched.toLocaleTimeString('en-US', { hour12: false })}</span>
         )}
-        <button onClick={fetchMarketData} style={{ fontFamily: C.font.mono, fontSize: 8, color: C.text.secondary, background: 'transparent', border: `1px solid ${C.border.medium}`, padding: '1px 6px', cursor: 'pointer' }}>
+        <button onClick={fetchMarketData} style={{ fontFamily: C.font.mono, fontSize: 9, color: C.text.secondary, background: 'transparent', border: `1px solid ${C.border.medium}`, padding: '1px 6px', cursor: 'pointer' }}>
           REFRESH
         </button>
       </div>
@@ -233,7 +233,7 @@ const BloombergMarketDetail: React.FC<BloombergMarketDetailProps> = ({ marketId,
             <div style={{ fontFamily: C.font.mono, fontSize: 9, color: C.text.muted, letterSpacing: 1, marginBottom: 6 }}>
               MARKET VITALS
               {status === 'cached' && (
-                <span style={{ marginLeft: 8, fontSize: 8, color: C.text.amber, border: `1px solid ${C.text.amber}44`, padding: '0 4px' }}>CACHED</span>
+                <span style={{ marginLeft: 8, fontSize: 9, color: C.text.amber, border: `1px solid ${C.text.amber}44`, padding: '0 4px' }}>CACHED</span>
               )}
             </div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -251,7 +251,7 @@ const BloombergMarketDetail: React.FC<BloombergMarketDetailProps> = ({ marketId,
                 { label: 'TOP EMPLOYER', value: corpHealthData.topEmployerText?.replace('Top employer: ', '').replace('.', '') ?? '—', color: C.text.primary },
               ].map((item, i) => (
                 <div key={i} style={{ background: C.bg.card, border: `1px solid ${C.border.subtle}`, padding: '6px 10px', minWidth: 100 }}>
-                  <div style={{ fontFamily: C.font.mono, fontSize: 8, color: C.text.muted, letterSpacing: 1, marginBottom: 3 }}>{item.label}</div>
+                  <div style={{ fontFamily: C.font.mono, fontSize: 9, color: C.text.muted, letterSpacing: 1, marginBottom: 3 }}>{item.label}</div>
                   <div style={{ fontFamily: C.font.mono, fontSize: 12, fontWeight: 700, color: item.color }}>{item.value}</div>
                 </div>
               ))}
@@ -265,7 +265,7 @@ const BloombergMarketDetail: React.FC<BloombergMarketDetailProps> = ({ marketId,
               {/* Table header */}
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.5fr 1.5fr 1fr 1.2fr 1fr 1fr', background: C.bg.header, padding: '4px 8px', gap: 4 }}>
                 {['SUBMARKET', 'PROPS', 'UNITS', 'MED RENT', 'VAC', 'GROWTH', 'OPP', 'PRESSURE'].map(h => (
-                  <div key={h} style={{ fontFamily: C.font.mono, fontSize: 8, color: C.text.muted, letterSpacing: 0.5, fontWeight: 600 }}>{h}</div>
+                  <div key={h} style={{ fontFamily: C.font.mono, fontSize: 9, color: C.text.muted, letterSpacing: 0.5, fontWeight: 600 }}>{h}</div>
                 ))}
               </div>
               {/* Table rows */}

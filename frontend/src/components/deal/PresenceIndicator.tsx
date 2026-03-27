@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface PresenceUser {
   userId: string;
@@ -22,8 +23,8 @@ function getInitials(email: string): string {
 }
 
 const AVATAR_COLORS = [
-  'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-amber-500',
-  'bg-cyan-500', 'bg-rose-500', 'bg-indigo-500', 'bg-teal-500',
+  BT.text.cyan, BT.text.green, BT.text.purple, BT.text.amber,
+  BT.text.cyan, BT.text.red, BT.text.purple, BT.text.cyan,
 ];
 
 function getColorForUser(userId: string): string {
@@ -73,7 +74,7 @@ export function PresenceIndicator({ dealId, currentModule }: PresenceIndicatorPr
   const overflow = participants.length - maxVisible;
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" style={{ fontFamily: BT.font.mono }}>
       <div className="flex -space-x-2">
         {visible.map((p) => (
           <div
@@ -83,29 +84,30 @@ export function PresenceIndicator({ dealId, currentModule }: PresenceIndicatorPr
             onMouseLeave={() => setShowTooltip(null)}
           >
             <div
-              className={`w-7 h-7 rounded-full ${getColorForUser(p.userId)} flex items-center justify-center text-white text-[10px] font-bold border-2 border-white cursor-default`}
+              className="w-7 h-7 rounded-full flex items-center justify-center cursor-default"
+              style={{ background: getColorForUser(p.userId), color: BT.bg.terminal, fontSize: 10, fontWeight: 700, border: `2px solid ${BT.bg.panel}` }}
             >
               {getInitials(p.email)}
             </div>
-            <div className="absolute bottom-0 right-0 w-2 h-2 bg-green-400 rounded-full border border-white" />
+            <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full" style={{ background: BT.text.green, border: `1px solid ${BT.bg.panel}`, animation: 'glow 2s infinite' }} />
 
             {showTooltip === p.userId && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-slate-900 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap z-50 shadow-lg">
-                <div className="font-medium">{p.email}</div>
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-1 whitespace-nowrap z-50" style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, fontSize: 10, color: BT.text.primary }}>
+                <div style={{ fontWeight: 500 }}>{p.email}</div>
                 {p.activeModule && (
-                  <div className="text-slate-400">Viewing: {p.activeModule}</div>
+                  <div style={{ color: BT.text.muted }}>Viewing: {p.activeModule}</div>
                 )}
               </div>
             )}
           </div>
         ))}
         {overflow > 0 && (
-          <div className="w-7 h-7 rounded-full bg-slate-300 flex items-center justify-center text-slate-600 text-[10px] font-bold border-2 border-white">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: BT.bg.header, color: BT.text.secondary, fontSize: 10, fontWeight: 700, border: `2px solid ${BT.bg.panel}` }}>
             +{overflow}
           </div>
         )}
       </div>
-      <span className="text-[10px] text-slate-400 ml-1">
+      <span style={{ fontSize: 10, color: BT.text.muted, marginLeft: 4 }}>
         {participants.length} viewing
       </span>
     </div>

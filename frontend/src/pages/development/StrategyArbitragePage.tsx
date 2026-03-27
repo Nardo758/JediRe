@@ -107,7 +107,7 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
           const v = (score.sub_scores?.[key] as number | undefined) ?? 0;
           return (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
-              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, width: 8, flexShrink: 0 }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, width: 8, flexShrink: 0 }}>
                 {SIGNAL_LABELS[i]}
               </span>
               <div style={{ flex: 1, height: 3, background: BT.bg.hover, position: 'relative' as const }}>
@@ -117,7 +117,7 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
                   background: col.color, opacity: 0.75,
                 }} />
               </div>
-              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary, width: 20, textAlign: 'right' as const }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, width: 20, textAlign: 'right' as const }}>
                 {v.toFixed(0)}
               </span>
             </div>
@@ -126,7 +126,7 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
       </div>
 
       <div style={{ padding: '5px 8px', borderTop: `1px solid ${BT.border.subtle}` }}>
-        <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary, fontStyle: 'italic' }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, fontStyle: 'italic' }}>
           {score.gate_result === 'FAIL'
             ? (score.gate_failures?.[0] ?? 'Gates not met')
             : score.gate_result === 'PASS'
@@ -173,7 +173,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
         ]}
         right={
           loading
-            ? <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>COMPUTING...</span>
+            ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>COMPUTING...</span>
             : arbitrage?.arbitrage_detected
               ? <Bd c={BT.text.amber}>ARBITRAGE DETECTED</Bd>
               : scores.length > 0
@@ -189,7 +189,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
           borderBottom: `1px solid ${BT.border.subtle}`,
           display: 'flex', gap: 12, alignItems: 'center', flexShrink: 0,
         }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.amber, letterSpacing: 1 }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber, letterSpacing: 1 }}>
             ARBITRAGE ALERT
           </span>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>
@@ -237,7 +237,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
                         justifyContent: 'center', padding: 24,
                         borderTop: `1px solid ${BT.border.subtle}`,
                       }}>
-                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{col.label} · N/A</span>
+                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{col.label} · N/A</span>
                       </div>
                     );
                   }
@@ -268,7 +268,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
                       const spark = Object.values(s.sub_scores ?? {}).map(v => Number(v)).filter(n => !isNaN(n));
                       return (
                         <div key={s.strategy_id} style={{ background: BT.bg.panel, padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontFamily: MONO, fontSize: 8, color: col.color, width: 40, flexShrink: 0 }}>
+                          <span style={{ fontFamily: MONO, fontSize: 9, color: col.color, width: 40, flexShrink: 0 }}>
                             {col.label}
                           </span>
                           <Spark data={spark.length >= 2 ? spark : [s.overall_score, s.overall_score]} color={col.color} w={80} h={14} />

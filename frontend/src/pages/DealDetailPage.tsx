@@ -173,7 +173,7 @@ const OverviewScreen = (props: ScreenProps) => {
               onClick={() => setSecondaryTab(secondaryTab === t.id ? null : t.id)}
               style={{
                 fontFamily: "'JetBrains Mono','Fira Code',monospace",
-                fontSize: 8, fontWeight: secondaryTab === t.id ? 700 : 500,
+                fontSize: 9, fontWeight: secondaryTab === t.id ? 700 : 500,
                 padding: '5px 12px',
                 background: 'transparent',
                 border: 'none',
@@ -277,7 +277,7 @@ const ExecutionScreen = (props: ScreenProps) => {
             key={t.id}
             onClick={() => setActive(t.id)}
             style={{
-              fontFamily: BT.font.mono, fontSize: 8, fontWeight: active === t.id ? 700 : 500,
+              fontFamily: BT.font.mono, fontSize: 9, fontWeight: active === t.id ? 700 : 500,
               padding: '0 14px', background: 'transparent', border: 'none',
               borderBottom: active === t.id ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
               color: active === t.id ? BT.text.cyan : BT.text.secondary,
@@ -637,7 +637,7 @@ const DealDetailPage: React.FC = () => {
                 type="text"
                 placeholder="⌕  SEARCH DEAL..."
                 style={{
-                  fontFamily: MONO, fontSize: 8, fontWeight: 500,
+                  fontFamily: MONO, fontSize: 9, fontWeight: 500,
                   background: '#0D1117', color: TEXT,
                   border: `1px solid ${BORDER}`,
                   padding: '3px 10px', width: 160, letterSpacing: 0.4,

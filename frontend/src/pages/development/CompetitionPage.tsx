@@ -186,13 +186,13 @@ export default function CompetitionPage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, fontFamily: "'JetBrains Mono',monospace" }}>COMPETITION ANALYSIS</span>
-          <span style={{ fontSize: 8, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>M15 | Comp Set · Differentiation · Waitlist · Rankings</span>
-          <span style={{ fontSize: 6, fontWeight: 700, color: '#00BCD4', background: '#00BCD415', border: '1px solid #00BCD430', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>COMPS</span>
-          <span style={{ fontSize: 6, fontWeight: 700, color: '#A78BFA', background: '#A78BFA15', border: '1px solid #A78BFA30', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>F40</span>
+          <span style={{ fontSize: 9, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>M15 | Comp Set · Differentiation · Waitlist · Rankings</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#00BCD4', background: '#00BCD415', border: '1px solid #00BCD430', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>COMPS</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#A78BFA', background: '#A78BFA15', border: '1px solid #A78BFA30', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>F40</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {primarySource === 'api' && <span style={{ fontSize: 7, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 5px', fontFamily: "'JetBrains Mono',monospace" }}>LIVE</span>}
-          {primarySource === 'apartment' && <span style={{ fontSize: 7, fontWeight: 700, color: '#60A5FA', background: '#0d1e3d', border: '1px solid #60A5FA40', padding: '1px 5px', fontFamily: "'JetBrains Mono',monospace" }}>MKT DATA</span>}
+          {primarySource === 'api' && <span style={{ fontSize: 9, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 5px', fontFamily: "'JetBrains Mono',monospace" }}>LIVE</span>}
+          {primarySource === 'apartment' && <span style={{ fontSize: 9, fontWeight: 700, color: '#60A5FA', background: '#0d1e3d', border: '1px solid #60A5FA40', padding: '1px 5px', fontFamily: "'JetBrains Mono',monospace" }}>MKT DATA</span>}
         </div>
       </div>
       <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">

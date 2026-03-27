@@ -98,7 +98,7 @@ export const TickerBar: React.FC<TickerBarProps> = ({
               {item.sub && (
                 <span style={{
                   fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                  fontSize: 8,
+                  fontSize: 9,
                   fontWeight: 500,
                   color: item.subColor ?? 'rgba(255,255,255,0.4)',
                   letterSpacing: '0.03em',
@@ -106,7 +106,7 @@ export const TickerBar: React.FC<TickerBarProps> = ({
                   {item.sub}
                 </span>
               )}
-              <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 8, padding: '0 2px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: 9, padding: '0 2px' }}>
                 ·
               </span>
             </span>

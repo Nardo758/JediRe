@@ -562,7 +562,7 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: Convergenc
             { l: 'RSS', v: RSS_21Y[hoverIdx]?.rss, c: '#10b981', s: '' },
           ].map((r) => (
             <div key={r.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-              <span style={{ fontSize: 8, color: r.c }}>{r.l}</span>
+              <span style={{ fontSize: 9, color: r.c }}>{r.l}</span>
               <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", fontWeight: 600, color: r.c }}>
                 {r.v != null ? (r.v.toFixed ? r.v.toFixed(1) + r.s : r.v + r.s) : '—'}
               </span>
@@ -596,8 +596,8 @@ function RSSBreakdownCards({ rssData }: RSSBreakdownCardsProps) {
       {cards.map((s) => (
         <div key={s.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-            <span style={{ fontSize: 8.5, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.l}</span>
-            <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.w}</span>
+            <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.l}</span>
+            <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{s.w}</span>
           </div>
           <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: s.v >= 70 ? '#68D391' : s.v >= 50 ? '#F6E05E' : '#FC8181' }}>{s.v}</div>
           <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
@@ -638,7 +638,7 @@ function ExitStrategyCards({ options, selectedStrategy, onSelectStrategy, ret }:
             }}
           >
             {isSelected && (
-              <div style={{ fontSize: 8, fontWeight: 700, color: '#68D391', fontFamily: "'JetBrains Mono'", letterSpacing: 1, marginBottom: 6 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: '#68D391', fontFamily: "'JetBrains Mono'", letterSpacing: 1, marginBottom: 6 }}>
                 SELECTED → pushes debt terms to ProForma
               </div>
             )}
@@ -652,7 +652,7 @@ function ExitStrategyCards({ options, selectedStrategy, onSelectStrategy, ret }:
                 { l: 'Timeline', v: opt.tl, c: '#B794F4' },
               ].map((m) => (
                 <div key={m.l}>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{m.l}</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{m.l}</div>
                   <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: m.c }}>{m.v}</div>
                 </div>
               ))}
@@ -692,7 +692,7 @@ function PushToProFormaBanner({ holdYears, exitCap, debtRate, debtIO, annualDS }
           <span style={{ fontSize: 11, fontWeight: 700, color: '#63B3ED' }}>PUSHED TO PROFORMA</span>
           <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>These selections auto-update M09 assumptions</span>
         </div>
-        <span style={{ fontSize: 8, color: '#63B3ED', fontFamily: "'JetBrains Mono'", padding: '2px 8px', border: '1px solid rgba(99,179,237,0.3)', borderRadius: 4 }}>
+        <span style={{ fontSize: 9, color: '#63B3ED', fontFamily: "'JetBrains Mono'", padding: '2px 8px', border: '1px solid rgba(99,179,237,0.3)', borderRadius: 4 }}>
           LIVE SYNC
         </span>
       </div>
@@ -705,9 +705,9 @@ function PushToProFormaBanner({ holdYears, exitCap, debtRate, debtIO, annualDS }
           { l: 'Annual debt service', v: fmt.k(annualDS), target: 'financial.annualDS' },
         ].map((p) => (
           <div key={p.l} style={{ padding: '6px 10px', background: 'rgba(99,179,237,0.04)', borderRadius: 5, borderLeft: '2px solid #63B3ED' }}>
-            <div style={{ fontSize: 7.5, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{p.l}</div>
+            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{p.l}</div>
             <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{p.v}</div>
-            <div style={{ fontSize: 7, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginTop: 2 }}>→ {p.target}</div>
+            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginTop: 2 }}>→ {p.target}</div>
           </div>
         ))}
       </div>
@@ -866,16 +866,16 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#68D391' }}>{Q_LABELS[NOW_IDX + selectedFwd]?.label}</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', letterSpacing: 1, fontFamily: "'JetBrains Mono'" }}>TARGET EXIT</div>
+            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', letterSpacing: 1, fontFamily: "'JetBrains Mono'" }}>TARGET EXIT</div>
           </div>
           <div style={{ width: 1, height: 30, background: 'rgba(255,255,255,0.06)' }} />
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: ret.irr >= 15 ? '#68D391' : '#F6E05E' }}>{ret.irr.toFixed(1)}%</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>IRR</div>
+            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>IRR</div>
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{ret.em.toFixed(2)}x</div>
-            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EM</div>
+            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EM</div>
           </div>
         </div>
       </div>
@@ -928,7 +928,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>PLATFORM OPTIMAL</div>
                   <div style={{ fontSize: 14, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: '#68D391' }}>{Q_LABELS[NOW_IDX + optimalFwd]?.label}</div>
                   {selectedFwd !== optimalFwd && (
-                    <div style={{ fontSize: 8, color: '#F6E05E', fontFamily: "'JetBrains Mono'" }}>
+                    <div style={{ fontSize: 9, color: '#F6E05E', fontFamily: "'JetBrains Mono'" }}>
                       Yours: {Q_LABELS[NOW_IDX + selectedFwd]?.label} (RSS {rssData.rss} vs {RSS_21Y[NOW_IDX + optimalFwd]?.rss})
                     </div>
                   )}
@@ -974,7 +974,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                 <div key={p.name} style={{ display: 'grid', gridTemplateColumns: '1fr 86px 48px 56px 48px', gap: 4, alignItems: 'center', padding: '7px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 2 }}>
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 600, color: p.color }}>{p.name}</div>
-                    <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)' }}>{p.best}</div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{p.best}</div>
                   </div>
                   <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: '#E8E6E1' }}>{p.rate}</span>
                   <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{p.ltv}</span>
@@ -998,7 +998,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                 { l: 'BRIDGE', v: '+340bps', d: 'Compressing', c: '#4FD1C5', dir: '↓' },
               ].map((r) => (
                 <div key={r.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6, marginBottom: 4 }}>{r.l}</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6, marginBottom: 4 }}>{r.l}</div>
                   <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: r.c }}>{r.v}</div>
                   <div style={{ fontSize: 9, color: r.dir === '↓' ? '#68D391' : r.dir === '↑' ? '#FC8181' : 'rgba(232,230,225,0.5)', marginTop: 2 }}>
                     {r.dir} {r.d}
@@ -1012,23 +1012,23 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>FED WATCH — FOMC SCHEDULE & DOT PLOT</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>NEXT MEETING</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>NEXT MEETING</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#E8E6E1', marginBottom: 2 }}>{FOMC_MEETINGS_2026[1]?.date || 'TBD'}</div>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.5)' }}>Current target: {FED_DOT_PLOT.current}%</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>Current target: {FED_DOT_PLOT.current}%</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>DOT PLOT MEDIAN</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>DOT PLOT MEDIAN</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#63B3ED', marginBottom: 4 }}>2026: {FED_DOT_PLOT.endOf2026}% | 2027: {FED_DOT_PLOT.endOf2027}%</div>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.5)' }}>Longer-run neutral: {FED_DOT_PLOT.longerRun}%</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>Longer-run neutral: {FED_DOT_PLOT.longerRun}%</div>
                 </div>
                 <div>
-                  <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EXPECTED PATH</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EXPECTED PATH</div>
                   <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
                     {['—', '↓', '↓', '↓', '↓'].map((a, i) => (
                       <div key={i} style={{ fontSize: 14, fontWeight: 700, color: a === '↓' ? '#68D391' : 'rgba(232,230,225,0.22)' }}>{a}</div>
                     ))}
                   </div>
-                  <div style={{ fontSize: 7, color: 'rgba(232,230,225,0.22)', marginTop: 4 }}>4 cuts expected in 2026</div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', marginTop: 4 }}>4 cuts expected in 2026</div>
                 </div>
               </div>
             </div>
@@ -1063,13 +1063,13 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     <div key={q.lender} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 48px 48px 44px 40px', gap: 4, alignItems: 'center', padding: '6px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 2 }}>
                       <div>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1' }}>{q.lender}</div>
-                        <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)' }}>{q.product}</div>
+                        <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{q.product}</div>
                       </div>
                       <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 700, color: '#68D391' }}>{q.rate}</span>
-                      <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{q.spread}</span>
-                      <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{q.ltv}</span>
-                      <span style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{q.term}</span>
-                      <span style={{ fontSize: 7, color: 'rgba(232,230,225,0.22)' }}>{q.rcvd}</span>
+                      <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{q.spread}</span>
+                      <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{q.ltv}</span>
+                      <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{q.term}</span>
+                      <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{q.rcvd}</span>
                     </div>
                   ))}
                 </div>
@@ -1095,7 +1095,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   return (
                     <div key={i} onClick={() => setSelectedFwd(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, cursor: 'pointer' }}>
                       {(isSelected || isOptimal || i % 2 === 0) && (
-                        <span style={{ fontSize: 7, fontFamily: "'JetBrains Mono'", fontWeight: isSelected ? 700 : 400, color: isSelected ? '#E8E6E1' : 'rgba(232,230,225,0.22)' }}>
+                        <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", fontWeight: isSelected ? 700 : 400, color: isSelected ? '#E8E6E1' : 'rgba(232,230,225,0.22)' }}>
                           {r.irr.toFixed(0)}
                         </span>
                       )}
@@ -1146,18 +1146,18 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
           <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>IRR SENSITIVITY — EXIT CAP × RENT GROWTH</span>
-              <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.5)', fontFamily: "'JetBrains Mono'" }}>Shared ProForma engine — not duplicated</span>
+              <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)', fontFamily: "'JetBrains Mono'" }}>Shared ProForma engine — not duplicated</span>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '80px repeat(7, 1fr)', gap: 2 }}>
-              <div style={{ padding: '4px 8px', fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>CAP \ RENT</div>
+              <div style={{ padding: '4px 8px', fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>CAP \ RENT</div>
               {[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0].map((rg) => (
-                <div key={rg} style={{ padding: '4px 6px', textAlign: 'center', fontSize: 8.5, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)', background: 'rgba(255,255,255,0.02)', borderRadius: 3 }}>
+                <div key={rg} style={{ padding: '4px 6px', textAlign: 'center', fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)', background: 'rgba(255,255,255,0.02)', borderRadius: 3 }}>
                   {rg}%
                 </div>
               ))}
               {[4.75, 5.0, 5.25, 5.5, 5.75, 6.0, 6.25].map((cap) => (
                 <React.Fragment key={cap}>
-                  <div style={{ padding: '4px 8px', fontSize: 8.5, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ padding: '4px 8px', fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)', display: 'flex', alignItems: 'center' }}>
                     {cap}%
                   </div>
                   {[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0].map((rg) => {

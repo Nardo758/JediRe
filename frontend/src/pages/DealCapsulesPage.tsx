@@ -237,13 +237,13 @@ const DealCapsulesPage: React.FC = () => {
         marginTop: 16
       }}>
         <div style={{ background: T.bg.panel, padding: '12px 16px' }}>
-          <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
             TOTAL CAPSULES
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text.amber }}>{total}</div>
         </div>
         <div style={{ background: T.bg.panel, padding: '12px 16px' }}>
-          <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
             AVG JEDI SCORE
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: avgScore >= 70 ? T.text.green : T.text.amber }}>
@@ -251,7 +251,7 @@ const DealCapsulesPage: React.FC = () => {
           </div>
         </div>
         <div style={{ background: T.bg.panel, padding: '12px 16px' }}>
-          <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
             TOTAL DEAL VALUE
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text.cyan }}>
@@ -259,7 +259,7 @@ const DealCapsulesPage: React.FC = () => {
           </div>
         </div>
         <div style={{ background: T.bg.panel, padding: '12px 16px' }}>
-          <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1, fontWeight: 600, marginBottom: 4 }}>
             ACTIVE ANALYSIS
           </div>
           <div style={{ fontSize: 22, fontWeight: 800, color: T.text.orange }}>{activeCount}</div>
@@ -336,12 +336,12 @@ const DealCapsulesPage: React.FC = () => {
               padding: '8px 12px',
               borderBottom: `1px solid ${T.border.medium}`
             }}>
-              <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1 }}>ADDRESS</div>
-              <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1 }}>ASSET CLASS</div>
-              <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1 }}>BROKER</div>
-              <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'right' }}>PRICE</div>
-              <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>JEDI</div>
-              <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>STATUS</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1 }}>ADDRESS</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1 }}>ASSET CLASS</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1 }}>BROKER</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'right' }}>PRICE</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>JEDI</div>
+              <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, letterSpacing: 1, textAlign: 'center' }}>STATUS</div>
             </div>
 
             {/* Table Rows */}

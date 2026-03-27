@@ -58,7 +58,7 @@ const STATIC_METRICS_TICKER: MetricTickerItem[] = [
   { raw: 'ORL·MF  POP GROWTH  +1.7%',   color: T.text.green, sub: 'ORL MSA',     subColor: 'rgba(245,166,35,0.45)' },
   { raw: 'TPA·MF  SURGE IDX  +0.42',    color: T.text.green, sub: 'YBOR CITY',   subColor: 'rgba(245,166,35,0.45)' },
   { raw: 'ATL·MF  PIPELINE/STOCK  15.8%', color: T.text.amber, sub: 'ATL MSA',   subColor: 'rgba(245,166,35,0.45)' },
-  { raw: 'MIA·CONDO  MOS SUPPLY  6.2mo', color: '#FF4757',   sub: 'BRICKELL',    subColor: 'rgba(245,166,35,0.45)' },
+  { raw: 'MIA·CONDO  MOS SUPPLY  6.2mo', color: T.text.red,   sub: 'BRICKELL',    subColor: 'rgba(245,166,35,0.45)' },
   { raw: 'ATL·MF  LEASE VEL  18d',      color: T.text.green, sub: 'MIDTOWN ATL', subColor: 'rgba(245,166,35,0.45)' },
   { raw: 'TPA·MF  SRCH MOM  +22%',      color: T.text.green, sub: 'YBOR CITY',   subColor: 'rgba(245,166,35,0.45)' },
 ];
@@ -197,9 +197,7 @@ const TopStatusBar: React.FC<{ contextLabel: string; agentCount: number; emailCo
         <span style={{
           fontWeight: 800,
           fontSize: T.fontSize.md,
-          background: T.gradient.tealCyan,
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
+          color: T.text.cyan,
           letterSpacing: 1.5,
         }}>JEDI RE</span>
         <span style={{ color: T.text.secondary, fontSize: T.fontSize.xs }}>|</span>
@@ -212,7 +210,6 @@ const TopStatusBar: React.FC<{ contextLabel: string; agentCount: number; emailCo
           <span style={{
             width: 6, height: 6, borderRadius: '50%', background: T.text.green,
             animation: 'pulse 2s ease-in-out infinite',
-            boxShadow: `0 0 4px ${T.text.green}88`,
           }} />
           {agentCount} AGENTS
         </span>
@@ -308,7 +305,7 @@ const FKeyNavBar: React.FC<FKeyNavBarProps> = ({
               if (!isActive) (e.currentTarget.style.background = 'transparent');
             }}
           >
-            <span style={{ fontSize: '7px', fontWeight: 800, letterSpacing: 1.2, color: isActive ? T.text.amber : T.text.muted, lineHeight: 1 }}>{item.key}</span>
+            <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: 1.2, color: isActive ? T.text.amber : T.text.muted, lineHeight: 1 }}>{item.key}</span>
             <span style={{ fontSize: T.fontSize.sm, fontWeight: isActive ? 700 : 500, letterSpacing: 0.4, lineHeight: 1.1 }}>{item.label}</span>
           </button>
         );
@@ -379,13 +376,13 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
   const msaOcc  = fmtOcc(geographicStats?.msa?.occupancy);
   const msaRent = fmtRent(geographicStats?.msa?.avg_rent);
 
-  const pipe = <span style={{ color: '#2A3348', margin: '0 8px', fontSize: 10 }}>│</span>;
+  const pipe = <span style={{ color: T.border.medium, margin: '0 8px', fontSize: 10 }}>│</span>;
 
   return (
     <div style={{
       height: 28,
-      background: '#060A14',
-      borderBottom: `1px solid #1E2538`,
+      background: T.bg.topBar,
+      borderBottom: `1px solid ${T.border.subtle}`,
       display: 'flex',
       alignItems: 'center',
       padding: '0 10px',
@@ -396,25 +393,25 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
     }}>
       {/* Left: pin + name + address + JEDI score */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
-        <span style={{ color: '#FF4757', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
+        <span style={{ color: T.text.red, fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
         {dealName && (
-          <span style={{ color: '#E8ECF1', fontWeight: 700, fontSize: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.3 }}>
+          <span style={{ color: T.text.primary, fontWeight: 700, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.3 }}>
             {dealName}
           </span>
         )}
         {dealAddress && (
           <>
-            <span style={{ color: '#2A3348', margin: '0 5px', fontSize: 9 }}>·</span>
-            <span style={{ color: '#6B7585', fontSize: 7, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.2 }}>
+            <span style={{ color: T.border.medium, margin: '0 5px', fontSize: 9 }}>·</span>
+            <span style={{ color: T.text.secondary, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.2 }}>
               {dealAddress}
             </span>
           </>
         )}
         {deal.jedi_score != null && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
-            <span style={{ color: '#F5A623', fontSize: 8, fontWeight: 700, letterSpacing: 0.3 }}>JEDI {deal.jedi_score}</span>
+            <span style={{ color: T.text.amber, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>JEDI {deal.jedi_score}</span>
             {deal.delta_30d != null && (
-              <span style={{ fontSize: 7, fontWeight: 700, color: deal.delta_30d >= 0 ? '#00D26A' : '#FF4757' }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: deal.delta_30d >= 0 ? T.text.green : T.text.red }}>
                 {deal.delta_30d >= 0 ? '▲' : '▼'}{deal.delta_30d >= 0 ? '+' : ''}{deal.delta_30d}
               </span>
             )}
@@ -427,9 +424,9 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('open-trade-area-panel'))}
           style={{
-            background: 'transparent', border: `1px solid #F5A62355`, cursor: 'pointer',
+            background: 'transparent', border: `1px solid ${T.text.amber}55`, cursor: 'pointer',
             padding: '2px 8px', fontFamily: T.font.mono,
-            fontSize: 7, fontWeight: 800, color: '#F5A623', letterSpacing: 0.8,
+            fontSize: 9, fontWeight: 800, color: T.text.amber, letterSpacing: 0.8,
             display: 'flex', alignItems: 'center', gap: 4,
           }}
         >
@@ -439,8 +436,8 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
         {(smOcc || smRent) && (
           <>
             {pipe}
-            <span style={{ fontSize: 7, color: '#6B7585', letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
-            <span style={{ fontSize: 7, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.2 }}>
+            <span style={{ fontSize: 9, color: T.text.secondary, letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.text.primary, letterSpacing: 0.2 }}>
               {[smOcc, smRent].filter(Boolean).join(' · ')}
             </span>
           </>
@@ -449,8 +446,8 @@ const DealContextBar: React.FC<{ deal: DealContextInfo | null }> = ({ deal }) =>
         {(msaOcc || msaRent) && (
           <>
             {pipe}
-            <span style={{ fontSize: 7, color: '#6B7585', letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
-            <span style={{ fontSize: 7, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.2 }}>
+            <span style={{ fontSize: 9, color: T.text.secondary, letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.text.primary, letterSpacing: 0.2 }}>
               {[msaOcc, msaRent].filter(Boolean).join(' · ')}
             </span>
           </>
@@ -601,11 +598,11 @@ const BottomPanel: React.FC = () => {
             {tab.label}
             {counts[tab.id] > 0 && (
               <span style={{
-                fontSize: '7px',
+                fontSize: '9px',
                 background: `${tab.color}22`,
                 color: tab.color,
                 padding: '1px 4px',
-                borderRadius: 3,
+                borderRadius: 2,
                 fontWeight: 600,
               }}>{counts[tab.id]}</span>
             )}
@@ -646,7 +643,7 @@ const BottomPanel: React.FC = () => {
                 <div key={n.id} style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
                   marginBottom: 2, fontSize: T.fontSize.sm,
-                  background: T.bg.panelAlt, borderRadius: 3,
+                  background: T.bg.panelAlt, borderRadius: 2,
                 }}>
                   <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, flexShrink: 0, width: 50 }}>
                     {n.published_at ? new Date(n.published_at).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
@@ -671,10 +668,10 @@ const BottomPanel: React.FC = () => {
                 <div key={e.id} style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
                   marginBottom: 2, fontSize: T.fontSize.sm,
-                  background: T.bg.panelAlt, borderRadius: 3,
+                  background: T.bg.panelAlt, borderRadius: 2,
                   borderLeft: `3px solid ${e.read ? T.border.subtle : T.text.orange}`,
                 }}>
-                  {!e.read && <span style={{ color: T.text.orange, fontSize: '7px', fontWeight: 700 }}>●</span>}
+                  {!e.read && <span style={{ color: T.text.orange, fontSize: '9px', fontWeight: 700 }}>●</span>}
                   <span style={{ color: T.text.cyan, fontSize: T.fontSize.xs, flexShrink: 0, width: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {e.from || '—'}
                   </span>
@@ -694,7 +691,7 @@ const BottomPanel: React.FC = () => {
               )}
               {agents.map(ag => (
                 <div key={ag.id} style={{
-                  background: T.bg.panelAlt, borderRadius: 4, padding: '6px 8px',
+                  background: T.bg.panelAlt, borderRadius: 2, padding: '6px 8px',
                   borderLeft: `3px solid ${ag.status === 'online' ? T.text.green : T.text.muted}`,
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -705,9 +702,9 @@ const BottomPanel: React.FC = () => {
                     <div style={{ color: T.text.secondary, fontSize: T.fontSize.xs }}>{ag.last_action}</div>
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
-                    <span style={{ color: T.text.muted, fontSize: '7px' }}>{ag.last_active || ''}</span>
+                    <span style={{ color: T.text.muted, fontSize: '9px' }}>{ag.last_active || ''}</span>
                     {ag.message_count != null && (
-                      <span style={{ color: T.text.muted, fontSize: '7px' }}>{ag.message_count} msgs</span>
+                      <span style={{ color: T.text.muted, fontSize: '9px' }}>{ag.message_count} msgs</span>
                     )}
                   </div>
                 </div>
@@ -723,7 +720,7 @@ const BottomPanel: React.FC = () => {
                 <div key={t.id} style={{
                   display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
                   marginBottom: 2, fontSize: T.fontSize.sm,
-                  background: T.bg.panelAlt, borderRadius: 3,
+                  background: T.bg.panelAlt, borderRadius: 2,
                   borderLeft: `3px solid ${TASK_PRIORITY_COLORS[t.priority || ''] || T.text.muted}`,
                 }}>
                   {t.priority && <Badge label={t.priority.toUpperCase()} color={TASK_PRIORITY_COLORS[t.priority] || T.text.amber} />}

@@ -50,7 +50,7 @@ function Spark({ data, color = C.green, w = 52, h = 14 }: { data: number[]; colo
 }
 
 function Badge({ label, color }: { label: string; color: string }) {
-  return <span style={{ ...mono, fontSize: 8, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>;
+  return <span style={{ ...mono, fontSize: 9, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>;
 }
 
 function ScoreCell({ value, size = 11 }: { value: number | string; size?: number }) {
@@ -184,7 +184,7 @@ interface F4MarketsViewProps {
 }
 
 const hdrCell: React.CSSProperties = {
-  padding: "4px 6px", fontSize: 7, fontWeight: 700, color: "#4A5568",
+  padding: "4px 6px", fontSize: 9, fontWeight: 700, color: "#4A5568",
   letterSpacing: 0.5, borderRight: "1px solid #1E2538", borderBottom: "1px solid #2A3348",
   textAlign: "center", cursor: "pointer", whiteSpace: "nowrap",
   fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace",
@@ -302,8 +302,8 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <button onClick={() => { setPrimaryTab(drillOriginTab); setLevel("landing"); }} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>{originLabel}</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillMsaName.toUpperCase()}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
@@ -326,12 +326,12 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>{originLabel}</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillSubmarketName.toUpperCase() || "SUBMARKET"}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
@@ -388,16 +388,16 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>{originLabel}</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.cyan, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillSubmarketName.toUpperCase() || "SUBMARKET"}
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillPropertyName.toUpperCase() || "PROPERTY"}</span>
           <div style={{ flex: 1 }} />
           <button onClick={() => setLevel("property-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: C.amber, color: C.bg, border: "none", padding: "4px 12px", cursor: "pointer", letterSpacing: 0.5 }}>
@@ -428,16 +428,16 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>{originLabel}</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.cyan, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillSubmarketName.toUpperCase() || "SUBMARKET"}
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
+          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillPropertyName.toUpperCase() || "PROPERTY"}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
@@ -509,7 +509,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             >
               <td style={dataCell}>
                 <span style={{ color: m.starred ? C.amber : C.muted, marginRight: 2 }}>{m.starred ? "★" : ""}</span>
-                {showSubject && m.id === selectedMsaId && <span style={{ color: C.amberBright, marginRight: 1, fontSize: 8 }}>*</span>}
+                {showSubject && m.id === selectedMsaId && <span style={{ color: C.amberBright, marginRight: 1, fontSize: 9 }}>*</span>}
                 <span style={{ color: C.secondary }}>{m.rank}</span>
               </td>
               <td style={{ ...dataCell, textAlign: "left" }}>
@@ -577,9 +577,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
                     <ScoreCell value={m.jedi} size={14} />
                   </div>
                   <div style={{ display: "flex", gap: 12, marginBottom: 6 }}>
-                    <div><span style={{ fontSize: 8, color: C.muted, ...mono }}>RENT</span><br /><span style={{ fontSize: 10, color: C.primary, fontWeight: 600, ...mono }}>{m.rent}</span></div>
-                    <div><span style={{ fontSize: 8, color: C.muted, ...mono }}>VAC</span><br /><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></div>
-                    <div><span style={{ fontSize: 8, color: C.muted, ...mono }}>Δ30</span><br /><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></div>
+                    <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>RENT</span><br /><span style={{ fontSize: 10, color: C.primary, fontWeight: 600, ...mono }}>{m.rent}</span></div>
+                    <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>VAC</span><br /><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></div>
+                    <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>Δ30</span><br /><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={80} h={16} />
@@ -712,7 +712,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
               placeholder="Search MSAs..."
               style={{ width: 160, padding: "3px 8px", background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, fontSize: 9, ...mono, outline: "none", boxSizing: "border-box" }}
             />
-            <span style={{ fontSize: 8, color: C.muted, ...mono }}>{allMsasSorted.length} results</span>
+            <span style={{ fontSize: 9, color: C.muted, ...mono }}>{allMsasSorted.length} results</span>
           </div>
         </div>
         {renderMarketTable(allMsasSorted, allMsaMedian, allMsaSortCol, allMsaSortDir, handleAllMsaSort, false, true)}
@@ -732,7 +732,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   return (
     <div style={{ flex: 1, overflow: "hidden", animation: "fadeIn 0.15s", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
       <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: C.muted, ...mono, marginRight: 8 }}>F4</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono, marginRight: 8 }}>F4</span>
         <span style={{ fontSize: 9, color: C.amberBright, fontWeight: 700, ...mono, marginRight: 12 }}>MARKETS</span>
 
         <div style={{ position: "relative", marginRight: 12 }}>
@@ -745,7 +745,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
               border: `1px solid ${C.borderS}`, display: "flex", alignItems: "center", gap: 4,
             }}
           >
-            MSA · <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 7 }}>▾</span>
+            MSA · <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 9 }}>▾</span>
           </button>
           {marketDropdownOpen && (
             <div style={{ position: "absolute", top: 24, left: 0, zIndex: 100, background: C.panel, border: `1px solid ${C.borderM}`, minWidth: 220, boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
@@ -777,15 +777,15 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
         </div>
 
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 8, color: C.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
+        <span style={{ fontSize: 9, color: C.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: C.green, display: "inline-block" }} />
           JEDI {selectedMarketData?.jedi || 87}
         </span>
-        <span style={{ fontSize: 8, color: C.muted, margin: "0 6px" }}>|</span>
+        <span style={{ fontSize: 9, color: C.muted, margin: "0 6px" }}>|</span>
         <span style={{ fontSize: 9, color: C.primary, fontWeight: 600, ...mono }}>{selectedMarketData?.rent || "$2,150"}</span>
         <span style={{ margin: "0 4px" }}><DeltaCell value={selectedMarketData?.rentD || "+4.2%"} /></span>
-        <span style={{ fontSize: 8, color: C.muted, margin: "0 4px" }}>|</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Vac </span>
+        <span style={{ fontSize: 9, color: C.muted, margin: "0 4px" }}>|</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>Vac </span>
         <ThresholdVal value={selectedMarketData?.vac || "5.8%"} thresholds={[5, 8]} invert />
       </div>
 
@@ -810,7 +810,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 8, color: C.muted, ...mono, marginRight: 10 }}>
+        <span style={{ fontSize: 9, color: C.muted, ...mono, marginRight: 10 }}>
           {primaryTab === "f4-landing" ? `${selectedMsa.name} · ${TRACKED_MARKETS.length} tracked` : `${ALL_MSAS.length} total MSAs`}
         </span>
       </div>
@@ -823,7 +823,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
               <button
                 onClick={() => setSubTab(t.id)}
                 style={{
-                  ...mono, fontSize: 8, fontWeight: subTab === t.id ? 700 : 400,
+                  ...mono, fontSize: 9, fontWeight: subTab === t.id ? 700 : 400,
                   padding: "0 10px", height: "100%", cursor: "pointer",
                   background: subTab === t.id ? C.active : "transparent",
                   color: subTab === t.id ? C.amber : C.muted,
@@ -842,9 +842,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>{primaryTab === "all-msas" ? "Click" : "Double-click"} row = drill down · Click column header = sort · * = subject property · ★ = watchlist</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{primaryTab === "all-msas" ? "Click" : "Double-click"} row = drill down · Click column header = sort · * = subject property · ★ = watchlist</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
       </div>
     </div>
   );

@@ -166,7 +166,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
           📸 PROPERTY PHOTOS
           <span style={{ 
             marginLeft: 8, 
-            fontSize: 8, 
+            fontSize: 9, 
             color: T.text.muted,
             fontWeight: 400,
           }}>
@@ -181,7 +181,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
             border: `1px solid ${T.border.medium}`,
             borderRadius: 2,
             color: T.text.cyan,
-            fontSize: 8,
+            fontSize: 9,
             fontFamily: T.font.mono,
             fontWeight: 700,
             cursor: 'pointer',
@@ -217,7 +217,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
           <div style={{ marginBottom: 8 }}>
             <label style={{
               display: 'block',
-              fontSize: 8,
+              fontSize: 9,
               fontFamily: T.font.mono,
               color: T.text.secondary,
               marginBottom: 4,
@@ -245,7 +245,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
           <div style={{ marginBottom: 8 }}>
             <label style={{
               display: 'block',
-              fontSize: 8,
+              fontSize: 9,
               fontFamily: T.font.mono,
               color: T.text.secondary,
               marginBottom: 4,
@@ -272,7 +272,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
           <div style={{ marginBottom: 8 }}>
             <label style={{
               display: 'block',
-              fontSize: 8,
+              fontSize: 9,
               fontFamily: T.font.mono,
               color: T.text.secondary,
               marginBottom: 4,
@@ -395,7 +395,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
                     border: 'none',
                     borderRadius: 2,
                     color: T.text.white,
-                    fontSize: 8,
+                    fontSize: 9,
                     fontFamily: T.font.mono,
                     fontWeight: 700,
                     cursor: 'pointer',
@@ -424,7 +424,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
                 </div>
                 {photo.caption && (
                   <div style={{
-                    fontSize: 8,
+                    fontSize: 9,
                     fontFamily: T.font.mono,
                     color: T.text.muted,
                     lineHeight: 1.3,
@@ -433,7 +433,7 @@ export const PhotosManager: React.FC<PhotosManagerProps> = ({
                   </div>
                 )}
                 <div style={{
-                  fontSize: 7,
+                  fontSize: 9,
                   fontFamily: T.font.mono,
                   color: T.text.muted,
                   marginTop: 4,

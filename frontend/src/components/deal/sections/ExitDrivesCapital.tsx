@@ -13,6 +13,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface ExitDrivesCapitalProps {
   deal?: any;

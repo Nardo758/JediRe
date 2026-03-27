@@ -127,7 +127,7 @@ const pct = (n: number) => `${n.toFixed(1)}%`;
 const Badge = ({ children, color = T.text.amber, bg, border: bdr }: { children: React.ReactNode; color?: string; bg?: string; border?: string }) => (
   <span style={{
     display: "inline-flex", alignItems: "center", padding: "1px 6px",
-    fontSize: 8, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: "0.05em",
+    fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: "0.05em",
     color, background: bg || `${color}15`, border: `1px solid ${bdr || `${color}40`}`,
     borderRadius: 2, lineHeight: "14px", whiteSpace: "nowrap",
   }}>{children}</span>
@@ -144,7 +144,7 @@ const SectionHeader = ({ title, subtitle, icon, borderColor = T.text.amber, acti
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {icon && <span style={{ fontSize: 10, color: borderColor }}>{icon}</span>}
       <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.white, letterSpacing: "0.05em" }}>{title}</span>
-      {subtitle && <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{subtitle}</span>}
+      {subtitle && <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{subtitle}</span>}
     </div>
     {action && action}
   </div>
@@ -160,7 +160,7 @@ const DataRow = ({ label, value, sub, color, mono = true }: {
     <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>{label}</span>
     <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
       <span style={{ fontSize: 10, fontFamily: mono ? T.font.mono : T.font.label, fontWeight: 600, color: color || T.text.primary }}>{value}</span>
-      {sub && <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{sub}</span>}
     </div>
   </div>
 );
@@ -198,7 +198,7 @@ const ScoreRing = ({ score, size = 72, strokeWidth = 5 }: { score: number; size?
       </svg>
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
         <span style={{ fontSize: 18, fontFamily: T.font.mono, fontWeight: 800, color, lineHeight: 1 }}>{score}</span>
-        <span style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.1em" }}>JEDI</span>
+        <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.1em" }}>JEDI</span>
       </div>
     </div>
   );
@@ -262,7 +262,7 @@ const PhotoGallery = ({ photos }: { photos: PropertyData["photos"] }) => {
           <rect x="100" y="46" width="6" height="6" fill={photo.color || "#1a2744"} />
         </svg>
         {isLarge && <span style={{ fontSize: 10, fontFamily: T.font.mono, color: `${T.text.secondary}80`, marginTop: 8, position: "relative", zIndex: 1 }}>{photo.label}</span>}
-        <div style={{ position: "absolute", top: 4, left: 4, fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, background: "#00000088", padding: "1px 4px", borderRadius: 1, zIndex: 2 }}>
+        <div style={{ position: "absolute", top: 4, left: 4, fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, background: "#00000088", padding: "1px 4px", borderRadius: 1, zIndex: 2 }}>
           {String(items.indexOf(photo) + 1).padStart(2, "0")}
         </div>
       </div>
@@ -613,17 +613,17 @@ export default function PropertyDetailsPage() {
               { label: "Expense Ratio", value: expRatio ? pct(expRatio) : "—", color: expRatio > 50 ? T.text.red : T.text.amber },
             ].map((m, i) => (
               <div key={i} style={{ padding: "8px 10px", borderBottom: `1px solid ${T.border.subtle}08`, borderRight: i % 2 === 0 ? `1px solid ${T.border.subtle}08` : "none" }}>
-                <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em", marginBottom: 2 }}>{m.label}</div>
+                <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em", marginBottom: 2 }}>{m.label}</div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
                   <span style={{ fontSize: 14, fontFamily: T.font.mono, fontWeight: 700, color: m.color || T.text.primary }}>{m.value}</span>
-                  {m.sub && <span style={{ fontSize: 8, color: T.text.muted }}>{m.sub}</span>}
+                  {m.sub && <span style={{ fontSize: 9, color: T.text.muted }}>{m.sub}</span>}
                 </div>
               </div>
             ))}
           </div>
           {p.concessions && (
             <div style={{ padding: "4px 10px", background: T.bg.panelAlt }}>
-              <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>CONCESSIONS</div>
+              <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>CONCESSIONS</div>
               <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.amber }}>{p.concessions}</div>
             </div>
           )}
@@ -633,9 +633,9 @@ export default function PropertyDetailsPage() {
             <SectionHeader title="MARKET POSITION" subtitle={p.submarket ? `vs ${p.submarket} Submarket` : ""} icon="◉" borderColor={T.text.amber} />
             {effRent > 0 && mktRent > 0 && (
               <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}08`, gap: 8 }}>
-                <span style={{ fontSize: 8, fontFamily: T.font.label, color: T.text.secondary, width: 80 }}>Subject Rent</span>
+                <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary, width: 80 }}>Subject Rent</span>
                 <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary, width: 50 }}>${effRent}</span>
-                <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>vs</span>
+                <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>vs</span>
                 <span style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary, width: 50 }}>${mktRent}</span>
                 <Badge color={effRent < mktRent ? T.text.green : T.text.red}>
                   {pct(Math.abs((effRent / mktRent - 1) * 100))} {effRent < mktRent ? "BELOW" : "ABOVE"}
@@ -644,9 +644,9 @@ export default function PropertyDetailsPage() {
             )}
             {occRate > 0 && (p.submarketVacancy || 0) > 0 && (
               <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}08`, gap: 8 }}>
-                <span style={{ fontSize: 8, fontFamily: T.font.label, color: T.text.secondary, width: 80 }}>Vacancy</span>
+                <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary, width: 80 }}>Vacancy</span>
                 <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary, width: 50 }}>{pct(100 - occRate)}</span>
-                <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>vs</span>
+                <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>vs</span>
                 <span style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary, width: 50 }}>{pct(p.submarketVacancy!)}</span>
                 <Badge color={(100 - occRate) < p.submarketVacancy! ? T.text.green : T.text.red}>
                   {pct(Math.abs(100 - occRate - p.submarketVacancy!))} {(100 - occRate) < p.submarketVacancy! ? "BELOW" : "ABOVE"}
@@ -661,7 +661,7 @@ export default function PropertyDetailsPage() {
                   { label: "Bike", value: p.bikeScore || 0 },
                 ].filter(s => s.value > 0).map((s, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, width: 36 }}>{s.label}</span>
+                    <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, width: 36 }}>{s.label}</span>
                     <MiniBar value={s.value} max={100} color={s.value >= 70 ? T.text.green : s.value >= 50 ? T.text.amber : T.text.red} width={40} />
                     <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary }}>{s.value}</span>
                   </div>
@@ -673,8 +673,8 @@ export default function PropertyDetailsPage() {
         {p.rentComps && p.rentComps.length > 0 && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="RENT COMPS" subtitle={`${p.rentComps.length} properties`} icon="≡" borderColor={T.text.cyan}
-              action={<span onClick={() => setActiveTab("COMPS")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.cyan, cursor: "pointer" }}>VIEW ALL →</span>} />
-            <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+              action={<span onClick={() => setActiveTab("COMPS")} style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.cyan, cursor: "pointer" }}>VIEW ALL →</span>} />
+            <div style={{ fontSize: 9, fontFamily: T.font.mono }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 42px 54px 42px 42px", padding: "4px 10px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
                 {["PROPERTY","UNITS","RENT","OCC","DIST"].map(h => (
                   <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
@@ -695,12 +695,12 @@ export default function PropertyDetailsPage() {
         {p.zoningCode && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="ZONING" icon="▦" borderColor={T.text.purple}
-              action={<span onClick={() => setActiveTab("ZONING")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.purple, cursor: "pointer" }}>DETAIL →</span>} />
+              action={<span onClick={() => setActiveTab("ZONING")} style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.purple, cursor: "pointer" }}>DETAIL →</span>} />
             <DataRow label="Designation" value={p.zoningCode} sub={p.zoningDescription || ""} />
             {p.maxDensity && <DataRow label="Max Density" value={p.maxDensity} />}
             {p.maxHeight && <DataRow label="Max Height" value={p.maxHeight} />}
             {p.far && <DataRow label="FAR" value={p.far.toFixed(1)} />}
-            {p.zoningSource && <div style={{ padding: "3px 10px" }}><span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>Source: {p.zoningSource}</span></div>}
+            {p.zoningSource && <div style={{ padding: "3px 10px" }}><span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>Source: {p.zoningSource}</span></div>}
           </div>
         )}
       </div>
@@ -749,7 +749,7 @@ export default function PropertyDetailsPage() {
             {effRent > 0 && mktRent > 0 && <DataRow label="Loss-to-Lease" value={pct((1 - effRent / mktRent) * 100)} color={T.text.amber} />}
           </div>
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2, padding: "10px", textAlign: "center" }}>
-            <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 8, letterSpacing: "0.1em" }}>PLATFORM INTELLIGENCE</div>
+            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 8, letterSpacing: "0.1em" }}>PLATFORM INTELLIGENCE</div>
             <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.amber, lineHeight: 1.6, padding: "0 8px" }}>
               Deeper financial modeling requires a <strong>Deal Capsule</strong>. Create a deal to unlock the 3-Layer ProForma Engine (M09), capital structure analysis (M11), and AI-adjusted assumptions.
             </div>
@@ -779,7 +779,7 @@ export default function PropertyDetailsPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="RENT COMPS" subtitle="M05 · Trade Area" icon="≡" borderColor={T.text.cyan} />
-          <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+          <div style={{ fontSize: 9, fontFamily: T.font.mono }}>
             <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 56px 40px 46px 40px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
               {["PROPERTY","UNITS","RENT","OCC","CLASS","DIST"].map(h => (
                 <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
@@ -805,9 +805,9 @@ export default function PropertyDetailsPage() {
             ))}
             {avgRentComp > 0 && (
               <div style={{ padding: "6px 8px", background: T.bg.panelAlt }}>
-                <span style={{ color: T.text.muted, fontSize: 7 }}>AVG:</span>
+                <span style={{ color: T.text.muted, fontSize: 9 }}>AVG:</span>
                 <span style={{ color: T.text.secondary, marginLeft: 4 }}>${avgRentComp.toLocaleString()}/mo</span>
-                <span style={{ color: T.text.muted, marginLeft: 8, fontSize: 7 }}>Subject is </span>
+                <span style={{ color: T.text.muted, marginLeft: 8, fontSize: 9 }}>Subject is </span>
                 <span style={{ color: effRent < avgRentComp ? T.text.red : T.text.green, fontWeight: 600 }}>
                   {pct(Math.abs((effRent / avgRentComp - 1) * 100))}
                   {effRent < avgRentComp ? " below" : " above"} avg
@@ -818,7 +818,7 @@ export default function PropertyDetailsPage() {
         </div>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="SALE COMPS" subtitle="M05 · Recent Transactions" icon="$" borderColor={T.text.green} />
-          <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+          <div style={{ fontSize: 9, fontFamily: T.font.mono }}>
             <div style={{ display: "grid", gridTemplateColumns: "1.2fr 40px 60px 42px 50px 40px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
               {["PROPERTY","UNITS","$/UNIT","CAP","DATE","DIST"].map(h => (
                 <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
@@ -870,7 +870,7 @@ export default function PropertyDetailsPage() {
           {p.assessmentCap && <DataRow label="Assessment Cap" value={p.assessmentCap} color={T.text.amber} />}
           {p.justValue && p.millageRate && p.annualTax && (
             <div style={{ padding: "4px 10px", background: `${T.text.red}08`, borderTop: `1px solid ${T.text.red}20` }}>
-              <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.red, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.red, lineHeight: 1.5 }}>
                 ⚠ REASSESSMENT WARNING: On sale, assessed value resets to just value. Buyer's tax estimate: ~{fmtFull(Math.round(p.justValue * p.millageRate / 1000))}/yr (+{pct((p.justValue * p.millageRate / 1000 / p.annualTax - 1) * 100)} increase)
               </div>
             </div>
@@ -884,7 +884,7 @@ export default function PropertyDetailsPage() {
         {p.taxHistory && p.taxHistory.length > 0 && (
           <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
             <SectionHeader title="TAX HISTORY" subtitle={`${p.taxHistory.length}-Year`} icon="◊" borderColor={T.text.cyan} />
-            <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+            <div style={{ fontSize: 9, fontFamily: T.font.mono }}>
               <div style={{ display: "grid", gridTemplateColumns: "40px 1fr 1fr 1fr", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
                 {["YEAR","JUST VALUE","ASSESSED","TAX"].map(h => (
                   <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
@@ -905,15 +905,15 @@ export default function PropertyDetailsPage() {
                 return (
                   <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                     <div style={{ width: "80%", height: `${(t.tax / maxTax) * 30}px`, background: T.text.amber, borderRadius: "1px 1px 0 0", opacity: 0.7 + (i * 0.06) }} />
-                    <span style={{ fontSize: 6, color: T.text.muted }}>{t.year}</span>
+                    <span style={{ fontSize: 9, color: T.text.muted }}>{t.year}</span>
                   </div>
                 );
               })}
             </div>
             <div style={{ padding: "4px 8px", display: "flex", alignItems: "center", gap: 8, borderTop: `1px solid ${T.border.subtle}` }}>
-              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>JUST VALUE TREND</span>
+              <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>JUST VALUE TREND</span>
               <MiniSparkline data={p.taxHistory.slice().reverse().map(t => t.justValue)} color={T.text.cyan} width={80} height={14} />
-              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>TAX TREND</span>
+              <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>TAX TREND</span>
               <MiniSparkline data={p.taxHistory.slice().reverse().map(t => t.tax)} color={T.text.amber} width={80} height={14} />
             </div>
           </div>
@@ -926,7 +926,7 @@ export default function PropertyDetailsPage() {
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: i === 0 ? T.text.green : T.text.muted, border: `2px solid ${i === 0 ? T.text.green : T.text.muted}40`, flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 9, fontFamily: T.font.mono, color: i === 0 ? T.text.primary : T.text.secondary, fontWeight: i === 0 ? 600 : 400 }}>{o.buyer}</div>
-                  <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>{o.date} · {fmtFull(o.price)} · ${o.ppu.toLocaleString()}/unit</div>
+                  <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{o.date} · {fmtFull(o.price)} · ${o.ppu.toLocaleString()}/unit</div>
                 </div>
                 {i < p.ownershipHistory!.length - 1 && (
                   <Badge color={T.text.green}>+{pct(((p.ownershipHistory![i].price / p.ownershipHistory![i + 1].price) - 1) * 100)}</Badge>
@@ -976,7 +976,7 @@ export default function PropertyDetailsPage() {
               {maxSFByFAR > 0 && <DataRow label="Max SF by FAR" value={`${maxSFByFAR.toLocaleString()} SF`} sub={`@ FAR ${farVal}`} color={T.text.green} />}
               <DataRow label="Current Units" value={units} />
               {maxUnitsByDensity > units && <DataRow label="Density Headroom" value={`+${maxUnitsByDensity - units} units`} color={T.text.amber} />}
-              {p.zoningSource && <div style={{ padding: "4px 10px" }}><span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>Source: {p.zoningSource} · {p.city}, {p.state}</span></div>}
+              {p.zoningSource && <div style={{ padding: "4px 10px" }}><span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>Source: {p.zoningSource} · {p.city}, {p.state}</span></div>}
             </>
           ) : (
             <div style={{ padding: "24px 10px", textAlign: "center", color: T.text.muted, fontSize: 9 }}>No zoning data available</div>
@@ -1026,10 +1026,10 @@ export default function PropertyDetailsPage() {
             { label: "Bike Score", value: p.bikeScore || 0, desc: (p.bikeScore || 0) >= 70 ? "Very Bikeable" : (p.bikeScore || 0) >= 50 ? "Bikeable" : "Bike Unfriendly" },
           ].map((s, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}08`, gap: 8 }}>
-              <span style={{ fontSize: 8, fontFamily: T.font.label, color: T.text.secondary, width: 70 }}>{s.label}</span>
+              <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary, width: 70 }}>{s.label}</span>
               <MiniBar value={s.value} max={100} color={s.value >= 70 ? T.text.green : s.value >= 50 ? T.text.amber : T.text.red} width={80} />
               <span style={{ fontSize: 11, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary, width: 24, textAlign: "right" }}>{s.value}</span>
-              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>{s.desc}</span>
+              <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{s.desc}</span>
             </div>
           ))}
         </div>
@@ -1041,7 +1041,7 @@ export default function PropertyDetailsPage() {
           <DataRow label="Pipeline-to-Stock" value="—" />
           <DataRow label="Threat Level" value="—" color={T.text.muted} />
           <div style={{ padding: "4px 10px", background: `${T.text.cyan}08` }}>
-            <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.cyan, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.cyan, lineHeight: 1.5 }}>
               Supply pipeline data populates when a Deal Capsule is created with M28 market intelligence.
             </div>
           </div>
@@ -1054,7 +1054,7 @@ export default function PropertyDetailsPage() {
           <DataRow label="Employment Growth" value="—" />
           <DataRow label="Demand Score" value="—" sub="/ 100" />
           <div style={{ padding: "4px 10px", background: `${T.text.cyan}08` }}>
-            <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.cyan, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.cyan, lineHeight: 1.5 }}>
               Demand driver data populates from Census, BLS, and JEDI intelligence when available.
             </div>
           </div>
@@ -1103,7 +1103,7 @@ export default function PropertyDetailsPage() {
             "AI Intelligence Brief with collision detection",
           ].map((item, i) => (
             <div key={i} style={{ display: "flex", gap: 6, padding: "3px 0", alignItems: "flex-start" }}>
-              <span style={{ fontSize: 8, color: T.text.green, marginTop: 1 }}>✓</span>
+              <span style={{ fontSize: 9, color: T.text.green, marginTop: 1 }}>✓</span>
               <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.primary }}>{item}</span>
             </div>
           ))}
@@ -1152,7 +1152,7 @@ export default function PropertyDetailsPage() {
             { label: "CAP", value: capVal > 0 ? pct(capVal) : "—", color: T.text.cyan },
           ].map((s, i) => (
             <div key={i} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 6, color: T.text.muted, letterSpacing: "0.1em" }}>{s.label}</div>
+              <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: "0.1em" }}>{s.label}</div>
               <div style={{ fontSize: 11, fontWeight: 700, color: (s as any).color || T.text.primary }}>{s.value}</div>
             </div>
           ))}
@@ -1188,11 +1188,11 @@ export default function PropertyDetailsPage() {
               color: activeTab === tab.key ? T.text.amber : T.text.secondary,
               letterSpacing: "0.05em", fontFamily: T.font.mono,
             }}>{tab.label}</span>
-            <span style={{ fontSize: 7, color: T.text.muted, marginLeft: 4 }}>{tab.hotkey}</span>
+            <span style={{ fontSize: 9, color: T.text.muted, marginLeft: 4 }}>{tab.hotkey}</span>
           </div>
         ))}
         <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>
+        <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>
           ID: {p.id} · {p.dataSource || "Market Intelligence"}
         </span>
       </div>
@@ -1208,12 +1208,12 @@ export default function PropertyDetailsPage() {
         padding: "3px 12px", background: T.bg.topBar,
         borderTop: `1px solid ${T.border.subtle}`, flexShrink: 0,
       }}>
-        <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>
+        <div style={{ display: "flex", gap: 8, fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>
           <span>PROPERTY DETAILS</span>
           <span>·</span>
           <span>{p.county ? `${p.county} County` : ""}{p.state ? `, ${p.state}` : ""}</span>
         </div>
-        <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono }}>
+        <div style={{ display: "flex", gap: 8, fontSize: 9, fontFamily: T.font.mono }}>
           <span style={{ color: T.text.muted }}>F1–F6 Navigate</span>
           <span style={{ color: T.text.muted }}>·</span>
           <span style={{ color: T.text.muted }}>/  Command</span>

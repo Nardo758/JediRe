@@ -213,7 +213,7 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                 position: 'absolute',
                 top: 8,
                 right: 8,
-                fontSize: 8,
+                fontSize: 9,
                 fontWeight: 700,
                 color: BT.text.green,
                 background: 'rgba(34,197,94,0.15)',

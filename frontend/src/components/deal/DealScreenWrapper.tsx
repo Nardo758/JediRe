@@ -89,7 +89,7 @@ export const DealScreenWrapper: React.FC<DealScreenWrapperProps> = ({
                 onClick={() => setActive(tab.id)}
                 style={{
                   fontFamily: BT.font.mono,
-                  fontSize: 8,
+                  fontSize: 9,
                   fontWeight: isActive ? 700 : 500,
                   padding: '0 14px',
                   background: 'transparent',

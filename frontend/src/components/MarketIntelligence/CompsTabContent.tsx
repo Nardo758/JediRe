@@ -21,7 +21,7 @@ const SectionHeader = ({ title, subtitle, icon, borderColor = T.text.amber, acti
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {icon && <span style={{ fontSize: 10, color: borderColor }}>{icon}</span>}
       <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.white, letterSpacing: "0.05em" }}>{title}</span>
-      {subtitle && <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{subtitle}</span>}
+      {subtitle && <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{subtitle}</span>}
     </div>
     {action && action}
   </div>
@@ -30,7 +30,7 @@ const SectionHeader = ({ title, subtitle, icon, borderColor = T.text.amber, acti
 const Badge = ({ children, color = T.text.amber, bg, border: bdr }) => (
   <span style={{
     display: "inline-flex", alignItems: "center", padding: "1px 6px",
-    fontSize: 8, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: "0.05em",
+    fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: "0.05em",
     color, background: bg || `${color}15`, border: `1px solid ${bdr || `${color}40`}`,
     borderRadius: 2, lineHeight: "14px", whiteSpace: "nowrap",
   }}>{children}</span>
@@ -228,7 +228,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
           {discovering ? '🔍 DISCOVERING...' : '🔍 DISCOVER COMPS'}
         </button>
         <div style={{
-          fontSize: 8,
+          fontSize: 9,
           fontFamily: T.font.mono,
           color: T.text.muted,
           marginTop: 12,
@@ -269,7 +269,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                 border: `1px solid ${sortBy === sort ? T.text.amber : T.border.subtle}`,
                 borderRadius: 2,
                 padding: "3px 8px",
-                fontSize: 8,
+                fontSize: 9,
                 fontFamily: T.font.mono,
                 fontWeight: 600,
                 color: sortBy === sort ? T.text.amber : T.text.secondary,
@@ -294,7 +294,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
               border: `1px solid ${T.border.medium}`,
               borderRadius: 2,
               color: discovering ? T.text.muted : T.text.cyan,
-              fontSize: 8,
+              fontSize: 9,
               fontFamily: T.font.mono,
               fontWeight: 700,
               cursor: discovering ? 'wait' : 'pointer',
@@ -353,7 +353,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   {comp.comp_name || comp.comp_property_address}
                 </div>
                 <div style={{
-                  fontSize: 8,
+                  fontSize: 9,
                   fontFamily: T.font.mono,
                   color: T.text.muted,
                 }}>
@@ -390,7 +390,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   borderRight: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     DISTANCE
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.cyan }}>
@@ -404,7 +404,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   borderRight: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     UNITS
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary }}>
@@ -418,7 +418,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   borderRight: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     AVG RENT
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.green }}>
@@ -432,7 +432,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   borderRight: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     OCCUPANCY
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: comp.occupancy >= 95 ? T.text.green : comp.occupancy >= 90 ? T.text.amber : T.text.orange }}>
@@ -446,7 +446,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   borderRight: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     YEAR BUILT
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary }}>
@@ -460,7 +460,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   borderRight: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     CLASS
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber }}>
@@ -473,13 +473,13 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
                   padding: '6px 10px',
                   borderBottom: `1px solid ${T.border.subtle}08`,
                 }}>
-                  <div style={{ fontSize: 7, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
+                  <div style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.muted, marginBottom: 2 }}>
                     GOOGLE RATING
                   </div>
                   <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary }}>
                     ⭐ {comp.google_rating.toFixed(1)}
                     {comp.google_review_count && (
-                      <span style={{ fontSize: 8, color: T.text.muted, marginLeft: 4 }}>
+                      <span style={{ fontSize: 9, color: T.text.muted, marginLeft: 4 }}>
                         ({comp.google_review_count})
                       </span>
                     )}
@@ -493,7 +493,7 @@ export const CompsTabContent: React.FC<CompsTabContentProps> = ({
               <div style={{
                 padding: '8px 10px',
                 background: T.bg.panelAlt,
-                fontSize: 8,
+                fontSize: 9,
                 fontFamily: T.font.mono,
                 color: T.text.secondary,
                 lineHeight: 1.4,

@@ -16,6 +16,7 @@ import { LayerRenderer } from '../components/map/LayerRenderer';
 import { LayersPanel } from '../components/map/LayersPanel';
 import { layersService } from '../services/layers.service';
 import { MapLayer } from '../types/layers';
+import { BT } from '@/components/deal/bloomberg-ui';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -27,7 +28,7 @@ export const DashboardV2: React.FC = () => {
   const navigate = useNavigate();
   const { deals, fetchDeals, isLoading } = useDealStore();
   const { isDrawing, centerPoint, saveDrawing } = useMapDrawingStore();
-  
+
   const [layers, setLayers] = useState<MapLayer[]>([]);
   const [viewState, setViewState] = useState({
     longitude: -84.388,
@@ -41,7 +42,7 @@ export const DashboardV2: React.FC = () => {
   // Fetch deals on mount
   useEffect(() => {
     fetchDeals();
-    
+
     // Redirect to create page if requested
     if (location.state?.openCreateDeal) {
       navigate('/deals/create');
@@ -109,13 +110,13 @@ export const DashboardV2: React.FC = () => {
 
     if (isDrawing) {
       console.log('[Dashboard] Activating drawing mode');
-      
+
       // Clear any existing drawings
       drawRef.current.deleteAll();
-      
+
       // Start polygon drawing mode
       drawRef.current.changeMode('draw_polygon');
-      
+
       // Center map on property location if provided
       if (centerPoint) {
         map.flyTo({
@@ -126,7 +127,7 @@ export const DashboardV2: React.FC = () => {
       }
     } else {
       console.log('[Dashboard] Deactivating drawing mode');
-      
+
       // Exit drawing mode
       if (drawRef.current) {
         drawRef.current.changeMode('simple_select');
@@ -244,10 +245,10 @@ export const DashboardV2: React.FC = () => {
 
   if (!MAPBOX_TOKEN) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="flex items-center justify-center h-screen" style={{ background: BT.bg.panel }}>
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Map Configuration Required</h2>
-          <p className="text-gray-600">Please add VITE_MAPBOX_TOKEN to your environment variables.</p>
+          <h2 className="text-2xl font-bold mb-2" style={{ color: BT.text.primary }}>Map Configuration Required</h2>
+          <p style={{ color: BT.text.secondary }}>Please add VITE_MAPBOX_TOKEN to your environment variables.</p>
         </div>
       </div>
     );
@@ -287,10 +288,10 @@ export const DashboardV2: React.FC = () => {
 
       {/* Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 bg-black/20 flex items-center justify-center pointer-events-none">
-          <div className="bg-white px-6 py-3 rounded-lg shadow-lg">
-            <div className="animate-spin w-6 h-6 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-2" />
-            <p className="text-sm text-gray-600">Loading deals...</p>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ background: 'rgba(0,0,0,0.2)' }}>
+          <div className="px-6 py-3" style={{ background: BT.bg.panel, borderRadius: 0 }}>
+            <div className="w-6 h-6 mx-auto mb-2" style={{ border: `4px solid ${BT.text.cyan}`, borderTop: '4px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <p className="text-sm" style={{ color: BT.text.secondary }}>Loading deals...</p>
           </div>
         </div>
       )}

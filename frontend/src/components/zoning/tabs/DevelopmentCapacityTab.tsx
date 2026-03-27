@@ -411,7 +411,7 @@ const s = {
     fontFamily: FONT.mono,
   },
   badge: (color: string) => ({
-    fontSize: 8,
+    fontSize: 9,
     fontWeight: 700,
     color: color,
     background: color + "20",
