@@ -1,471 +1,410 @@
-import React from 'react';
-import { ArrowUpRight, ArrowDownRight, ChevronLeft, Zap, CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
-
-const MetricCard = ({ name, value, change, id, weight, status }) => {
-  const isPositive = change?.startsWith('+');
-  
-  let bgClass = "bg-[#1a2332]";
-  let borderClass = "border-[#1e293b]";
-  
-  if (status === 'pass') {
-    bgClass = "bg-[#1a2332]";
-    borderClass = "border-[#22c55e]/30";
-  } else if (status === 'fail') {
-    bgClass = "bg-[#1a2332]";
-    borderClass = "border-[#ef4444]/30";
-  }
-
-  return (
-    <div className={`${bgClass} border ${borderClass} p-3 flex flex-col justify-between relative overflow-hidden group hover:border-[#14b8a6] transition-colors`}>
-      {status === 'pass' && <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-[#22c55e]/10 to-transparent pointer-events-none" />}
-      {status === 'fail' && <div className="absolute top-0 right-0 w-8 h-8 bg-gradient-to-bl from-[#ef4444]/10 to-transparent pointer-events-none" />}
-      
-      <div className="flex justify-between items-start mb-2">
-        <span className="text-[10px] uppercase text-[#94a3b8] font-sans tracking-wider leading-tight max-w-[70%]">
-          {name}
-        </span>
-        <span className="px-1.5 py-0.5 bg-[#111827] border border-[#1e293b] text-[9px] text-[#e2e8f0] font-mono rounded-sm">
-          {id}
-        </span>
-      </div>
-      
-      <div className="flex items-baseline justify-between mt-1">
-        <span className="text-xl text-[#e2e8f0] font-mono font-medium tracking-tight">
-          {value}
-        </span>
-        {change && (
-          <span className={`text-xs font-mono flex items-center ${isPositive ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-            {isPositive ? <ArrowUpRight className="w-3 h-3 mr-0.5" /> : <ArrowDownRight className="w-3 h-3 mr-0.5" />}
-            {change.replace('+', '').replace('-', '')}
-          </span>
-        )}
-      </div>
-
-      <div className="mt-3 pt-2 border-t border-[#1e293b] flex items-center justify-between">
-        <span className="text-[9px] text-[#94a3b8] font-sans">Weight: {weight}%</span>
-        <div className="w-16 h-1 bg-[#111827] rounded-full overflow-hidden">
-          <div className="h-full bg-[#14b8a6]" style={{ width: `${weight}%` }} />
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export function MetricsEnhanced() {
   return (
-    <div className="min-h-screen bg-[#0a0e17] text-[#e2e8f0] font-sans selection:bg-[#14b8a6] selection:text-white pb-10">
+    <div className="min-h-screen bg-[#0a0e17] text-[#e2e8f0] font-mono text-[13px]">
       {/* HEADER */}
-      <header className="bg-[#111827] border-b border-[#1e293b] px-4 py-2 sticky top-0 z-50 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-2 bg-[#14b8a6] rounded-sm"></div>
-          <span className="text-[11px] font-mono tracking-widest text-[#e2e8f0] uppercase">
-            Strategy Metrics Integration — MSA → Submarket → Property Drill-down
-          </span>
+      <div className="bg-[#111827] border-b border-[#1e293b] px-4 py-2 flex justify-between items-center">
+        <span className="text-[#94a3b8] text-[11px] uppercase tracking-widest">Strategy Metrics Integration — MSA → Submarket → Property Drill-Down</span>
+        <span className="text-[10px] text-[#94a3b8]">Strategy: <span className="text-[#14b8a6]">Core Plus Value-Add</span> | D:30% S:25% M:20% P:15% R:10%</span>
+      </div>
+
+      {/* ======= MSA LEVEL ======= */}
+      <div className="p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[15px] font-bold">MSA: ATLANTA, GA</span>
+          <span className="flex items-center gap-1 text-[10px]"><span className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse inline-block"></span> LIVE</span>
+          <span className="ml-auto px-2 py-0.5 bg-[#14b8a6]/20 text-[#14b8a6] text-[11px] rounded">JEDI 78</span>
+          <span className="px-2 py-0.5 bg-[#f59e0b]/20 text-[#f59e0b] text-[11px] rounded">⚡ Arbitrage Δ22</span>
+          <span className="px-2 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[11px] rounded">Score: 78/100</span>
         </div>
-        <div className="flex items-center gap-3 text-[10px] font-mono text-[#94a3b8]">
-          <span className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 bg-[#22c55e] rounded-full animate-pulse"></span>
-            SYSTEM NORMAL
-          </span>
-          <span>|</span>
-          <span>10:42:15 UTC</span>
+
+        <div className="flex gap-4">
+          {/* LEFT: Charts + Grid */}
+          <div className="flex-1">
+            {/* Historical Charts Row */}
+            <div className="grid grid-cols-4 gap-3 mb-3">
+              <ChartCard title="Rent Growth" value="+4.1%" trend="up" data={[2.1, 2.8, 3.2, 3.5, 3.1, 3.8, 4.1]} color="#14b8a6" />
+              <ChartCard title="Occupancy" value="94.2%" trend="down" data={[95.8, 95.4, 95.1, 94.8, 94.6, 94.4, 94.2]} color="#f59e0b" />
+              <ChartCard title="Population Growth" value="+1.8%" trend="up" data={[1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8]} color="#22c55e" />
+              <ChartCard title="Traffic Index" value="74" trend="up" data={[58, 62, 65, 68, 70, 72, 74]} color="#14b8a6" />
+            </div>
+
+            {/* Compact Data Table Grid — MSA Metrics */}
+            <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
+              <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between items-center">
+                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Strategy Signal Metrics</span>
+                <span className="text-[10px] text-[#94a3b8]">16 metrics across tracked signals</span>
+              </div>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase text-[#94a3b8] border-b border-[#1e293b]">
+                    <th className="text-left px-3 py-1.5 font-normal">Signal</th>
+                    <th className="text-left px-3 py-1.5 font-normal">Metric</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Value</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Δ YoY</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Weight</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Pts</th>
+                    <th className="text-center px-3 py-1.5 font-normal">Gate</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Trend</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <MetricRow sig="D-12" name="Population Growth" val="6.2M" chg="+1.8%" w="8%" pts="+8" gate="pass" spark={[1.2,1.3,1.5,1.6,1.7,1.8]} />
+                  <MetricRow sig="D-01" name="Employment Growth" val="+2.4%" chg="+0.3%" w="12%" pts="+12" gate="pass" spark={[1.8,1.9,2.0,2.1,2.2,2.4]} />
+                  <MetricRow sig="D-03" name="Job-Housing Ratio" val="1.24" chg="+0.06" w="6%" pts="+6" gate="pass" spark={[1.12,1.14,1.16,1.18,1.20,1.24]} />
+                  <MetricRow sig="D-05" name="Median Income" val="$72.4K" chg="+3.2%" w="5%" pts="+5" gate="pass" spark={[64,66,68,69,71,72]} />
+                  <MetricRow sig="M-01" name="Rent Growth" val="+4.1%" chg="+0.9%" w="10%" pts="+9" gate="pass" live spark={[2.1,2.8,3.2,3.5,3.8,4.1]} />
+                  <MetricRow sig="S-03" name="Occupancy Rate" val="94.2%" chg="-0.3%" w="8%" pts="+6" gate="pass" spark={[95.8,95.4,95.1,94.8,94.4,94.2]} neg />
+                  <MetricRow sig="S-05" name="Absorption Rate" val="88%" chg="+2.1%" w="7%" pts="+7" gate="pass" spark={[82,84,85,86,87,88]} />
+                  <MetricRow sig="S-01" name="Pipeline Units" val="18,400" chg="+22%" w="6%" pts="-3" gate="soft-fail" spark={[12000,13500,14800,16200,17100,18400]} neg />
+                  <MetricRow sig="S-06" name="Permit Momentum" val="-12%" chg="-8%" w="4%" pts="+4" gate="pass" spark={[-2,-4,-6,-8,-10,-12]} />
+                  <MetricRow sig="M-04" name="Cap Rate" val="5.2%" chg="-0.3%" w="5%" pts="+5" gate="pass" spark={[5.8,5.6,5.5,5.4,5.3,5.2]} />
+                  <MetricRow sig="M-03" name="NOI Growth" val="+3.8%" chg="+0.4%" w="6%" pts="+6" gate="pass" spark={[2.8,3.0,3.2,3.4,3.6,3.8]} />
+                  <MetricRow sig="T-01" name="Traffic Index" val="74" chg="+6.2%" w="5%" pts="+4" gate="pass" spark={[58,62,65,68,72,74]} />
+                  <MetricRow sig="T-03" name="Traffic Growth" val="+6.2%" chg="+1.1%" w="4%" pts="+4" gate="pass" spark={[3.8,4.2,4.8,5.1,5.6,6.2]} />
+                  <MetricRow sig="P-05" name="Walk Score" val="62" chg="+3" w="3%" pts="+2" gate="soft-fail" spark={[55,56,58,59,60,62]} />
+                  <MetricRow sig="DC-01" name="Dev Capacity Ratio" val="0.34" chg="-0.02" w="3%" pts="+3" gate="pass" spark={[0.40,0.38,0.37,0.36,0.35,0.34]} />
+                  <MetricRow sig="DC-05" name="Zoning Utilization" val="78%" chg="+2%" w="3%" pts="+3" gate="pass" spark={[72,73,74,75,76,78]} last />
+                </tbody>
+              </table>
+              <div className="px-3 py-1.5 bg-[#0f1729] border-t border-[#1e293b] flex justify-between text-[10px] text-[#94a3b8]">
+                <span>14/16 Gates Passed | 2 Soft Fails (-8pts)</span>
+                <span>Total Strategy Contribution: <span className="text-[#14b8a6]">+78pts</span></span>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Commentary Side Panel */}
+          <div className="w-[300px] flex-shrink-0 border-l-2 border-[#14b8a6]/40 pl-4 space-y-3">
+            <div>
+              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Market Narrative</div>
+              <p className="text-[11px] text-[#94a3b8] leading-relaxed mb-2">
+                Atlanta's multifamily market continues to demonstrate resilient fundamentals despite elevated supply pipeline. Demand drivers remain strong with 1.8% population growth and a favorable 1.24 jobs ratio, supporting above-trend absorption.
+              </p>
+              <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                Near-term supply pressure from 18,400 units delivering in H2 2026 warrants selective positioning in core submarkets with established demand profiles.
+              </p>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Investment Thesis</div>
+              <div className="space-y-1 text-[11px]">
+                <div className="flex gap-2"><span className="text-[#22c55e]">✓</span><span className="text-[#94a3b8]">Population growth exceeds national avg</span></div>
+                <div className="flex gap-2"><span className="text-[#22c55e]">✓</span><span className="text-[#94a3b8]">Employment diversification reducing risk</span></div>
+                <div className="flex gap-2"><span className="text-[#f59e0b]">⚠</span><span className="text-[#94a3b8]">Supply deliveries may pressure occupancy</span></div>
+                <div className="flex gap-2"><span className="text-[#ef4444]">✗</span><span className="text-[#94a3b8]">Insurance costs escalating in Cobb County</span></div>
+              </div>
+              <div className="mt-2 px-2 py-1 bg-[#14b8a6]/10 border border-[#14b8a6]/30 text-[#14b8a6] text-[11px] text-center rounded">SELECTIVE BUY</div>
+            </div>
+          </div>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-7xl mx-auto p-4 space-y-6">
-        
-        {/* SECTION 1: MSA LEVEL CARD */}
-        <section className="bg-[#111827] border border-[#1e293b] rounded-sm flex flex-col">
-          <div className="border-b border-[#1e293b] px-4 py-3 flex justify-between items-center bg-[#1a2332]">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-medium tracking-wide uppercase">MSA: Atlanta, GA</h2>
-              <span className="px-2 py-0.5 bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 rounded text-[10px] font-mono flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-[#22c55e] rounded-full"></span> LIVE
-              </span>
+      <div className="border-t border-[#1e293b] mx-4"></div>
+
+      {/* ======= SUBMARKET LEVEL ======= */}
+      <div className="p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[#94a3b8] text-[11px] cursor-pointer hover:text-[#14b8a6]">← Back to MSA</span>
+          <span className="text-[15px] font-bold">SUBMARKET: MIDTOWN ATLANTA</span>
+          <span className="ml-auto px-2 py-0.5 bg-[#14b8a6]/20 text-[#14b8a6] text-[11px] rounded">JEDI 87</span>
+          <span className="px-2 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[11px] rounded">Score: 91/100</span>
+        </div>
+
+        <div className="flex gap-4">
+          <div className="flex-1">
+            {/* Historical Charts Row */}
+            <div className="grid grid-cols-4 gap-3 mb-3">
+              <ChartCard title="Rent Growth" value="+5.2%" trend="up" data={[3.1, 3.8, 4.2, 4.5, 4.8, 5.0, 5.2]} color="#22c55e" />
+              <ChartCard title="Occupancy" value="96.1%" trend="up" data={[94.2, 94.8, 95.1, 95.4, 95.7, 95.9, 96.1]} color="#22c55e" />
+              <ChartCard title="Traffic Growth" value="+8.4%" trend="up" data={[4.2, 5.1, 5.8, 6.5, 7.2, 7.8, 8.4]} color="#14b8a6" />
+              <ChartCard title="Absorption" value="94%" trend="up" data={[84, 86, 88, 90, 91, 93, 94]} color="#14b8a6" />
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[#94a3b8] uppercase font-sans">JEDI Score</span>
-                <span className="px-2 py-1 bg-[#14b8a6]/10 text-[#14b8a6] border border-[#14b8a6]/30 text-xs font-mono font-bold rounded-sm">
-                  78/100
-                </span>
+
+            {/* Submarket Metrics Table */}
+            <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden mb-3">
+              <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b]">
+                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Submarket Strategy Metrics</span>
+              </div>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase text-[#94a3b8] border-b border-[#1e293b]">
+                    <th className="text-left px-3 py-1.5 font-normal">Signal</th>
+                    <th className="text-left px-3 py-1.5 font-normal">Metric</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Value</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Δ YoY</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Weight</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Pts</th>
+                    <th className="text-center px-3 py-1.5 font-normal">Gate</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Trend</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <MetricRow sig="M-01" name="Submarket Rent" val="$1,820" chg="+5.2%" w="10%" pts="+10" gate="pass" spark={[1580,1620,1680,1720,1760,1820]} />
+                  <MetricRow sig="S-03" name="Occupancy" val="96.1%" chg="+0.4%" w="8%" pts="+8" gate="pass" spark={[94.2,94.8,95.1,95.4,95.9,96.1]} />
+                  <MetricRow sig="S-01" name="Pipeline Units" val="2,100" chg="+8%" w="6%" pts="+5" gate="pass" spark={[1200,1400,1600,1800,1950,2100]} />
+                  <MetricRow sig="S-05" name="Absorption Rate" val="94%" chg="+3%" w="7%" pts="+7" gate="pass" spark={[84,86,88,90,93,94]} />
+                  <MetricRow sig="T-01" name="Traffic Growth" val="+8.4%" chg="+1.8%" w="5%" pts="+5" gate="pass" spark={[4.2,5.1,5.8,6.5,7.8,8.4]} />
+                  <MetricRow sig="P-02" name="Class A Mix" val="62%" chg="+2%" w="4%" pts="+4" gate="pass" spark={[55,56,58,59,61,62]} />
+                  <MetricRow sig="D-12" name="Pop Growth" val="+2.1%" chg="+0.3%" w="8%" pts="+8" gate="pass" spark={[1.4,1.5,1.7,1.8,1.9,2.1]} />
+                  <MetricRow sig="DC-01" name="Dev Capacity" val="0.28" chg="-0.04" w="3%" pts="+3" gate="pass" spark={[0.38,0.36,0.34,0.32,0.30,0.28]} last />
+                </tbody>
+              </table>
+            </div>
+
+            {/* Peer Comparison Table */}
+            <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
+              <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b]">
+                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Peer Comparison</span>
+              </div>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase text-[#94a3b8] border-b border-[#1e293b]">
+                    <th className="text-left px-3 py-1.5 font-normal">Submarket</th>
+                    <th className="text-right px-3 py-1.5 font-normal">JEDI</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Rent</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Rent Δ</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Occ</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Units</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Traffic</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Score</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Cycle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <PeerRow name="Midtown" jedi={87} rent="$1,820" rentD="+5.2%" occ="96.1%" units="12.4K" traffic={82} score={91} cycle="EXPANSION" highlight />
+                  <PeerRow name="Buckhead" jedi={82} rent="$1,883" rentD="+4.1%" occ="95.3%" units="11.2K" traffic={71} score={85} cycle="EXPANSION" />
+                  <PeerRow name="Sandy Springs" jedi={81} rent="$1,920" rentD="+3.4%" occ="94.8%" units="12.6K" traffic={68} score={79} cycle="EXPANSION" />
+                  <PeerRow name="Decatur" jedi={78} rent="$1,650" rentD="+3.8%" occ="94.1%" units="8.8K" traffic={64} score={74} cycle="LATE EXP" />
+                  <PeerRow name="Alpharetta" jedi={76} rent="$1,720" rentD="+4.4%" occ="93.6%" units="9.2K" traffic={59} score={72} cycle="EXPANSION" last />
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* RIGHT: Commentary */}
+          <div className="w-[300px] flex-shrink-0 border-l-2 border-[#14b8a6]/40 pl-4 space-y-3">
+            <div>
+              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Submarket Narrative</div>
+              <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                Midtown ranks as the top-performing submarket in the Atlanta MSA with a 91 strategy score. Class B repositioning offers a 340bps spread to Class A rents, making it the primary opportunity within the Core Plus Value-Add strategy.
+              </p>
+            </div>
+            <div className="px-2 py-1.5 bg-[#22c55e]/10 border border-[#22c55e]/30 rounded">
+              <div className="text-[10px] text-[#22c55e] uppercase mb-0.5">Top Opportunity</div>
+              <div className="text-[11px] text-[#e2e8f0]">Class B repositioning — 340bps spread to Class A</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-[#1e293b] mx-4"></div>
+
+      {/* ======= PROPERTY LEVEL ======= */}
+      <div className="p-4">
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-[#94a3b8] text-[11px] cursor-pointer hover:text-[#14b8a6]">← Back to Submarket</span>
+          <span className="text-[15px] font-bold">PROPERTY: MIDTOWN PLACE APARTMENTS</span>
+          <span className="text-[11px] text-[#94a3b8]">245 Units | Built 2018 | Class A</span>
+          <span className="ml-auto px-2 py-0.5 bg-[#22c55e]/20 text-[#22c55e] text-[11px] rounded">Score: 86/100</span>
+          <span className="px-2 py-0.5 bg-[#22c55e]/10 border border-[#22c55e]/30 text-[#22c55e] text-[11px] rounded">ACQUIRE</span>
+        </div>
+
+        <div className="flex gap-4">
+          <div className="flex-1">
+            {/* Property Charts */}
+            <div className="grid grid-cols-4 gap-3 mb-3">
+              <ChartCard title="Rent/Unit" value="$1,920" trend="up" data={[1620,1680,1740,1800,1860,1900,1920]} color="#22c55e" />
+              <ChartCard title="Occupancy" value="97.2%" trend="up" data={[94.1,94.8,95.4,96.0,96.5,96.9,97.2]} color="#22c55e" />
+              <ChartCard title="NOI" value="$4.2M" trend="up" data={[3.2,3.4,3.6,3.8,3.9,4.1,4.2]} color="#14b8a6" />
+              <ChartCard title="Cap Rate" value="4.8%" trend="down" data={[5.6,5.4,5.2,5.1,5.0,4.9,4.8]} color="#14b8a6" />
+            </div>
+
+            {/* Property Gate Results Table */}
+            <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden mb-3">
+              <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b] flex justify-between">
+                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Strategy Gate Results</span>
+                <span className="text-[10px] text-[#94a3b8]">12/14 Passed | 2 Soft Fails (-8pts)</span>
+              </div>
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[10px] uppercase text-[#94a3b8] border-b border-[#1e293b]">
+                    <th className="text-center px-3 py-1.5 font-normal w-8">Status</th>
+                    <th className="text-left px-3 py-1.5 font-normal">Gate</th>
+                    <th className="text-left px-3 py-1.5 font-normal">Requirement</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Actual</th>
+                    <th className="text-right px-3 py-1.5 font-normal">Impact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <GateRow status="pass" gate="Unit Count" req="≥ 100" actual="245" impact="—" />
+                  <GateRow status="pass" gate="Year Built" req="≥ 2010" actual="2018" impact="—" />
+                  <GateRow status="pass" gate="Occupancy" req="≥ 93%" actual="97.2%" impact="—" />
+                  <GateRow status="pass" gate="Rent Growth" req="≥ 3%" actual="+5.8%" impact="—" />
+                  <GateRow status="pass" gate="Cap Rate" req="≤ 6.0%" actual="4.8%" impact="—" />
+                  <GateRow status="pass" gate="NOI Growth" req="≥ 2%" actual="+3.8%" impact="—" />
+                  <GateRow status="pass" gate="Class" req="A or B" actual="A" impact="—" />
+                  <GateRow status="pass" gate="Absorption" req="≥ 85%" actual="94%" impact="—" />
+                  <GateRow status="pass" gate="Pipeline Ratio" req="≤ 15%" actual="8.2%" impact="—" />
+                  <GateRow status="pass" gate="Employment" req="≥ 1.5%" actual="+2.4%" impact="—" />
+                  <GateRow status="soft-fail" gate="Traffic Score" req="≥ 70" actual="68" impact="-5pts" />
+                  <GateRow status="soft-fail" gate="Walk Score" req="≥ 65" actual="62" impact="-3pts" last />
+                </tbody>
+              </table>
+            </div>
+
+            {/* Signal Contribution Breakdown */}
+            <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden">
+              <div className="bg-[#0f1729] px-3 py-1.5 border-b border-[#1e293b]">
+                <span className="text-[11px] uppercase text-[#94a3b8] tracking-wider">Signal Contribution Breakdown</span>
+              </div>
+              <div className="p-3 grid grid-cols-5 gap-2">
+                <SignalBar label="Demand" pts={24} max={30} color="#14b8a6" />
+                <SignalBar label="Supply" pts={16} max={25} color="#22c55e" />
+                <SignalBar label="Momentum" pts={18} max={20} color="#14b8a6" />
+                <SignalBar label="Position" pts={20} max={15} color="#f59e0b" />
+                <SignalBar label="Risk" pts={8} max={10} color="#94a3b8" />
+              </div>
+              <div className="px-3 pb-2 text-center text-[11px] text-[#94a3b8]">
+                Total: <span className="text-[#14b8a6] font-bold">86/100</span> after gate penalties (-8pts)
               </div>
             </div>
           </div>
 
-          <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-[#1e293b]">
-            {/* Left: Metrics Grid */}
-            <div className="w-full md:w-[65%] p-4">
-              <div className="mb-3 flex justify-between items-center">
-                <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider">Strategy Signals</h3>
-                <span className="text-[10px] text-[#94a3b8] font-sans">Showing 16 weighted metrics</span>
-              </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {/* Row 1 */}
-                <MetricCard name="Population Growth" value="+1.8%" change="+0.2%" id="D-12" weight={15} status="pass" />
-                <MetricCard name="Employment Growth" value="+2.4%" change="+0.4%" id="D-01" weight={10} status="pass" />
-                <MetricCard name="Job-Housing Ratio" value="1.24" change="-0.02" id="D-03" weight={5} status="neutral" />
-                <MetricCard name="Median Income" value="$72.4K" change="+3.2%" id="D-05" weight={5} status="pass" />
-                
-                {/* Row 2 */}
-                <MetricCard name="Avg Rent" value="$1,487" change="+1.2%" id="LIVE" weight={10} status="neutral" />
-                <MetricCard name="Rent Growth" value="+4.1%" change="-0.5%" id="M-01" weight={15} status="pass" />
-                <MetricCard name="Occupancy" value="94.2%" change="+0.1%" id="S-03" weight={10} status="pass" />
-                <MetricCard name="Absorption Rate" value="88%" change="-2%" id="S-05" weight={5} status="fail" />
-
-                {/* Row 3 */}
-                <MetricCard name="Pipeline Units" value="18,400" change="+12%" id="S-01" weight={5} status="fail" />
-                <MetricCard name="Permit Momentum" value="-12%" change="-5%" id="S-06" weight={5} status="pass" />
-                <MetricCard name="Cap Rate" value="5.2%" change="+0.1%" id="M-04" weight={5} status="neutral" />
-                <MetricCard name="NOI Growth" value="+3.8%" change="-0.2%" id="M-03" weight={5} status="pass" />
-
-                {/* Row 4 */}
-                <MetricCard name="Traffic Index" value="74" change="+1.5%" id="T-01" weight={2} status="pass" />
-                <MetricCard name="Traffic Growth" value="+6.2%" change="+1.1%" id="T-03" weight={1} status="pass" />
-                <MetricCard name="Walk Score" value="62" change="+0%" id="P-05" weight={1} status="neutral" />
-                <MetricCard name="Dev Capacity" value="0.34" change="-0.01" id="DC-01" weight={1} status="neutral" />
-              </div>
+          {/* RIGHT: Property Commentary */}
+          <div className="w-[300px] flex-shrink-0 border-l-2 border-[#14b8a6]/40 pl-4 space-y-3">
+            <div>
+              <div className="text-[10px] uppercase text-[#14b8a6] tracking-wider mb-1 border-b border-[#14b8a6]/30 pb-1">Property Analysis</div>
+              <p className="text-[11px] text-[#94a3b8] leading-relaxed">
+                Strong acquisition candidate within Midtown submarket. Above-market occupancy (97.2%) and rent growth (+5.8%) with a 2018 vintage align well with Core Plus Value-Add strategy. Minor traffic score softness (-5pt penalty) offset by strong demand fundamentals.
+              </p>
             </div>
-
-            {/* Right: Commentary Side Panel */}
-            <div className="w-full md:w-[35%] p-4 bg-[#111827] flex flex-col gap-5">
-              <div>
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider">Market Narrative</h3>
-                  <div className="px-2 py-0.5 bg-[#f59e0b]/10 text-[#f59e0b] border border-[#f59e0b]/30 rounded flex items-center gap-1 text-[10px] font-mono">
-                    <Zap className="w-3 h-3" />
-                    Delta: 22pts
-                  </div>
-                </div>
-                <div className="text-sm text-[#e2e8f0] font-sans leading-relaxed space-y-3 opacity-90">
-                  <p>
-                    Atlanta continues to exhibit strong demand fundamentals, driven by sustained in-migration and employment growth (+2.4% YoY) outpacing the national average. Despite a heavy supply pipeline (18,400 units), absorption remains resilient in core submarkets.
-                  </p>
-                  <p>
-                    The Strategy Builder flags a <strong>22pt arbitrage opportunity</strong> in Class B value-add assets where current rent growth (+4.1%) is artificially suppressed by temporary leasing friction.
-                  </p>
-                </div>
-              </div>
-
-              <div className="border-t border-[#1e293b] pt-4">
-                <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider mb-3">Investment Thesis</h3>
-                <ul className="space-y-2 text-xs font-sans">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#22c55e] shrink-0 mt-0.5" />
-                    <span><strong className="text-white">Demographic tailwinds:</strong> Outsized population growth drives core demand.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-[#f59e0b] shrink-0 mt-0.5" />
-                    <span><strong className="text-white">Supply pockets:</strong> New deliveries concentrated in urban core, depressing Class A rent growth temporarily.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-[#22c55e] shrink-0 mt-0.5" />
-                    <span><strong className="text-white">Value-add spread:</strong> Wide gap between Class A and B rents provides renovation runway.</span>
-                  </li>
-                </ul>
-              </div>
-              
-              <div className="mt-auto pt-4">
-                <div className="bg-[#1a2332] border border-[#1e293b] p-3 rounded flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] text-[#94a3b8] uppercase font-sans mb-1">Active Strategy</div>
-                    <div className="text-sm font-medium text-[#14b8a6]">Core Plus Value-Add</div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-mono text-white">78<span className="text-sm text-[#94a3b8]">/100</span></div>
-                  </div>
-                </div>
-              </div>
+            <div className="px-2 py-1.5 bg-[#22c55e]/10 border border-[#22c55e]/30 rounded text-center">
+              <div className="text-[10px] text-[#22c55e] uppercase">Recommended Action</div>
+              <div className="text-[14px] font-bold text-[#22c55e]">ACQUIRE</div>
+            </div>
+            <div className="text-[10px] text-[#94a3b8]">
+              <div className="flex justify-between py-0.5"><span>Est. IRR</span><span className="text-[#22c55e]">14.2%</span></div>
+              <div className="flex justify-between py-0.5"><span>Cash-on-Cash</span><span className="text-[#22c55e]">8.4%</span></div>
+              <div className="flex justify-between py-0.5"><span>DSCR</span><span className="text-[#e2e8f0]">1.32x</span></div>
+              <div className="flex justify-between py-0.5"><span>Entry Basis</span><span className="text-[#e2e8f0]">$185K/unit</span></div>
             </div>
           </div>
-        </section>
-
-        {/* SECTION 2: SUBMARKET LEVEL CARD */}
-        <section className="bg-[#111827] border border-[#1e293b] rounded-sm flex flex-col relative before:absolute before:-top-6 before:left-12 before:h-6 before:w-px before:bg-[#1e293b]">
-          <div className="border-b border-[#1e293b] px-4 py-3 flex justify-between items-center bg-[#1a2332]">
-            <div className="flex items-center gap-3">
-              <button className="text-[#94a3b8] hover:text-white transition-colors flex items-center gap-1 text-[10px] uppercase tracking-wider font-sans bg-[#111827] px-2 py-1 rounded border border-[#1e293b]">
-                <ChevronLeft className="w-3 h-3" /> Back to MSA
-              </button>
-              <h2 className="text-sm font-medium tracking-wide uppercase ml-2 text-[#e2e8f0]">Submarket: Midtown Atlanta</h2>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-[#94a3b8] uppercase font-sans">JEDI Score</span>
-                <span className="px-2 py-1 bg-[#14b8a6]/20 text-[#14b8a6] border border-[#14b8a6]/50 text-xs font-mono font-bold rounded-sm shadow-[0_0_10px_rgba(20,184,166,0.2)]">
-                  87/100
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-[#1e293b]">
-            {/* Left: Metrics & Table */}
-            <div className="w-full md:w-[65%] p-4 flex flex-col gap-6">
-              <div>
-                <div className="mb-3 flex justify-between items-center">
-                  <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider">Submarket Signals</h3>
-                  <span className="text-[10px] text-[#94a3b8] font-sans">Midtown Specific Data</span>
-                </div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <MetricCard name="Submarket Rent" value="$1,820" change="+1.8%" id="S-R" weight={20} status="pass" />
-                  <MetricCard name="Rent Growth" value="+5.2%" change="+1.1%" id="S-RG" weight={25} status="pass" />
-                  <MetricCard name="Occupancy" value="96.1%" change="+1.9%" id="S-O" weight={15} status="pass" />
-                  <MetricCard name="Total Units" value="12,400" change="" id="S-U" weight={0} status="neutral" />
-                  
-                  <MetricCard name="Traffic Growth" value="+8.4%" change="+2.2%" id="S-TG" weight={10} status="pass" />
-                  <MetricCard name="Class A Mix" value="62%" change="" id="S-CA" weight={5} status="neutral" />
-                  <MetricCard name="Pipeline Units" value="2,100" change="-5%" id="S-P" weight={15} status="fail" />
-                  <MetricCard name="Absorption Rate" value="94%" change="+6%" id="S-AR" weight={10} status="pass" />
-                </div>
-              </div>
-
-              <div>
-                <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider mb-3">Peer Comparison</h3>
-                <div className="border border-[#1e293b] rounded-sm overflow-hidden bg-[#1a2332]">
-                  <table className="w-full text-left text-xs font-mono">
-                    <thead className="bg-[#111827] border-b border-[#1e293b] text-[#94a3b8]">
-                      <tr>
-                        <th className="px-3 py-2 font-normal uppercase tracking-wider">Metric</th>
-                        <th className="px-3 py-2 font-normal uppercase tracking-wider text-[#e2e8f0]">Midtown</th>
-                        <th className="px-3 py-2 font-normal uppercase tracking-wider">Buckhead</th>
-                        <th className="px-3 py-2 font-normal uppercase tracking-wider">Decatur</th>
-                        <th className="px-3 py-2 font-normal uppercase tracking-wider border-l border-[#1e293b]">MSA Avg</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#1e293b]">
-                      <tr className="hover:bg-[#111827]/50 transition-colors">
-                        <td className="px-3 py-2 text-[#94a3b8] font-sans">Rent Growth</td>
-                        <td className="px-3 py-2 text-[#14b8a6] font-bold">+5.2%</td>
-                        <td className="px-3 py-2 text-[#e2e8f0]">+4.1%</td>
-                        <td className="px-3 py-2 text-[#e2e8f0]">+3.8%</td>
-                        <td className="px-3 py-2 text-[#94a3b8] border-l border-[#1e293b]">+4.1%</td>
-                      </tr>
-                      <tr className="hover:bg-[#111827]/50 transition-colors">
-                        <td className="px-3 py-2 text-[#94a3b8] font-sans">Occupancy</td>
-                        <td className="px-3 py-2 text-[#14b8a6] font-bold">96.1%</td>
-                        <td className="px-3 py-2 text-[#e2e8f0]">95.3%</td>
-                        <td className="px-3 py-2 text-[#e2e8f0]">94.8%</td>
-                        <td className="px-3 py-2 text-[#94a3b8] border-l border-[#1e293b]">94.2%</td>
-                      </tr>
-                      <tr className="hover:bg-[#111827]/50 transition-colors">
-                        <td className="px-3 py-2 text-[#94a3b8] font-sans">Traffic Idx</td>
-                        <td className="px-3 py-2 text-[#14b8a6] font-bold">82</td>
-                        <td className="px-3 py-2 text-[#e2e8f0]">71</td>
-                        <td className="px-3 py-2 text-[#e2e8f0]">68</td>
-                        <td className="px-3 py-2 text-[#94a3b8] border-l border-[#1e293b]">74</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Submarket Commentary */}
-            <div className="w-full md:w-[35%] p-4 bg-[#111827] flex flex-col gap-4">
-               <div>
-                <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider mb-3">Submarket Narrative</h3>
-                <p className="text-sm text-[#e2e8f0] font-sans leading-relaxed opacity-90">
-                  Midtown is outperforming the broader MSA across key strategy metrics. Exceptional rent growth (+5.2%) and high occupancy (96.1%) indicate strong tenant retention and pricing power. The submarket represents a prime target for the Core Plus Value-Add strategy.
-                </p>
-              </div>
-
-              <div className="bg-[#1a2332] border border-[#14b8a6]/30 p-4 rounded-sm relative overflow-hidden mt-2">
-                <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-[#14b8a6]/20 to-transparent pointer-events-none" />
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-[10px] uppercase text-[#14b8a6] font-bold tracking-wider">Top 3 Opportunity</span>
-                  <Zap className="w-4 h-4 text-[#14b8a6]" />
-                </div>
-                <div className="text-2xl font-mono text-white mb-1">91<span className="text-base text-[#94a3b8]">/100</span></div>
-                <div className="text-xs font-sans text-[#e2e8f0]">Class B repositioning — 340bps spread</div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* SECTION 3: PROPERTY LEVEL CARD */}
-        <section className="bg-[#111827] border border-[#14b8a6]/40 rounded-sm flex flex-col relative before:absolute before:-top-6 before:left-12 before:h-6 before:w-px before:bg-[#1e293b] shadow-[0_0_15px_rgba(20,184,166,0.05)]">
-          <div className="border-b border-[#1e293b] px-4 py-3 flex justify-between items-center bg-[#1a2332]">
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-3">
-                <button className="text-[#94a3b8] hover:text-white transition-colors flex items-center gap-1 text-[10px] uppercase tracking-wider font-sans bg-[#111827] px-2 py-1 rounded border border-[#1e293b]">
-                  <ChevronLeft className="w-3 h-3" /> Back to Submarket
-                </button>
-                <h2 className="text-sm font-medium tracking-wide uppercase ml-2 text-white">Property: Midtown Place Apartments</h2>
-              </div>
-              <div className="text-[10px] text-[#94a3b8] font-mono ml-[120px]">
-                245 Units | Built 2018 | Class A
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 flex flex-col gap-6">
-            {/* Top row - Vitals */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="bg-[#1a2332] border border-[#1e293b] p-3 flex flex-col items-center justify-center">
-                <span className="text-[10px] text-[#94a3b8] uppercase font-sans mb-1">Current Rent</span>
-                <span className="text-lg font-mono text-white">$1,920<span className="text-xs text-[#94a3b8]">/mo</span></span>
-              </div>
-              <div className="bg-[#1a2332] border border-[#1e293b] p-3 flex flex-col items-center justify-center">
-                <span className="text-[10px] text-[#94a3b8] uppercase font-sans mb-1">Occupancy</span>
-                <span className="text-lg font-mono text-white">97.2%</span>
-              </div>
-              <div className="bg-[#1a2332] border border-[#1e293b] p-3 flex flex-col items-center justify-center">
-                <span className="text-[10px] text-[#94a3b8] uppercase font-sans mb-1">Cap Rate</span>
-                <span className="text-lg font-mono text-white">4.8%</span>
-              </div>
-              <div className="bg-[#1a2332] border border-[#1e293b] p-3 flex flex-col items-center justify-center">
-                <span className="text-[10px] text-[#94a3b8] uppercase font-sans mb-1">NOI</span>
-                <span className="text-lg font-mono text-white">$4.2M</span>
-              </div>
-              <div className="bg-[#111827] border border-[#22c55e]/30 p-3 flex flex-col items-center justify-center relative overflow-hidden">
-                <div className="absolute inset-0 bg-[#22c55e]/5 animate-pulse"></div>
-                <span className="text-[10px] text-[#22c55e] uppercase font-bold mb-1 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 bg-[#22c55e] rounded-full"></span> Data Feed
-                </span>
-                <span className="text-sm font-mono text-[#22c55e]">LIVE</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-6">
-              {/* Strategy Gates */}
-              <div className="w-full md:w-[65%]">
-                <div className="mb-3 flex justify-between items-center">
-                  <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider">Strategy Gate Results</h3>
-                  <span className="text-[10px] font-sans px-2 py-1 bg-[#1a2332] rounded border border-[#1e293b] text-[#e2e8f0]">
-                    <strong className="text-[#22c55e]">12/14</strong> Gates Passed | <strong className="text-[#f59e0b]">2</strong> Soft Fails (-8pts)
-                  </span>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  <div className="bg-[#1a2332] border border-[#22c55e]/30 p-2.5 flex items-center justify-between rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
-                      <span className="text-xs font-sans text-[#e2e8f0]">Unit Count ≥ 100</span>
-                    </div>
-                    <span className="text-xs font-mono text-[#94a3b8]">245 <span className="text-[#22c55e] font-bold">PASS</span></span>
-                  </div>
-                  
-                  <div className="bg-[#1a2332] border border-[#22c55e]/30 p-2.5 flex items-center justify-between rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
-                      <span className="text-xs font-sans text-[#e2e8f0]">Year Built ≥ 2010</span>
-                    </div>
-                    <span className="text-xs font-mono text-[#94a3b8]">2018 <span className="text-[#22c55e] font-bold">PASS</span></span>
-                  </div>
-
-                  <div className="bg-[#1a2332] border border-[#22c55e]/30 p-2.5 flex items-center justify-between rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
-                      <span className="text-xs font-sans text-[#e2e8f0]">Occupancy ≥ 93%</span>
-                    </div>
-                    <span className="text-xs font-mono text-[#94a3b8]">97.2% <span className="text-[#22c55e] font-bold">PASS</span></span>
-                  </div>
-
-                  <div className="bg-[#1a2332] border border-[#22c55e]/30 p-2.5 flex items-center justify-between rounded-sm">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#22c55e]" />
-                      <span className="text-xs font-sans text-[#e2e8f0]">Rent Growth ≥ 3%</span>
-                    </div>
-                    <span className="text-xs font-mono text-[#94a3b8]">+5.8% <span className="text-[#22c55e] font-bold">PASS</span></span>
-                  </div>
-
-                  <div className="bg-[#1a2332] border border-[#ef4444]/30 p-2.5 flex items-center justify-between rounded-sm relative overflow-hidden">
-                     <div className="absolute inset-y-0 left-0 w-1 bg-[#ef4444]"></div>
-                    <div className="flex items-center gap-2 pl-2">
-                      <XCircle className="w-4 h-4 text-[#ef4444]" />
-                      <span className="text-xs font-sans text-[#e2e8f0]">Cap Rate ≥ 5.5%</span>
-                    </div>
-                    <span className="text-xs font-mono text-[#94a3b8]">4.8% <span className="text-[#ef4444] font-bold">FAIL</span></span>
-                  </div>
-
-                  <div className="bg-[#1a2332] border border-[#f59e0b]/30 p-2.5 flex items-center justify-between rounded-sm relative overflow-hidden">
-                    <div className="absolute inset-y-0 left-0 w-1 bg-[#f59e0b]"></div>
-                    <div className="flex items-center gap-2 pl-2">
-                      <AlertTriangle className="w-4 h-4 text-[#f59e0b]" />
-                      <span className="text-xs font-sans text-[#e2e8f0]">Traffic Score ≥ 70</span>
-                    </div>
-                    <span className="text-xs font-mono text-[#94a3b8]">68 <span className="text-[#f59e0b] font-bold">SOFT (-5)</span></span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Final Score & Commentary */}
-              <div className="w-full md:w-[35%] flex flex-col gap-4">
-                <div className="bg-[#1a2332] border border-[#1e293b] p-4 rounded-sm flex items-center gap-4">
-                   <div className="relative w-20 h-20 shrink-0 flex items-center justify-center">
-                      <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                        <path
-                          className="text-[#1e293b]"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                        />
-                        <path
-                          className="text-[#14b8a6]"
-                          strokeDasharray="86, 100"
-                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-xl font-mono font-bold text-white leading-none">86</span>
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-xs text-[#94a3b8] font-mono uppercase tracking-wider mb-2">Strategy Score</h3>
-                      <div className="inline-block px-3 py-1 bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/30 text-xs font-bold font-sans uppercase rounded tracking-wide">
-                        Acquire
-                      </div>
-                    </div>
-                </div>
-
-                <div className="bg-[#1a2332] border border-[#1e293b] p-3 rounded-sm">
-                  <h3 className="text-[10px] text-[#94a3b8] font-mono uppercase tracking-wider mb-2">Signal Breakdown</h3>
-                  <div className="flex w-full h-2 rounded-full overflow-hidden">
-                    <div className="bg-[#14b8a6]" style={{ width: '28%' }} title="Demand +24"></div>
-                    <div className="bg-[#3b82f6]" style={{ width: '18%' }} title="Supply +16"></div>
-                    <div className="bg-[#8b5cf6]" style={{ width: '21%' }} title="Momentum +18"></div>
-                    <div className="bg-[#f59e0b]" style={{ width: '23%' }} title="Position +20"></div>
-                    <div className="bg-[#ef4444]" style={{ width: '10%' }} title="Risk +8"></div>
-                  </div>
-                  <div className="flex justify-between text-[8px] font-mono text-[#94a3b8] mt-1 uppercase">
-                    <span>Dem +24</span>
-                    <span>Sup +16</span>
-                    <span>Mom +18</span>
-                    <span>Pos +20</span>
-                    <span>Rsk +8</span>
-                  </div>
-                </div>
-
-                <div className="text-xs text-[#e2e8f0] font-sans leading-relaxed opacity-90 border-l-2 border-[#14b8a6] pl-3">
-                  This property represents a strong acquisition candidate within the Midtown submarket. Above-market occupancy and rent growth, combined with a 2018 vintage, align well with the Core Plus Value-Add strategy. Minor traffic score softness (-5pt penalty) is offset by strong demand fundamentals.
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-      </main>
+        </div>
+      </div>
 
       {/* FOOTER */}
-      <footer className="fixed bottom-0 left-0 right-0 bg-[#0a0e17] border-t border-[#1e293b] px-4 py-2 z-50 text-[10px] font-mono text-[#94a3b8] flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <span className="text-[#e2e8f0]">Strategy: <strong className="text-[#14b8a6] font-normal">Core Plus Value-Add</strong></span>
-          <span className="w-px h-3 bg-[#1e293b]"></span>
-          <span>Weighted Signals: <span className="text-[#e2e8f0]">D:30% S:25% M:20% P:15% R:10%</span></span>
-          <span className="w-px h-3 bg-[#1e293b]"></span>
-          <span>Gates: <span className="text-[#e2e8f0]">14 defined</span></span>
-        </div>
-        <div>
-          Last Refreshed: <span className="text-[#e2e8f0]">2 hrs ago</span>
-        </div>
-      </footer>
+      <div className="bg-[#111827] border-t border-[#1e293b] px-4 py-2 flex justify-between text-[10px] text-[#94a3b8]">
+        <span>Strategy: <span className="text-[#14b8a6]">Core Plus Value-Add</span> | Weighted: D:30% S:25% M:20% P:15% R:10% | Gates: 14 defined</span>
+        <span>Last Refreshed: 2 hrs ago</span>
+      </div>
     </div>
   );
 }
 
-export default MetricsEnhanced;
+function ChartCard({ title, value, trend, data, color }: { title: string; value: string; trend: string; data: number[]; color: string }) {
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const h = 32;
+  const w = 100;
+  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(' ');
+
+  return (
+    <div className="bg-[#111827] border border-[#1e293b] rounded p-2">
+      <div className="flex justify-between items-center mb-1">
+        <span className="text-[10px] uppercase text-[#94a3b8]">{title}</span>
+        <span className="text-[12px] font-bold" style={{ color }}>{value}</span>
+      </div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-8" preserveAspectRatio="none">
+        <polyline fill="none" stroke={color} strokeWidth="1.5" points={points} />
+        <polyline fill={`${color}15`} stroke="none" points={`0,${h} ${points} ${w},${h}`} />
+      </svg>
+    </div>
+  );
+}
+
+function MetricRow({ sig, name, val, chg, w, pts, gate, spark, neg, live, last }: any) {
+  const isNeg = neg || chg?.startsWith('-');
+  const min = Math.min(...(spark || []));
+  const max = Math.max(...(spark || []));
+  const range = max - min || 1;
+  const sparkH = 14;
+  const sparkW = 50;
+  const points = (spark || []).map((v: number, i: number) => `${(i / ((spark || []).length - 1)) * sparkW},${sparkH - ((v - min) / range) * sparkH}`).join(' ');
+  const sparkColor = isNeg ? '#f59e0b' : '#14b8a6';
+
+  return (
+    <tr className={`border-b ${last ? 'border-transparent' : 'border-[#1e293b]/50'} hover:bg-[#1a2332]`}>
+      <td className="px-3 py-1.5">
+        <span className="px-1 py-0.5 bg-[#0f1729] border border-[#1e293b] text-[9px] text-[#94a3b8] rounded-sm">{sig}</span>
+      </td>
+      <td className="px-3 py-1.5 text-[#e2e8f0]">
+        {name}
+        {live && <span className="ml-1.5 px-1 py-0 bg-[#22c55e]/20 text-[#22c55e] text-[8px] rounded">LIVE</span>}
+      </td>
+      <td className="px-3 py-1.5 text-right font-bold text-[#e2e8f0]">{val}</td>
+      <td className={`px-3 py-1.5 text-right ${isNeg ? 'text-[#f59e0b]' : 'text-[#22c55e]'}`}>
+        {chg}
+      </td>
+      <td className="px-3 py-1.5 text-right text-[#94a3b8]">{w}</td>
+      <td className={`px-3 py-1.5 text-right font-bold ${pts?.startsWith('-') ? 'text-[#ef4444]' : 'text-[#14b8a6]'}`}>{pts}</td>
+      <td className="px-3 py-1.5 text-center">
+        {gate === 'pass' && <span className="text-[#22c55e] text-[11px]">✓</span>}
+        {gate === 'soft-fail' && <span className="text-[#f59e0b] text-[11px]">⚠</span>}
+        {gate === 'fail' && <span className="text-[#ef4444] text-[11px]">✗</span>}
+      </td>
+      <td className="px-3 py-1.5 text-right">
+        <svg viewBox={`0 0 ${sparkW} ${sparkH}`} className="w-12 h-3.5 inline-block" preserveAspectRatio="none">
+          <polyline fill="none" stroke={sparkColor} strokeWidth="1.2" points={points} />
+        </svg>
+      </td>
+    </tr>
+  );
+}
+
+function PeerRow({ name, jedi, rent, rentD, occ, units, traffic, score, cycle, highlight, last }: any) {
+  const cycleColor = cycle === 'EXPANSION' ? 'text-[#22c55e] bg-[#22c55e]/10' : cycle === 'PEAK' ? 'text-[#f59e0b] bg-[#f59e0b]/10' : 'text-[#f59e0b] bg-[#f59e0b]/10';
+
+  return (
+    <tr className={`border-b ${last ? 'border-transparent' : 'border-[#1e293b]/50'} ${highlight ? 'bg-[#14b8a6]/5' : ''} hover:bg-[#1a2332]`}>
+      <td className={`px-3 py-1.5 ${highlight ? 'text-[#14b8a6] font-bold' : 'text-[#e2e8f0]'}`}>{name}</td>
+      <td className="px-3 py-1.5 text-right text-[#f59e0b] font-bold">{jedi}</td>
+      <td className="px-3 py-1.5 text-right text-[#e2e8f0]">{rent}</td>
+      <td className="px-3 py-1.5 text-right text-[#22c55e]">{rentD}</td>
+      <td className="px-3 py-1.5 text-right text-[#e2e8f0]">{occ}</td>
+      <td className="px-3 py-1.5 text-right text-[#e2e8f0]">{units}</td>
+      <td className="px-3 py-1.5 text-right text-[#14b8a6]">{traffic}</td>
+      <td className="px-3 py-1.5 text-right text-[#14b8a6] font-bold">{score}</td>
+      <td className="px-3 py-1.5 text-right"><span className={`px-1.5 py-0.5 text-[9px] uppercase rounded ${cycleColor}`}>{cycle}</span></td>
+    </tr>
+  );
+}
+
+function GateRow({ status, gate, req, actual, impact, last }: any) {
+  return (
+    <tr className={`border-b ${last ? 'border-transparent' : 'border-[#1e293b]/50'} hover:bg-[#1a2332]`}>
+      <td className="px-3 py-1.5 text-center">
+        {status === 'pass' && <span className="text-[#22c55e]">✓</span>}
+        {status === 'soft-fail' && <span className="text-[#f59e0b]">⚠</span>}
+        {status === 'fail' && <span className="text-[#ef4444]">✗</span>}
+      </td>
+      <td className="px-3 py-1.5 text-[#e2e8f0]">{gate}</td>
+      <td className="px-3 py-1.5 text-[#94a3b8]">{req}</td>
+      <td className={`px-3 py-1.5 text-right font-bold ${status === 'pass' ? 'text-[#22c55e]' : status === 'soft-fail' ? 'text-[#f59e0b]' : 'text-[#ef4444]'}`}>{actual}</td>
+      <td className={`px-3 py-1.5 text-right ${impact === '—' ? 'text-[#94a3b8]' : 'text-[#ef4444]'}`}>{impact}</td>
+    </tr>
+  );
+}
+
+function SignalBar({ label, pts, max, color }: { label: string; pts: number; max: number; color: string }) {
+  const pct = Math.min((pts / 30) * 100, 100);
+  return (
+    <div className="text-center">
+      <div className="text-[10px] uppercase text-[#94a3b8] mb-1">{label}</div>
+      <div className="h-16 bg-[#0a0e17] rounded relative flex items-end justify-center overflow-hidden">
+        <div className="w-full rounded-t" style={{ height: `${pct}%`, backgroundColor: `${color}40`, borderTop: `2px solid ${color}` }}></div>
+      </div>
+      <div className="text-[12px] font-bold mt-1" style={{ color }}>+{pts}</div>
+      <div className="text-[9px] text-[#94a3b8]">/{max}</div>
+    </div>
+  );
+}
