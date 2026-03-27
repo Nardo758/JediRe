@@ -1,10 +1,8 @@
-/**
- * Reusable Date Range Filter Component
- * Provides flexible time range options (24h, week, month, year, 2+ years, custom)
- */
-
 import React from 'react';
 import { Calendar } from 'lucide-react';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 export type DateRangeOption = 
   | '24h'
@@ -45,60 +43,86 @@ export function DateRangeFilter({
   customStartDate,
   customEndDate,
   onCustomDatesChange,
-  className = '',
 }: DateRangeFilterProps) {
   return (
-    <div className={`flex flex-col gap-3 ${className}`}>
-      {/* Quick Range Buttons */}
-      <div className="flex flex-wrap gap-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {rangeOptions.map((option) => (
           <button
             key={option.value}
             onClick={() => onRangeChange(option.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              selectedRange === option.value
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
+            style={{
+              padding: '4px 12px',
+              fontSize: 10,
+              fontWeight: 600,
+              background: selectedRange === option.value ? BT.text.cyan : BT.bg.panel,
+              color: selectedRange === option.value ? BT.bg.terminal : BT.text.secondary,
+              border: selectedRange === option.value ? 'none' : `1px solid ${BT.border.subtle}`,
+              cursor: 'pointer',
+              ...mono,
+            }}
           >
             {option.label}
           </button>
         ))}
-        
+
         {showCustom && (
           <button
             onClick={() => onRangeChange('custom')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-              selectedRange === 'custom'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-            }`}
+            style={{
+              padding: '4px 12px',
+              fontSize: 10,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              background: selectedRange === 'custom' ? BT.text.cyan : BT.bg.panel,
+              color: selectedRange === 'custom' ? BT.bg.terminal : BT.text.secondary,
+              border: selectedRange === 'custom' ? 'none' : `1px solid ${BT.border.subtle}`,
+              cursor: 'pointer',
+              ...mono,
+            }}
           >
-            <Calendar className="w-4 h-4" />
+            <Calendar style={{ width: 12, height: 12 }} />
             Custom
           </button>
         )}
       </div>
 
-      {/* Custom Date Inputs */}
       {showCustom && selectedRange === 'custom' && onCustomDatesChange && (
-        <div className="flex flex-col sm:flex-row gap-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="flex-1">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+        <div style={{ display: 'flex', gap: 12, padding: 12, background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: BT.text.muted, marginBottom: 4, ...mono }}>START DATE</label>
             <input
               type="date"
               value={customStartDate || ''}
               onChange={(e) => onCustomDatesChange(e.target.value, customEndDate || '')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: 11,
+                background: BT.bg.input,
+                color: BT.text.primary,
+                border: `1px solid ${BT.border.medium}`,
+                outline: 'none',
+              }}
             />
           </div>
-          <div className="flex-1">
-            <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
+          <div style={{ flex: 1 }}>
+            <label style={{ display: 'block', fontSize: 10, fontWeight: 600, color: BT.text.muted, marginBottom: 4, ...mono }}>END DATE</label>
             <input
               type="date"
               value={customEndDate || ''}
               onChange={(e) => onCustomDatesChange(customStartDate || '', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              style={{
+                width: '100%',
+                padding: '6px 10px',
+                fontSize: 11,
+                background: BT.bg.input,
+                color: BT.text.primary,
+                border: `1px solid ${BT.border.medium}`,
+                outline: 'none',
+              }}
             />
           </div>
         </div>
@@ -107,49 +131,32 @@ export function DateRangeFilter({
   );
 }
 
-/**
- * Utility function to convert DateRangeOption to actual date range
- */
 export function getDateRangeFromOption(option: DateRangeOption, customStart?: string, customEnd?: string): { start: Date | null; end: Date } {
   const now = new Date();
   const end = new Date();
-  
+
   if (option === 'custom') {
     return {
       start: customStart ? new Date(customStart) : null,
       end: customEnd ? new Date(customEnd) : now,
     };
   }
-  
+
   if (option === 'all') {
     return { start: null, end };
   }
-  
+
   const start = new Date();
-  
+
   switch (option) {
-    case '24h':
-      start.setHours(start.getHours() - 24);
-      break;
-    case '7d':
-      start.setDate(start.getDate() - 7);
-      break;
-    case '30d':
-      start.setDate(start.getDate() - 30);
-      break;
-    case '90d':
-      start.setDate(start.getDate() - 90);
-      break;
-    case '6m':
-      start.setMonth(start.getMonth() - 6);
-      break;
-    case '1y':
-      start.setFullYear(start.getFullYear() - 1);
-      break;
-    case '2y':
-      start.setFullYear(start.getFullYear() - 2);
-      break;
+    case '24h': start.setHours(start.getHours() - 24); break;
+    case '7d': start.setDate(start.getDate() - 7); break;
+    case '30d': start.setDate(start.getDate() - 30); break;
+    case '90d': start.setDate(start.getDate() - 90); break;
+    case '6m': start.setMonth(start.getMonth() - 6); break;
+    case '1y': start.setFullYear(start.getFullYear() - 1); break;
+    case '2y': start.setFullYear(start.getFullYear() - 2); break;
   }
-  
+
   return { start, end };
 }

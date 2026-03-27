@@ -30,6 +30,7 @@ export const BT = {
     cyan:      '#00BCD4',
     orange:    '#FF8C42',
     purple:    '#A78BFA',
+    violet:    '#8B5CF6',
     teal:      '#00E5A0',
   },
   border: {

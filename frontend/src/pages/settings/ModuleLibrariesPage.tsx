@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
+import { DollarSign, BarChart3, ClipboardCheck, Activity } from 'lucide-react';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 interface ModuleLibraryStats {
   module: string;
@@ -9,8 +13,7 @@ interface ModuleLibraryStats {
 }
 
 interface ModuleCardProps {
-  module: string;
-  icon: string;
+  icon: React.ReactNode;
   title: string;
   description: string;
   fileCount: number;
@@ -18,34 +21,39 @@ interface ModuleCardProps {
   onClick: () => void;
 }
 
-function ModuleLibraryCard({ module, icon, title, description, fileCount, lastUpload, onClick }: ModuleCardProps) {
+function ModuleLibraryCard({ icon, title, description, fileCount, lastUpload, onClick }: ModuleCardProps) {
   return (
     <button
       onClick={onClick}
-      className="bg-white border-2 border-gray-200 rounded-lg p-6 hover:border-blue-500 hover:shadow-lg transition-all text-left"
+      style={{
+        width: '100%',
+        textAlign: 'left' as const,
+        padding: 20,
+        background: BT.bg.panel,
+        border: `1px solid ${BT.border.subtle}`,
+        cursor: 'pointer',
+      }}
     >
-      <div className="flex items-start gap-4">
-        <div className="text-5xl">{icon}</div>
-        <div className="flex-1">
-          <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
-          <p className="text-gray-600 text-sm mb-4">{description}</p>
-          
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-blue-600">{fileCount}</span>
-              <span className="text-gray-500">files</span>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        <div style={{ padding: 10, background: BT.bg.panelAlt, flexShrink: 0 }}>
+          {icon}
+        </div>
+        <div style={{ flex: 1 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary, marginBottom: 4 }}>{title}</h3>
+          <p style={{ fontSize: 11, color: BT.text.secondary, marginBottom: 10 }}>{description}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 11 }}>
+            <div>
+              <span style={{ fontWeight: 600, color: BT.text.cyan, ...mono }}>{fileCount}</span>
+              <span style={{ color: BT.text.muted, marginLeft: 4 }}>files</span>
             </div>
-            
             {lastUpload && (
-              <div className="flex items-center gap-2 text-gray-500">
-                <span>Last upload:</span>
-                <span className="font-medium">{lastUpload}</span>
+              <div style={{ color: BT.text.muted }}>
+                Last upload: <span style={{ fontWeight: 500, color: BT.text.secondary }}>{lastUpload}</span>
               </div>
             )}
           </div>
         </div>
-        
-        <div className="text-gray-400 text-2xl">&rarr;</div>
+        <span style={{ color: BT.text.muted, fontSize: 18, flexShrink: 0 }}>&rarr;</span>
       </div>
     </button>
   );
@@ -56,64 +64,34 @@ export function ModuleLibrariesPage() {
   const [stats, setStats] = useState<Record<string, ModuleLibraryStats>>({});
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadStats();
-  }, []);
+  useEffect(() => { loadStats(); }, []);
 
   const loadStats = async () => {
     try {
       setLoading(true);
-      
       const modules = ['financial', 'market', 'due_diligence', 'traffic'];
       const results = await Promise.all(
         modules.map(async (module) => {
           try {
             const response = await apiClient.get(`/api/v1/module-libraries/${module}/files`);
             const files = response.data.files || [];
-            
             let lastUpload = undefined;
             if (files.length > 0) {
-              const mostRecent = files[0];
-              const uploadDate = new Date(mostRecent.uploadedAt);
+              const uploadDate = new Date(files[0].uploadedAt);
               const now = new Date();
               const diffDays = Math.floor((now.getTime() - uploadDate.getTime()) / (1000 * 60 * 60 * 24));
-              
-              if (diffDays === 0) {
-                lastUpload = 'Today';
-              } else if (diffDays === 1) {
-                lastUpload = 'Yesterday';
-              } else if (diffDays < 7) {
-                lastUpload = `${diffDays} days ago`;
-              } else if (diffDays < 30) {
-                const weeks = Math.floor(diffDays / 7);
-                lastUpload = `${weeks} week${weeks > 1 ? 's' : ''} ago`;
-              } else {
-                const months = Math.floor(diffDays / 30);
-                lastUpload = `${months} month${months > 1 ? 's' : ''} ago`;
-              }
+              if (diffDays === 0) lastUpload = 'Today';
+              else if (diffDays === 1) lastUpload = 'Yesterday';
+              else if (diffDays < 7) lastUpload = `${diffDays} days ago`;
+              else if (diffDays < 30) { const w = Math.floor(diffDays / 7); lastUpload = `${w} week${w > 1 ? 's' : ''} ago`; }
+              else { const m = Math.floor(diffDays / 30); lastUpload = `${m} month${m > 1 ? 's' : ''} ago`; }
             }
-            
-            return {
-              module,
-              fileCount: files.length,
-              lastUpload,
-            };
-          } catch (error) {
-            console.error(`Failed to load stats for ${module}:`, error);
-            return {
-              module,
-              fileCount: 0,
-              lastUpload: undefined,
-            };
-          }
+            return { module, fileCount: files.length, lastUpload };
+          } catch { return { module, fileCount: 0, lastUpload: undefined }; }
         })
       );
-      
       const statsMap: Record<string, ModuleLibraryStats> = {};
-      results.forEach(stat => {
-        statsMap[stat.module] = stat;
-      });
-      
+      results.forEach(stat => { statsMap[stat.module] = stat; });
       setStats(statsMap);
     } catch (error) {
       console.error('Failed to load module library stats:', error);
@@ -122,70 +100,52 @@ export function ModuleLibrariesPage() {
     }
   };
 
-  const handleModuleClick = (module: string) => {
-    navigate(`/settings/module-libraries/${module}`);
-  };
+  const handleModuleClick = (module: string) => { navigate(`/settings/module-libraries/${module}`); };
 
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/3 mb-2"></div>
-          <div className="h-4 bg-gray-200 rounded w-2/3 mb-8"></div>
-          <div className="grid grid-cols-3 gap-6">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-48 bg-gray-200 rounded"></div>
-            ))}
-          </div>
-        </div>
+      <div style={{ padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}>
+        <div style={{ height: 32, width: 32, border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Module Libraries</h1>
-        <p className="text-gray-600">
-          Upload historical data for Opus to learn from. Build personal data libraries
-          for each module to power AI-driven pro forma generation and analysis.
+    <div style={{ maxWidth: 1200, padding: 24 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary, letterSpacing: '0.04em' }}>Module Libraries</h1>
+        <p style={{ fontSize: 12, color: BT.text.secondary, marginTop: 4 }}>
+          Upload historical data for Opus to learn from. Build personal data libraries for each module to power AI-driven pro forma generation and analysis.
         </p>
       </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
         <ModuleLibraryCard
-          module="financial"
-          icon="&#x1F4B0;"
+          icon={<DollarSign style={{ width: 24, height: 24, color: BT.text.green }} />}
           title="Financial Module"
           description="Upload previous pro formas, operating expenses, debt terms, and historical financial data"
           fileCount={stats.financial?.fileCount || 0}
           lastUpload={stats.financial?.lastUpload}
           onClick={() => handleModuleClick('financial')}
         />
-        
         <ModuleLibraryCard
-          module="market"
-          icon="&#x1F4CA;"
+          icon={<BarChart3 style={{ width: 24, height: 24, color: BT.text.cyan }} />}
           title="Market Module"
           description="Upload market reports, proprietary research, comp data, and custom market analysis"
           fileCount={stats.market?.fileCount || 0}
           lastUpload={stats.market?.lastUpload}
           onClick={() => handleModuleClick('market')}
         />
-        
         <ModuleLibraryCard
-          module="due_diligence"
-          icon="&#x2705;"
+          icon={<ClipboardCheck style={{ width: 24, height: 24, color: BT.text.amber }} />}
           title="Due Diligence Module"
           description="Upload checklists, template documents, and previous DD files for standardization"
           fileCount={stats.due_diligence?.fileCount || 0}
           lastUpload={stats.due_diligence?.lastUpload}
           onClick={() => handleModuleClick('due_diligence')}
         />
-
         <ModuleLibraryCard
-          module="traffic"
-          icon="&#x1F6A6;"
+          icon={<Activity style={{ width: 24, height: 24, color: BT.text.violet }} />}
           title="Traffic Module"
           description="Upload weekly traffic reports, leasing velocity data, and conversion benchmarks to calibrate predictions"
           fileCount={stats.traffic?.fileCount || 0}
@@ -193,21 +153,19 @@ export function ModuleLibrariesPage() {
           onClick={() => handleModuleClick('traffic')}
         />
       </div>
-      
-      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <div className="flex items-start gap-3">
-          <div className="text-3xl">&#x1F916;</div>
+
+      <div style={{ marginTop: 24, padding: 20, background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ padding: 8, background: BT.bg.active }}>
+            <BarChart3 style={{ width: 20, height: 20, color: BT.text.cyan }} />
+          </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">How Opus Learning Works</h3>
-            <p className="text-gray-700 text-sm mb-3">
-              When you upload historical data, Opus analyzes patterns, formulas, and assumptions
-              to understand your unique investment approach. The more data you provide, the more
-              accurate and personalized your AI-generated models become.
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary, marginBottom: 6 }}>How Opus Learning Works</h3>
+            <p style={{ fontSize: 12, color: BT.text.secondary, marginBottom: 6 }}>
+              When you upload historical data, Opus analyzes patterns, formulas, and assumptions to understand your unique investment approach. The more data you provide, the more accurate and personalized your AI-generated models become.
             </p>
-            <p className="text-gray-600 text-sm">
-              <strong>Example:</strong> Upload 10 previous multifamily pro formas &rarr; Opus learns
-              typical OpEx/unit, rent growth rates, cap rates, hold periods &rarr; Applies these
-              patterns to new deals automatically.
+            <p style={{ fontSize: 11, color: BT.text.muted }}>
+              <strong style={{ color: BT.text.secondary }}>Example:</strong> Upload 10 previous multifamily pro formas &rarr; Opus learns typical OpEx/unit, rent growth rates, cap rates, hold periods &rarr; Applies these patterns to new deals automatically.
             </p>
           </div>
         </div>
