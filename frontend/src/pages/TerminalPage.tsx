@@ -9,6 +9,7 @@ import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
 import F4MarketsView from "./terminal/F4MarketsView";
+import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -419,6 +420,7 @@ export default function TerminalPage() {
     if (qp && FKEY_SLUG[qp]) return qp;
     return (location.state as {fkey?:string})?.fkey || "F1";
   });
+  const [showStrategyBuilder, setShowStrategyBuilder] = useState(false);
 
   // Consume ?fkey param — clear it immediately after applying on mount
   useEffect(() => {
@@ -637,7 +639,7 @@ export default function TerminalPage() {
   },[liveDeals]);
 
   // Reset map pin selection when switching tabs
-  useEffect(()=>{ setMapSelDeal(null); },[fkey]);
+  useEffect(()=>{ setMapSelDeal(null); setShowStrategyBuilder(false); },[fkey]);
 
   useEffect(() => {
     setDealsLoading(true);
@@ -2050,28 +2052,41 @@ export default function TerminalPage() {
   );
 
   // ─── VIEW: F7 STRATEGIES ───────────────────────────────────
-  const ViewStrategies = () => (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setFkey("F7")} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
-        {[
-          {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
-          {s:"RENTAL",score:69,desc:"Long-term hold for NOI and appreciation. Best in high-barrier markets with rent growth >2.5% YoY.",best:"Miami, Orlando",c:T.text.cyan},
-          {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
-          {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
-        ].map((row,i)=>(
-          <div key={i} onClick={()=>setFkey("F7")} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-              <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
-              <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
-            </div>
-            <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.5,marginBottom:6}}>{row.desc}</div>
-            <div style={{fontSize:8,color:T.text.muted}}>Best markets: <span style={{color:T.text.amber,fontWeight:600}}>{row.best}</span></div>
+  const ViewStrategies = () => {
+    if (showStrategyBuilder) {
+      return (
+        <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+            <button onClick={()=>setShowStrategyBuilder(false)} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 10px",cursor:"pointer"}}>← BACK</button>
+            <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:1}}>STRATEGY BUILDER</span>
           </div>
-        ))}
+          <M08StrategyBuilderPage />
+        </div>
+      );
+    }
+    return (
+      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+        <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setShowStrategyBuilder(true)} style={{fontFamily:T.font.mono,fontSize:8,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
+          {[
+            {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
+            {s:"RENTAL",score:69,desc:"Long-term hold for NOI and appreciation. Best in high-barrier markets with rent growth >2.5% YoY.",best:"Miami, Orlando",c:T.text.cyan},
+            {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
+            {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
+          ].map((row,i)=>(
+            <div key={i} onClick={()=>setShowStrategyBuilder(true)} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
+                <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
+              </div>
+              <div style={{fontSize:9,color:T.text.secondary,lineHeight:1.5,marginBottom:6}}>{row.desc}</div>
+              <div style={{fontSize:8,color:T.text.muted}}>Best markets: <span style={{color:T.text.amber,fontWeight:600}}>{row.best}</span></div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // ─── VIEW: F7 REPORTS (ReportsPage) ────────────────────────
   const ViewReports = () => (
