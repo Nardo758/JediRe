@@ -593,6 +593,86 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
               </div>
             </div>
           </div>
+
+          {/* Top Submarkets — inside left column */}
+          <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden', marginTop: 12 }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '6px 12px',
+              background: BT.bg.header,
+              borderBottom: `1px solid ${BT.border.subtle}`,
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
+                Top Submarkets by JEDI Score
+              </span>
+              <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>Click to drill down</span>
+            </div>
+            <DataTable>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>JEDI</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Rent Δ</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {MOCK_TOP_SUBMARKETS.map((sub, i) => {
+                  const jediColor = scoreColor(sub.jedi);
+                  return (
+                    <tr key={i} style={{
+                      borderBottom: `1px solid ${BT.border.subtle}`,
+                      cursor: 'pointer',
+                      transition: 'background 0.2s',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = BT.bg.elevated}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ ...terminalStyles.tableCell, fontWeight: 600 }}>{sub.name}</td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
+                        <span style={{
+                          padding: '2px 8px',
+                          background: jediColor.btBg,
+                          color: jediColor.btText,
+                          fontWeight: 700,
+                          fontSize: 12,
+                        }}>
+                          {sub.jedi}
+                        </span>
+                      </td>
+                      <td style={{
+                        ...terminalStyles.tableCell,
+                        textAlign: 'right',
+                        color: BT.text.green,
+                        fontWeight: 600,
+                      }}>
+                        {sub.rentGrowth}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
+                        {sub.units.toLocaleString()}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                        <button style={{
+                          padding: '4px 12px',
+                          background: BT.text.blue,
+                          color: BT.text.primary,
+                          border: 'none',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}>
+                          View →
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </DataTable>
+          </div>
         </div>
 
         {/* RIGHT: Commentary Side Panel */}
@@ -681,85 +761,6 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
         </div>
       </div>
 
-      {/* Top Submarkets */}
-      <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          padding: '6px 12px',
-          background: BT.bg.header,
-          borderBottom: `1px solid ${BT.border.subtle}`,
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
-            Top Submarkets by JEDI Score
-          </span>
-          <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>Click to drill down</span>
-        </div>
-        <DataTable>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>JEDI</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Rent Growth</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MOCK_TOP_SUBMARKETS.map((sub, i) => {
-              const jediColor = scoreColor(sub.jedi);
-              return (
-                <tr key={i} style={{
-                  borderBottom: `1px solid ${BT.border.subtle}`,
-                  cursor: 'pointer',
-                  transition: 'background 0.2s',
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = BT.bg.elevated}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  <td style={{ ...terminalStyles.tableCell, fontWeight: 600 }}>{sub.name}</td>
-                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
-                    <span style={{
-                      padding: '2px 8px',
-                      background: jediColor.btBg,
-                      color: jediColor.btText,
-                      fontWeight: 700,
-                      fontSize: 12,
-                    }}>
-                      {sub.jedi}
-                    </span>
-                  </td>
-                  <td style={{
-                    ...terminalStyles.tableCell,
-                    textAlign: 'right',
-                    color: BT.text.green,
-                    fontWeight: 600,
-                  }}>
-                    {sub.rentGrowth}
-                  </td>
-                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
-                    {sub.units.toLocaleString()}
-                  </td>
-                  <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
-                    <button style={{
-                      padding: '4px 12px',
-                      background: BT.text.blue,
-                      color: BT.text.primary,
-                      border: 'none',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                    }}>
-                      View →
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </DataTable>
-      </div>
     </div>
   );
 };
