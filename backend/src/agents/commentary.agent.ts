@@ -8,6 +8,8 @@ import {
   StrategyType,
   STRATEGY_LABELS,
 } from '../services/module-wiring/strategy-arbitrage-engine';
+import { jediAI } from '../services/ai/aiService';
+import type { AICallContext } from '../types/dealContext';
 
 export interface CommentaryInput {
   entityType: 'msa' | 'submarket' | 'property';
@@ -15,6 +17,7 @@ export interface CommentaryInput {
   entityName?: string;
   signals?: StrategySignalInputs;
   forceRefresh?: boolean;
+  userId?: string;
 }
 
 export interface CommentarySection {
@@ -97,13 +100,23 @@ export class CommentaryAgent {
 
     const jediScore = this.computeJediScore(signals);
 
+    let marketNarrative: CommentarySection;
+    try {
+      marketNarrative = await this.generateAINarrative(
+        entityName, input.entityType, signals, arbitrageResult, jediScore, input.userId,
+      );
+    } catch (err) {
+      logger.warn('Commentary Agent: AI generation failed, using template fallback', { error: err });
+      marketNarrative = this.generateMarketNarrative(entityName, input.entityType, signals, arbitrageResult);
+    }
+
     const result: CommentaryResult = {
       requestId,
       entityType: input.entityType,
       entityId: input.entityId,
       entityName,
       timestamp: new Date().toISOString(),
-      marketNarrative: this.generateMarketNarrative(entityName, input.entityType, signals, arbitrageResult),
+      marketNarrative,
       investmentThesis: this.generateInvestmentThesis(entityName, input.entityType, signals, arbitrageResult),
       signalCommentary: this.generateSignalCommentary(entityName, signals),
       riskOpportunity: this.generateRiskOpportunity(entityName, input.entityType, signals),
@@ -133,9 +146,59 @@ export class CommentaryAgent {
       elapsed: `${elapsed}ms`,
       jediScore,
       recommendedStrategy: arbitrageResult.recommended,
+      aiGenerated: marketNarrative !== this.generateMarketNarrative(entityName, input.entityType, signals, arbitrageResult),
     });
 
     return result;
+  }
+
+  private async generateAINarrative(
+    name: string,
+    entityType: string,
+    signals: StrategySignalInputs,
+    arb: ArbitrageResult,
+    jediScore: number,
+    userId?: string,
+  ): Promise<CommentarySection> {
+    const context: AICallContext = {
+      userId: userId || 'system',
+      agentId: 'commentary',
+      operationType: 'commentary_generation',
+      dealId: undefined,
+    };
+
+    const systemPrompt = `You are a senior multifamily real estate analyst writing institutional-grade market commentary for a Bloomberg Terminal-style platform called JediRE. Write in a professional, data-driven tone. Be concise and specific. Output only the narrative text, no headers or formatting.`;
+
+    const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
+    const recommended = STRATEGY_LABELS[arb.recommended];
+
+    const userMessage = `Write a 2-3 sentence market narrative for ${name} (${levelLabel} level).
+
+Signal scores (0-100): Demand=${signals.demandScore}, Supply=${signals.supplyScore}, Momentum=${signals.momentumScore}, Position=${signals.positionScore}, Risk=${signals.riskScore}
+JEDI Composite Score: ${jediScore}
+Recommended Strategy: ${recommended} (score: ${arb.recommendedScore.toFixed(0)})
+Arbitrage Flag: ${arb.arbitrageFlag ? `Yes, ${arb.arbitrageDelta.toFixed(0)}pt spread` : 'No'}
+Strategy Rankings: ${arb.strategies.map(s => `${s.label}: ${s.score.toFixed(0)}`).join(', ')}
+
+Focus on demand dynamics, supply pipeline impact, and investment positioning. Reference specific signal strengths/weaknesses.`;
+
+    const response = await jediAI.generate(
+      context,
+      systemPrompt,
+      [{ role: 'user', content: userMessage }],
+      { maxTokens: 256, temperature: 0.3 },
+    );
+
+    const content = response.content
+      .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+      .map(block => block.text)
+      .join('');
+
+    const sentiment: 'bullish' | 'neutral' | 'bearish' =
+      signals.demandScore >= 60 && signals.momentumScore >= 55 ? 'bullish' :
+      signals.demandScore < 45 || signals.momentumScore < 40 ? 'bearish' : 'neutral';
+
+    return { title: 'Market Narrative', content, sentiment };
   }
 
   private computeJediScore(signals: StrategySignalInputs): number {
