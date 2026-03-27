@@ -6,17 +6,31 @@
 import React from 'react';
 import { BT, TERMINAL_TABS, TabKey } from './theme';
 
-interface TerminalTabsProps {
-  activeTab: TabKey;
-  onTabChange: (tab: TabKey) => void;
+// Generic tab definition for custom tab sets
+export interface TabDef {
+  key: string;
+  label: string;
+  num?: number;
+  shortcut?: string;
+  desc?: string;
+}
+
+interface TerminalTabsProps<T extends string = TabKey> {
+  activeTab: T;
+  onTabChange: (tab: T) => void;
+  tabs?: TabDef[];
   searchPlaceholder?: string;
 }
 
-export const TerminalTabs: React.FC<TerminalTabsProps> = ({
+export const TerminalTabs = <T extends string = TabKey>({
   activeTab,
   onTabChange,
+  tabs,
   searchPlaceholder = 'Type ticker to search',
-}) => {
+}: TerminalTabsProps<T>) => {
+  // Use custom tabs or default TERMINAL_TABS
+  const tabList: TabDef[] = tabs || TERMINAL_TABS.map((t, i) => ({ ...t, num: t.num ?? i }));
+
   return (
     <div style={{
       display: 'flex',
@@ -29,12 +43,13 @@ export const TerminalTabs: React.FC<TerminalTabsProps> = ({
     }}>
       {/* Tabs */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        {TERMINAL_TABS.map((tab) => {
+        {tabList.map((tab, idx) => {
           const isActive = activeTab === tab.key;
+          const tabNum = tab.num ?? tab.shortcut ?? idx;
           return (
             <button
               key={tab.key}
-              onClick={() => onTabChange(tab.key)}
+              onClick={() => onTabChange(tab.key as T)}
               title={tab.desc}
               style={{
                 display: 'flex',
@@ -66,7 +81,7 @@ export const TerminalTabs: React.FC<TerminalTabsProps> = ({
                 color: isActive ? BT.text.amber : BT.text.dim,
                 fontFamily: "'JetBrains Mono', monospace",
               }}>
-                [{tab.num}]
+                [{tabNum}]
               </span>
               <span style={{
                 fontSize: 11,
@@ -93,12 +108,15 @@ export const TerminalTabs: React.FC<TerminalTabsProps> = ({
   );
 };
 
-// Keyboard navigation hook
-export const useTabKeyboard = (
-  activeTab: TabKey,
-  onTabChange: (tab: TabKey) => void
+// Keyboard navigation hook - works with any tab set
+export const useTabKeyboard = <T extends string>(
+  activeTab: T,
+  onTabChange: (tab: T) => void,
+  tabs?: TabDef[]
 ) => {
   React.useEffect(() => {
+    const tabList = tabs || TERMINAL_TABS;
+    
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle if not typing in an input
       if (
@@ -109,17 +127,17 @@ export const useTabKeyboard = (
       }
 
       const num = parseInt(e.key);
-      if (!isNaN(num) && num >= 0 && num <= 7) {
-        const tab = TERMINAL_TABS.find(t => t.num === num);
+      if (!isNaN(num) && num >= 0 && num <= 9) {
+        const tab = tabList.find((t, i) => (t.num ?? t.shortcut ?? i) === num.toString() || (t.num ?? i) === num);
         if (tab) {
-          onTabChange(tab.key);
+          onTabChange(tab.key as T);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTab, onTabChange]);
+  }, [activeTab, onTabChange, tabs]);
 };
 
 export default TerminalTabs;
