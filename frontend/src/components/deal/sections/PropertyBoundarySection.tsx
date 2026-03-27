@@ -914,13 +914,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   <div>
                     <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Development Standards</p>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="bg-gray-50 rounded p-2">
+                      <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
                         <p className="text-xs text-gray-500">Max Density</p>
                         <p className="font-semibold text-gray-900">
                           {zoningDetail.max_density_per_acre || zoningDetail.max_units_per_acre || '--'} units/acre
                         </p>
                       </div>
-                      <div className="bg-gray-50 rounded p-2">
+                      <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
                         <p className="text-xs text-gray-500">
                           {zoningDetail.residential_far ? 'FAR (Split)' : 'Max FAR'}
                         </p>
@@ -935,13 +935,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                           <p className="font-semibold text-gray-900">{zoningDetail.max_far || '--'}</p>
                         )}
                       </div>
-                      <div className="bg-gray-50 rounded p-2">
+                      <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
                         <p className="text-xs text-gray-500">Max Height</p>
                         <p className="font-semibold text-gray-900">
                           {zoningDetail.max_building_height_ft || zoningDetail.max_height_feet || '--'} ft
                         </p>
                       </div>
-                      <div className="bg-gray-50 rounded p-2">
+                      <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
                         <p className="text-xs text-gray-500">Max Stories</p>
                         <p className="font-semibold text-gray-900">{zoningDetail.max_stories || '--'}</p>
                       </div>
@@ -949,14 +949,14 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                         const raw = parseFloat(zoningDetail.max_lot_coverage || zoningDetail.max_lot_coverage_percent);
                         const pct = raw <= 1 ? raw * 100 : raw;
                         return (
-                          <div className="bg-gray-50 rounded p-2">
+                          <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
                             <p className="text-xs text-gray-500">Lot Coverage</p>
                             <p className="font-semibold text-gray-900">{pct.toFixed(0)}%</p>
                           </div>
                         );
                       })()}
                       {zoningDetail.min_parking_per_unit != null && (
-                        <div className="bg-gray-50 rounded p-2">
+                        <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
                           <p className="text-xs text-gray-500">Parking Ratio</p>
                           <p className="font-semibold text-gray-900">{zoningDetail.min_parking_per_unit} per unit</p>
                         </div>
@@ -969,15 +969,15 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                     <div>
                       <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Required Setbacks</p>
                       <div className="grid grid-cols-3 gap-2 text-sm">
-                        <div className="bg-gray-50 rounded p-2 text-center">
+                        <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2 text-center">
                           <p className="text-xs text-gray-500">Front</p>
                           <p className="font-semibold">{zoningDetail.min_front_setback_ft ?? zoningDetail.setback_front_ft ?? '--'} ft</p>
                         </div>
-                        <div className="bg-gray-50 rounded p-2 text-center">
+                        <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2 text-center">
                           <p className="text-xs text-gray-500">Side</p>
                           <p className="font-semibold">{zoningDetail.min_side_setback_ft ?? zoningDetail.setback_side_ft ?? '--'} ft</p>
                         </div>
-                        <div className="bg-gray-50 rounded p-2 text-center">
+                        <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2 text-center">
                           <p className="text-xs text-gray-500">Rear</p>
                           <p className="font-semibold">{zoningDetail.min_rear_setback_ft ?? zoningDetail.setback_rear_ft ?? '--'} ft</p>
                         </div>
@@ -1094,7 +1094,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
             {/* Property Info */}
             <div className="mb-3 pb-3 border-b border-gray-100">
-              <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label }} mb-1">Property Address</p>
+              <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4 }}>Property Address</p>
               <p className="text-sm font-medium text-gray-900">
                 {deal?.address || deal?.propertyAddress || deal?.property_address || detectedLocation?.address || 'Not specified'}
               </p>
@@ -1105,7 +1105,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
             {/* Municipality & Zoning */}
             <div className="mb-3 pb-3 border-b border-gray-100">
-              <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label }} mb-1">Municipality</p>
+              <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4 }}>Municipality</p>
               {detectedLocation ? (
                 <div className="mb-2">
                   <p className="text-sm font-medium text-gray-900">{detectedLocation.city}, {detectedLocation.state}</p>
@@ -1126,7 +1126,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 <p className="text-sm text-gray-400 mb-2">{hasBoundary ? 'Detecting...' : 'Draw boundary to detect'}</p>
               )}
 
-              <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label }} mb-1 mt-2">Zoning Designation</p>
+              <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 4, marginTop: 8 }}>Zoning Designation</p>
               {zoningLoading ? (
                 <p className="text-sm text-gray-400 italic">Looking up zoning...</p>
               ) : zoningInfo ? (
