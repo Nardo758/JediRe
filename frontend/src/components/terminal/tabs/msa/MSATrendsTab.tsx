@@ -4,11 +4,13 @@
  * Features: Correlation Analysis, Supply Wave, Rent by Vintage, JEDI History, Affordability
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { CardSection, DataTable } from '../../TerminalLayouts';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SUPPLY_WAVE_STYLES, SupplyWavePhase } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSATrendsTabProps {
   msaId: string;
@@ -115,8 +117,10 @@ const SUPPLY_WAVE_PHASES: { market: string; phase: SupplyWavePhase; detail: stri
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('10yr');
-
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   // Calculate max for supply wave chart
   const maxSupply = Math.max(...SUPPLY_WAVE_DATA.map(d => d.confirmed + d.capacity));
@@ -556,6 +560,12 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           </div>
         </div>
       </div>
+
+      {commentary?.signalCommentary?.momentum && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+        </div>
+      )}
     </div>
   );
 };

@@ -284,7 +284,7 @@ export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarke
           )}
           {commentary.signalCommentary?.momentum && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signal="momentum" commentary={commentary.signalCommentary.momentum} />
+              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
             </div>
           )}
         </div>

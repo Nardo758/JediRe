@@ -4,10 +4,12 @@
  * Features: Full property details, filters, heatmap mode, export (CSV/Excel/Clipboard)
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor, BT_SIGNAL_COLORS } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSAPropertiesTabProps {
   msaId: string;
@@ -89,6 +91,10 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [searchQuery, setSearchQuery] = useState('');
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [classFilter, setClassFilter] = useState('All');
+  const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   const [heatmapMode, setHeatmapMode] = useState('none');
   const [sortKey, setSortKey] = useState<string>('jedi');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -96,8 +102,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
-
-  const msaName = msa?.name || msaId || 'Atlanta';
 
   // Get unique values for filters
   const submarkets = ['All', ...Array.from(new Set(MOCK_PROPERTIES.map(p => p.submarket)))];
@@ -577,6 +581,12 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
           Export includes all filtered properties
         </div>
       </div>
+
+      {commentary?.signalCommentary?.demand && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+        </div>
+      )}
     </div>
   );
 };

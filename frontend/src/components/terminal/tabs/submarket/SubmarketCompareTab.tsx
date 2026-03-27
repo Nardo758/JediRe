@@ -2,10 +2,12 @@
  * SubmarketCompareTab - Peer submarket comparison
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { PeerContext } from '../../commentary';
 
 interface SubmarketCompareTabProps {
   submarketId: string;
@@ -26,6 +28,9 @@ interface PeerSubmarket {
 }
 
 export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submarketId, submarket }) => {
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const [sortBy, setSortBy] = useState<string>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -236,6 +241,12 @@ export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submar
         <span><span style={{ color: BT.text.amber }}>●</span> Current submarket</span>
         <span><span style={{ color: BT.text.red }}>●</span> Worse than {submarket.name}</span>
       </div>
+
+      {commentary?.peerContext && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <PeerContext peerContext={commentary.peerContext} />
+        </div>
+      )}
     </div>
   );
 };

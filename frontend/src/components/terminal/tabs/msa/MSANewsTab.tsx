@@ -2,11 +2,13 @@
  * MSANewsTab - Metro market news, alerts, sentiment
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Newspaper, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalSection } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSANewsTabProps {
   msaId: string;
@@ -34,8 +36,10 @@ interface MarketAlert {
 export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
-
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   const newsItems: NewsItem[] = useMemo(() => [
     { id: '1', headline: `${msaName} Named Top 5 Market for Multifamily Investment in 2025`, source: 'NMHC', timestamp: '2h ago', category: 'market', impact: 'positive', summary: 'Strong job growth and relative affordability drive institutional capital to the metro.' },
@@ -239,6 +243,12 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
           ))}
         </div>
       </div>
+
+      {commentary?.signalCommentary?.risk && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.risk} />
+        </div>
+      )}
     </div>
   );
 };

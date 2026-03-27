@@ -4,10 +4,12 @@
  * Features: PCS score with 5 components, filters, expandable rows
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { PCSComponents, calculatePCS, scoreColor } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSAPowerRankingsTabProps {
   msaId: string;
@@ -80,11 +82,13 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
   const [classFilter, setClassFilter] = useState('All');
   const [vintageFilter, setVintageFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
+  const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'rank' | 'pcsScore' | 'movement'>('rank');
   const [sortAsc, setSortAsc] = useState(true);
-
-  const msaName = msa?.name || msaId || 'Atlanta';
 
   // Filter and sort
   const filteredRankings = useMemo(() => {
@@ -480,6 +484,12 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
           Updated: Real-time via Traffic Engine
         </div>
       </div>
+
+      {commentary?.signalCommentary?.position && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+        </div>
+      )}
     </div>
   );
 };

@@ -4,7 +4,7 @@
  * Features: Pipeline Kanban, Quadrant filter, Featured deals, Lifecycle phases
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { CardSection, DataTable } from '../../TerminalLayouts';
 import {
@@ -16,6 +16,8 @@ import {
   TrafficQualification,
   scoreColor,
 } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface MSADealsTabProps {
   msaId: string;
@@ -111,8 +113,10 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   const [activeQuadrants, setActiveQuadrants] = useState<Set<Quadrant>>(new Set());
   const [expandedPipeline, setExpandedPipeline] = useState(false);
   const [showPcsBreakdown, setShowPcsBreakdown] = useState(false);
-
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   const toggleQuadrant = (q: Quadrant) => {
     setActiveQuadrants(prev => {
@@ -534,6 +538,12 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
           </tbody>
         </DataTable>
       </CardSection>
+
+      {commentary?.signalCommentary?.momentum && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+        </div>
+      )}
     </div>
   );
 };

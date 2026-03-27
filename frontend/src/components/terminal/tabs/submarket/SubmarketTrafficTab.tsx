@@ -4,9 +4,11 @@
  * Features: Traffic vitals, walk-in patterns, quadrant analysis, review sentiment
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { BT_SIGNAL_COLORS, scoreColor } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface SubmarketTrafficTabProps {
   submarketId: string;
@@ -86,9 +88,11 @@ const TOP_PROPERTIES = [
 ];
 
 export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submarketId, submarket }) => {
-  const [walkInView, setWalkInView] = useState<'hourly' | 'daily'>('daily');
-
   const submarketName = submarket?.name || submarketId || 'Midtown';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarketName); }, [submarketId, submarketName]);
+  const [walkInView, setWalkInView] = useState<'hourly' | 'daily'>('daily');
 
   const walkInData = walkInView === 'hourly' 
     ? WALKIN_HOURLY.map(d => ({ label: d.hour, value: d.count }))
@@ -494,6 +498,12 @@ export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submar
           Data: Traffic Engine T-02/T-03 + Google Reviews M-10
         </div>
       </div>
+
+      {commentary?.signalCommentary?.demand && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+        </div>
+      )}
     </div>
   );
 };

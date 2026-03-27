@@ -270,7 +270,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
       {commentary?.signalCommentary?.position && (
         <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signal="position" commentary={commentary.signalCommentary.position} />
+          <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
         </div>
       )}
     </div>

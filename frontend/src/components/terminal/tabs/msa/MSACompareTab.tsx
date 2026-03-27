@@ -4,10 +4,12 @@
  * Features: 20+ metrics across 6 categories, signal groups, heat mapping
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SignalGroupId } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { PeerContext } from '../../commentary';
 
 interface MSACompareTabProps {
   msaId: string;
@@ -75,6 +77,10 @@ const METRIC_SECTIONS: { label: string; groupId: SignalGroupId; rows: string[]; 
 export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
   const [markets, setMarkets] = useState(MARKETS);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   const selectedMarkets = markets.filter(m => m.selected);
 
@@ -346,6 +352,12 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
           <span style={{ color: BT.text.muted }}>· Click section to collapse</span>
         </div>
       </div>
+
+      {commentary?.peerContext && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <PeerContext peerContext={commentary.peerContext} />
+        </div>
+      )}
     </div>
   );
 };

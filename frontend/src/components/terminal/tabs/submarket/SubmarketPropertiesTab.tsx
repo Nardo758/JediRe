@@ -3,10 +3,12 @@
  * Click a property row to navigate to PropertyTerminal
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Building2, Search, ArrowUpDown, ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface SubmarketPropertiesTabProps {
   submarketId: string;
@@ -33,8 +35,8 @@ interface Property {
 
 type SortKey = 'name' | 'units' | 'avgRent' | 'occupancy' | 'yearBuilt' | 'capRate';
 
-export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({ 
-  submarketId, 
+export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
+  submarketId,
   submarket,
   onPropertySelect,
 }) => {
@@ -42,6 +44,9 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
   const [sortBy, setSortBy] = useState<SortKey>('units');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [classFilter, setClassFilter] = useState<'all' | 'A' | 'B' | 'C'>('all');
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
 
   // Mock property data
   const properties: Property[] = useMemo(() => [
@@ -358,6 +363,12 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
       }}>
         Showing {filteredProperties.length} of {properties.length} properties • Click a row to view details
       </div>
+
+      {commentary?.signalCommentary?.demand && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+        </div>
+      )}
     </div>
   );
 };

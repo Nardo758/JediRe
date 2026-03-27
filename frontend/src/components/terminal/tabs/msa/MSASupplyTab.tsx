@@ -250,7 +250,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
           {commentary.signalCommentary?.supply && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
               <SignalCommentary
-                signal="supply"
+                signalKey="supply"
                 commentary={commentary.signalCommentary.supply}
               />
             </div>

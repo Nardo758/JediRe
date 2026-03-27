@@ -4,7 +4,7 @@
  * Features: 14-column matrix, Dev Capacity signals, Compare mode, Signal sections
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { 
@@ -14,6 +14,8 @@ import {
   scoreColor,
   ALL_OUTPUTS 
 } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { PeerContext } from '../../commentary';
 
 interface MSASubmarketsTabProps {
   msaId: string;
@@ -158,8 +160,10 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
   const [compareSelection, setCompareSelection] = useState<string[]>([]);
   const [sortCol, setSortCol] = useState('jedi');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   // Sort submarkets
   const sortedSubmarkets = useMemo(() => {
@@ -542,6 +546,12 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
           </span>
         </div>
       </div>
+
+      {commentary?.peerContext && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <PeerContext peerContext={commentary.peerContext} />
+        </div>
+      )}
     </div>
   );
 };

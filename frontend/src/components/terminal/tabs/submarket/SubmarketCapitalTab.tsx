@@ -2,10 +2,12 @@
  * SubmarketCapitalTab - Debt market activity, recent transactions
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { DollarSign, TrendingUp, Building2, Calendar } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface SubmarketCapitalTabProps {
   submarketId: string;
@@ -25,6 +27,9 @@ interface Transaction {
 }
 
 export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submarketId, submarket }) => {
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const transactions: Transaction[] = useMemo(() => [
     { id: '1', property: 'The Metropolitan at Phipps', units: 320, salePrice: 85000000, pricePerUnit: 265625, capRate: 4.8, buyer: 'Blackstone', seller: 'AvalonBay', date: '2025-02' },
     { id: '2', property: 'Alexan Buckhead', units: 290, salePrice: 62000000, pricePerUnit: 213793, capRate: 5.5, buyer: 'Greystar', seller: 'Trammell Crow', date: '2024-11' },
@@ -137,6 +142,12 @@ export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submar
           </div>
         </div>
       </div>
+
+      {commentary?.signalCommentary?.position && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+        </div>
+      )}
     </div>
   );
 };

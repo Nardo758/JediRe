@@ -2,10 +2,12 @@
  * SubmarketNewsTab - Local market news, development announcements
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Newspaper, TrendingUp, TrendingDown, Building2, Briefcase, Clock } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface SubmarketNewsTabProps {
   submarketId: string;
@@ -23,6 +25,9 @@ interface NewsItem {
 }
 
 export const SubmarketNewsTab: React.FC<SubmarketNewsTabProps> = ({ submarketId, submarket }) => {
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
 
   const newsItems: NewsItem[] = useMemo(() => [
@@ -177,6 +182,12 @@ export const SubmarketNewsTab: React.FC<SubmarketNewsTabProps> = ({ submarketId,
           ))}
         </div>
       </div>
+
+      {commentary?.signalCommentary?.risk && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.risk} />
+        </div>
+      )}
     </div>
   );
 };

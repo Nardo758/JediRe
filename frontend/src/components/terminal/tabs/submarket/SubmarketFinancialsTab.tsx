@@ -2,11 +2,13 @@
  * SubmarketFinancialsTab - Avg rents, cap rates, NOI by property class
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { DollarSign, TrendingUp, Building2, BarChart3 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { SubmarketData } from '../../SubmarketTerminal';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { SignalCommentary } from '../../commentary';
 
 interface SubmarketFinancialsTabProps {
   submarketId: string;
@@ -14,6 +16,9 @@ interface SubmarketFinancialsTabProps {
 }
 
 export const SubmarketFinancialsTab: React.FC<SubmarketFinancialsTabProps> = ({ submarketId, submarket }) => {
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
+  useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   // Rent by class data
   const rentByClass = useMemo(() => [
     { class: 'A', avgRent: 2180, rentPSF: 2.52, growth: 5.2, occupancy: 94.8 },
@@ -127,6 +132,12 @@ export const SubmarketFinancialsTab: React.FC<SubmarketFinancialsTabProps> = ({ 
           </tbody>
         </table>
       </div>
+
+      {commentary?.signalCommentary?.supply && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+        </div>
+      )}
     </div>
   );
 };

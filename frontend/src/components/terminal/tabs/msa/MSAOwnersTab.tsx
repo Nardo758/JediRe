@@ -4,10 +4,12 @@
  * Features: Owner rankings, portfolios, motivation signals, land positions
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor } from '../../signalGroups';
+import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { RiskOpportunity } from '../../commentary';
 
 interface MSAOwnersTabProps {
   msaId: string;
@@ -168,8 +170,10 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
   const [signalFilter, setSignalFilter] = useState<string>('All');
   const [sortKey, setSortKey] = useState<'propertyCount' | 'totalUnits' | 'signalConfidence'>('signalConfidence');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-
   const msaName = msa?.name || msaId || 'Atlanta';
+  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const commentary = getCommentary('msa', msaId);
+  useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   // Filter and sort owners
   const filteredOwners = useMemo(() => {
@@ -557,6 +561,12 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
           Land positions from DC-06 Development Probability ★
         </div>
       </div>
+
+      {commentary?.riskOpportunity && (
+        <div style={{ ...terminalStyles.card, padding: 16 }}>
+          <RiskOpportunity riskOpportunity={commentary.riskOpportunity} />
+        </div>
+      )}
     </div>
   );
 };

@@ -249,7 +249,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
 
       {commentary?.signalCommentary?.demand && (
         <div style={{ ...terminalStyles.card, padding: 16 }}>
-          <SignalCommentary signal="demand" commentary={commentary.signalCommentary.demand} />
+          <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
         </div>
       )}
     </div>
