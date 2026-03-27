@@ -1133,14 +1133,14 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 <p className="text-sm italic" style={{ color: BT.text.secondary }}>Looking up zoning...</p>
               ) : zoningInfo ? (
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{zoningInfo.code}</p>
-                  <p className="text-sm text-gray-600">{zoningInfo.description}</p>
+                  <p className="text-sm font-medium" style={{ color: BT.text.primary }}>{zoningInfo.code}</p>
+                  <p className="text-sm" style={{ color: BT.text.secondary }}>{zoningInfo.description}</p>
                   {parcelSource && (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs mt-1" style={{ color: BT.text.secondary }}>
                       {parcelSource.planningUrl ? (
-                        <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:underline">Planning & Zoning</a>
+                        <a href={parcelSource.planningUrl} target="_blank" rel="noopener noreferrer" style={{ color: BT.text.green }}>Planning & Zoning</a>
                       ) : parcelSource.url ? (
-                        <a href={parcelSource.url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{parcelSource.name}</a>
+                        <a href={parcelSource.url} target="_blank" rel="noopener noreferrer" style={{ color: BT.text.cyan }}>{ parcelSource.name}</a>
                       ) : (
                         <span>{parcelSource.name}</span>
                       )}
@@ -1148,7 +1148,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   )}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">{hasBoundary ? 'No zoning data available' : 'Draw boundary to lookup'}</p>
+                <p className="text-sm" style={{ color: BT.text.secondary }}>{hasBoundary ? 'No zoning data available' : 'Draw boundary to lookup'}</p>
               )}
             </div>
 
@@ -1157,27 +1157,27 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Site Metrics</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Parcel Area:</span>
-                  <span className="font-medium text-gray-900">
+                  <span style={{ color: BT.text.secondary }}>Parcel Area:</span>
+                  <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                     {formatNumber(boundary.parcelArea)} acres
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Square Feet:</span>
-                  <span className="font-medium text-gray-900">
+                  <span style={{ color: BT.text.secondary }}>Square Feet:</span>
+                  <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                     {formatNumber(boundary.parcelAreaSF, 0)} SF
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Perimeter:</span>
-                  <span className="font-medium text-gray-900">
+                  <span style={{ color: BT.text.secondary }}>Perimeter:</span>
+                  <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                     {formatNumber(boundary.perimeter, 0)} feet
                   </span>
                 </div>
                 {boundary.centroid && (
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Centroid:</span>
-                    <span className="font-medium text-gray-900 text-xs">
+                    <span style={{ color: BT.text.secondary }}>Centroid:</span>
+                    <span className="text-xs" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                       {boundary.centroid[1]?.toFixed(5)}, {boundary.centroid[0]?.toFixed(5)}
                     </span>
                   </div>
@@ -1190,20 +1190,20 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
               <p className="text-xs uppercase tracking-wide" style={{ color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>Buildable Area</p>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">After Setbacks:</span>
-                  <span className="font-medium text-gray-900">
+                  <span style={{ color: BT.text.secondary }}>After Setbacks:</span>
+                  <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                     {formatNumber(boundary.buildableArea)} acres
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Square Feet:</span>
-                  <span className="font-medium text-gray-900">
+                  <span style={{ color: BT.text.secondary }}>Square Feet:</span>
+                  <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                     {formatNumber(boundary.buildableAreaSF, 0)} SF
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Utilization:</span>
-                  <span className="font-medium text-gray-900">
+                  <span style={{ color: BT.text.secondary }}>Utilization:</span>
+                  <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>
                     {formatNumber((boundary.buildablePercentage || 0) * 100, 0)}%
                   </span>
                 </div>
@@ -1215,13 +1215,13 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                   return (
                     <>
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Lot Coverage:</span>
-                        <span className="font-medium text-gray-900">{coveragePct.toFixed(0)}%</span>
+                        <span style={{ color: BT.text.secondary }}>Lot Coverage:</span>
+                        <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{coveragePct.toFixed(0)}%</span>
                       </div>
                       {maxFootprint != null && (
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Max Footprint:</span>
-                          <span className="font-medium text-gray-900">{maxFootprint.toLocaleString()} SF</span>
+                          <span style={{ color: BT.text.secondary }}>Max Footprint:</span>
+                          <span style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{maxFootprint.toLocaleString()} SF</span>
                         </div>
                       )}
                     </>
@@ -1229,7 +1229,7 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                 })()}
               </div>
               {hasBoundary && boundary.buildablePercentage && boundary.buildablePercentage < 0.7 && (
-                <div className="mt-2 p-2 bg-yellow-50 rounded text-xs text-yellow-800">
+                <div className="mt-2 p-2 text-xs" style={{ background: `${BT.text.amber}11`, color: BT.text.amber, borderRadius: 0 }}>
                   <AlertCircle size={14} className="inline mr-1" />
                   Low buildable area due to large setbacks
                 </div>
@@ -1238,16 +1238,16 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
           </div>
 
           {/* Setbacks */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Applied Setbacks</h3>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Applied Setbacks</h3>
             {zoningDetail && (zoningDetail.min_front_setback_ft != null || zoningDetail.setback_front_ft != null) && (
-              <p className="text-xs text-gray-500 mb-2">From {zoningDetail.zoning_code || zoningDetail.district_code} zoning code</p>
+              <p className="text-xs mb-2" style={{ color: BT.text.secondary }}>From {zoningDetail.zoning_code || zoningDetail.district_code} zoning code</p>
             )}
             <div className="space-y-2">
               {Object.entries(boundary.setbacks).map(([key, value]) => (
-                <div key={key} className="flex justify-between items-center py-1.5 border-b last:border-0">
-                  <span className="text-sm text-gray-600 capitalize">{key} Setback</span>
-                  <span className="text-sm font-semibold text-gray-900">{value} ft</span>
+                <div key={key} className="flex justify-between items-center py-1.5 last:border-0" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <span className="text-sm capitalize" style={{ color: BT.text.secondary }}>{key} Setback</span>
+                  <span className="text-sm font-semibold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{value} ft</span>
                 </div>
               ))}
             </div>
@@ -1255,9 +1255,9 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
 
           {/* Next Steps */}
           {hasBoundary && (
-            <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-              <h3 className="text-sm font-semibold text-blue-900 mb-2">Next Steps</h3>
-              <ul className="space-y-1 text-sm text-blue-800">
+            <div className="p-4" style={{ background: `${BT.text.cyan}11`, borderRadius: 0, border: `1px solid ${BT.text.cyan}33` }}>
+              <h3 className="text-sm font-semibold mb-2" style={{ color: BT.text.cyan, fontFamily: BT.font.display }}>Next Steps</h3>
+              <ul className="space-y-1 text-sm" style={{ color: BT.text.cyan }}>
                 <li>✓ Boundary defined</li>
                 <li>→ View Site Intelligence</li>
                 <li>→ Analyze Zoning Capacity</li>
