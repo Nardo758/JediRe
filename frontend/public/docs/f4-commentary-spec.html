@@ -540,9 +540,13 @@ ol li::before {
   padding: 5px 8px;
 }
 
+.print-header, .print-footer {
+  display: none;
+}
+
 /* PRINT STYLES */
 @media print {
-  body { font-size: 10pt; }
+  body { font-size: 10pt; padding-top: 40px; padding-bottom: 30px; }
   .cover-page { height: auto; min-height: 100vh; }
   .page-container { max-width: none; padding: 0; }
   .content { padding: 0; }
@@ -551,10 +555,47 @@ ol li::before {
   h1, h2, h3 { page-break-after: avoid; }
   table, pre, .callout, .flow-diagram { page-break-inside: avoid; }
   .page-header, .page-footer { display: none; }
+  .print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 8px 0;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 8pt;
+    color: #1E3A5F;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    background: #fff;
+    z-index: 9999;
+  }
+  .print-footer {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding: 8px 0;
+    border-top: 1px solid #e0e0e0;
+    font-size: 8pt;
+    color: #999;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    background: #fff;
+    z-index: 9999;
+  }
 }
 </style>
 </head>
 <body>
+
+<div class="print-header">
+  <span>F4 Markets Tab — Commentary Enhancement Specification</span>
+  <span>JEDI RE &bull; Internal Technical Specification</span>
+</div>
+<div class="print-footer">JEDI RE — Confidential &bull; Version 1.0 &bull; March 2026</div>
 
 <!-- COVER PAGE -->
 <div class="cover-page">
