@@ -184,6 +184,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("f4-landing");
   const [subTab, setSubTab] = useState<SubTab>("msa-detail");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
+  const [drillOriginTab, setDrillOriginTab] = useState<PrimaryTab>("all-msas");
   const [drillMsaId, setDrillMsaId] = useState("");
   const [drillMsaName, setDrillMsaName] = useState("");
   const [drillSubmarketId, setDrillSubmarketId] = useState("");
@@ -243,6 +244,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
 
   const handleDrillToMsa = (marketId: string) => {
     const mkt = ALL_MSAS.find(m => m.id === marketId) || TRACKED_MARKETS.find(m => m.id === marketId);
+    setDrillOriginTab(primaryTab);
     setDrillMsaId(marketId);
     setDrillMsaName(mkt?.msa || marketId);
     setLevel("msa-terminal");
@@ -274,14 +276,16 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     m.name.toLowerCase().includes(marketSearch.toLowerCase())
   );
 
+  const originLabel = drillOriginTab === "all-msas" ? "ALL MSAs" : "F4 LANDING";
+
   if (level === "msa-terminal") {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => setLevel("landing")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+          <button onClick={() => { setPrimaryTab(drillOriginTab); setLevel("landing"); }} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillMsaName.toUpperCase()}</span>
         </div>
@@ -304,7 +308,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
@@ -330,7 +334,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
-          <span style={{ ...mono, fontSize: 8, color: C.muted }}>ALL MSAs</span>
+          <span style={{ ...mono, fontSize: 8, color: C.muted }}>{originLabel}</span>
           <span style={{ ...mono, fontSize: 8, color: C.muted }}>›</span>
           <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
             {drillMsaName.toUpperCase()}
@@ -744,7 +748,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: C.muted, ...mono }}>Double-click row = drill down · Click column header = sort · * = subject property · ★ = watchlist</span>
+        <span style={{ fontSize: 8, color: C.muted, ...mono }}>{primaryTab === "all-msas" ? "Click" : "Double-click"} row = drill down · Click column header = sort · * = subject property · ★ = watchlist</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
         <span style={{ fontSize: 8, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
       </div>
