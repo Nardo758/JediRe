@@ -133,28 +133,10 @@ export function MetricsEnhanced() {
         <div className="flex gap-4">
           {/* LEFT: Single Chart + Tabs + Grid */}
           <div className="flex-1 min-w-0">
-            {/* Tab Controls */}
-            <div className="flex gap-0.5 mb-0">
-              {TABS.map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`px-3 py-1.5 text-[10px] uppercase tracking-wider border border-b-0 rounded-t transition-colors ${
-                    activeTab === tab.key
-                      ? 'bg-[#111827] border-[#1e293b] text-[#e2e8f0]'
-                      : 'bg-[#0a0e17] border-transparent text-[#94a3b8] hover:text-[#e2e8f0]'
-                  }`}
-                  style={activeTab === tab.key ? { borderBottomColor: 'transparent', color: tab.color } : {}}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
             {/* Single Chart Area */}
-            <div className="bg-[#111827] border border-[#1e293b] rounded-tr rounded-b overflow-hidden mb-3">
+            <div className="bg-[#111827] border border-[#1e293b] rounded overflow-hidden mb-3">
               <div className="px-3 py-2 border-b border-[#1e293b] flex justify-between items-center">
-                <span className="text-[11px] text-[#94a3b8]">{chart.title}</span>
+                <span className="text-[11px] text-[#f59e0b] font-bold">{chart.title}</span>
                 <div className="flex gap-3">
                   {chart.series.map(s => (
                     <span key={s.name} className="flex items-center gap-1 text-[10px]">
@@ -171,6 +153,23 @@ export function MetricsEnhanced() {
                   height={140}
                   accentColor={tabColor}
                 />
+              </div>
+              {/* Tab Controls below chart */}
+              <div className="flex gap-0 border-t border-[#1e293b]">
+                {TABS.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex-1 px-2 py-1.5 text-[10px] uppercase tracking-wider transition-colors border-r border-[#1e293b] last:border-r-0 ${
+                      activeTab === tab.key
+                        ? 'bg-[#1a2332] text-[#e2e8f0]'
+                        : 'bg-[#0f1729] text-[#94a3b8] hover:text-[#e2e8f0] hover:bg-[#1a2332]'
+                    }`}
+                    style={activeTab === tab.key ? { color: tab.color, borderBottom: `2px solid ${tab.color}` } : {}}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             </div>
 
