@@ -497,7 +497,7 @@ export default function TerminalPage() {
   const [gridDragOver, setGridDragOver] = useState<string|null>(null);
 
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [marketsView, setMarketsView] = useState<"detail"|"peers">("detail");
+  const [marketsView, setMarketsView] = useState<"overview"|"detail"|"peers">("overview");
 
   const [emailFolder, setEmailFolder] = useState("inbox");
   const [emailSearch, setEmailSearch] = useState("");
@@ -2003,8 +2003,9 @@ export default function TerminalPage() {
 
   const ViewMarkets = () => (
     <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      {marketsView === "detail" && (
+      {marketsView !== "overview" && (
         <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <button onClick={()=>setMarketsView("overview")} style={{fontFamily:T.font.mono,fontSize:8,fontWeight:600,background:"transparent",color:T.text.cyan,border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>← OVERVIEW</button>
           <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
           <select
             value={selectedMsaId}
@@ -2015,7 +2016,7 @@ export default function TerminalPage() {
           </select>
           <div style={{flex:1}}/>
           <div style={{display:"flex",gap:2}}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
+            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers"|"overview", string][]).map(([v,label]) => (
               <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
                 {label}
               </button>
@@ -2023,7 +2024,42 @@ export default function TerminalPage() {
           </div>
         </div>
       )}
-      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
+        {marketsView === "overview" && (
+          <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+            <PanelHeader T={T} title="MARKET INTELLIGENCE" subtitle="5 submarkets | 202 properties | 50,380 units" borderColor={T.text.cyan} right={<Bd c={T.text.green}>LIVE DATA</Bd>}/>
+            <div style={{padding:"10px 10px 0"}}>
+              <div style={{fontSize:9,color:T.text.secondary,marginBottom:4,fontFamily:T.font.mono}}>THE DECISION THIS PAGE DRIVES:</div>
+              <div style={{fontSize:11,color:T.text.white,fontWeight:600,marginBottom:10,fontFamily:T.font.mono}}>Is this submarket getting stronger or weaker — and how fast?</div>
+            </div>
+            <div style={{display:"flex",gap:1,padding:"0 10px 10px",background:"transparent"}}>
+              {MARKET_VITALS.map((v,i) => (<MetricBox key={i} {...v} T={T}/>))}
+            </div>
+            <div style={{margin:"0 10px 10px",padding:"6px 10px",background:T.text.amber+"08",borderLeft:`3px solid ${T.text.amber}`}}>
+              <span style={{fontSize:9,color:T.text.secondary}}>Tracking 5 submarkets with 202 properties and 50,380 total units. Momentum signal: <span style={{fontWeight:700,color:T.text.amber}}>STRONG</span>. Top submarket: Midtown ($2,056 avg rent).</span>
+            </div>
+            <div style={{margin:"0 10px"}}>
+              <PanelHeader T={T} title="SUBMARKET COMPARISON"/>
+              <div style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+                {["SUBMARKET","PROPS","UNITS","AVG RENT","VACANCY","GROWTH 30D","OPP","PRESSURE"].map(h => (
+                  <div key={h} style={{padding:"4px 6px",fontSize:7,fontWeight:700,color:T.text.muted,letterSpacing:0.7,borderRight:`1px solid ${T.border.subtle}`}}>{h}</div>
+                ))}
+              </div>
+              {SUBMARKETS.map((s,i) => (
+                <div key={i} onClick={()=>{setSelectedMsaId("atlanta-ga");setMarketsView("detail");}} style={{display:"grid",gridTemplateColumns:"1.2fr 0.6fr 0.8fr 0.7fr 0.7fr 0.8fr 0.7fr 0.7fr",background:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer"}} onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=T.bg.active||T.bg.hover;}} onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=i%2===0?T.bg.panel:T.bg.panelAlt;}}>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:600,color:T.text.primary,borderRight:`1px solid ${T.border.subtle}`}}>{s.name}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.props}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.units}</div>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.rent}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.secondary,borderRight:`1px solid ${T.border.subtle}`}}>{s.vac}</div>
+                  <div style={{padding:"5px 6px",fontSize:10,fontWeight:700,color:s.growth.startsWith("+")?T.text.green:T.text.red,borderRight:`1px solid ${T.border.subtle}`}}>{s.growth}</div>
+                  <div style={{padding:"5px 6px",fontSize:9,color:T.text.amber,borderRight:`1px solid ${T.border.subtle}`}}>{s.opp}</div>
+                  <div style={{padding:"5px 6px",display:"flex",alignItems:"center"}}><Bd c={s.pressure==="seller"?T.text.red:T.text.green}>{s.pressure}</Bd></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {marketsView === "detail" && (
           <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
         )}
