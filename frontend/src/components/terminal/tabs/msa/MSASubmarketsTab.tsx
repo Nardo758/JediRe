@@ -47,6 +47,76 @@ const SUBMARKET_HISTORY: Record<string, { jedi: number[]; rentGrowth: number[]; 
   'west-midtown':  { jedi: [78, 79, 80, 81, 82, 83, 84, 85, 86], rentGrowth: [3.8, 4.0, 4.2, 4.4, 4.6, 4.8, 4.9, 5.0, 5.2], occupancy: [94.2, 94.4, 94.5, 94.6, 94.8, 94.9, 95.0, 95.1, 95.2] },
 };
 
+interface SubmarketAlert {
+  date: string;
+  title: string;
+  impact: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
+interface SubmarketDemos {
+  population: string;
+  medianIncome: string;
+  medianAge: string;
+  collegeEdu: string;
+  avgHHSize: string;
+  renterPct: string;
+  growthRate: string;
+  walkScore: number;
+}
+
+const SUBMARKET_ALERTS: Record<string, SubmarketAlert[]> = {
+  midtown: [
+    { date: 'Mar 12', title: 'Amazon expanding Midtown campus — 2,000 new roles', severity: 'high', impact: 'D-01 strengthening. Rent pressure on Class A stock.' },
+    { date: 'Mar 5', title: '450-unit luxury project breaks ground on Peachtree', severity: 'medium', impact: 'S-01 pipeline +2.8%. Delivery Q3 2028.' },
+    { date: 'Feb 28', title: 'MARTA BRT station approved at 14th & W Peachtree', severity: 'low', impact: 'Walk score uplift +4pts. Transit-oriented demand boost.' },
+  ],
+  buckhead: [
+    { date: 'Mar 10', title: 'Buckhead Village mixed-use Phase 2 approved', severity: 'medium', impact: 'S-01 +1,200 units. Luxury segment saturation risk.' },
+    { date: 'Feb 22', title: 'Office-to-resi conversion at 3344 Peachtree filed', severity: 'low', impact: 'Adaptive reuse adds 180 units. Class B pricing.' },
+  ],
+  'sandy-springs': [
+    { date: 'Mar 8', title: 'City Springs redevelopment Phase 3 announced', severity: 'medium', impact: 'Mixed-use density increasing. Demand driver for walkable core.' },
+    { date: 'Feb 15', title: 'Mercedes-Benz USA HQ expansion confirmed', severity: 'high', impact: 'D-01 employment growth +800 jobs. Income uplift.' },
+  ],
+  ofw: [
+    { date: 'Mar 14', title: 'BeltLine Eastside Trail extension groundbreaking', severity: 'high', impact: 'Position premium +12%. Last mover advantage extending.' },
+    { date: 'Feb 20', title: 'Historic Fourth Ward Park expansion funded', severity: 'low', impact: 'Amenity score uplift. Class B repositioning catalyst.' },
+  ],
+  'east-atlanta': [
+    { date: 'Mar 6', title: 'East Atlanta Village rezoning for density approved', severity: 'medium', impact: 'DC-01 capacity expanding. New supply corridor opening.' },
+  ],
+  decatur: [
+    { date: 'Mar 2', title: 'Emory University research campus Phase 2 hiring', severity: 'high', impact: 'D-01 +1,500 jobs. Medical corridor demand strengthening.' },
+    { date: 'Feb 18', title: 'Downtown Decatur parking deck redevelopment RFP', severity: 'low', impact: 'Mixed-use infill opportunity. Limited supply pipeline.' },
+  ],
+  downtown: [
+    { date: 'Mar 11', title: 'Centennial Yards Phase 1 delays announced', severity: 'medium', impact: 'S-01 delivery pushed to 2028. Near-term pressure easing.' },
+    { date: 'Feb 25', title: 'GSU student housing demand study released', severity: 'low', impact: 'Student segment absorption strong. Vacancy improving.' },
+  ],
+  'west-midtown': [
+    { date: 'Mar 15', title: 'Microsoft Innovation Hub announced at Westside', severity: 'high', impact: 'D-01 tech sector demand surge. Rent growth accelerating.' },
+    { date: 'Mar 1', title: 'The Works mixed-use delivering 320 units Q2', severity: 'medium', impact: 'S-01 near-term supply. Pre-leasing at 78%.' },
+  ],
+};
+
+const SUBMARKET_DEMOS: Record<string, SubmarketDemos> = {
+  midtown:         { population: '48,200', medianIncome: '$82,400', medianAge: '31', collegeEdu: '78%', avgHHSize: '1.6', renterPct: '72%', growthRate: '+3.2%', walkScore: 92 },
+  buckhead:        { population: '82,600', medianIncome: '$96,800', medianAge: '34', collegeEdu: '74%', avgHHSize: '1.8', renterPct: '58%', growthRate: '+1.8%', walkScore: 68 },
+  'sandy-springs': { population: '110,400', medianIncome: '$78,200', medianAge: '36', collegeEdu: '62%', avgHHSize: '2.2', renterPct: '48%', growthRate: '+2.4%', walkScore: 54 },
+  ofw:             { population: '28,900', medianIncome: '$68,400', medianAge: '29', collegeEdu: '72%', avgHHSize: '1.5', renterPct: '78%', growthRate: '+4.8%', walkScore: 88 },
+  'east-atlanta':  { population: '22,100', medianIncome: '$58,600', medianAge: '32', collegeEdu: '64%', avgHHSize: '1.7', renterPct: '68%', growthRate: '+5.2%', walkScore: 72 },
+  decatur:         { population: '24,800', medianIncome: '$72,600', medianAge: '35', collegeEdu: '82%', avgHHSize: '2.0', renterPct: '52%', growthRate: '+2.1%', walkScore: 78 },
+  downtown:        { population: '18,400', medianIncome: '$52,200', medianAge: '28', collegeEdu: '58%', avgHHSize: '1.4', renterPct: '82%', growthRate: '+1.2%', walkScore: 94 },
+  'west-midtown':  { population: '16,800', medianIncome: '$88,400', medianAge: '30', collegeEdu: '76%', avgHHSize: '1.5', renterPct: '74%', growthRate: '+6.1%', walkScore: 86 },
+};
+
+const severityColors = {
+  high: { border: BT.accent.red, bg: 'rgba(239,68,68,0.1)' },
+  medium: { border: BT.accent.amber, bg: 'rgba(245,158,11,0.1)' },
+  low: { border: BT.text.green, bg: 'rgba(34,197,94,0.1)' },
+};
+
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, onSelectSubmarket }) => {
@@ -63,6 +133,8 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
 
   const selectedData = MOCK_SUBMARKETS.find(s => s.id === selectedSub);
   const history = SUBMARKET_HISTORY[selectedSub];
+  const alerts = SUBMARKET_ALERTS[selectedSub] || [];
+  const demos = SUBMARKET_DEMOS[selectedSub];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -223,37 +295,95 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
           </div>
 
           {selectedData && (
-            <div style={{
-              display: 'flex',
-              gap: 8,
-              marginTop: 12,
-            }}>
-              <button
-                onClick={() => onSelectSubmarket?.(selectedData.id)}
-                style={{
-                  padding: '8px 16px',
-                  background: BT.accent.blue,
-                  color: '#fff',
-                  border: 'none',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  ...mono,
-                }}
-              >
-                View Terminal →
-              </button>
-              <button style={{
-                padding: '8px 16px',
-                background: 'transparent',
-                color: BT.text.secondary,
+            <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+              <div style={{
+                flex: 1,
+                background: BT.bg.panel,
                 border: `1px solid ${BT.border.subtle}`,
-                fontSize: 11,
-                cursor: 'pointer',
-                ...mono,
+                overflow: 'hidden',
               }}>
-                View Properties
-              </button>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '6px 12px',
+                  background: BT.bg.header,
+                  borderBottom: `1px solid ${BT.border.subtle}`,
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
+                    Alerts — {selectedData.name}
+                  </span>
+                  <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{alerts.length} active</span>
+                </div>
+                <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {alerts.map((alert, i) => {
+                    const sev = severityColors[alert.severity];
+                    return (
+                      <div key={i} style={{
+                        padding: 8,
+                        background: sev.bg,
+                        borderLeft: `3px solid ${sev.border}`,
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: BT.text.primary }}>{alert.title}</span>
+                          <span style={{ fontSize: 9, color: BT.text.muted, flexShrink: 0, marginLeft: 8 }}>{alert.date}</span>
+                        </div>
+                        <div style={{ fontSize: 9, color: BT.text.muted }}>{alert.impact}</div>
+                      </div>
+                    );
+                  })}
+                  {alerts.length === 0 && (
+                    <div style={{ fontSize: 11, color: BT.text.muted, padding: 12, textAlign: 'center' }}>No active alerts</div>
+                  )}
+                </div>
+              </div>
+
+              {demos && (
+                <div style={{
+                  width: 280,
+                  flexShrink: 0,
+                  background: BT.bg.panel,
+                  border: `1px solid ${BT.border.subtle}`,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '6px 12px',
+                    background: BT.bg.header,
+                    borderBottom: `1px solid ${BT.border.subtle}`,
+                  }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.cyan, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
+                      Demographics
+                    </span>
+                    <span style={{ fontSize: 9, color: BT.text.muted, ...mono }}>Census + ACS</span>
+                  </div>
+                  <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {[
+                      { label: 'Population', value: demos.population, color: BT.text.primary },
+                      { label: 'Growth Rate', value: demos.growthRate, color: BT.text.green },
+                      { label: 'Median Income', value: demos.medianIncome, color: BT.text.primary },
+                      { label: 'Median Age', value: demos.medianAge, color: BT.text.primary },
+                      { label: 'College Edu', value: demos.collegeEdu, color: BT.text.primary },
+                      { label: 'Avg HH Size', value: demos.avgHHSize, color: BT.text.primary },
+                      { label: 'Renter %', value: demos.renterPct, color: BT.text.cyan },
+                      { label: 'Walk Score', value: String(demos.walkScore), color: demos.walkScore >= 80 ? BT.text.green : demos.walkScore >= 60 ? BT.text.amber : BT.text.red },
+                    ].map((row, i) => (
+                      <div key={i} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: '4px 8px',
+                        background: i % 2 === 0 ? BT.bg.elevated : 'transparent',
+                      }}>
+                        <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{row.label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: row.color, ...mono }}>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
