@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, TrendingDown, BarChart3, Calendar, ArrowUpRight, ArrowDownRight, Minus, Building2, MapPin, Percent, Loader2 } from 'lucide-react';
 import { propertyMetricsService, RentComp, MarketSummary, NeighborhoodBenchmark } from '@/services/propertyMetrics.service';
 import { BT } from '@/components/deal/bloomberg-ui';
-import { BT } from '@/components/deal/bloomberg-ui';
 
 interface TrendsAnalysisSectionProps {
   deal?: any;
