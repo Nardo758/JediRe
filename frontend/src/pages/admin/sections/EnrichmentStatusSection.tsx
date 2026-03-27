@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, RefreshCw, AlertCircle, Play, CheckCircle, XCircle } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface EnrichmentCoverage {
   total_properties: number;
@@ -85,13 +86,13 @@ export function EnrichmentStatusSection() {
     : [];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6" style={{ fontFamily: BT.font.label }}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Property Enrichment</h2>
+          <Database className="w-5 h-5" style={{ color: BT.text.cyan }} />
+          <h2 className="text-lg font-semibold" style={{ color: BT.text.primary }}>Property Enrichment</h2>
           {coverage && (
-            <span className="text-xs text-gray-400 ml-1">
+            <span className="text-xs ml-1" style={{ color: BT.text.muted }}>
               ({coverage.total_properties.toLocaleString()} properties)
             </span>
           )}
@@ -100,15 +101,17 @@ export function EnrichmentStatusSection() {
           <button
             onClick={runBulkEnrichment}
             disabled={running || loading}
-            className="flex items-center gap-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded px-3 py-1.5"
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 disabled:opacity-50"
+            style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
           >
             <Play className={`w-3 h-3 ${running ? 'animate-pulse' : ''}`} />
-            {running ? 'Running…' : 'Run Bulk Enrichment'}
+            {running ? 'Running...' : 'Run Bulk Enrichment'}
           </button>
           <button
             onClick={load}
             disabled={loading}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 rounded px-2.5 py-1.5"
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5"
+            style={{ color: BT.text.secondary, border: `1px solid ${BT.border.subtle}`, borderRadius: 2, background: 'transparent' }}
           >
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -117,7 +120,7 @@ export function EnrichmentStatusSection() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+        <div className="flex items-center gap-2 p-3 text-sm" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.text.amber}`, borderRadius: 0, color: BT.text.amber }}>
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
         </div>
@@ -125,18 +128,18 @@ export function EnrichmentStatusSection() {
 
       {/* Coverage bars */}
       {coverageBars.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <h3 className="text-sm font-semibold text-gray-700">Enrichment Coverage</h3>
+        <div className="p-4 space-y-3" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <h3 className="text-sm font-semibold" style={{ color: BT.text.secondary }}>Enrichment Coverage</h3>
           {coverageBars.map(bar => (
             <div key={bar.label}>
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <div className="flex justify-between text-xs mb-1" style={{ color: BT.text.muted }}>
                 <span>{bar.label}</span>
-                <span>{bar.value}%</span>
+                <span style={{ fontFamily: BT.font.mono }}>{bar.value}%</span>
               </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-1.5 overflow-hidden" style={{ background: BT.bg.input, borderRadius: 0 }}>
                 <div
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${bar.value}%` }}
+                  className="h-full transition-all"
+                  style={{ width: `${bar.value}%`, background: BT.text.cyan, borderRadius: 0 }}
                 />
               </div>
             </div>
@@ -146,38 +149,38 @@ export function EnrichmentStatusSection() {
 
       {/* Recent jobs */}
       {jobs.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-            <h3 className="text-sm font-semibold text-gray-700">Recent Jobs</h3>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-4 py-3" style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header }}>
+            <h3 className="text-sm font-semibold" style={{ color: BT.text.secondary }}>Recent Jobs</h3>
           </div>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Total</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Processed</th>
-                <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Errors</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Started</th>
+              <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Status</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Total</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Processed</th>
+                <th className="text-right px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Errors</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Started</th>
               </tr>
             </thead>
             <tbody>
               {jobs.map(j => (
-                <tr key={j.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr key={j.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-1.5">
-                      {j.status === 'completed' && <CheckCircle className="w-3.5 h-3.5 text-green-500" />}
-                      {j.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-red-500" />}
-                      {j.status === 'running' && <RefreshCw className="w-3.5 h-3.5 text-blue-500 animate-spin" />}
-                      {j.status === 'pending' && <AlertCircle className="w-3.5 h-3.5 text-yellow-500" />}
-                      <span className="text-xs capitalize text-gray-700">{j.status}</span>
+                      {j.status === 'completed' && <CheckCircle className="w-3.5 h-3.5" style={{ color: BT.text.green }} />}
+                      {j.status === 'failed' && <XCircle className="w-3.5 h-3.5" style={{ color: BT.text.red }} />}
+                      {j.status === 'running' && <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ color: BT.text.cyan }} />}
+                      {j.status === 'pending' && <AlertCircle className="w-3.5 h-3.5" style={{ color: BT.text.amber }} />}
+                      <span className="text-xs capitalize" style={{ color: BT.text.secondary }}>{j.status}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-right text-xs text-gray-600 font-mono">{j.total_properties}</td>
-                  <td className="px-4 py-2.5 text-right text-xs text-gray-600 font-mono">{j.processed}</td>
-                  <td className="px-4 py-2.5 text-right text-xs font-mono">
-                    <span className={j.errors > 0 ? 'text-red-600' : 'text-gray-400'}>{j.errors}</span>
+                  <td className="px-4 py-2.5 text-right text-xs" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>{j.total_properties}</td>
+                  <td className="px-4 py-2.5 text-right text-xs" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>{j.processed}</td>
+                  <td className="px-4 py-2.5 text-right text-xs" style={{ fontFamily: BT.font.mono }}>
+                    <span style={{ color: j.errors > 0 ? BT.text.red : BT.text.muted }}>{j.errors}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-500">
+                  <td className="px-4 py-2.5 text-xs" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>
                     {j.started_at ? new Date(j.started_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                   </td>
                 </tr>
@@ -189,32 +192,32 @@ export function EnrichmentStatusSection() {
 
       {/* Per-property table */}
       {properties.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-            <h3 className="text-sm font-semibold text-gray-700">Properties Needing Enrichment</h3>
+        <div className="overflow-hidden" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div className="px-4 py-3" style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header }}>
+            <h3 className="text-sm font-semibold" style={{ color: BT.text.secondary }}>Properties Needing Enrichment</h3>
           </div>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Property</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Geo</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">MSA</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sub</th>
-                <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">Parcel</th>
+              <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Property</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Geo</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>MSA</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Sub</th>
+                <th className="text-center px-3 py-2.5 text-xs font-semibold uppercase tracking-wide" style={{ color: BT.text.muted }}>Parcel</th>
               </tr>
             </thead>
             <tbody>
               {properties.map(p => (
-                <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50">
+                <tr key={p.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <td className="px-4 py-2.5">
-                    <div className="text-xs font-medium text-gray-900">{p.address}</div>
-                    <div className="text-xs text-gray-400">{p.city}, {p.state}</div>
+                    <div className="text-xs font-medium" style={{ color: BT.text.primary }}>{p.address}</div>
+                    <div className="text-xs" style={{ color: BT.text.muted }}>{p.city}, {p.state}</div>
                   </td>
                   {[p.geocoded, p.has_msa, p.has_submarket, p.has_parcel_data].map((v, i) => (
                     <td key={i} className="px-3 py-2.5 text-center">
                       {v
-                        ? <CheckCircle className="w-3.5 h-3.5 text-green-500 mx-auto" />
-                        : <XCircle className="w-3.5 h-3.5 text-gray-300 mx-auto" />}
+                        ? <CheckCircle className="w-3.5 h-3.5 mx-auto" style={{ color: BT.text.green }} />
+                        : <XCircle className="w-3.5 h-3.5 mx-auto" style={{ color: BT.text.muted }} />}
                     </td>
                   ))}
                 </tr>
@@ -225,10 +228,10 @@ export function EnrichmentStatusSection() {
       )}
 
       {!loading && !coverage && jobs.length === 0 && (
-        <div className="bg-white border border-gray-200 rounded-lg py-10 text-center">
-          <Database className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm text-gray-500 mb-1">Enrichment pipeline not yet initialized.</p>
-          <p className="text-xs text-gray-400">Click "Run Bulk Enrichment" to start enriching property data.</p>
+        <div className="py-10 text-center" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <Database className="w-8 h-8 mx-auto mb-3" style={{ color: BT.text.muted }} />
+          <p className="text-sm mb-1" style={{ color: BT.text.muted }}>Enrichment pipeline not yet initialized.</p>
+          <p className="text-xs" style={{ color: BT.text.muted }}>Click "Run Bulk Enrichment" to start enriching property data.</p>
         </div>
       )}
     </div>
