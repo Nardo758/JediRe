@@ -493,21 +493,21 @@ const DealDetailPage: React.FC = () => {
 
   // ─── 14 FLAT SCREEN DEFINITIONS (F1–F14) ── Bloomberg station-logical order ──
   // F7 = 3D Design · F10 = Comps · F11 = Documents · F12 = Execution
-  const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
-    { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', label: 'Overview',         icon: <LayoutDashboard size={14} />, component: OverviewScreen },
-    { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', label: 'Zoning',           icon: <Landmark size={14} />,        component: ZoningModuleSection },
-    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
-    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
-    { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
-    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
-    { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
-    { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
-    { id: 'execution',   moduleId: 'M17', fkey: 'F12', code: 'M17', label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F13', code: 'M13', label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F14', code: 'M20', label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
+  const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; short: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
+    { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', short: 'OVERVIEW',   label: 'Overview',         icon: <LayoutDashboard size={14} />, component: OverviewScreen },
+    { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', short: 'ZONING',     label: 'Zoning',           icon: <Landmark size={14} />,        component: ZoningModuleSection },
+    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', short: 'MARKET',     label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
+    { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
+    { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', short: 'COMPS',      label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
+    { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', short: 'DOCS',       label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
+    { id: 'execution',   moduleId: 'M17', fkey: 'F12', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F13', code: 'M13', short: 'RISK/DD',    label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F14', code: 'M20', short: 'AI AGENT',   label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
   // Filter by deal-type visibility rules
@@ -581,17 +581,17 @@ const DealDetailPage: React.FC = () => {
           borderBottom: `1px solid ${BORDER}`,
           flexShrink: 0,
           display: 'flex',
-          alignItems: 'stretch',
+          alignItems: 'center',
           overflowX: 'auto',
-          height: 44,
+          height: 32,
         }}>
-          {/* Back arrow — styled as a Bloomberg panel key */}
+          {/* Back arrow */}
           <button
             onClick={() => navigate(-1)}
             title="Go back"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 36, flexShrink: 0,
+              width: 32, height: 32, flexShrink: 0,
               background: 'none', border: 'none', borderRight: `1px solid ${BORDER}`,
               cursor: 'pointer', color: TEXT_DIM,
               transition: 'color 0.12s',
@@ -602,7 +602,7 @@ const DealDetailPage: React.FC = () => {
             <ArrowLeft size={12} />
           </button>
 
-          {/* F-key module buttons */}
+          {/* F-key module buttons — Terminal single-line style */}
           {dealScreens.map((s) => {
             const isActive = s.id === activeTab;
             return (
@@ -610,40 +610,21 @@ const DealDetailPage: React.FC = () => {
                 key={s.id}
                 onClick={() => setActiveTab(s.id)}
                 style={{
-                  position: 'relative',
-                  display: 'flex', flexDirection: 'column',
-                  alignItems: 'flex-start', justifyContent: 'center',
-                  gap: 2,
-                  padding: '5px 12px 5px 10px',
-                  border: 'none',
-                  borderRight: `1px solid ${BORDER}`,
-                  borderBottom: isActive ? `2px solid ${AMBER}` : '2px solid transparent',
+                  fontFamily: MONO, fontSize: 10, fontWeight: 600,
+                  padding: '0 12px', height: 32,
                   cursor: 'pointer',
-                  background: isActive ? `${AMBER}0f` : 'transparent',
-                  minWidth: 68, flexShrink: 0,
-                  transition: 'all 0.1s',
-                  textAlign: 'left',
+                  background: isActive ? AMBER : 'transparent',
+                  color: isActive ? BG_NAV : TEXT_MID,
+                  border: 'none',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                  transition: 'background 0.1s, color 0.1s',
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = `${BORDER}60`; }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = `${BORDER}80`; e.currentTarget.style.color = TEXT; } }}
+                onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = TEXT_MID; } }}
               >
-                {/* F-key label — top-left superscript */}
-                <span style={{
-                  fontSize: 7, fontWeight: 800, letterSpacing: 1.2, fontFamily: MONO,
-                  color: isActive ? AMBER_L : TEXT_DIM,
-                  lineHeight: 1,
-                }}>
-                  {s.fkey}
-                </span>
-                {/* Module name */}
-                <span style={{
-                  fontSize: 9, fontWeight: isActive ? 700 : 500,
-                  color: isActive ? TEXT : TEXT_MID,
-                  fontFamily: MONO, letterSpacing: 0.4,
-                  lineHeight: 1.1, whiteSpace: 'nowrap',
-                }}>
-                  {s.label.split(' ').slice(0, 2).join(' ')}
-                </span>
+                <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.7, color: isActive ? BG_NAV : TEXT_DIM }}>{s.fkey}</span>
+                {s.short}
               </button>
             );
           })}
