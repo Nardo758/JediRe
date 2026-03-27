@@ -2,23 +2,27 @@
  * MSATerminal - Bloomberg-style MSA/Metro analytics dashboard
  * Top level in the hierarchy: MSA → Submarket → Property
  * 
- * Tabs:
- * [0] OVERVIEW    - Metro stats, health score, key metrics
- * [1] SUBMARKETS  - All submarkets with rankings (drill-down)
- * [2] SUPPLY      - Metro-wide supply pipeline
- * [3] CAPITAL     - Transaction volume, cap rate trends
- * [4] ECONOMICS   - Employment, population, income trends
- * [5] TRENDS      - Historical rent/occupancy charts
- * [6] NEWS        - Metro market news
- * [7] COMPARE     - Compare to peer MSAs
+ * Tabs (10 total - integrated from pre-Bloomberg):
+ * [0] OVERVIEW      - Metro stats, 5-Signal Health Bar, alerts, supply metrics
+ * [1] SUBMARKETS    - 14-column matrix with Dev Capacity signals
+ * [2] DEALS         - Pipeline kanban, quadrant filter, opportunities
+ * [3] RANKINGS      - Power Rankings with PCS scores
+ * [4] SUPPLY        - Supply wave forecast, phases
+ * [5] CAPITAL       - Transaction volume, cap rate trends
+ * [6] ECONOMICS     - Employment, population, income trends
+ * [7] TRENDS        - Correlation, rent by vintage, JEDI history
+ * [8] NEWS          - Metro market news
+ * [9] COMPARE       - Compare to peer MSAs
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BT } from './theme';
 import { TerminalTabs, TabDef, useTabKeyboard } from './TerminalTabs';
 import { MSAHeader } from './MSAHeader';
 import { MSAOverviewTab } from './tabs/msa/MSAOverviewTab';
 import { MSASubmarketsTab } from './tabs/msa/MSASubmarketsTab';
+import { MSADealsTab } from './tabs/msa/MSADealsTab';
+import { MSAPowerRankingsTab } from './tabs/msa/MSAPowerRankingsTab';
 import { MSASupplyTab } from './tabs/msa/MSASupplyTab';
 import { MSACapitalTab } from './tabs/msa/MSACapitalTab';
 import { MSAEconomicsTab } from './tabs/msa/MSAEconomicsTab';
@@ -26,19 +30,21 @@ import { MSATrendsTab } from './tabs/msa/MSATrendsTab';
 import { MSANewsTab } from './tabs/msa/MSANewsTab';
 import { MSACompareTab } from './tabs/msa/MSACompareTab';
 
-// Tab configuration for MSA level
+// Tab configuration for MSA level - expanded with pre-Bloomberg content
 export const MSA_TABS: TabDef[] = [
   { key: 'overview', label: 'OVERVIEW', num: 0 },
   { key: 'submarkets', label: 'SUBMARKETS', num: 1 },
-  { key: 'supply', label: 'SUPPLY', num: 2 },
-  { key: 'capital', label: 'CAPITAL', num: 3 },
-  { key: 'economics', label: 'ECONOMICS', num: 4 },
-  { key: 'trends', label: 'TRENDS', num: 5 },
-  { key: 'news', label: 'NEWS', num: 6 },
-  { key: 'compare', label: 'COMPARE', num: 7 },
+  { key: 'deals', label: 'DEALS', num: 2 },
+  { key: 'rankings', label: 'RANKINGS', num: 3 },
+  { key: 'supply', label: 'SUPPLY', num: 4 },
+  { key: 'capital', label: 'CAPITAL', num: 5 },
+  { key: 'economics', label: 'ECONOMICS', num: 6 },
+  { key: 'trends', label: 'TRENDS', num: 7 },
+  { key: 'news', label: 'NEWS', num: 8 },
+  { key: 'compare', label: 'COMPARE', num: 9 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare';
+export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare';
 
 export interface MSAData {
   id: string;
@@ -70,6 +76,8 @@ interface MSATerminalProps {
   msaId: string;
   msa?: MSAData;
   onSubmarketSelect?: (submarketId: string) => void;
+  onPropertySelect?: (propertyId: string) => void;
+  onDealSelect?: (dealId: string) => void;
   onBackToMarkets?: () => void;
 }
 
@@ -77,6 +85,8 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
   msaId,
   msa: msaProp,
   onSubmarketSelect,
+  onPropertySelect,
+  onDealSelect,
   onBackToMarkets,
 }) => {
   const [activeTab, setActiveTab] = useState<MSATabKey>('overview');
@@ -98,36 +108,37 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
     const loadMSA = async () => {
       try {
         setLoading(true);
-        // Mock data - would come from API
+        // Mock data for now - would fetch from API
         const mockMSA: MSAData = {
           id: msaId,
-          name: 'Atlanta',
+          name: msaId === 'atlanta' ? 'Atlanta' : msaId.charAt(0).toUpperCase() + msaId.slice(1),
           state: 'GA',
           region: 'Southeast',
           population: 6200000,
           populationGrowth: 1.8,
           employment: 3100000,
-          employmentGrowth: 2.9,
-          medianIncome: 72500,
+          employmentGrowth: 2.4,
+          medianIncome: 72400,
           incomeGrowth: 3.2,
           submarketCount: 24,
-          propertyCount: 1847,
-          totalUnits: 485000,
-          avgRent: 1680,
+          propertyCount: 1028,
+          totalUnits: 249964,
+          avgRent: 1580,
           rentGrowth: 4.2,
-          occupancy: 94.1,
-          occupancyChange: 0.6,
-          avgCapRate: 5.3,
-          pipelineUnits: 28500,
-          transactionVolume: 4200000000,
-          healthScore: 82,
-          rank: 5,
+          occupancy: 93.2,
+          occupancyChange: 0.4,
+          avgCapRate: 5.2,
+          pipelineUnits: 32400,
+          transactionVolume: 2800000000,
+          healthScore: 72,
+          rank: 3,
           totalRank: 50,
         };
         setMsa(mockMSA);
-      } catch (err: any) {
-        console.error('Failed to load MSA:', err);
-        setError(err.message || 'Failed to load market data');
+        setError(null);
+      } catch (err) {
+        setError('Failed to load MSA data');
+        console.error('Error loading MSA:', err);
       } finally {
         setLoading(false);
       }
@@ -136,105 +147,59 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
     loadMSA();
   }, [msaId, msaProp]);
 
-  // Sparkline data for header
-  const sparklineData = useMemo(() => 
-    [1580, 1610, 1625, 1640, 1635, 1655, 1670, 1680, 1695, 1705, 1690, 1680],
-    []
-  );
-
-  // Render loading state
-  if (loading) {
-    return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: BT.bg.terminal,
-        borderRadius: 10,
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flex: 1,
+  // Render active tab content
+  const renderTabContent = () => {
+    if (loading) {
+      return (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: 400,
           color: BT.text.muted,
         }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{
-              width: 40,
-              height: 40,
-              border: `3px solid ${BT.border.subtle}`,
-              borderTopColor: BT.text.amber,
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto 16px',
-            }} />
-            <div style={{ fontSize: 12 }}>Loading market data...</div>
-          </div>
+          Loading MSA data...
         </div>
-        <style>{`
-          @keyframes spin {
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Render error state
-  if (error || !msa) {
-    return (
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        background: BT.bg.terminal,
-        borderRadius: 10,
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flex: 1,
-          color: BT.text.red,
+    if (error) {
+      return (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: 400,
+          color: BT.accent.red,
         }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 32, marginBottom: 16 }}>⚠️</div>
-            <div style={{ fontSize: 14, marginBottom: 8 }}>Failed to load market</div>
-            <div style={{ fontSize: 12, color: BT.text.muted }}>{error}</div>
-          </div>
+          {error}
         </div>
-      </div>
-    );
-  }
-
-  // Render tab content
-  const renderTabContent = () => {
-    const tabProps = { 
-      msaId, 
-      msa,
-      onSubmarketSelect,
-    };
+      );
+    }
 
     switch (activeTab) {
       case 'overview':
-        return <MSAOverviewTab {...tabProps} />;
+        return <MSAOverviewTab msaId={msaId} msa={msa} />;
       case 'submarkets':
-        return <MSASubmarketsTab {...tabProps} />;
+        return <MSASubmarketsTab msaId={msaId} msa={msa} onSelectSubmarket={onSubmarketSelect} />;
+      case 'deals':
+        return <MSADealsTab msaId={msaId} msa={msa} onSelectDeal={onDealSelect} />;
+      case 'rankings':
+        return <MSAPowerRankingsTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'supply':
-        return <MSASupplyTab {...tabProps} />;
+        return <MSASupplyTab msaId={msaId} msa={msa} />;
       case 'capital':
-        return <MSACapitalTab {...tabProps} />;
+        return <MSACapitalTab msaId={msaId} msa={msa} />;
       case 'economics':
-        return <MSAEconomicsTab {...tabProps} />;
+        return <MSAEconomicsTab msaId={msaId} msa={msa} />;
       case 'trends':
-        return <MSATrendsTab {...tabProps} />;
+        return <MSATrendsTab msaId={msaId} msa={msa} />;
       case 'news':
-        return <MSANewsTab {...tabProps} />;
+        return <MSANewsTab msaId={msaId} msa={msa} />;
       case 'compare':
-        return <MSACompareTab {...tabProps} />;
+        return <MSACompareTab msaId={msaId} msa={msa} />;
       default:
-        return <MSAOverviewTab {...tabProps} />;
+        return null;
     }
   };
 
@@ -243,64 +208,24 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: BT.bg.terminal,
-      borderRadius: 10,
-      overflow: 'hidden',
-      fontFamily: "'Inter', sans-serif",
+      background: BT.bg.primary,
+      color: BT.text.primary,
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
     }}>
-      {/* Global styles */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@600;700;800&display=swap');
-      `}</style>
-
-      {/* Breadcrumb Navigation */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '8px 20px',
-        background: BT.bg.header,
-        borderBottom: `1px solid ${BT.border.subtle}`,
-        fontSize: 11,
-      }}>
-        <span 
-          onClick={onBackToMarkets}
-          style={{ 
-            color: BT.text.cyan, 
-            cursor: 'pointer',
-            textDecoration: 'none',
-          }}
-        >
-          F4 Markets
-        </span>
-        <span style={{ color: BT.text.dim }}>›</span>
-        <span style={{ color: BT.text.amber, fontWeight: 600 }}>
-          {msa.name}, {msa.state}
-        </span>
-        <span style={{ 
-          marginLeft: 'auto', 
-          color: BT.text.muted,
-          fontSize: 10,
-        }}>
-          Rank #{msa.rank} of {msa.totalRank} • {msa.region}
-        </span>
-      </div>
-
-      {/* Header - MSA ticker */}
-      <MSAHeader
-        msa={msa}
-        sparklineData={sparklineData}
+      {/* Header */}
+      <MSAHeader 
+        msa={msa} 
+        onBack={onBackToMarkets}
       />
 
-      {/* Tab navigation */}
+      {/* Tab Bar */}
       <TerminalTabs
         tabs={MSA_TABS}
         activeTab={activeTab}
-        onTabChange={setActiveTab as any}
-        searchPlaceholder="Press 0-7 to navigate"
+        onTabChange={(key) => setActiveTab(key as MSATabKey)}
       />
 
-      {/* Tab content */}
+      {/* Tab Content */}
       <div style={{
         flex: 1,
         overflow: 'auto',
@@ -309,27 +234,33 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         {renderTabContent()}
       </div>
 
-      {/* Footer ticker */}
+      {/* Footer Status Bar */}
       <div style={{
         display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '6px 20px',
-        background: BT.bg.header,
+        padding: '8px 16px',
+        background: BT.bg.elevated,
         borderTop: `1px solid ${BT.border.subtle}`,
-        fontSize: 10,
-        color: BT.text.dim,
-        gap: 16,
-        overflow: 'hidden',
+        fontSize: 11,
+        color: BT.text.muted,
       }}>
-        <span style={{ color: BT.text.green }}>● {msa.submarketCount} Submarkets</span>
-        <span>|</span>
-        <span style={{ color: BT.text.cyan }}>{msa.propertyCount.toLocaleString()} Properties</span>
-        <span>|</span>
-        <span style={{ color: BT.text.amber }}>{(msa.totalUnits / 1000).toFixed(0)}K Units</span>
-        <span>|</span>
-        <span>Pipeline: {(msa.pipelineUnits / 1000).toFixed(1)}K units</span>
-        <span>|</span>
-        <span style={{ color: BT.text.green }}>YTD Volume ${(msa.transactionVolume / 1000000000).toFixed(1)}B</span>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <span>MSA: {msa?.name || msaId}</span>
+          <span>·</span>
+          <span>{msa?.submarketCount || 0} Submarkets</span>
+          <span>·</span>
+          <span>{msa?.propertyCount?.toLocaleString() || 0} Properties</span>
+          <span>·</span>
+          <span>{msa?.totalUnits?.toLocaleString() || 0} Units</span>
+        </div>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <span>Health: <span style={{ color: BT.text.green, fontWeight: 600 }}>{msa?.healthScore || 0}</span></span>
+          <span>·</span>
+          <span>Rank: #{msa?.rank || 0}/{msa?.totalRank || 0}</span>
+          <span>·</span>
+          <span style={{ color: BT.text.cyan }}>Use 0-9 for tabs</span>
+        </div>
       </div>
     </div>
   );

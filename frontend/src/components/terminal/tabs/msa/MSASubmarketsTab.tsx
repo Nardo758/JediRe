@@ -1,339 +1,545 @@
 /**
- * MSASubmarketsTab - All submarkets with rankings and drill-down
- * Click a row to navigate to SubmarketTerminal
+ * MSASubmarketsTab - Comprehensive submarket matrix with drill-down
+ * Integrated from pre-Bloomberg SubmarketsTab (30KB)
+ * Features: 14-column matrix, Dev Capacity signals, Compare mode, Signal sections
  */
 
 import React, { useState, useMemo } from 'react';
-import { Building2, Search, ArrowUpDown, ArrowRight, TrendingUp, TrendingDown, Award } from 'lucide-react';
-import { BT, terminalStyles } from '../../theme';
-import { MSAData } from '../../MSATerminal';
+import { BT, terminalStyles, fmt } from '../../theme';
+import { 
+  SIGNAL_GROUPS, 
+  SignalGroupId, 
+  BT_SIGNAL_COLORS, 
+  scoreColor,
+  ALL_OUTPUTS 
+} from '../../signalGroups';
 
 interface MSASubmarketsTabProps {
   msaId: string;
-  msa: MSAData;
-  onSubmarketSelect?: (submarketId: string) => void;
+  msa: any;
+  onSelectSubmarket?: (submarketId: string) => void;
 }
 
-interface Submarket {
-  id: string;
-  name: string;
-  propertyCount: number;
-  units: number;
-  avgRent: number;
-  rentGrowth: number;
-  occupancy: number;
-  occupancyChange: number;
-  capRate: number;
-  pipelineUnits: number;
-  healthScore: number;
-  rank: number;
-}
+// Column definitions matching pre-Bloomberg
+const TABLE_COLUMNS = [
+  { key: 'jedi', label: 'JEDI', code: 'C-01', isNew: false },
+  { key: 'demand', label: 'Demand', code: 'D-09', isNew: false },
+  { key: 'supply', label: 'Supply', code: 'S-01', isNew: false },
+  { key: 'saturation', label: 'Satur.', code: 'S-08', isNew: false },
+  { key: 'rentAccel', label: 'Rent Acc', code: 'M-02', isNew: false },
+  { key: 'trfcRent', label: 'Trfc-Rent', code: 'M-07', isNew: false },
+  { key: 'capacity', label: 'Capacity★', code: 'DC-01', isNew: true },
+  { key: 'buildout', label: 'Buildout★', code: 'DC-02', isNew: true },
+  { key: 'constraint', label: 'Constr.★', code: 'DC-03', isNew: true },
+  { key: 'overhang', label: 'Overh.★', code: 'DC-04', isNew: true },
+  { key: 'lastMover', label: 'Last M.★', code: 'DC-05', isNew: true },
+  { key: 'pricingPower', label: 'Pricing★', code: 'DC-07', isNew: true },
+  { key: 'traffic', label: 'Traffic★', code: 'T-02', isNew: true },
+];
 
-type SortKey = 'rank' | 'name' | 'units' | 'avgRent' | 'rentGrowth' | 'occupancy' | 'healthScore';
+// Map layers for choropleth
+const MAP_LAYERS = [
+  { key: 'JEDI', label: 'JEDI', isNew: false },
+  { key: 'Demand', label: 'Demand', isNew: false },
+  { key: 'Supply Risk', label: 'Supply Risk', isNew: false },
+  { key: 'Rent Growth', label: 'Rent Growth', isNew: false },
+  { key: 'Cap Rate', label: 'Cap Rate', isNew: false },
+  { key: 'Pricing Power', label: 'Pricing Power ★', isNew: true },
+  { key: 'Constraint', label: 'Constraint ★', isNew: true },
+];
 
-export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ 
-  msaId, 
-  msa,
-  onSubmarketSelect,
-}) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<SortKey>('rank');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+// Detail section definitions
+const DETAIL_SECTIONS: { title: string; key: string; groupId: SignalGroupId; signals: string[] }[] = [
+  { title: 'Demand', key: 'demand', groupId: 'DEMAND', signals: ['D-09', 'D-10', 'D-08'] },
+  { title: 'Supply', key: 'supply', groupId: 'SUPPLY', signals: ['S-01', 'S-08', 'S-05'] },
+  { title: 'Momentum', key: 'momentum', groupId: 'MOMENTUM', signals: ['M-02', 'M-07'] },
+  { title: 'Dev Capacity★', key: 'devCapacity', groupId: 'DEV_CAPACITY', signals: ['DC-01', 'DC-02', 'DC-03', 'DC-04', 'DC-05', 'DC-07', 'DC-09'] },
+  { title: 'Traffic★', key: 'traffic', groupId: 'TRAFFIC', signals: ['T-02', 'T-08'] },
+];
 
-  // Mock submarket data
-  const submarkets: Submarket[] = useMemo(() => [
-    { id: '1', name: 'Buckhead', propertyCount: 127, units: 38450, avgRent: 1895, rentGrowth: 5.2, occupancy: 94.3, occupancyChange: 0.8, capRate: 5.1, pipelineUnits: 2840, healthScore: 88, rank: 1 },
-    { id: '2', name: 'Midtown', propertyCount: 156, units: 42500, avgRent: 2150, rentGrowth: 5.8, occupancy: 95.2, occupancyChange: 1.2, capRate: 4.8, pipelineUnits: 3200, healthScore: 92, rank: 2 },
-    { id: '3', name: 'Old Fourth Ward', propertyCount: 68, units: 15800, avgRent: 1950, rentGrowth: 6.2, occupancy: 94.8, occupancyChange: 0.5, capRate: 4.9, pipelineUnits: 1450, healthScore: 85, rank: 3 },
-    { id: '4', name: 'West Midtown', propertyCount: 82, units: 18500, avgRent: 1780, rentGrowth: 4.5, occupancy: 93.2, occupancyChange: -0.2, capRate: 5.2, pipelineUnits: 2100, healthScore: 78, rank: 4 },
-    { id: '5', name: 'Brookhaven', propertyCount: 95, units: 22300, avgRent: 1720, rentGrowth: 3.8, occupancy: 94.1, occupancyChange: 0.3, capRate: 5.3, pipelineUnits: 1650, healthScore: 76, rank: 5 },
-    { id: '6', name: 'Downtown', propertyCount: 112, units: 28200, avgRent: 1820, rentGrowth: 3.2, occupancy: 91.5, occupancyChange: -0.8, capRate: 5.4, pipelineUnits: 3800, healthScore: 68, rank: 6 },
-    { id: '7', name: 'Sandy Springs', propertyCount: 134, units: 31500, avgRent: 1650, rentGrowth: 2.8, occupancy: 93.8, occupancyChange: 0.2, capRate: 5.5, pipelineUnits: 1800, healthScore: 72, rank: 7 },
-    { id: '8', name: 'Decatur', propertyCount: 52, units: 12400, avgRent: 1580, rentGrowth: 3.1, occupancy: 95.5, occupancyChange: 0.6, capRate: 5.2, pipelineUnits: 680, healthScore: 74, rank: 8 },
-    { id: '9', name: 'East Atlanta', propertyCount: 45, units: 9800, avgRent: 1420, rentGrowth: 4.8, occupancy: 93.5, occupancyChange: 0.4, capRate: 5.6, pipelineUnits: 920, healthScore: 71, rank: 9 },
-    { id: '10', name: 'Vinings', propertyCount: 38, units: 8500, avgRent: 1750, rentGrowth: 2.5, occupancy: 94.2, occupancyChange: 0.1, capRate: 5.4, pipelineUnits: 450, healthScore: 70, rank: 10 },
-    { id: '11', name: 'Perimeter Center', propertyCount: 89, units: 24600, avgRent: 1680, rentGrowth: 2.2, occupancy: 92.8, occupancyChange: -0.5, capRate: 5.6, pipelineUnits: 2400, healthScore: 65, rank: 11 },
-    { id: '12', name: 'Cumberland/Galleria', propertyCount: 76, units: 19200, avgRent: 1590, rentGrowth: 1.8, occupancy: 93.1, occupancyChange: 0.0, capRate: 5.7, pipelineUnits: 1600, healthScore: 62, rank: 12 },
-  ], []);
-
-  // Filter and sort
-  const filteredSubmarkets = useMemo(() => {
-    let result = [...submarkets];
-    
-    // Search filter
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(s => s.name.toLowerCase().includes(q));
+// Mock submarket data
+const MOCK_SUBMARKETS = [
+  { 
+    id: 'midtown', name: 'Midtown', 
+    jedi: 82, demand: 78, supply: 18400, saturation: 0.85, 
+    rentAccel: '+5.2%', trfcRent: 0.92,
+    capacity: '28%', buildout: '6.8yr', constraint: 72, overhang: 'LOW', 
+    lastMover: false, pricingPower: 78, traffic: 76,
+    entryPrice: '$185K/unit',
+    detail: {
+      demand: { 'D-09': 78, 'D-10': 74, 'D-08': 82 },
+      supply: { 'S-01': 18400, 'S-08': 0.85, 'S-05': 'Moderate' },
+      momentum: { 'M-02': '+5.2%', 'M-07': 0.92 },
+      devCapacity: { 'DC-01': '28%', 'DC-02': '6.8yr', 'DC-03': 72, 'DC-04': 'LOW', 'DC-05': 'No', 'DC-07': 78, 'DC-09': 24 },
+      traffic: { 'T-02': 76, 'T-08': 68 },
     }
-    
-    // Sort
-    result.sort((a, b) => {
-      const aVal = a[sortBy];
-      const bVal = b[sortBy];
+  },
+  { 
+    id: 'buckhead', name: 'Buckhead', 
+    jedi: 78, demand: 72, supply: 24200, saturation: 1.02, 
+    rentAccel: '+3.8%', trfcRent: 0.84,
+    capacity: '22%', buildout: '5.4yr', constraint: 68, overhang: 'MOD', 
+    lastMover: false, pricingPower: 72, traffic: 81,
+    entryPrice: '$245K/unit',
+    detail: {
+      demand: { 'D-09': 72, 'D-10': 70, 'D-08': 74 },
+      supply: { 'S-01': 24200, 'S-08': 1.02, 'S-05': 'High' },
+      momentum: { 'M-02': '+3.8%', 'M-07': 0.84 },
+      devCapacity: { 'DC-01': '22%', 'DC-02': '5.4yr', 'DC-03': 68, 'DC-04': 'MOD', 'DC-05': 'No', 'DC-07': 72, 'DC-09': 18 },
+      traffic: { 'T-02': 81, 'T-08': 74 },
+    }
+  },
+  { 
+    id: 'ofw', name: 'Old Fourth Ward', 
+    jedi: 86, demand: 84, supply: 8900, saturation: 0.72, 
+    rentAccel: '+6.1%', trfcRent: 0.96,
+    capacity: '42%', buildout: '9.2yr', constraint: 58, overhang: 'LOW', 
+    lastMover: true, pricingPower: 82, traffic: 68,
+    entryPrice: '$165K/unit',
+    detail: {
+      demand: { 'D-09': 84, 'D-10': 80, 'D-08': 88 },
+      supply: { 'S-01': 8900, 'S-08': 0.72, 'S-05': 'Sparse' },
+      momentum: { 'M-02': '+6.1%', 'M-07': 0.96 },
+      devCapacity: { 'DC-01': '42%', 'DC-02': '9.2yr', 'DC-03': 58, 'DC-04': 'LOW', 'DC-05': 'Yes★', 'DC-07': 82, 'DC-09': 38 },
+      traffic: { 'T-02': 68, 'T-08': 62 },
+    }
+  },
+  { 
+    id: 'decatur', name: 'Decatur', 
+    jedi: 74, demand: 68, supply: 12100, saturation: 0.88, 
+    rentAccel: '+4.2%', trfcRent: 0.78,
+    capacity: '35%', buildout: '7.6yr', constraint: 62, overhang: 'MOD', 
+    lastMover: false, pricingPower: 68, traffic: 58,
+    entryPrice: '$142K/unit',
+    detail: {
+      demand: { 'D-09': 68, 'D-10': 64, 'D-08': 72 },
+      supply: { 'S-01': 12100, 'S-08': 0.88, 'S-05': 'Moderate' },
+      momentum: { 'M-02': '+4.2%', 'M-07': 0.78 },
+      devCapacity: { 'DC-01': '35%', 'DC-02': '7.6yr', 'DC-03': 62, 'DC-04': 'MOD', 'DC-05': 'No', 'DC-07': 68, 'DC-09': 28 },
+      traffic: { 'T-02': 58, 'T-08': 52 },
+    }
+  },
+  { 
+    id: 'sandy-springs', name: 'Sandy Springs', 
+    jedi: 71, demand: 64, supply: 15600, saturation: 0.94, 
+    rentAccel: '+2.9%', trfcRent: 0.72,
+    capacity: '18%', buildout: '4.8yr', constraint: 76, overhang: 'LOW', 
+    lastMover: false, pricingPower: 74, traffic: 72,
+    entryPrice: '$178K/unit',
+    detail: {
+      demand: { 'D-09': 64, 'D-10': 62, 'D-08': 66 },
+      supply: { 'S-01': 15600, 'S-08': 0.94, 'S-05': 'Low' },
+      momentum: { 'M-02': '+2.9%', 'M-07': 0.72 },
+      devCapacity: { 'DC-01': '18%', 'DC-02': '4.8yr', 'DC-03': 76, 'DC-04': 'LOW', 'DC-05': 'No', 'DC-07': 74, 'DC-09': 12 },
+      traffic: { 'T-02': 72, 'T-08': 68 },
+    }
+  },
+  { 
+    id: 'east-atlanta', name: 'East Atlanta', 
+    jedi: 79, demand: 76, supply: 6200, saturation: 0.68, 
+    rentAccel: '+5.8%', trfcRent: 0.88,
+    capacity: '52%', buildout: '11.4yr', constraint: 48, overhang: 'LOW', 
+    lastMover: true, pricingPower: 76, traffic: 54,
+    entryPrice: '$128K/unit',
+    detail: {
+      demand: { 'D-09': 76, 'D-10': 72, 'D-08': 80 },
+      supply: { 'S-01': 6200, 'S-08': 0.68, 'S-05': 'Sparse' },
+      momentum: { 'M-02': '+5.8%', 'M-07': 0.88 },
+      devCapacity: { 'DC-01': '52%', 'DC-02': '11.4yr', 'DC-03': 48, 'DC-04': 'LOW', 'DC-05': 'Yes★', 'DC-07': 76, 'DC-09': 42 },
+      traffic: { 'T-02': 54, 'T-08': 48 },
+    }
+  },
+];
+
+export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, onSelectSubmarket }) => {
+  const [activeLayer, setActiveLayer] = useState('JEDI');
+  const [expandedSubmarket, setExpandedSubmarket] = useState<string | null>(null);
+  const [compareSelection, setCompareSelection] = useState<string[]>([]);
+  const [sortCol, setSortCol] = useState('jedi');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const msaName = msa?.name || msaId || 'Atlanta';
+
+  // Sort submarkets
+  const sortedSubmarkets = useMemo(() => {
+    return [...MOCK_SUBMARKETS].sort((a, b) => {
+      const aVal = (a as any)[sortCol];
+      const bVal = (b as any)[sortCol];
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
       }
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortDir === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-      }
-      return 0;
+      return sortDir === 'asc' 
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
     });
-    
-    return result;
-  }, [submarkets, searchQuery, sortBy, sortDir]);
+  }, [sortCol, sortDir]);
 
-  const handleSort = (key: SortKey) => {
-    if (sortBy === key) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+  const toggleCompare = (id: string) => {
+    setCompareSelection(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id)
+        : prev.length < 3 ? [...prev, id] : prev
+    );
+  };
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
-      setSortBy(key);
-      setSortDir(key === 'rank' ? 'asc' : 'desc');
+      setSortCol(col);
+      setSortDir('desc');
     }
   };
 
-  const getHealthColor = (score: number) => {
-    if (score >= 80) return BT.text.green;
-    if (score >= 65) return BT.text.amber;
-    return BT.text.red;
+  // Helper to render cell content
+  const renderCell = (sub: typeof MOCK_SUBMARKETS[0], key: string) => {
+    const val = (sub as any)[key];
+    switch (key) {
+      case 'jedi':
+      case 'demand':
+      case 'constraint':
+      case 'pricingPower':
+      case 'traffic': {
+        const colors = scoreColor(val);
+        return (
+          <span style={{
+            padding: '2px 8px',
+            borderRadius: 4,
+            background: colors.btBg,
+            color: colors.btText,
+            fontSize: 11,
+            fontWeight: 700,
+          }}>
+            {val}
+          </span>
+        );
+      }
+      case 'supply':
+        return <span style={{ color: BT.text.secondary }}>{val.toLocaleString()}</span>;
+      case 'saturation':
+        const satColors = val > 1 ? { bg: 'rgba(239,68,68,0.15)', text: BT.accent.red } : { bg: 'rgba(34,197,94,0.15)', text: BT.text.green };
+        return (
+          <span style={{
+            padding: '2px 6px',
+            borderRadius: 4,
+            background: satColors.bg,
+            color: satColors.text,
+            fontSize: 11,
+          }}>
+            {val.toFixed(2)}
+          </span>
+        );
+      case 'rentAccel':
+        return <span style={{ color: BT.text.green, fontWeight: 600 }}>{val}</span>;
+      case 'trfcRent':
+        return <span style={{ color: BT.text.secondary }}>{val.toFixed(2)}</span>;
+      case 'capacity':
+      case 'buildout':
+        return <span style={{ color: BT.text.violet, fontWeight: 500 }}>{val}</span>;
+      case 'overhang':
+        const ohColors = val === 'LOW' ? { bg: 'rgba(34,197,94,0.15)', text: BT.text.green } : { bg: 'rgba(245,158,11,0.15)', text: BT.accent.amber };
+        return (
+          <span style={{
+            padding: '2px 6px',
+            borderRadius: 4,
+            background: ohColors.bg,
+            color: ohColors.text,
+            fontSize: 10,
+            fontWeight: 600,
+          }}>
+            {val}
+          </span>
+        );
+      case 'lastMover':
+        return val 
+          ? <span style={{ color: BT.text.violet, fontWeight: 700, fontSize: 11 }}>Yes★</span>
+          : <span style={{ color: BT.text.muted, fontSize: 11 }}>No</span>;
+      default:
+        return <span>{String(val)}</span>;
+    }
   };
 
-  // Summary stats
-  const stats = useMemo(() => ({
-    total: filteredSubmarkets.length,
-    totalUnits: filteredSubmarkets.reduce((sum, s) => sum + s.units, 0),
-    avgRent: filteredSubmarkets.reduce((sum, s) => sum + s.avgRent, 0) / filteredSubmarkets.length,
-    avgOccupancy: filteredSubmarkets.reduce((sum, s) => sum + s.occupancy, 0) / filteredSubmarkets.length,
-  }), [filteredSubmarkets]);
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Search & Summary */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          background: BT.bg.cardHover,
-          borderRadius: 6,
-          border: `1px solid ${BT.border.subtle}`,
-          flex: 1,
-          maxWidth: 300,
-        }}>
-          <Search size={14} color={BT.text.muted} />
-          <input
-            type="text"
-            placeholder="Search submarkets..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ ...terminalStyles.sectionTitle }}>
+            {msaName} — Submarket Analysis
+          </h2>
+          <span style={{ color: BT.text.muted, fontSize: 12 }}>
+            14 metrics · Click row to expand · Select up to 3 to compare
+          </span>
+        </div>
+        {compareSelection.length > 0 && (
+          <button style={{
+            padding: '8px 16px',
+            background: BT.accent.blue,
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}>
+            Compare ({compareSelection.length})
+          </button>
+        )}
+      </div>
+
+      {/* Map Layer Toggle */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {MAP_LAYERS.map(layer => (
+          <button
+            key={layer.key}
+            onClick={() => setActiveLayer(layer.key)}
             style={{
-              background: 'transparent',
+              padding: '6px 12px',
+              background: activeLayer === layer.key ? BT.accent.blue : BT.bg.elevated,
+              color: activeLayer === layer.key ? '#fff' : BT.text.secondary,
               border: 'none',
-              color: BT.text.primary,
-              fontSize: 12,
-              outline: 'none',
-              flex: 1,
+              borderRadius: 4,
+              fontSize: 11,
+              fontWeight: 500,
+              cursor: 'pointer',
             }}
-          />
-        </div>
-
-        {/* Summary */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, fontSize: 11 }}>
-          <span style={{ color: BT.text.muted }}>
-            <strong style={{ color: BT.text.primary }}>{stats.total}</strong> submarkets
-          </span>
-          <span style={{ color: BT.text.muted }}>
-            <strong style={{ color: BT.text.cyan }}>{(stats.totalUnits / 1000).toFixed(0)}K</strong> units
-          </span>
-          <span style={{ color: BT.text.muted }}>
-            Avg Rent: <strong style={{ color: BT.text.green }}>${Math.round(stats.avgRent).toLocaleString()}</strong>
-          </span>
-          <span style={{ color: BT.text.muted }}>
-            Avg Occ: <strong style={{ color: BT.text.green }}>{stats.avgOccupancy.toFixed(1)}%</strong>
-          </span>
-        </div>
+          >
+            {layer.label}
+            {layer.isNew && <span style={{ marginLeft: 4, color: BT.text.violet }}>★</span>}
+          </button>
+        ))}
       </div>
 
-      {/* Submarkets Table */}
-      <div style={{
-        background: BT.bg.panel,
-        border: `1px solid ${BT.border.subtle}`,
-        borderRadius: 8,
-        overflow: 'hidden',
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: BT.bg.header }}>
-              <th 
-                onClick={() => handleSort('rank')}
-                style={{ ...terminalStyles.th, textAlign: 'center', width: 50, cursor: 'pointer' }}
-              >
-                Rank {sortBy === 'rank' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th 
-                onClick={() => handleSort('name')}
-                style={{ ...terminalStyles.th, textAlign: 'left', cursor: 'pointer' }}
-              >
-                Submarket {sortBy === 'name' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th 
-                onClick={() => handleSort('healthScore')}
-                style={{ ...terminalStyles.th, textAlign: 'center', cursor: 'pointer' }}
-              >
-                Health {sortBy === 'healthScore' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th 
-                onClick={() => handleSort('units')}
-                style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}
-              >
-                Units {sortBy === 'units' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th 
-                onClick={() => handleSort('avgRent')}
-                style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}
-              >
-                Avg Rent {sortBy === 'avgRent' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th 
-                onClick={() => handleSort('rentGrowth')}
-                style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}
-              >
-                Growth {sortBy === 'rentGrowth' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th 
-                onClick={() => handleSort('occupancy')}
-                style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}
-              >
-                Occ % {sortBy === 'occupancy' && <ArrowUpDown size={10} style={{ marginLeft: 4 }} />}
-              </th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Cap</th>
-              <th style={{ ...terminalStyles.th, textAlign: 'right' }}>Pipeline</th>
-              <th style={{ ...terminalStyles.th, width: 40 }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSubmarkets.map((submarket) => (
-              <tr 
-                key={submarket.id}
-                onClick={() => onSubmarketSelect?.(submarket.id)}
-                style={{ 
-                  cursor: 'pointer',
-                  borderBottom: `1px solid ${BT.border.subtle}`,
-                }}
-                onMouseOver={(e) => e.currentTarget.style.background = BT.bg.cardHover}
-                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-              >
-                <td style={{ ...terminalStyles.td, textAlign: 'center' }}>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 24,
-                    height: 24,
-                    borderRadius: '50%',
-                    background: submarket.rank <= 3 ? `${BT.text.green}22` : BT.bg.cardHover,
-                    color: submarket.rank <= 3 ? BT.text.green : BT.text.muted,
-                    fontWeight: 700,
-                    fontSize: 11,
-                  }}>
-                    {submarket.rank}
-                  </span>
-                </td>
-                <td style={{ ...terminalStyles.td }}>
-                  <div style={{ fontWeight: 600, color: BT.text.primary, marginBottom: 2 }}>
-                    {submarket.name}
-                  </div>
-                  <div style={{ fontSize: 10, color: BT.text.muted }}>
-                    {submarket.propertyCount} properties
-                  </div>
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'center' }}>
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: `${getHealthColor(submarket.healthScore)}22`,
-                    color: getHealthColor(submarket.healthScore),
-                    fontWeight: 700,
-                    fontSize: 12,
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}>
-                    {submarket.healthScore}
-                  </span>
-                </td>
-                <td style={{ 
-                  ...terminalStyles.td, 
-                  textAlign: 'right',
-                  fontFamily: "'JetBrains Mono', monospace",
-                }}>
-                  {(submarket.units / 1000).toFixed(1)}K
-                </td>
-                <td style={{ 
-                  ...terminalStyles.td, 
-                  textAlign: 'right',
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontWeight: 600,
-                  color: BT.text.green,
-                }}>
-                  ${submarket.avgRent.toLocaleString()}
-                </td>
-                <td style={{ 
-                  ...terminalStyles.td, 
-                  textAlign: 'right',
-                  color: submarket.rentGrowth >= 0 ? BT.text.green : BT.text.red,
-                  fontWeight: 600,
-                }}>
-                  {submarket.rentGrowth >= 0 ? '+' : ''}{submarket.rentGrowth.toFixed(1)}%
-                </td>
-                <td style={{ 
-                  ...terminalStyles.td, 
-                  textAlign: 'right',
-                  fontFamily: "'JetBrains Mono', monospace",
-                  color: submarket.occupancy >= 94 ? BT.text.green : BT.text.amber,
-                }}>
-                  {submarket.occupancy.toFixed(1)}%
-                  <span style={{
-                    fontSize: 9,
-                    marginLeft: 4,
-                    color: submarket.occupancyChange >= 0 ? BT.text.green : BT.text.red,
-                  }}>
-                    {submarket.occupancyChange >= 0 ? '▲' : '▼'}
-                  </span>
-                </td>
-                <td style={{ 
-                  ...terminalStyles.td, 
-                  textAlign: 'right',
-                  fontFamily: "'JetBrains Mono', monospace",
-                  color: BT.text.cyan,
-                }}>
-                  {submarket.capRate.toFixed(1)}%
-                </td>
-                <td style={{ 
-                  ...terminalStyles.td, 
-                  textAlign: 'right',
-                  color: BT.text.amber,
-                }}>
-                  {(submarket.pipelineUnits / 1000).toFixed(1)}K
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'center' }}>
-                  <ArrowRight size={14} color={BT.text.muted} />
-                </td>
+      {/* Main Table */}
+      <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1200 }}>
+            <thead>
+              <tr style={{ background: BT.bg.elevated }}>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'center', width: 40 }}>
+                  <input type="checkbox" disabled style={{ opacity: 0.3 }} />
+                </th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', minWidth: 120 }}>
+                  Submarket
+                </th>
+                {TABLE_COLUMNS.map(col => (
+                  <th 
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    style={{ 
+                      ...terminalStyles.tableHeader, 
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {col.label}
+                        {sortCol === col.key && (
+                          <span style={{ fontSize: 10 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>
+                        )}
+                      </span>
+                      <span style={{ 
+                        fontSize: 9, 
+                        color: col.isNew ? BT.text.violet : BT.text.cyan,
+                        fontFamily: 'monospace',
+                      }}>
+                        {col.code}
+                      </span>
+                    </div>
+                  </th>
+                ))}
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', minWidth: 80 }}>
+                  Entry Price
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sortedSubmarkets.map((sub, i) => (
+                <React.Fragment key={sub.id}>
+                  <tr 
+                    style={{ 
+                      borderBottom: `1px solid ${BT.border.subtle}`,
+                      cursor: 'pointer',
+                      background: expandedSubmarket === sub.id ? BT.bg.elevated : 'transparent',
+                    }}
+                    onClick={() => setExpandedSubmarket(expandedSubmarket === sub.id ? null : sub.id)}
+                  >
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={compareSelection.includes(sub.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          toggleCompare(sub.id);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, fontWeight: 600 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {sub.name}
+                        {sub.lastMover && (
+                          <span style={{
+                            fontSize: 9,
+                            color: BT.text.violet,
+                            background: 'rgba(139,92,246,0.15)',
+                            padding: '1px 4px',
+                            borderRadius: 3,
+                          }}>
+                            Last Mover
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    {TABLE_COLUMNS.map(col => (
+                      <td key={col.key} style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                        {renderCell(sub, col.key)}
+                      </td>
+                    ))}
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontWeight: 600 }}>
+                      {sub.entryPrice}
+                    </td>
+                  </tr>
+                  
+                  {/* Expanded Detail Row */}
+                  {expandedSubmarket === sub.id && (
+                    <tr>
+                      <td colSpan={TABLE_COLUMNS.length + 3} style={{ padding: 0 }}>
+                        <div style={{ 
+                          padding: 20, 
+                          background: BT.bg.elevated,
+                          borderBottom: `2px solid ${BT.accent.blue}`,
+                        }}>
+                          <div style={{ display: 'flex', gap: 20 }}>
+                            {DETAIL_SECTIONS.map(section => {
+                              const btColor = BT_SIGNAL_COLORS[section.groupId];
+                              return (
+                                <div key={section.key} style={{ flex: 1 }}>
+                                  <div style={{ 
+                                    fontSize: 11, 
+                                    fontWeight: 700, 
+                                    color: btColor.primary,
+                                    marginBottom: 8,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                  }}>
+                                    {section.title}
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                    {section.signals.map(sig => {
+                                      const detailVal = (sub.detail as any)[section.key]?.[sig];
+                                      return (
+                                        <div key={sig} style={{ 
+                                          display: 'flex', 
+                                          justifyContent: 'space-between',
+                                          fontSize: 11,
+                                        }}>
+                                          <span style={{ 
+                                            color: BT.text.muted,
+                                            fontFamily: 'monospace',
+                                          }}>
+                                            {sig}
+                                          </span>
+                                          <span style={{ color: BT.text.primary, fontWeight: 500 }}>
+                                            {detailVal ?? '—'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            
+                            {/* Action Buttons */}
+                            <div style={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              gap: 8,
+                              justifyContent: 'center',
+                            }}>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectSubmarket?.(sub.id);
+                                }}
+                                style={{
+                                  padding: '8px 16px',
+                                  background: BT.accent.blue,
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                View Terminal →
+                              </button>
+                              <button style={{
+                                padding: '8px 16px',
+                                background: 'transparent',
+                                color: BT.text.secondary,
+                                border: `1px solid ${BT.border.subtle}`,
+                                borderRadius: 6,
+                                fontSize: 11,
+                                cursor: 'pointer',
+                              }}>
+                                View Properties
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Pagination hint */}
+      {/* Legend */}
       <div style={{ 
-        textAlign: 'center', 
-        fontSize: 11, 
-        color: BT.text.dim,
-        padding: 8,
+        display: 'flex', 
+        gap: 24, 
+        padding: '12px 16px',
+        background: BT.bg.card,
+        borderRadius: 8,
+        border: `1px solid ${BT.border.subtle}`,
       }}>
-        Showing {filteredSubmarkets.length} of {submarkets.length} submarkets • Click a row to view details
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ 
+            fontSize: 10, 
+            color: BT.text.violet,
+            background: 'rgba(139,92,246,0.15)',
+            padding: '2px 6px',
+            borderRadius: 4,
+            fontWeight: 600,
+          }}>
+            ★
+          </span>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>
+            Dev Capacity & Traffic Engine signals (new)
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ 
+            fontSize: 10, 
+            color: BT.text.violet,
+            fontWeight: 600,
+          }}>
+            Last Mover
+          </span>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>
+            Capacity &lt;15% + Active development = pricing power advantage
+          </span>
+        </div>
       </div>
     </div>
   );
