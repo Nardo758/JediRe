@@ -79,7 +79,7 @@ export class CommentaryAgent {
     });
 
     if (!input.forceRefresh) {
-      const cached = await this.getCachedCommentary(input.entityType, input.entityId);
+      const cached = await this.getCachedCommentary(input.entityType, input.entityId, input.userId);
       if (cached) {
         logger.info('Commentary Agent: returning cached commentary', {
           requestId,
@@ -136,7 +136,7 @@ export class CommentaryAgent {
       cacheTTLHours: CACHE_TTL_HOURS,
     };
 
-    await this.cacheCommentary(result);
+    await this.cacheCommentary(result, input.userId);
 
     const elapsed = Date.now() - startTime;
     logger.info('Commentary Agent: generation complete', {
@@ -506,6 +506,7 @@ Focus on demand dynamics, supply pipeline impact, and investment positioning. Re
   private async getCachedCommentary(
     entityType: string,
     entityId: string,
+    userId?: string,
   ): Promise<CommentaryResult | null> {
     try {
       const result = await query(
@@ -513,10 +514,11 @@ Focus on demand dynamics, supply pipeline impact, and investment positioning. Re
          WHERE task_type = 'commentary_generation'
            AND input_data->>'entityType' = $1
            AND input_data->>'entityId' = $2
+           AND (input_data->>'userId' = $3 OR input_data->>'userId' IS NULL OR $3 IS NULL)
            AND status = 'completed'
          ORDER BY completed_at DESC
          LIMIT 1`,
-        [entityType, entityId],
+        [entityType, entityId, userId || null],
       );
 
       if (result.rows.length === 0) return null;
@@ -535,22 +537,24 @@ Focus on demand dynamics, supply pipeline impact, and investment positioning. Re
     }
   }
 
-  private async cacheCommentary(result: CommentaryResult): Promise<void> {
+  private async cacheCommentary(result: CommentaryResult, userId?: string): Promise<void> {
     try {
       await query(
         `INSERT INTO agent_tasks (
           task_type, input_data, output_data, status, user_id, progress, completed_at
         ) VALUES (
           'commentary_generation',
-          $1, $2, 'completed', 'system', 100, NOW()
+          $1, $2, 'completed', $3, 100, NOW()
         )`,
         [
           JSON.stringify({
             entityType: result.entityType,
             entityId: result.entityId,
             entityName: result.entityName,
+            userId: userId || null,
           }),
           JSON.stringify(result),
+          userId || 'system',
         ],
       );
     } catch (err) {
