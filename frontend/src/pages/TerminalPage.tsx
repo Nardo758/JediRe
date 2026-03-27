@@ -10,6 +10,7 @@ import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
 import BloombergMarketDetail from "./MarketIntelligence/BloombergMarketDetail";
 import PeerComparisonPage from "./MarketIntelligence/PeerComparisonPage";
+import F4MarketsPage from "./MarketIntelligence/F4MarketsPage";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -1933,67 +1934,13 @@ export default function TerminalPage() {
   };
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
-  const MSA_OPTIONS = [
-    { id: "atlanta-ga",    name: "Atlanta, GA" },
-    { id: "raleigh-nc",    name: "Raleigh, NC" },
-    { id: "charlotte-nc",  name: "Charlotte, NC" },
-    { id: "tampa-fl",      name: "Tampa, FL" },
-    { id: "orlando-fl",    name: "Orlando, FL" },
-    { id: "miami-fl",      name: "Miami, FL" },
-    { id: "jacksonville-fl", name: "Jacksonville, FL" },
-  ];
-
-  const viewMarketsCorpHealthData = {
-    schi: corpHealthLive.schi ?? DEMO_SCHI,
-    reHealth: corpHealthLive.reHealth ?? DEMO_RE_HEALTH,
-    divergence: corpHealthLive.divergence ?? DEMO_DIVERGENCE,
-    herfindahl: corpHealthLive.herfindahl ?? DEMO_HERFINDAHL,
-    portfolioSubmarkets: corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
-      {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,employerCount:24,publicCount:8},
-      {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,employerCount:18,publicCount:6},
-      {name:"Redmond Tech",msa:"Seattle",schi:76.9,divergence:-8.1,signal:"aligned",reHealth:71.2,hhi:0.203,employerCount:12,publicCount:5},
-      {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,employerCount:45,publicCount:15},
-      {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,employerCount:30,publicCount:9},
-    ],
-    topEmployerText: corpHealthLive.employers.length > 0
-      ? `Top employer: ${corpHealthLive.employers[0]?.company_name||corpHealthLive.employers[0]?.company||"\u2014"}.`
-      : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
-  };
-
+  // Full F4 Markets page with MSA → Submarket → Property drill-down
   const ViewMarkets = () => (
-    <div style={{flex:1,overflow:"hidden",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
-      {/* MSA selector / view toggle bar — hidden when Peer Comp is active (it has its own nav bar) */}
-      {marketsView === "detail" && (
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"0 12px",height:28,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-          <span style={{fontSize:9,color:T.text.muted,fontFamily:T.font.mono,letterSpacing:1}}>MARKET</span>
-          <select
-            value={selectedMsaId}
-            onChange={e => setSelectedMsaId(e.target.value)}
-            style={{background:T.bg.input||T.bg.panel,color:T.text.amber,border:`1px solid ${T.border.medium}`,fontSize:10,fontFamily:T.font.mono,fontWeight:700,padding:"2px 6px",cursor:"pointer",outline:"none"}}
-          >
-            {MSA_OPTIONS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          <div style={{flex:1}}/>
-          <div style={{display:"flex",gap:2}}>
-            {([["detail","MARKET DETAIL"],["peers","PEER COMP"]] as ["detail"|"peers", string][]).map(([v,label]) => (
-              <button key={v} onClick={() => setMarketsView(v)} style={{background:marketsView===v?T.bg.active:"transparent",color:marketsView===v?T.text.amber:T.text.secondary,border:`1px solid ${marketsView===v?T.text.amber:T.border.subtle}`,fontSize:8,fontFamily:T.font.mono,fontWeight:marketsView===v?700:400,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {/* Content */}
-      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        {marketsView === "detail" && (
-          <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={viewMarketsCorpHealthData} />
-        )}
-        {marketsView === "peers" && (
-          <PeerComparisonPage embedded onViewDetail={() => setMarketsView("detail")} />
-        )}
-      </div>
+    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+      <F4MarketsPage />
     </div>
   );
+
   // ─── VIEW: F5 NEWS (NewsIntelligencePage) ─────────────────
   const ViewNews = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
