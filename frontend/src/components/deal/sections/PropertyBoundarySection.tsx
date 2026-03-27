@@ -921,23 +921,23 @@ export const PropertyBoundarySection: React.FC<PropertyBoundarySectionProps> = (
                         </p>
                       </div>
                       <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs" style={{ color: BT.text.secondary }}>
                           {zoningDetail.residential_far ? 'FAR (Split)' : 'Max FAR'}
                         </p>
                         {zoningDetail.residential_far || zoningDetail.nonresidential_far ? (
                           <div>
-                            <p className="font-semibold text-gray-900 text-sm">
+                            <p className="font-semibold text-sm" style={{ color: BT.text.primary }}>
                               {zoningDetail.residential_far} res / {zoningDetail.nonresidential_far} nonres
                             </p>
-                            <p className="text-[10px] text-gray-400">({zoningDetail.max_far} combined)</p>
+                            <p className="text-[10px]" style={{ color: BT.text.secondary }}>({zoningDetail.max_far} combined)</p>
                           </div>
                         ) : (
-                          <p className="font-semibold text-gray-900">{zoningDetail.max_far || '--'}</p>
+                          <p className="font-semibold" style={{ color: BT.text.primary }}>{zoningDetail.max_far || '--'}</p>
                         )}
                       </div>
                       <div style={{ background: BT.bg.panelAlt, borderRadius: 0 }} className="p-2">
-                        <p className="text-xs text-gray-500">Max Height</p>
-                        <p className="font-semibold text-gray-900">
+                        <p className="text-xs" style={{ color: BT.text.secondary }}>Max Height</p>
+                        <p className="font-semibold" style={{ color: BT.text.primary }}>
                           {zoningDetail.max_building_height_ft || zoningDetail.max_height_feet || '--'} ft
                         </p>
                       </div>
