@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapPin,
   CheckCircle2,
@@ -19,6 +19,8 @@ import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
 import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import { BT as BT2, BtTabWrapper, PanelHeader, SubTabBar } from '../bloomberg-ui';
+import { useDealType } from '../../../stores/dealStore';
+import { getZoningDepth } from '../../../shared/config/deal-type-visibility';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -26,6 +28,9 @@ interface ZoningModuleSectionProps {
   onUpdate?: () => void;
   onBack?: () => void;
 }
+
+const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk', 'entitlements'];
+const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline', 'entitlements'];
 
 const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
@@ -39,14 +44,11 @@ const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: n
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const dealType = useDealType();
   const zoningDepth = useMemo(() => {
-    // Only use simplified 3-tab view when the deal *explicitly* declares an existing project type.
-    // Deals with no project_type set should show the full 6 tabs.
     const explicitType = deal?.projectType || deal?.project_type || deal?.identity?.mode;
     if (!explicitType) return 'full';
     return getZoningDepth(dealType);
   }, [dealType, deal]);
 
-  // Filter tabs based on zoning depth (simplified for existing, full for dev/redev)
   const visibleTabs = useMemo(() => {
     const tabIds = zoningDepth === 'simplified' ? SIMPLIFIED_TABS : FULL_TABS;
     return ALL_TABS.filter(tab => tabIds.includes(tab.id));
