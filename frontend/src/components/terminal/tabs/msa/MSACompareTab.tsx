@@ -1,192 +1,349 @@
 /**
- * MSACompareTab - Compare to peer MSAs
+ * MSACompareTab - Full market comparison matrix
+ * Integrated from pre-Bloomberg CompareMarketsPage (24KB)
+ * Features: 20+ metrics across 6 categories, signal groups, heat mapping
  */
 
-import React, { useMemo, useState } from 'react';
-import { BarChart3, ArrowUpDown } from 'lucide-react';
-import { BT, terminalStyles } from '../../theme';
-import { MSAData } from '../../MSATerminal';
+import React, { useState, useMemo } from 'react';
+import { BT, terminalStyles, fmt } from '../../theme';
+import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SignalGroupId } from '../../signalGroups';
 
 interface MSACompareTabProps {
   msaId: string;
-  msa: MSAData;
+  msa: any;
 }
 
-interface PeerMSA {
+interface MarketData {
   id: string;
   name: string;
   state: string;
-  population: number;
-  avgRent: number;
-  rentGrowth: number;
-  occupancy: number;
-  capRate: number;
-  pipelinePercent: number;
-  healthScore: number;
-  rank: number;
-  isCurrent?: boolean;
+  selected: boolean;
 }
 
+type MetricValue = { value: string; raw: number };
+
+// Markets to compare
+const MARKETS: MarketData[] = [
+  { id: 'atlanta', name: 'Atlanta', state: 'GA', selected: true },
+  { id: 'charlotte', name: 'Charlotte', state: 'NC', selected: true },
+  { id: 'nashville', name: 'Nashville', state: 'TN', selected: true },
+  { id: 'tampa', name: 'Tampa', state: 'FL', selected: false },
+  { id: 'raleigh', name: 'Raleigh', state: 'NC', selected: false },
+  { id: 'dallas', name: 'Dallas', state: 'TX', selected: false },
+];
+
+// Metric data by market
+const MOCK_DATA: Record<string, Record<string, MetricValue>> = {
+  'D-01 Jobs/Apt': { atlanta: { value: '3.8', raw: 3.8 }, charlotte: { value: '3.5', raw: 3.5 }, nashville: { value: '3.2', raw: 3.2 }, tampa: { value: '2.9', raw: 2.9 }, raleigh: { value: '4.1', raw: 4.1 }, dallas: { value: '3.4', raw: 3.4 } },
+  'D-02 New Jobs/Unit': { atlanta: { value: '2.4', raw: 2.4 }, charlotte: { value: '2.1', raw: 2.1 }, nashville: { value: '1.8', raw: 1.8 }, tampa: { value: '1.5', raw: 1.5 }, raleigh: { value: '2.6', raw: 2.6 }, dallas: { value: '2.0', raw: 2.0 } },
+  'D-03 Migration': { atlanta: { value: '+48K', raw: 48 }, charlotte: { value: '+32K', raw: 32 }, nashville: { value: '+28K', raw: 28 }, tampa: { value: '+52K', raw: 52 }, raleigh: { value: '+22K', raw: 22 }, dallas: { value: '+65K', raw: 65 } },
+  'D-09 Momentum': { atlanta: { value: '82', raw: 82 }, charlotte: { value: '78', raw: 78 }, nashville: { value: '71', raw: 71 }, tampa: { value: '74', raw: 74 }, raleigh: { value: '76', raw: 76 }, dallas: { value: '69', raw: 69 } },
+  'D-10 Gravity': { atlanta: { value: '76', raw: 76 }, charlotte: { value: '68', raw: 68 }, nashville: { value: '72', raw: 72 }, tampa: { value: '64', raw: 64 }, raleigh: { value: '71', raw: 71 }, dallas: { value: '74', raw: 74 } },
+  'D-11 Rent-Mort': { atlanta: { value: '-18%', raw: 18 }, charlotte: { value: '-22%', raw: 22 }, nashville: { value: '-15%', raw: 15 }, tampa: { value: '-20%', raw: 20 }, raleigh: { value: '-24%', raw: 24 }, dallas: { value: '-19%', raw: 19 } },
+  'S-04 Absorption': { atlanta: { value: '28.4mo', raw: 28.4 }, charlotte: { value: '22.1mo', raw: 22.1 }, nashville: { value: '34.8mo', raw: 34.8 }, tampa: { value: '18.2mo', raw: 18.2 }, raleigh: { value: '16.4mo', raw: 16.4 }, dallas: { value: '30.2mo', raw: 30.2 } },
+  'S-05 Clusters': { atlanta: { value: '3 zones', raw: 3 }, charlotte: { value: '2 zones', raw: 2 }, nashville: { value: '4 zones', raw: 4 }, tampa: { value: '1 zone', raw: 1 }, raleigh: { value: '1 zone', raw: 1 }, dallas: { value: '3 zones', raw: 3 } },
+  'S-06 Permit Mom': { atlanta: { value: '+8%', raw: 8 }, charlotte: { value: '-4%', raw: -4 }, nashville: { value: '+22%', raw: 22 }, tampa: { value: '-12%', raw: -12 }, raleigh: { value: '-8%', raw: -8 }, dallas: { value: '+12%', raw: 12 } },
+  'S-08 Saturation': { atlanta: { value: '6.2%', raw: 6.2 }, charlotte: { value: '5.4%', raw: 5.4 }, nashville: { value: '8.1%', raw: 8.1 }, tampa: { value: '4.8%', raw: 4.8 }, raleigh: { value: '3.8%', raw: 3.8 }, dallas: { value: '7.2%', raw: 7.2 } },
+  'M-01 Avg Rent': { atlanta: { value: '$1,680', raw: 1680 }, charlotte: { value: '$1,540', raw: 1540 }, nashville: { value: '$1,720', raw: 1720 }, tampa: { value: '$1,620', raw: 1620 }, raleigh: { value: '$1,480', raw: 1480 }, dallas: { value: '$1,580', raw: 1580 } },
+  'M-02 Rent Accel': { atlanta: { value: '+0.8%', raw: 0.8 }, charlotte: { value: '+1.2%', raw: 1.2 }, nashville: { value: '-0.4%', raw: -0.4 }, tampa: { value: '+0.6%', raw: 0.6 }, raleigh: { value: '+1.4%', raw: 1.4 }, dallas: { value: '-0.2%', raw: -0.2 } },
+  'M-05 Rent vs Wage': { atlanta: { value: '+1.2%', raw: 1.2 }, charlotte: { value: '+0.8%', raw: 0.8 }, nashville: { value: '-0.6%', raw: -0.6 }, tampa: { value: '+0.4%', raw: 0.4 }, raleigh: { value: '+1.0%', raw: 1.0 }, dallas: { value: '-0.3%', raw: -0.3 } },
+  'M-06 Occupancy': { atlanta: { value: '94.2%', raw: 94.2 }, charlotte: { value: '95.1%', raw: 95.1 }, nashville: { value: '92.8%', raw: 92.8 }, tampa: { value: '94.8%', raw: 94.8 }, raleigh: { value: '95.4%', raw: 95.4 }, dallas: { value: '93.6%', raw: 93.6 } },
+  'DC-01 Capacity': { atlanta: { value: '32%', raw: 32 }, charlotte: { value: '28%', raw: 28 }, nashville: { value: '48%', raw: 48 }, tampa: { value: '18%', raw: 18 }, raleigh: { value: '22%', raw: 22 }, dallas: { value: '42%', raw: 42 } },
+  'DC-02 Buildout': { atlanta: { value: '8.6yr', raw: 8.6 }, charlotte: { value: '6.2yr', raw: 6.2 }, nashville: { value: '14.8yr', raw: 14.8 }, tampa: { value: '4.2yr', raw: 4.2 }, raleigh: { value: '5.8yr', raw: 5.8 }, dallas: { value: '12.4yr', raw: 12.4 } },
+  'DC-03 Constraint': { atlanta: { value: '58', raw: 58 }, charlotte: { value: '62', raw: 62 }, nashville: { value: '38', raw: 38 }, tampa: { value: '74', raw: 74 }, raleigh: { value: '68', raw: 68 }, dallas: { value: '44', raw: 44 } },
+  'DC-04 Overhang': { atlanta: { value: '22%', raw: 22 }, charlotte: { value: '18%', raw: 18 }, nashville: { value: '34%', raw: 34 }, tampa: { value: '12%', raw: 12 }, raleigh: { value: '14%', raw: 14 }, dallas: { value: '28%', raw: 28 } },
+  'DC-07 Pricing Power': { atlanta: { value: '72', raw: 72 }, charlotte: { value: '68', raw: 68 }, nashville: { value: '52', raw: 52 }, tampa: { value: '78', raw: 78 }, raleigh: { value: '74', raw: 74 }, dallas: { value: '58', raw: 58 } },
+  'DC-08 Supply Wave': { atlanta: { value: 'BUILDING', raw: 2 }, charlotte: { value: 'PAST PEAK', raw: 3 }, nashville: { value: 'PEAKING', raw: 1 }, tampa: { value: 'TROUGH', raw: 4 }, raleigh: { value: 'TROUGH', raw: 4 }, dallas: { value: 'PEAKING', raw: 1 } },
+  'DC-11 Adj Rent': { atlanta: { value: '+4.6%', raw: 4.6 }, charlotte: { value: '+4.2%', raw: 4.2 }, nashville: { value: '+2.4%', raw: 2.4 }, tampa: { value: '+5.1%', raw: 5.1 }, raleigh: { value: '+5.4%', raw: 5.4 }, dallas: { value: '+3.2%', raw: 3.2 } },
+  'T-02 Physical avg': { atlanta: { value: '68', raw: 68 }, charlotte: { value: '62', raw: 62 }, nashville: { value: '58', raw: 58 }, tampa: { value: '72', raw: 72 }, raleigh: { value: '64', raw: 64 }, dallas: { value: '66', raw: 66 } },
+  'T-03 Digital avg': { atlanta: { value: '74', raw: 74 }, charlotte: { value: '70', raw: 70 }, nashville: { value: '66', raw: 66 }, tampa: { value: '68', raw: 68 }, raleigh: { value: '72', raw: 72 }, dallas: { value: '64', raw: 64 } },
+  'R-01 Affordability': { atlanta: { value: '32%', raw: 32 }, charlotte: { value: '28%', raw: 28 }, nashville: { value: '35%', raw: 35 }, tampa: { value: '38%', raw: 38 }, raleigh: { value: '26%', raw: 26 }, dallas: { value: '30%', raw: 30 } },
+  'R-03 Concession Drag': { atlanta: { value: '2.4%', raw: 2.4 }, charlotte: { value: '1.8%', raw: 1.8 }, nashville: { value: '4.2%', raw: 4.2 }, tampa: { value: '1.2%', raw: 1.2 }, raleigh: { value: '1.4%', raw: 1.4 }, dallas: { value: '3.6%', raw: 3.6 } },
+};
+
+// Metric sections with signal groups
+const METRIC_SECTIONS: { label: string; groupId: SignalGroupId; rows: string[]; higherBetter: boolean[] }[] = [
+  { label: 'Demand', groupId: 'DEMAND', rows: ['D-01 Jobs/Apt', 'D-02 New Jobs/Unit', 'D-03 Migration', 'D-09 Momentum', 'D-10 Gravity', 'D-11 Rent-Mort'], higherBetter: [true, true, true, true, true, true] },
+  { label: 'Supply', groupId: 'SUPPLY', rows: ['S-04 Absorption', 'S-05 Clusters', 'S-06 Permit Mom', 'S-08 Saturation'], higherBetter: [false, false, false, false] },
+  { label: 'Momentum', groupId: 'MOMENTUM', rows: ['M-01 Avg Rent', 'M-02 Rent Accel', 'M-05 Rent vs Wage', 'M-06 Occupancy'], higherBetter: [true, true, true, true] },
+  { label: 'Dev Capacity ★', groupId: 'DEV_CAPACITY', rows: ['DC-01 Capacity', 'DC-02 Buildout', 'DC-03 Constraint', 'DC-04 Overhang', 'DC-07 Pricing Power', 'DC-08 Supply Wave', 'DC-11 Adj Rent'], higherBetter: [false, false, true, false, true, true, true] },
+  { label: 'Traffic ★', groupId: 'TRAFFIC', rows: ['T-02 Physical avg', 'T-03 Digital avg'], higherBetter: [true, true] },
+  { label: 'Risk', groupId: 'RISK', rows: ['R-01 Affordability', 'R-03 Concession Drag'], higherBetter: [false, false] },
+];
+
 export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
-  const [sortBy, setSortBy] = useState<string>('rank');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [markets, setMarkets] = useState(MARKETS);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
-  const peers: PeerMSA[] = useMemo(() => [
-    { id: msaId, name: msa.name, state: msa.state, population: msa.population, avgRent: msa.avgRent, rentGrowth: msa.rentGrowth, occupancy: msa.occupancy, capRate: msa.avgCapRate, pipelinePercent: (msa.pipelineUnits / msa.totalUnits) * 100, healthScore: msa.healthScore, rank: msa.rank, isCurrent: true },
-    { id: '2', name: 'Charlotte', state: 'NC', population: 2700000, avgRent: 1580, rentGrowth: 5.1, occupancy: 94.5, capRate: 5.0, pipelinePercent: 7.2, healthScore: 86, rank: 3 },
-    { id: '3', name: 'Dallas', state: 'TX', population: 7900000, avgRent: 1620, rentGrowth: 3.8, occupancy: 93.2, capRate: 5.2, pipelinePercent: 8.5, healthScore: 80, rank: 6 },
-    { id: '4', name: 'Austin', state: 'TX', population: 2400000, avgRent: 1750, rentGrowth: 2.5, occupancy: 91.8, capRate: 4.9, pipelinePercent: 10.2, healthScore: 75, rank: 8 },
-    { id: '5', name: 'Nashville', state: 'TN', population: 2000000, avgRent: 1720, rentGrowth: 4.8, occupancy: 94.1, capRate: 5.1, pipelinePercent: 6.8, healthScore: 84, rank: 4 },
-    { id: '6', name: 'Raleigh', state: 'NC', population: 1500000, avgRent: 1580, rentGrowth: 5.5, occupancy: 95.2, capRate: 4.8, pipelinePercent: 5.5, healthScore: 90, rank: 2 },
-    { id: '7', name: 'Tampa', state: 'FL', population: 3200000, avgRent: 1780, rentGrowth: 4.2, occupancy: 93.8, capRate: 5.3, pipelinePercent: 7.8, healthScore: 79, rank: 7 },
-    { id: '8', name: 'Phoenix', state: 'AZ', population: 5000000, avgRent: 1620, rentGrowth: 3.5, occupancy: 93.5, capRate: 5.4, pipelinePercent: 6.5, healthScore: 78, rank: 9 },
-    { id: '9', name: 'Denver', state: 'CO', population: 2900000, avgRent: 1850, rentGrowth: 2.8, occupancy: 94.2, capRate: 5.0, pipelinePercent: 5.2, healthScore: 82, rank: 5 },
-    { id: '10', name: 'Orlando', state: 'FL', population: 2700000, avgRent: 1720, rentGrowth: 4.5, occupancy: 94.0, capRate: 5.2, pipelinePercent: 7.5, healthScore: 81, rank: 6 },
-  ], [msaId, msa]);
+  const selectedMarkets = markets.filter(m => m.selected);
 
-  const sortedPeers = useMemo(() => {
-    return [...peers].sort((a, b) => {
-      const aVal = a[sortBy as keyof PeerMSA] || 0;
-      const bVal = b[sortBy as keyof PeerMSA] || 0;
-      if (typeof aVal === 'number' && typeof bVal === 'number') {
-        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
-      }
-      return 0;
-    });
-  }, [peers, sortBy, sortDir]);
-
-  const handleSort = (key: string) => {
-    if (sortBy === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    else { setSortBy(key); setSortDir('desc'); }
+  const toggleMarket = (id: string) => {
+    setMarkets(prev => prev.map(m => 
+      m.id === id ? { ...m, selected: !m.selected } : m
+    ));
   };
 
-  const getHealthColor = (score: number) => {
-    if (score >= 80) return BT.text.green;
-    if (score >= 65) return BT.text.amber;
-    return BT.text.red;
+  const toggleSection = (label: string) => {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  // Find best/worst for each metric
+  const getBestWorst = (metric: string, higherBetter: boolean) => {
+    const values = selectedMarkets.map(m => ({
+      id: m.id,
+      raw: MOCK_DATA[metric]?.[m.id]?.raw || 0,
+    }));
+    const sorted = [...values].sort((a, b) => higherBetter ? b.raw - a.raw : a.raw - b.raw);
+    return {
+      best: sorted[0]?.id,
+      worst: sorted[sorted.length - 1]?.id,
+    };
   };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Current Position */}
-      <div style={{
-        background: `linear-gradient(135deg, ${BT.text.amber}15 0%, ${BT.bg.card} 100%)`,
-        borderRadius: 8,
-        padding: 16,
-        border: `1px solid ${BT.text.amber}44`,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 11, color: BT.text.amber, fontWeight: 600, marginBottom: 4 }}>CURRENT POSITION</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.primary }}>
-              {msa.name} ranks #{msa.rank} of {msa.totalRank}
-            </div>
-            <div style={{ fontSize: 12, color: BT.text.secondary, marginTop: 4 }}>
-              among top U.S. multifamily markets
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 24 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: BT.text.muted }}>Rent Growth Rank</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: BT.text.green }}>#4</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: BT.text.muted }}>Job Growth Rank</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: BT.text.cyan }}>#3</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 10, color: BT.text.muted }}>Supply Risk Rank</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: BT.text.amber }}>#6</div>
-            </div>
-          </div>
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2 style={{ ...terminalStyles.sectionTitle }}>
+            Market Comparison Matrix
+          </h2>
+          <span style={{ color: BT.text.muted, fontSize: 12 }}>
+            {selectedMarkets.length} markets · 24 metrics across 6 signal groups
+          </span>
         </div>
       </div>
 
-      {/* Peer Comparison Table */}
-      <div style={{ ...terminalStyles.panel, padding: 16 }}>
-        <div style={{ ...terminalStyles.sectionLabel, marginBottom: 16 }}>
-          <BarChart3 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />
-          Peer Market Comparison
-        </div>
+      {/* Market Selector */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {markets.map(m => (
+          <button
+            key={m.id}
+            onClick={() => toggleMarket(m.id)}
+            style={{
+              padding: '8px 16px',
+              background: m.selected ? BT.accent.blue : BT.bg.elevated,
+              color: m.selected ? '#fff' : BT.text.secondary,
+              border: 'none',
+              borderRadius: 6,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            {m.name}, {m.state}
+          </button>
+        ))}
+      </div>
 
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <th onClick={() => handleSort('rank')} style={{ ...terminalStyles.th, textAlign: 'center', cursor: 'pointer', width: 50 }}>
-                Rank {sortBy === 'rank' && <ArrowUpDown size={10} />}
-              </th>
-              <th style={{ ...terminalStyles.th, textAlign: 'left' }}>Market</th>
-              <th onClick={() => handleSort('healthScore')} style={{ ...terminalStyles.th, textAlign: 'center', cursor: 'pointer' }}>
-                Health {sortBy === 'healthScore' && <ArrowUpDown size={10} />}
-              </th>
-              <th onClick={() => handleSort('population')} style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}>
-                Pop {sortBy === 'population' && <ArrowUpDown size={10} />}
-              </th>
-              <th onClick={() => handleSort('avgRent')} style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}>
-                Rent {sortBy === 'avgRent' && <ArrowUpDown size={10} />}
-              </th>
-              <th onClick={() => handleSort('rentGrowth')} style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}>
-                Growth {sortBy === 'rentGrowth' && <ArrowUpDown size={10} />}
-              </th>
-              <th onClick={() => handleSort('occupancy')} style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}>
-                Occ {sortBy === 'occupancy' && <ArrowUpDown size={10} />}
-              </th>
-              <th onClick={() => handleSort('capRate')} style={{ ...terminalStyles.th, textAlign: 'right', cursor: 'pointer' }}>
-                Cap {sortBy === 'capRate' && <ArrowUpDown size={10} />}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedPeers.map((peer) => (
-              <tr key={peer.id} style={{ 
-                borderBottom: `1px solid ${BT.border.subtle}`,
-                background: peer.isCurrent ? `${BT.text.amber}10` : 'transparent',
-              }}>
-                <td style={{ ...terminalStyles.td, textAlign: 'center' }}>
-                  <span style={{
-                    display: 'inline-block',
-                    width: 24,
-                    height: 24,
-                    lineHeight: '24px',
-                    borderRadius: '50%',
-                    background: peer.rank <= 3 ? `${BT.text.green}22` : BT.bg.cardHover,
-                    color: peer.rank <= 3 ? BT.text.green : BT.text.muted,
-                    fontWeight: 700,
-                    fontSize: 11,
-                  }}>
-                    {peer.rank}
-                  </span>
-                </td>
-                <td style={{ ...terminalStyles.td }}>
-                  <span style={{ fontWeight: peer.isCurrent ? 700 : 500, color: peer.isCurrent ? BT.text.amber : BT.text.primary }}>
-                    {peer.name}, {peer.state}
-                    {peer.isCurrent && <span style={{ marginLeft: 8, fontSize: 9, padding: '2px 6px', background: BT.text.amber, color: BT.bg.terminal, borderRadius: 3, fontWeight: 700 }}>CURRENT</span>}
-                  </span>
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'center' }}>
-                  <span style={{ color: getHealthColor(peer.healthScore), fontWeight: 700, fontFamily: "'JetBrains Mono'" }}>
-                    {peer.healthScore}
-                  </span>
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
-                  {(peer.population / 1000000).toFixed(1)}M
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.green, fontWeight: 600 }}>
-                  ${peer.avgRent.toLocaleString()}
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', color: peer.rentGrowth >= msa.rentGrowth ? BT.text.green : BT.text.red, fontWeight: 600 }}>
-                  {peer.rentGrowth >= 0 ? '+' : ''}{peer.rentGrowth}%
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: peer.occupancy >= 94 ? BT.text.green : BT.text.amber }}>
-                  {peer.occupancy.toFixed(1)}%
-                </td>
-                <td style={{ ...terminalStyles.td, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.cyan }}>
-                  {peer.capRate.toFixed(1)}%
-                </td>
+      {/* Comparison Table */}
+      <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 600 }}>
+            <thead>
+              <tr style={{ background: BT.bg.elevated }}>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', minWidth: 180, position: 'sticky', left: 0, background: BT.bg.elevated, zIndex: 1 }}>
+                  Metric
+                </th>
+                {selectedMarkets.map(m => (
+                  <th key={m.id} style={{ ...terminalStyles.tableHeader, textAlign: 'center', minWidth: 100 }}>
+                    <div style={{ fontWeight: 700 }}>{m.name}</div>
+                    <div style={{ fontSize: 10, fontWeight: 400, color: BT.text.muted }}>{m.state}</div>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {METRIC_SECTIONS.map((section, sectionIdx) => {
+                const btColor = BT_SIGNAL_COLORS[section.groupId];
+                const isCollapsed = collapsedSections.has(section.label);
+                
+                return (
+                  <React.Fragment key={section.label}>
+                    {/* Section Header */}
+                    <tr 
+                      style={{ 
+                        background: btColor.bg, 
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => toggleSection(section.label)}
+                    >
+                      <td 
+                        colSpan={selectedMarkets.length + 1} 
+                        style={{ 
+                          padding: '10px 12px',
+                          position: 'sticky',
+                          left: 0,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ color: BT.text.muted, fontSize: 12 }}>
+                            {isCollapsed ? '▶' : '▼'}
+                          </span>
+                          <span style={{ 
+                            fontWeight: 700, 
+                            color: btColor.primary,
+                            fontSize: 12,
+                          }}>
+                            {section.label}
+                          </span>
+                          <span style={{ 
+                            fontSize: 10, 
+                            color: BT.text.muted,
+                          }}>
+                            {section.rows.length} metrics
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* Metric Rows */}
+                    {!isCollapsed && section.rows.map((metric, rowIdx) => {
+                      const { best, worst } = getBestWorst(metric, section.higherBetter[rowIdx]);
+                      
+                      return (
+                        <tr key={metric} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                          <td style={{ 
+                            ...terminalStyles.tableCell, 
+                            position: 'sticky', 
+                            left: 0, 
+                            background: BT.bg.primary,
+                            fontSize: 11,
+                          }}>
+                            <span style={{ color: BT.text.cyan, fontFamily: 'monospace', marginRight: 8 }}>
+                              {metric.split(' ')[0]}
+                            </span>
+                            <span style={{ color: BT.text.secondary }}>
+                              {metric.split(' ').slice(1).join(' ')}
+                            </span>
+                          </td>
+                          {selectedMarkets.map(m => {
+                            const data = MOCK_DATA[metric]?.[m.id];
+                            const isBest = m.id === best;
+                            const isWorst = m.id === worst && selectedMarkets.length > 1;
+                            
+                            return (
+                              <td 
+                                key={m.id} 
+                                style={{ 
+                                  ...terminalStyles.tableCell, 
+                                  textAlign: 'center',
+                                  background: isBest ? 'rgba(34,197,94,0.1)' : isWorst ? 'rgba(239,68,68,0.05)' : 'transparent',
+                                }}
+                              >
+                                <span style={{
+                                  fontWeight: isBest ? 700 : 500,
+                                  color: isBest ? BT.text.green : isWorst ? BT.accent.red : BT.text.primary,
+                                }}>
+                                  {data?.value || '—'}
+                                </span>
+                                {isBest && selectedMarkets.length > 1 && (
+                                  <span style={{ 
+                                    marginLeft: 4, 
+                                    fontSize: 10, 
+                                    color: BT.text.green,
+                                  }}>
+                                    ★
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${selectedMarkets.length}, 1fr)`, gap: 12 }}>
+        {selectedMarkets.map(m => {
+          // Calculate win count
+          let wins = 0;
+          METRIC_SECTIONS.forEach(section => {
+            section.rows.forEach((metric, idx) => {
+              const { best } = getBestWorst(metric, section.higherBetter[idx]);
+              if (best === m.id) wins++;
+            });
+          });
+          
+          return (
+            <div key={m.id} style={{
+              ...terminalStyles.card,
+              padding: 16,
+              textAlign: 'center',
+            }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary }}>
+                {m.name}
+              </div>
+              <div style={{ 
+                fontSize: 32, 
+                fontWeight: 700, 
+                color: wins > 8 ? BT.text.green : wins > 4 ? BT.accent.amber : BT.text.muted,
+                marginTop: 8,
+              }}>
+                {wins}
+              </div>
+              <div style={{ fontSize: 11, color: BT.text.muted }}>
+                metrics won
+              </div>
+              <div style={{ 
+                marginTop: 8,
+                padding: '4px 8px',
+                background: wins > 8 ? 'rgba(34,197,94,0.15)' : 'rgba(107,114,128,0.15)',
+                borderRadius: 4,
+                fontSize: 10,
+                color: wins > 8 ? BT.text.green : BT.text.muted,
+              }}>
+                {wins > 8 ? 'Strong performer' : wins > 4 ? 'Moderate' : 'Lagging'}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Legend */}
+      <div style={{
+        display: 'flex',
+        gap: 24,
+        padding: '12px 16px',
+        background: BT.bg.card,
+        borderRadius: 8,
+        border: `1px solid ${BT.border.subtle}`,
+        fontSize: 11,
+        flexWrap: 'wrap',
+      }}>
+        {METRIC_SECTIONS.map(section => {
+          const btColor = BT_SIGNAL_COLORS[section.groupId];
+          return (
+            <div key={section.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ 
+                width: 10, 
+                height: 10, 
+                background: btColor.primary, 
+                borderRadius: 2,
+              }} />
+              <span style={{ color: BT.text.muted }}>{section.label}</span>
+            </div>
+          );
+        })}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12 }}>
+          <span style={{ color: BT.text.green }}>★ Best</span>
+          <span style={{ color: BT.text.muted }}>· Click section to collapse</span>
+        </div>
       </div>
     </div>
   );
