@@ -417,6 +417,8 @@ const DealDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+  const [bottomTab, setBottomTab] = useState('alerts');
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
@@ -885,23 +887,74 @@ const DealDetailPage: React.FC = () => {
           </main>
         </div>
 
-        {/* ── Bottom Status Bar (matches Terminal/Dashboard) ── */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '0 10px', height: 20, background: '#050810',
-          borderTop: `1px solid ${BORDER}`, flexShrink: 0,
-          fontFamily: MONO, fontSize: 9, userSelect: 'none',
-        }}>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ color: TEXT_DIM }}>JediRE v3.0</span>
-            <span style={{ color: TEXT_DIM }}>REACT + VITE + MAPBOX + KAFKA</span>
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <span style={{ color: GREEN }}>DB OK</span>
-            <span style={{ color: GREEN }}>REDIS OK</span>
-            <span style={{ color: TEXT_DIM }}>{activeTab.toUpperCase()}</span>
-          </div>
-        </div>
+        {/* ── Bottom Panel (matches Terminal/Dashboard) ── */}
+        {(() => {
+          const BOTTOM_TABS = [
+            { id: 'alerts', l: 'ALERTS', ct: 0, cc: '#EF4444' },
+            { id: 'notes', l: 'NOTES', ct: 0, cc: '#F5A623' },
+            { id: 'activity', l: 'ACTIVITY', ct: 0, cc: '#00BCD4' },
+            { id: 'tasks', l: 'TASKS', ct: 0, cc: '#00D26A' },
+          ];
+          return (
+            <div style={{
+              position: 'relative', height: bottomPanelOpen ? 180 : 28,
+              borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column',
+              flexShrink: 0, background: BG_NAV, transition: 'height 0.18s ease',
+            }}>
+              <div style={{
+                display: 'flex', background: '#080C12',
+                borderBottom: bottomPanelOpen ? `1px solid ${BORDER}` : 'none',
+                flexShrink: 0, height: 28, alignItems: 'center',
+              }}>
+                <button
+                  onClick={() => setBottomPanelOpen(o => !o)}
+                  title={bottomPanelOpen ? 'Collapse panel' : 'Expand panel'}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 700, color: TEXT_DIM,
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    padding: '0 8px', height: '100%', flexShrink: 0, lineHeight: 1,
+                  }}
+                >
+                  {bottomPanelOpen ? '▼' : '▲'}
+                </button>
+                {BOTTOM_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => { setBottomTab(tab.id); if (!bottomPanelOpen) setBottomPanelOpen(true); }}
+                    style={{
+                      fontFamily: MONO, fontSize: 10, fontWeight: 600,
+                      color: bottomTab === tab.id ? BG_NAV : TEXT_MID,
+                      background: bottomTab === tab.id ? AMBER : 'transparent',
+                      border: 'none', cursor: 'pointer', padding: '0 14px', height: '100%',
+                      display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                    }}
+                  >
+                    {tab.l}
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: '1px 4px',
+                      background: bottomTab === tab.id ? 'rgba(0,0,0,0.2)' : `${tab.cc}18`,
+                      color: bottomTab === tab.id ? 'rgba(0,0,0,0.7)' : tab.cc,
+                    }}>{tab.ct}</span>
+                  </button>
+                ))}
+                <div style={{ flex: 1 }} />
+                <div style={{ display: 'flex', gap: 12, paddingRight: 10 }}>
+                  <span style={{ fontSize: 9, color: TEXT_DIM, fontFamily: MONO }}>JediRE v3.0</span>
+                  <span style={{ fontSize: 9, color: GREEN, fontFamily: MONO }}>DB OK</span>
+                  <span style={{ fontSize: 9, color: GREEN, fontFamily: MONO }}>REDIS OK</span>
+                </div>
+              </div>
+              {bottomPanelOpen && (
+                <div style={{ flex: 1, overflow: 'auto', padding: '8px 12px', fontFamily: MONO, fontSize: 9, color: TEXT_DIM }}>
+                  {bottomTab === 'alerts' && <span>No active alerts for this deal.</span>}
+                  {bottomTab === 'notes' && <span>No notes yet. Add context notes for your team.</span>}
+                  {bottomTab === 'activity' && <span>Deal activity log will appear here.</span>}
+                  {bottomTab === 'tasks' && <span>No open tasks for this deal.</span>}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </DealModuleProvider>
   );
