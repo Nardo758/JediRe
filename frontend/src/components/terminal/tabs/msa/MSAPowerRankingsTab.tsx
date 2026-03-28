@@ -205,6 +205,10 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
         </div>
       </div>
 
+      {/* Main Content: Table LEFT | Commentary RIGHT */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
       {/* Rankings Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
         <DataTable>
@@ -493,37 +497,49 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
         </div>
       </div>
 
-      {loading && (
-        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating ranking analysis...</span>
-        </div>
-      )}
-      {error && (
-        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
-        </div>
-      )}
-      {commentary && (
-        <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.ranking_insights && (
-            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.ranking_insights} />
-            </div>
-          )}
-          {commentary.peerContext && (
-            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <PeerContext
-                summary={commentary.peerContext.summary}
-                peerRank={commentary.peerContext.peerRank}
-                peerTotal={commentary.peerContext.peerTotal}
-                topPeers={commentary.peerContext.topPeers}
-                currentScore={commentary.jediScore}
-                compact
-              />
-            </div>
-          )}
-        </div>
-      )}
+      </div>
+
+      {/* Right Side Panel — Commentary */}
+      <div style={{
+        width: 322,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        {loading && (
+          <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+            <span style={{ fontSize: 11, color: BT.text.muted }}>Generating ranking analysis...</span>
+          </div>
+        )}
+        {error && (
+          <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+            <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+          </div>
+        )}
+        {commentary && (
+          <>
+            {commentary.signalCommentary?.ranking_insights && (
+              <div style={{ ...terminalStyles.card, padding: 16 }}>
+                <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.ranking_insights} />
+              </div>
+            )}
+            {commentary.peerContext && (
+              <div style={{ ...terminalStyles.card, padding: 16 }}>
+                <PeerContext
+                  summary={commentary.peerContext.summary}
+                  peerRank={commentary.peerContext.peerRank}
+                  peerTotal={commentary.peerContext.peerTotal}
+                  topPeers={commentary.peerContext.topPeers}
+                  currentScore={commentary.jediScore}
+                  compact
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      </div>
     </div>
   );
 };

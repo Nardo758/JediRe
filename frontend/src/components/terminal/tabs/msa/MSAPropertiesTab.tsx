@@ -413,6 +413,10 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
         </div>
       </div>
 
+      {/* Main Content: Table LEFT | Commentary RIGHT */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
       {/* Data Table */}
       <div style={{ ...terminalStyles.card, padding: 0, overflow: 'hidden' }}>
         <div style={{ overflowX: 'auto' }}>
@@ -650,30 +654,42 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
         </div>
       </div>
 
-      {loading && (
-        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating property analysis...</span>
-        </div>
-      )}
-      {error && (
-        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
-        </div>
-      )}
-      {commentary && (
-        <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.segment_analysis && (
-            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.segment_analysis} />
-            </div>
-          )}
-          {commentary.signalCommentary?.supply && (
-            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
-            </div>
-          )}
-        </div>
-      )}
+      </div>
+
+      {/* Right Side Panel — Commentary */}
+      <div style={{
+        width: 322,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        {loading && (
+          <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+            <span style={{ fontSize: 11, color: BT.text.muted }}>Generating property analysis...</span>
+          </div>
+        )}
+        {error && (
+          <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+            <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+          </div>
+        )}
+        {commentary && (
+          <>
+            {commentary.signalCommentary?.segment_analysis && (
+              <div style={{ ...terminalStyles.card, padding: 16 }}>
+                <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.segment_analysis} />
+              </div>
+            )}
+            {commentary.signalCommentary?.supply && (
+              <div style={{ ...terminalStyles.card, padding: 16 }}>
+                <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      </div>
     </div>
   );
 };

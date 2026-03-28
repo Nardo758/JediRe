@@ -226,6 +226,10 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
         )}
       </div>
 
+      {/* Main Content: Pipeline+Opps LEFT | Commentary RIGHT */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+
       <div style={{ ...terminalStyles.card, padding: 20 }}>
         <div
           style={{
@@ -623,33 +627,45 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
         </CardSection>
       )}
 
-      {commentaryLoading && (
-        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating deal analysis...</span>
-        </div>
-      )}
-      {commentaryError && (
-        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
-        </div>
-      )}
-      {commentary && (
-        <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.investmentThesis && (
-            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <InvestmentThesis
-                recommendation={commentary.investmentThesis.recommendation}
-                points={commentary.investmentThesis.points}
-              />
-            </div>
-          )}
-          {commentary.signalCommentary?.capital_sentiment && (
-            <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.capital_sentiment} />
-            </div>
-          )}
-        </div>
-      )}
+      </div>
+
+      {/* Right Side Panel — Commentary */}
+      <div style={{
+        width: 322,
+        flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}>
+        {commentaryLoading && (
+          <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+            <span style={{ fontSize: 11, color: BT.text.muted }}>Generating deal analysis...</span>
+          </div>
+        )}
+        {commentaryError && (
+          <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+            <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+          </div>
+        )}
+        {commentary && (
+          <>
+            {commentary.investmentThesis && (
+              <div style={{ ...terminalStyles.card, padding: 16 }}>
+                <InvestmentThesis
+                  recommendation={commentary.investmentThesis.recommendation}
+                  points={commentary.investmentThesis.points}
+                />
+              </div>
+            )}
+            {commentary.signalCommentary?.capital_sentiment && (
+              <div style={{ ...terminalStyles.card, padding: 16 }}>
+                <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.capital_sentiment} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      </div>
     </div>
   );
 };
