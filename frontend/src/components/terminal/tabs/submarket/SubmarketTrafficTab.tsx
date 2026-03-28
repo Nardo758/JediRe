@@ -89,8 +89,10 @@ const TOP_PROPERTIES = [
 
 export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submarketId, submarket }) => {
   const submarketName = submarket?.name || submarketId || 'Midtown';
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarketName); }, [submarketId, submarketName]);
   const [walkInView, setWalkInView] = useState<'hourly' | 'daily'>('daily');
 
@@ -499,11 +501,21 @@ export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submar
         </div>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating traffic analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.demand && (
+          {commentary.signalCommentary?.traffic_demand && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.traffic_demand} />
             </div>
           )}
           {commentary.signalCommentary?.momentum && (

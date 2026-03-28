@@ -27,8 +27,10 @@ interface Transaction {
 }
 
 export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submarketId, submarket }) => {
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const transactions: Transaction[] = useMemo(() => [
     { id: '1', property: 'The Metropolitan at Phipps', units: 320, salePrice: 85000000, pricePerUnit: 265625, capRate: 4.8, buyer: 'Blackstone', seller: 'AvalonBay', date: '2025-02' },
@@ -143,11 +145,21 @@ export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submar
         </div>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating capital analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.position && (
+          {commentary.signalCommentary?.capital_sentiment && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.capital_sentiment} />
             </div>
           )}
           {commentary.signalCommentary?.risk && (

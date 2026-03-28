@@ -83,8 +83,10 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
   const [vintageFilter, setVintageFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
   const msaName = msa?.name || msaId || 'Atlanta';
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
+  const loading = isLoading('msa', msaId);
+  const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'rank' | 'pcsScore' | 'movement'>('rank');
@@ -485,11 +487,21 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
         </div>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating ranking analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.position && (
+          {commentary.signalCommentary?.ranking_insights && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.position} />
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.ranking_insights} />
             </div>
           )}
           {commentary.peerContext && (

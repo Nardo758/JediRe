@@ -25,8 +25,10 @@ interface NewsItem {
 }
 
 export const SubmarketNewsTab: React.FC<SubmarketNewsTabProps> = ({ submarketId, submarket }) => {
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
 
@@ -183,11 +185,21 @@ export const SubmarketNewsTab: React.FC<SubmarketNewsTabProps> = ({ submarketId,
         </div>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating news analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.risk && (
+          {commentary.signalCommentary?.news_impact && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.risk} />
+              <SignalCommentary signalKey="risk" commentary={commentary.signalCommentary.news_impact} />
             </div>
           )}
           {commentary.signalCommentary?.demand && (

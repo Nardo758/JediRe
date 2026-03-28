@@ -44,8 +44,10 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
   const [sortBy, setSortBy] = useState<SortKey>('units');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [classFilter, setClassFilter] = useState<'all' | 'A' | 'B' | 'C'>('all');
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
 
   // Mock property data
@@ -364,11 +366,21 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
         Showing {filteredProperties.length} of {properties.length} properties • Click a row to view details
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating property analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.demand && (
+          {commentary.signalCommentary?.segment_analysis && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.demand} />
+              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.segment_analysis} />
             </div>
           )}
           {commentary.signalCommentary?.supply && (

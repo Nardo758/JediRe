@@ -118,8 +118,10 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('10yr');
   const msaName = msa?.name || msaId || 'Atlanta';
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
+  const loading = isLoading('msa', msaId);
+  const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   // Calculate max for supply wave chart
@@ -561,11 +563,21 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating trend analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.momentum && (
+          {commentary.signalCommentary?.trend_interpretation && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.trend_interpretation} />
             </div>
           )}
           {commentary.supplyNarrative && (

@@ -341,6 +341,98 @@ Focus on demand dynamics, supply pipeline impact, and investment positioning. Re
       sentiment: signals.riskScore >= 60 ? 'bullish' : signals.riskScore >= 40 ? 'neutral' : 'bearish',
     };
 
+    const avgScore = (signals.demandScore + signals.supplyScore + signals.momentumScore) / 3;
+
+    commentary.capital_sentiment = {
+      title: 'Capital Sentiment',
+      content: signals.positionScore >= 60 && signals.momentumScore >= 55
+        ? `${name} capital markets remain active with buyer depth exceeding seller expectations. Cap rate compression continuing as institutional allocations increase. Transaction velocity above trailing 12-month average.`
+        : signals.positionScore >= 40
+        ? `${name} capital markets balanced between buyers and sellers. Bid-ask spreads narrowing but selective. Debt availability adequate for quality sponsors.`
+        : `${name} capital markets cautious with widening bid-ask spreads. Financing conditions tightening for value-add plays. Distressed opportunity pipeline building.`,
+      sentiment: signals.positionScore >= 60 && signals.momentumScore >= 55 ? 'bullish' : signals.positionScore >= 40 ? 'neutral' : 'bearish',
+    };
+
+    commentary.ranking_insights = {
+      title: 'Ranking Insights',
+      content: avgScore >= 65
+        ? `${name} ranks in the top quartile across composite scoring dimensions. Demand-supply equilibrium and growth trajectory drive outperformance versus peer set. Strongest differentiation in employment momentum.`
+        : avgScore >= 50
+        ? `${name} holds a mid-tier ranking with competitive fundamentals. Pockets of outperformance in select signal categories offset by average positioning in others.`
+        : `${name} ranks below median with fundamental challenges across multiple scoring dimensions. Improvement trajectory dependent on demand recovery and supply moderation.`,
+      sentiment: avgScore >= 65 ? 'bullish' : avgScore >= 50 ? 'neutral' : 'bearish',
+    };
+
+    commentary.pricing_power = {
+      title: 'Pricing Power',
+      content: signals.demandScore >= 60 && signals.supplyScore >= 50
+        ? `${name} exhibits strong pricing power with demand exceeding available inventory. Operators pushing effective rents higher with declining concession usage. Loss-to-lease capturing accelerating.`
+        : signals.demandScore >= 45
+        ? `${name} pricing power moderate with balanced demand-supply dynamics. Rent growth positive but concessions stabilizing at 3-5% levels. Renewal conversions holding at 55%+.`
+        : `${name} pricing power constrained by elevated supply and softening demand. Concession activity rising with new lease spreads compressing. Renewal premiums under pressure.`,
+      sentiment: signals.demandScore >= 60 && signals.supplyScore >= 50 ? 'bullish' : signals.demandScore >= 45 ? 'neutral' : 'bearish',
+    };
+
+    commentary.news_impact = {
+      title: 'News Impact Assessment',
+      content: signals.momentumScore >= 60
+        ? `Recent market developments predominantly positive for ${name}. Employment announcements and infrastructure investments reinforcing growth thesis. Regulatory environment stable with no near-term headwinds.`
+        : signals.momentumScore >= 45
+        ? `Mixed signals in recent ${name} market news. Positive employment trends offset by supply delivery concerns. Watch for zoning and permitting decisions that could shift pipeline trajectory.`
+        : `${name} facing headwind-oriented news flow. Supply concerns dominating sentiment alongside broader macro uncertainty. Near-term catalysts limited pending demand recovery signals.`,
+      sentiment: signals.momentumScore >= 60 ? 'bullish' : signals.momentumScore >= 45 ? 'neutral' : 'bearish',
+    };
+
+    commentary.trend_interpretation = {
+      title: 'Trend Interpretation',
+      content: signals.momentumScore >= 60 && signals.demandScore >= 55
+        ? `${name} trend lines confirm accelerating fundamentals. Rent growth, occupancy, and absorption all trending above 12-month moving averages. Inflection points in supply cycle approaching favorable territory.`
+        : signals.momentumScore >= 45
+        ? `${name} trends showing stabilization after recent volatility. Key metrics plateauing near equilibrium levels with seasonal patterns dominating short-term variation.`
+        : `${name} trend lines indicate softening trajectory. Multiple metrics trending below 12-month averages. Monitor for potential inflection as supply pipeline begins to moderate.`,
+      sentiment: signals.momentumScore >= 60 && signals.demandScore >= 55 ? 'bullish' : signals.momentumScore >= 45 ? 'neutral' : 'bearish',
+    };
+
+    commentary.competitive_summary = {
+      title: 'Competitive Summary',
+      content: avgScore >= 65
+        ? `${name} outperforms peer cohort across demand, supply, and momentum dimensions. Competitive advantage driven by employment diversification and relative affordability versus coastal markets.`
+        : avgScore >= 50
+        ? `${name} competitive positioning is in-line with peer averages. Differentiation opportunities exist in specific submarkets and asset classes where local dynamics deviate from metro-level trends.`
+        : `${name} trails peer group on key competitive metrics. Strategic repositioning or niche targeting required to generate alpha against peer set alternatives.`,
+      sentiment: avgScore >= 65 ? 'bullish' : avgScore >= 50 ? 'neutral' : 'bearish',
+    };
+
+    commentary.segment_analysis = {
+      title: 'Segment Analysis',
+      content: signals.supplyScore >= 55
+        ? `${name} property landscape shows strongest performance in Class B vintage 2010-2018 segment. Value-add spread to Class A provides 200-350bps upside. Class C properties benefiting from affordability premium.`
+        : signals.supplyScore >= 40
+        ? `${name} segment dynamics evolving as new Class A deliveries compress rent premiums. Vintage spread between 2015+ and pre-2010 assets widening, creating repositioning opportunities.`
+        : `${name} segment performance diverging sharply. New Class A experiencing lease-up pressure while stabilized Class B/C maintaining occupancy. Flight-to-quality premium narrowing.`,
+      sentiment: signals.supplyScore >= 55 ? 'bullish' : signals.supplyScore >= 40 ? 'neutral' : 'bearish',
+    };
+
+    commentary.owner_strategy = {
+      title: 'Owner Strategy Profile',
+      content: signals.positionScore >= 55
+        ? `Institutional ownership concentration supports market stability. Active repositioning and renovation programs across Class B portfolios indicate medium-term conviction. Development-focused owners expanding pipeline in high-demand nodes.`
+        : signals.positionScore >= 40
+        ? `Balanced ownership mix between institutional and private operators. Hold periods extending as disposition pricing expectations recalibrate. Select distressed-adjacent opportunities emerging.`
+        : `Ownership dynamics shifting as hold period pressures mount. Loan maturity wall creating disposition urgency for leveraged operators. Opportunistic buyers positioning for basis entry points.`,
+      sentiment: signals.positionScore >= 55 ? 'bullish' : signals.positionScore >= 40 ? 'neutral' : 'bearish',
+    };
+
+    commentary.traffic_demand = {
+      title: 'Traffic & Demand Qualification',
+      content: signals.demandScore >= 60
+        ? `${name} traffic metrics confirm strong demand qualification. Physical tour volumes above seasonal norms with digital lead quality improving. Conversion rates trending 200bps above trailing average.`
+        : signals.demandScore >= 45
+        ? `${name} traffic patterns showing seasonal normalization. Digital engagement stable with tour-to-lease conversion holding at market average. Walk-in traffic concentrated on weekends.`
+        : `${name} traffic indicators softening with declining tour volumes and elongating lease-up timelines. Digital funnel metrics suggest increasing renter price sensitivity.`,
+      sentiment: signals.demandScore >= 60 ? 'bullish' : signals.demandScore >= 45 ? 'neutral' : 'bearish',
+    };
+
     return commentary;
   }
 

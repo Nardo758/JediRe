@@ -16,8 +16,10 @@ interface SubmarketFinancialsTabProps {
 }
 
 export const SubmarketFinancialsTab: React.FC<SubmarketFinancialsTabProps> = ({ submarketId, submarket }) => {
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
   // Rent by class data
   const rentByClass = useMemo(() => [
@@ -133,11 +135,21 @@ export const SubmarketFinancialsTab: React.FC<SubmarketFinancialsTabProps> = ({ 
         </table>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating financial analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
-          {commentary.signalCommentary?.supply && (
+          {commentary.signalCommentary?.pricing_power && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+              <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.pricing_power} />
             </div>
           )}
           {commentary.signalCommentary?.momentum && (

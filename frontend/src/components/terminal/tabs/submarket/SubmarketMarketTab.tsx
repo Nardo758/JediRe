@@ -27,7 +27,7 @@ interface PipelineProject {
 }
 
 export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarketId, submarket }) => {
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
 
   useEffect(() => {

@@ -18,8 +18,10 @@ interface MSASupplyTabProps {
 
 export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
+  const loading = isLoading('msa', msaId);
+  const error = getError('msa', msaId);
 
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
@@ -240,6 +242,16 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         </DataTable>
       </TerminalSection>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating supply analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
           {commentary.supplyNarrative && (

@@ -57,7 +57,7 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
   const subName = submarket?.name || submarketId.charAt(0).toUpperCase() + submarketId.slice(1);
   const msaName = submarket?.msaName || 'Atlanta, GA';
 
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
 
   useEffect(() => {

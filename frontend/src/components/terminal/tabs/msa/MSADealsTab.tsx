@@ -114,8 +114,10 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   const [expandedPipeline, setExpandedPipeline] = useState(false);
   const [showPcsBreakdown, setShowPcsBreakdown] = useState(false);
   const msaName = msa?.name || msaId || 'Atlanta';
-  const { fetchCommentary, getCommentary } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
+  const loading = isLoading('msa', msaId);
+  const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   const toggleQuadrant = (q: Quadrant) => {
@@ -539,6 +541,16 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
         </DataTable>
       </CardSection>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating deal analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
           {commentary.investmentThesis && (
@@ -549,9 +561,9 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               />
             </div>
           )}
-          {commentary.signalCommentary?.momentum && (
+          {commentary.signalCommentary?.capital_sentiment && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.momentum} />
+              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.capital_sentiment} />
             </div>
           )}
         </div>
