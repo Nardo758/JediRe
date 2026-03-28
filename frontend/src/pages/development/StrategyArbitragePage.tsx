@@ -25,7 +25,7 @@ const STRATEGY_COLS: StrategyColDef[] = [
 ];
 
 function matchStrategyCol(score: M08StrategyScore, col: StrategyColDef): boolean {
-  const raw = ((score.strategy_type ?? score.strategy_id) as string).toLowerCase().trim();
+  const raw = ((score.strategy_type ?? score.strategy_id) as string || '').toLowerCase().trim();
   return col.aliases.some(a => raw === a);
 }
 
@@ -261,9 +261,10 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
                     gap: 1, background: BT.border.subtle,
                   }}>
                     {scores.slice(0, 4).map(s => {
+                      const sType = ((s.strategy_type ?? s.strategy_id) as string || '').toLowerCase();
+                      const sId = (s.strategy_id || '').toLowerCase();
                       const col = STRATEGY_COLS.find(c =>
-                        (s.strategy_type ?? s.strategy_id).toLowerCase().includes(c.id)
-                        || s.strategy_id.toLowerCase().includes(c.id)
+                        sType.includes(c.id) || sId.includes(c.id)
                       ) ?? STRATEGY_COLS[0];
                       const spark = Object.values(s.sub_scores ?? {}).map(v => Number(v)).filter(n => !isNaN(n));
                       return (

@@ -54,11 +54,11 @@ export function useStrategyArbitrage(dealId: string): UseStrategyArbitrageM08Res
           if (!afterRecalc || afterRecalc.length === 0) {
             pollForScores(0);
           }
-        });
+        }).catch(() => {});
       }
-    });
+    }).catch(() => {});
 
-    fetchArbitrage(dealId);
+    fetchArbitrage(dealId).catch(() => {});
 
     return () => {
       cancelled = true;
