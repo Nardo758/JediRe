@@ -12,6 +12,8 @@ import F4MarketsView from "./terminal/F4MarketsView";
 import F9AdminView from "./terminal/F9AdminView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 import { StrategyBuilderPage } from "./StrategyBuilderPage";
+import { BottomPanel } from "../components/layout/BottomPanel";
+import { AgentBar } from "../components/layout/AgentBar";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -2599,35 +2601,10 @@ export default function TerminalPage() {
       </div>
 
       {/* ═══ BOTTOM PANEL — collapsible ═══ */}
-      <div style={{position:"relative",height:bottomOpen?190:28,borderTop:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panel,transition:"height 0.18s ease"}}>
-        {/* Tab bar */}
-        <div style={{display:"flex",background:T.bg.header,borderBottom:bottomOpen?`1px solid ${T.border.subtle}`:"none",flexShrink:0,height:28,alignItems:"center"}}>
-          {/* Collapse / expand toggle */}
-          <button onClick={()=>setBottomOpen(o=>!o)} title={bottomOpen?"Collapse panel":"Expand panel"} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 8px",height:"100%",flexShrink:0,lineHeight:1}}>
-            {bottomOpen?"▼":"▲"}
-          </button>
-          {[
-            {id:"alerts",l:"ALERTS",ct:hAlerts,cc:T.text.red},
-            {id:"news",l:"NEWS",ct:liveNews.length,cc:T.text.cyan},
-            {id:"email",l:"EMAIL",ct:liveEmails.filter(e=>e.unread).length,cc:T.text.orange},
-            {id:"agents",l:"AGENTS",ct:liveAgents.filter(a=>a.st==="ON").length,cc:T.text.green},
-            {id:"tasks",l:"TASKS",ct:liveTasks.filter(t=>t.status!=="DONE").length,cc:T.text.amber},
-            {id:"media",l:"MEDIA",ct:mediaWindows.length,cc:T.text.orange},
-          ].map(tab=>(
-            <button key={tab.id} onClick={()=>{setBottomTab(tab.id);if(!bottomOpen)setBottomOpen(true);}} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,color:bottomTab===tab.id?T.bg.terminal:T.text.secondary,background:bottomTab===tab.id?T.text.amber:"transparent",border:"none",cursor:"pointer",padding:"0 14px",height:"100%",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
-              {tab.l}
-              <span style={{fontSize:9,fontWeight:700,padding:"1px 4px",background:bottomTab===tab.id?"rgba(0,0,0,0.2)":tab.cc+"18",color:bottomTab===tab.id?"rgba(0,0,0,0.7)":tab.cc}}>{tab.ct}</span>
-            </button>
-          ))}
-          <div style={{flex:1}}/>
-        </div>
-        {/* Content — only rendered when open */}
-        {bottomOpen&&(
-          <div style={{flex:1,overflow:"auto"}}>
-            {renderBottomTab()}
-          </div>
-        )}
-      </div>
+      <BottomPanel />
+
+      {/* ═══ AGENT BAR — compact emoji row ═══ */}
+      <AgentBar />
 
       {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}
       {floatWidgets.filter(id=>!winStates[id]?.minimized).map(id=>{

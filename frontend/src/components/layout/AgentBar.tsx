@@ -12,7 +12,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   X, Send, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings,
   Brain, Target, LineChart, Calculator, Megaphone, Hammer, Scale, Landmark,
@@ -296,6 +296,7 @@ export const AgentBar: React.FC = () => {
   const [showAnalysts, setShowAnalysts] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const agents = useAgents();
+  const navigate = useNavigate();
   const dealId = useDealContext();
 
   const coreAgents = agents.filter(a => a.category === 'core');
@@ -382,7 +383,7 @@ export const AgentBar: React.FC = () => {
 
           {/* Settings */}
           <button
-            onClick={() => window.location.href = '/settings/agents'}
+            onClick={() => navigate('/terminal/settings?tab=agents')}
             style={{
               display: 'flex',
               alignItems: 'center',
