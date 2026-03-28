@@ -79,7 +79,6 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 const BOTTOM_TABS = [
-  { id: 'agents' as const, label: 'AGENTS', color: T.text.cyan },
   { id: 'alerts' as const, label: 'ALERTS', color: T.text.red },
   { id: 'news' as const, label: 'NEWS', color: T.text.green },
   { id: 'email' as const, label: 'EMAIL', color: T.text.orange },
@@ -555,19 +554,13 @@ const AgentsTabContent: React.FC<{ onSelectAgent: (code: AgentCode) => void }> =
 
 export const BottomPanel: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<BottomTabId>('agents');
-  const [selectedAgent, setSelectedAgent] = useState<AgentCode | null>(null);
-  
-  // Get current deal context from URL
-  const currentDealId = useDealContext();
+  const [activeTab, setActiveTab] = useState<BottomTabId>('alerts');
   
   // Data state
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [email, setEmail] = useState<EmailItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-
-  const agents = useAgents();
 
   const fetchData = useCallback(async () => {
     try {
@@ -610,7 +603,6 @@ export const BottomPanel: React.FC = () => {
   }, [fetchData]);
 
   const counts: Record<BottomTabId, number> = {
-    agents: agents.filter(a => a.status.status === 'online').length,
     alerts: alerts.length,
     news: news.length,
     email: email.filter(e => !e.read).length,
@@ -692,10 +684,6 @@ export const BottomPanel: React.FC = () => {
         {/* Tab Content */}
         {!collapsed && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
-            {activeTab === 'agents' && (
-              <AgentsTabContent onSelectAgent={setSelectedAgent} />
-            )}
-            
             {activeTab === 'alerts' && (
               <div>
                 {alerts.length === 0 && (
@@ -798,15 +786,6 @@ export const BottomPanel: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Agent Chat Drawer */}
-      {selectedAgent && (
-        <AgentChatDrawer
-          agentCode={selectedAgent}
-          onClose={() => setSelectedAgent(null)}
-          dealId={currentDealId}
-        />
-      )}
     </>
   );
 };
