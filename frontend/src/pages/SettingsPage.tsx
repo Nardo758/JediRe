@@ -149,27 +149,7 @@ export function SettingsPage() {
           >
             Subscription
           </button>
-          <Link
-            to="/settings/modules"
-            className="block w-full text-left px-4 py-3"
-            style={{ color: BT.text.secondary, borderRadius: 0 }}
-          >
-            AI Modules
-          </Link>
-          <Link
-            to="/settings/module-libraries"
-            className="block w-full text-left px-4 py-3"
-            style={{ color: BT.text.secondary, borderRadius: 0 }}
-          >
-            Module Libraries
-          </Link>
-          <Link
-            to="/settings/strategies"
-            className="block w-full text-left px-4 py-3"
-            style={{ color: BT.text.secondary, borderRadius: 0 }}
-          >
-            Strategy Builder
-          </Link>
+          {/* AI Modules, Module Libraries, Strategy Builder removed — routes deprecated */}
           <button
             onClick={() => setActiveTab('markets')}
             className="w-full text-left px-4 py-3"
