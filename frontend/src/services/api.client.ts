@@ -235,14 +235,11 @@ export const api = {
     analyzeCorrelations: (data: any) => apiClient.post(`/api/v1/correlations/analyze`, data),
   },
 
-  // Opportunity Engine
   opportunityEngine: {
-    detectOpportunities: (params: any) =>
-      apiClient.post(`/api/v1/opportunity-engine/detect`, params),
-    getRankingByScore: (limit?: number) =>
-      apiClient.get(`/api/v1/opportunity-engine/rankings`, { params: { limit } }),
-    getOpportunitiesForMarket: (marketId: string) =>
-      apiClient.get(`/api/v1/opportunity-engine/market/${marketId}`),
+    detectOpportunities: (city?: string) =>
+      apiClient.get(`/api/v1/opportunities/detect`, { params: { city } }),
+    getRankings: (city?: string, limit?: number) =>
+      apiClient.get(`/api/v1/opportunities/rankings`, { params: { city, limit } }),
   },
 
   // Strategy Analyses (M08)
