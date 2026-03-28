@@ -2549,6 +2549,7 @@ export default function TerminalPage() {
             </div>
           )}
           <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
+          <button onClick={()=>navigate("/admin")} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",border:`1px solid ${T.text.purple}44`,color:T.text.purple,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>ADMIN</button>
           <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}

@@ -23,6 +23,7 @@ import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { DataTrackerPage } from './pages/admin/DataTrackerPage';
 import { CommandCenterPage } from './pages/admin/CommandCenterPage';
+import AdminToolsPage from './pages/admin/AdminToolsPage';
 import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
@@ -187,7 +188,6 @@ function AppContent() {
 
         {/* ═══ Admin/dev pages — keep in MainLayout ═══ */}
         <Route element={<MainLayout />}>
-          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/command-center" element={<CommandCenterPage />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
           <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
@@ -198,6 +198,7 @@ function AppContent() {
               )}
             </Suspense>
           } />
+          <Route path="/admin/*" element={<AdminToolsPage />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
           <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />
