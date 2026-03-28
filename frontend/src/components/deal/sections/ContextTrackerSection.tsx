@@ -7,6 +7,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
+import { DocumentsShellPage } from '../../../pages/development/DocumentsShellPage';
 
 interface ContextTrackerSectionProps {
   deal?: any;
@@ -64,7 +65,11 @@ export const ContextTrackerSection: React.FC<ContextTrackerSectionProps> = ({ de
         {activeTab === 'notes' && <NotesTab dealId={resolvedDealId} />}
         {activeTab === 'activity' && <ActivityTab dealId={resolvedDealId} />}
         {activeTab === 'contacts' && <ContactsTab dealId={resolvedDealId} />}
-        {activeTab === 'documents' && <DocumentsTab dealId={resolvedDealId} />}
+        {activeTab === 'documents' && (
+          <div style={{ height: 500, overflow: 'hidden' }}>
+            <DocumentsShellPage dealId={resolvedDealId} deal={deal} />
+          </div>
+        )}
         {activeTab === 'financial' && <FinancialTab dealId={resolvedDealId} />}
         {activeTab === 'dates' && <DatesTab dealId={resolvedDealId} />}
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
@@ -321,106 +326,6 @@ function ContactsTab({ dealId }: { dealId: string }) {
   );
 }
 
-// ============== DOCUMENTS TAB ==============
-function DocumentsTab({ dealId }: { dealId: string }) {
-  const [documents, setDocuments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ original_filename: '', category: 'due-diligence', description: '', file_url: '' });
-
-  const fetchDocs = useCallback(async () => {
-    if (!dealId) return;
-    try {
-      const res = await apiClient.get(`/api/v1/context/deals/${dealId}/documents`);
-      setDocuments(res.data);
-    } catch { setDocuments([]); }
-    setLoading(false);
-  }, [dealId]);
-
-  useEffect(() => { fetchDocs(); }, [fetchDocs]);
-
-  const addDoc = async () => {
-    if (!form.original_filename.trim()) return;
-    try {
-      await apiClient.post(`/api/v1/context/deals/${dealId}/documents`, {
-        ...form, filename: form.original_filename.replace(/\s+/g, '_'), file_size: 0, mime_type: 'application/octet-stream',
-        file_url: form.file_url || '#'
-      });
-      setForm({ original_filename: '', category: 'due-diligence', description: '', file_url: '' });
-      setShowForm(false);
-      fetchDocs();
-    } catch (e) { console.error('Failed to add document', e); }
-  };
-
-  const deleteDoc = async (id: string) => {
-    try {
-      await apiClient.delete(`/api/v1/context/documents/${id}`);
-      fetchDocs();
-    } catch (e) { console.error('Failed to delete document', e); }
-  };
-
-  const docCategories = ['due-diligence', 'financial', 'legal', 'plans', 'photos', 'environmental', 'appraisal', 'other'];
-  const categoryColors: Record<string, string> = {
-    'due-diligence': 'bg-blue-100 text-blue-700', financial: 'bg-green-100 text-green-700',
-    legal: 'bg-purple-100 text-purple-700', plans: 'bg-amber-100 text-amber-700',
-    photos: 'bg-pink-100 text-pink-700', environmental: 'bg-emerald-100 text-emerald-700',
-    appraisal: 'bg-indigo-100 text-indigo-700', other: 'bg-gray-100 text-gray-700',
-  };
-
-  if (loading) return <LoadingState />;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h4 className="font-semibold text-gray-900">Documents ({documents.length})</h4>
-        <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700">
-          <Plus size={14} /> Add Document
-        </button>
-      </div>
-
-      {showForm && (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <input type="text" placeholder="Document name *" value={form.original_filename} onChange={e => setForm({ ...form, original_filename: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
-              {docCategories.map(c => <option key={c} value={c}>{c.replace('-', ' ')}</option>)}
-            </select>
-          </div>
-          <input type="url" placeholder="Document URL (optional)" value={form.file_url} onChange={e => setForm({ ...form, file_url: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          <textarea placeholder="Description..." value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-16 resize-none" />
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-gray-500 text-sm">Cancel</button>
-            <button onClick={addDoc} className="px-4 py-1.5 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700">Save Document</button>
-          </div>
-        </div>
-      )}
-
-      {documents.length === 0 ? (
-        <EmptyState message="No documents yet. Add contracts, reports, and plans to keep everything organized." icon={FolderOpen} />
-      ) : (
-        <div className="space-y-2">
-          {documents.map((d: any) => (
-            <div key={d.id} className="bg-white border border-gray-200 rounded-lg p-3 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center"><FolderOpen size={18} className="text-gray-400" /></div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 truncate">{d.original_filename}</p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  {d.category && <span className={`text-xs px-1.5 py-0.5 rounded ${categoryColors[d.category] || 'bg-gray-100 text-gray-600'}`}>{d.category}</span>}
-                  <span className="text-xs text-gray-400">{new Date(d.created_at).toLocaleDateString()}</span>
-                </div>
-              </div>
-              <button onClick={() => deleteDoc(d.id)} className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={14} /></button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ============== FINANCIAL SNAPSHOT TAB ==============
 function FinancialTab({ dealId }: { dealId: string }) {

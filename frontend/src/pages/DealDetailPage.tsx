@@ -78,7 +78,6 @@ import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClos
 
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
-import { DocumentsShellPage } from './development/DocumentsShellPage';
 import { CompsShellPage } from './development/CompsShellPage';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
@@ -301,13 +300,6 @@ const Design3DScreen = (props: ScreenProps) => (
     dealType={props.dealType}
   />
 );
-const DocumentsScreen = (props: ScreenProps) => (
-  <DocumentsShellPage
-    dealId={props.dealId}
-    deal={props.deal}
-    dealType={props.dealType}
-  />
-);
 const AIAgentScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
@@ -520,8 +512,8 @@ const DealDetailPage: React.FC = () => {
       const fKeyMap: { [key: string]: string } = {
         F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
         F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',  F8: 'proforma',
-        F9: 'capital',    F10: 'comps',    F11: 'documents', F12: 'execution',
-        F13: 'risk',      F14: 'ai-agent',
+        F9: 'capital',    F10: 'comps',    F11: 'execution',
+        F12: 'risk',      F13: 'ai-agent',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -551,8 +543,8 @@ const DealDetailPage: React.FC = () => {
     window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
   }, [activeTab]);
 
-  // ─── 14 FLAT SCREEN DEFINITIONS (F1–F14) ── Bloomberg station-logical order ──
-  // F7 = 3D Design · F10 = Comps · F11 = Documents · F12 = Execution
+  // ─── 13 FLAT SCREEN DEFINITIONS (F1–F13) ── Bloomberg station-logical order ──
+  // F7 = 3D Design · F10 = Comps · F11 = Execution (Docs moved to Context Tracker)
   const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; short: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
     { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', short: 'OVERVIEW',   label: 'Overview',         icon: <LayoutDashboard size={14} />, component: OverviewScreen },
     { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', short: 'ZONING',     label: 'Zoning',           icon: <Landmark size={14} />,        component: ZoningModuleSection },
@@ -564,10 +556,9 @@ const DealDetailPage: React.FC = () => {
     { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', short: 'COMPS',      label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
-    { id: 'documents',   moduleId: 'M18', fkey: 'F11', code: 'M18', short: 'DOCS',       label: 'Documents',        icon: <FileText size={14} />,        component: DocumentsScreen },
-    { id: 'execution',   moduleId: 'M17', fkey: 'F12', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F13', code: 'M13', short: 'RISK/DD',    label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F14', code: 'M20', short: 'AI AGENT',   label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
+    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F12', code: 'M13', short: 'RISK/DD',    label: 'Risk & DD',        icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F13', code: 'M20', short: 'AI AGENT',   label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
   ];
 
   // Filter by deal-type visibility rules
