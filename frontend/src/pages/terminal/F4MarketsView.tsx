@@ -292,7 +292,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     m.name.toLowerCase().includes(marketSearch.toLowerCase())
   );
 
-  const originLabel = drillOriginTab === "all-msas" ? "ALL MSAs" : "F4 LANDING";
+  const originLabel = drillOriginTab === "all-msas" ? "ALL MSAs" : "MY MARKETS";
 
   if (level === "msa-terminal") {
     return (
@@ -472,7 +472,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>My Markets</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Market Index</span>
               <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {TRACKED_MARKETS.length} tracked markets · Double-click to drill</span>
             </div>
           </div>
@@ -573,8 +573,8 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Property Stock</span>
-            <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_INDEX.length} key properties across tracked markets</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Properties</span>
+            <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_INDEX.length} properties across tracked markets</span>
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
@@ -637,12 +637,12 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   };
 
   const SUB_TAB_DEFS: { id: SubTab; label: string }[] = [
-    { id: "msa-detail", label: "MSA DETAIL" },
-    { id: "msa-index", label: "MSA INDEX" },
+    { id: "msa-detail", label: "OVERVIEW" },
+    { id: "msa-index", label: "MARKET INDEX" },
     { id: "submarkets", label: "SUBMARKETS" },
     { id: "watchlist", label: `WATCHLIST (${TRACKED_MARKETS.filter(m => m.starred).length})` },
     { id: "peer-comp", label: "PEER COMP" },
-    { id: "property-stock", label: "PROPERTY STOCK" },
+    { id: "property-stock", label: "PROPERTIES" },
   ];
 
   return (
@@ -707,7 +707,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
 
       <div style={{ display: "flex", alignItems: "center", height: 30, background: C.panel, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
         {([
-          { id: "f4-landing" as PrimaryTab, label: "F4 LANDING" },
+          { id: "f4-landing" as PrimaryTab, label: "MY MARKETS" },
           { id: "all-msas" as PrimaryTab, label: "ALL MSAs" },
         ]).map(tab => (
           <button
@@ -727,7 +727,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
         ))}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 9, color: C.muted, ...mono, marginRight: 10 }}>
-          {primaryTab === "f4-landing" ? `${selectedMsa.name} · ${TRACKED_MARKETS.length} tracked` : `${ALL_MSAS.length} total MSAs`}
+          {primaryTab === "f4-landing" ? `${selectedMsa.name} · ${TRACKED_MARKETS.length} tracked markets` : `${ALL_MSAS.length} total MSAs`}
         </span>
       </div>
 
@@ -758,7 +758,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{primaryTab === "all-msas" ? "Click" : "Double-click"} row = drill down · Click column header = sort · * = subject property · ★ = watchlist</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{primaryTab === "all-msas" ? "Click" : "Double-click"} row to drill · Column header to sort · ★ = watchlist</span>
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
       </div>
