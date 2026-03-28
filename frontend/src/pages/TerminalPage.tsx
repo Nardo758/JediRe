@@ -366,8 +366,8 @@ function PanelHeader({title,subtitle,right,borderColor,T}:{title:string;subtitle
   return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,borderTop:borderColor?`2px solid ${borderColor}`:"none",flexShrink:0}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <span style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>{title}</span>
-        {subtitle&&<span style={{fontSize: 9,color:T.text.secondary}}>{subtitle}</span>}
+        <span style={{fontSize:11,fontWeight:700,color:T.text.white,letterSpacing:0.8}}>{title}</span>
+        {subtitle&&<span style={{fontSize:10,color:T.text.secondary}}>{subtitle}</span>}
       </div>
       {right&&<div style={{display:"flex",alignItems:"center",gap:6}}>{right}</div>}
     </div>
@@ -2508,21 +2508,21 @@ export default function TerminalPage() {
       {/* ═══ TOP STATUS BAR — 28px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-          <span style={{fontFamily:T.font.display,fontSize:13,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JediRE</span>
-          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
-          <span style={{fontSize:9,color:T.text.secondary,flexShrink:0}}>PORTFOLIO</span>
-          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
-          {totalPV>0&&<span style={{fontSize:9,fontWeight:700,color:T.text.amberBright,flexShrink:0}}>PIPELINE: ${totalPV.toFixed(1)}M</span>}
-          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
-          <span style={{fontSize:9,fontWeight:600,color:T.text.cyan,flexShrink:0}}>ACTIVE: {activeCount}</span>
-          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
-          <span onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{fontSize:9,fontWeight:700,color:hAlerts>0?T.text.red:T.text.green,cursor:"pointer",flexShrink:0,animation:hAlerts>0?"pulse 2s infinite":"none"}}>ALERTS: {hAlerts}</span>
-          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
-          <span style={{fontSize:9,color:T.text.muted,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
+          <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JediRE</span>
+          <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:10,color:T.text.secondary,flexShrink:0}}>PORTFOLIO</span>
+          <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
+          {totalPV>0&&<span style={{fontSize:10,fontWeight:700,color:T.text.amberBright,flexShrink:0}}>PIPELINE: ${totalPV.toFixed(1)}M</span>}
+          <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:10,fontWeight:600,color:T.text.cyan,flexShrink:0}}>ACTIVE: {activeCount}</span>
+          <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
+          <span onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{fontSize:10,fontWeight:700,color:hAlerts>0?T.text.red:T.text.green,cursor:"pointer",flexShrink:0,animation:hAlerts>0?"pulse 2s infinite":"none"}}>ALERTS: {hAlerts}</span>
+          <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:10,color:T.text.muted,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGT</span>
-          <span style={{fontSize:9,color:T.text.cyan}}>MAIL: {liveEmails.filter(e=>e.unread).length}</span>
+          <span style={{fontSize:10,color:T.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGT</span>
+          <span style={{fontSize:10,color:T.text.cyan}}>MAIL: {liveEmails.filter(e=>e.unread).length}</span>
           {mediaWindows.length>0&&(
             <div style={{position:"relative"}}>
               <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
@@ -2553,8 +2553,8 @@ export default function TerminalPage() {
               )}
             </div>
           )}
-          <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
-          <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
+          <span style={{fontSize:10,color:T.text.secondary}}>KAFKA: 312/s</span>
+          <span style={{fontSize:10,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}
           </button>
@@ -2578,8 +2578,8 @@ export default function TerminalPage() {
       <div style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
         <div style={{display:"flex",flex:1,overflowX:"auto"}}>
           {PORTFOLIO_NAV.map(n=>(
-            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:1,minWidth:0}}>
-              <span style={{fontSize:9,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
+            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:11,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:1,minWidth:0}}>
+              <span style={{fontSize:10,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
               {n.label}
             </button>
           ))}

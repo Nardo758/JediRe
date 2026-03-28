@@ -637,7 +637,7 @@ export const BottomPanel: React.FC = () => {
               background: 'transparent',
               color: T.text.muted,
               cursor: 'pointer',
-              fontSize: '9px',
+              fontSize: '10px',
               fontFamily: T.font.mono,
               padding: '2px 8px 2px 2px',
             }}
@@ -656,7 +656,7 @@ export const BottomPanel: React.FC = () => {
                 borderBottom: activeTab === tab.id && !collapsed ? `2px solid ${tab.color}` : '2px solid transparent',
                 background: 'transparent',
                 color: activeTab === tab.id && !collapsed ? tab.color : T.text.muted,
-                fontSize: T.fontSize.xs,
+                fontSize: T.fontSize.base,
                 fontFamily: T.font.mono,
                 fontWeight: 700,
                 letterSpacing: 1,
