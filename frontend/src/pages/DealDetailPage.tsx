@@ -413,6 +413,8 @@ const DealDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
+  const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
+  const [bottomTab, setBottomTab] = useState('alerts');
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
@@ -558,8 +560,9 @@ const DealDetailPage: React.FC = () => {
     { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', short: 'COMPS',      label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F11', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'deal-tools', moduleId: 'M21', fkey: 'F12', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F12', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'deal-tools', moduleId: 'M21', fkey: 'F13', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
   // Filter by deal-type visibility rules
@@ -879,6 +882,174 @@ const DealDetailPage: React.FC = () => {
           </main>
         </div>
 
+        {/* ── Bottom Panel (matches Terminal/Dashboard) ── */}
+        {(() => {
+          const alerts = [
+            { id: 'a1', type: 'ARBITRAGE', sev: 'critical', msg: 'BTS outscores Rental by 22pts in current pipeline — rate environment favors construction exit', deal: 'Pipeline', time: '10m' },
+            { id: 'a2', type: 'RISK', sev: 'high', msg: 'Insurance risk elevated on STR deals. FL wind zone + STR uncertainty compounding.', deal: null as string | null, time: '34m' },
+            { id: 'a3', type: 'MARKET', sev: 'med', msg: 'Tampa MSA absorption exceeded 95% for 2nd consecutive month — supply constrained', deal: null as string | null, time: '1h' },
+            { id: 'a4', type: 'DEADLINE', sev: 'high', msg: 'Review outstanding DD checklists — 3 items flagged past target date', deal: null as string | null, time: '2h' },
+          ];
+          const news = [
+            { id: 'n1', time: '14:23', hl: 'Amazon announces 2,000-job Tampa HQ expansion', impact: '+DEMAND', pts: '+3.2', affects: ['Pipeline'] },
+            { id: 'n2', time: '13:41', hl: 'Greystar breaks ground 380-unit tower Downtown Tampa', impact: '+SUPPLY', pts: '-1.8', affects: [] as string[] },
+            { id: 'n3', time: '11:15', hl: 'FL Legislature passes insurance reform, 8% rate cap', impact: 'RISK DN', pts: '+1.2', affects: ['All FL'] },
+            { id: 'n4', time: '09:32', hl: 'Nocatee named #2 top-selling MPC nationally', impact: '+DEMAND', pts: '+2.4', affects: [] as string[] },
+          ];
+          const emails = [
+            { id: 1, from: 'Marcus Chen', subject: 'LOI countersigned — next steps', time: '2h', unread: true },
+            { id: 2, from: 'Deal Engine', subject: 'Automated DD checklist reminder', time: '5h', unread: true },
+            { id: 3, from: 'JP Morgan RE Debt', subject: 'Term sheet ready for review', time: '1d', unread: false },
+          ];
+          const agents = [
+            { id: 'A01', name: 'Data Collector', st: 'ON', act: 'Scraping comps Apartments.com', t: '2s', m: 142 },
+            { id: 'A03', name: 'Zoning Agent', st: 'ON', act: 'Parsing Municode setback rules', t: '8s', m: 38 },
+            { id: 'A05', name: 'Market Analyst', st: 'ON', act: 'Updating absorption metrics', t: '34s', m: 87 },
+            { id: 'A07', name: 'Risk Scorer', st: 'ON', act: 'Recalculating insurance risk scores', t: '1m', m: 64 },
+            { id: 'A08', name: 'Strategy Engine', st: 'IDLE', act: 'Awaiting new intake', t: '4m', m: 23 },
+            { id: 'A10', name: 'Orchestrator', st: 'ON', act: 'Coordinating DD checklist review', t: '12s', m: 312 },
+          ];
+          const tasks = [
+            { id: 'T01', title: 'Schedule structural inspection', deal: 'Active Deal', pri: 'critical', due: 'Mar 20', status: 'TODO', owner: 'M.Dixon' },
+            { id: 'T02', title: 'Wire earnest deposit', deal: 'Active Deal', pri: 'critical', due: 'Mar 19', status: 'TODO', owner: 'M.Dixon' },
+            { id: 'T03', title: 'Review Phase I ESA report', deal: 'Pipeline', pri: 'high', due: 'Mar 22', status: 'IN PROGRESS', owner: 'S.Torres' },
+            { id: 'T04', title: 'Update pro forma for rate change', deal: 'Pipeline', pri: 'high', due: 'Mar 23', status: 'TODO', owner: 'R.Patel' },
+          ];
+          const hAlerts = alerts.filter(a => a.sev === 'critical' || a.sev === 'high').length;
+          const sevColor: Record<string, string> = { critical: '#EF4444', high: '#F97316', med: AMBER, low: TEXT_DIM };
+          const statusColor: Record<string, string> = { 'TODO': TEXT_DIM, 'IN PROGRESS': '#00BCD4', 'DONE': GREEN };
+          const BOTTOM_TABS = [
+            { id: 'alerts', l: 'ALERTS', ct: hAlerts, cc: '#EF4444' },
+            { id: 'news', l: 'NEWS', ct: news.length, cc: '#00BCD4' },
+            { id: 'email', l: 'EMAIL', ct: emails.filter(e => e.unread).length, cc: '#F97316' },
+            { id: 'agents', l: 'AGENTS', ct: agents.filter(a => a.st === 'ON').length, cc: GREEN },
+            { id: 'tasks', l: 'TASKS', ct: tasks.filter(t => t.status !== 'DONE').length, cc: AMBER },
+          ];
+          return (
+            <div style={{
+              position: 'relative', height: bottomPanelOpen ? 190 : 28,
+              borderTop: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column',
+              flexShrink: 0, background: BG_NAV, transition: 'height 0.18s ease',
+            }}>
+              <div style={{
+                display: 'flex', background: '#080C12',
+                borderBottom: bottomPanelOpen ? `1px solid ${BORDER}` : 'none',
+                flexShrink: 0, height: 28, alignItems: 'center',
+              }}>
+                <button
+                  onClick={() => setBottomPanelOpen(o => !o)}
+                  title={bottomPanelOpen ? 'Collapse panel' : 'Expand panel'}
+                  style={{
+                    fontFamily: MONO, fontSize: 10, fontWeight: 700, color: TEXT_DIM,
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    padding: '0 8px', height: '100%', flexShrink: 0, lineHeight: 1,
+                  }}
+                >
+                  {bottomPanelOpen ? '▼' : '▲'}
+                </button>
+                {BOTTOM_TABS.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => { setBottomTab(tab.id); if (!bottomPanelOpen) setBottomPanelOpen(true); }}
+                    style={{
+                      fontFamily: MONO, fontSize: 10, fontWeight: 600,
+                      color: bottomTab === tab.id ? BG_NAV : TEXT_MID,
+                      background: bottomTab === tab.id ? AMBER : 'transparent',
+                      border: 'none', cursor: 'pointer', padding: '0 14px', height: '100%',
+                      display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0,
+                    }}
+                  >
+                    {tab.l}
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: '1px 4px',
+                      background: bottomTab === tab.id ? 'rgba(0,0,0,0.2)' : `${tab.cc}18`,
+                      color: bottomTab === tab.id ? 'rgba(0,0,0,0.7)' : tab.cc,
+                    }}>{tab.ct}</span>
+                  </button>
+                ))}
+                <div style={{ flex: 1 }} />
+              </div>
+              {bottomPanelOpen && (
+                <div style={{ flex: 1, overflow: 'auto', fontFamily: MONO }}>
+                  {bottomTab === 'alerts' && alerts.map((a, i) => {
+                    const bc = sevColor[a.sev] || TEXT_DIM;
+                    return (
+                      <div key={i} style={{ display: 'flex', gap: 6, padding: '5px 10px', borderBottom: `1px solid ${BORDER}`, borderLeft: `3px solid ${bc}` }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', gap: 4, marginBottom: 2 }}>
+                            <Bd c={bc}>{a.sev.toUpperCase()}</Bd>
+                            <Bd c="#00BCD4">{a.type}</Bd>
+                            {a.deal && <span style={{ fontSize: 9, color: AMBER, fontWeight: 600 }}>{a.deal}</span>}
+                          </div>
+                          <div style={{ fontSize: 9, color: TEXT, lineHeight: 1.3 }}>{a.msg}</div>
+                        </div>
+                        <span style={{ fontSize: 9, color: TEXT_DIM }}>{a.time}</span>
+                      </div>
+                    );
+                  })}
+                  {bottomTab === 'news' && news.map((n, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 6, padding: '5px 10px', borderBottom: `1px solid ${BORDER}` }}>
+                      <span style={{ fontSize: 9, color: TEXT_DIM, minWidth: 34 }}>{n.time}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: TEXT, lineHeight: 1.3 }}>{n.hl}</div>
+                        {n.affects.length > 0 && <div style={{ display: 'flex', gap: 3, marginTop: 2 }}>{n.affects.map((a, j) => <Bd key={j} c={AMBER}>{a}</Bd>)}</div>}
+                      </div>
+                      <div style={{ textAlign: 'right' as const, minWidth: 50 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: n.impact.includes('+') ? GREEN : '#EF4444' }}>{n.impact}</div>
+                        <div style={{ fontSize: 9, color: n.pts.startsWith('+') ? GREEN : '#EF4444' }}>{n.pts}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {bottomTab === 'email' && emails.map((e, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 10px', borderBottom: `1px solid ${BORDER}`, background: e.unread ? `${AMBER}06` : BG_NAV }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 1 }}>
+                          <span style={{ fontSize: 9, fontWeight: e.unread ? 700 : 400, color: e.unread ? TEXT : TEXT_MID }}>{e.from}</span>
+                          {e.unread && <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#F97316', display: 'inline-block' }} />}
+                        </div>
+                        <div style={{ fontSize: 9, color: e.unread ? TEXT : TEXT_MID, fontWeight: e.unread ? 600 : 400, lineHeight: 1.3 }}>{e.subject}</div>
+                      </div>
+                      <span style={{ fontSize: 9, color: TEXT_DIM, whiteSpace: 'nowrap' }}>{e.time}</span>
+                    </div>
+                  ))}
+                  {bottomTab === 'agents' && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1, background: BORDER }}>
+                      {agents.map((a, i) => (
+                        <div key={i} style={{ background: BG_NAV, padding: '5px 8px', borderLeft: a.st === 'ON' ? `2px solid ${GREEN}` : `2px solid ${TEXT_DIM}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 1 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6' }}>{a.id} <span style={{ color: TEXT }}>{a.name}</span></span>
+                            <span style={{ fontSize: 9, color: a.st === 'ON' ? GREEN : TEXT_DIM }}>{a.st}</span>
+                          </div>
+                          <div style={{ fontSize: 9, color: TEXT_MID, lineHeight: 1.3 }}>{a.act}</div>
+                          <div style={{ fontSize: 9, color: TEXT_DIM, marginTop: 1 }}>{a.t} ago · {a.m} msgs</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {bottomTab === 'tasks' && tasks.map((t, i) => (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 10px',
+                      borderBottom: `1px solid ${BORDER}`, borderLeft: `3px solid ${sevColor[t.pri] || TEXT_DIM}`,
+                      background: i % 2 === 0 ? BG_NAV : '#0A0E17', opacity: t.status === 'DONE' ? 0.5 : 1,
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 9, fontWeight: 600, color: t.status === 'DONE' ? TEXT_DIM : TEXT, textDecoration: t.status === 'DONE' ? 'line-through' : 'none' }}>{t.title}</div>
+                        <div style={{ marginTop: 2, display: 'flex', gap: 4 }}>
+                          <Bd c={AMBER}>{t.deal}</Bd>
+                          <Bd c={sevColor[t.pri] || TEXT_DIM}>{t.pri.toUpperCase()}</Bd>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const, flexShrink: 0 }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: statusColor[t.status] || TEXT_DIM }}>{t.status}</div>
+                        <div style={{ fontSize: 9, color: TEXT_DIM, marginTop: 1 }}>{t.due} · {t.owner}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </DealModuleProvider>
   );
