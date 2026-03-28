@@ -226,12 +226,12 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
               <th 
                 style={{ ...terminalStyles.tableHeader, textAlign: 'center', cursor: 'pointer' }}
                 onClick={() => handleSort('movement')}
+                title="Rank Change"
               >
                 Δ {sortKey === 'movement' && (sortAsc ? '▲' : '▼')}
               </th>
-              {/* Mini component bars */}
               {PCS_COMPONENTS.map(c => (
-                <th key={c.key} style={{ ...terminalStyles.tableHeader, textAlign: 'center', width: 40 }}>
+                <th key={c.key} style={{ ...terminalStyles.tableHeader, textAlign: 'center', width: 40 }} title={c.label}>
                   <span style={{ fontSize: 9 }}>{c.short}</span>
                 </th>
               ))}
