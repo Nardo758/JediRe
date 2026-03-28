@@ -619,7 +619,7 @@ export default function TerminalPage() {
   useEffect(() => {
     const slug = FKEY_SLUG[fkey] || "dashboard";
     const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
-    document.title = `JEDI RE | ${label}`;
+    document.title = `JEDIRE | ${label}`;
     const target = `/terminal/${slug}`;
     if (window.location.pathname !== target) navigate(target, { replace: true });
   }, [fkey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -2503,7 +2503,7 @@ export default function TerminalPage() {
       {/* ═══ TOP STATUS BAR — 28px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-          <span style={{fontFamily:T.font.display,fontSize:13,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JEDI RE</span>
+          <span style={{fontFamily:T.font.display,fontSize:13,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JEDIRE</span>
           <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
           <span style={{fontSize:9,color:T.text.secondary,flexShrink:0}}>PORTFOLIO</span>
           <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
@@ -2744,7 +2744,7 @@ export default function TerminalPage() {
       {/* ═══ STATUS BAR — 20px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:20,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>
         <div style={{display:"flex",gap:12}}>
-          <span style={{fontSize:9,color:T.text.muted}}>JEDI RE v3.0</span>
+          <span style={{fontSize:9,color:T.text.muted}}>JEDIRE v3.0</span>
           <span style={{fontSize:9,color:T.text.muted}}>REACT + VITE + MAPBOX + KAFKA</span>
         </div>
         <div style={{display:"flex",gap:12}}>

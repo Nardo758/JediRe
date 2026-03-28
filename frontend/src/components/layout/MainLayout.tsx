@@ -199,7 +199,7 @@ const TopStatusBar: React.FC<{ contextLabel: string; agentCount: number; emailCo
           fontSize: T.fontSize.md,
           color: T.text.cyan,
           letterSpacing: 1.5,
-        }}>JEDI RE</span>
+        }}>JEDIRE</span>
         <span style={{ color: T.text.secondary, fontSize: T.fontSize.xs }}>|</span>
         <span style={{ color: T.text.secondary, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase' }}>
           {contextLabel}

@@ -344,7 +344,7 @@ const TrafficScreen = (props: ScreenProps) => (
   </div>
 );
 
-const DealTopStatusBar: React.FC<{ dealName: string; onBack: () => void }> = ({ dealName, onBack }) => {
+const DealTopStatusBar: React.FC<{ dealName: string }> = ({ dealName }) => {
   const [clock, setClock] = React.useState('');
   React.useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('en-GB', { hour12: false }));
@@ -353,59 +353,37 @@ const DealTopStatusBar: React.FC<{ dealName: string; onBack: () => void }> = ({ 
     return () => clearInterval(id);
   }, []);
 
-  const MONO_F = "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace";
-  const BG_T = '#080C12';
-  const BD = '#1e2a3d';
-  const TXT_S = '#9EA8B4';
-  const TXT_C = '#00D4AA';
-
   return (
     <div style={{
-      height: 24, background: BG_T, display: 'flex', alignItems: 'center',
-      justifyContent: 'space-between', padding: '0 12px',
-      borderBottom: `1px solid ${BD}`, flexShrink: 0,
-      fontFamily: MONO_F, fontSize: 9, userSelect: 'none',
+      height: 28, background: '#050810', display: 'flex', alignItems: 'center',
+      justifyContent: 'space-between', padding: '0 8px',
+      borderBottom: '1px solid #1E2538', flexShrink: 0,
+      fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace", fontSize: 9, userSelect: 'none',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button
-          onClick={onBack}
-          title="Back to Deal Capsules"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 4,
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: '#6B7585', fontSize: 9, fontFamily: MONO_F, fontWeight: 600,
-            letterSpacing: 0.5, padding: 0, flexShrink: 0,
-          }}
-          onMouseEnter={e => (e.currentTarget.style.color = '#10B981')}
-          onMouseLeave={e => (e.currentTarget.style.color = '#6B7585')}
-        >
-          <ArrowLeft size={10} />
-        </button>
-        <span style={{ fontWeight: 800, fontSize: 10, color: TXT_C, letterSpacing: 1.5 }}>JEDI RE</span>
-        <span style={{ color: TXT_S, fontSize: 8 }}>|</span>
-        <span style={{ color: TXT_S, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 13, fontWeight: 800, color: '#F5A623', letterSpacing: 2, flexShrink: 0 }}>JEDIRE</span>
+        <span style={{ fontSize: 9, color: '#4A5568', flexShrink: 0 }}>|</span>
+        <span style={{ fontSize: 9, color: '#8B95A5', fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', flexShrink: 0 }}>
           {dealName}
         </span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: TXT_S }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%', background: '#10B981',
-            animation: 'pulse 2s ease-in-out infinite',
-          }} />
-          5 AGENTS
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: '#00D26A', display: 'flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#00D26A', animation: 'glow 2s infinite' }} />
+          5 AGT
         </span>
-        <span style={{ color: TXT_S }}>
-          EMAIL: <span style={{ color: '#E8E6E1', fontWeight: 600 }}>5</span>
+        <span style={{ fontSize: 9, color: '#00BCD4' }}>MAIL: 5</span>
+        <span style={{ fontSize: 9, color: '#8B95A5' }}>
+          KAFKA: <span style={{ color: '#E8ECF1', fontWeight: 600 }}>312/s</span>
         </span>
-        <span style={{ color: TXT_S }}>
-          KAFKA: <span style={{ color: '#E8E6E1', fontWeight: 600 }}>312/s</span>
+        <span style={{ fontSize: 9, color: '#8B95A5', flexShrink: 0 }}>
+          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
         </span>
-        <span style={{ color: '#F5A623', fontWeight: 700, letterSpacing: 1 }}>
+        <span style={{ fontSize: 9, color: '#F5A623', fontWeight: 700, letterSpacing: 1 }}>
           {clock}
         </span>
       </div>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+      <style>{`@keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}`}</style>
     </div>
   );
 };
@@ -646,7 +624,7 @@ const DealDetailPage: React.FC = () => {
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
         {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
-        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} onBack={() => navigate('/capsules')} />
+        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} />
 
         {/* ── Bar 2: Deal Context Bar (📍 name · address · JEDI score │ ▶ TRADE AREA │ SUBMARKET │ MSA) ── */}
         {deal && (
