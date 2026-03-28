@@ -92,6 +92,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [classFilter, setClassFilter] = useState('All');
   const [vintageFilter, setVintageFilter] = useState('All');
+  const [sizeFilter, setSizeFilter] = useState('All');
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -110,6 +111,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const submarkets = ['All', ...Array.from(new Set(MOCK_PROPERTIES.map(p => p.submarket)))];
   const classes = ['All', 'A', 'B+', 'B', 'B-', 'C+', 'C'];
   const vintages = ['All', 'Pre-1980', '1980s', '1990s', '2000s', '2010s', '2020s'];
+  const sizes = ['All', '< 150', '150-250', '250-350', '350+'];
 
   // Filter and sort
   const filteredProperties = useMemo(() => {
@@ -126,6 +128,12 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
         if (vintageFilter === '2010s' && (p.year < 2010 || p.year >= 2020)) return false;
         if (vintageFilter === '2020s' && p.year < 2020) return false;
       }
+      if (sizeFilter !== 'All') {
+        if (sizeFilter === '< 150' && p.units >= 150) return false;
+        if (sizeFilter === '150-250' && (p.units < 150 || p.units > 250)) return false;
+        if (sizeFilter === '250-350' && (p.units < 250 || p.units > 350)) return false;
+        if (sizeFilter === '350+' && p.units < 350) return false;
+      }
       return true;
     });
 
@@ -140,7 +148,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
     });
 
     return result;
-  }, [searchQuery, submarketFilter, classFilter, vintageFilter, sortKey, sortDir]);
+  }, [searchQuery, submarketFilter, classFilter, vintageFilter, sizeFilter, sortKey, sortDir]);
 
   // Heatmap color calculation
   const getHeatmapColor = (property: PropertyRow) => {
@@ -336,20 +344,49 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
         {/* Vintage */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: BT.text.muted }}>Vintage:</span>
-          <select
-            value={vintageFilter}
-            onChange={(e) => setVintageFilter(e.target.value)}
-            style={{
-              padding: '6px 12px',
-              background: BT.bg.elevated,
-              color: BT.text.primary,
-              border: `1px solid ${BT.border.subtle}`,
-              borderRadius: 0,
-              fontSize: 11,
-            }}
-          >
-            {vintages.map(v => <option key={v} value={v}>{v}</option>)}
-          </select>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {vintages.map(v => (
+              <button
+                key={v}
+                onClick={() => setVintageFilter(v)}
+                style={{
+                  padding: '4px 10px',
+                  background: vintageFilter === v ? BT.accent.blue : BT.bg.elevated,
+                  color: vintageFilter === v ? '#fff' : BT.text.secondary,
+                  border: 'none',
+                  borderRadius: 0,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Size */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Size:</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {sizes.map(s => (
+              <button
+                key={s}
+                onClick={() => setSizeFilter(s)}
+                style={{
+                  padding: '4px 10px',
+                  background: sizeFilter === s ? BT.accent.blue : BT.bg.elevated,
+                  color: sizeFilter === s ? '#fff' : BT.text.secondary,
+                  border: 'none',
+                  borderRadius: 0,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Heatmap */}
