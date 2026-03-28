@@ -132,6 +132,14 @@ export function MapPage() {
     if (notes.length > 0) localStorage.setItem('jedire-map-notes', JSON.stringify(notes));
   }, [notes]);
 
+  const cancelNotePlacement = useCallback(() => {
+    setPlacingNote(false);
+    setHoverLngLat(null);
+    setPendingNoteLngLat(null);
+    setAddingNote(false);
+    setNoteText('');
+  }, []);
+
   // ESC key handler for canceling note placement
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -246,14 +254,6 @@ export function MapPage() {
     setPlacingNote(false);
     setHoverLngLat(null);
   };
-  
-  const cancelNotePlacement = useCallback(() => {
-    setPlacingNote(false);
-    setHoverLngLat(null);
-    setPendingNoteLngLat(null);
-    setAddingNote(false);
-    setNoteText('');
-  }, []);
 
   const deleteNote = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
