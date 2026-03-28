@@ -6,7 +6,6 @@ import {
 } from '../../components/deal/bloomberg-ui';
 import { apiClient } from '../../services/api.client';
 import CollisionAnalysisSection from '../../components/deal/sections/CollisionAnalysisSection';
-import { DueDiligencePage } from '../development/DueDiligencePage';
 
 interface RiskDDPageProps {
   dealId?: string;
@@ -143,23 +142,8 @@ function buildLayerData(deal: Record<string, unknown> | null): CollisionLayerDat
   };
 }
 
-const DD_CATEGORY_MAP: Array<{ name: string; abbr: string; riskId: string }> = [
-  { name: 'Physical Inspection', abbr: 'PHYS', riskId: 'execution' },
-  { name: 'Environmental',       abbr: 'ENV',  riskId: 'climate'   },
-  { name: 'Insurance',           abbr: 'INS',  riskId: 'market'    },
-  { name: 'Environmental & Hazmat', abbr: 'HAZ', riskId: 'climate' },
-  { name: 'Geotechnical',        abbr: 'GEO',  riskId: 'execution' },
-  { name: 'Site & Engineering',  abbr: 'ENG',  riskId: 'execution' },
-  { name: 'Existing Structure',  abbr: 'STR',  riskId: 'supply'    },
-];
 
-function deriveDdStatus(score: number): { label: string; color: string } {
-  if (score < 40) return { label: 'COMPLETE', color: BT.text.green };
-  if (score < 65) return { label: 'PENDING',  color: BT.text.amber };
-  return               { label: 'BLOCKED',  color: BT.text.red   };
-}
-
-const RISK_TAB_LABELS = ['RISK SCORES', 'COLLISION ANALYSIS', 'DD CHECKLIST'];
+const RISK_TAB_LABELS = ['RISK SCORES', 'COLLISION ANALYSIS'];
 
 export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPageProps) {
   const params = useParams<{ id?: string; dealId?: string }>();
@@ -212,7 +196,7 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
       <style>{BT_CSS}</style>
 
       <PanelHeader
-        title="RISK & DUE DILIGENCE"
+        title="RISK ANALYSIS"
         subtitle="M09 · INTELLIGENCE ENGINE + EXPOSURE + FILES"
         borderColor={BT.text.red}
         metrics={[
@@ -354,49 +338,6 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
           </div>
         )}
 
-        {activeTab === 2 && (
-          <div>
-            <div style={{ padding: 1, background: BT.border.subtle }}>
-              <SectionPanel
-                title="DD CHECKLIST CATEGORIES"
-                subtitle="Environmental & Physical Due Diligence · status by category"
-                borderColor={BT.text.orange}
-              >
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 1, padding: 4, background: BT.border.subtle }}>
-                  {DD_CATEGORY_MAP.map(cat => {
-                    const riskCat = categories.find(c => c.id === cat.riskId);
-                    const { label, color } = deriveDdStatus(riskCat?.score ?? 50);
-                    return (
-                      <div key={cat.abbr} style={{
-                        flex: '1 1 calc(14% - 4px)', minWidth: 80,
-                        background: BT.bg.panel, padding: '6px 8px',
-                        display: 'flex', flexDirection: 'column', gap: 4,
-                        borderLeft: `2px solid ${color}`,
-                      }}>
-                        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.primary }}>
-                          {cat.abbr}
-                        </span>
-                        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
-                          {cat.name}
-                        </span>
-                        <Bd c={color}>{label}</Bd>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>STATUS LEGEND:</span>
-                  <Bd c={BT.text.green}>COMPLETE</Bd>
-                  <Bd c={BT.text.amber}>PENDING</Bd>
-                  <Bd c={BT.text.red}>BLOCKED</Bd>
-                </div>
-              </SectionPanel>
-            </div>
-            <BtTabWrapper>
-              <DueDiligencePage dealId={resolvedDealId} />
-            </BtTabWrapper>
-          </div>
-        )}
 
       </div>
     </div>

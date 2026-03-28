@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import { DocumentsShellPage } from '../../../pages/development/DocumentsShellPage';
+import { DueDiligencePage } from '../../../pages/development/DueDiligencePage';
 
 interface ContextTrackerSectionProps {
   deal?: any;
@@ -25,6 +26,7 @@ const TABS = [
   { id: 'dates', name: 'Key Dates', icon: Calendar, color: 'rose' },
   { id: 'decisions', name: 'Decision Log', icon: FileText, color: 'indigo' },
   { id: 'risks', name: 'Risk Flags', icon: AlertTriangle, color: 'red' },
+  { id: 'dd-checklist', name: 'DD Checklist', icon: CheckCircle, color: 'orange' },
   { id: 'entitlements', name: 'Entitlements', icon: ClipboardList, color: 'teal' },
 ];
 
@@ -74,6 +76,11 @@ export const ContextTrackerSection: React.FC<ContextTrackerSectionProps> = ({ de
         {activeTab === 'dates' && <DatesTab dealId={resolvedDealId} />}
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
         {activeTab === 'risks' && <RisksTab dealId={resolvedDealId} />}
+        {activeTab === 'dd-checklist' && (
+          <div style={{ height: 500, overflow: 'hidden' }}>
+            <DueDiligencePage dealId={resolvedDealId} deal={deal} />
+          </div>
+        )}
         {activeTab === 'entitlements' && <EntitlementTrackerTab dealId={resolvedDealId} deal={deal} />}
       </div>
     </div>
