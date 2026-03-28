@@ -394,12 +394,10 @@ const PropertyCardPage: React.FC = () => {
       <div style={{
         flex: 1,
         overflow: 'auto',
-        padding: 24,
         display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'flex-start',
+        flexDirection: 'column',
       }}>
-        <div style={{ width: '100%', maxWidth: 680 }}>
+        <div style={{ width: '100%', flex: 1 }}>
           <BloombergPropertyCard
             property={{
               id: property.id,
