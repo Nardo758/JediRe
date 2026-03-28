@@ -634,7 +634,7 @@ const DealDetailPage: React.FC = () => {
             flexShrink: 0, fontFamily: MONO, overflow: 'hidden',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
-              <span style={{ color: '#EF4444', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#F5A623', flexShrink: 0, marginRight: 6 }} />
               {(deal.address || deal.location) && (
                 <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2 }}>
                   {deal.address || deal.location}
