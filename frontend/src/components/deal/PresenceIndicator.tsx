@@ -74,25 +74,39 @@ export function PresenceIndicator({ dealId, currentModule }: PresenceIndicatorPr
   const overflow = participants.length - maxVisible;
 
   return (
-    <div className="flex items-center gap-1" style={{ fontFamily: BT.font.mono }}>
-      <div className="flex -space-x-2">
-        {visible.map((p) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: BT.font.mono }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        {visible.map((p, i) => (
           <div
             key={p.userId}
-            className="relative"
+            style={{ position: 'relative', marginLeft: i > 0 ? -6 : 0 }}
             onMouseEnter={() => setShowTooltip(p.userId)}
             onMouseLeave={() => setShowTooltip(null)}
           >
             <div
-              className="w-7 h-7 rounded-full flex items-center justify-center cursor-default"
-              style={{ background: getColorForUser(p.userId), color: BT.bg.terminal, fontSize: 10, fontWeight: 700, border: `2px solid ${BT.bg.panel}` }}
+              style={{
+                width: 20, height: 20, borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: getColorForUser(p.userId), color: BT.bg.terminal,
+                fontSize: 8, fontWeight: 700, cursor: 'default',
+                border: `1.5px solid ${BT.bg.panel}`,
+              }}
             >
               {getInitials(p.email)}
             </div>
-            <div className="absolute bottom-0 right-0 w-2 h-2 rounded-full" style={{ background: BT.text.green, border: `1px solid ${BT.bg.panel}`, animation: 'glow 2s infinite' }} />
+            <div style={{
+              position: 'absolute', bottom: 0, right: 0,
+              width: 6, height: 6, borderRadius: '50%',
+              background: BT.text.green, border: `1px solid ${BT.bg.panel}`,
+            }} />
 
             {showTooltip === p.userId && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-1 whitespace-nowrap z-50" style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, fontSize: 10, color: BT.text.primary }}>
+              <div style={{
+                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                marginTop: 4, padding: '3px 8px', whiteSpace: 'nowrap', zIndex: 50,
+                background: BT.bg.header, border: `1px solid ${BT.border.subtle}`,
+                fontSize: 9, color: BT.text.primary,
+              }}>
                 <div style={{ fontWeight: 500 }}>{p.email}</div>
                 {p.activeModule && (
                   <div style={{ color: BT.text.muted }}>Viewing: {p.activeModule}</div>
@@ -102,12 +116,17 @@ export function PresenceIndicator({ dealId, currentModule }: PresenceIndicatorPr
           </div>
         ))}
         {overflow > 0 && (
-          <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: BT.bg.header, color: BT.text.secondary, fontSize: 10, fontWeight: 700, border: `2px solid ${BT.bg.panel}` }}>
+          <div style={{
+            width: 20, height: 20, borderRadius: '50%', marginLeft: -6,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: BT.bg.header, color: BT.text.secondary,
+            fontSize: 8, fontWeight: 700, border: `1.5px solid ${BT.bg.panel}`,
+          }}>
             +{overflow}
           </div>
         )}
       </div>
-      <span style={{ fontSize: 10, color: BT.text.muted, marginLeft: 4 }}>
+      <span style={{ fontSize: 9, color: BT.text.muted, letterSpacing: 0.3 }}>
         {participants.length} viewing
       </span>
     </div>
