@@ -47,7 +47,7 @@ import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
 import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
 import { M28WidgetsDemo } from './pages/demo/M28WidgetsDemo';
-import { PropertyDetailPage } from './components/terminal/PropertyDetailPage';
+import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import {
   MarketIntelligencePage,
   MyMarketsDashboard,
@@ -161,9 +161,9 @@ function AppContent() {
           <Route path="/assets-owned/documents" element={<Navigate to="/terminal/portfolio" replace />} />
           <Route path="/assets-owned/grid" element={<Navigate to="/terminal/portfolio" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
-          <Route path="/properties/:id" element={<PropertyDetailPage />} />
-          <Route path="/property-card" element={<PropertyDetailPage />} />
-          <Route path="/property-card/:id" element={<PropertyDetailPage />} />
+          <Route path="/properties/:id" element={<PropertyDetailsPage />} />
+          <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
+          <Route path="/property-card/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/command-center" element={<CommandCenterPage />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
@@ -182,7 +182,7 @@ function AppContent() {
           <Route path="/market-research/future-supply" element={<Navigate to="/terminal/markets" replace />} />
           
           {/* Market Intelligence redirects → terminal/markets */}
-          <Route path="/market-intelligence/property/:id" element={<PropertyDetailPage />} />
+          <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
           <Route path="/market-intelligence/compare" element={<Navigate to="/terminal/markets" replace />} />
           <Route path="/market-intelligence/owners" element={<Navigate to="/terminal/markets" replace />} />
           <Route path="/market-intelligence/supply" element={<Navigate to="/terminal/markets" replace />} />
