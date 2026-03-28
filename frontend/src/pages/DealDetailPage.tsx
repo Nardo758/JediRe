@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield, Box, FileText,
+  Landmark, HardHat, Shield, Box, FileText, Briefcase,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -75,6 +75,7 @@ import { ContextTrackerSection } from '../components/deal/sections/ContextTracke
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
 import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
+import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
@@ -143,7 +144,6 @@ const CollaborationSection = (props: ScreenProps) => {
 const OverviewScreen = (props: ScreenProps) => {
   const [secondaryTab, setSecondaryTab] = React.useState<string | null>(null);
   const secondaryTabs = [
-    { id: 'context',     label: 'Context Tracker', component: ContextTrackerSection },
     { id: 'team',        label: 'Team',            component: TeamManagementSection },
     { id: 'collaborate', label: 'Collaborate',      component: CollaborationSection },
     { id: 'deal-status', label: 'Deal Status',     component: DealStatusSection },
@@ -300,6 +300,10 @@ const Design3DScreen = (props: ScreenProps) => (
     dealType={props.dealType}
   />
 );
+const DealToolsScreen = (props: ScreenProps) => (
+  <DealToolsSection dealId={props.dealId} deal={props.deal} />
+);
+
 const AIAgentScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
@@ -559,6 +563,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F12', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'ai-agent',    moduleId: 'M20', fkey: 'F13', code: 'M20', short: 'AI AGENT',   label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
+    { id: 'deal-tools', moduleId: 'M21', fkey: 'F14', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
   // Filter by deal-type visibility rules
