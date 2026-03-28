@@ -43,7 +43,7 @@ import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStor
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
+import { TradeAreaDefinitionPanel } from '../components/trade-area';
 import type { ModuleId } from '../shared/config/deal-type-visibility';
 
 import { BT, BT_CSS, PanelHeader, SectionPanel } from '../components/deal/bloomberg-ui';
@@ -344,6 +344,72 @@ const TrafficScreen = (props: ScreenProps) => (
   </div>
 );
 
+const DealTopStatusBar: React.FC<{ dealName: string; onBack: () => void }> = ({ dealName, onBack }) => {
+  const [clock, setClock] = React.useState('');
+  React.useEffect(() => {
+    const tick = () => setClock(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const MONO_F = "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace";
+  const BG_T = '#080C12';
+  const BD = '#1e2a3d';
+  const TXT_S = '#9EA8B4';
+  const TXT_C = '#00D4AA';
+
+  return (
+    <div style={{
+      height: 24, background: BG_T, display: 'flex', alignItems: 'center',
+      justifyContent: 'space-between', padding: '0 12px',
+      borderBottom: `1px solid ${BD}`, flexShrink: 0,
+      fontFamily: MONO_F, fontSize: 9, userSelect: 'none',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button
+          onClick={onBack}
+          title="Back to Deal Capsules"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: '#6B7585', fontSize: 9, fontFamily: MONO_F, fontWeight: 600,
+            letterSpacing: 0.5, padding: 0, flexShrink: 0,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.color = '#10B981')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#6B7585')}
+        >
+          <ArrowLeft size={10} />
+        </button>
+        <span style={{ fontWeight: 800, fontSize: 10, color: TXT_C, letterSpacing: 1.5 }}>JEDI RE</span>
+        <span style={{ color: TXT_S, fontSize: 8 }}>|</span>
+        <span style={{ color: TXT_S, fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase' }}>
+          {dealName}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: TXT_S }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: '#10B981',
+            animation: 'pulse 2s ease-in-out infinite',
+          }} />
+          5 AGENTS
+        </span>
+        <span style={{ color: TXT_S }}>
+          EMAIL: <span style={{ color: '#E8E6E1', fontWeight: 600 }}>5</span>
+        </span>
+        <span style={{ color: TXT_S }}>
+          KAFKA: <span style={{ color: '#E8E6E1', fontWeight: 600 }}>312/s</span>
+        </span>
+        <span style={{ color: '#F5A623', fontWeight: 700, letterSpacing: 1 }}>
+          {clock}
+        </span>
+      </div>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+    </div>
+  );
+};
+
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
@@ -579,131 +645,102 @@ const DealDetailPage: React.FC = () => {
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
-        {/* ── Bar 1: Deal Name / Address / JEDI Score ── */}
+        {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
+        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} onBack={() => navigate('/capsules')} />
+
+        {/* ── Bar 2: Deal Context Bar (📍 name · address · JEDI score │ ▶ TRADE AREA │ SUBMARKET │ MSA) ── */}
         {deal && (
           <div style={{
-            height: 28, background: '#080C12', borderBottom: `1px solid ${BORDER}`,
-            display: 'flex', alignItems: 'center', padding: '0 10px',
+            height: 28, background: BG_NAV, borderBottom: `1px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', padding: '0 10px', gap: 0,
             flexShrink: 0, fontFamily: MONO, overflow: 'hidden',
           }}>
-            <button
-              onClick={() => navigate('/capsules')}
-              title="Back to Deal Capsules"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: '#6B7585', fontSize: 9, fontFamily: MONO, fontWeight: 600,
-                letterSpacing: 0.5, marginRight: 10, flexShrink: 0, padding: 0,
-              }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#10B981')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#6B7585')}
-            >
-              <ArrowLeft size={10} />
-              CAPSULES
-            </button>
-            <span style={{ color: '#EF4444', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
-            {deal.name && (
-              <span style={{ color: TEXT, fontWeight: 700, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, letterSpacing: 0.3 }}>
-                {deal.name}
-              </span>
-            )}
-            {(deal.address || deal.location) && (
-              <>
-                <span style={{ color: '#1e2a3d', margin: '0 5px', fontSize: 9 }}>·</span>
-                <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, letterSpacing: 0.2 }}>
-                  {deal.address || deal.location}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
+              <span style={{ color: '#EF4444', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
+              {deal.name && (
+                <span style={{ color: TEXT, fontWeight: 700, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.3 }}>
+                  {deal.name}
                 </span>
-              </>
-            )}
-            {deal.jedi_score != null && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
-                <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>JEDI {typeof deal.jedi_score === 'object' ? (deal.jedi_score as any)?.totalScore ?? '' : deal.jedi_score}</span>
-              </span>
-            )}
-            {deal.pipeline_stage && (
-              <span style={{
-                marginLeft: 'auto', fontSize: 8, fontWeight: 700, letterSpacing: 0.8,
-                padding: '1px 8px', color: AMBER, border: `1px solid ${AMBER}55`,
-                textTransform: 'uppercase', flexShrink: 0,
-              }}>
-                {deal.pipeline_stage}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ── Bar 2: Trade Area / Submarket / MSA Context ── */}
-        {deal && (
-          <div style={{
-            height: 26, background: '#0D1117', borderBottom: `1px solid ${BORDER}`,
-            display: 'flex', alignItems: 'center', padding: '0 10px',
-            flexShrink: 0, fontFamily: MONO, overflow: 'hidden',
-          }}>
-            <button
-              onClick={() => setShowTradeAreaPanel(true)}
-              style={{
-                background: 'transparent', border: `1px solid ${AMBER}55`, cursor: 'pointer',
-                padding: '2px 8px', fontFamily: MONO,
-                fontSize: 9, fontWeight: 800, color: AMBER, letterSpacing: 0.8,
-                display: 'flex', alignItems: 'center', gap: 4,
-              }}
-            >
-              ▶ TRADE AREA
-            </button>
-
-            {(() => {
-              const fmtOcc = (v: unknown): string | null => {
-                if (v == null) return null;
-                const n = Number(v);
-                if (isNaN(n)) return null;
-                const pct = n > 1 ? n : n * 100;
-                return `${pct.toFixed(1)}%`;
-              };
-              const fmtRent = (v: unknown): string | null => {
-                if (v == null) return null;
-                const n = Number(v);
-                if (isNaN(n)) return null;
-                return `$${Math.round(n).toLocaleString()}`;
-              };
-              const smStats = (geographicStats as any)?.submarket;
-              const msaStats = (geographicStats as any)?.msa;
-              const smOcc = fmtOcc(smStats?.occupancy);
-              const smRent = fmtRent(smStats?.avg_rent);
-              const msaOcc = fmtOcc(msaStats?.occupancy);
-              const msaRent = fmtRent(msaStats?.avg_rent);
-              const pipe = <span style={{ color: '#1e2a3d', margin: '0 8px', fontSize: 10 }}>│</span>;
-              return (
+              )}
+              {(deal.address || deal.location) && (
                 <>
-                  {(smOcc || smRent) && (
-                    <>
-                      {pipe}
-                      <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
-                        {[smOcc, smRent].filter(Boolean).join(' · ')}
-                      </span>
-                    </>
-                  )}
-                  {(msaOcc || msaRent) && (
-                    <>
-                      {pipe}
-                      <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
-                        {[msaOcc, msaRent].filter(Boolean).join(' · ')}
-                      </span>
-                    </>
-                  )}
+                  <span style={{ color: BORDER, margin: '0 5px', fontSize: 9 }}>·</span>
+                  <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.2 }}>
+                    {deal.address || deal.location}
+                  </span>
                 </>
-              );
-            })()}
+              )}
+              {deal.jedi_score != null && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
+                  <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>
+                    JEDI {typeof deal.jedi_score === 'object' ? (deal.jedi_score as any)?.totalScore ?? '' : deal.jedi_score}
+                  </span>
+                  {deal.delta_30d != null && (
+                    <span style={{ fontSize: 9, fontWeight: 700, color: deal.delta_30d >= 0 ? GREEN : '#EF4444' }}>
+                      {deal.delta_30d >= 0 ? '▲' : '▼'}{deal.delta_30d >= 0 ? '+' : ''}{deal.delta_30d}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
 
-            <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
-              <GeographicScopeTabs
-                activeScope={activeScope}
-                onChange={setScope}
-                compact
-                tradeAreaEnabled={!!(geographicStats as any)?.trade_area}
-                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <button
+                onClick={() => setShowTradeAreaPanel(true)}
+                style={{
+                  background: 'transparent', border: `1px solid ${AMBER}55`, cursor: 'pointer',
+                  padding: '2px 8px', fontFamily: MONO,
+                  fontSize: 9, fontWeight: 800, color: AMBER, letterSpacing: 0.8,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                ▶ TRADE AREA
+              </button>
+
+              {(() => {
+                const fmtOcc = (v: unknown): string | null => {
+                  if (v == null) return null;
+                  const n = Number(v);
+                  if (isNaN(n)) return null;
+                  const pct = n > 1 ? n : n * 100;
+                  return `${pct.toFixed(1)}%`;
+                };
+                const fmtRent = (v: unknown): string | null => {
+                  if (v == null) return null;
+                  const n = Number(v);
+                  if (isNaN(n)) return null;
+                  return `$${Math.round(n).toLocaleString()}`;
+                };
+                const smStats = (geographicStats as any)?.submarket;
+                const msaStats = (geographicStats as any)?.msa;
+                const smOcc = fmtOcc(smStats?.occupancy);
+                const smRent = fmtRent(smStats?.avg_rent);
+                const msaOcc = fmtOcc(msaStats?.occupancy);
+                const msaRent = fmtRent(msaStats?.avg_rent);
+                const pipe = <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>;
+                return (
+                  <>
+                    {(smOcc || smRent) && (
+                      <>
+                        {pipe}
+                        <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
+                          {[smOcc, smRent].filter(Boolean).join(' · ')}
+                        </span>
+                      </>
+                    )}
+                    {(msaOcc || msaRent) && (
+                      <>
+                        {pipe}
+                        <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
+                          {[msaOcc, msaRent].filter(Boolean).join(' · ')}
+                        </span>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
