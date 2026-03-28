@@ -430,6 +430,19 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
       },
     },
   },
+
+  // ─── Deal Tools (Universal) ────────────────────────────────────────────────
+
+  {
+    moduleId: 'M21',
+    name: 'Deal Tools',
+    fKey: 'F13',
+    station: 'S1',
+    stationLabel: 'Intake & Triage',
+    category: 'Core',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'Universal tools: Notes, Contacts, Key Dates, Decisions, Files, Documents, AI Agent. Available for all deal types.',
+  },
 ];
 
 
