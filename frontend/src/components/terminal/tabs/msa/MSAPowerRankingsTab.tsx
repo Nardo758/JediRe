@@ -88,7 +88,6 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'rank' | 'pcsScore' | 'movement'>('rank');
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -250,17 +249,14 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
           <tbody>
             {filteredRankings.map((prop) => {
               const pcsColors = scoreColor(prop.pcsScore);
-              const isExpanded = expandedRow === prop.id;
-              
               return (
                 <React.Fragment key={prop.id}>
                   <tr 
                     style={{ 
                       borderBottom: `1px solid ${BT.border.subtle}`,
                       cursor: 'pointer',
-                      background: isExpanded ? BT.bg.elevated : 'transparent',
                     }}
-                    onClick={() => setExpandedRow(isExpanded ? null : prop.id)}
+                    onClick={() => onSelectProperty?.(prop.name.toLowerCase().replace(/\s+/g, '-'))}
                   >
                     <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                       <span style={{
@@ -347,126 +343,6 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                     })}
                   </tr>
 
-                  {/* Expanded Row */}
-                  {isExpanded && (
-                    <tr>
-                      <td colSpan={13} style={{ padding: 0 }}>
-                        <div style={{
-                          padding: 20,
-                          background: BT.bg.card,
-                          borderBottom: `2px solid ${BT.accent.blue}`,
-                        }}>
-                          <div style={{ display: 'flex', gap: 24 }}>
-                            {/* PCS Breakdown */}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: BT.text.primary, marginBottom: 12 }}>
-                                PCS Component Breakdown
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {PCS_COMPONENTS.map(c => {
-                                  const val = (prop.components as any)[c.key];
-                                  const colors = scoreColor(val);
-                                  return (
-                                    <div key={c.key}>
-                                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                                        <span style={{ fontSize: 11, color: BT.text.secondary }}>{c.label}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: colors.btText }}>{val}</span>
-                                      </div>
-                                      <div style={{
-                                        height: 8,
-                                        background: BT.bg.elevated,
-                                        borderRadius: 0,
-                                        overflow: 'hidden',
-                                      }}>
-                                        <div style={{
-                                          width: `${val}%`,
-                                          height: '100%',
-                                          background: colors.btText,
-                                          borderRadius: 0,
-                                        }} />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            {/* Performance Summary */}
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: BT.text.primary, marginBottom: 12 }}>
-                                Performance Summary
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
-                                  <div style={{ fontSize: 10, color: BT.text.muted }}>vs Submarket Avg</div>
-                                  <div style={{ fontSize: 16, fontWeight: 700, color: BT.text.green }}>
-                                    +{(prop.pcsScore - 72).toFixed(0)} pts
-                                  </div>
-                                </div>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
-                                  <div style={{ fontSize: 10, color: BT.text.muted }}>Percentile</div>
-                                  <div style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary }}>
-                                    Top {Math.round((prop.rank / MOCK_RANKINGS.length) * 100)}%
-                                  </div>
-                                </div>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
-                                  <div style={{ fontSize: 10, color: BT.text.muted }}>Strongest</div>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: BT.text.cyan }}>
-                                    {PCS_COMPONENTS.reduce((best, c) => {
-                                      const val = (prop.components as any)[c.key];
-                                      return val > (prop.components as any)[best.key] ? c : best;
-                                    }, PCS_COMPONENTS[0]).label}
-                                  </div>
-                                </div>
-                                <div style={{ padding: 12, background: BT.bg.elevated, borderRadius: 0 }}>
-                                  <div style={{ fontSize: 10, color: BT.text.muted }}>Weakest</div>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: BT.accent.amber }}>
-                                    {PCS_COMPONENTS.reduce((worst, c) => {
-                                      const val = (prop.components as any)[c.key];
-                                      return val < (prop.components as any)[worst.key] ? c : worst;
-                                    }, PCS_COMPONENTS[0]).label}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Actions */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onSelectProperty?.(prop.name.toLowerCase().replace(/\s+/g, '-'));
-                                }}
-                                style={{
-                                  padding: '10px 20px',
-                                  background: BT.accent.blue,
-                                  color: '#fff',
-                                  border: 'none',
-                                  borderRadius: 0,
-                                  fontSize: 12,
-                                  fontWeight: 600,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                View Property →
-                              </button>
-                              <button style={{
-                                padding: '10px 20px',
-                                background: 'transparent',
-                                color: BT.text.secondary,
-                                border: `1px solid ${BT.border.subtle}`,
-                                borderRadius: 0,
-                                fontSize: 12,
-                                cursor: 'pointer',
-                              }}>
-                                Add to Compare
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               );
             })}

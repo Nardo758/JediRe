@@ -5,7 +5,6 @@ import PeerComparisonPage from "../MarketIntelligence/PeerComparisonPage";
 import { MSATerminal } from "../../components/terminal/MSATerminal";
 import { SubmarketTerminal } from "../../components/terminal/SubmarketTerminal";
 import { PropertyTerminal } from "../../components/terminal/PropertyTerminal";
-import { BloombergPropertyCard } from "../../components/terminal/BloombergPropertyCard";
 import { BT } from "../../components/terminal/theme";
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
@@ -176,7 +175,7 @@ const PROPERTY_INDEX = [
   { name: "Nocatee Town Center", submarket: "Nocatee", msa: "Jacksonville, FL", jedi: 84, units: 320, rent: "$1,650", occ: "96.8%", capRate: "5.4%", vintage: 2022, owner: "NexMetro" },
 ];
 
-type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-card" | "property-terminal";
+type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
 type PrimaryTab = "f4-landing" | "all-msas";
 type SubTab = "msa-detail" | "msa-index" | "submarkets" | "watchlist" | "peer-comp" | "property-stock";
 
@@ -276,12 +275,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     setLevel("submarket-terminal");
   };
 
-  const handlePropertySelect = (propertyId: string, propertyName?: string) => {
+  const handlePropertySelect = (propertyId: string) => {
     const slug = propertyId.toLowerCase().replace(/\s+/g, "-");
-    setDrillPropertyId(slug);
-    const prop = PROPERTY_INDEX.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === slug);
-    setDrillPropertyName(prop?.name || propertyName || propertyId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
-    setLevel("property-card");
+    nav(`/property-card/${slug}`);
   };
 
   const cycleColor = (c: string) => {
@@ -343,91 +339,6 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             onPropertySelect={handlePropertySelect}
             onMsaNavigate={() => setLevel("msa-terminal")}
             embedded={true}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Property Card View — shows BloombergPropertyCard before full terminal
-  if (level === "property-card") {
-    const prop = PROPERTY_INDEX.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === drillPropertyId);
-    const normalizeClass = (c?: string): 'A' | 'B' | 'C' => {
-      if (!c) return 'B';
-      const ch = c.charAt(0).toUpperCase();
-      return ch === 'A' ? 'A' : ch === 'C' ? 'C' : 'B';
-    };
-    const propertyData = prop ? {
-      id: drillPropertyId,
-      name: prop.name,
-      address: `${prop.submarket}, ${prop.msa}`,
-      class: normalizeClass(),
-      avgRent: parseFloat(prop.rent.replace(/[$,]/g, '')),
-      rentChange: 45,
-      rentChangePercent: 2.4,
-      units: prop.units,
-      yearBuilt: prop.vintage,
-      occupancy: parseFloat(prop.occ),
-      occupancyChange: 0.8,
-      capRate: parseFloat(prop.capRate),
-      owner: prop.owner,
-      images: [
-        { url: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=400', caption: 'Exterior' },
-        { url: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=400', caption: 'Interior' },
-        { url: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400', caption: 'Amenities' },
-      ],
-    } : {
-      id: drillPropertyId,
-      name: drillPropertyName,
-      address: `${drillSubmarketName || "Submarket"}, ${drillMsaName || "Atlanta, GA"}`,
-      class: normalizeClass(),
-      avgRent: 1850,
-      rentChange: 32,
-      rentChangePercent: 1.8,
-      units: 250,
-      yearBuilt: 2015,
-      occupancy: 94,
-      occupancyChange: 0.5,
-      capRate: 5.2,
-      owner: "Owner",
-    };
-
-    return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
-            ← BACK
-          </button>
-          <span style={{ ...mono, fontSize: 9, color: C.muted }}>{originLabel}</span>
-          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
-          <button onClick={() => setLevel("msa-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.amber, border: "none", padding: "2px 6px", cursor: "pointer" }}>
-            {drillMsaName.toUpperCase()}
-          </button>
-          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
-          <button onClick={() => setLevel("submarket-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 600, background: "transparent", color: C.cyan, border: "none", padding: "2px 6px", cursor: "pointer" }}>
-            {drillSubmarketName.toUpperCase() || "SUBMARKET"}
-          </button>
-          <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
-          <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillPropertyName.toUpperCase() || "PROPERTY"}</span>
-          <div style={{ flex: 1 }} />
-          <button onClick={() => nav(`/property-card/${drillPropertyId}`)} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "4px 12px", cursor: "pointer", letterSpacing: 0.5 }}>
-            STANDALONE CARD ↗
-          </button>
-          <button onClick={() => setLevel("property-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: C.amber, color: C.bg, border: "none", padding: "4px 12px", cursor: "pointer", letterSpacing: 0.5 }}>
-            OPEN FULL TERMINAL →
-          </button>
-        </div>
-        <div style={{ flex: 1, overflow: "auto", padding: 16, display: "flex", justifyContent: "center", alignItems: "flex-start" }}>
-          <BloombergPropertyCard 
-            property={propertyData}
-            sparklineData={[1820, 1835, 1850, 1840, 1860, 1875, 1890, 1885, 1900, 1920, 1935, 1950]}
-            onClick={() => setLevel("property-terminal")}
-            showComps={true}
-            comps={[
-              { rank: 1, name: propertyData.name, units: propertyData.units, avgRent: propertyData.avgRent, rentChange1D: 0.12, rentChange1M: 1.8, rentGrowthYoY: 4.2, occupancy: propertyData.occupancy, capRate: propertyData.capRate || 5.0 },
-              { rank: 2, name: "Comp Property A", units: 280, avgRent: 1920, rentChange1D: 0.08, rentChange1M: 1.2, rentGrowthYoY: 3.8, occupancy: 94.2, capRate: 5.1 },
-              { rank: 3, name: "Comp Property B", units: 320, avgRent: 1780, rentChange1D: -0.05, rentChange1M: 0.9, rentGrowthYoY: 3.2, occupancy: 93.8, capRate: 5.3 },
-            ]}
           />
         </div>
       </div>
@@ -677,15 +588,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
               <tbody>
                 {PROPERTY_INDEX.map((p, i) => (
                   <tr key={i} style={{ background: i % 2 === 0 ? C.panel : C.panelAlt, borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
-                    onDoubleClick={() => {
-                      const mkt = TRACKED_MARKETS.find(m => m.msa === p.msa);
-                      if (mkt) { setDrillMsaId(mkt.id); setDrillMsaName(mkt.msa); }
-                      setDrillSubmarketId(p.submarket.toLowerCase().replace(/\s+/g, "-"));
-                      setDrillSubmarketName(p.submarket);
-                      setDrillPropertyId(p.name.toLowerCase().replace(/\s+/g, "-"));
-                      setDrillPropertyName(p.name);
-                      setLevel("property-card");
-                    }}
+                    onDoubleClick={() => nav(`/property-card/${p.name.toLowerCase().replace(/\s+/g, "-")}`)}
                     onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}>
                     <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span></td>

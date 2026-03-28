@@ -10,7 +10,6 @@ import { DataTable } from '../../TerminalLayouts';
 import { scoreColor, BT_SIGNAL_COLORS } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
-import { BloombergPropertyCard } from '../../BloombergPropertyCard';
 
 interface MSAPropertiesTabProps {
   msaId: string;
@@ -104,7 +103,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [sortKey, setSortKey] = useState<string>('jedi');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
@@ -457,7 +455,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
             <tbody>
               {filteredProperties.map((prop) => {
                 const isSelected = selectedRows.has(prop.id);
-                const isExpanded = expandedRow === prop.id;
                 const heatBg = getHeatmapColor(prop);
                 const jediColors = scoreColor(prop.jedi);
                 const motivColors = scoreColor(prop.sellerMotivation);
@@ -468,9 +465,9 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                       style={{
                         borderBottom: `1px solid ${BT.border.subtle}`,
                         cursor: 'pointer',
-                        background: isExpanded ? BT.bg.elevated : heatBg,
+                        background: heatBg,
                       }}
-                      onClick={() => setExpandedRow(isExpanded ? null : prop.id)}
+                      onClick={() => onSelectProperty?.(prop.property.toLowerCase().replace(/\s+/g, '-'))}
                     >
                       <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                         <input
@@ -536,65 +533,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                       <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{prop.pricePerUnit}</td>
                     </tr>
 
-                    {/* Expanded Details — BloombergPropertyCard */}
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={COLUMNS.length + 1} style={{ padding: 0 }}>
-                          <div style={{
-                            padding: 16,
-                            background: BT.bg.card,
-                            borderBottom: `2px solid ${BT.accent.blue}`,
-                          }}>
-                            {(() => {
-                              const safeNum = (s: string, fallback = 0) => {
-                                const n = parseFloat(s.replace(/[^0-9.-]/g, ''));
-                                return isNaN(n) ? fallback : n;
-                              };
-                              const avgRent = safeNum(prop.rent);
-                              const marketRent = safeNum(prop.marketRent);
-                              const rentDelta = marketRent - avgRent;
-                              const rentDeltaPct = avgRent > 0 ? (rentDelta / avgRent) * 100 : 0;
-                              const occNum = safeNum(prop.occ);
-                              const classChar = (prop.class.charAt(0) === 'A' || prop.class.charAt(0) === 'B' || prop.class.charAt(0) === 'C')
-                                ? prop.class.charAt(0) as 'A' | 'B' | 'C'
-                                : 'B' as const;
-                              const capRateVal = safeNum(prop.pricePerUnit) > 0
-                                ? Math.round((avgRent * 12 * prop.units) / (safeNum(prop.pricePerUnit) * 1000 * prop.units) * 1000) / 10
-                                : 5.0;
-
-                              return (
-                                <BloombergPropertyCard
-                                  property={{
-                                    id: prop.id,
-                                    name: prop.property,
-                                    address: prop.address,
-                                    class: classChar,
-                                    avgRent,
-                                    rentChange: Math.round(rentDelta),
-                                    rentChangePercent: Math.round(rentDeltaPct * 10) / 10,
-                                    units: prop.units,
-                                    yearBuilt: prop.year,
-                                    occupancy: occNum,
-                                    occupancyChange: occNum >= 95 ? 1.2 : occNum >= 93 ? 0.4 : -0.3,
-                                    capRate: capRateVal,
-                                    owner: prop.owner,
-                                    lastUpdated: prop.purchaseDate,
-                                    concessions: safeNum(prop.concessions),
-                                  }}
-                                  showComps={false}
-                                  onClick={() => onSelectProperty?.(prop.property.toLowerCase().replace(/\s+/g, '-'))}
-                                  strategyScore={{
-                                    score: prop.jedi,
-                                    strategy: 'value-add',
-                                    arbitrageFlag: prop.sellerMotivation >= 70,
-                                  }}
-                                />
-                              );
-                            })()}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
                   </React.Fragment>
                 );
               })}
