@@ -97,12 +97,13 @@ const PORTFOLIO_NAV = [
   {key:"F6",label:"NEWS"},
   {key:"F7",label:"STRATEGIES"},
   {key:"F8",label:"REPORTS"},
-  {key:"F9",label:"SETTINGS"},
+  {key:"F9",label:"ADMIN"},
+  {key:"F10",label:"SETTINGS"},
 ];
 
 const FKEY_SLUG: Record<string,string> = {
   F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
-  F5:"email",     F6:"news",     F7:"strategies", F8:"reports", F9:"settings",
+  F5:"email",     F6:"news",     F7:"strategies", F8:"reports", F9:"admin", F10:"settings",
 };
 const SLUG_FKEY: Record<string,string> = Object.fromEntries(
   Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
@@ -617,6 +618,7 @@ export default function TerminalPage() {
 
   // Sync URL slug + browser tab title whenever fkey changes
   useEffect(() => {
+    if (fkey === "F9") return;
     const slug = FKEY_SLUG[fkey] || "dashboard";
     const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
     document.title = `JediRE | ${label}`;
@@ -789,7 +791,7 @@ export default function TerminalPage() {
       }
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if(tag === "input" || tag === "textarea" || (e.target as HTMLElement)?.isContentEditable) return;
-      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9" };
+      const fKeyMap: Record<string,string> = { F1:"F1", F2:"F2", F3:"F3", F4:"F4", F5:"F5", F6:"F6", F7:"F7", F8:"F8", F9:"F9", F10:"F10" };
       if(fKeyMap[e.key]) { e.preventDefault(); setFkey(fKeyMap[e.key]); }
       if(e.key === "/") { e.preventDefault(); cmdInputRef.current?.focus(); }
     };
@@ -2307,6 +2309,12 @@ export default function TerminalPage() {
     });
   }, [fkey, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
+  useEffect(() => {
+    if (fkey === "F9") {
+      navigate("/admin");
+    }
+  }, [fkey, navigate]);
+
   const ViewSettings = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <SettingsPage />
@@ -2324,7 +2332,7 @@ export default function TerminalPage() {
       case "F6": return ViewNews();
       case "F7": return ViewStrategies();
       case "F8": return ViewReports();
-      case "F9": return ViewSettings();
+      case "F10": return ViewSettings();
       default: return null;
     }
   };
@@ -2549,7 +2557,6 @@ export default function TerminalPage() {
             </div>
           )}
           <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
-          <button onClick={()=>navigate("/admin")} style={{fontFamily:T.font.mono,fontSize:9,fontWeight:700,background:"transparent",border:`1px solid ${T.text.purple}44`,color:T.text.purple,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>ADMIN</button>
           <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}
