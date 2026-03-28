@@ -1571,6 +1571,7 @@ export default function TerminalPage() {
             {dashWindows.length>0&&<span style={{fontSize:10,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
           </div>
           <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
             {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
             <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
           </div>
@@ -2597,7 +2598,7 @@ export default function TerminalPage() {
       {/* ═══ MAIN CONTENT ═══ */}
       <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
         {renderContent()}
-        {mapOpen&&(fkey==="F2"||fkey==="F3")&&<MapSidebar/>}
+        {mapOpen&&(fkey==="F1"||fkey==="F2"||fkey==="F3")&&<MapSidebar/>}
       </div>
 
       {/* ═══ BOTTOM PANEL — collapsible ═══ */}
