@@ -114,24 +114,52 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose })
     setInput('');
     setIsThinking(true);
 
-    // Send user message
+    // Send user message to local bus
     sendMessage(text);
 
-    // Simulate agent response (replace with real API call)
-    setTimeout(() => {
+    try {
+      // Call real API
+      const response = await api.post('/agents/chat', {
+        agentCode,
+        message: text,
+        dealId: undefined, // TODO: pass current deal context if available
+      });
+
+      if (response.data?.success) {
+        const agentResponse = response.data.data;
+        agentBus.send({
+          from: agentCode,
+          to: 'ORCHESTRATOR',
+          type: 'response',
+          topic: 'chat',
+          payload: { 
+            text: agentResponse.message,
+            fromUser: false,
+            data: agentResponse.data,
+            suggestedFollowups: agentResponse.suggestedFollowups,
+          },
+          priority: 'normal',
+        });
+      } else {
+        throw new Error(response.data?.error || 'Unknown error');
+      }
+    } catch (error: any) {
+      console.error('Agent chat error:', error);
       agentBus.send({
         from: agentCode,
         to: 'ORCHESTRATOR',
         type: 'response',
         topic: 'chat',
         payload: { 
-          text: `Processing your request: "${text}"... This is a simulated response from ${agent?.name}. In production, this would connect to the AI backend.`,
+          text: `Sorry, I encountered an error: ${error.message || 'Unable to process your request'}. Please try again.`,
           fromUser: false,
+          isError: true,
         },
         priority: 'normal',
       });
+    } finally {
       setIsThinking(false);
-    }, 1500);
+    }
   };
 
   const handlePromptClick = (prompt: string) => {
