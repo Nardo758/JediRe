@@ -1,0 +1,308 @@
+/**
+ * Agent Delegator
+ * 
+ * Routes requests to specialist and analyst agents.
+ * Executes agents in parallel when independent.
+ * 
+ * @version 1.0.0
+ * @date 2026-03-28
+ */
+
+import { logger } from '../../utils/logger';
+import { query } from '../../database/connection';
+import { generateCompletion, isLLMAvailable } from '../llm.service';
+import type { SpecialistAgent, AnalystAgent, ExtractedIntent } from './intent-classifier';
+
+// Import agent executors
+import { SupplyAgent } from '../../agents/supply.agent';
+import { CashFlowAgent } from '../../agents/cashflow.agent';
+import { ZoningAgent } from '../../agents/zoning.agent';
+import { ResearchAgent } from '../../agents/research.agent';
+import { CommentaryAgent } from '../../agents/commentary.agent';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface DelegationResult {
+  agent: string;
+  agentType: 'specialist' | 'analyst';
+  data: Record<string, unknown>;
+  summary?: string;
+  executionTimeMs: number;
+  success: boolean;
+  error?: string;
+}
+
+export interface DelegationRequest {
+  intent: ExtractedIntent;
+  userId: string;
+  userTier?: string;
+  modelOverrides?: Record<string, string>;
+}
+
+// ============================================================================
+// Agent Executor Registry
+// ============================================================================
+
+const SPECIALIST_EXECUTORS: Partial<Record<SpecialistAgent, any>> = {
+  SUPPLY: new SupplyAgent(),
+  CASH: new CashFlowAgent(),
+  ZONING: new ZoningAgent(),
+  RESEARCH: new ResearchAgent(),
+  // DEMAND, COMPS, RISK, DEBT, NEWS — stubs until implemented
+};
+
+// Analyst agent system prompts
+const ANALYST_PROMPTS: Record<AnalystAgent, { role: string; focus: string }> = {
+  CFO: { role: 'Chief Financial Officer', focus: 'returns, risk metrics, investment performance' },
+  ACCOUNTANT: { role: 'Accountant', focus: 'tax implications, GAAP compliance, depreciation' },
+  MARKETING: { role: 'Marketing Expert', focus: 'positioning, lease-up strategy, branding' },
+  DEVELOPER: { role: 'Developer', focus: 'construction feasibility, value-add, renovations' },
+  LEGAL: { role: 'Legal Advisor', focus: 'contracts, compliance, legal risk' },
+  LENDER: { role: 'Lender', focus: 'debt perspective, underwriting, financing' },
+  ACQUISITIONS: { role: 'Acquisitions Director', focus: 'deal sourcing, negotiations, LOI terms' },
+  ASSET_MANAGER: { role: 'Asset Manager', focus: 'NOI optimization, operations, business plan' },
+  PROPERTY_MANAGER: { role: 'Property Manager', focus: 'tenant relations, maintenance, operations' },
+  LEASING: { role: 'Leasing Director', focus: 'vacancy reduction, renewals, rent pricing' },
+  FACILITIES: { role: 'Facilities Manager', focus: 'CapEx planning, vendors, building systems' },
+  INVESTMENT_ANALYST: { role: 'Investment Analyst', focus: 'hold/sell analysis, refinance, exit strategy' },
+  ESG: { role: 'ESG Specialist', focus: 'sustainability, energy efficiency, green certifications' },
+  COMPLIANCE: { role: 'Compliance Officer', focus: 'insurance, permits, regulatory requirements' },
+  TAX: { role: 'Tax Strategist', focus: 'cost segregation, 1031 exchanges, depreciation' },
+  RESEARCHER: { role: 'Market Researcher', focus: 'demographics, trends, competitive intelligence' },
+};
+
+// ============================================================================
+// Agent Delegator
+// ============================================================================
+
+export class AgentDelegator {
+  
+  /**
+   * Delegate to all required agents based on intent
+   */
+  async delegate(request: DelegationRequest): Promise<DelegationResult[]> {
+    const { intent, userId, modelOverrides } = request;
+    const results: DelegationResult[] = [];
+    
+    // Build params from intent
+    const params = this.buildParams(intent);
+    
+    // Execute specialists in parallel
+    if (intent.specialists.length > 0) {
+      const specialistPromises = intent.specialists.map(agent =>
+        this.executeSpecialist(agent, params, userId)
+      );
+      const specialistResults = await Promise.all(specialistPromises);
+      results.push(...specialistResults);
+    }
+    
+    // Execute analysts (may depend on specialist data)
+    if (intent.analysts.length > 0) {
+      // Get context from specialist results
+      const specialistData = results
+        .filter(r => r.success && r.agentType === 'specialist')
+        .reduce((acc, r) => ({ ...acc, [r.agent]: r.data }), {});
+      
+      const analystPromises = intent.analysts.map(agent =>
+        this.executeAnalyst(agent, params, specialistData, userId, modelOverrides?.[agent])
+      );
+      const analystResults = await Promise.all(analystPromises);
+      results.push(...analystResults);
+    }
+    
+    return results;
+  }
+  
+  /**
+   * Execute a specialist agent (data-focused)
+   */
+  private async executeSpecialist(
+    agent: SpecialistAgent,
+    params: Record<string, unknown>,
+    userId: string
+  ): Promise<DelegationResult> {
+    const startTime = Date.now();
+    
+    const executor = SPECIALIST_EXECUTORS[agent];
+    if (!executor) {
+      // Return stub for unimplemented agents
+      return {
+        agent,
+        agentType: 'specialist',
+        data: { message: `${agent} agent coming soon` },
+        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: 'Agent not yet implemented',
+      };
+    }
+    
+    try {
+      logger.info(`Executing specialist: ${agent}`, { params });
+      const result = await executor.execute(params, userId);
+      
+      return {
+        agent,
+        agentType: 'specialist',
+        data: result,
+        executionTimeMs: Date.now() - startTime,
+        success: true,
+      };
+    } catch (error: any) {
+      logger.error(`Specialist ${agent} failed:`, error);
+      return {
+        agent,
+        agentType: 'specialist',
+        data: {},
+        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+  
+  /**
+   * Execute an analyst agent (LLM persona)
+   */
+  private async executeAnalyst(
+    agent: AnalystAgent,
+    params: Record<string, unknown>,
+    contextData: Record<string, unknown>,
+    userId: string,
+    modelOverride?: string
+  ): Promise<DelegationResult> {
+    const startTime = Date.now();
+    
+    if (!isLLMAvailable()) {
+      return {
+        agent,
+        agentType: 'analyst',
+        data: { message: 'LLM not available' },
+        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: 'LLM service unavailable',
+      };
+    }
+    
+    const analystConfig = ANALYST_PROMPTS[agent];
+    if (!analystConfig) {
+      return {
+        agent,
+        agentType: 'analyst',
+        data: {},
+        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: 'Unknown analyst agent',
+      };
+    }
+    
+    try {
+      const prompt = this.buildAnalystPrompt(agent, analystConfig, params, contextData);
+      
+      const response = await generateCompletion({
+        prompt,
+        maxTokens: 800,
+        temperature: 0.7,
+        model: modelOverride,
+      });
+      
+      return {
+        agent,
+        agentType: 'analyst',
+        data: { analysis: response.text },
+        summary: response.text,
+        executionTimeMs: Date.now() - startTime,
+        success: true,
+      };
+    } catch (error: any) {
+      logger.error(`Analyst ${agent} failed:`, error);
+      return {
+        agent,
+        agentType: 'analyst',
+        data: {},
+        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+  
+  /**
+   * Build params from intent
+   */
+  private buildParams(intent: ExtractedIntent): Record<string, unknown> {
+    return {
+      address: intent.address,
+      city: intent.city,
+      stateCode: intent.stateCode,
+      price: intent.price,
+      dealId: intent.dealId,
+      msaId: intent.msaId,
+      question: intent.question,
+    };
+  }
+  
+  /**
+   * Build prompt for analyst agent
+   */
+  private buildAnalystPrompt(
+    agent: AnalystAgent,
+    config: { role: string; focus: string },
+    params: Record<string, unknown>,
+    contextData: Record<string, unknown>
+  ): string {
+    let prompt = `You are the ${config.role} for JEDI RE, a real estate investment platform.
+Your expertise: ${config.focus}
+
+`;
+
+    if (params.address) {
+      prompt += `Property: ${params.address}\n`;
+    }
+    if (params.city && params.stateCode) {
+      prompt += `Market: ${params.city}, ${params.stateCode}\n`;
+    }
+    if (params.price) {
+      prompt += `Price: $${Number(params.price).toLocaleString()}\n`;
+    }
+    
+    // Add specialist data as context
+    if (Object.keys(contextData).length > 0) {
+      prompt += `\nAvailable Data:\n`;
+      for (const [source, data] of Object.entries(contextData)) {
+        prompt += `\n[${source}]:\n${JSON.stringify(data, null, 2)}\n`;
+      }
+    }
+    
+    prompt += `\nUser Question: ${params.question || 'Provide your analysis'}
+
+Respond as the ${config.role}. Be specific, actionable, and concise (under 200 words).
+Reference the data when relevant. Flag any concerns or opportunities.`;
+
+    return prompt;
+  }
+  
+  /**
+   * Get user's model preferences for agents
+   */
+  async getUserModelPreferences(userId: string): Promise<Record<string, string>> {
+    try {
+      const result = await query(
+        `SELECT settings_json FROM user_agent_settings 
+         WHERE user_id = $1 AND setting_type = 'models'`,
+        [userId]
+      );
+      
+      if (result.rows.length > 0) {
+        const settings = result.rows[0].settings_json;
+        return settings.agentOverrides || {};
+      }
+    } catch (error) {
+      logger.warn('Failed to get user model preferences:', error);
+    }
+    return {};
+  }
+}
+
+export const agentDelegator = new AgentDelegator();

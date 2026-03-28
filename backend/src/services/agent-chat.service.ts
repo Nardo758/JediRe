@@ -11,7 +11,8 @@
 import { generateCompletion, isLLMAvailable } from './llm.service';
 import { logger } from '../utils/logger';
 import { query } from '../database/connection';
-import { orchestrate, chatWithAgent, SpecialistAgent } from './orchestrator.service';
+import { unifiedOrchestrator } from './orchestrator';
+import type { SpecialistAgent } from './orchestrator/intent-classifier';
 
 // ============================================================================
 // Types
@@ -198,26 +199,30 @@ export async function agentChat(request: AgentChatRequest): Promise<AgentChatRes
   logger.info('Agent chat request:', { agentCode, dealId, userId, messageLength: message.length });
 
   // =========================================================================
-  // ORCHESTRATOR: Route through orchestrator service for intelligent delegation
+  // ORCHESTRATOR: Route through unified orchestrator for intelligent delegation
   // =========================================================================
   if (agentCode === 'ORCHESTRATOR') {
     try {
-      const orchestratorResult = await orchestrate({
+      const orchestratorResult = await unifiedOrchestrator.process({
         message,
+        userId,
+        platform: 'web',
         dealId,
         msaId,
-        userId,
       });
 
       const executionTime = Date.now() - startTime;
-      await logChatInteraction(request, orchestratorResult.message, executionTime);
+      await logChatInteraction(request, orchestratorResult.text, executionTime);
 
       return {
         id: crypto.randomUUID(),
         agentCode: 'ORCHESTRATOR',
-        message: orchestratorResult.message,
+        message: orchestratorResult.text,
         data: {
-          delegations: orchestratorResult.delegations,
+          jediScore: orchestratorResult.jediScore,
+          jediBreakdown: orchestratorResult.jediBreakdown,
+          recommendation: orchestratorResult.recommendation,
+          agentContributions: orchestratorResult.agentContributions,
         },
         suggestedFollowups: orchestratorResult.suggestedFollowups,
         timestamp: orchestratorResult.timestamp,
@@ -229,59 +234,31 @@ export async function agentChat(request: AgentChatRequest): Promise<AgentChatRes
   }
 
   // =========================================================================
-  // SPECIALIST AGENTS: Try executor first, then fall back to LLM
+  // SPECIALIST AGENTS: Route through unified orchestrator
   // =========================================================================
   const specialistAgents: AgentCode[] = ['SUPPLY', 'DEMAND', 'CASH', 'ZONING', 'COMPS', 'RISK', 'DEBT'];
   
   if (specialistAgents.includes(agentCode)) {
     try {
-      // Try to get real data from agent executor
-      const agentResult = await chatWithAgent(
-        agentCode as SpecialistAgent,
+      const agentResult = await unifiedOrchestrator.chatWithAgent(
+        agentCode,
         message,
-        { dealId, msaId },
-        userId
+        { userId, dealId, msaId, platform: 'web' }
       );
 
-      if (agentResult.success) {
-        // Format the data with LLM if available
-        let responseMessage: string;
-        
-        if (isLLMAvailable()) {
-          const agentConfig = AGENT_PROMPTS[agentCode];
-          const formattingPrompt = `You are the ${agentConfig?.role || agentCode + ' agent'}. 
-Format this data as a helpful response to the user's question: "${message}"
+      const executionTime = Date.now() - startTime;
+      await logChatInteraction(request, agentResult.text, executionTime);
 
-Data:
-${JSON.stringify(agentResult.data, null, 2)}
-
-Be concise, highlight key insights, and use natural language.`;
-
-          const llmResponse = await generateCompletion({
-            prompt: formattingPrompt,
-            maxTokens: 800,
-            temperature: 0.7,
-          });
-          responseMessage = llmResponse.text;
-        } else {
-          responseMessage = `Here's the ${agentCode.toLowerCase()} analysis:\n\n${JSON.stringify(agentResult.data, null, 2)}`;
-        }
-
-        const executionTime = Date.now() - startTime;
-        await logChatInteraction(request, responseMessage, executionTime);
-
-        return {
-          id: crypto.randomUUID(),
-          agentCode,
-          message: responseMessage,
-          data: agentResult.data,
-          suggestedFollowups: generateFollowups(agentCode, message),
-          timestamp: Date.now(),
-        };
-      }
-      // If agent executor failed, fall through to LLM-only response
+      return {
+        id: crypto.randomUUID(),
+        agentCode,
+        message: agentResult.text,
+        data: agentResult.data,
+        suggestedFollowups: agentResult.suggestedFollowups || generateFollowups(agentCode, message),
+        timestamp: Date.now(),
+      };
     } catch (error) {
-      logger.warn(`${agentCode} executor failed, falling back to LLM:`, error);
+      logger.warn(`${agentCode} via orchestrator failed, falling back to LLM:`, error);
       // Fall through to LLM-only response
     }
   }
