@@ -648,23 +648,62 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   return (
     <div style={{ flex: 1, overflow: "hidden", animation: "fadeIn 0.15s", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
       <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 9, color: C.muted, ...mono, marginRight: 8 }}>F4</span>
-        <span style={{ fontSize: 9, color: C.amberBright, fontWeight: 700, ...mono, marginRight: 12 }}>MARKETS</span>
+        <span style={{ fontSize: 9, color: C.amberBright, fontWeight: 700, ...mono, marginRight: 8, paddingLeft: 2 }}>F4</span>
+        {([
+          { id: "f4-landing" as PrimaryTab, label: "MY MARKETS" },
+          { id: "all-msas" as PrimaryTab, label: "ALL MSAs" },
+        ]).map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setPrimaryTab(tab.id)}
+            style={{
+              ...mono, fontSize: 9, fontWeight: primaryTab === tab.id ? 700 : 500,
+              padding: "0 12px", height: "100%", cursor: "pointer",
+              background: primaryTab === tab.id ? C.active : "transparent",
+              color: primaryTab === tab.id ? C.amber : C.secondary,
+              border: "none", borderBottom: primaryTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
+              letterSpacing: 0.5,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+        <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 6px" }} />
 
-        <div style={{ position: "relative", marginRight: 12 }}>
+        {primaryTab === "f4-landing" && SUB_TAB_DEFS.map((t, idx) => (
+          <React.Fragment key={t.id}>
+            {idx === 3 && <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 2px" }} />}
+            <button
+              onClick={() => setSubTab(t.id)}
+              style={{
+                ...mono, fontSize: 9, fontWeight: subTab === t.id ? 700 : 400,
+                padding: "0 8px", height: "100%", cursor: "pointer",
+                background: "transparent",
+                color: subTab === t.id ? C.amberBright : C.muted,
+                border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
+              }}
+            >
+              {t.label}
+            </button>
+          </React.Fragment>
+        ))}
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ position: "relative", marginRight: 8 }}>
           <button
             onClick={() => setMarketDropdownOpen(!marketDropdownOpen)}
             style={{
               ...mono, fontSize: 9, fontWeight: 500,
-              padding: "0 8px", height: 22, cursor: "pointer",
+              padding: "0 8px", height: 20, cursor: "pointer",
               background: "transparent", color: C.secondary,
               border: `1px solid ${C.borderS}`, display: "flex", alignItems: "center", gap: 4,
             }}
           >
-            MSA · <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 9 }}>▾</span>
+            <span style={{ color: C.amber, fontWeight: 700 }}>{selectedMsa.name}</span> <span style={{ fontSize: 9 }}>▾</span>
           </button>
           {marketDropdownOpen && (
-            <div style={{ position: "absolute", top: 24, left: 0, zIndex: 100, background: C.panel, border: `1px solid ${C.borderM}`, minWidth: 220, boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
+            <div style={{ position: "absolute", top: 24, right: 0, zIndex: 100, background: C.panel, border: `1px solid ${C.borderM}`, minWidth: 220, boxShadow: "0 4px 16px rgba(0,0,0,0.5)" }}>
               <input
                 autoFocus
                 value={marketSearch}
@@ -692,66 +731,17 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           )}
         </div>
 
-        <div style={{ flex: 1 }} />
         <span style={{ fontSize: 9, color: C.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-          JEDI {selectedMarketData?.jedi || 87}
+          {selectedMarketData?.jedi || 87}
         </span>
-        <span style={{ fontSize: 9, color: C.muted, margin: "0 6px" }}>|</span>
-        <span style={{ fontSize: 9, color: C.primary, fontWeight: 600, ...mono }}>{selectedMarketData?.rent || "$2,150"}</span>
-        <span style={{ margin: "0 4px" }}><DeltaCell value={selectedMarketData?.rentD || "+4.2%"} /></span>
         <span style={{ fontSize: 9, color: C.muted, margin: "0 4px" }}>|</span>
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>Vac </span>
+        <span style={{ fontSize: 9, color: C.primary, fontWeight: 600, ...mono }}>{selectedMarketData?.rent || "$2,150"}</span>
+        <span style={{ margin: "0 3px" }}><DeltaCell value={selectedMarketData?.rentD || "+4.2%"} /></span>
+        <span style={{ fontSize: 9, color: C.muted, margin: "0 3px" }}>|</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>V </span>
         <ThresholdVal value={selectedMarketData?.vac || "5.8%"} thresholds={[5, 8]} invert />
       </div>
-
-      <div style={{ display: "flex", alignItems: "center", height: 30, background: C.panel, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        {([
-          { id: "f4-landing" as PrimaryTab, label: "MY MARKETS" },
-          { id: "all-msas" as PrimaryTab, label: "ALL MSAs" },
-        ]).map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setPrimaryTab(tab.id)}
-            style={{
-              ...mono, fontSize: 9, fontWeight: primaryTab === tab.id ? 700 : 500,
-              padding: "0 16px", height: "100%", cursor: "pointer",
-              background: primaryTab === tab.id ? C.active : "transparent",
-              color: primaryTab === tab.id ? C.amber : C.secondary,
-              border: "none", borderBottom: primaryTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
-              letterSpacing: 0.5,
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 9, color: C.muted, ...mono, marginRight: 10 }}>
-          {primaryTab === "f4-landing" ? `${selectedMsa.name} · ${TRACKED_MARKETS.length} tracked markets` : `${ALL_MSAS.length} total MSAs`}
-        </span>
-      </div>
-
-      {primaryTab === "f4-landing" && (
-        <div style={{ display: "flex", alignItems: "center", height: 26, background: C.panelAlt, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0, gap: 0 }}>
-          {SUB_TAB_DEFS.map((t, idx) => (
-            <React.Fragment key={t.id}>
-              {idx === 3 && <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />}
-              <button
-                onClick={() => setSubTab(t.id)}
-                style={{
-                  ...mono, fontSize: 9, fontWeight: subTab === t.id ? 700 : 400,
-                  padding: "0 10px", height: "100%", cursor: "pointer",
-                  background: subTab === t.id ? C.active : "transparent",
-                  color: subTab === t.id ? C.amber : C.muted,
-                  border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
-                }}
-              >
-                {t.label}
-              </button>
-            </React.Fragment>
-          ))}
-        </div>
-      )}
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {primaryTab === "f4-landing" ? renderLandingContent() : renderAllMsasContent()}
