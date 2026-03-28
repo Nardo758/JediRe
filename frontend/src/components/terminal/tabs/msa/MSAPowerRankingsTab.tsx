@@ -160,42 +160,48 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: BT.text.muted }}>Vintage:</span>
-          <select
-            value={vintageFilter}
-            onChange={(e) => setVintageFilter(e.target.value)}
-            style={{
-              padding: '6px 12px',
-              background: BT.bg.elevated,
-              color: BT.text.primary,
-              border: `1px solid ${BT.border.subtle}`,
-              borderRadius: 0,
-              fontSize: 11,
-            }}
-          >
+          <div style={{ display: 'flex', gap: 4 }}>
             {VINTAGE_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
+              <button
+                key={opt}
+                onClick={() => setVintageFilter(opt)}
+                style={{
+                  padding: '4px 10px',
+                  background: vintageFilter === opt ? BT.accent.blue : BT.bg.elevated,
+                  color: vintageFilter === opt ? '#fff' : BT.text.secondary,
+                  border: 'none',
+                  borderRadius: 0,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                {opt}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 11, color: BT.text.muted }}>Size:</span>
-          <select
-            value={sizeFilter}
-            onChange={(e) => setSizeFilter(e.target.value)}
-            style={{
-              padding: '6px 12px',
-              background: BT.bg.elevated,
-              color: BT.text.primary,
-              border: `1px solid ${BT.border.subtle}`,
-              borderRadius: 0,
-              fontSize: 11,
-            }}
-          >
+          <div style={{ display: 'flex', gap: 4 }}>
             {SIZE_OPTIONS.map(opt => (
-              <option key={opt} value={opt}>{opt}</option>
+              <button
+                key={opt}
+                onClick={() => setSizeFilter(opt)}
+                style={{
+                  padding: '4px 10px',
+                  background: sizeFilter === opt ? BT.accent.blue : BT.bg.elevated,
+                  color: sizeFilter === opt ? '#fff' : BT.text.secondary,
+                  border: 'none',
+                  borderRadius: 0,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                {opt}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       </div>
 
