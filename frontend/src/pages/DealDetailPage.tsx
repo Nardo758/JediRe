@@ -884,6 +884,24 @@ const DealDetailPage: React.FC = () => {
             )}
           </main>
         </div>
+
+        {/* ── Bottom Status Bar (matches Terminal/Dashboard) ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 10px', height: 20, background: '#050810',
+          borderTop: `1px solid ${BORDER}`, flexShrink: 0,
+          fontFamily: MONO, fontSize: 9, userSelect: 'none',
+        }}>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <span style={{ color: TEXT_DIM }}>JediRE v3.0</span>
+            <span style={{ color: TEXT_DIM }}>REACT + VITE + MAPBOX + KAFKA</span>
+          </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <span style={{ color: GREEN }}>DB OK</span>
+            <span style={{ color: GREEN }}>REDIS OK</span>
+            <span style={{ color: TEXT_DIM }}>{activeTab.toUpperCase()}</span>
+          </div>
+        </div>
       </div>
     </DealModuleProvider>
   );
