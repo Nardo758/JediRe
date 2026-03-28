@@ -137,6 +137,25 @@ const DealCapsulesPage: React.FC = () => {
         borderBottom: `1px solid ${T.border.medium}`
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <button
+            onClick={() => navigate('/terminal/dashboard')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 12px',
+              background: 'transparent',
+              color: T.text.cyan,
+              border: `1px solid ${T.text.cyan}44`,
+              fontSize: 10,
+              fontWeight: 700,
+              fontFamily: T.font.mono,
+              cursor: 'pointer',
+              letterSpacing: 0.5,
+            }}
+          >
+            ← TERMINAL
+          </button>
           <div>
             <div style={{ 
               fontSize: 11, 
