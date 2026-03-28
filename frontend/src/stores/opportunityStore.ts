@@ -47,11 +47,13 @@ interface OpportunityState {
   cache: Record<string, OpportunityCacheEntry>;
   loading: Record<string, boolean>;
   errors: Record<string, string | null>;
+  fetched: Record<string, boolean>;
 
   fetchOpportunities: (city: string) => Promise<void>;
   getOpportunities: (city: string) => OpportunityResult | null;
   isLoading: (city: string) => boolean;
   getError: (city: string) => string | null;
+  hasFetched: (city: string) => boolean;
 }
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -60,6 +62,7 @@ export const useOpportunityStore = create<OpportunityState>((set, get) => ({
   cache: {},
   loading: {},
   errors: {},
+  fetched: {},
 
   fetchOpportunities: async (city: string) => {
     const key = city.toLowerCase();
@@ -85,12 +88,14 @@ export const useOpportunityStore = create<OpportunityState>((set, get) => ({
           [key]: { data: result, fetchedAt: Date.now() },
         },
         loading: { ...state.loading, [key]: false },
+        fetched: { ...state.fetched, [key]: true },
       }));
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.message || 'Failed to fetch opportunities';
       set(state => ({
         loading: { ...state.loading, [key]: false },
         errors: { ...state.errors, [key]: message },
+        fetched: { ...state.fetched, [key]: true },
       }));
     }
   },
@@ -106,5 +111,9 @@ export const useOpportunityStore = create<OpportunityState>((set, get) => ({
 
   getError: (city: string) => {
     return get().errors[city.toLowerCase()] || null;
+  },
+
+  hasFetched: (city: string) => {
+    return get().fetched[city.toLowerCase()] || false;
   },
 }));

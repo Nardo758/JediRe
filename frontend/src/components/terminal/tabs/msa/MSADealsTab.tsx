@@ -81,10 +81,11 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   const commentaryLoading = isCommentaryLoading('msa', msaId);
   const commentaryError = getCommentaryError('msa', msaId);
 
-  const { fetchOpportunities, getOpportunities, isLoading: isOppLoading, getError: getOppError } = useOpportunityStore();
+  const { fetchOpportunities, getOpportunities, isLoading: isOppLoading, getError: getOppError, hasFetched: hasOppFetched } = useOpportunityStore();
   const oppData = getOpportunities(city);
   const oppLoading = isOppLoading(city);
   const oppError = getOppError(city);
+  const oppFetched = hasOppFetched(city);
 
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   useEffect(() => { fetchOpportunities(city); }, [city]);
@@ -342,7 +343,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
         </div>
       )}
 
-      {!oppLoading && !oppError && opportunities.length === 0 && (
+      {!oppLoading && !oppError && oppFetched && opportunities.length === 0 && (
         <div style={{ ...terminalStyles.card, padding: 40, textAlign: 'center' }}>
           <div style={{ fontSize: 14, color: BT.text.muted, fontWeight: 600, marginBottom: 8 }}>
             NO OPPORTUNITIES DETECTED
@@ -370,7 +371,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                   fontSize: 10,
                   fontWeight: 700,
                 }}>
-                  #1 OPPORTUNITY
+                  {activeQuadrants.size > 0 ? 'TOP FILTERED' : `#${featuredOpp.rank}`} OPPORTUNITY
                 </span>
                 <span style={{
                   padding: '4px 10px',
@@ -414,7 +415,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               }}>
                 {featuredOpp.opportunityScore}
               </div>
-              <div style={{ fontSize: 10, color: BT.text.muted }}>JEDI Score</div>
+              <div style={{ fontSize: 10, color: BT.text.muted }}>Opportunity Score</div>
             </div>
           </div>
 
@@ -510,7 +511,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Quadrant</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Strategy</th>
-                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>JEDI</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>OPP</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Upside</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Mkt Score</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Prop Score</th>
