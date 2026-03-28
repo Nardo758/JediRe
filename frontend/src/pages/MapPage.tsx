@@ -98,6 +98,8 @@ export function MapPage() {
 
   const [notes, setNotes] = useState<MapNote[]>([]);
   const [addingNote, setAddingNote] = useState(false);
+  const [placingNote, setPlacingNote] = useState(false);
+  const [pendingNoteLngLat, setPendingNoteLngLat] = useState<[number, number] | null>(null);
   const [noteText, setNoteText] = useState('');
   const [editingNote, setEditingNote] = useState<string | null>(null);
 
@@ -216,17 +218,19 @@ export function MapPage() {
 
   const addNote = () => {
     if (!noteText.trim()) return;
+    const [lng, lat] = pendingNoteLngLat || [viewState.longitude, viewState.latitude];
     const note: MapNote = {
       id: `note-${Date.now()}`,
       text: noteText.trim(),
-      lng: viewState.longitude,
-      lat: viewState.latitude,
+      lng, lat,
       color: drawColor,
       timestamp: new Date().toLocaleString(),
     };
     setNotes(prev => [...prev, note]);
     setNoteText('');
     setAddingNote(false);
+    setPendingNoteLngLat(null);
+    setPlacingNote(false);
   };
 
   const deleteNote = (id: string) => {
@@ -380,12 +384,24 @@ export function MapPage() {
           {sidebarTab === 'notes' && (
             <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
               <div style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border.subtle}` }}>
-                {!addingNote ? (
-                  <button onClick={() => setAddingNote(true)} style={{
-                    width: '100%', fontFamily: T.font.mono, fontSize: 10, fontWeight: 700,
-                    background: T.text.cyan, color: T.bg.terminal, border: 'none',
-                    padding: '6px 0', cursor: 'pointer', letterSpacing: 0.3,
-                  }}>+ ADD NOTE AT CENTER</button>
+                {!addingNote && !placingNote ? (
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button onClick={() => { setPlacingNote(true); setSidebarOpen(false); }} style={{
+                      flex: 1, fontFamily: T.font.mono, fontSize: 10, fontWeight: 700,
+                      background: T.text.cyan, color: T.bg.terminal, border: 'none',
+                      padding: '6px 0', cursor: 'pointer', letterSpacing: 0.3,
+                    }}>📍 CLICK MAP TO PLACE</button>
+                    <button onClick={() => { setAddingNote(true); setPendingNoteLngLat(null); }} style={{
+                      fontFamily: T.font.mono, fontSize: 10, fontWeight: 600,
+                      background: 'transparent', color: T.text.cyan, border: `1px solid ${T.text.cyan}44`,
+                      padding: '6px 8px', cursor: 'pointer', letterSpacing: 0.3,
+                    }}>+ HERE</button>
+                  </div>
+                ) : placingNote ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.amber, fontWeight: 700, flex: 1 }}>CLICK THE MAP TO PLACE NOTE…</div>
+                    <button onClick={() => setPlacingNote(false)} style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.muted, background: 'transparent', border: `1px solid ${T.border.subtle}`, padding: '2px 8px', cursor: 'pointer' }}>CANCEL</button>
+                  </div>
                 ) : (
                   <div>
                     <textarea
@@ -445,11 +461,21 @@ export function MapPage() {
           ref={mapRef}
           {...viewState}
           onMove={evt => setViewState(evt.viewState)}
-          onClick={() => setSelectedDeal(null)}
+          onClick={(e) => {
+            if (placingNote && e.lngLat) {
+              setPendingNoteLngLat([e.lngLat.lng, e.lngLat.lat]);
+              setAddingNote(true);
+              setSidebarOpen(true);
+              setSidebarTab('notes');
+              setPlacingNote(false);
+              return;
+            }
+            setSelectedDeal(null);
+          }}
           onLoad={() => setMapLoaded(true)}
           mapboxAccessToken={MAPBOX_TOKEN}
           mapStyle={DARK_STYLE}
-          style={{ width: '100%', height: '100%' }}
+          style={{ width: '100%', height: '100%', cursor: placingNote ? 'crosshair' : '' }}
           attributionControl={false}
         >
           {heatmapData && (
@@ -561,14 +587,15 @@ export function MapPage() {
           <button onClick={() => mapRef.current?.flyTo({ center: ATLANTA_CENTER, zoom: 10.5, duration: 500 })} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: T.bg.panel, border: `1px solid ${T.border.medium}`, color: T.text.cyan, fontSize: 14, cursor: 'pointer' }}>⌖</button>
         </div>
 
-        {drawMode && (
+        {(drawMode || placingNote) && (
           <div style={{
             position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
             fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.amber,
             background: T.bg.header + 'ee', padding: '4px 12px', border: `1px solid ${T.text.amber}44`,
-            zIndex: 5, letterSpacing: 0.5,
+            zIndex: 5, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 8,
           }}>
-            {drawMode === 'point' ? 'CLICK TO PLACE MARKER' : drawMode === 'line' ? 'CLICK POINTS · DOUBLE-CLICK TO FINISH' : drawMode === 'polygon' ? 'CLICK VERTICES · DOUBLE-CLICK TO CLOSE' : 'SELECT DRAWINGS TO EDIT'}
+            {placingNote ? '📍 CLICK MAP TO PLACE NOTE' : drawMode === 'point' ? 'CLICK TO PLACE MARKER' : drawMode === 'line' ? 'CLICK POINTS · DOUBLE-CLICK TO FINISH' : drawMode === 'polygon' ? 'CLICK VERTICES · DOUBLE-CLICK TO CLOSE' : 'SELECT DRAWINGS TO EDIT'}
+            {placingNote && <button onClick={() => setPlacingNote(false)} style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.muted, background: 'transparent', border: `1px solid ${T.border.subtle}`, padding: '1px 6px', cursor: 'pointer' }}>ESC</button>}
           </div>
         )}
 
