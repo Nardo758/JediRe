@@ -100,7 +100,9 @@ export function MapPage() {
   const [addingNote, setAddingNote] = useState(false);
   const [placingNote, setPlacingNote] = useState(false);
   const [pendingNoteLngLat, setPendingNoteLngLat] = useState<[number, number] | null>(null);
+  const [hoverLngLat, setHoverLngLat] = useState<[number, number] | null>(null); // Preview cursor position
   const [noteText, setNoteText] = useState('');
+  const [noteColor, setNoteColor] = useState(DRAW_COLORS[0].value); // Separate note color
   const [editingNote, setEditingNote] = useState<string | null>(null);
 
   useEffect(() => {
@@ -129,6 +131,17 @@ export function MapPage() {
   useEffect(() => {
     if (notes.length > 0) localStorage.setItem('jedire-map-notes', JSON.stringify(notes));
   }, [notes]);
+
+  // ESC key handler for canceling note placement
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (placingNote || addingNote)) {
+        cancelNotePlacement();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [placingNote, addingNote, cancelNotePlacement]);
 
   const initDraw = useCallback(() => {
     if (!mapRef.current || drawRef.current) return;
@@ -223,7 +236,7 @@ export function MapPage() {
       id: `note-${Date.now()}`,
       text: noteText.trim(),
       lng, lat,
-      color: drawColor,
+      color: noteColor,
       timestamp: new Date().toLocaleString(),
     };
     setNotes(prev => [...prev, note]);
@@ -231,7 +244,16 @@ export function MapPage() {
     setAddingNote(false);
     setPendingNoteLngLat(null);
     setPlacingNote(false);
+    setHoverLngLat(null);
   };
+  
+  const cancelNotePlacement = useCallback(() => {
+    setPlacingNote(false);
+    setHoverLngLat(null);
+    setPendingNoteLngLat(null);
+    setAddingNote(false);
+    setNoteText('');
+  }, []);
 
   const deleteNote = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
@@ -242,18 +264,91 @@ export function MapPage() {
   };
 
   const shareMap = async () => {
+    // Build shareable URL with layer state and map position
+    const params = new URLSearchParams();
+    params.set('lng', viewState.longitude.toFixed(4));
+    params.set('lat', viewState.latitude.toFixed(4));
+    params.set('z', viewState.zoom.toFixed(1));
+    
+    // Encode active layers
+    const activeLayers = layers.filter(l => l.active).map(l => l.id);
+    if (activeLayers.length > 0) {
+      params.set('layers', activeLayers.join(','));
+    }
+    
+    // Encode notes (up to 5 for URL length)
+    if (notes.length > 0) {
+      const noteData = notes.slice(0, 5).map(n => ({
+        lng: n.lng.toFixed(4),
+        lat: n.lat.toFixed(4),
+        t: n.text.slice(0, 50),
+        c: n.color.replace('#', ''),
+      }));
+      params.set('notes', btoa(JSON.stringify(noteData)));
+    }
+
+    const shareUrl = `${window.location.origin}/map?${params.toString()}`;
+    
     const shareData = {
       title: 'JediRE Map View',
-      text: `Map view: ${deals.length} deals, ${layers.filter(l => l.active).length} active layers, ${notes.length} notes`,
-      url: window.location.href,
+      text: `Map view: ${deals.length} deals, ${activeLayers.length} active layers, ${notes.length} notes`,
+      url: shareUrl,
     };
+    
     if (navigator.share) {
       try { await navigator.share(shareData); } catch {}
     } else {
-      await navigator.clipboard.writeText(window.location.href);
-      alert('Map link copied to clipboard');
+      await navigator.clipboard.writeText(shareUrl);
+      alert('Map link copied to clipboard!');
     }
   };
+
+  // Load shared state from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    
+    // Restore map position
+    const lng = params.get('lng');
+    const lat = params.get('lat');
+    const z = params.get('z');
+    if (lng && lat) {
+      setViewState(prev => ({
+        ...prev,
+        longitude: parseFloat(lng),
+        latitude: parseFloat(lat),
+        zoom: z ? parseFloat(z) : prev.zoom,
+      }));
+    }
+    
+    // Restore active layers
+    const layerParam = params.get('layers');
+    if (layerParam) {
+      const activeIds = layerParam.split(',');
+      activeIds.forEach(id => {
+        const layer = layers.find(l => l.id === id);
+        if (layer && !layer.active) {
+          toggleLayer(id);
+        }
+      });
+    }
+    
+    // Restore shared notes
+    const notesParam = params.get('notes');
+    if (notesParam) {
+      try {
+        const sharedNotes = JSON.parse(atob(notesParam));
+        const importedNotes: MapNote[] = sharedNotes.map((n: any, i: number) => ({
+          id: `shared-${Date.now()}-${i}`,
+          text: n.t,
+          lng: parseFloat(n.lng),
+          lat: parseFloat(n.lat),
+          color: `#${n.c}`,
+          timestamp: 'Shared',
+        }));
+        setNotes(prev => [...prev, ...importedNotes]);
+      } catch {}
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const heatmapData = useMemo(() => {
     const active = layers.some(l => l.id === 'news-intelligence' && l.active);
@@ -383,24 +478,39 @@ export function MapPage() {
 
           {sidebarTab === 'notes' && (
             <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+              {/* Note Color Picker */}
+              <div style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border.subtle}` }}>
+                <div style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.secondary, letterSpacing: 0.5, marginBottom: 6 }}>NOTE COLOR</div>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {DRAW_COLORS.map(c => (
+                    <button key={c.value} onClick={() => setNoteColor(c.value)} title={c.name} style={{
+                      width: 20, height: 20, borderRadius: 2, background: c.value, cursor: 'pointer',
+                      border: noteColor === c.value ? '2px solid #fff' : `1px solid ${T.border.medium}`,
+                      boxShadow: noteColor === c.value ? `0 0 6px ${c.value}66` : 'none',
+                    }} />
+                  ))}
+                </div>
+              </div>
+
               <div style={{ padding: '8px 10px', borderBottom: `1px solid ${T.border.subtle}` }}>
                 {!addingNote && !placingNote ? (
                   <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={() => { setPlacingNote(true); setSidebarOpen(false); }} style={{
                       flex: 1, fontFamily: T.font.mono, fontSize: 10, fontWeight: 700,
-                      background: T.text.cyan, color: T.bg.terminal, border: 'none',
+                      background: noteColor, color: T.bg.terminal, border: 'none',
                       padding: '6px 0', cursor: 'pointer', letterSpacing: 0.3,
                     }}>📍 CLICK MAP TO PLACE</button>
                     <button onClick={() => { setAddingNote(true); setPendingNoteLngLat(null); }} style={{
                       fontFamily: T.font.mono, fontSize: 10, fontWeight: 600,
-                      background: 'transparent', color: T.text.cyan, border: `1px solid ${T.text.cyan}44`,
+                      background: 'transparent', color: noteColor, border: `1px solid ${noteColor}44`,
                       padding: '6px 8px', cursor: 'pointer', letterSpacing: 0.3,
                     }}>+ HERE</button>
                   </div>
                 ) : placingNote ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.amber, fontWeight: 700, flex: 1 }}>CLICK THE MAP TO PLACE NOTE…</div>
-                    <button onClick={() => setPlacingNote(false)} style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.muted, background: 'transparent', border: `1px solid ${T.border.subtle}`, padding: '2px 8px', cursor: 'pointer' }}>CANCEL</button>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: noteColor, animation: 'pulse 1s infinite' }} />
+                    <div style={{ fontFamily: T.font.mono, fontSize: 10, color: noteColor, fontWeight: 700, flex: 1 }}>CLICK MAP TO PLACE NOTE</div>
+                    <button onClick={cancelNotePlacement} style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.muted, background: 'transparent', border: `1px solid ${T.border.subtle}`, padding: '2px 8px', cursor: 'pointer' }}>ESC</button>
                   </div>
                 ) : (
                   <div>
@@ -461,9 +571,16 @@ export function MapPage() {
           ref={mapRef}
           {...viewState}
           onMove={evt => setViewState(evt.viewState)}
+          onMouseMove={(e) => {
+            // Track cursor position for preview marker when placing note
+            if (placingNote && e.lngLat) {
+              setHoverLngLat([e.lngLat.lng, e.lngLat.lat]);
+            }
+          }}
           onClick={(e) => {
             if (placingNote && e.lngLat) {
               setPendingNoteLngLat([e.lngLat.lng, e.lngLat.lat]);
+              setHoverLngLat(null); // Clear preview
               setAddingNote(true);
               setSidebarOpen(true);
               setSidebarTab('notes');
@@ -548,8 +665,22 @@ export function MapPage() {
             );
           })}
 
+          {/* Preview marker when placing note - shows where note will go */}
+          {placingNote && hoverLngLat && (
+            <Marker longitude={hoverLngLat[0]} latitude={hoverLngLat[1]} anchor="center">
+              <div style={{
+                width: 24, height: 24, borderRadius: '50%', 
+                background: noteColor + '44', border: `2px dashed ${noteColor}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                animation: 'pulse 1s infinite',
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: noteColor }} />
+              </div>
+            </Marker>
+          )}
+
           {notes.map(note => (
-            <Marker key={note.id} longitude={note.lng} latitude={note.lat} anchor="bottom">
+            <Marker key={note.id} longitude={note.lng} latitude={note.lat} anchor="center">
               <div style={{ cursor: 'pointer', position: 'relative' }} onClick={e => { e.stopPropagation(); setEditingNote(editingNote === note.id ? null : note.id); }}>
                 <div style={{
                   width: 18, height: 18, borderRadius: '50%', background: note.color,
@@ -595,7 +726,7 @@ export function MapPage() {
             zIndex: 5, letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 8,
           }}>
             {placingNote ? '📍 CLICK MAP TO PLACE NOTE' : drawMode === 'point' ? 'CLICK TO PLACE MARKER' : drawMode === 'line' ? 'CLICK POINTS · DOUBLE-CLICK TO FINISH' : drawMode === 'polygon' ? 'CLICK VERTICES · DOUBLE-CLICK TO CLOSE' : 'SELECT DRAWINGS TO EDIT'}
-            {placingNote && <button onClick={() => setPlacingNote(false)} style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.muted, background: 'transparent', border: `1px solid ${T.border.subtle}`, padding: '1px 6px', cursor: 'pointer' }}>ESC</button>}
+            {placingNote && <button onClick={cancelNotePlacement} style={{ fontFamily: T.font.mono, fontSize: 10, color: T.text.muted, background: 'transparent', border: `1px solid ${T.border.subtle}`, padding: '1px 6px', cursor: 'pointer' }}>ESC</button>}
           </div>
         )}
 
@@ -604,6 +735,14 @@ export function MapPage() {
             {deals.length} DEALS · {notes.length} NOTES · {drawingCount} DRAWINGS · Z{viewState.zoom.toFixed(1)}
           </div>
         </div>
+
+        {/* Pulse animation for note placement preview */}
+        <style>{`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.1); }
+          }
+        `}</style>
       </div>
     </div>
   );
