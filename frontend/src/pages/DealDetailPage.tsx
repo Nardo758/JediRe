@@ -142,15 +142,6 @@ const CollaborationSection = (props: ScreenProps) => {
 };
 
 const OverviewScreen = (props: ScreenProps) => {
-  const [secondaryTab, setSecondaryTab] = React.useState<string | null>(null);
-  const secondaryTabs = [
-    { id: 'team',        label: 'Team',            component: TeamManagementSection },
-    { id: 'collaborate', label: 'Collaborate',      component: CollaborationSection },
-    { id: 'deal-status', label: 'Deal Status',     component: DealStatusSection },
-  ];
-  const activeSecondary = secondaryTabs.find(t => t.id === secondaryTab);
-  const SecondaryComp = activeSecondary?.component;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
@@ -159,40 +150,6 @@ const OverviewScreen = (props: ScreenProps) => {
           onTabChange={(tab) => props.onUpdate?.()}
           geographicContext={props.geographicContext as Record<string, unknown> | undefined}
         />
-      </div>
-      <div style={{
-        flexShrink: 0,
-        borderTop: '1px solid #1e2a3d',
-        background: '#0F1319',
-      }}>
-        <div style={{ display: 'flex', background: '#0a0e17', borderBottom: secondaryTab ? '1px solid #1e2a3d' : 'none' }}>
-          {secondaryTabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setSecondaryTab(secondaryTab === t.id ? null : t.id)}
-              style={{
-                fontFamily: "'JetBrains Mono','Fira Code',monospace",
-                fontSize: 9, fontWeight: secondaryTab === t.id ? 700 : 500,
-                padding: '5px 12px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: secondaryTab === t.id ? '2px solid #F59E0B' : '2px solid transparent',
-                color: secondaryTab === t.id ? '#FCD34D' : '#6B7585',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap' as const,
-                letterSpacing: 0.5,
-                transition: 'color 0.1s',
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {SecondaryComp && secondaryTab && (
-          <div style={{ maxHeight: 420, overflow: 'auto', background: '#0F1319' }}>
-            <SecondaryComp {...props} />
-          </div>
-        )}
       </div>
     </div>
   );
@@ -560,9 +517,8 @@ const DealDetailPage: React.FC = () => {
     { id: 'proforma',    moduleId: 'M08', fkey: 'F8',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', short: 'COMPS',      label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
-    { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F12', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'deal-tools', moduleId: 'M21', fkey: 'F13', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F11', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'deal-tools', moduleId: 'M21', fkey: 'F12', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
   // Filter by deal-type visibility rules
