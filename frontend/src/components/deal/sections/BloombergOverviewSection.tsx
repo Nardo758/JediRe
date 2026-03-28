@@ -422,56 +422,45 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     }}>
       <style>{BT_CSS}</style>
 
-      {/* ── Module PanelHeader (amber = Overview) ── */}
-      <PanelHeader
-        title="F1 — OVERVIEW"
-        subtitle="M01 · Deal Intelligence"
-        borderColor={BTV.text.amber}
-        right={
-          <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>
-            {deal?.name || deal?.address?.split(',')[0] || 'Deal'}
-          </span>
-        }
-      />
 
       {/* ── Row 1: JEDI Score | 5 Signals | Deal Details ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 228px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
 
         {/* Col A — JEDI Score Gauge */}
-        <div style={{ background: BTV.bg.panel, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+        <div style={{ background: BTV.bg.panel, padding: '6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <div style={{ fontSize: 9, color: BTV.text.muted, letterSpacing: 1.5, ...MONO }}>JEDI SCORE</div>
           {scoreLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0' }}>
-              <Skel w={80} h={80} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '4px 0' }}>
+              <Skel w={64} h={64} />
               <Skel w={80} h={10} />
             </div>
           ) : (
             <>
               <div style={{
-                width: 80, height: 80, borderRadius: '50%',
+                width: 64, height: 64, borderRadius: '50%',
                 border: `3px solid ${sc}`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
-                boxShadow: `0 0 20px ${sc}33`,
+                boxShadow: `0 0 16px ${sc}33`,
               }}>
-                <span style={{ fontSize: 28, fontWeight: 800, color: sc, ...MONO }}>
+                <span style={{ fontSize: 22, fontWeight: 800, color: sc, ...MONO }}>
                   {jediScoreData ? score : '--'}
                 </span>
                 {jediScoreData?.delta30d != null && (
-                  <span style={{ fontSize: 9, color: jediScoreData.delta30d >= 0 ? BTV.text.green : BTV.text.red, fontWeight: 600, ...MONO }}>
+                  <span style={{ fontSize: 8, color: jediScoreData.delta30d >= 0 ? BTV.text.green : BTV.text.red, fontWeight: 600, ...MONO }}>
                     {jediScoreData.delta30d >= 0 ? '+' : ''}{jediScoreData.delta30d} 30d
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>Confidence: {jediScoreData?.confidence ?? '--'}%</div>
-              <Spark data={trendData} color={sc} w={100} h={20} />
+              <div style={{ fontSize: 8, color: BTV.text.muted, ...MONO }}>Confidence: {jediScoreData?.confidence ?? '--'}%</div>
+              <Spark data={trendData} color={sc} w={90} h={16} />
               <Bd c={sc}>{jediScoreData ? jediScoreData.verdict : 'PENDING'}</Bd>
             </>
           )}
         </div>
 
         {/* Col B — 5 Master Signals with Platform Metric Sources */}
-        <div style={{ background: BTV.bg.panel, padding: 10 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: BTV.text.white, marginBottom: 6, ...MONO }}>
+        <div style={{ background: BTV.bg.panel, padding: '6px 10px' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: BTV.text.white, marginBottom: 4, ...MONO }}>
             5 MASTER SIGNALS — PLATFORM METRIC SOURCES
           </div>
           {scoreLoading ? (
@@ -484,7 +473,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                 const c = s.score >= 80 ? BTV.text.green : s.score >= 60 ? BTV.text.amber : BTV.text.red;
                 const sources = SIGNAL_SOURCES[s.name] || [];
                 return (
-                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 5 }}>
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
                     <span style={{ fontSize: 9, color: BTV.text.muted, minWidth: 72, ...MONO }}>
                       {s.name} ({s.weight}%)
                     </span>
@@ -524,24 +513,14 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
           <div style={{ padding: '5px 8px', background: BTV.bg.header, borderBottom: `1px solid ${BTV.border.subtle}` }}>
             <span style={{ fontSize: 9, fontWeight: 700, color: BTV.text.white, letterSpacing: 0.5, ...MONO }}>DEAL DETAILS</span>
           </div>
-          {deal?.address && (
-            <div style={{ padding: '3px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
-              <div style={{ fontSize: 9, color: BTV.text.muted, letterSpacing: 0.5, marginBottom: 1, ...MONO }}>ADDRESS</div>
-              <div style={{ fontSize: 9, color: BTV.text.secondary, ...MONO, lineHeight: 1.3 }}>
-                {deal.address}
-              </div>
-            </div>
-          )}
           <DataRow label="PRICE" value={price} />
           <DataRow label="$/UNIT" value={ppuStr} />
           <DataRow label="UNITS" value={units ? String(units) : 'LAND'} />
           {acreage != null && <DataRow label="ACREAGE" value={`${Number(acreage).toFixed(1)} ac`} valueColor={BTV.text.secondary} />}
           <DataRow label="TYPE" value={deal?.propertyTypeKey || deal?.propType || '—'} valueColor={BTV.text.secondary} />
-          <DataRow label="DEAL TYPE" value={deal?.developmentType || deal?.dealType || '—'} valueColor={BTV.text.cyan} />
           <DataRow label="STRATEGY" value={deal?.strategy || deal?.strategyType || '—'} valueColor={BTV.text.purple} />
           <DataRow label="IRR" value={irrStr} valueColor={BTV.text.green} />
           <DataRow label="EM" value={emStr} />
-          <DataRow label="STAGE" value={deal?.stage || '—'} valueColor={BTV.text.cyan} />
           <DataRow label="RISK" value={deal?.riskLevel || deal?.risk || '—'}
             valueColor={deal?.riskLevel === 'HIGH' || deal?.risk === 'HIGH' ? BTV.text.red
               : deal?.riskLevel === 'LOW' || deal?.risk === 'LOW' ? BTV.text.green : BTV.text.amber}
@@ -627,7 +606,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
             { h: 'PLATFORM-ADJUSTED', irrVal: irrStr, emVal: emStr, c: BTV.text.green },
             { h: 'YOUR MODEL', irrVal: irrUser, emVal: emStr, c: BTV.text.purple },
           ].map((col, i) => (
-            <div key={i} style={{ background: BTV.bg.panel, padding: 5, borderTop: `2px solid ${col.c}` }}>
+            <div key={i} style={{ background: BTV.bg.panel, padding: '3px 5px', borderTop: `2px solid ${col.c}` }}>
               <div style={{ fontSize: 9, fontWeight: 700, color: col.c, letterSpacing: 0.8, marginBottom: 2, ...MONO }}>{col.h}</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <div>
@@ -642,24 +621,18 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
             </div>
           ))}
         </div>
-        {showCollision && (
-          <div style={{ padding: 4, background: `${BTV.text.orange}08`, borderLeft: `3px solid ${BTV.text.orange}` }}>
-            <span style={{ fontSize: 9, color: BTV.text.orange, fontWeight: 600, ...MONO }}>COLLISION: </span>
-            <span style={{ fontSize: 9, color: BTV.text.secondary, ...MONO }}>{collisionMsg}</span>
-          </div>
-        )}
       </div>
 
       {/* ── Row 4: AI Intelligence Brief ── */}
-      <div style={{ background: BTV.bg.panel, padding: 8, borderBottom: `1px solid ${BTV.border.subtle}`, flexShrink: 0 }}>
-        <div style={{ fontSize: 9, fontWeight: 700, color: BTV.text.cyan, letterSpacing: 0.8, marginBottom: 6, ...MONO }}>
+      <div style={{ background: BTV.bg.panel, padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}`, flexShrink: 0 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: BTV.text.cyan, letterSpacing: 0.8, marginBottom: 3, ...MONO }}>
           AI INTELLIGENCE BRIEF
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {aiBriefs.map((b, i) => (
             <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
               <Bd c={b.c}>{b.cat}</Bd>
-              <span style={{ fontSize: 9, color: BTV.text.secondary, lineHeight: 1.5, ...MONO }}>{b.msg}</span>
+              <span style={{ fontSize: 9, color: BTV.text.secondary, lineHeight: 1.3, ...MONO }}>{b.msg}</span>
             </div>
           ))}
         </div>
@@ -688,7 +661,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         {/* DEAL TEAM */}
         <SectionPanel title="DEAL TEAM" borderColor={BTV.text.purple}>
           {teamToShow.length === 0 ? (
-            <div style={{ padding: '14px 8px', textAlign: 'center' }}>
+            <div style={{ padding: '8px 8px', textAlign: 'center' }}>
               <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>No team members assigned</span>
             </div>
           ) : (
@@ -697,7 +670,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
               const name = m.name || m.userName || m.email || '—';
               const lastActive = m.lastActive || m.updatedAt || m.createdAt;
               return (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
                   <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <Bd c={BTV.text.purple}>{String(role).toUpperCase().slice(0, 8)}</Bd>
                     <span style={{ fontSize: 9, color: BTV.text.primary, ...MONO }}>{name}</span>
@@ -712,7 +685,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         {/* RECENT ACTIVITY */}
         <SectionPanel title="RECENT ACTIVITY" borderColor={BTV.text.cyan}>
           {activity.length === 0 ? (
-            <div style={{ padding: '14px 8px', textAlign: 'center' }}>
+            <div style={{ padding: '8px 8px', textAlign: 'center' }}>
               <span style={{ fontSize: 9, color: BTV.text.muted, ...MONO }}>No recent activity</span>
             </div>
           ) : (
@@ -724,7 +697,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
                 : a.type === 'comment' ? BTV.text.cyan
                 : BTV.text.secondary;
               return (
-                <div key={i} style={{ display: 'flex', gap: 6, padding: '4px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
+                <div key={i} style={{ display: 'flex', gap: 6, padding: '3px 8px', borderBottom: `1px solid ${BTV.border.subtle}` }}>
                   <span style={{ fontSize: 9, color: BTV.text.muted, minWidth: 20, flexShrink: 0, ...MONO }}>{ts ? fmtAgo(ts) : '—'}</span>
                   <span style={{ fontSize: 9, color, ...MONO, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{msg}</span>
                 </div>

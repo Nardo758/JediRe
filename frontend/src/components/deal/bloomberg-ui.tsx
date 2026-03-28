@@ -312,7 +312,7 @@ export function PanelHeader({
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '6px 10px',
+      padding: '4px 10px',
       background: BT.bg.header,
       borderBottom: `1px solid ${BT.border.subtle}`,
       borderTop: borderColor ? `2px solid ${borderColor}` : 'none',
@@ -355,7 +355,7 @@ export function SectionPanel({
       {title && (
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '5px 8px',
+          padding: '3px 8px',
           background: BT.bg.header,
           borderBottom: `1px solid ${BT.border.subtle}`,
           borderTop: borderColor ? `2px solid ${borderColor}` : 'none',
@@ -390,7 +390,7 @@ export function DataRow({
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '4px 8px',
+      padding: '3px 8px',
       borderBottom: border ? `1px solid ${BT.border.subtle}` : 'none',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

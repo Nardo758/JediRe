@@ -33,7 +33,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
-  ArrowLeft, Activity, LayoutDashboard,
+  ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
