@@ -521,7 +521,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
           <>
             {commentary.signalCommentary?.ranking_insights && (
               <div style={{ ...terminalStyles.card, padding: 16 }}>
-                <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.ranking_insights} />
+                <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.ranking_insights} compact />
               </div>
             )}
             {commentary.peerContext && (

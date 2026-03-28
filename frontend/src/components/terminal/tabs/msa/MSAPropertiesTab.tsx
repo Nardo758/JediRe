@@ -678,12 +678,12 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
           <>
             {commentary.signalCommentary?.segment_analysis && (
               <div style={{ ...terminalStyles.card, padding: 16 }}>
-                <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.segment_analysis} />
+                <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.segment_analysis} compact />
               </div>
             )}
             {commentary.signalCommentary?.supply && (
               <div style={{ ...terminalStyles.card, padding: 16 }}>
-                <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} />
+                <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.supply} compact />
               </div>
             )}
           </>

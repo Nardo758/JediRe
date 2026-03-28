@@ -654,12 +654,13 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                 <InvestmentThesis
                   recommendation={commentary.investmentThesis.recommendation}
                   points={commentary.investmentThesis.points}
+                  compact
                 />
               </div>
             )}
             {commentary.signalCommentary?.capital_sentiment && (
               <div style={{ ...terminalStyles.card, padding: 16 }}>
-                <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.capital_sentiment} />
+                <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.capital_sentiment} compact />
               </div>
             )}
           </>
