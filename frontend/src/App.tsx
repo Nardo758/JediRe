@@ -35,6 +35,7 @@ import PropertyDetailsPage from './pages/PropertyDetailsPage';
 import { BloombergMarketDetail } from './pages/MarketIntelligence';
 import WatchlistPage from './pages/MarketIntelligence/WatchlistPage';
 import TerminalPage from './pages/TerminalPage';
+import AgentSettingsPage from './pages/settings/AgentSettingsPage';
 const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPage'));
 const PropertyCardPage = lazy(() => import('./pages/PropertyCardPage'));
 
@@ -169,6 +170,7 @@ function AppContent() {
         <Route path="/settings/email" element={<Navigate to="/terminal/settings" replace />} />
         <Route path="/settings/marketplace" element={<Navigate to="/terminal/settings" replace />} />
         <Route path="/settings/strategies" element={<Navigate to="/terminal/settings" replace />} />
+        <Route path="/settings/agents" element={<AgentSettingsPage />} />
         <Route path="/strategies" element={<Navigate to="/terminal/strategies" replace />} />
         <Route path="/strategies/:id" element={<Navigate to="/terminal/strategies" replace />} />
         <Route path="/opportunities" element={<Navigate to="/terminal/strategies" replace />} />

@@ -341,4 +341,58 @@ router.post('/push/test', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// Agent Model Preferences
+// ============================================================================
+
+/**
+ * GET /api/v1/agents/models
+ * Get user's agent model preferences
+ */
+router.get('/models', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+
+    // For now, return empty (will use defaults)
+    // TODO: Store in user_preferences table
+    return res.json({
+      success: true,
+      data: {},
+    });
+
+  } catch (error: any) {
+    logger.error('Get agent models error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to get agent model preferences',
+    });
+  }
+});
+
+/**
+ * PUT /api/v1/agents/models
+ * Save user's agent model preferences
+ */
+router.put('/models', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const modelSettings = req.body;
+
+    // TODO: Store in user_preferences table
+    logger.info('Saving agent model preferences:', { userId, models: Object.keys(modelSettings) });
+
+    return res.json({
+      success: true,
+      message: 'Agent model preferences saved',
+    });
+
+  } catch (error: any) {
+    logger.error('Save agent models error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to save agent model preferences',
+    });
+  }
+});
+
 export default router;

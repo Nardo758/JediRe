@@ -4,7 +4,7 @@
  * Each agent has specific responsibilities, topics it subscribes to,
  * and topics it publishes.
  * 
- * @version 1.0.0
+ * @version 2.0.0
  * @date 2026-03-28
  */
 
@@ -14,18 +14,33 @@ import { AgentCode } from './agentBus';
 // Types
 // ============================================================================
 
+export type AgentCategory = 'core' | 'analyst' | 'specialist';
+
+export type AIModel = 
+  | 'claude-3-opus'
+  | 'claude-3-sonnet' 
+  | 'claude-3-haiku'
+  | 'gpt-4-turbo'
+  | 'gpt-4'
+  | 'gpt-3.5-turbo'
+  | 'gemini-pro'
+  | 'llama-3-70b';
+
 export interface AgentDefinition {
   code: AgentCode;
   name: string;
   shortName: string;
-  emoji: string;
+  icon: string;               // Lucide icon name
   color: string;              // For UI theming
+  category: AgentCategory;    // Agent type grouping
   description: string;
   capabilities: string[];     // What this agent can do
   subscribesTo: string[];     // Topics it listens to
   publishes: string[];        // Topics it produces
   canChatWithUser: boolean;   // Can user directly query this agent?
   priority: number;           // Display order (lower = higher priority)
+  defaultModel: AIModel;      // Default AI model for this agent
+  recommendedModels: AIModel[]; // Models that work well for this agent
 }
 
 export interface AgentQuery {
@@ -39,16 +54,33 @@ export interface AgentQuery {
 }
 
 // ============================================================================
+// Available AI Models
+// ============================================================================
+
+export const AI_MODELS: Record<AIModel, { name: string; provider: string; speed: string; cost: string }> = {
+  'claude-3-opus': { name: 'Claude 3 Opus', provider: 'Anthropic', speed: 'Slow', cost: '$$$' },
+  'claude-3-sonnet': { name: 'Claude 3 Sonnet', provider: 'Anthropic', speed: 'Medium', cost: '$$' },
+  'claude-3-haiku': { name: 'Claude 3 Haiku', provider: 'Anthropic', speed: 'Fast', cost: '$' },
+  'gpt-4-turbo': { name: 'GPT-4 Turbo', provider: 'OpenAI', speed: 'Medium', cost: '$$' },
+  'gpt-4': { name: 'GPT-4', provider: 'OpenAI', speed: 'Slow', cost: '$$$' },
+  'gpt-3.5-turbo': { name: 'GPT-3.5 Turbo', provider: 'OpenAI', speed: 'Fast', cost: '$' },
+  'gemini-pro': { name: 'Gemini Pro', provider: 'Google', speed: 'Fast', cost: '$' },
+  'llama-3-70b': { name: 'Llama 3 70B', provider: 'Meta', speed: 'Medium', cost: '$' },
+};
+
+// ============================================================================
 // Agent Definitions
 // ============================================================================
 
 export const AGENT_DEFINITIONS: AgentDefinition[] = [
+  // ── Core Agents ──────────────────────────────────────────────
   {
     code: 'ORCHESTRATOR',
     name: 'JEDI Orchestrator',
     shortName: 'JEDI',
-    emoji: '🤖',
-    color: '#00D4FF',  // Cyan
+    icon: 'Brain',
+    color: '#00D4FF',
+    category: 'core',
     description: 'Main AI coordinator - manages all agents and communicates with you',
     capabilities: [
       'Coordinate multi-agent workflows',
@@ -57,18 +89,45 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
       'Answer general questions',
       'Route queries to specialized agents',
     ],
-    subscribesTo: ['*'],  // Listens to everything
+    subscribesTo: ['*'],
     publishes: ['user_response', 'agent_task', 'notification', 'workflow_status'],
     canChatWithUser: true,
     priority: 0,
+    defaultModel: 'claude-3-opus',
+    recommendedModels: ['claude-3-opus', 'gpt-4-turbo'],
   },
   {
+    code: 'STRATEGY',
+    name: 'Strategy Agent',
+    shortName: 'Strategy',
+    icon: 'Target',
+    color: '#E74C3C',
+    category: 'core',
+    description: 'Synthesizes all signals into actionable strategy recommendations',
+    capabilities: [
+      'Generate deal recommendations',
+      'Calculate optimal timing',
+      'Identify risk/reward balance',
+      'Compare strategy alternatives',
+      'Update JEDI scores',
+    ],
+    subscribesTo: ['*'],
+    publishes: ['strategy_recommendation', 'jedi_score_update', 'timing_analysis', 'risk_reward_matrix'],
+    canChatWithUser: true,
+    priority: 1,
+    defaultModel: 'claude-3-opus',
+    recommendedModels: ['claude-3-opus', 'gpt-4'],
+  },
+
+  // ── Analyst Agents ───────────────────────────────────────────
+  {
     code: 'SUPPLY',
-    name: 'Supply Agent',
+    name: 'Supply Analyst',
     shortName: 'Supply',
-    emoji: '📦',
-    color: '#F5A623',  // Orange
-    description: 'Tracks construction pipeline, deliveries, and competitive supply',
+    icon: 'Building2',
+    color: '#F5A623',
+    category: 'analyst',
+    description: 'Analyzes construction pipeline, deliveries, and competitive supply',
     capabilities: [
       'Monitor construction starts and completions',
       'Track competitive developments',
@@ -79,14 +138,17 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated', 'demand_data'],
     publishes: ['pipeline_data', 'supply_risk', 'competition_alert', 'permit_alert', 'delivery_forecast'],
     canChatWithUser: true,
-    priority: 1,
+    priority: 2,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
     code: 'DEMAND',
-    name: 'Demand Agent',
+    name: 'Demand Analyst',
     shortName: 'Demand',
-    emoji: '📈',
-    color: '#7ED321',  // Green
+    icon: 'TrendingUp',
+    color: '#7ED321',
+    category: 'analyst',
     description: 'Analyzes absorption, leasing velocity, job growth, and demand drivers',
     capabilities: [
       'Track absorption rates',
@@ -98,14 +160,39 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     subscribesTo: ['deal_added', 'market_selected', 'supply_data', 'news_sentiment'],
     publishes: ['demand_forecast', 'absorption_rate', 'rent_pressure', 'employment_update', 'demand_alert'],
     canChatWithUser: true,
-    priority: 2,
+    priority: 3,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
+  },
+  {
+    code: 'COMPS',
+    name: 'Comps Analyst',
+    shortName: 'Comps',
+    icon: 'BarChart3',
+    color: '#3498DB',
+    category: 'analyst',
+    description: 'Analyzes comparable sales, rents, and market benchmarks',
+    capabilities: [
+      'Find comparable properties',
+      'Analyze sale transactions',
+      'Track rent comps',
+      'Calculate market benchmarks',
+      'Identify pricing anomalies',
+    ],
+    subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated'],
+    publishes: ['comp_analysis', 'sale_alert', 'rent_benchmark', 'pricing_insight'],
+    canChatWithUser: true,
+    priority: 4,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'claude-3-haiku'],
   },
   {
     code: 'NEWS',
-    name: 'News Agent',
+    name: 'News Analyst',
     shortName: 'News',
-    emoji: '📰',
-    color: '#4A90E2',  // Blue
+    icon: 'Newspaper',
+    color: '#4A90E2',
+    category: 'analyst',
     description: 'Monitors market news, sentiment, and headline impact on deals',
     capabilities: [
       'Scan real-time market news',
@@ -117,14 +204,41 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated'],
     publishes: ['news_alert', 'sentiment_shift', 'headline_impact', 'employer_announcement', 'regulatory_update'],
     canChatWithUser: true,
-    priority: 3,
+    priority: 5,
+    defaultModel: 'claude-3-haiku',
+    recommendedModels: ['claude-3-haiku', 'gpt-3.5-turbo'],
   },
   {
+    code: 'RISK',
+    name: 'Risk Analyst',
+    shortName: 'Risk',
+    icon: 'ShieldAlert',
+    color: '#E67E22',
+    category: 'analyst',
+    description: 'Monitors risks across all dimensions and triggers alerts',
+    capabilities: [
+      'Aggregate risk signals',
+      'Calculate risk scores',
+      'Monitor trigger thresholds',
+      'Generate risk reports',
+      'Prioritize alerts',
+    ],
+    subscribesTo: ['*'],
+    publishes: ['risk_alert', 'risk_score_update', 'threshold_breach', 'risk_report'],
+    canChatWithUser: true,
+    priority: 6,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'claude-3-opus'],
+  },
+
+  // ── Specialist Agents ────────────────────────────────────────
+  {
     code: 'DEBT',
-    name: 'Debt Agent',
+    name: 'Debt Specialist',
     shortName: 'Debt',
-    emoji: '🏦',
-    color: '#9B59B6',  // Purple
+    icon: 'Landmark',
+    color: '#9B59B6',
+    category: 'specialist',
     description: 'Tracks interest rates, spreads, lender activity, and financing options',
     capabilities: [
       'Monitor rate movements',
@@ -136,33 +250,17 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     subscribesTo: ['deal_added', 'proforma_updated', 'market_selected'],
     publishes: ['rate_update', 'financing_options', 'debt_alert', 'lender_activity', 'spread_change'],
     canChatWithUser: true,
-    priority: 4,
-  },
-  {
-    code: 'STRATEGY',
-    name: 'Strategy Agent',
-    shortName: 'Strategy',
-    emoji: '🎯',
-    color: '#E74C3C',  // Red
-    description: 'Synthesizes all signals into actionable strategy recommendations',
-    capabilities: [
-      'Generate deal recommendations',
-      'Calculate optimal timing',
-      'Identify risk/reward balance',
-      'Compare strategy alternatives',
-      'Update JEDI scores',
-    ],
-    subscribesTo: ['*'],  // Listens to all agents
-    publishes: ['strategy_recommendation', 'jedi_score_update', 'timing_analysis', 'risk_reward_matrix'],
-    canChatWithUser: true,
-    priority: 5,
+    priority: 7,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
     code: 'CASH',
-    name: 'Cash Agent',
+    name: 'Cash Flow Specialist',
     shortName: 'Cash',
-    emoji: '💰',
-    color: '#27AE60',  // Emerald
+    icon: 'DollarSign',
+    color: '#27AE60',
+    category: 'specialist',
     description: 'Models cash flow, distributions, and waterfall analysis',
     capabilities: [
       'Project cash flows',
@@ -174,15 +272,18 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     subscribesTo: ['deal_added', 'proforma_updated', 'debt_update', 'demand_forecast'],
     publishes: ['cashflow_projection', 'distribution_schedule', 'irr_update', 'variance_alert'],
     canChatWithUser: true,
-    priority: 6,
+    priority: 8,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
     code: 'ZONING',
-    name: 'Zoning Agent',
+    name: 'Zoning Specialist',
     shortName: 'Zoning',
-    emoji: '📋',
-    color: '#8E44AD',  // Violet
-    description: 'Analyzes zoning, entitlements, and regulatory requirements',
+    icon: 'Map',
+    color: '#8E44AD',
+    category: 'specialist',
+    description: 'Analyzes zoning codes, entitlements, and regulatory requirements',
     capabilities: [
       'Parse zoning codes',
       'Calculate development capacity',
@@ -193,45 +294,9 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     subscribesTo: ['deal_added', 'parcel_selected', 'regulatory_update'],
     publishes: ['zoning_analysis', 'entitlement_status', 'capacity_calculation', 'regulatory_risk'],
     canChatWithUser: true,
-    priority: 7,
-  },
-  {
-    code: 'COMPS',
-    name: 'Comps Agent',
-    shortName: 'Comps',
-    emoji: '🏢',
-    color: '#3498DB',  // Bright blue
-    description: 'Tracks comparable sales, rents, and market benchmarks',
-    capabilities: [
-      'Find comparable properties',
-      'Analyze sale transactions',
-      'Track rent comps',
-      'Calculate market benchmarks',
-      'Identify pricing anomalies',
-    ],
-    subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated'],
-    publishes: ['comp_analysis', 'sale_alert', 'rent_benchmark', 'pricing_insight'],
-    canChatWithUser: true,
-    priority: 8,
-  },
-  {
-    code: 'RISK',
-    name: 'Risk Agent',
-    shortName: 'Risk',
-    emoji: '⚠️',
-    color: '#E67E22',  // Dark orange
-    description: 'Monitors risks across all dimensions and triggers alerts',
-    capabilities: [
-      'Aggregate risk signals',
-      'Calculate risk scores',
-      'Monitor trigger thresholds',
-      'Generate risk reports',
-      'Prioritize alerts',
-    ],
-    subscribesTo: ['*'],  // Listens to all for risk signals
-    publishes: ['risk_alert', 'risk_score_update', 'threshold_breach', 'risk_report'],
-    canChatWithUser: true,
     priority: 9,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'claude-3-opus'],
   },
 ];
 
@@ -241,6 +306,10 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
 
 export function getAgentByCode(code: AgentCode): AgentDefinition | undefined {
   return AGENT_DEFINITIONS.find(a => a.code === code);
+}
+
+export function getAgentsByCategory(category: AgentCategory): AgentDefinition[] {
+  return AGENT_DEFINITIONS.filter(a => a.category === category);
 }
 
 export function getAgentsByCapability(capability: string): AgentDefinition[] {
@@ -272,8 +341,8 @@ export function getAgentColor(code: AgentCode): string {
   return getAgentByCode(code)?.color || '#888888';
 }
 
-export function getAgentEmoji(code: AgentCode): string {
-  return getAgentByCode(code)?.emoji || '🤖';
+export function getAgentIcon(code: AgentCode): string {
+  return getAgentByCode(code)?.icon || 'Bot';
 }
 
 // ============================================================================
@@ -349,7 +418,7 @@ export const AGENT_SUGGESTED_PROMPTS: Record<AgentCode, string[]> = {
 
 export const AGENT_INTRO_MESSAGES: Record<AgentCode, string> = {
   ORCHESTRATOR: "I'm JEDI, your main AI assistant. I coordinate all the specialized agents and keep you informed. How can I help?",
-  SUPPLY: "I'm tracking supply and construction in your markets. I can tell you about pipeline, deliveries, and competitive developments.",
+  SUPPLY: "I analyze supply and construction in your markets. I can tell you about pipeline, deliveries, and competitive developments.",
   DEMAND: "I analyze demand drivers - absorption, leasing velocity, employment, and rent trends. What would you like to know?",
   NEWS: "I monitor market news and headlines that could impact your deals. I can brief you on recent developments.",
   DEBT: "I track financing markets - rates, spreads, and lender activity. Ask me about debt options for your deals.",
