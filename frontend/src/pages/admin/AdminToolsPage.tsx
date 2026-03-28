@@ -312,54 +312,6 @@ export default function AdminToolsPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════
-          F-KEY NAVIGATION BAR (like Terminal)
-          ═══════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 8px',
-        height: 32,
-        background: BT.bg.panel,
-        borderBottom: `1px solid ${BT.border.subtle}`,
-        gap: 2,
-        flexShrink: 0
-      }}>
-        {NAV_ITEMS.slice(0, 8).map((item, idx) => {
-          const isActive = activeSection === item.key;
-          return (
-            <button
-              key={item.key}
-              onClick={() => handleNavClick(item)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 10px',
-                background: isActive ? BT.bg.active : 'transparent',
-                border: 'none',
-                borderBottom: isActive ? `2px solid ${BT.text.amber}` : '2px solid transparent',
-                color: isActive ? BT.text.amber : BT.text.secondary,
-                fontFamily: BT.font.mono,
-                fontSize: 10,
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-            >
-              <span style={{ 
-                fontSize: 8, 
-                color: isActive ? BT.text.amberBright : BT.text.muted,
-                fontWeight: 700 
-              }}>
-                F{idx + 1}
-              </span>
-              {item.label.split(' ')[0]}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════════
           MAIN CONTENT AREA
           ═══════════════════════════════════════════════════════════════════ */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
