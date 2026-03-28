@@ -1,6 +1,6 @@
 /**
  * Admin Tools Page - Bloomberg Terminal Style
- * Central hub for deal administration, team management, and integrations
+ * Deal/Team operations hub (no overlap with Settings)
  * 
  * Location: frontend/src/pages/admin/AdminToolsPage.tsx
  */
@@ -8,16 +8,13 @@
 import React, { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 
-// Section imports (adjust paths after placing in your project)
+// Section imports
 import DealIntelligenceSection from './sections/DealIntelligenceSection';
 import TeamSection from './sections/TeamSection';
-import AIConfigSection from './sections/AIConfigSection';
 import IntegrationsSection from './sections/IntegrationsSection';
+import TemplatesSection from './sections/TemplatesSection';
 import DataRoomSection from './sections/DataRoomSection';
 import VerificationSection from './sections/VerificationSection';
-import BillingSection from './sections/BillingSection';
-import NotificationsSection from './sections/NotificationsSection';
-import TemplatesSection from './sections/TemplatesSection';
 import DataManagementSection from './sections/DataManagementSection';
 
 // Bloomberg Terminal tokens
@@ -60,25 +57,22 @@ interface NavItem {
   icon: string;
   path: string;
   description: string;
-  group: 'intel' | 'config' | 'data';
+  group: 'intel' | 'workflow' | 'data';
 }
 
 const NAV_ITEMS: NavItem[] = [
-  // Intel Group
+  // Intelligence Group
   { key: 'intel', label: 'DEAL INTELLIGENCE', icon: '🔒', path: 'intel', description: 'Notes, decisions, risks, contacts', group: 'intel' },
   { key: 'team', label: 'TEAM & ACCESS', icon: '👥', path: 'team', description: 'Members, roles, permissions', group: 'intel' },
   
-  // Config Group
-  { key: 'ai', label: 'AI CONFIGURATION', icon: '🤖', path: 'ai', description: 'Model preferences, tokens', group: 'config' },
-  { key: 'integrations', label: 'INTEGRATIONS', icon: '🔗', path: 'integrations', description: 'External services', group: 'config' },
-  { key: 'notifications', label: 'NOTIFICATIONS', icon: '🔔', path: 'notifications', description: 'Alerts, channels', group: 'config' },
-  { key: 'templates', label: 'TEMPLATES', icon: '📋', path: 'templates', description: 'Pro forma, reports, checklists', group: 'config' },
+  // Workflow Group
+  { key: 'integrations', label: 'DEAL INTEGRATIONS', icon: '🔗', path: 'integrations', description: 'DocuSign, Notarize, Title', group: 'workflow' },
+  { key: 'templates', label: 'TEMPLATES', icon: '📋', path: 'templates', description: 'Pro forma, reports, checklists', group: 'workflow' },
+  { key: 'verification', label: 'VERIFICATION', icon: '✅', path: 'verification', description: 'KYC, background checks', group: 'workflow' },
   
   // Data Group
   { key: 'dataroom', label: 'DATA ROOM', icon: '📁', path: 'dataroom', description: 'Secure document sharing', group: 'data' },
-  { key: 'verification', label: 'VERIFICATION', icon: '✅', path: 'verification', description: 'KYC, background checks', group: 'data' },
   { key: 'datamanagement', label: 'DATA MANAGEMENT', icon: '📦', path: 'data', description: 'Import, export, retention', group: 'data' },
-  { key: 'billing', label: 'BILLING & USAGE', icon: '💳', path: 'billing', description: 'Credits, invoices', group: 'data' },
 ];
 
 // Mock deals for selector
@@ -88,14 +82,6 @@ const MOCK_DEALS = [
   { id: '2', name: 'Tampa MF Acquisition' },
   { id: '3', name: 'Orlando BTR Project' },
 ];
-
-// Access Control Matrix
-const ACCESS_MATRIX = {
-  admin: { dealCapsules: 'Full', adminTools: 'Full', teamMgmt: 'Full', billing: 'Full' },
-  analyst: { dealCapsules: 'Full', adminTools: 'Intel Only', teamMgmt: '❌', billing: '❌' },
-  viewer: { dealCapsules: 'Read-only', adminTools: '❌', teamMgmt: '❌', billing: '❌' },
-  external: { dealCapsules: 'Shared Only', adminTools: '❌', teamMgmt: '❌', billing: '❌' },
-};
 
 export default function AdminToolsPage() {
   const navigate = useNavigate();
@@ -203,7 +189,7 @@ export default function AdminToolsPage() {
             color: BT.text.amber,
             letterSpacing: '1px',
           }}>
-            ADMIN TOOLS
+            🔒 ADMIN TOOLS
           </div>
           
           {/* Deal Selector */}
@@ -230,8 +216,19 @@ export default function AdminToolsPage() {
           </div>
         </div>
 
-        {/* User Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* User Info & Link to Settings */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <a 
+            href="/settings" 
+            style={{ 
+              fontSize: 10, 
+              color: BT.text.cyan, 
+              textDecoration: 'none',
+              fontFamily: MONO,
+            }}
+          >
+            ⚙️ Account Settings
+          </a>
           <span style={{
             padding: '4px 10px',
             background: BT.text.amber + '22',
@@ -243,16 +240,13 @@ export default function AdminToolsPage() {
           }}>
             Admin
           </span>
-          <span style={{ fontSize: 11, color: BT.text.secondary }}>
-            Leon D.
-          </span>
         </div>
       </header>
 
       <div style={{ display: 'flex', flex: 1 }}>
         {/* Sidebar Navigation */}
         <aside style={{
-          width: 240,
+          width: 220,
           background: BT.bg.sidebar,
           borderRight: `1px solid ${BT.border.subtle}`,
           display: 'flex',
@@ -262,23 +256,9 @@ export default function AdminToolsPage() {
           {/* Navigation Groups */}
           <nav style={{ flex: 1, padding: '12px 8px' }}>
             {renderNavGroup('intel', 'Intelligence')}
-            {renderNavGroup('config', 'Configuration')}
-            {renderNavGroup('data', 'Data & Billing')}
+            {renderNavGroup('workflow', 'Deal Workflow')}
+            {renderNavGroup('data', 'Data')}
           </nav>
-
-          {/* Access Control Info */}
-          <div style={{
-            padding: 12,
-            borderTop: `1px solid ${BT.border.subtle}`,
-            background: BT.bg.panel,
-          }}>
-            <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, marginBottom: 8, textTransform: 'uppercase' }}>
-              Access Level
-            </div>
-            <div style={{ fontSize: 10, color: BT.text.primary, fontFamily: MONO }}>
-              Full Admin Access
-            </div>
-          </div>
 
           {/* Footer */}
           <div style={{
@@ -288,8 +268,11 @@ export default function AdminToolsPage() {
             color: BT.text.muted,
             fontFamily: MONO,
           }}>
-            <div>ADMIN TOOLS v1.1</div>
-            <div style={{ marginTop: 4 }}>Press ? for shortcuts</div>
+            <div style={{ marginBottom: 8 }}>
+              <span style={{ color: BT.text.secondary }}>Personal settings →</span>{' '}
+              <a href="/settings" style={{ color: BT.text.cyan, textDecoration: 'none' }}>Settings</a>
+            </div>
+            <div>ADMIN TOOLS v1.2</div>
           </div>
         </aside>
 
@@ -299,13 +282,10 @@ export default function AdminToolsPage() {
             <Route path="/" element={<DealIntelligenceSection />} />
             <Route path="intel/*" element={<DealIntelligenceSection />} />
             <Route path="team" element={<TeamSection />} />
-            <Route path="ai" element={<AIConfigSection />} />
             <Route path="integrations" element={<IntegrationsSection />} />
+            <Route path="templates" element={<TemplatesSection />} />
             <Route path="dataroom" element={<DataRoomSection />} />
             <Route path="verification" element={<VerificationSection />} />
-            <Route path="billing" element={<BillingSection />} />
-            <Route path="notifications" element={<NotificationsSection />} />
-            <Route path="templates" element={<TemplatesSection />} />
             <Route path="data" element={<DataManagementSection />} />
           </Routes>
         </main>
