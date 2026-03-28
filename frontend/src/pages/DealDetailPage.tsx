@@ -361,7 +361,7 @@ const DealTopStatusBar: React.FC<{ dealName: string }> = ({ dealName }) => {
       fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace", fontSize: 9, userSelect: 'none',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 13, fontWeight: 800, color: '#F5A623', letterSpacing: 2, flexShrink: 0 }}>JEDIRE</span>
+        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 13, fontWeight: 800, color: '#F5A623', letterSpacing: 2, flexShrink: 0 }}>JediRE</span>
         <span style={{ fontSize: 9, color: '#4A5568', flexShrink: 0 }}>|</span>
         <span style={{ fontSize: 9, color: '#8B95A5', fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', flexShrink: 0 }}>
           {dealName}
