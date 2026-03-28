@@ -186,19 +186,21 @@ function AppContent() {
         <Route path="/deals/:id" element={<DealIdRedirect />} />
         <Route path="/deals/:id/:module" element={<RedirectDealViewToTab />} />
 
-        {/* ═══ Admin/dev pages — keep in MainLayout ═══ */}
+        {/* ═══ Admin Tools — standalone (has own layout chrome) ═══ */}
+        <Route path="/admin/command-center" element={<CommandCenterPage />} />
+        <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
+        <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
+        <Route path="/admin/intelligence" element={
+          <Suspense fallback={<PageLoadingFallback />}>
+            {React.createElement(
+              React.lazy(() => import('./pages/admin/IntelligenceDashboard').then(m => ({ default: m.IntelligenceDashboard })))
+            )}
+          </Suspense>
+        } />
+        <Route path="/admin/*" element={<AdminToolsPage />} />
+
+        {/* ═══ Dev/demo pages — keep in MainLayout ═══ */}
         <Route element={<MainLayout />}>
-          <Route path="/admin/command-center" element={<CommandCenterPage />} />
-          <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
-          <Route path="/admin/data-tracker" element={<DataTrackerPage />} />
-          <Route path="/admin/intelligence" element={
-            <Suspense fallback={<PageLoadingFallback />}>
-              {React.createElement(
-                React.lazy(() => import('./pages/admin/IntelligenceDashboard').then(m => ({ default: m.IntelligenceDashboard })))
-              )}
-            </Suspense>
-          } />
-          <Route path="/admin/*" element={<AdminToolsPage />} />
           <Route path="/architecture" element={<SystemArchitecturePage />} />
           <Route path="/demo/m28-widgets" element={<M28WidgetsDemo />} />
           <Route path="/demo/flywheel" element={<DealFlywheelDashboard />} />
