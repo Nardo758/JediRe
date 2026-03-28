@@ -14,6 +14,7 @@ import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 import { StrategyBuilderPage } from "./StrategyBuilderPage";
 import { BottomPanel } from "../components/layout/BottomPanel";
 import { AgentBar } from "../components/layout/AgentBar";
+import TerminalMapView from "../components/map/TerminalMapView";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -1007,11 +1008,6 @@ export default function TerminalPage() {
   );
 
   // ─── MAP SIDEBAR ───────────────────────────────────────────
-  const PIN_POSITIONS = [
-    {x:"22%",y:"28%"},{x:"68%",y:"18%"},{x:"55%",y:"58%"},{x:"44%",y:"42%"},
-    {x:"26%",y:"48%"},{x:"36%",y:"36%"},{x:"60%",y:"65%"},{x:"48%",y:"38%"},
-  ];
-
   // Tab-aware map: F2 shows pipeline deals, F3 shows owned assets
   const mapPins: {id:string;name:string;metric:number;metricLabel:string;units:number;irr:string;strat:string;stage:string;addr:string}[] =
     fkey==="F3"
@@ -1096,57 +1092,17 @@ export default function TerminalPage() {
         </div>
       )}
 
-      {/* ── Live map viewport with tab-aware pins ── */}
-      <div style={{flex:1,background:"#080C14",position:"relative",minHeight:0,overflow:"hidden"}} onClick={()=>setMapSelDeal(null)}>
-        <svg width="100%" height="100%" style={{position:"absolute",inset:0,opacity:0.05,pointerEvents:"none"}}>
-          {Array.from({length:20}).map((_,i)=><line key={i} x1="0" y1={i*25} x2="100%" y2={i*25} stroke="#8B95A5" strokeWidth="0.5"/>)}
-          {Array.from({length:16}).map((_,i)=><line key={`v${i}`} x1={i*22} y1="0" x2={i*22} y2="100%" stroke="#8B95A5" strokeWidth="0.5"/>)}
-        </svg>
-        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:10,color:"#8B95A5",opacity:0.08,textAlign:"center",pointerEvents:"none",letterSpacing:1}}>MAPBOX GL JS<br/>ATLANTA MSA</div>
-
-        {/* Pins — derived from current tab data */}
-        {mapPins.map((pin,idx)=>{
-          const pos = PIN_POSITIONS[idx];
-          const c   = mapPinColor(pin.metric);
-          const sz  = pin.units>200?16:pin.units>100?12:pin.units>0?10:8;
-          const sel = mapSelDeal===pin.id;
-          const layerColor = mapLayers.find(l=>l.visible) ? MAP_TYPES.find(mt=>mt.id===mapLayers.find(l=>l.visible)?.type)?.color||c : c;
-          return (
-            <div key={pin.id} onClick={e=>{e.stopPropagation();setMapSelDeal(sel?null:pin.id);}} style={{position:"absolute",left:pos.x,top:pos.y,transform:"translate(-50%,-50%)",cursor:"pointer",zIndex:sel?10:1}}>
-              <div style={{width:sz,height:sz,borderRadius:"50%",background:layerColor,border:sel?`2px solid #fff`:`1px solid ${layerColor}`,opacity:sel?1:0.85,boxShadow:sel?`0 0 14px ${layerColor}88`:"none",transition:"all 0.12s"}}/>
-              {!sel&&<div style={{position:"absolute",top:"-14px",left:"50%",transform:"translateX(-50%)",fontSize:10,fontFamily:"monospace",color:c,fontWeight:700,whiteSpace:"nowrap",textShadow:"0 0 6px #000"}}>{pin.metricLabel}</div>}
-              {sel&&(
-                <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:T.bg.header,border:`1px solid ${T.border.bright}`,padding:"6px 8px",whiteSpace:"nowrap",zIndex:20,animation:"fadeIn 0.12s",minWidth:150}}>
-                  <div style={{fontSize:10,fontWeight:700,color:T.text.white,fontFamily:"monospace",marginBottom:3}}>{pin.name}</div>
-                  <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:3}}>
-                    <span style={{fontSize:10,fontWeight:800,color:c,fontFamily:"monospace"}}>{pin.metricLabel}</span>
-                    <span style={{fontSize:10,color:T.text.amber,fontFamily:"monospace"}}>{pin.irr}</span>
-                    <span style={{fontSize:10,fontWeight:700,padding:"1px 4px",background:T.text.purple+"22",color:T.text.purple,border:`1px solid ${T.text.purple}44`}}>{pin.strat}</span>
-                  </div>
-                  <div style={{fontSize:10,color:T.text.muted,marginBottom:4}}>{pin.stage} · {pin.addr}</div>
-                  <button onClick={()=>navigate(fkey==="F3"?`/deals/${pin.id}/detail`:`/deals/${pin.id}/detail`)} style={{fontFamily:"monospace",fontSize:10,fontWeight:700,color:T.text.amber,background:"transparent",border:"none",cursor:"pointer",padding:0,letterSpacing:0.3}}>OPEN CAPSULE →</button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {mapPins.length===0&&(
-          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-30%)",textAlign:"center"}}>
-            <div style={{fontSize:10,color:T.text.muted,fontFamily:T.font.mono}}>No {fkey==="F3"?"assets":"deals"} to plot</div>
-          </div>
-        )}
-
-        {/* Legend */}
-        <div style={{position:"absolute",bottom:8,left:8,display:"flex",flexDirection:"column",gap:3,zIndex:5}}>
-          {mapLegend.map(({c,l})=>(
-            <div key={l} style={{display:"flex",alignItems:"center",gap:4}}>
-              <div style={{width:7,height:7,borderRadius:"50%",background:c,opacity:0.85}}/>
-              <span style={{fontSize:10,color:T.text.muted,fontFamily:"monospace"}}>{l}</span>
-            </div>
-          ))}
-        </div>
-        <button onClick={()=>navigate("/map")} style={{position:"absolute",bottom:8,right:8,fontFamily:"monospace",fontSize:10,fontWeight:700,background:T.text.cyan,color:T.bg.terminal,border:"none",padding:"3px 8px",cursor:"pointer",zIndex:5}}>FULL MAP →</button>
-      </div>
+      {/* ── Live Mapbox viewport with tab-aware pins & layer rendering ── */}
+      <TerminalMapView
+        pins={mapPins}
+        layers={mapLayers}
+        fkey={fkey}
+        pinColor={mapPinColor}
+        selectedPinId={mapSelDeal}
+        onSelectedPinChange={setMapSelDeal}
+        onNavigate={(path) => navigate(path)}
+        theme={T}
+      />
     </div>
   );
 
