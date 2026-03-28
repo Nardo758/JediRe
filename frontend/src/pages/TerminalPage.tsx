@@ -381,7 +381,7 @@ function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:stri
     <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"8px 10px",flex:1}}>
       <div style={{fontSize: 9,color:T.text.muted,letterSpacing:1,fontWeight:600,marginBottom:4}}>{label}</div>
       <div style={{display:"flex",alignItems:"baseline",gap:2}}>
-        <span style={{fontSize:12,fontWeight:800,color:valColor}}>{value}</span>
+        <span style={{fontSize:18,fontWeight:800,color:valColor}}>{value}</span>
         <span style={{fontSize:10,color:T.text.secondary}}>{sub}</span>
       </div>
       {change && <div style={{fontSize: 9,color:chColor,marginTop:2,fontWeight:600}}>{change}</div>}
