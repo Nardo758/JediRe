@@ -1,10 +1,9 @@
 /**
  * Agent Registry - Defines all JediRE agents and their capabilities
  * 
- * Each agent has specific responsibilities, topics it subscribes to,
- * and topics it publishes.
+ * 16 Analyst Agents + 2 Core Agents = 18 Total
  * 
- * @version 2.0.0
+ * @version 3.0.0
  * @date 2026-03-28
  */
 
@@ -14,7 +13,7 @@ import { AgentCode } from './agentBus';
 // Types
 // ============================================================================
 
-export type AgentCategory = 'core' | 'analyst' | 'specialist';
+export type AgentCategory = 'core' | 'analyst';
 
 export type AIModel = 
   | 'claude-3-opus'
@@ -31,30 +30,21 @@ export interface AgentDefinition {
   name: string;
   shortName: string;
   icon: string;               // Lucide icon name
-  color: string;              // For UI theming
-  category: AgentCategory;    // Agent type grouping
+  color: string;
+  category: AgentCategory;
+  focus: string;              // What this agent focuses on
   description: string;
-  capabilities: string[];     // What this agent can do
-  subscribesTo: string[];     // Topics it listens to
-  publishes: string[];        // Topics it produces
-  canChatWithUser: boolean;   // Can user directly query this agent?
-  priority: number;           // Display order (lower = higher priority)
-  defaultModel: AIModel;      // Default AI model for this agent
-  recommendedModels: AIModel[]; // Models that work well for this agent
-}
-
-export interface AgentQuery {
-  agentCode: AgentCode;
-  query: string;
-  context?: {
-    dealId?: string;
-    msaId?: string;
-    timeframe?: string;
-  };
+  capabilities: string[];
+  subscribesTo: string[];
+  publishes: string[];
+  canChatWithUser: boolean;
+  priority: number;
+  defaultModel: AIModel;
+  recommendedModels: AIModel[];
 }
 
 // ============================================================================
-// Available AI Models
+// AI Models
 // ============================================================================
 
 export const AI_MODELS: Record<AIModel, { name: string; provider: string; speed: string; cost: string }> = {
@@ -69,11 +59,13 @@ export const AI_MODELS: Record<AIModel, { name: string; provider: string; speed:
 };
 
 // ============================================================================
-// Agent Definitions
+// Agent Definitions - 18 Total (2 Core + 16 Analysts)
 // ============================================================================
 
 export const AGENT_DEFINITIONS: AgentDefinition[] = [
-  // ── Core Agents ──────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // CORE AGENTS
+  // ══════════════════════════════════════════════════════════════════════════
   {
     code: 'ORCHESTRATOR',
     name: 'JEDI Orchestrator',
@@ -81,16 +73,11 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
     icon: 'Brain',
     color: '#00D4FF',
     category: 'core',
+    focus: 'Coordination, notifications',
     description: 'Main AI coordinator - manages all agents and communicates with you',
-    capabilities: [
-      'Coordinate multi-agent workflows',
-      'Send mobile notifications',
-      'Synthesize insights from all agents',
-      'Answer general questions',
-      'Route queries to specialized agents',
-    ],
+    capabilities: ['Coordinate workflows', 'Send notifications', 'Synthesize insights', 'Route queries'],
     subscribesTo: ['*'],
-    publishes: ['user_response', 'agent_task', 'notification', 'workflow_status'],
+    publishes: ['user_response', 'agent_task', 'notification'],
     canChatWithUser: true,
     priority: 0,
     defaultModel: 'claude-3-opus',
@@ -98,205 +85,296 @@ export const AGENT_DEFINITIONS: AgentDefinition[] = [
   },
   {
     code: 'STRATEGY',
-    name: 'Strategy Agent',
+    name: 'Strategy Engine',
     shortName: 'Strategy',
     icon: 'Target',
     color: '#E74C3C',
     category: 'core',
-    description: 'Synthesizes all signals into actionable strategy recommendations',
-    capabilities: [
-      'Generate deal recommendations',
-      'Calculate optimal timing',
-      'Identify risk/reward balance',
-      'Compare strategy alternatives',
-      'Update JEDI scores',
-    ],
+    focus: 'Investment strategy',
+    description: 'Synthesizes all signals into actionable investment recommendations',
+    capabilities: ['Deal recommendations', 'Timing analysis', 'Risk/reward assessment', 'JEDI scores'],
     subscribesTo: ['*'],
-    publishes: ['strategy_recommendation', 'jedi_score_update', 'timing_analysis', 'risk_reward_matrix'],
+    publishes: ['strategy_recommendation', 'jedi_score_update'],
     canChatWithUser: true,
     priority: 1,
     defaultModel: 'claude-3-opus',
     recommendedModels: ['claude-3-opus', 'gpt-4'],
   },
 
-  // ── Analyst Agents ───────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // ANALYST AGENTS (AN01-AN16)
+  // ══════════════════════════════════════════════════════════════════════════
   {
-    code: 'SUPPLY',
-    name: 'Supply Analyst',
-    shortName: 'Supply',
-    icon: 'Building2',
-    color: '#F5A623',
+    code: 'AN01',
+    name: 'CFO',
+    shortName: 'CFO',
+    icon: 'LineChart',
+    color: '#2ECC71',
     category: 'analyst',
-    description: 'Analyzes construction pipeline, deliveries, and competitive supply',
-    capabilities: [
-      'Monitor construction starts and completions',
-      'Track competitive developments',
-      'Forecast supply pressure',
-      'Alert on new permits filed',
-      'Compare pipeline to historical absorption',
-    ],
-    subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated', 'demand_data'],
-    publishes: ['pipeline_data', 'supply_risk', 'competition_alert', 'permit_alert', 'delivery_forecast'],
+    focus: 'Returns, risk',
+    description: 'Analyzes financial returns, risk metrics, and investment performance',
+    capabilities: ['IRR analysis', 'Risk assessment', 'Return metrics', 'Portfolio performance'],
+    subscribesTo: ['deal_added', 'proforma_updated'],
+    publishes: ['return_analysis', 'risk_metrics'],
     canChatWithUser: true,
     priority: 2,
     defaultModel: 'claude-3-sonnet',
     recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
-    code: 'DEMAND',
-    name: 'Demand Analyst',
-    shortName: 'Demand',
-    icon: 'TrendingUp',
-    color: '#7ED321',
+    code: 'AN02',
+    name: 'Accountant',
+    shortName: 'Accountant',
+    icon: 'Calculator',
+    color: '#3498DB',
     category: 'analyst',
-    description: 'Analyzes absorption, leasing velocity, job growth, and demand drivers',
-    capabilities: [
-      'Track absorption rates',
-      'Monitor leasing velocity',
-      'Analyze employment trends',
-      'Forecast rent growth',
-      'Identify demand drivers',
-    ],
-    subscribesTo: ['deal_added', 'market_selected', 'supply_data', 'news_sentiment'],
-    publishes: ['demand_forecast', 'absorption_rate', 'rent_pressure', 'employment_update', 'demand_alert'],
+    focus: 'Tax, GAAP',
+    description: 'Handles tax implications, GAAP compliance, and accounting standards',
+    capabilities: ['Tax analysis', 'GAAP compliance', 'Depreciation schedules', 'Financial statements'],
+    subscribesTo: ['deal_added', 'transaction_completed'],
+    publishes: ['tax_analysis', 'accounting_report'],
     canChatWithUser: true,
     priority: 3,
     defaultModel: 'claude-3-sonnet',
     recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
-    code: 'COMPS',
-    name: 'Comps Analyst',
-    shortName: 'Comps',
-    icon: 'BarChart3',
-    color: '#3498DB',
+    code: 'AN03',
+    name: 'Marketing',
+    shortName: 'Marketing',
+    icon: 'Megaphone',
+    color: '#E91E63',
     category: 'analyst',
-    description: 'Analyzes comparable sales, rents, and market benchmarks',
-    capabilities: [
-      'Find comparable properties',
-      'Analyze sale transactions',
-      'Track rent comps',
-      'Calculate market benchmarks',
-      'Identify pricing anomalies',
-    ],
-    subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated'],
-    publishes: ['comp_analysis', 'sale_alert', 'rent_benchmark', 'pricing_insight'],
+    focus: 'Positioning, lease-up',
+    description: 'Develops marketing strategies, positioning, and lease-up plans',
+    capabilities: ['Market positioning', 'Lease-up strategy', 'Pricing optimization', 'Competitor analysis'],
+    subscribesTo: ['deal_added', 'market_selected'],
+    publishes: ['marketing_strategy', 'pricing_recommendation'],
     canChatWithUser: true,
     priority: 4,
     defaultModel: 'claude-3-sonnet',
     recommendedModels: ['claude-3-sonnet', 'claude-3-haiku'],
   },
   {
-    code: 'NEWS',
-    name: 'News Analyst',
-    shortName: 'News',
-    icon: 'Newspaper',
-    color: '#4A90E2',
+    code: 'AN04',
+    name: 'Developer',
+    shortName: 'Developer',
+    icon: 'Hammer',
+    color: '#FF9800',
     category: 'analyst',
-    description: 'Monitors market news, sentiment, and headline impact on deals',
-    capabilities: [
-      'Scan real-time market news',
-      'Analyze sentiment shifts',
-      'Calculate JEDI score impact',
-      'Track employer announcements',
-      'Monitor regulatory changes',
-    ],
-    subscribesTo: ['deal_added', 'market_selected', 'trade_area_updated'],
-    publishes: ['news_alert', 'sentiment_shift', 'headline_impact', 'employer_announcement', 'regulatory_update'],
+    focus: 'Construction, value-add',
+    description: 'Analyzes development feasibility, construction costs, and value-add opportunities',
+    capabilities: ['Construction analysis', 'Value-add assessment', 'Cost estimation', 'Timeline planning'],
+    subscribesTo: ['deal_added', 'zoning_analysis'],
+    publishes: ['development_plan', 'construction_estimate'],
     canChatWithUser: true,
     priority: 5,
-    defaultModel: 'claude-3-haiku',
-    recommendedModels: ['claude-3-haiku', 'gpt-3.5-turbo'],
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
-    code: 'RISK',
-    name: 'Risk Analyst',
-    shortName: 'Risk',
-    icon: 'ShieldAlert',
-    color: '#E67E22',
+    code: 'AN05',
+    name: 'Legal',
+    shortName: 'Legal',
+    icon: 'Scale',
+    color: '#607D8B',
     category: 'analyst',
-    description: 'Monitors risks across all dimensions and triggers alerts',
-    capabilities: [
-      'Aggregate risk signals',
-      'Calculate risk scores',
-      'Monitor trigger thresholds',
-      'Generate risk reports',
-      'Prioritize alerts',
-    ],
-    subscribesTo: ['*'],
-    publishes: ['risk_alert', 'risk_score_update', 'threshold_breach', 'risk_report'],
+    focus: 'Contracts, compliance',
+    description: 'Reviews contracts, ensures compliance, and identifies legal risks',
+    capabilities: ['Contract review', 'Compliance check', 'Legal risk analysis', 'Due diligence'],
+    subscribesTo: ['deal_added', 'document_uploaded'],
+    publishes: ['legal_review', 'compliance_alert'],
     canChatWithUser: true,
     priority: 6,
-    defaultModel: 'claude-3-sonnet',
-    recommendedModels: ['claude-3-sonnet', 'claude-3-opus'],
+    defaultModel: 'claude-3-opus',
+    recommendedModels: ['claude-3-opus', 'gpt-4'],
   },
-
-  // ── Specialist Agents ────────────────────────────────────────
   {
-    code: 'DEBT',
-    name: 'Debt Specialist',
-    shortName: 'Debt',
+    code: 'AN06',
+    name: 'Lender',
+    shortName: 'Lender',
     icon: 'Landmark',
     color: '#9B59B6',
-    category: 'specialist',
-    description: 'Tracks interest rates, spreads, lender activity, and financing options',
-    capabilities: [
-      'Monitor rate movements',
-      'Track lender appetite',
-      'Compare financing options',
-      'Calculate debt metrics',
-      'Alert on rate triggers',
-    ],
-    subscribesTo: ['deal_added', 'proforma_updated', 'market_selected'],
-    publishes: ['rate_update', 'financing_options', 'debt_alert', 'lender_activity', 'spread_change'],
+    category: 'analyst',
+    focus: 'Debt, underwriting',
+    description: 'Analyzes debt options, underwriting criteria, and financing structures',
+    capabilities: ['Debt analysis', 'Underwriting review', 'Lender matching', 'Rate comparison'],
+    subscribesTo: ['deal_added', 'proforma_updated'],
+    publishes: ['debt_options', 'underwriting_analysis'],
     canChatWithUser: true,
     priority: 7,
     defaultModel: 'claude-3-sonnet',
     recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
-    code: 'CASH',
-    name: 'Cash Flow Specialist',
-    shortName: 'Cash',
-    icon: 'DollarSign',
-    color: '#27AE60',
-    category: 'specialist',
-    description: 'Models cash flow, distributions, and waterfall analysis',
-    capabilities: [
-      'Project cash flows',
-      'Model waterfall distributions',
-      'Calculate IRR scenarios',
-      'Track actual vs projected',
-      'Alert on variance triggers',
-    ],
-    subscribesTo: ['deal_added', 'proforma_updated', 'debt_update', 'demand_forecast'],
-    publishes: ['cashflow_projection', 'distribution_schedule', 'irr_update', 'variance_alert'],
+    code: 'AN07',
+    name: 'Acquisitions',
+    shortName: 'Acquisitions',
+    icon: 'Handshake',
+    color: '#00BCD4',
+    category: 'analyst',
+    focus: 'Deal sourcing, negotiations',
+    description: 'Sources deals, analyzes opportunities, and supports negotiations',
+    capabilities: ['Deal sourcing', 'Opportunity screening', 'Negotiation strategy', 'LOI drafting'],
+    subscribesTo: ['market_selected', 'opportunity_found'],
+    publishes: ['deal_opportunity', 'negotiation_insight'],
     canChatWithUser: true,
     priority: 8,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'claude-3-opus'],
+  },
+  {
+    code: 'AN08',
+    name: 'Asset Manager',
+    shortName: 'Asset Mgr',
+    icon: 'Building',
+    color: '#795548',
+    category: 'analyst',
+    focus: 'NOI optimization',
+    description: 'Optimizes NOI, manages assets, and identifies improvement opportunities',
+    capabilities: ['NOI optimization', 'Expense analysis', 'Revenue enhancement', 'Business plan execution'],
+    subscribesTo: ['deal_added', 'performance_data'],
+    publishes: ['optimization_recommendation', 'noi_analysis'],
+    canChatWithUser: true,
+    priority: 9,
     defaultModel: 'claude-3-sonnet',
     recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
   },
   {
-    code: 'ZONING',
-    name: 'Zoning Specialist',
-    shortName: 'Zoning',
-    icon: 'Map',
-    color: '#8E44AD',
-    category: 'specialist',
-    description: 'Analyzes zoning codes, entitlements, and regulatory requirements',
-    capabilities: [
-      'Parse zoning codes',
-      'Calculate development capacity',
-      'Track entitlement timelines',
-      'Monitor variance requests',
-      'Alert on code changes',
-    ],
-    subscribesTo: ['deal_added', 'parcel_selected', 'regulatory_update'],
-    publishes: ['zoning_analysis', 'entitlement_status', 'capacity_calculation', 'regulatory_risk'],
+    code: 'AN09',
+    name: 'Property Manager',
+    shortName: 'Prop Mgr',
+    icon: 'Home',
+    color: '#4CAF50',
+    category: 'analyst',
+    focus: 'Tenant relations, maintenance',
+    description: 'Manages tenant relations, maintenance, and property operations',
+    capabilities: ['Tenant management', 'Maintenance planning', 'Vendor coordination', 'Resident satisfaction'],
+    subscribesTo: ['deal_added', 'tenant_event'],
+    publishes: ['property_report', 'maintenance_alert'],
     canChatWithUser: true,
-    priority: 9,
+    priority: 10,
+    defaultModel: 'claude-3-haiku',
+    recommendedModels: ['claude-3-haiku', 'gpt-3.5-turbo'],
+  },
+  {
+    code: 'AN10',
+    name: 'Leasing Director',
+    shortName: 'Leasing',
+    icon: 'Key',
+    color: '#CDDC39',
+    category: 'analyst',
+    focus: 'Vacancy, renewals',
+    description: 'Manages leasing strategy, vacancy reduction, and tenant renewals',
+    capabilities: ['Leasing strategy', 'Renewal optimization', 'Vacancy analysis', 'Rent pricing'],
+    subscribesTo: ['deal_added', 'lease_event'],
+    publishes: ['leasing_recommendation', 'vacancy_alert'],
+    canChatWithUser: true,
+    priority: 11,
     defaultModel: 'claude-3-sonnet',
-    recommendedModels: ['claude-3-sonnet', 'claude-3-opus'],
+    recommendedModels: ['claude-3-sonnet', 'claude-3-haiku'],
+  },
+  {
+    code: 'AN11',
+    name: 'Facilities Manager',
+    shortName: 'Facilities',
+    icon: 'Wrench',
+    color: '#FF5722',
+    category: 'analyst',
+    focus: 'CapEx, vendors',
+    description: 'Manages capital expenditures, vendor relationships, and building systems',
+    capabilities: ['CapEx planning', 'Vendor management', 'Building systems', 'Preventive maintenance'],
+    subscribesTo: ['deal_added', 'maintenance_event'],
+    publishes: ['capex_plan', 'vendor_recommendation'],
+    canChatWithUser: true,
+    priority: 12,
+    defaultModel: 'claude-3-haiku',
+    recommendedModels: ['claude-3-haiku', 'gpt-3.5-turbo'],
+  },
+  {
+    code: 'AN12',
+    name: 'Investment Analyst',
+    shortName: 'Inv Analyst',
+    icon: 'TrendingUp',
+    color: '#673AB7',
+    category: 'analyst',
+    focus: 'Hold/sell, refinance',
+    description: 'Analyzes hold vs sell decisions, refinancing opportunities, and investment timing',
+    capabilities: ['Hold/sell analysis', 'Refinance modeling', 'Exit strategy', 'Market timing'],
+    subscribesTo: ['deal_added', 'market_data'],
+    publishes: ['investment_recommendation', 'exit_analysis'],
+    canChatWithUser: true,
+    priority: 13,
+    defaultModel: 'claude-3-opus',
+    recommendedModels: ['claude-3-opus', 'gpt-4-turbo'],
+  },
+  {
+    code: 'AN13',
+    name: 'ESG',
+    shortName: 'ESG',
+    icon: 'Leaf',
+    color: '#8BC34A',
+    category: 'analyst',
+    focus: 'Energy, sustainability',
+    description: 'Analyzes ESG factors, energy efficiency, and sustainability initiatives',
+    capabilities: ['ESG assessment', 'Energy analysis', 'Sustainability planning', 'Green certifications'],
+    subscribesTo: ['deal_added', 'building_data'],
+    publishes: ['esg_report', 'sustainability_recommendation'],
+    canChatWithUser: true,
+    priority: 14,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'claude-3-haiku'],
+  },
+  {
+    code: 'AN14',
+    name: 'Compliance',
+    shortName: 'Compliance',
+    icon: 'ShieldCheck',
+    color: '#009688',
+    category: 'analyst',
+    focus: 'Insurance, permits',
+    description: 'Ensures regulatory compliance, insurance coverage, and permit requirements',
+    capabilities: ['Compliance monitoring', 'Insurance review', 'Permit tracking', 'Regulatory updates'],
+    subscribesTo: ['deal_added', 'regulatory_event'],
+    publishes: ['compliance_report', 'permit_alert'],
+    canChatWithUser: true,
+    priority: 15,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'gpt-4-turbo'],
+  },
+  {
+    code: 'AN15',
+    name: 'Tax Strategist',
+    shortName: 'Tax',
+    icon: 'Receipt',
+    color: '#F44336',
+    category: 'analyst',
+    focus: 'Cost seg, 1031s',
+    description: 'Optimizes tax strategy including cost segregation and 1031 exchanges',
+    capabilities: ['Cost segregation', '1031 exchange planning', 'Tax optimization', 'Depreciation strategy'],
+    subscribesTo: ['deal_added', 'transaction_event'],
+    publishes: ['tax_strategy', 'exchange_recommendation'],
+    canChatWithUser: true,
+    priority: 16,
+    defaultModel: 'claude-3-opus',
+    recommendedModels: ['claude-3-opus', 'gpt-4'],
+  },
+  {
+    code: 'AN16',
+    name: 'Researcher',
+    shortName: 'Researcher',
+    icon: 'Search',
+    color: '#3F51B5',
+    category: 'analyst',
+    focus: 'Market research, demographics',
+    description: 'Conducts market research, demographic analysis, and competitive intelligence',
+    capabilities: ['Market research', 'Demographic analysis', 'Competitive intel', 'Trend analysis'],
+    subscribesTo: ['market_selected', 'trade_area_updated'],
+    publishes: ['research_report', 'market_insight'],
+    canChatWithUser: true,
+    priority: 17,
+    defaultModel: 'claude-3-sonnet',
+    recommendedModels: ['claude-3-sonnet', 'claude-3-haiku'],
   },
 ];
 
@@ -312,29 +390,16 @@ export function getAgentsByCategory(category: AgentCategory): AgentDefinition[] 
   return AGENT_DEFINITIONS.filter(a => a.category === category);
 }
 
-export function getAgentsByCapability(capability: string): AgentDefinition[] {
-  return AGENT_DEFINITIONS.filter(a => 
-    a.capabilities.some(c => c.toLowerCase().includes(capability.toLowerCase()))
-  );
+export function getCoreAgents(): AgentDefinition[] {
+  return AGENT_DEFINITIONS.filter(a => a.category === 'core');
 }
 
-export function getAgentsThatPublish(topic: string): AgentDefinition[] {
-  return AGENT_DEFINITIONS.filter(a => 
-    a.publishes.some(p => p === topic || topic.startsWith(p))
-  );
-}
-
-export function getAgentsThatSubscribeTo(topic: string): AgentDefinition[] {
-  return AGENT_DEFINITIONS.filter(a => 
-    a.subscribesTo.includes('*') || 
-    a.subscribesTo.some(s => s === topic || topic.startsWith(s))
-  );
+export function getAnalystAgents(): AgentDefinition[] {
+  return AGENT_DEFINITIONS.filter(a => a.category === 'analyst');
 }
 
 export function getChatableAgents(): AgentDefinition[] {
-  return AGENT_DEFINITIONS
-    .filter(a => a.canChatWithUser)
-    .sort((a, b) => a.priority - b.priority);
+  return AGENT_DEFINITIONS.filter(a => a.canChatWithUser).sort((a, b) => a.priority - b.priority);
 }
 
 export function getAgentColor(code: AgentCode): string {
@@ -350,81 +415,47 @@ export function getAgentIcon(code: AgentCode): string {
 // ============================================================================
 
 export const AGENT_SUGGESTED_PROMPTS: Record<AgentCode, string[]> = {
-  ORCHESTRATOR: [
-    "What's the overall status of my portfolio?",
-    "Which deals need my attention today?",
-    "Give me a market briefing",
-    "What changed since yesterday?",
-  ],
-  SUPPLY: [
-    "What's in the pipeline for this submarket?",
-    "Show me competitive developments nearby",
-    "When are the next deliveries expected?",
-    "How does supply compare to absorption?",
-  ],
-  DEMAND: [
-    "What's the absorption trend?",
-    "How is employment growth looking?",
-    "What's driving demand here?",
-    "Forecast rent growth for next 12 months",
-  ],
-  NEWS: [
-    "Any major headlines affecting my deals?",
-    "What's the market sentiment?",
-    "Recent employer announcements?",
-    "Any regulatory news I should know about?",
-  ],
-  DEBT: [
-    "What are current rates for this deal type?",
-    "Which lenders are active in this market?",
-    "Compare financing options",
-    "Any rate movement alerts?",
-  ],
-  STRATEGY: [
-    "What's your recommendation for this deal?",
-    "Is now a good time to acquire?",
-    "What's the risk/reward balance?",
-    "Compare hold vs sell scenarios",
-  ],
-  CASH: [
-    "Project cash flows for next 5 years",
-    "What are the expected distributions?",
-    "Calculate IRR at different exit caps",
-    "Any variance from projections?",
-  ],
-  ZONING: [
-    "What's allowed on this parcel?",
-    "Calculate maximum development capacity",
-    "What entitlements are needed?",
-    "Any recent zoning changes?",
-  ],
-  COMPS: [
-    "Find comparable sales",
-    "What are rent comps showing?",
-    "How does pricing compare to market?",
-    "Any recent transactions nearby?",
-  ],
-  RISK: [
-    "What are the top risks for this deal?",
-    "Any threshold breaches?",
-    "Generate a risk report",
-    "Which deals have elevated risk?",
-  ],
+  ORCHESTRATOR: ["Portfolio status?", "What needs attention?", "Market briefing", "Today's priorities"],
+  STRATEGY: ["Deal recommendation?", "Hold vs sell?", "Risk/reward analysis", "Exit timing"],
+  AN01: ["What's the IRR?", "Risk metrics?", "Return analysis", "Performance vs plan"],
+  AN02: ["Tax implications?", "GAAP treatment?", "Depreciation schedule", "Year-end planning"],
+  AN03: ["Marketing strategy?", "Lease-up timeline?", "Pricing recommendations", "Competitive positioning"],
+  AN04: ["Development feasibility?", "Construction costs?", "Value-add opportunities", "Timeline estimate"],
+  AN05: ["Contract review needed?", "Compliance issues?", "Legal risks?", "Due diligence status"],
+  AN06: ["Best debt options?", "Current rates?", "Lender recommendations", "Underwriting criteria"],
+  AN07: ["New opportunities?", "Negotiation strategy?", "LOI terms", "Market timing"],
+  AN08: ["NOI optimization?", "Expense reduction?", "Revenue opportunities", "Business plan status"],
+  AN09: ["Tenant issues?", "Maintenance needs?", "Vendor performance", "Resident satisfaction"],
+  AN10: ["Vacancy status?", "Renewal strategy?", "Rent pricing", "Leasing pipeline"],
+  AN11: ["CapEx needs?", "Vendor bids?", "Building systems status", "Preventive maintenance"],
+  AN12: ["Hold or sell?", "Refinance opportunity?", "Exit scenarios", "Market timing"],
+  AN13: ["ESG score?", "Energy efficiency?", "Sustainability options", "Green certifications"],
+  AN14: ["Compliance status?", "Insurance coverage?", "Permit requirements", "Regulatory changes"],
+  AN15: ["Tax strategy?", "Cost seg opportunity?", "1031 exchange?", "Depreciation optimization"],
+  AN16: ["Market research?", "Demographics?", "Competitive analysis", "Trend insights"],
 };
 
 // ============================================================================
-// Agent Communication Templates
+// Agent Intro Messages
 // ============================================================================
 
 export const AGENT_INTRO_MESSAGES: Record<AgentCode, string> = {
-  ORCHESTRATOR: "I'm JEDI, your main AI assistant. I coordinate all the specialized agents and keep you informed. How can I help?",
-  SUPPLY: "I analyze supply and construction in your markets. I can tell you about pipeline, deliveries, and competitive developments.",
-  DEMAND: "I analyze demand drivers - absorption, leasing velocity, employment, and rent trends. What would you like to know?",
-  NEWS: "I monitor market news and headlines that could impact your deals. I can brief you on recent developments.",
-  DEBT: "I track financing markets - rates, spreads, and lender activity. Ask me about debt options for your deals.",
-  STRATEGY: "I synthesize signals from all agents to recommend optimal strategies. Let's talk about your deal or portfolio.",
-  CASH: "I model cash flows, distributions, and returns. I can project scenarios and track variance from plan.",
-  ZONING: "I analyze zoning codes and entitlements. Tell me about a property and I'll explain what's possible.",
-  COMPS: "I track comparable sales and rents. I can help you benchmark pricing and find relevant transactions.",
-  RISK: "I monitor risks across all dimensions. I'll alert you when something needs attention.",
+  ORCHESTRATOR: "I'm JEDI, your main AI coordinator. I manage all agents and keep you informed across your portfolio.",
+  STRATEGY: "I'm the Strategy Engine. I synthesize signals from all analysts to recommend optimal investment decisions.",
+  AN01: "I'm your CFO agent. I analyze returns, risk metrics, and overall investment performance.",
+  AN02: "I'm the Accountant. I handle tax implications, GAAP compliance, and financial reporting.",
+  AN03: "I'm Marketing. I develop positioning strategies, lease-up plans, and pricing optimization.",
+  AN04: "I'm the Developer agent. I analyze construction feasibility, costs, and value-add opportunities.",
+  AN05: "I'm Legal. I review contracts, ensure compliance, and identify legal risks.",
+  AN06: "I'm the Lender agent. I analyze debt options, underwriting criteria, and financing structures.",
+  AN07: "I'm Acquisitions. I source deals, screen opportunities, and support negotiations.",
+  AN08: "I'm the Asset Manager. I optimize NOI, manage performance, and execute business plans.",
+  AN09: "I'm the Property Manager. I handle tenant relations, maintenance, and daily operations.",
+  AN10: "I'm the Leasing Director. I manage leasing strategy, vacancy reduction, and renewals.",
+  AN11: "I'm Facilities. I manage CapEx planning, vendors, and building systems.",
+  AN12: "I'm the Investment Analyst. I analyze hold/sell decisions, refinancing, and exit strategies.",
+  AN13: "I'm ESG. I assess sustainability, energy efficiency, and environmental factors.",
+  AN14: "I'm Compliance. I monitor regulations, insurance, and permit requirements.",
+  AN15: "I'm the Tax Strategist. I optimize taxes through cost segregation, 1031s, and depreciation.",
+  AN16: "I'm the Researcher. I conduct market research, demographic analysis, and competitive intelligence.",
 };

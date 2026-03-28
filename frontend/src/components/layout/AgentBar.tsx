@@ -1,45 +1,44 @@
 /**
- * Agent Bar - Compact horizontal agent selector with proper icons
+ * Agent Bar - Compact agent selector for 18 agents
  * 
  * Features:
- * - Lucide icons grouped by category (Core, Analysts, Specialists)
- * - Hover to see agent name + status
+ * - Scrollable row of agent icons
+ * - Core agents always visible
+ * - Analyst agents in expandable section
  * - Click to open chat drawer
- * - Status indicator
  * 
- * @version 2.0.0
+ * @version 3.0.0
  * @date 2026-03-28
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import * as LucideIcons from 'lucide-react';
 import { 
-  X, Send, ChevronDown, ChevronUp, Settings,
-  Brain, Target, Building2, TrendingUp, BarChart3, 
-  Newspaper, ShieldAlert, Landmark, DollarSign, Map
+  X, Send, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings,
+  Brain, Target, LineChart, Calculator, Megaphone, Hammer, Scale, Landmark,
+  Handshake, Building, Home, Key, Wrench, TrendingUp, Leaf, ShieldCheck,
+  Receipt, Search, Users
 } from 'lucide-react';
 import { T } from '../../styles/terminal-tokens';
 import api from '../../lib/api';
 import { agentBus, AgentCode } from '../../services/agentBus';
-import { useAgents, useAgentChat, useAgentMessages } from '../../hooks/useAgentBus';
+import { useAgents, useAgentChat } from '../../hooks/useAgentBus';
 import { 
   getAgentByCode, 
   AGENT_SUGGESTED_PROMPTS, 
   AGENT_INTRO_MESSAGES, 
-  AGENT_DEFINITIONS,
   AgentDefinition,
-  AgentCategory,
 } from '../../services/agentRegistry';
 
 // Icon mapping
-const ICON_MAP: Record<string, React.FC<{ size?: number; color?: string }>> = {
-  Brain, Target, Building2, TrendingUp, BarChart3, 
-  Newspaper, ShieldAlert, Landmark, DollarSign, Map,
+const ICON_MAP: Record<string, React.FC<{ size?: number; color?: string; className?: string }>> = {
+  Brain, Target, LineChart, Calculator, Megaphone, Hammer, Scale, Landmark,
+  Handshake, Building, Home, Key, Wrench, TrendingUp, Leaf, ShieldCheck,
+  Receipt, Search, Users,
 };
 
 function getIconComponent(iconName: string) {
-  return ICON_MAP[iconName] || Brain;
+  return ICON_MAP[iconName] || Users;
 }
 
 // ============================================================================
@@ -73,18 +72,12 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
   }, []);
 
   useEffect(() => {
-    if (!dealId) {
-      setDealContext(null);
-      return;
-    }
+    if (!dealId) { setDealContext(null); return; }
     api.get(`/deals/${dealId}`)
       .then(res => {
         const deal = res.data?.deal || res.data?.data;
         if (deal) {
-          setDealContext({
-            name: deal.name || deal.address_line1,
-            jediScore: deal.jedi_score?.totalScore || deal.jedi_score,
-          });
+          setDealContext({ name: deal.name || deal.address_line1, jediScore: deal.jedi_score?.totalScore || deal.jedi_score });
         }
       })
       .catch(() => setDealContext(null));
@@ -92,30 +85,20 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
     const text = input.trim();
     setInput('');
     setIsThinking(true);
     sendMessage(text);
 
     try {
-      const response = await api.post('/agents/chat', {
-        agentCode,
-        message: text,
-        dealId,
-      });
-
+      const response = await api.post('/agents/chat', { agentCode, message: text, dealId });
       if (response.data?.success) {
-        const agentResponse = response.data.data;
         agentBus.send({
           from: agentCode,
           to: 'ORCHESTRATOR',
           type: 'response',
           topic: 'chat',
-          payload: { 
-            text: agentResponse.message,
-            fromUser: false,
-          },
+          payload: { text: response.data.data.message, fromUser: false },
           priority: 'normal',
         });
       }
@@ -125,11 +108,7 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
         to: 'ORCHESTRATOR',
         type: 'response',
         topic: 'chat',
-        payload: { 
-          text: `Error: ${error.message || 'Unable to process request'}`,
-          fromUser: false,
-          isError: true,
-        },
+        payload: { text: `Error: ${error.message}`, fromUser: false, isError: true },
         priority: 'normal',
       });
     } finally {
@@ -143,9 +122,9 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
       right: 0,
       top: 0,
       bottom: 0,
-      width: 420,
+      width: 400,
       background: T.bg.panel,
-      borderLeft: `2px solid ${agent?.color || T.border.medium}`,
+      borderLeft: `2px solid ${agent?.color}`,
       display: 'flex',
       flexDirection: 'column',
       zIndex: 1000,
@@ -154,169 +133,78 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
     }}>
       {/* Header */}
       <div style={{
-        padding: '14px 16px',
+        padding: '12px 14px',
         borderBottom: `1px solid ${T.border.subtle}`,
-        background: `linear-gradient(135deg, ${agent?.color}20, transparent)`,
+        background: `linear-gradient(135deg, ${agent?.color}15, transparent)`,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 44,
-            height: 44,
-            borderRadius: 10,
-            background: `${agent?.color}25`,
+            width: 38,
+            height: 38,
+            borderRadius: 8,
+            background: `${agent?.color}20`,
             border: `2px solid ${agent?.color}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-            <IconComponent size={24} color={agent?.color} />
+            <IconComponent size={20} color={agent?.color} />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ 
-              color: T.text.primary, 
-              fontWeight: 700, 
-              fontSize: 15,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}>
-              {agent?.name}
-              <span style={{
-                fontSize: 9,
-                padding: '2px 6px',
-                borderRadius: 4,
-                background: `${agent?.color}30`,
-                color: agent?.color,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}>
-                {agent?.category}
-              </span>
+            <div style={{ color: T.text.primary, fontWeight: 700, fontSize: 14 }}>
+              {agent?.code} · {agent?.name}
             </div>
-            <div style={{ color: T.text.muted, fontSize: 11, marginTop: 2 }}>
-              {agent?.description}
+            <div style={{ color: agent?.color, fontSize: 10, fontWeight: 600 }}>
+              {agent?.focus}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: T.text.muted,
-              cursor: 'pointer',
-              padding: 6,
-              borderRadius: 4,
-            }}
-          >
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 4 }}>
             <X size={18} />
           </button>
         </div>
         {dealContext && (
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 6, 
-            marginTop: 10,
-            padding: '5px 10px',
-            background: `${T.text.amber}15`,
-            borderRadius: 6,
-            border: `1px solid ${T.text.amber}30`,
-            width: 'fit-content',
-          }}>
-            <Map size={12} color={T.text.amber} />
-            <span style={{ fontSize: 11, color: T.text.amber, fontWeight: 600 }}>{dealContext.name}</span>
-            {dealContext.jediScore && (
-              <span style={{ fontSize: 10, color: T.text.muted }}>• JEDI {dealContext.jediScore}</span>
-            )}
+          <div style={{ marginTop: 8, padding: '4px 8px', background: `${T.text.amber}15`, borderRadius: 4, fontSize: 10, color: T.text.amber }}>
+            📍 {dealContext.name} {dealContext.jediScore && `• JEDI ${dealContext.jediScore}`}
           </div>
         )}
       </div>
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
-        {/* Intro */}
-        <div style={{
-          padding: '12px 14px',
-          background: `${agent?.color}10`,
-          borderLeft: `3px solid ${agent?.color}`,
-          borderRadius: '0 8px 8px 0',
-          marginBottom: 14,
-          fontSize: 12,
-          color: T.text.secondary,
-          lineHeight: 1.5,
-        }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+        <div style={{ padding: '10px 12px', background: `${agent?.color}10`, borderLeft: `3px solid ${agent?.color}`, borderRadius: '0 6px 6px 0', marginBottom: 12, fontSize: 12, color: T.text.secondary }}>
           {AGENT_INTRO_MESSAGES[agentCode]}
         </div>
-
-        {/* Chat messages */}
         {messages.filter(m => m.topic === 'chat').map(msg => {
           const isUser = (msg.payload as any)?.fromUser;
-          const isError = (msg.payload as any)?.isError;
           return (
-            <div
-              key={msg.id}
-              style={{
-                display: 'flex',
-                justifyContent: isUser ? 'flex-end' : 'flex-start',
-                marginBottom: 10,
-              }}
-            >
+            <div key={msg.id} style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
               <div style={{
-                maxWidth: '85%',
-                padding: '10px 14px',
-                background: isUser ? agent?.color : isError ? '#ff000020' : T.bg.panelAlt,
-                color: isUser ? '#000' : isError ? '#ff6b6b' : T.text.primary,
-                borderRadius: isUser ? '14px 14px 4px 14px' : '14px 14px 14px 4px',
-                fontSize: 13,
-                lineHeight: 1.5,
+                maxWidth: '80%',
+                padding: '8px 12px',
+                background: isUser ? agent?.color : T.bg.panelAlt,
+                color: isUser ? '#000' : T.text.primary,
+                borderRadius: isUser ? '12px 12px 4px 12px' : '12px 12px 12px 4px',
+                fontSize: 12,
               }}>
                 {(msg.payload as any)?.text}
               </div>
             </div>
           );
         })}
-
         {isThinking && (
-          <div style={{
-            padding: '10px 14px',
-            background: T.bg.panelAlt,
-            borderRadius: 14,
-            width: 'fit-content',
-            fontSize: 12,
-            color: T.text.muted,
-          }}>
-            <span className="thinking-dots">Analyzing</span>
+          <div style={{ padding: '8px 12px', background: T.bg.panelAlt, borderRadius: 12, width: 'fit-content', fontSize: 12, color: T.text.muted }}>
+            Analyzing...
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggested prompts */}
+      {/* Prompts */}
       {messages.filter(m => m.topic === 'chat').length === 0 && (
-        <div style={{ padding: '0 14px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <div style={{ padding: '0 12px 8px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {suggestedPrompts.slice(0, 4).map((prompt, i) => (
-            <button
-              key={i}
-              onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
-              style={{
-                padding: '6px 12px',
-                background: T.bg.panelAlt,
-                border: `1px solid ${T.border.subtle}`,
-                borderRadius: 6,
-                color: T.text.secondary,
-                fontSize: 11,
-                cursor: 'pointer',
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = agent?.color || '';
-                e.currentTarget.style.color = T.text.primary;
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = T.border.subtle;
-                e.currentTarget.style.color = T.text.secondary;
-              }}
-            >
+            <button key={i} onClick={() => { setInput(prompt); inputRef.current?.focus(); }}
+              style={{ padding: '5px 10px', background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, color: T.text.secondary, fontSize: 10, cursor: 'pointer' }}>
               {prompt}
             </button>
           ))}
@@ -324,46 +212,13 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
       )}
 
       {/* Input */}
-      <div style={{
-        padding: 14,
-        borderTop: `1px solid ${T.border.subtle}`,
-        display: 'flex',
-        gap: 10,
-      }}>
-        <input
-          ref={inputRef}
-          type="text"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSend()}
+      <div style={{ padding: 12, borderTop: `1px solid ${T.border.subtle}`, display: 'flex', gap: 8 }}>
+        <input ref={inputRef} type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()}
           placeholder={`Ask ${agent?.shortName}...`}
-          style={{
-            flex: 1,
-            padding: '12px 14px',
-            background: T.bg.terminal,
-            border: `1px solid ${T.border.subtle}`,
-            borderRadius: 8,
-            color: T.text.primary,
-            fontSize: 13,
-            fontFamily: T.font.mono,
-            outline: 'none',
-          }}
-        />
-        <button
-          onClick={handleSend}
-          disabled={!input.trim()}
-          style={{
-            padding: '12px 16px',
-            background: input.trim() ? agent?.color : T.bg.panelAlt,
-            border: 'none',
-            borderRadius: 8,
-            color: input.trim() ? '#000' : T.text.muted,
-            cursor: input.trim() ? 'pointer' : 'not-allowed',
-            fontWeight: 600,
-            transition: 'all 0.15s',
-          }}
-        >
-          <Send size={18} />
+          style={{ flex: 1, padding: '10px 12px', background: T.bg.terminal, border: `1px solid ${T.border.subtle}`, borderRadius: 6, color: T.text.primary, fontSize: 12, fontFamily: T.font.mono, outline: 'none' }} />
+        <button onClick={handleSend} disabled={!input.trim()}
+          style={{ padding: '10px 14px', background: input.trim() ? agent?.color : T.bg.panelAlt, border: 'none', borderRadius: 6, color: input.trim() ? '#000' : T.text.muted, cursor: input.trim() ? 'pointer' : 'not-allowed' }}>
+          <Send size={16} />
         </button>
       </div>
     </div>
@@ -371,129 +226,57 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, d
 };
 
 // ============================================================================
-// Agent Icon Button
+// Agent Chip
 // ============================================================================
 
-interface AgentIconProps {
+interface AgentChipProps {
   agent: AgentDefinition & { status: { status: string } };
   isActive: boolean;
   onClick: () => void;
-  size?: 'sm' | 'md';
+  compact?: boolean;
 }
 
-const AgentIcon: React.FC<AgentIconProps> = ({ agent, isActive, onClick, size = 'md' }) => {
+const AgentChip: React.FC<AgentChipProps> = ({ agent, isActive, onClick, compact }) => {
   const [hover, setHover] = useState(false);
-  const isOnline = agent.status.status === 'online' || agent.status.status === 'busy';
   const IconComponent = getIconComponent(agent.icon);
-  
-  const dimensions = size === 'sm' ? 36 : 42;
-  const iconSize = size === 'sm' ? 18 : 22;
+  const isOnline = agent.status.status === 'online' || agent.status.status === 'busy';
 
   return (
-    <div style={{ position: 'relative' }}>
-      <button
-        onClick={onClick}
-        onMouseEnter={() => setHover(true)}
-        onMouseLeave={() => setHover(false)}
-        style={{
-          width: dimensions,
-          height: dimensions,
-          borderRadius: 10,
-          border: isActive ? `2px solid ${agent.color}` : `1px solid ${T.border.subtle}`,
-          background: isActive ? `${agent.color}25` : hover ? `${agent.color}15` : 'transparent',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'all 0.15s ease',
-          transform: hover ? 'translateY(-2px)' : 'translateY(0)',
-        }}
-        title={`${agent.name}`}
-      >
-        <IconComponent size={iconSize} color={isActive || hover ? agent.color : T.text.muted} />
-      </button>
-      
-      {/* Status dot */}
-      <div style={{
-        position: 'absolute',
-        bottom: 1,
-        right: 1,
-        width: 8,
-        height: 8,
-        borderRadius: '50%',
-        background: isOnline ? '#22c55e' : '#6b7280',
-        border: `2px solid ${T.bg.panel}`,
-      }} />
-
-      {/* Tooltip on hover */}
-      {hover && (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={`${agent.code}: ${agent.name} - ${agent.focus}`}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: compact ? '4px 8px' : '6px 10px',
+        borderRadius: 6,
+        border: isActive ? `2px solid ${agent.color}` : `1px solid ${T.border.subtle}`,
+        background: isActive ? `${agent.color}20` : hover ? `${agent.color}10` : 'transparent',
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <div style={{ position: 'relative' }}>
+        <IconComponent size={compact ? 14 : 16} color={isActive || hover ? agent.color : T.text.muted} />
         <div style={{
           position: 'absolute',
-          bottom: '100%',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          marginBottom: 8,
-          padding: '8px 12px',
-          background: T.bg.topBar,
-          border: `1px solid ${agent.color}40`,
-          borderRadius: 8,
-          whiteSpace: 'nowrap',
-          zIndex: 100,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-        }}>
-          <div style={{ 
-            color: agent.color, 
-            fontWeight: 700, 
-            fontSize: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}>
-            <IconComponent size={14} color={agent.color} />
-            {agent.name}
-          </div>
-          <div style={{ color: T.text.muted, fontSize: 10, marginTop: 3 }}>
-            {agent.description.slice(0, 50)}...
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ============================================================================
-// Category Group
-// ============================================================================
-
-const CategoryGroup: React.FC<{
-  label: string;
-  agents: Array<AgentDefinition & { status: { status: string } }>;
-  selectedAgent: AgentCode | null;
-  onSelect: (code: AgentCode) => void;
-}> = ({ label, agents, selectedAgent, onSelect }) => {
-  if (agents.length === 0) return null;
-  
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ 
-        fontSize: 9, 
-        color: T.text.muted, 
-        letterSpacing: 0.8,
-        marginRight: 4,
-        textTransform: 'uppercase',
-      }}>
-        {label}
+          bottom: -2,
+          right: -2,
+          width: 6,
+          height: 6,
+          borderRadius: '50%',
+          background: isOnline ? '#22c55e' : '#6b7280',
+          border: `1px solid ${T.bg.panel}`,
+        }} />
+      </div>
+      <span style={{ fontSize: compact ? 10 : 11, fontWeight: 600, color: isActive || hover ? agent.color : T.text.secondary }}>
+        {agent.code}
       </span>
-      {agents.map(agent => (
-        <AgentIcon
-          key={agent.code}
-          agent={agent}
-          isActive={selectedAgent === agent.code}
-          onClick={() => onSelect(selectedAgent === agent.code ? null as any : agent.code)}
-          size="sm"
-        />
-      ))}
-    </div>
+    </button>
   );
 };
 
@@ -510,119 +293,151 @@ function useDealContext() {
 export const AgentBar: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<AgentCode | null>(null);
   const [expanded, setExpanded] = useState(true);
+  const [showAnalysts, setShowAnalysts] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const agents = useAgents();
   const dealId = useDealContext();
 
-  const chatableAgents = agents.filter(a => a.canChatWithUser);
-  
-  const coreAgents = chatableAgents.filter(a => a.category === 'core');
-  const analystAgents = chatableAgents.filter(a => a.category === 'analyst');
-  const specialistAgents = chatableAgents.filter(a => a.category === 'specialist');
+  const coreAgents = agents.filter(a => a.category === 'core');
+  const analystAgents = agents.filter(a => a.category === 'analyst');
+  const onlineCount = agents.filter(a => a.status.status === 'online' || a.status.status === 'busy').length;
 
-  const onlineCount = chatableAgents.filter(a => 
-    a.status.status === 'online' || a.status.status === 'busy'
-  ).length;
+  const scroll = (dir: 'left' | 'right') => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollBy({ left: dir === 'left' ? -200 : 200, behavior: 'smooth' });
+    }
+  };
 
   return (
     <>
       <div style={{
         background: T.bg.panel,
         borderTop: `1px solid ${T.border.medium}`,
-        padding: expanded ? '10px 16px' : '6px 16px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        transition: 'all 0.2s ease',
+        fontFamily: T.font.mono,
       }}>
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setExpanded(!expanded)}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: T.text.muted,
-            cursor: 'pointer',
-            padding: 4,
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-        </button>
+        {/* Main row */}
+        <div style={{
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+        }}>
+          {/* Toggle */}
+          <button onClick={() => setExpanded(!expanded)} style={{ background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 4 }}>
+            {expanded ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
 
-        {/* Label + count */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ 
-            color: T.text.cyan, 
-            fontSize: 11, 
-            fontWeight: 700, 
-            letterSpacing: 1,
-          }}>
-            AGENTS
-          </span>
-          <span style={{
-            fontSize: 10,
-            padding: '2px 6px',
-            background: `${T.text.green}20`,
-            color: T.text.green,
-            borderRadius: 4,
-          }}>
-            {onlineCount} online
-          </span>
+          {/* Label */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: T.text.cyan, fontSize: 11, fontWeight: 700, letterSpacing: 1 }}>AGENTS</span>
+            <span style={{ fontSize: 9, padding: '2px 6px', background: `${T.text.green}20`, color: T.text.green, borderRadius: 4 }}>
+              {onlineCount}/{agents.length}
+            </span>
+          </div>
+
+          <div style={{ width: 1, height: 18, background: T.border.subtle }} />
+
+          {expanded && (
+            <>
+              {/* Core agents */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 9, color: T.text.muted, letterSpacing: 0.5 }}>CORE</span>
+                {coreAgents.map(agent => (
+                  <AgentChip
+                    key={agent.code}
+                    agent={agent}
+                    isActive={selectedAgent === agent.code}
+                    onClick={() => setSelectedAgent(selectedAgent === agent.code ? null : agent.code)}
+                  />
+                ))}
+              </div>
+
+              <div style={{ width: 1, height: 18, background: T.border.subtle }} />
+
+              {/* Analysts toggle */}
+              <button
+                onClick={() => setShowAnalysts(!showAnalysts)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 12px',
+                  background: showAnalysts ? `${T.text.amber}20` : T.bg.panelAlt,
+                  border: `1px solid ${showAnalysts ? T.text.amber : T.border.subtle}`,
+                  borderRadius: 6,
+                  color: showAnalysts ? T.text.amber : T.text.secondary,
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                <Users size={14} />
+                16 Analysts
+                {showAnalysts ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+            </>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Settings */}
+          <button
+            onClick={() => window.location.href = '/settings/agents'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '5px 10px',
+              background: 'transparent',
+              border: `1px solid ${T.border.subtle}`,
+              borderRadius: 4,
+              color: T.text.muted,
+              cursor: 'pointer',
+              fontSize: 10,
+            }}
+          >
+            <Settings size={12} />
+            AI
+          </button>
         </div>
 
-        {/* Divider */}
-        <div style={{ width: 1, height: 20, background: T.border.subtle }} />
-
-        {/* Agent icons by category */}
-        {expanded && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flex: 1 }}>
-            <CategoryGroup 
-              label="" 
-              agents={coreAgents} 
-              selectedAgent={selectedAgent}
-              onSelect={setSelectedAgent}
-            />
-            
-            <div style={{ width: 1, height: 20, background: T.border.subtle }} />
-            
-            <CategoryGroup 
-              label="Analysts" 
-              agents={analystAgents} 
-              selectedAgent={selectedAgent}
-              onSelect={setSelectedAgent}
-            />
-            
-            <div style={{ width: 1, height: 20, background: T.border.subtle }} />
-            
-            <CategoryGroup 
-              label="Specialists" 
-              agents={specialistAgents} 
-              selectedAgent={selectedAgent}
-              onSelect={setSelectedAgent}
-            />
-          </div>
-        )}
-
-        {/* Settings */}
-        <button
-          onClick={() => window.location.href = '/settings/agents'}
-          style={{
-            background: 'transparent',
-            border: `1px solid ${T.border.subtle}`,
-            borderRadius: 6,
-            padding: '6px 10px',
-            color: T.text.muted,
-            cursor: 'pointer',
+        {/* Analysts row (expandable) */}
+        {expanded && showAnalysts && (
+          <div style={{
+            padding: '8px 12px',
+            borderTop: `1px solid ${T.border.subtle}`,
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
-            fontSize: 10,
-          }}
-        >
-          <Settings size={12} />
-          AI Settings
-        </button>
+            gap: 8,
+          }}>
+            <button onClick={() => scroll('left')} style={{ background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 4 }}>
+              <ChevronLeft size={14} />
+            </button>
+            
+            <div ref={scrollRef} style={{
+              flex: 1,
+              display: 'flex',
+              gap: 6,
+              overflowX: 'auto',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+            }}>
+              {analystAgents.map(agent => (
+                <AgentChip
+                  key={agent.code}
+                  agent={agent}
+                  isActive={selectedAgent === agent.code}
+                  onClick={() => setSelectedAgent(selectedAgent === agent.code ? null : agent.code)}
+                  compact
+                />
+              ))}
+            </div>
+
+            <button onClick={() => scroll('right')} style={{ background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 4 }}>
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Chat drawer */}
@@ -635,15 +450,7 @@ export const AgentBar: React.FC = () => {
       )}
 
       <style>{`
-        .thinking-dots::after {
-          content: '';
-          animation: dots 1.5s infinite;
-        }
-        @keyframes dots {
-          0%, 20% { content: '.'; }
-          40% { content: '..'; }
-          60%, 100% { content: '...'; }
-        }
+        div::-webkit-scrollbar { display: none; }
       `}</style>
     </>
   );
