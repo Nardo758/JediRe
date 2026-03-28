@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { X, Send, MessageSquare, ChevronRight } from 'lucide-react';
 import { T } from '../../styles/terminal-tokens';
 import { Badge } from '../terminal/Badge';
@@ -19,6 +20,13 @@ import api from '../../lib/api';
 import { useAgents, useAgentChat, useAgentMessages } from '../../hooks/useAgentBus';
 import { agentBus, AgentCode, AgentMessage } from '../../services/agentBus';
 import { getAgentByCode, AGENT_SUGGESTED_PROMPTS, AGENT_INTRO_MESSAGES } from '../../services/agentRegistry';
+
+// Helper to extract deal ID from URL
+function useDealContext() {
+  const location = useLocation();
+  const match = location.pathname.match(/\/deals\/([a-f0-9-]+)/i);
+  return match ? match[1] : undefined;
+}
 
 // ============================================================================
 // Types
@@ -87,17 +95,39 @@ type BottomTabId = typeof BOTTOM_TABS[number]['id'];
 interface AgentChatDrawerProps {
   agentCode: AgentCode;
   onClose: () => void;
+  dealId?: string;
 }
 
-const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose }) => {
+const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose, dealId }) => {
   const agent = getAgentByCode(agentCode);
   const { messages, sendMessage } = useAgentChat(agentCode);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [dealContext, setDealContext] = useState<{ name?: string; jediScore?: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const suggestedPrompts = AGENT_SUGGESTED_PROMPTS[agentCode] || [];
+
+  // Load deal context if dealId provided
+  useEffect(() => {
+    if (!dealId) {
+      setDealContext(null);
+      return;
+    }
+    
+    api.get(`/deals/${dealId}`)
+      .then(res => {
+        const deal = res.data?.deal || res.data?.data;
+        if (deal) {
+          setDealContext({
+            name: deal.name || deal.address_line1,
+            jediScore: deal.jedi_score?.totalScore || deal.jedi_score,
+          });
+        }
+      })
+      .catch(() => setDealContext(null));
+  }, [dealId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -118,11 +148,11 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose })
     sendMessage(text);
 
     try {
-      // Call real API
+      // Call real API with deal context
       const response = await api.post('/agents/chat', {
         agentCode,
         message: text,
-        dealId: undefined, // TODO: pass current deal context if available
+        dealId,
       });
 
       if (response.data?.success) {
@@ -198,6 +228,28 @@ const AgentChatDrawer: React.FC<AgentChatDrawerProps> = ({ agentCode, onClose })
           <div style={{ color: T.text.muted, fontSize: T.fontSize.xs }}>
             {agent?.description}
           </div>
+          {dealContext && (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 6, 
+              marginTop: 4,
+              padding: '3px 8px',
+              background: `${T.text.amber}15`,
+              borderRadius: 4,
+              width: 'fit-content',
+            }}>
+              <span style={{ fontSize: '10px', color: T.text.amber }}>📍</span>
+              <span style={{ fontSize: T.fontSize.xs, color: T.text.amber, fontWeight: 600 }}>
+                {dealContext.name}
+              </span>
+              {dealContext.jediScore && (
+                <span style={{ fontSize: '9px', color: T.text.muted }}>
+                  JEDI {dealContext.jediScore}
+                </span>
+              )}
+            </div>
+          )}
         </div>
         <button
           onClick={onClose}
@@ -506,6 +558,9 @@ export const BottomPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<BottomTabId>('agents');
   const [selectedAgent, setSelectedAgent] = useState<AgentCode | null>(null);
   
+  // Get current deal context from URL
+  const currentDealId = useDealContext();
+  
   // Data state
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -749,6 +804,7 @@ export const BottomPanel: React.FC = () => {
         <AgentChatDrawer
           agentCode={selectedAgent}
           onClose={() => setSelectedAgent(null)}
+          dealId={currentDealId}
         />
       )}
     </>

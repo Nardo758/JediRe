@@ -15,6 +15,12 @@ import {
   markNotificationRead,
   AgentCode 
 } from '../services/agent-chat.service';
+import {
+  sendPushNotification,
+  registerPushToken,
+  unregisterPushToken,
+  isPushServiceAvailable,
+} from '../services/push-notification.service';
 import { authMiddleware } from '../middleware/auth';
 import { logger } from '../utils/logger';
 
@@ -196,6 +202,141 @@ router.post('/notifications/:id/read', async (req: Request, res: Response) => {
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to mark notification as read',
+    });
+  }
+});
+
+// ============================================================================
+// Push Token Management
+// ============================================================================
+
+/**
+ * POST /api/v1/agents/push/register
+ * Register a push notification token for the current user's device
+ */
+router.post('/push/register', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    const { token, platform, deviceName } = req.body;
+
+    if (!token || !platform) {
+      return res.status(400).json({
+        success: false,
+        error: 'token and platform are required',
+      });
+    }
+
+    if (!['ios', 'android', 'web'].includes(platform)) {
+      return res.status(400).json({
+        success: false,
+        error: 'platform must be ios, android, or web',
+      });
+    }
+
+    const success = await registerPushToken(userId, token, platform, deviceName);
+
+    return res.json({
+      success,
+      message: success ? 'Push token registered' : 'Failed to register token',
+    });
+
+  } catch (error: any) {
+    logger.error('Push register error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to register push token',
+    });
+  }
+});
+
+/**
+ * POST /api/v1/agents/push/unregister
+ * Unregister a push notification token
+ */
+router.post('/push/unregister', async (req: Request, res: Response) => {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        error: 'token is required',
+      });
+    }
+
+    const success = await unregisterPushToken(token);
+
+    return res.json({
+      success,
+      message: success ? 'Push token unregistered' : 'Token not found',
+    });
+
+  } catch (error: any) {
+    logger.error('Push unregister error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to unregister push token',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/agents/push/status
+ * Check if push notifications are available
+ */
+router.get('/push/status', async (req: Request, res: Response) => {
+  try {
+    const available = await isPushServiceAvailable();
+
+    return res.json({
+      success: true,
+      data: {
+        pushEnabled: available,
+        provider: available ? 'firebase' : null,
+      },
+    });
+
+  } catch (error: any) {
+    logger.error('Push status error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to check push status',
+    });
+  }
+});
+
+/**
+ * POST /api/v1/agents/push/test
+ * Send a test push notification to the current user
+ */
+router.post('/push/test', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+
+    const result = await sendPushNotification({
+      userId,
+      title: '🤖 JEDI Test Notification',
+      body: 'Push notifications are working! You\'ll receive alerts here.',
+      priority: 'high',
+      data: {
+        type: 'test',
+        agentSource: 'ORCHESTRATOR',
+      },
+    });
+
+    return res.json({
+      success: result.sent > 0,
+      data: result,
+      message: result.sent > 0 
+        ? `Test notification sent to ${result.sent} device(s)` 
+        : 'No registered devices or push not configured',
+    });
+
+  } catch (error: any) {
+    logger.error('Push test error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send test notification',
     });
   }
 });
