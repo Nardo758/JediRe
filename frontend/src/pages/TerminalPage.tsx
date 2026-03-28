@@ -570,7 +570,9 @@ export default function TerminalPage() {
   const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
   // F3 Portfolio state (typed after PortfolioAsset/RankedPortfolioAsset/PortfolioComp interfaces above)
-  const [f3Tab, setF3Tab] = useState<"rankings"|"grid"|"performance"|"comps">("rankings");
+  const [f3Tab, setF3Tab] = useState<"rankings"|"grid"|"performance"|"comps"|"documents">("rankings");
+  const [portfolioExporting, setPortfolioExporting] = useState(false);
+  const [discoveringComps, setDiscoveringComps] = useState<string|null>(null);
   const [portfolioAssets, setPortfolioAssets] = useState<PortfolioAsset[]>([]);
   const [portfolioRankings, setPortfolioRankings] = useState<RankedPortfolioAsset[]>([]);
   const [portfolioLoaded, setPortfolioLoaded] = useState(false);
@@ -1678,8 +1680,65 @@ export default function TerminalPage() {
       .finally(() => setPortfolioCompsLoading(prev => { const s = new Set(prev); s.delete(assetId); return s; }));
   };
 
-  const F3_TABS = ["rankings","grid","performance","comps"] as const;
-  const F3_LABELS: Record<string,string> = {rankings:"RANKINGS",grid:"ASSET GRID",performance:"PERFORMANCE",comps:"COMP SETS"};
+  const F3_TABS = ["rankings","grid","performance","comps","documents"] as const;
+  const F3_LABELS: Record<string,string> = {rankings:"RANKINGS",grid:"ASSET GRID",performance:"PERFORMANCE",comps:"COMP SETS",documents:"DOCUMENTS"};
+
+  // Portfolio helper functions
+  const discoverCompsForAsset = async (assetId: string) => {
+    setDiscoveringComps(assetId);
+    try {
+      await apiClient.post(`/api/v1/deals/${assetId}/comp-set/discover`);
+      loadCompSet(assetId);
+    } catch (e) { console.error("Discover comps failed:", e); }
+    finally { setDiscoveringComps(null); }
+  };
+
+  const exportPortfolioCsv = async () => {
+    setPortfolioExporting(true);
+    try {
+      const csvRows = [
+        ["Property","Submarket","Type","Units","Occupancy","NOI Actual","NOI ProForma","NOI Variance","IRR","Equity Multiple"].join(","),
+        ...portfolioAssets.map(a => [
+          `"${a.property_name||""}"`,
+          `"${a.submarket||""}"`,
+          a.asset_type||"",
+          a.units||"",
+          a.actual_occupancy!=null?a.actual_occupancy.toFixed(1):"",
+          a.actual_noi||"",
+          a.proforma_noi||"",
+          a.noi_variance!=null?a.noi_variance.toFixed(1):"",
+          a.irr!=null?a.irr.toFixed(1):"",
+          a.equity_multiple!=null?a.equity_multiple.toFixed(2):"",
+        ].join(","))
+      ].join("\n");
+      const blob = new Blob([csvRows], {type:"text/csv"});
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `portfolio_${Date.now()}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch(e) { console.error("Export failed:", e); }
+    finally { setPortfolioExporting(false); }
+  };
+
+  // Mini sparkline component for rankings
+  const MiniSparkline = ({data, target}: {data: number[], target: number}) => {
+    if (!data || data.length < 2) return <span style={{color:T.text.muted,fontSize:9}}>—</span>;
+    const max = Math.max(...data, target) + 2;
+    const min = Math.min(...data, target) - 2;
+    const range = max - min || 1;
+    const w = 80, h = 20;
+    const pts = data.map((v,i) => `${(i/(data.length-1))*w},${h - ((v-min)/range)*h}`).join(" ");
+    const targetY = h - ((target - min) / range) * h;
+    return (
+      <svg width={w} height={h} style={{display:"inline-block",verticalAlign:"middle"}}>
+        <line x1={0} y1={targetY} x2={w} y2={targetY} stroke={T.text.amber} strokeWidth={1} strokeDasharray="2,2"/>
+        <polyline fill="none" stroke={T.text.cyan} strokeWidth={1.5} points={pts}/>
+        <circle cx={w} cy={h - ((data[data.length-1]-min)/range)*h} r={2} fill={T.text.cyan}/>
+      </svg>
+    );
+  };
 
   const ViewPortfolio = () => {
     const avgOcc = portfolioAssets.length > 0
@@ -1722,6 +1781,7 @@ export default function TerminalPage() {
             </button>
           ))}
           <div style={{flex:1}}/>
+          <button onClick={exportPortfolioCsv} disabled={portfolioExporting} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:"transparent",color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>{portfolioExporting?"EXPORTING…":"EXPORT CSV"}</button>
           <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
           <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize: 9,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
         </div>
@@ -1740,24 +1800,60 @@ export default function TerminalPage() {
                     No ranking data available — assets may not yet be scored
                   </div>
                 ) : (
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead><tr style={{background:T.bg.header}}>
-                      {["ASSET","SUBMARKET","PCS SCORE","RANK","MOVEMENT","TRAJECTORY","ACTION"].map(h => <TH key={h}>{h}</TH>)}
-                    </tr></thead>
-                    <tbody>
-                      {portfolioRankings.map((asset, i) => (
-                        <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.dealId}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
-                          <TD><span style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.name}</span></TD>
-                          <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket}</span></TD>
-                          <TD><span style={{fontSize:14,fontWeight:800,color:asset.pcsScore>=70?T.text.green:asset.pcsScore>=50?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{asset.pcsScore}</span></TD>
-                          <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.rank}<span style={{fontSize: 9,color:T.text.muted}}>/{asset.totalInSubmarket}</span></span></TD>
-                          <TD><span style={{fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:asset.movement>0?T.text.green:asset.movement<0?T.text.red:T.text.muted}}>{asset.movement>0?`▲ +${asset.movement}`:asset.movement<0?`▼ ${asset.movement}`:"─"}</span></TD>
-                          <TD><span style={{fontSize: 9,fontWeight:700,padding:"2px 6px",background:asset.trajectory==="improving"?T.text.green+"22":asset.trajectory==="declining"?T.text.red+"22":T.text.amber+"22",color:asset.trajectory==="improving"?T.text.green:asset.trajectory==="declining"?T.text.red:T.text.amber,border:`1px solid ${asset.trajectory==="improving"?T.text.green+"44":asset.trajectory==="declining"?T.text.red+"44":T.text.amber+"44"}`}}>{(asset.trajectory||"stable").toUpperCase()}</span></TD>
-                          <TD><button onClick={e=>{e.stopPropagation();navigate(`/deals/${asset.dealId}/detail`);}} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW DEAL →</button></TD>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div style={{display:"flex",flexDirection:"column",gap:10,padding:10}}>
+                    {/* Priority Card + Aggregate PCS */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:10}}>
+                      <div style={{background:`linear-gradient(135deg, ${T.text.cyan}22, ${T.text.purple}22)`,border:`1px solid ${T.text.cyan}44`,padding:14}}>
+                        <div style={{fontSize:9,color:T.text.cyan,letterSpacing:1,marginBottom:4}}>PORTFOLIO AGGREGATE PCS</div>
+                        <div style={{fontSize:28,fontWeight:800,color:T.text.cyan,fontFamily:T.font.mono}}>{Math.round(portfolioRankings.reduce((s,a)=>s+a.pcsScore,0)/portfolioRankings.length)}</div>
+                        <div style={{fontSize:9,color:T.text.muted,marginTop:4}}>Weighted avg · {portfolioRankings.length} assets</div>
+                      </div>
+                      {(() => {
+                        const priority = [...portfolioRankings].sort((a,b) => (b.rank-(b.targetRank||b.rank)) - (a.rank-(a.targetRank||a.rank)))[0];
+                        if (!priority) return null;
+                        const gap = priority.rank - (priority.targetRank || priority.rank);
+                        return (
+                          <div style={{background:`${T.text.amber}11`,border:`1px solid ${T.text.amber}44`,padding:14}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                              <span style={{fontSize:14}}>⚡</span>
+                              <span style={{fontSize:10,fontWeight:700,color:T.text.amber,letterSpacing:0.5}}>ACTION PRIORITY</span>
+                            </div>
+                            <div style={{fontSize:12,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{priority.name}</div>
+                            <div style={{fontSize:10,color:T.text.secondary,marginTop:4}}>
+                              Rank #{priority.rank}/{priority.totalInSubmarket} in {priority.submarket} — Target #{priority.targetRank||"—"}
+                              {gap > 0 && <span style={{color:T.text.amber,fontWeight:700}}> ({gap} positions to close)</span>}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    {/* Rankings table */}
+                    <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      <thead><tr style={{background:T.bg.header}}>
+                        {["ASSET","SUBMARKET","PCS","RANK","MOVEMENT","12-MO TREND","TARGET","GAP","TRAJECTORY","ACTION"].map(h => <TH key={h}>{h}</TH>)}
+                      </tr></thead>
+                      <tbody>
+                        {portfolioRankings.map((asset, i) => {
+                          const gap = asset.rank - (asset.targetRank || asset.rank);
+                          const isPriority = i === 0 || gap === Math.max(...portfolioRankings.map(a => a.rank - (a.targetRank||a.rank)));
+                          return (
+                            <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.dealId}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:isPriority?`${T.text.amber}11`:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                              <TD><span style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.name}</span></TD>
+                              <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket}</span></TD>
+                              <TD><span style={{fontSize:14,fontWeight:800,color:asset.pcsScore>=70?T.text.green:asset.pcsScore>=50?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{asset.pcsScore}</span></TD>
+                              <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.rank}<span style={{fontSize:9,color:T.text.muted}}>/{asset.totalInSubmarket}</span></span></TD>
+                              <TD><span style={{fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:asset.movement>0?T.text.green:asset.movement<0?T.text.red:T.text.muted}}>{asset.movement>0?`▲ +${asset.movement}`:asset.movement<0?`▼ ${asset.movement}`:"─"}</span></TD>
+                              <TD>{asset.monthlyPcs ? <MiniSparkline data={asset.monthlyPcs} target={asset.targetLine||asset.pcsScore}/> : <span style={{color:T.text.muted,fontSize:9}}>—</span>}</TD>
+                              <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.targetRank||"—"}</span></TD>
+                              <TD>{gap===0?<span style={{fontSize:9,color:T.text.green,fontWeight:700}}>ON TARGET</span>:<span style={{fontSize:9,color:T.text.amber,fontWeight:700}}>{gap} pos</span>}</TD>
+                              <TD><span style={{fontSize:9,fontWeight:700,padding:"2px 6px",background:asset.trajectory==="improving"?T.text.green+"22":asset.trajectory==="declining"?T.text.red+"22":T.text.amber+"22",color:asset.trajectory==="improving"?T.text.green:asset.trajectory==="declining"?T.text.red:T.text.amber}}>{(asset.trajectory||"stable").toUpperCase()}</span></TD>
+                              <TD><button onClick={e=>{e.stopPropagation();navigate(`/deals/${asset.dealId}/detail`);}} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW →</button></TD>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )
               )}
 
@@ -1766,32 +1862,51 @@ export default function TerminalPage() {
                 portfolioAssets.length === 0 ? (
                   <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No owned assets found — add your first asset above</div>
                 ) : (
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead><tr style={{background:T.bg.header}}>
-                      {["PROPERTY","SUBMARKET","TYPE","UNITS","OCCUPANCY","NOI ACTUAL","NOI PF","IRR"].map(h => <TH key={h}>{h}</TH>)}
-                    </tr></thead>
-                    <tbody>
-                      {portfolioAssets.map((asset, i) => {
-                        const occ = asset.actual_occupancy ?? 0;
-                        const noiVar = asset.noi_variance ?? 0;
-                        return (
-                          <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
-                            <TD>
-                              <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
-                              <div style={{fontSize: 9,color:noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.muted,marginTop:1}}>{noiVar>5?"▲ OUTPERFORMING":noiVar<-10?"▼ UNDERPERFORMING":"● ON TRACK"}</div>
-                            </TD>
-                            <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket||"—"}</span></TD>
-                            <TD><span style={{fontSize: 9,color:T.text.amber,fontFamily:T.font.mono}}>{asset.asset_type||"—"}</span></TD>
-                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.units||"—"}</span></TD>
-                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{asset.actual_occupancy!=null?`${occ.toFixed(1)}%`:"—"}</span></TD>
-                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_noi?`$${((asset.actual_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
-                            <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{asset.proforma_noi?`$${((asset.proforma_noi)/1000).toFixed(0)}K`:"—"}</span></TD>
-                            <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.purple}}>{asset.irr?`${(asset.irr).toFixed(1)}%`:"—"}</span></TD>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  <div style={{overflowX:"auto"}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",minWidth:1200}}>
+                      <thead><tr style={{background:T.bg.header}}>
+                        {["PROPERTY","SUBMARKET","TYPE","UNITS","OCC ACTUAL","OCC PF","OCC VAR","NOI ACTUAL","NOI PF","NOI VAR","IRR","CoC","EQ MULT","DISTRIBUTIONS","CAPEX","LOAN MAT"].map(h => <TH key={h}>{h}</TH>)}
+                      </tr></thead>
+                      <tbody>
+                        {portfolioAssets.map((asset, i) => {
+                          const occ = asset.actual_occupancy ?? 0;
+                          const noiVar = asset.noi_variance ?? 0;
+                          const occVar = asset.occupancy_variance ?? 0;
+                          const fmtK = (v:any) => v!=null ? `$${(v/1000).toFixed(0)}K` : "—";
+                          const fmtPct = (v:any) => v!=null ? `${v.toFixed(1)}%` : "—";
+                          const varColor = (v:number|null) => v==null?T.text.muted:v>0?T.text.green:v<0?T.text.red:T.text.muted;
+                          return (
+                            <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                              <TD>
+                                <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
+                                <div style={{fontSize:9,color:noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.muted,marginTop:1}}>{noiVar>5?"▲ OUTPERFORMING":noiVar<-10?"▼ UNDERPERFORMING":"● ON TRACK"}</div>
+                              </TD>
+                              <TD><span style={{fontSize:9,color:T.text.secondary}}>{asset.submarket||"—"}</span></TD>
+                              <TD><span style={{fontSize:9,color:T.text.amber,fontFamily:T.font.mono}}>{asset.asset_type||"—"}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.units||"—"}</span></TD>
+                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{fmtPct(asset.actual_occupancy)}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{fmtPct(asset.proforma_occupancy)}</span></TD>
+                              <TD><span style={{fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:varColor(occVar)}}>{occVar!=null?`${occVar>0?"+":""}${occVar.toFixed(1)}%`:"—"}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{fmtK(asset.actual_noi)}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{fmtK(asset.proforma_noi)}</span></TD>
+                              <TD><span style={{fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:varColor(noiVar)}}>{noiVar!=null?`${noiVar>0?"+":""}${noiVar.toFixed(1)}%`:"—"}</span></TD>
+                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.purple}}>{fmtPct(asset.irr)}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.cyan}}>{fmtPct(asset.coc_return)}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.equity_multiple!=null?`${asset.equity_multiple.toFixed(2)}x`:"—"}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{fmtK(asset.total_distributions)}</span></TD>
+                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{fmtK(asset.actual_capex)}</span></TD>
+                              <TD>
+                                <span style={{fontSize:9,fontFamily:T.font.mono,color:asset.months_to_maturity!=null&&asset.months_to_maturity<12?T.text.red:T.text.muted}}>
+                                  {asset.months_to_maturity!=null?`${asset.months_to_maturity}mo`:"—"}
+                                </span>
+                                {asset.refi_risk_flag && <span style={{fontSize:8,color:T.text.red,marginLeft:4}}>⚠</span>}
+                              </TD>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )
               )}
 
@@ -1843,60 +1958,110 @@ export default function TerminalPage() {
                 portfolioAssets.length === 0 ? (
                   <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No assets to show comp sets for</div>
                 ) : (
-                  <table style={{width:"100%",borderCollapse:"collapse"}}>
-                    <thead><tr style={{background:T.bg.header}}>
-                      {["OWNED ASSET","AVG RENT","OCCUPANCY","COMPS",""].map(h => <TH key={h}>{h}</TH>)}
-                    </tr></thead>
-                    <tbody>
-                      {portfolioAssets.map((asset, i) => {
-                        const comps = portfolioComps[asset.id]||[];
-                        const expanded = portfolioExpanded.has(asset.id);
-                        const loadingComp = portfolioCompsLoading.has(asset.id);
-                        return (
-                          <>
-                            <tr key={asset.id||i} onClick={() => setPortfolioExpanded(prev => { const n=new Set(prev); if(n.has(asset.id)){n.delete(asset.id);}else{n.add(asset.id); if(!portfolioComps[asset.id]) loadCompSet(asset.id);} return n; })}
-                              style={{borderBottom:`1px solid ${T.border.subtle}`,background:expanded?T.bg.hover:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
-                              <TD><div style={{display:"flex",alignItems:"center",gap:6}}>
-                                <span style={{color:T.text.muted,fontSize: 9,fontFamily:T.font.mono}}>{expanded?"▼":"▶"}</span>
-                                <div>
-                                  <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
-                                  <div style={{fontSize: 9,color:T.text.muted}}>{asset.asset_type||""}</div>
-                                </div>
-                              </div></TD>
-                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent!=null?`$${(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
-                              <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy!=null?`${(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
-                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.cyan}}>{comps.length||"—"}</span></TD>
-                              <TD onClick={e=>e.stopPropagation()}>
-                                <button onClick={() => loadCompSet(asset.id)} style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>
-                                  {loadingComp?"LOADING…":comps.length>0?"REFRESH":"LOAD COMPS"}
-                                </button>
-                              </TD>
-                            </tr>
-                            {expanded && loadingComp && (
-                              <tr style={{background:T.bg.active}}>
-                                <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>Loading comps…</td>
+                  <div>
+                    {/* Comp Set Summary */}
+                    <div style={{padding:12,background:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+                      <div style={{background:T.bg.panel,padding:10,border:`1px solid ${T.border.subtle}`}}>
+                        <div style={{fontSize:9,color:T.text.muted,letterSpacing:1}}>OWNED ASSETS</div>
+                        <div style={{fontSize:18,fontWeight:800,color:T.text.primary,fontFamily:T.font.mono}}>{portfolioAssets.length}</div>
+                      </div>
+                      <div style={{background:T.bg.panel,padding:10,border:`1px solid ${T.border.subtle}`}}>
+                        <div style={{fontSize:9,color:T.text.muted,letterSpacing:1}}>TOTAL COMPS TRACKED</div>
+                        <div style={{fontSize:18,fontWeight:800,color:T.text.cyan,fontFamily:T.font.mono}}>{Object.values(portfolioComps).reduce((s,c)=>s+c.length,0)}</div>
+                      </div>
+                      <div style={{background:T.bg.panel,padding:10,border:`1px solid ${T.border.subtle}`}}>
+                        <div style={{fontSize:9,color:T.text.muted,letterSpacing:1}}>DISCOVERY FACTORS</div>
+                        <div style={{fontSize:10,color:T.text.secondary,marginTop:4}}>Trade area, proximity, vintage, size, class</div>
+                      </div>
+                    </div>
+                    <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      <thead><tr style={{background:T.bg.header}}>
+                        {["OWNED ASSET","AVG RENT","OCCUPANCY","COMPS","ACTIONS"].map(h => <TH key={h}>{h}</TH>)}
+                      </tr></thead>
+                      <tbody>
+                        {portfolioAssets.map((asset, i) => {
+                          const comps = portfolioComps[asset.id]||[];
+                          const expanded = portfolioExpanded.has(asset.id);
+                          const loadingComp = portfolioCompsLoading.has(asset.id);
+                          const discovering = discoveringComps === asset.id;
+                          return (
+                            <React.Fragment key={asset.id||i}>
+                              <tr onClick={() => setPortfolioExpanded(prev => { const n=new Set(prev); if(n.has(asset.id)){n.delete(asset.id);}else{n.add(asset.id); if(!portfolioComps[asset.id]) loadCompSet(asset.id);} return n; })}
+                                style={{borderBottom:`1px solid ${T.border.subtle}`,background:expanded?T.bg.hover:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                                <TD><div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{color:T.text.muted,fontSize:9,fontFamily:T.font.mono}}>{expanded?"▼":"▶"}</span>
+                                  <div>
+                                    <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
+                                    <div style={{fontSize:9,color:T.text.muted}}>{asset.asset_type||""} · {asset.units||"—"} units</div>
+                                  </div>
+                                </div></TD>
+                                <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent!=null?`$${(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
+                                <TD><span style={{fontSize:9,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy!=null?`${(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
+                                <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.cyan}}>{comps.length||"—"}</span></TD>
+                                <TD onClick={e=>e.stopPropagation()}>
+                                  <div style={{display:"flex",gap:4}}>
+                                    <button onClick={() => loadCompSet(asset.id)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>
+                                      {loadingComp?"…":"REFRESH"}
+                                    </button>
+                                    <button onClick={() => discoverCompsForAsset(asset.id)} disabled={discovering} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.green,background:"transparent",border:`1px solid ${T.text.green}44`,padding:"2px 8px",cursor:"pointer",opacity:discovering?0.5:1}}>
+                                      {discovering?"DISCOVERING…":"DISCOVER"}
+                                    </button>
+                                  </div>
+                                </TD>
                               </tr>
-                            )}
-                            {expanded && !loadingComp && comps.length===0 && (
-                              <tr style={{background:T.bg.active}}>
-                                <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>No comps loaded — click LOAD COMPS to discover competitors</td>
-                              </tr>
-                            )}
-                            {expanded && comps.map((comp, j) => (
-                              <tr key={comp.id||j} style={{background:T.bg.active,borderBottom:`1px solid ${T.border.subtle}`}}>
-                                <td style={{padding:"5px 10px 5px 32px",fontSize:9,color:T.text.secondary}}>{comp.comp_name||comp.comp_property_address||"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent!=null?`$${comp.avg_rent}`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy!=null?`${comp.occupancy}%`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize: 9,color:T.text.muted}}>{comp.distance_miles!=null?`${comp.distance_miles}mi`:"—"}</td>
-                                <td style={{padding:"5px 10px",fontSize: 9,fontWeight:700,fontFamily:T.font.mono,color:(comp.match_score??0)>=80?T.text.green:(comp.match_score??0)>=60?T.text.amber:T.text.muted}}>{comp.match_score!=null?`${comp.match_score}% match`:"—"}</td>
-                              </tr>
-                            ))}
-                          </>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                              {expanded && loadingComp && (
+                                <tr style={{background:T.bg.active}}>
+                                  <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>Loading comps…</td>
+                                </tr>
+                              )}
+                              {expanded && !loadingComp && comps.length===0 && (
+                                <tr style={{background:T.bg.active}}>
+                                  <td colSpan={5} style={{padding:"8px 30px",fontSize:9,color:T.text.muted,fontFamily:T.font.mono}}>No comps found — click DISCOVER to find competitors</td>
+                                </tr>
+                              )}
+                              {expanded && comps.map((comp, j) => (
+                                <tr key={comp.id||j} style={{background:T.bg.active,borderBottom:`1px solid ${T.border.subtle}`}}>
+                                  <td style={{padding:"5px 10px 5px 32px",fontSize:9,color:T.text.secondary}}>{comp.comp_name||comp.comp_property_address||"—"}</td>
+                                  <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent!=null?`$${comp.avg_rent}`:"—"}</td>
+                                  <td style={{padding:"5px 10px",fontSize:9,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy!=null?`${comp.occupancy}%`:"—"}</td>
+                                  <td style={{padding:"5px 10px",fontSize:9,color:T.text.muted}}>{comp.distance_miles!=null?`${comp.distance_miles.toFixed(1)}mi`:"—"} · {comp.units||"—"} units · {comp.year_built||"—"}</td>
+                                  <td style={{padding:"5px 10px",fontSize:9,fontWeight:700,fontFamily:T.font.mono,color:(comp.match_score??0)>=80?T.text.green:(comp.match_score??0)>=60?T.text.amber:T.text.muted}}>{comp.match_score!=null?`${comp.match_score}% match`:"—"}</td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )
+              )}
+
+              {/* ── DOCUMENTS ── */}
+              {f3Tab === "documents" && (
+                <div style={{padding:20}}>
+                  <div style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:16,marginBottom:16}}>
+                    <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono,marginBottom:8}}>PORTFOLIO DOCUMENTS</div>
+                    <div style={{fontSize:9,color:T.text.secondary}}>Select an asset to view and manage its documents</div>
+                  </div>
+                  {portfolioAssets.length === 0 ? (
+                    <div style={{padding:24,textAlign:"center",color:T.text.muted,fontFamily:T.font.mono,fontSize:9}}>No assets in portfolio</div>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {portfolioAssets.map((asset, i) => (
+                        <div key={asset.id||i} style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                          <div>
+                            <div style={{fontSize:11,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"Asset"}</div>
+                            <div style={{fontSize:9,color:T.text.muted}}>{asset.address||asset.submarket||"—"}</div>
+                          </div>
+                          <button onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail?tab=documents`)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.amber,background:"transparent",border:`1px solid ${T.text.amber}44`,padding:"4px 12px",cursor:"pointer"}}>
+                            VIEW DOCUMENTS →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </>
           )}
