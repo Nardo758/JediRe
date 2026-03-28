@@ -40,6 +40,7 @@ export type AIRole =
   | 'lender'
   | 'acquisitions'
   | 'asset-manager'
+  | 'researcher'
   // Post-Acquisition / Portfolio
   | 'property-manager'
   | 'leasing-director'
@@ -131,6 +132,15 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     focus: ['Operational efficiency', 'NOI optimization', 'Expense control', 'Revenue growth', 'Performance'],
     color: BT.text.cyan,
     gradient: BT.text.cyan
+  },
+  'researcher': {
+    id: 'researcher',
+    name: 'Researcher',
+    icon: '🔬',
+    description: 'Deep market research, demographics, and competitive intelligence',
+    focus: ['Market research', 'Demographic trends', 'Economic analysis', 'Competitive intel', 'Data synthesis'],
+    color: BT.text.purple,
+    gradient: BT.text.purple
   },
   // ─── Post-Acquisition / Portfolio Roles ───────────────────────────────────
   'property-manager': {

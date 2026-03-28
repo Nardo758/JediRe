@@ -312,6 +312,17 @@ export const ANALYST_AGENTS: AgentDefinition[] = [
     modules: ['proforma', 'strategy'],
     autonomyLevel: 'manual',
   },
+  {
+    id: 'researcher',
+    code: 'AN16',
+    name: 'Researcher',
+    category: 'analyst',
+    icon: '🔬',
+    description: 'Deep market research, demographics, economic trends, and competitive intel',
+    capabilities: ['Market research', 'Demographic analysis', 'Economic trends', 'Competitive intelligence', 'Data synthesis'],
+    modules: ['market', 'supply', 'comps', 'strategy', 'overview'],
+    autonomyLevel: 'supervised',
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════════
