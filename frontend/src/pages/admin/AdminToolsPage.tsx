@@ -5,7 +5,7 @@
  * Location: frontend/src/pages/admin/AdminToolsPage.tsx
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 
 // Section imports (adjust paths after placing in your project)
@@ -53,6 +53,15 @@ const BT = {
 };
 
 const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
+
+const AdminClock = () => {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <>{now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>;
+};
 
 interface NavItem {
   key: string;
@@ -187,6 +196,23 @@ export default function AdminToolsPage() {
       color: BT.text.primary,
       fontFamily: MONO
     }}>
+      {/* Status Bar */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:BT.bg.topBar,borderBottom:`1px solid ${BT.border.subtle}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontFamily:MONO,fontSize:13,fontWeight:800,color:BT.text.amber,letterSpacing:2}}>JediRE</span>
+          <span style={{fontSize:9,color:BT.text.muted}}>|</span>
+          <span style={{fontSize:9,color:BT.text.purple,fontWeight:600}}>ADMIN</span>
+          <span style={{fontSize:9,color:BT.text.muted}}>|</span>
+          <span style={{fontSize:9,color:BT.text.secondary}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{fontSize:9,color:BT.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:BT.text.green,display:"inline-block"}}/>ONLINE</span>
+          <span style={{fontSize:9,color:BT.text.secondary}}>KAFKA: 312/s</span>
+          <span style={{fontSize:9,color:BT.text.amber,fontWeight:600}}><AdminClock /></span>
+          <button onClick={()=>navigate("/terminal/dashboard")} style={{fontFamily:MONO,fontSize:9,fontWeight:700,background:"transparent",border:`1px solid ${BT.text.cyan}44`,color:BT.text.cyan,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>TERMINAL</button>
+        </div>
+      </div>
+
       {/* Top Bar */}
       <header style={{
         display: 'flex',
