@@ -131,7 +131,7 @@ export function SettingsPage() {
   return (
     <div className="p-6" style={{ background: BT.bg.terminal, minHeight: '100vh' }}>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2" style={{ color: BT.text.primary }}>Settings</h1>
+        <h1 className="text-sm font-bold mb-2" style={{ color: BT.text.primary, fontSize: 13, letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace" }}>SETTINGS</h1>
         <p style={{ color: BT.text.secondary }}>Manage your account and preferences</p>
       </div>
 
@@ -213,7 +213,7 @@ export function SettingsPage() {
         <div className="col-span-2">
           {activeTab === 'profile' && (
             <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
-              <h2 className="text-xl font-semibold mb-6" style={{ color: BT.text.primary }}>Profile Settings</h2>
+              <h2 className="text-sm font-semibold mb-6" style={{ color: BT.text.primary, fontSize: 11, letterSpacing: 0.8, fontFamily: "'JetBrains Mono', monospace" }}>PROFILE SETTINGS</h2>
 
               {profileLoading ? (
                 <div className="flex items-center justify-center py-12">
