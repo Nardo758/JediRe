@@ -635,7 +635,7 @@ const DealDetailPage: React.FC = () => {
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
         {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
-        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} />
+        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} isDark={isDark} onToggleTheme={() => setTheme(isDark ? 'light' : 'dark')} />
 
         {/* ── Bar 2: Deal Context Bar (📍 name · address · JEDI score │ ▶ TRADE AREA │ SUBMARKET │ MSA) ── */}
         {deal && (
