@@ -31,6 +31,7 @@ import {
 // ============================================================================
 
 export type AIRole = 
+  // All Phases
   | 'cfo'
   | 'accountant'
   | 'marketing'
@@ -38,7 +39,15 @@ export type AIRole =
   | 'legal'
   | 'lender'
   | 'acquisitions'
-  | 'asset-manager';
+  | 'asset-manager'
+  // Post-Acquisition / Portfolio
+  | 'property-manager'
+  | 'leasing-director'
+  | 'facilities-manager'
+  | 'investment-analyst'
+  | 'esg-sustainability'
+  | 'compliance-officer'
+  | 'tax-strategist';
 
 interface RolePersona {
   id: AIRole;
@@ -122,6 +131,70 @@ const ROLE_PERSONAS: Record<AIRole, RolePersona> = {
     focus: ['Operational efficiency', 'NOI optimization', 'Expense control', 'Revenue growth', 'Performance'],
     color: BT.text.cyan,
     gradient: BT.text.cyan
+  },
+  // ─── Post-Acquisition / Portfolio Roles ───────────────────────────────────
+  'property-manager': {
+    id: 'property-manager',
+    name: 'Property Manager',
+    icon: '🏠',
+    description: 'Day-to-day operations, tenant relations, and maintenance',
+    focus: ['Tenant satisfaction', 'Turnover reduction', 'Maintenance scheduling', 'Vendor management', 'On-site operations'],
+    color: BT.text.amber,
+    gradient: BT.text.amber
+  },
+  'leasing-director': {
+    id: 'leasing-director',
+    name: 'Leasing Director',
+    icon: '📋',
+    description: 'Vacancy reduction, renewals, and tenant screening',
+    focus: ['Occupancy rates', 'Lease renewals', 'Concession strategy', 'Tenant screening', 'Market rents'],
+    color: BT.text.green,
+    gradient: BT.text.green
+  },
+  'facilities-manager': {
+    id: 'facilities-manager',
+    name: 'Facilities Manager',
+    icon: '🔧',
+    description: 'CapEx planning, preventive maintenance, and vendor contracts',
+    focus: ['Capital planning', 'Preventive maintenance', 'Building systems', 'Contractor oversight', 'Reserve budgets'],
+    color: BT.text.orange,
+    gradient: BT.text.orange
+  },
+  'investment-analyst': {
+    id: 'investment-analyst',
+    name: 'Investment Analyst',
+    icon: '📊',
+    description: 'Hold/sell analysis, refinance timing, and disposition strategy',
+    focus: ['Hold vs sell', 'Refinance timing', 'IRR optimization', 'Market timing', 'Exit strategies'],
+    color: BT.text.purple,
+    gradient: BT.text.purple
+  },
+  'esg-sustainability': {
+    id: 'esg-sustainability',
+    name: 'ESG / Sustainability',
+    icon: '🌱',
+    description: 'Energy efficiency, green certifications, and utility optimization',
+    focus: ['Energy reduction', 'LEED/ENERGY STAR', 'Utility management', 'Carbon footprint', 'Sustainability ROI'],
+    color: BT.text.green,
+    gradient: BT.text.green
+  },
+  'compliance-officer': {
+    id: 'compliance-officer',
+    name: 'Compliance Officer',
+    icon: '📜',
+    description: 'Insurance, permits, ADA, fair housing, and regulatory compliance',
+    focus: ['Insurance coverage', 'Permit compliance', 'Fair housing', 'ADA requirements', 'Local regulations'],
+    color: BT.text.secondary,
+    gradient: BT.text.secondary
+  },
+  'tax-strategist': {
+    id: 'tax-strategist',
+    name: 'Tax Strategist',
+    icon: '💼',
+    description: 'Cost segregation, 1031 exchanges, depreciation, and K-1 optimization',
+    focus: ['Cost segregation', '1031 exchanges', 'Depreciation strategy', 'Tax deferrals', 'K-1 planning'],
+    color: BT.text.amber,
+    gradient: BT.text.amber
   }
 };
 
