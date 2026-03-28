@@ -68,7 +68,7 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 
   if (loading) {
     return (
-      <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 4, padding: 16, textAlign: 'center' }}>
         <span style={{ fontSize: 11, color: BT.text.muted }}>Generating commentary...</span>
       </div>
     );
@@ -76,7 +76,7 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 
   if (error) {
     return (
-      <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 4, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
         <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
       </div>
     );
