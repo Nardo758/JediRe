@@ -8,7 +8,38 @@
  * @date 2026-03-28
  */
 
-import { EventEmitter } from 'events';
+class EventEmitter {
+  private listeners: Map<string, Array<(...args: any[]) => void>> = new Map();
+
+  on(event: string, fn: (...args: any[]) => void): this {
+    if (!this.listeners.has(event)) this.listeners.set(event, []);
+    this.listeners.get(event)!.push(fn);
+    return this;
+  }
+
+  off(event: string, fn: (...args: any[]) => void): this {
+    const fns = this.listeners.get(event);
+    if (fns) this.listeners.set(event, fns.filter(f => f !== fn));
+    return this;
+  }
+
+  emit(event: string, ...args: any[]): boolean {
+    const fns = this.listeners.get(event);
+    if (!fns || fns.length === 0) return false;
+    fns.forEach(fn => fn(...args));
+    return true;
+  }
+
+  removeAllListeners(event?: string): this {
+    if (event) this.listeners.delete(event);
+    else this.listeners.clear();
+    return this;
+  }
+
+  listenerCount(event: string): number {
+    return this.listeners.get(event)?.length || 0;
+  }
+}
 
 // ============================================================================
 // Types
