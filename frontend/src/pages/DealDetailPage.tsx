@@ -635,16 +635,24 @@ const DealDetailPage: React.FC = () => {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
               <span style={{ color: '#EF4444', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
-              {deal.name && (
-                <span style={{ color: TEXT, fontWeight: 700, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.3 }}>
-                  {deal.name}
+              {(deal.address || deal.location) && (
+                <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2 }}>
+                  {deal.address || deal.location}
                 </span>
               )}
-              {(deal.address || deal.location) && (
+              {dealType && (
                 <>
-                  <span style={{ color: BORDER, margin: '0 5px', fontSize: 9 }}>·</span>
-                  <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, letterSpacing: 0.2 }}>
-                    {deal.address || deal.location}
+                  <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
+                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '1px 6px', color: AMBER, border: `1px solid ${AMBER}44`, textTransform: 'uppercase', flexShrink: 0 }}>
+                    {dealType}
+                  </span>
+                </>
+              )}
+              {deal.pipeline_stage && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
+                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '1px 6px', color: GREEN, border: `1px solid ${GREEN}44`, textTransform: 'uppercase', flexShrink: 0 }}>
+                    {deal.pipeline_stage}
                   </span>
                 </>
               )}
