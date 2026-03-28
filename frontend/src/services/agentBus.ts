@@ -39,6 +39,10 @@ class EventEmitter {
   listenerCount(event: string): number {
     return this.listeners.get(event)?.length || 0;
   }
+
+  setMaxListeners(_n: number): this {
+    return this;
+  }
 }
 
 // ============================================================================
