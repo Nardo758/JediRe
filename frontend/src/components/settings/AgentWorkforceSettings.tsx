@@ -12,6 +12,9 @@ import {
   DEFAULT_WORKFORCE_CONFIG,
   TIER_LIMITS,
   AgentDefinition,
+  AI_MODELS,
+  AIModelTier,
+  getModelById,
 } from '../../config/agentWorkforce';
 import { BT } from '../deal/bloomberg-ui';
 
@@ -53,6 +56,17 @@ export const AgentWorkforceSettings: React.FC<AgentWorkforceSettingsProps> = ({
     setHasChanges(true);
   };
 
+  const setAgentModel = (agentId: string, model: AIModelTier) => {
+    setConfig(prev => ({
+      ...prev,
+      agentModelOverrides: {
+        ...prev.agentModelOverrides,
+        [agentId]: model,
+      },
+    }));
+    setHasChanges(true);
+  };
+
   const handleSave = () => {
     onSave?.(config);
     setHasChanges(false);
@@ -69,6 +83,8 @@ export const AgentWorkforceSettings: React.FC<AgentWorkforceSettingsProps> = ({
   const renderAgentCard = (agent: AgentDefinition) => {
     const isEnabled = config.enabledAgents.includes(agent.id);
     const autonomyLevel = config.agentAutonomyOverrides[agent.id] || config.globalAutonomy;
+    const agentModel = config.agentModelOverrides[agent.id] || config.globalModel;
+    const modelInfo = getModelById(agentModel);
     const canEnable = agent.category === 'task' 
       ? enabledTaskCount < tierLimits.maxTaskAgents || isEnabled
       : enabledAnalystCount < tierLimits.maxAnalystAgents || isEnabled;
@@ -142,39 +158,75 @@ export const AgentWorkforceSettings: React.FC<AgentWorkforceSettingsProps> = ({
           ))}
         </div>
 
-        {/* Autonomy Level */}
+        {/* Autonomy Level & Model Selection */}
         {isEnabled && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, color: BT.text.muted }}>Autonomy:</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['full', 'supervised', 'manual'] as const).map(level => {
-                const isAllowed = tierLimits.autonomyLevels.includes(level);
-                const isActive = autonomyLevel === level;
-                return (
-                  <button
-                    key={level}
-                    onClick={() => isAllowed && setAutonomy(agent.id, level)}
-                    disabled={!isAllowed}
-                    style={{
-                      fontSize: 9,
-                      padding: '3px 8px',
-                      border: 'none',
-                      cursor: isAllowed ? 'pointer' : 'not-allowed',
-                      fontFamily: BT.font.mono,
-                      fontWeight: isActive ? 700 : 400,
-                      background: isActive 
-                        ? level === 'full' ? BT.text.green 
-                        : level === 'supervised' ? BT.text.amber 
-                        : BT.text.secondary
-                        : BT.bg.input,
-                      color: isActive ? BT.bg.terminal : BT.text.secondary,
-                      opacity: isAllowed ? 1 : 0.4,
-                    }}
-                  >
-                    {level.toUpperCase()}
-                  </button>
-                );
-              })}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Autonomy */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10, color: BT.text.muted, width: 60 }}>Autonomy:</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['full', 'supervised', 'manual'] as const).map(level => {
+                  const isAllowed = tierLimits.autonomyLevels.includes(level);
+                  const isActive = autonomyLevel === level;
+                  return (
+                    <button
+                      key={level}
+                      onClick={() => isAllowed && setAutonomy(agent.id, level)}
+                      disabled={!isAllowed}
+                      style={{
+                        fontSize: 9,
+                        padding: '3px 8px',
+                        border: 'none',
+                        cursor: isAllowed ? 'pointer' : 'not-allowed',
+                        fontFamily: BT.font.mono,
+                        fontWeight: isActive ? 700 : 400,
+                        background: isActive 
+                          ? level === 'full' ? BT.text.green 
+                          : level === 'supervised' ? BT.text.amber 
+                          : BT.text.secondary
+                          : BT.bg.input,
+                        color: isActive ? BT.bg.terminal : BT.text.secondary,
+                        opacity: isAllowed ? 1 : 0.4,
+                      }}
+                    >
+                      {level.toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Model Selection */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10, color: BT.text.muted, width: 60 }}>Model:</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {AI_MODELS.map(model => {
+                  const isActive = agentModel === model.id;
+                  return (
+                    <button
+                      key={model.id}
+                      onClick={() => setAgentModel(agent.id, model.id)}
+                      title={model.description}
+                      style={{
+                        fontSize: 9,
+                        padding: '3px 8px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontFamily: BT.font.mono,
+                        fontWeight: isActive ? 700 : 400,
+                        background: isActive ? model.color : BT.bg.input,
+                        color: isActive ? BT.bg.terminal : BT.text.secondary,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      <span>{model.icon}</span>
+                      {model.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -347,7 +399,7 @@ export const AgentWorkforceSettings: React.FC<AgentWorkforceSettingsProps> = ({
           GLOBAL SETTINGS
         </h3>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           <div>
             <label style={{ fontSize: 10, color: BT.text.secondary, display: 'block', marginBottom: 6 }}>
               Default Autonomy Level
@@ -370,6 +422,32 @@ export const AgentWorkforceSettings: React.FC<AgentWorkforceSettingsProps> = ({
             >
               {tierLimits.autonomyLevels.map(level => (
                 <option key={level} value={level}>{level.toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label style={{ fontSize: 10, color: BT.text.secondary, display: 'block', marginBottom: 6 }}>
+              Default AI Model
+            </label>
+            <select
+              value={config.globalModel}
+              onChange={(e) => {
+                setConfig(prev => ({ ...prev, globalModel: e.target.value as AIModelTier }));
+                setHasChanges(true);
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                background: BT.bg.input,
+                border: `1px solid ${BT.border.subtle}`,
+                color: BT.text.primary,
+                fontFamily: BT.font.mono,
+                fontSize: 11,
+              }}
+            >
+              {AI_MODELS.map(model => (
+                <option key={model.id} value={model.id}>{model.icon} {model.name} — {model.description}</option>
               ))}
             </select>
           </div>

@@ -342,6 +342,79 @@ export const getAgentByCode = (code: string): AgentDefinition | undefined => {
 // WORKFORCE CONFIGURATION (User Settings)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// AI MODEL OPTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type AIModelTier = 'fast' | 'balanced' | 'powerful' | 'auto';
+
+export interface AIModelOption {
+  id: AIModelTier;
+  name: string;
+  model: string;
+  icon: string;
+  description: string;
+  speed: number;      // 1-5
+  quality: number;    // 1-5
+  costMultiplier: number;
+  color: string;
+}
+
+export const AI_MODELS: AIModelOption[] = [
+  {
+    id: 'auto',
+    name: 'Auto',
+    model: 'auto',
+    icon: '🤖',
+    description: 'Let JEDI select the best model per task',
+    speed: 3,
+    quality: 3,
+    costMultiplier: 1,
+    color: '#00BCD4',
+  },
+  {
+    id: 'fast',
+    name: 'Fast',
+    model: 'claude-3-haiku',
+    icon: '⚡',
+    description: 'Claude Haiku — quick lookups, high volume',
+    speed: 5,
+    quality: 2,
+    costMultiplier: 0.5,
+    color: '#00D26A',
+  },
+  {
+    id: 'balanced',
+    name: 'Balanced',
+    model: 'claude-3-sonnet',
+    icon: '⚖️',
+    description: 'Claude Sonnet — analysis & research',
+    speed: 3,
+    quality: 4,
+    costMultiplier: 1,
+    color: '#F5A623',
+  },
+  {
+    id: 'powerful',
+    name: 'Powerful',
+    model: 'claude-3-opus',
+    icon: '✨',
+    description: 'Claude Opus — complex reasoning',
+    speed: 2,
+    quality: 5,
+    costMultiplier: 2,
+    color: '#A78BFA',
+  },
+];
+
+export const getModelById = (id: AIModelTier): AIModelOption => {
+  return AI_MODELS.find(m => m.id === id) || AI_MODELS[0];
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WORKFORCE CONFIGURATION (User Settings)
+// ═══════════════════════════════════════════════════════════════════════════════
+
 export interface WorkforceConfig {
   // How many agents of each type to activate
   taskAgentCount: number;       // 0-10, how many task agents running
@@ -349,6 +422,10 @@ export interface WorkforceConfig {
   
   // Which specific agents are enabled
   enabledAgents: string[];      // Array of agent IDs
+  
+  // Model selection per agent
+  globalModel: AIModelTier;
+  agentModelOverrides: Record<string, AIModelTier>;  // agent ID -> model
   
   // Autonomy settings
   globalAutonomy: 'full' | 'supervised' | 'manual';
@@ -373,6 +450,14 @@ export const DEFAULT_WORKFORCE_CONFIG: WorkforceConfig = {
     // Default enabled analyst agents
     'cfo', 'accountant', 'legal-advisor', 'developer', 'lender', 'acquisitions', 'asset-manager', 'investment-analyst',
   ],
+  globalModel: 'balanced',
+  agentModelOverrides: {
+    // Default model overrides for specific agents
+    'orchestrator': 'powerful',      // Orchestrator needs best reasoning
+    'strategy-engine': 'powerful',   // Strategy needs deep analysis
+    'data-collector': 'fast',        // Data collection can be quick
+    'comp-scraper': 'fast',          // Scraping doesn't need reasoning
+  },
   globalAutonomy: 'supervised',
   agentAutonomyOverrides: {},
   notifyOnComplete: true,
