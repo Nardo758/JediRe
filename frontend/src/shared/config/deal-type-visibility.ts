@@ -436,7 +436,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M21',
     name: 'Deal Tools',
-    fKey: 'F13',
+    fKey: 'F12',
     station: 'S1',
     stationLabel: 'Intake & Triage',
     category: 'Core',
