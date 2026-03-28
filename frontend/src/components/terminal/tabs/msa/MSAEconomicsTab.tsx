@@ -268,7 +268,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
           )}
           {commentary.signalCommentary?.pricing_power && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.pricing_power} />
+              <SignalCommentary signalKey="demand" commentary={commentary.signalCommentary.pricing_power} />
             </div>
           )}
         </div>

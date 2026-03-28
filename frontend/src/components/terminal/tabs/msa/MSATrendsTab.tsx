@@ -577,7 +577,7 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
         <div style={{ display: 'flex', gap: 16 }}>
           {commentary.signalCommentary?.trend_interpretation && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.trend_interpretation} />
+              <SignalCommentary signalKey="supply" commentary={commentary.signalCommentary.trend_interpretation} />
             </div>
           )}
           {commentary.supplyNarrative && (

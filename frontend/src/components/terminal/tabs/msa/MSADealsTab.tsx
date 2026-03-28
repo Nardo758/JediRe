@@ -563,7 +563,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
           )}
           {commentary.signalCommentary?.capital_sentiment && (
             <div style={{ flex: 1, ...terminalStyles.card, padding: 16 }}>
-              <SignalCommentary signalKey="momentum" commentary={commentary.signalCommentary.capital_sentiment} />
+              <SignalCommentary signalKey="position" commentary={commentary.signalCommentary.capital_sentiment} />
             </div>
           )}
         </div>
