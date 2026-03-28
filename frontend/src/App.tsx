@@ -162,8 +162,8 @@ function AppContent() {
           <Route path="/assets-owned/grid" element={<Navigate to="/terminal/portfolio" replace />} />
           <Route path="/properties" element={<PropertiesPage />} />
           <Route path="/properties/:id" element={<PropertyDetailPage />} />
-          <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
-          <Route path="/property-card/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
+          <Route path="/property-card" element={<PropertyDetailPage />} />
+          <Route path="/property-card/:id" element={<PropertyDetailPage />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/command-center" element={<CommandCenterPage />} />
           <Route path="/admin/property-coverage" element={<PropertyCoveragePage />} />
