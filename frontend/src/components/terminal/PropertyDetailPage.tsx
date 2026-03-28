@@ -404,6 +404,134 @@ const MOCK_DEMOGRAPHICS: DemographicData[] = [
   { radius: '5 mile', population: 385000, popGrowth: 1.6, medianIncome: 68200, incomeGrowth: 3.2, avgAge: 35, collegeEducated: 52, employmentRate: 94.5, households: 158000 },
 ];
 
+// ─── MOCK PROPERTIES (fallback for standalone property cards) ─────────────────
+const MOCK_PROPERTIES: Record<string, PropertyData> = {
+  'the-vue-at-midtown': {
+    id: 'the-vue-at-midtown',
+    name: 'The Vue at Midtown',
+    submarket: 'Midtown',
+    msa: 'Atlanta, GA',
+    address: '750 Piedmont Ave NE, Atlanta, GA 30308',
+    class: 'A',
+    units: 196,
+    yearBuilt: 2018,
+    avgRent: 2420,
+    avgEffectiveRent: 2420,
+    rentChange: 120,
+    rentChangePercent: 5.2,
+    occupancy: 93.2,
+    occupancyRate: 93.2,
+    occupancyChange: 0.6,
+    capRate: 4.8,
+    owner: 'Hines',
+    noi: 3560000,
+    jediScore: 94,
+    images: [
+      { url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600', caption: 'Tower' },
+      { url: 'https://images.unsplash.com/photo-1560185127-6ed189bf02f4?w=600', caption: 'Lobby' },
+      { url: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600', caption: 'Amenities' },
+    ],
+    rentComps: [
+      { name: 'The Vue at Midtown', units: 196, avgRent: 2420, occupancy: 93.2, class: 'A' },
+      { name: 'Pines at Midtown', units: 180, avgRent: 1480, occupancy: 94.2, class: 'B' },
+      { name: 'Peachtree Walk', units: 310, avgRent: 1920, occupancy: 93.6, class: 'A' },
+    ],
+  },
+  'pines-at-midtown': {
+    id: 'pines-at-midtown',
+    name: 'Pines at Midtown',
+    submarket: 'Midtown',
+    msa: 'Atlanta, GA',
+    address: '1240 Peachtree St NE, Atlanta, GA 30309',
+    class: 'B',
+    units: 180,
+    yearBuilt: 1992,
+    avgRent: 1480,
+    avgEffectiveRent: 1480,
+    rentChange: 220,
+    rentChangePercent: 14.8,
+    occupancy: 94.2,
+    occupancyRate: 94.2,
+    occupancyChange: 1.2,
+    capRate: 5.8,
+    owner: 'Greystone Capital',
+    noi: 2160000,
+    jediScore: 92,
+    images: [
+      { url: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600', caption: 'Exterior' },
+      { url: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600', caption: 'Interior' },
+      { url: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600', caption: 'Amenities' },
+    ],
+    rentComps: [
+      { name: 'Pines at Midtown', units: 180, avgRent: 1480, occupancy: 94.2, class: 'B' },
+      { name: 'Peachtree Walk', units: 310, avgRent: 1920, occupancy: 93.6, class: 'A' },
+      { name: 'The Vue at Midtown', units: 196, avgRent: 2420, occupancy: 93.2, class: 'A' },
+    ],
+  },
+  'alexan-buckhead': {
+    id: 'alexan-buckhead',
+    name: 'Alexan Buckhead',
+    submarket: 'Buckhead',
+    msa: 'Atlanta, GA',
+    address: '3300 Peachtree Rd NE, Atlanta, GA 30326',
+    class: 'A',
+    units: 420,
+    yearBuilt: 2019,
+    avgRent: 2680,
+    avgEffectiveRent: 2680,
+    rentChange: 70,
+    rentChangePercent: 2.5,
+    occupancy: 92.1,
+    occupancyRate: 92.1,
+    occupancyChange: -0.3,
+    capRate: 4.6,
+    owner: 'Trammell Crow',
+    noi: 8400000,
+    jediScore: 83,
+    images: [
+      { url: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600', caption: 'Tower' },
+      { url: 'https://images.unsplash.com/photo-1560185127-6ed189bf02f4?w=600', caption: 'Lobby' },
+      { url: 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=600', caption: 'Rooftop' },
+    ],
+    rentComps: [
+      { name: 'Alexan Buckhead', units: 420, avgRent: 2680, occupancy: 92.1, class: 'A' },
+      { name: 'Hanover Buckhead', units: 370, avgRent: 2280, occupancy: 94.2, class: 'A' },
+      { name: 'The Darcy', units: 265, avgRent: 2380, occupancy: 92.8, class: 'A' },
+    ],
+  },
+  'the-metropolitan': {
+    id: 'the-metropolitan',
+    name: 'The Metropolitan',
+    submarket: 'Midtown',
+    msa: 'Atlanta, GA',
+    address: '999 Peachtree St NE, Atlanta, GA 30309',
+    class: 'A',
+    units: 412,
+    yearBuilt: 2019,
+    avgRent: 2450,
+    avgEffectiveRent: 2450,
+    rentChange: 85,
+    rentChangePercent: 3.6,
+    occupancy: 96.2,
+    occupancyRate: 96.2,
+    occupancyChange: 1.4,
+    capRate: 4.6,
+    owner: 'Greystar',
+    noi: 7600000,
+    jediScore: 94,
+    images: [
+      { url: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600', caption: 'Exterior' },
+      { url: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600', caption: 'Interior' },
+      { url: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=600', caption: 'Amenities' },
+    ],
+    rentComps: [
+      { name: 'The Metropolitan', units: 412, avgRent: 2450, occupancy: 96.2, class: 'A' },
+      { name: 'Peachtree Walk', units: 310, avgRent: 1920, occupancy: 93.6, class: 'A' },
+      { name: 'Alexan Midtown', units: 290, avgRent: 1950, occupancy: 95.0, class: 'A' },
+    ],
+  },
+};
+
 // ─── UTILITY FUNCTIONS ────────────────────────────────────────────────────────
 
 const parseCurrency = (val: any): number => {
@@ -516,13 +644,19 @@ export const PropertyDetailPage: React.FC<PropertyDetailPageProps> = ({
         const data = await response.json();
         setProperty(data);
       } catch (err) {
-        // Fallback to location.state if API fails
+        // Fallback 1: Check location.state
         const stateRow = (location.state as any)?.propertyRow;
         const siblingRows = (location.state as any)?.siblingRows;
         if (stateRow) {
           setProperty(buildPropertyFromRow(stateRow, siblingRows));
           setError(null);
-        } else {
+        } 
+        // Fallback 2: Check mock properties (for standalone property cards)
+        else if (propertyId && MOCK_PROPERTIES[propertyId]) {
+          setProperty(MOCK_PROPERTIES[propertyId]);
+          setError(null);
+        }
+        else {
           setError(err instanceof Error ? err.message : 'Failed to load property');
         }
       } finally {
