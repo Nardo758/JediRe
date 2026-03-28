@@ -1,14 +1,12 @@
 /**
  * Admin Tools Page - Bloomberg Terminal Style
- * Central hub for deal administration, team management, and integrations
- * 
- * Location: frontend/src/pages/admin/AdminToolsPage.tsx
+ * Matches Terminal/Dashboard header design
  */
 
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation, Link } from 'react-router-dom';
 
-// Section imports (adjust paths after placing in your project)
+// Section imports
 import DealIntelligenceSection from './sections/DealIntelligenceSection';
 import TeamSection from './sections/TeamSection';
 import AIConfigSection from './sections/AIConfigSection';
@@ -20,7 +18,9 @@ import NotificationsSection from './sections/NotificationsSection';
 import TemplatesSection from './sections/TemplatesSection';
 import DataManagementSection from './sections/DataManagementSection';
 
-// Bloomberg Terminal tokens
+// ═══════════════════════════════════════════════════════════════════════════
+// BLOOMBERG TERMINAL TOKENS (matches TerminalPage.tsx)
+// ═══════════════════════════════════════════════════════════════════════════
 const BT = {
   bg: { 
     terminal: '#0A0E17', 
@@ -43,25 +43,32 @@ const BT = {
     red: '#FF4757',
     cyan: '#00BCD4',
     orange: '#FF8C42',
-    purple: '#A78BFA'
+    purple: '#A78BFA',
+    white: '#FFFFFF'
   },
   border: { 
     subtle: '#1E2538', 
     medium: '#2A3348',
     bright: '#3B4A6B'
   },
+  font: {
+    mono: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+    display: "'IBM Plex Mono',monospace",
+    label: "'IBM Plex Sans',sans-serif"
+  }
 };
 
-const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
-
-const AdminClock = () => {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-  return <>{now.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}</>;
-};
+// Terminal-style CSS (matches TerminalPage)
+const TERMINAL_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+*{scrollbar-width:thin;scrollbar-color:#2A3348 #0A0E17}
+*::-webkit-scrollbar{width:5px;height:5px}
+*::-webkit-scrollbar-track{background:#0A0E17}
+*::-webkit-scrollbar-thumb{background:#2A3348}
+`;
 
 interface NavItem {
   key: string;
@@ -90,7 +97,6 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'billing', label: 'BILLING & USAGE', icon: '💳', path: 'billing', description: 'Credits, invoices', group: 'data' },
 ];
 
-// Mock deals for selector
 const MOCK_DEALS = [
   { id: 'all', name: 'All Deals' },
   { id: '1', name: 'Atlanta Development' },
@@ -98,22 +104,22 @@ const MOCK_DEALS = [
   { id: '3', name: 'Orlando BTR Project' },
 ];
 
-// Access Control Matrix
-const ACCESS_MATRIX = {
-  admin: { dealCapsules: 'Full', adminTools: 'Full', teamMgmt: 'Full', billing: 'Full' },
-  analyst: { dealCapsules: 'Full', adminTools: 'Intel Only', teamMgmt: '❌', billing: '❌' },
-  viewer: { dealCapsules: 'Read-only', adminTools: '❌', teamMgmt: '❌', billing: '❌' },
-  external: { dealCapsules: 'Shared Only', adminTools: '❌', teamMgmt: '❌', billing: '❌' },
-};
-
 export default function AdminToolsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [selectedDeal, setSelectedDeal] = useState('all');
+  const [time, setTime] = useState(new Date());
   
+  // Live clock
+  useEffect(() => {
+    const t = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   // Determine active section from URL
   const currentPath = location.pathname.split('/admin/')[1] || 'intel';
   const activeSection = NAV_ITEMS.find(item => currentPath.startsWith(item.path))?.key || 'intel';
+  const activeSectionLabel = NAV_ITEMS.find(item => item.key === activeSection)?.label || 'ADMIN';
 
   const handleNavClick = (item: NavItem) => {
     navigate(`/admin/${item.path}`);
@@ -126,7 +132,7 @@ export default function AdminToolsPage() {
         <div style={{
           fontSize: 9,
           color: BT.text.muted,
-          fontFamily: MONO,
+          fontFamily: BT.font.mono,
           padding: '8px 12px',
           textTransform: 'uppercase',
           letterSpacing: '1px',
@@ -165,7 +171,7 @@ export default function AdminToolsPage() {
                     fontSize: 10,
                     fontWeight: 600,
                     color: isActive ? BT.text.amber : BT.text.primary,
-                    fontFamily: MONO,
+                    fontFamily: BT.font.mono,
                     letterSpacing: '0.3px',
                   }}>
                     {item.label}
@@ -173,7 +179,7 @@ export default function AdminToolsPage() {
                   <div style={{
                     fontSize: 9,
                     color: BT.text.muted,
-                    fontFamily: MONO,
+                    fontFamily: BT.font.mono,
                     marginTop: 1,
                   }}>
                     {item.description}
@@ -194,133 +200,198 @@ export default function AdminToolsPage() {
       minHeight: '100vh', 
       background: BT.bg.terminal,
       color: BT.text.primary,
-      fontFamily: MONO
+      fontFamily: BT.font.mono
     }}>
-      {/* Status Bar */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:BT.bg.topBar,borderBottom:`1px solid ${BT.border.subtle}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontFamily:MONO,fontSize:13,fontWeight:800,color:BT.text.amber,letterSpacing:2}}>JediRE</span>
-          <span style={{fontSize:9,color:BT.text.muted}}>|</span>
-          <span style={{fontSize:9,color:BT.text.purple,fontWeight:600}}>ADMIN</span>
-          <span style={{fontSize:9,color:BT.text.muted}}>|</span>
-          <span style={{fontSize:9,color:BT.text.secondary}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
+      <style>{TERMINAL_CSS}</style>
+      
+      {/* ═══════════════════════════════════════════════════════════════════
+          TOP BAR - Matches Terminal/Dashboard exactly
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0 8px',
+        height: 28,
+        background: BT.bg.topBar,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        flexShrink: 0
+      }}>
+        {/* Left side - Branding & Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <span style={{
+            fontFamily: BT.font.display,
+            fontSize: 13,
+            fontWeight: 800,
+            color: BT.text.amber,
+            letterSpacing: 2,
+            flexShrink: 0
+          }}>JediRE</span>
+          
+          <span style={{ fontSize: 9, color: BT.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 9, color: BT.text.purple, fontWeight: 600, flexShrink: 0 }}>ADMIN TOOLS</span>
+          
+          <span style={{ fontSize: 9, color: BT.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 9, color: BT.text.secondary, flexShrink: 0 }}>{activeSectionLabel}</span>
+          
+          <span style={{ fontSize: 9, color: BT.text.muted, flexShrink: 0 }}>|</span>
+          <select
+            value={selectedDeal}
+            onChange={(e) => setSelectedDeal(e.target.value)}
+            style={{
+              padding: '2px 6px',
+              background: BT.bg.input,
+              border: `1px solid ${BT.border.subtle}`,
+              borderRadius: 2,
+              color: BT.text.cyan,
+              fontFamily: BT.font.mono,
+              fontSize: 9,
+              cursor: 'pointer',
+              flexShrink: 0
+            }}
+          >
+            {MOCK_DEALS.map(deal => (
+              <option key={deal.id} value={deal.id}>{deal.name}</option>
+            ))}
+          </select>
+          
+          <span style={{ fontSize: 9, color: BT.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ 
+            fontSize: 9, 
+            color: BT.text.muted, 
+            flexShrink: 0, 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis', 
+            whiteSpace: 'nowrap' 
+          }}>
+            {time.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+          </span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:9,color:BT.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:BT.text.green,display:"inline-block"}}/>ONLINE</span>
-          <span style={{fontSize:9,color:BT.text.secondary}}>KAFKA: 312/s</span>
-          <span style={{fontSize:9,color:BT.text.amber,fontWeight:600}}><AdminClock /></span>
-          <button onClick={()=>navigate("/terminal/dashboard")} style={{fontFamily:MONO,fontSize:9,fontWeight:700,background:"transparent",border:`1px solid ${BT.text.cyan}44`,color:BT.text.cyan,padding:"2px 8px",cursor:"pointer",letterSpacing:0.5}}>TERMINAL</button>
+
+        {/* Right side - Status indicators */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ 
+            fontSize: 9, 
+            color: BT.text.green, 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 3 
+          }}>
+            <span style={{
+              width: 4,
+              height: 4,
+              borderRadius: '50%',
+              background: BT.text.green,
+              animation: 'glow 2s infinite'
+            }}/>
+            ONLINE
+          </span>
+          
+          <span style={{ fontSize: 9, color: BT.text.secondary }}>
+            {time.toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          </span>
+          
+          <Link 
+            to="/terminal/dashboard"
+            style={{
+              fontFamily: BT.font.mono,
+              fontSize: 9,
+              fontWeight: 700,
+              background: 'transparent',
+              border: `1px solid ${BT.text.cyan}44`,
+              color: BT.text.cyan,
+              padding: '2px 8px',
+              cursor: 'pointer',
+              letterSpacing: 0.5,
+              textDecoration: 'none'
+            }}
+          >
+            ← TERMINAL
+          </Link>
         </div>
       </div>
 
-      {/* Top Bar */}
-      <header style={{
+      {/* ═══════════════════════════════════════════════════════════════════
+          F-KEY NAVIGATION BAR (like Terminal)
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div style={{
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '10px 20px',
-        background: BT.bg.topBar,
+        padding: '0 8px',
+        height: 32,
+        background: BT.bg.panel,
         borderBottom: `1px solid ${BT.border.subtle}`,
+        gap: 2,
+        flexShrink: 0
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <div style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: BT.text.amber,
-            letterSpacing: '1px',
-          }}>
-            ADMIN TOOLS
-          </div>
-          
-          {/* Deal Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 10, color: BT.text.muted }}>Deal:</span>
-            <select
-              value={selectedDeal}
-              onChange={(e) => setSelectedDeal(e.target.value)}
+        {NAV_ITEMS.slice(0, 8).map((item, idx) => {
+          const isActive = activeSection === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => handleNavClick(item)}
               style={{
-                padding: '6px 12px',
-                background: BT.bg.input,
-                border: `1px solid ${BT.border.medium}`,
-                borderRadius: 4,
-                color: BT.text.primary,
-                fontFamily: MONO,
-                fontSize: 11,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 10px',
+                background: isActive ? BT.bg.active : 'transparent',
+                border: 'none',
+                borderBottom: isActive ? `2px solid ${BT.text.amber}` : '2px solid transparent',
+                color: isActive ? BT.text.amber : BT.text.secondary,
+                fontFamily: BT.font.mono,
+                fontSize: 10,
+                fontWeight: 600,
                 cursor: 'pointer',
+                transition: 'all 0.15s',
               }}
             >
-              {MOCK_DEALS.map(deal => (
-                <option key={deal.id} value={deal.id}>{deal.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+              <span style={{ 
+                fontSize: 8, 
+                color: isActive ? BT.text.amberBright : BT.text.muted,
+                fontWeight: 700 
+              }}>
+                F{idx + 1}
+              </span>
+              {item.label.split(' ')[0]}
+            </button>
+          );
+        })}
+      </div>
 
-        {/* User Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{
-            padding: '4px 10px',
-            background: BT.text.amber + '22',
-            color: BT.text.amber,
-            fontSize: 9,
-            fontFamily: MONO,
-            borderRadius: 3,
-            textTransform: 'uppercase',
-          }}>
-            Admin
-          </span>
-          <span style={{ fontSize: 11, color: BT.text.secondary }}>
-            Leon D.
-          </span>
-        </div>
-      </header>
-
-      <div style={{ display: 'flex', flex: 1 }}>
+      {/* ═══════════════════════════════════════════════════════════════════
+          MAIN CONTENT AREA
+          ═══════════════════════════════════════════════════════════════════ */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar Navigation */}
         <aside style={{
-          width: 240,
+          width: 200,
           background: BT.bg.sidebar,
           borderRight: `1px solid ${BT.border.subtle}`,
           display: 'flex',
           flexDirection: 'column',
           overflowY: 'auto',
         }}>
-          {/* Navigation Groups */}
           <nav style={{ flex: 1, padding: '12px 8px' }}>
             {renderNavGroup('intel', 'Intelligence')}
             {renderNavGroup('config', 'Configuration')}
             {renderNavGroup('data', 'Data & Billing')}
           </nav>
 
-          {/* Access Control Info */}
-          <div style={{
-            padding: 12,
-            borderTop: `1px solid ${BT.border.subtle}`,
-            background: BT.bg.panel,
-          }}>
-            <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, marginBottom: 8, textTransform: 'uppercase' }}>
-              Access Level
-            </div>
-            <div style={{ fontSize: 10, color: BT.text.primary, fontFamily: MONO }}>
-              Full Admin Access
-            </div>
-          </div>
-
-          {/* Footer */}
           <div style={{
             padding: '12px',
             borderTop: `1px solid ${BT.border.subtle}`,
             fontSize: 9,
             color: BT.text.muted,
-            fontFamily: MONO,
+            fontFamily: BT.font.mono,
           }}>
-            <div>ADMIN TOOLS v1.1</div>
+            <div>ADMIN TOOLS v1.2</div>
             <div style={{ marginTop: 4 }}>Press ? for shortcuts</div>
           </div>
         </aside>
 
-        {/* Main Content Area */}
-        <main style={{ flex: 1, overflow: 'auto' }}>
+        {/* Main Content */}
+        <main style={{ flex: 1, overflow: 'auto', background: BT.bg.terminal }}>
           <Routes>
             <Route path="/" element={<DealIntelligenceSection />} />
             <Route path="intel/*" element={<DealIntelligenceSection />} />
