@@ -2332,21 +2332,58 @@ export default function TerminalPage() {
   return (
     <div style={{background:T.bg.terminal,height:"100vh",fontFamily:T.font.mono,color:T.text.primary,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <style>{TERMINAL_CSS}</style>
-      {/* ═══ SINGLE HEADER BAR — Bloomberg Style ═══ */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:36,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontFamily:T.font.display,fontSize:14,fontWeight:800,color:T.text.amber,letterSpacing:2}}>JEDI RE</span>
-          <div style={{display:"flex",gap:2}}>
-            {PORTFOLIO_NAV.map(n=>(
-              <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"4px 10px",cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
-                <span style={{fontSize:9,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
-                {n.label}
-              </button>
-            ))}
-          </div>
+      {/* CRT overlay */}
+      <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999,background:"repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px)"}}/>
+
+      {/* ═══ TOP STATUS BAR — 28px ═══ */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 8px",height:28,background:T.bg.topBar,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+          <span style={{fontFamily:T.font.display,fontSize:13,fontWeight:800,color:T.text.amber,letterSpacing:2,flexShrink:0}}>JEDI RE</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,color:T.text.secondary,flexShrink:0}}>PORTFOLIO</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          {totalPV>0&&<span style={{fontSize:9,fontWeight:700,color:T.text.amberBright,flexShrink:0}}>PIPELINE: ${totalPV.toFixed(1)}M</span>}
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,fontWeight:600,color:T.text.cyan,flexShrink:0}}>ACTIVE: {activeCount}</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{fontSize:9,fontWeight:700,color:hAlerts>0?T.text.red:T.text.green,cursor:"pointer",flexShrink:0,animation:hAlerts>0?"pulse 2s infinite":"none"}}>ALERTS: {hAlerts}</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0}}>|</span>
+          <span style={{fontSize:9,color:T.text.muted,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:T.text.green}}/> LIVE</span>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          <span style={{fontSize:9,color:T.text.green,display:"flex",alignItems:"center",gap:3}}><span style={{width:4,height:4,borderRadius:"50%",background:T.text.green,animation:"glow 2s infinite"}}/>{liveAgents.filter(a=>a.st==="ON").length} AGT</span>
+          <span style={{fontSize:9,color:T.text.cyan}}>MAIL: {liveEmails.filter(e=>e.unread).length}</span>
+          {mediaWindows.length>0&&(
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setMediaWinDropdown(p=>!p)} style={{fontFamily:T.font.mono,fontSize:9,color:T.text.orange,background:"transparent",border:`1px solid ${T.text.orange}44`,padding:"1px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                <span style={{width:5,height:5,borderRadius:"50%",background:T.text.orange,display:"inline-block"}}/>
+                {mediaWindows.length} WINDOW{mediaWindows.length!==1?"S":""}
+              </button>
+              {mediaWinDropdown&&(
+                <div style={{position:"absolute",top:"100%",right:0,marginTop:4,background:T.bg.panel,border:`1px solid ${T.border.medium}`,boxShadow:"0 8px 24px rgba(0,0,0,0.6)",zIndex:9998,minWidth:200,maxHeight:300,overflow:"auto"}}>
+                  {mediaWindows.map(w=>(
+                    <div key={w.id} onClick={()=>{bringMediaToFront(w.id);if(mediaWinStates[w.id]?.minimized)minimizeMediaWindow(w.id);setMediaWinDropdown(false);}}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:T.bg.panel}}>
+                      <span style={{width:6,height:6,borderRadius:"50%",background:w.color,flexShrink:0,display:"inline-block"}}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:9,fontWeight:600,color:T.text.primary}}>{w.title}</div>
+                        <div style={{fontSize: 9,color:T.text.muted}}>{w.type.toUpperCase()}{mediaWinStates[w.id]?.minimized?" · minimized":""}</div>
+                      </div>
+                      <button onClick={(e)=>{e.stopPropagation();closeMediaWindow(w.id);}}
+                        style={{fontSize: 9,color:T.text.muted,background:"transparent",border:"none",cursor:"pointer",padding:"0 4px"}}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{padding:"4px 10px",borderTop:`1px solid ${T.border.medium}`}}>
+                    <button onClick={()=>{setMediaWindows([]);setMediaWinStates({});setMediaWinDropdown(false);}}
+                      style={{fontFamily:T.font.mono,fontSize: 9,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"2px 8px",cursor:"pointer",width:"100%"}}>
+                      CLOSE ALL
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <span style={{fontSize:9,color:T.text.secondary}}>KAFKA: 312/s</span>
           <span style={{fontSize:9,color:T.text.amber,fontWeight:600}}><LiveClock /></span>
           <button onClick={toggleTheme} style={{fontFamily:T.font.mono,fontSize:12,background:"transparent",border:`1px solid ${T.border.medium}`,color:T.text.secondary,padding:"2px 8px",cursor:"pointer",lineHeight:1}} title={theme==="dark"?"Switch to light":"Switch to dark"}>
             {theme==="dark"?"☀":"☾"}
@@ -2354,10 +2391,38 @@ export default function TerminalPage() {
         </div>
       </div>
 
-      {/* ═══ SINGLE TICKER BAR ═══ */}
-      <TickerBar height={18} speed={50} label="MKTDATA" labelColor={T.text.cyan}
-        items={metricsTicker.slice(0, 8)}
+
+      {/* ═══ COMBINED TICKER — 20px ═══ */}
+      <TickerBar height={20} speed={45} label="LIVE" labelColor={T.text.amber}
+        items={[
+          ...liveNews.map(n => {
+            const impactColor = n.impact?.includes('DEMAND') ? T.text.green : n.impact?.includes('SUPPLY') || n.impact?.includes('RISK') ? T.text.red : T.text.amber;
+            return { raw: `[${n.time}]${(n as {mkt?:string}).mkt ? ` [${(n as {mkt?:string}).mkt}]` : ''} ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
+          }),
+          ...liveMacroTicker,
+          ...metricsTicker,
+        ]}
       />
+
+      {/* ═══ F-KEY NAV BAR ═══ */}
+      <div style={{display:"flex",alignItems:"center",borderBottom:`1px solid ${T.border.medium}`,flexShrink:0,background:T.bg.header}}>
+        <div style={{display:"flex",flex:1,overflowX:"auto"}}>
+          {PORTFOLIO_NAV.map(n=>(
+            <button key={n.key} onClick={()=>setFkey(n.key)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"0 12px",height:32,cursor:"pointer",background:fkey===n.key?T.text.amber:"transparent",color:fkey===n.key?T.bg.terminal:T.text.secondary,border:"none",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap",flexShrink:1,minWidth:0}}>
+              <span style={{fontSize:9,fontWeight:700,opacity:0.7,color:fkey===n.key?T.bg.terminal:T.text.muted}}>{n.key}</span>
+              {n.label}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
+          <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 9px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>+ DEAL</button>
+          <div style={{display:"flex",alignItems:"center",gap:3,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"0 6px",height:22,flex:"0 1 130px",minWidth:60}}>
+            <span style={{color:T.text.amber,fontSize:10,fontWeight:700}}>{">"}</span>
+            <input ref={cmdInputRef} value={cmd} onChange={e=>setCmd(e.target.value)} placeholder="CMD (⌘K)" style={{background:"transparent",border:"none",outline:"none",fontFamily:T.font.mono,fontSize:10,color:T.text.primary,flex:1,width:"100%",minWidth:0}}/>
+            <span style={{width:5,height:11,background:T.text.amber,animation:"blink 1s infinite",display:"inline-block",flexShrink:0}}/>
+          </div>
+        </div>
+      </div>
 
       {/* ═══ MAIN CONTENT ═══ */}
       <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
