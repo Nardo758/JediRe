@@ -952,7 +952,7 @@ export default function TerminalPage() {
         {fStage!=="ALL"&&<Bd c={T.text.cyan}>{fStage}</Bd>}
         {fStrat!=="ALL"&&<Bd c={T.text.purple}>{fStrat}</Bd>}
         <span style={{fontSize:10,color:T.text.muted,fontFamily:T.font.mono}}>{sorted.length} deals</span>
-        <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
+        <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 12px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:gc,background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`,flexShrink:0}}>
         {[{l:"#"},{l:"PROPERTY",c:"name"},{l:"MARKET"},{l:"JEDI",c:"score"},{l:"D30",c:"delta"},{l:"STRAT"},{l:"IRR"},{l:"EM"},{l:"PRICE"},{l:"$/U"},{l:"STAGE"},{l:"RISK"},{l:"DAYS",c:"days"}].map((h,i)=>(
@@ -1571,7 +1571,7 @@ export default function TerminalPage() {
             {dashWindows.length>0&&<span style={{fontSize:10,color:T.text.muted}}>{gridWidgets.length} grid{floatWidgets.length>0?` · ${floatWidgets.length} floating`:""}</span>}
           </div>
           <div style={{display:"flex",gap:6}}>
-            <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 8px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
+            <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 12px",height:20,cursor:"pointer",letterSpacing:0.3}}>MAP</button>
             {dashWindows.length>0&&<button onClick={()=>{setDashWindows([]);setWinStates({});setFloatWidgets([]);persistWins([],{});}} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:"transparent",border:`1px solid ${T.border.subtle}`,padding:"3px 8px",cursor:"pointer"}}>CLEAR ALL</button>}
             <button onClick={()=>setDashMenuOpen(true)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3}}>+ ADD WIDGET</button>
           </div>
@@ -1787,7 +1787,7 @@ export default function TerminalPage() {
           ))}
           <div style={{flex:1}}/>
           <button onClick={exportPortfolioCsv} disabled={portfolioExporting} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:"transparent",color:T.text.secondary,border:`1px solid ${T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>{portfolioExporting?"EXPORTING…":"EXPORT CSV"}</button>
-          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.amber:T.bg.input,color:mapOpen?T.bg.terminal:T.text.secondary,border:`1px solid ${mapOpen?T.text.amber:T.border.subtle}`,padding:"2px 10px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
+          <button onClick={()=>setMapOpen(o=>!o)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,background:mapOpen?T.text.cyan:T.bg.input,color:mapOpen?T.bg.terminal:T.text.cyan,border:`1px solid ${mapOpen?T.text.cyan:T.text.cyan}44`,padding:"2px 15px",cursor:"pointer",letterSpacing:0.3,margin:"4px 0 4px 8px"}}>MAP</button>
           <button onClick={() => navigate("/deals/create", {state:{dealCategory:"portfolio"}})} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"4px 12px",cursor:"pointer",letterSpacing:0.3,margin:"4px 8px"}}>+ ADD ASSET</button>
         </div>
 
