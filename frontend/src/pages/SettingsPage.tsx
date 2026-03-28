@@ -7,10 +7,11 @@ import { IntelligenceSettings } from './settings/IntelligenceSettings';
 import { AIModelSettings } from './settings/AIModelSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
 import { SubscriptionSettings } from './settings/SubscriptionSettings';
+import { DataLibrarySettings } from './settings/DataLibrarySettings';
 import { apiClient } from '../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library';
 
 const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: string }> = {
   scout: { label: 'Scout', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
@@ -22,7 +23,7 @@ const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: s
   enterprise: { label: 'Enterprise', textColor: BT.text.purple, bgColor: BT.bg.active },
 };
 
-const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model'];
+const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library'];
 
 function getInitialTab(): SettingsTab {
   const params = new URLSearchParams(window.location.search);
@@ -170,6 +171,13 @@ export function SettingsPage() {
             style={tabButtonStyle(activeTab === 'intelligence')}
           >
             Intelligence & Data
+          </button>
+          <button
+            onClick={() => setActiveTab('data-library')}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'data-library')}
+          >
+            Data Library
           </button>
           <button
             onClick={() => setActiveTab('ai-model')}
@@ -321,6 +329,10 @@ export function SettingsPage() {
 
           {activeTab === 'ai-model' && (
             <AIModelSettings />
+          )}
+
+          {activeTab === 'data-library' && (
+            <DataLibrarySettings />
           )}
         </div>
       </div>

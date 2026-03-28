@@ -69,6 +69,7 @@ import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes'
 import { createPropertyScoringRouter } from './api/rest/property-scoring.routes';
 import { createOpusRoutes } from './api/rest/opus.routes';
 import { createDataLibraryRoutes } from './api/rest/data-library.routes';
+import { createDataLibraryAssetsRoutes } from './api/rest/data-library-assets.routes';
 import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
@@ -343,6 +344,7 @@ app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(poo
 app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
 app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
+app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoutes(pool));
 app.use('/api/v1', requireAuth, propertyBoundaryRouter);
 app.use('/api/v1', requireAuth, siteIntelligenceRouter);
 app.use('/api/v1', requireAuth, zoningCapacityRouter);
