@@ -9,6 +9,7 @@ import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
 import F4MarketsView from "./terminal/F4MarketsView";
+import F9AdminView from "./terminal/F9AdminView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 import { StrategyBuilderPage } from "./StrategyBuilderPage";
 
@@ -618,7 +619,6 @@ export default function TerminalPage() {
 
   // Sync URL slug + browser tab title whenever fkey changes
   useEffect(() => {
-    if (fkey === "F9") return;
     const slug = FKEY_SLUG[fkey] || "dashboard";
     const label = PORTFOLIO_NAV.find(n=>n.key===fkey)?.label || "DASHBOARD";
     document.title = `JediRE | ${label}`;
@@ -2309,12 +2309,6 @@ export default function TerminalPage() {
     });
   }, [fkey, corpHealthLive.loaded, corpHealthLive.loading, fetchSubmarketHealth]);
 
-  useEffect(() => {
-    if (fkey === "F9") {
-      navigate("/admin");
-    }
-  }, [fkey, navigate]);
-
   const ViewSettings = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <SettingsPage />
@@ -2332,6 +2326,7 @@ export default function TerminalPage() {
       case "F6": return ViewNews();
       case "F7": return ViewStrategies();
       case "F8": return ViewReports();
+      case "F9": return <F9AdminView T={T} />;
       case "F10": return ViewSettings();
       default: return null;
     }
