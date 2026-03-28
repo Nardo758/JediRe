@@ -90,8 +90,9 @@ export const useOpportunityStore = create<OpportunityState>((set, get) => ({
         loading: { ...state.loading, [key]: false },
         fetched: { ...state.fetched, [key]: true },
       }));
-    } catch (err: any) {
-      const message = err?.response?.data?.error || err?.message || 'Failed to fetch opportunities';
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      const message = e?.response?.data?.error || e?.message || 'Failed to fetch opportunities';
       set(state => ({
         loading: { ...state.loading, [key]: false },
         errors: { ...state.errors, [key]: message },

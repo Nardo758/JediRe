@@ -29,6 +29,17 @@ const STRATEGY_DISPLAY: Record<string, { label: string; color: string }> = {
   acquire: { label: 'Acquire', color: '#22c55e' },
 };
 
+const DEFAULT_STRATEGY = { label: 'Unknown', color: '#6b7280' };
+const DEFAULT_DIRECTION = { color: '#6b7280', icon: '▬' };
+
+function getStrategyDisplay(strategy: string) {
+  return STRATEGY_DISPLAY[strategy] || DEFAULT_STRATEGY;
+}
+
+function getDirectionDisplay(direction: string) {
+  return SIGNAL_DIRECTION_COLORS[direction] || DEFAULT_DIRECTION;
+}
+
 function deriveQuadrant(opp: OpportunityScore): Quadrant {
   const highMarket = opp.marketScore >= 60;
   const highProperty = opp.propertyScore >= 50;
@@ -92,8 +103,6 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
 
   const opportunities = oppData?.opportunities || [];
   const marketSummary = oppData?.marketSummary;
-  const featured = opportunities.length > 0 ? opportunities[0] : null;
-  const remainingOpps = opportunities.slice(1);
 
   const allOppsWithQuadrant = useMemo(() => {
     return opportunities.map(opp => ({
@@ -120,7 +129,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
   };
 
   const renderSignalBadge = (signal: OpportunitySignal) => {
-    const dir = SIGNAL_DIRECTION_COLORS[signal.direction];
+    const dir = getDirectionDisplay(signal.direction);
     return (
       <span
         key={`${signal.type}-${signal.label}`}
@@ -384,7 +393,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                   {featuredOpp.quadrant}
                 </span>
                 {(() => {
-                  const strat = STRATEGY_DISPLAY[featuredOpp.strategy];
+                  const strat = getStrategyDisplay(featuredOpp.strategy);
                   return (
                     <span style={{
                       padding: '4px 10px',
@@ -453,9 +462,9 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
               <div style={{
                 fontSize: 14,
                 fontWeight: 700,
-                color: STRATEGY_DISPLAY[featuredOpp.strategy].color,
+                color: getStrategyDisplay(featuredOpp.strategy).color,
               }}>
-                {STRATEGY_DISPLAY[featuredOpp.strategy].label}
+                {getStrategyDisplay(featuredOpp.strategy).label}
               </div>
             </div>
           </div>
@@ -521,7 +530,7 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
             <tbody>
               {listOpps.map((opp, i) => {
                 const quadrantStyle = QUADRANT_STYLES[opp.quadrant];
-                const strat = STRATEGY_DISPLAY[opp.strategy];
+                const strat = getStrategyDisplay(opp.strategy);
                 const bullishCount = opp.signals.filter(s => s.direction === 'bullish').length;
                 const bearishCount = opp.signals.filter(s => s.direction === 'bearish').length;
 
