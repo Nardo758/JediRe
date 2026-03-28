@@ -353,7 +353,7 @@ const DealDetailPage: React.FC = () => {
   const dealType = useDealType();
   const developmentEnvelope = useDealStore((s) => s.developmentEnvelope);
   const selectedDevelopmentPathId = useDealStore((s) => s.selectedDevelopmentPathId);
-  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea, setGeographicStats } = useTradeAreaStore();
+  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea, setGeographicStats, geographicStats } = useTradeAreaStore();
   const { theme, setTheme } = useTheme();
   const isDark = theme === 'dark';
   const tabParam = searchParams.get('tab');
@@ -578,6 +578,135 @@ const DealDetailPage: React.FC = () => {
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
+
+        {/* ── Bar 1: Deal Name / Address / JEDI Score ── */}
+        {deal && (
+          <div style={{
+            height: 28, background: '#080C12', borderBottom: `1px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', padding: '0 10px',
+            flexShrink: 0, fontFamily: MONO, overflow: 'hidden',
+          }}>
+            <button
+              onClick={() => navigate('/capsules')}
+              title="Back to Deal Capsules"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#6B7585', fontSize: 9, fontFamily: MONO, fontWeight: 600,
+                letterSpacing: 0.5, marginRight: 10, flexShrink: 0, padding: 0,
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#10B981')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#6B7585')}
+            >
+              <ArrowLeft size={10} />
+              CAPSULES
+            </button>
+            <span style={{ color: '#EF4444', fontSize: 9, marginRight: 5, flexShrink: 0 }}>📍</span>
+            {deal.name && (
+              <span style={{ color: TEXT, fontWeight: 700, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, letterSpacing: 0.3 }}>
+                {deal.name}
+              </span>
+            )}
+            {(deal.address || deal.location) && (
+              <>
+                <span style={{ color: '#1e2a3d', margin: '0 5px', fontSize: 9 }}>·</span>
+                <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220, letterSpacing: 0.2 }}>
+                  {deal.address || deal.location}
+                </span>
+              </>
+            )}
+            {deal.jedi_score != null && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
+                <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>JEDI {typeof deal.jedi_score === 'object' ? (deal.jedi_score as any)?.totalScore ?? '' : deal.jedi_score}</span>
+              </span>
+            )}
+            {deal.pipeline_stage && (
+              <span style={{
+                marginLeft: 'auto', fontSize: 8, fontWeight: 700, letterSpacing: 0.8,
+                padding: '1px 8px', color: AMBER, border: `1px solid ${AMBER}55`,
+                textTransform: 'uppercase', flexShrink: 0,
+              }}>
+                {deal.pipeline_stage}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* ── Bar 2: Trade Area / Submarket / MSA Context ── */}
+        {deal && (
+          <div style={{
+            height: 26, background: '#0D1117', borderBottom: `1px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', padding: '0 10px',
+            flexShrink: 0, fontFamily: MONO, overflow: 'hidden',
+          }}>
+            <button
+              onClick={() => setShowTradeAreaPanel(true)}
+              style={{
+                background: 'transparent', border: `1px solid ${AMBER}55`, cursor: 'pointer',
+                padding: '2px 8px', fontFamily: MONO,
+                fontSize: 9, fontWeight: 800, color: AMBER, letterSpacing: 0.8,
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              ▶ TRADE AREA
+            </button>
+
+            {(() => {
+              const fmtOcc = (v: unknown): string | null => {
+                if (v == null) return null;
+                const n = Number(v);
+                if (isNaN(n)) return null;
+                const pct = n > 1 ? n : n * 100;
+                return `${pct.toFixed(1)}%`;
+              };
+              const fmtRent = (v: unknown): string | null => {
+                if (v == null) return null;
+                const n = Number(v);
+                if (isNaN(n)) return null;
+                return `$${Math.round(n).toLocaleString()}`;
+              };
+              const smStats = (geographicStats as any)?.submarket;
+              const msaStats = (geographicStats as any)?.msa;
+              const smOcc = fmtOcc(smStats?.occupancy);
+              const smRent = fmtRent(smStats?.avg_rent);
+              const msaOcc = fmtOcc(msaStats?.occupancy);
+              const msaRent = fmtRent(msaStats?.avg_rent);
+              const pipe = <span style={{ color: '#1e2a3d', margin: '0 8px', fontSize: 10 }}>│</span>;
+              return (
+                <>
+                  {(smOcc || smRent) && (
+                    <>
+                      {pipe}
+                      <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
+                        {[smOcc, smRent].filter(Boolean).join(' · ')}
+                      </span>
+                    </>
+                  )}
+                  {(msaOcc || msaRent) && (
+                    <>
+                      {pipe}
+                      <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
+                        {[msaOcc, msaRent].filter(Boolean).join(' · ')}
+                      </span>
+                    </>
+                  )}
+                </>
+              );
+            })()}
+
+            <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+              <GeographicScopeTabs
+                activeScope={activeScope}
+                onChange={setScope}
+                compact
+                tradeAreaEnabled={!!(geographicStats as any)?.trade_area}
+                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
+              />
+            </div>
+          </div>
+        )}
 
         {/* ── Bloomberg-style F-Key Navigation Bar ── */}
         <div style={{
