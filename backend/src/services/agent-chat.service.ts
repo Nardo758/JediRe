@@ -11,6 +11,7 @@
 import { generateCompletion, isLLMAvailable } from './llm.service';
 import { logger } from '../utils/logger';
 import { query } from '../database/connection';
+import { orchestrate, chatWithAgent, SpecialistAgent } from './orchestrator.service';
 
 // ============================================================================
 // Types
@@ -196,6 +197,99 @@ export async function agentChat(request: AgentChatRequest): Promise<AgentChatRes
 
   logger.info('Agent chat request:', { agentCode, dealId, userId, messageLength: message.length });
 
+  // =========================================================================
+  // ORCHESTRATOR: Route through orchestrator service for intelligent delegation
+  // =========================================================================
+  if (agentCode === 'ORCHESTRATOR') {
+    try {
+      const orchestratorResult = await orchestrate({
+        message,
+        dealId,
+        msaId,
+        userId,
+      });
+
+      const executionTime = Date.now() - startTime;
+      await logChatInteraction(request, orchestratorResult.message, executionTime);
+
+      return {
+        id: crypto.randomUUID(),
+        agentCode: 'ORCHESTRATOR',
+        message: orchestratorResult.message,
+        data: {
+          delegations: orchestratorResult.delegations,
+        },
+        suggestedFollowups: orchestratorResult.suggestedFollowups,
+        timestamp: orchestratorResult.timestamp,
+      };
+    } catch (error: any) {
+      logger.error('Orchestrator failed:', error);
+      return generateFallbackResponse(agentCode, message);
+    }
+  }
+
+  // =========================================================================
+  // SPECIALIST AGENTS: Try executor first, then fall back to LLM
+  // =========================================================================
+  const specialistAgents: AgentCode[] = ['SUPPLY', 'DEMAND', 'CASH', 'ZONING', 'COMPS', 'RISK', 'DEBT'];
+  
+  if (specialistAgents.includes(agentCode)) {
+    try {
+      // Try to get real data from agent executor
+      const agentResult = await chatWithAgent(
+        agentCode as SpecialistAgent,
+        message,
+        { dealId, msaId },
+        userId
+      );
+
+      if (agentResult.success) {
+        // Format the data with LLM if available
+        let responseMessage: string;
+        
+        if (isLLMAvailable()) {
+          const agentConfig = AGENT_PROMPTS[agentCode];
+          const formattingPrompt = `You are the ${agentConfig?.role || agentCode + ' agent'}. 
+Format this data as a helpful response to the user's question: "${message}"
+
+Data:
+${JSON.stringify(agentResult.data, null, 2)}
+
+Be concise, highlight key insights, and use natural language.`;
+
+          const llmResponse = await generateCompletion({
+            prompt: formattingPrompt,
+            maxTokens: 800,
+            temperature: 0.7,
+          });
+          responseMessage = llmResponse.text;
+        } else {
+          responseMessage = `Here's the ${agentCode.toLowerCase()} analysis:\n\n${JSON.stringify(agentResult.data, null, 2)}`;
+        }
+
+        const executionTime = Date.now() - startTime;
+        await logChatInteraction(request, responseMessage, executionTime);
+
+        return {
+          id: crypto.randomUUID(),
+          agentCode,
+          message: responseMessage,
+          data: agentResult.data,
+          suggestedFollowups: generateFollowups(agentCode, message),
+          timestamp: Date.now(),
+        };
+      }
+      // If agent executor failed, fall through to LLM-only response
+    } catch (error) {
+      logger.warn(`${agentCode} executor failed, falling back to LLM:`, error);
+      // Fall through to LLM-only response
+    }
+  }
+
+  // =========================================================================
+  // LLM-ONLY AGENTS (Analysts, Strategy, etc.)
+  // =========================================================================
+  
   // Check LLM availability
   if (!isLLMAvailable()) {
     return generateFallbackResponse(agentCode, message);

@@ -14,6 +14,7 @@ interface LLMRequest {
   context?: Record<string, any>;
   maxTokens?: number;
   temperature?: number;
+  model?: string;  // Optional model override (e.g., 'claude-3-opus', 'gpt-4')
 }
 
 interface LLMResponse {
@@ -227,11 +228,26 @@ async function callOpenRouter(
   }
 }
 
+// Model name to actual API model ID mapping
+const MODEL_MAP: Record<string, { provider: string; model: string }> = {
+  // Claude models (via Anthropic or OpenRouter)
+  'claude-3-opus': { provider: 'anthropic', model: 'claude-3-opus-20240229' },
+  'claude-3-sonnet': { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },
+  'claude-3-haiku': { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
+  // OpenAI models
+  'gpt-4': { provider: 'openai', model: 'gpt-4o' },
+  'gpt-4-turbo': { provider: 'openai', model: 'gpt-4-turbo' },
+  'gpt-3.5-turbo': { provider: 'openai', model: 'gpt-4o-mini' },
+  // Other models (via OpenRouter)
+  'gemini-pro': { provider: 'openrouter', model: 'google/gemini-2.0-flash-exp:free' },
+  'llama-3-70b': { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct' },
+};
+
 /**
  * Main LLM service - routes to appropriate provider
  */
 export async function generateCompletion(request: LLMRequest): Promise<LLMResponse> {
-  const provider = getLLMProvider();
+  let provider = getLLMProvider();
 
   if (!provider) {
     throw new AppError(
@@ -240,8 +256,20 @@ export async function generateCompletion(request: LLMRequest): Promise<LLMRespon
     );
   }
 
+  // If a specific model is requested, override the provider model
+  if (request.model && MODEL_MAP[request.model]) {
+    const modelInfo = MODEL_MAP[request.model];
+    provider = {
+      ...provider,
+      model: modelInfo.model,
+      // Only switch provider if we have the necessary API key
+      name: getProviderWithKey(modelInfo.provider) || provider.name,
+    };
+  }
+
   logger.info(`Calling ${provider.name} LLM API`, {
     model: provider.model,
+    requestedModel: request.model,
     promptLength: request.prompt.length,
   });
 
@@ -256,6 +284,23 @@ export async function generateCompletion(request: LLMRequest): Promise<LLMRespon
     default:
       throw new AppError(500, `Unknown LLM provider: ${provider.name}`);
   }
+}
+
+/**
+ * Check if we have API key for a specific provider
+ */
+function getProviderWithKey(preferredProvider: string): string | null {
+  if (preferredProvider === 'anthropic' && process.env.CLAUDE_API_KEY) {
+    return 'anthropic';
+  }
+  if (preferredProvider === 'openai' && process.env.OPENAI_API_KEY) {
+    return 'openai';
+  }
+  // Fall back to OpenRouter for models we don't have direct API access to
+  if (process.env.OPENROUTER_API_KEY) {
+    return 'openrouter';
+  }
+  return null;
 }
 
 /**

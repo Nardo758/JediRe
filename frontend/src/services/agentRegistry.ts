@@ -49,13 +49,13 @@ export interface AgentDefinition {
 
 export const AI_MODELS: Record<AIModel, { name: string; provider: string; speed: string; cost: string }> = {
   'claude-3-opus': { name: 'Claude 3 Opus', provider: 'Anthropic', speed: 'Slow', cost: '$$$' },
-  'claude-3-sonnet': { name: 'Claude 3 Sonnet', provider: 'Anthropic', speed: 'Medium', cost: '$$' },
-  'claude-3-haiku': { name: 'Claude 3 Haiku', provider: 'Anthropic', speed: 'Fast', cost: '$' },
+  'claude-3-sonnet': { name: 'Claude 3.5 Sonnet', provider: 'Anthropic', speed: 'Fast', cost: '$$' },
+  'claude-3-haiku': { name: 'Claude 3.5 Haiku', provider: 'Anthropic', speed: 'Fastest', cost: '$' },
   'gpt-4-turbo': { name: 'GPT-4 Turbo', provider: 'OpenAI', speed: 'Medium', cost: '$$' },
-  'gpt-4': { name: 'GPT-4', provider: 'OpenAI', speed: 'Slow', cost: '$$$' },
-  'gpt-3.5-turbo': { name: 'GPT-3.5 Turbo', provider: 'OpenAI', speed: 'Fast', cost: '$' },
-  'gemini-pro': { name: 'Gemini Pro', provider: 'Google', speed: 'Fast', cost: '$' },
-  'llama-3-70b': { name: 'Llama 3 70B', provider: 'Meta', speed: 'Medium', cost: '$' },
+  'gpt-4': { name: 'GPT-4o', provider: 'OpenAI', speed: 'Fast', cost: '$$' },
+  'gpt-3.5-turbo': { name: 'GPT-4o Mini', provider: 'OpenAI', speed: 'Fastest', cost: '$' },
+  'gemini-pro': { name: 'Gemini 2.0 Flash', provider: 'Google', speed: 'Fast', cost: '$' },
+  'llama-3-70b': { name: 'Llama 3.3 70B', provider: 'Meta', speed: 'Medium', cost: '$' },
 };
 
 // ============================================================================

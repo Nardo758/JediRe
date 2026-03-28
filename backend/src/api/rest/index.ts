@@ -102,6 +102,7 @@ import corporateHealthRoutes from './corporate-health.routes';
 import opportunityEngineRoutes from './opportunity-engine.routes';
 import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 import tickerRoutes from './ticker.routes';
+import agentSettingsRoutes from './agent-settings.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -151,6 +152,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Agent routes (orchestration)
   app.use(`${API_PREFIX}/agents`, agentRoutes);
+
+  // Agent Settings routes (model selection, workforce config)
+  app.use(`${API_PREFIX}/settings/agents`, agentSettingsRoutes);
 
   // LLM routes (AI-powered features)
   app.use(`${API_PREFIX}/llm`, llmRoutes);

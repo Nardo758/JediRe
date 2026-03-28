@@ -271,9 +271,15 @@ export const AgentSettingsPage: React.FC = () => {
 
   const loadSettings = async () => {
     try {
-      const response = await api.get('/preferences/agent-models');
-      if (response.data?.success) {
-        setSettings(response.data.data || {});
+      const response = await api.get('/settings/agents/models');
+      if (response.data?.success && response.data.data) {
+        // Map from {globalModel, agentOverrides} to flat Record
+        const data = response.data.data;
+        const loaded: Record<string, AIModel> = {};
+        AGENT_DEFINITIONS.forEach(agent => {
+          loaded[agent.code] = (data.agentOverrides?.[agent.code] || data.globalModel || agent.defaultModel) as AIModel;
+        });
+        setSettings(loaded);
       } else {
         // Use defaults
         const defaults: Record<string, AIModel> = {};
@@ -302,7 +308,21 @@ export const AgentSettingsPage: React.FC = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put('/preferences/agent-models', settings);
+      // Convert flat settings to {globalModel, agentOverrides} format
+      const globalModel = settings['ORCHESTRATOR'] || 'claude-3-sonnet';
+      const agentOverrides: Record<string, string> = {};
+      
+      Object.entries(settings).forEach(([code, model]) => {
+        // Only store overrides that differ from global
+        if (model !== globalModel) {
+          agentOverrides[code] = model;
+        }
+      });
+
+      await api.put('/settings/agents/models', {
+        globalModel,
+        agentOverrides,
+      });
       setHasChanges(false);
     } catch (error) {
       console.error('Failed to save settings:', error);
