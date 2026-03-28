@@ -144,7 +144,10 @@ function AppContent() {
         <Route path="/market-data/comparables" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/market-data/demographics" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/market-data/supply-demand" element={<Navigate to="/terminal/markets" replace />} />
-{/* Legacy /assets-owned routes removed — Portfolio now lives at /terminal/portfolio (F3) */}
+        <Route path="/assets-owned" element={<Navigate to="/terminal/portfolio" replace />} />
+        <Route path="/assets-owned/performance" element={<Navigate to="/terminal/portfolio" replace />} />
+        <Route path="/assets-owned/documents" element={<Navigate to="/terminal/portfolio" replace />} />
+        <Route path="/assets-owned/grid" element={<Navigate to="/terminal/portfolio" replace />} />
         <Route path="/market-research" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/market-research/active-owners" element={<Navigate to="/terminal/markets" replace />} />
         <Route path="/market-research/future-supply" element={<Navigate to="/terminal/markets" replace />} />
