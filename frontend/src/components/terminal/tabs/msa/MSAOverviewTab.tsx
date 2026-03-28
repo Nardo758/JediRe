@@ -180,9 +180,12 @@ const MOCK_NEAR_TERM_SUPPLY: SupplyMetric[] = [
   { id: 'S-02', label: 'Under Construction', value: '32,400' },
   { id: 'S-03', label: 'Permitted', value: '7,200' },
   { id: '', label: 'Pipeline %', value: '15.8%', warning: true },
-  { id: 'S-04', label: 'Absorption Runway', value: '22.4 mo' },
-  { id: 'S-05', label: 'Delivery Clusters', value: '3', warning: true },
-  { id: 'S-06', label: 'Permit Momentum', value: '0.85x' },
+  { id: 'S-04', label: 'Absorption Rate', value: '1,480 units/mo' },
+  { id: 'S-05', label: 'Absorption Runway', value: '22.4 mo' },
+  { id: 'S-06', label: 'Delivery Clusters', value: '3', warning: true },
+  { id: 'S-07', label: 'Permit Momentum', value: '0.85x' },
+  { id: 'R-03', label: 'Avg Concessions', value: '$142/unit', warning: true },
+  { id: '', label: 'Concession %', value: '3.2% eff. rent', warning: true },
   { id: 'S-10', label: 'Vintage Breakdown', value: '<2000: 42% | 2000-15: 35% | 2015+: 23%' },
 ];
 
@@ -194,11 +197,11 @@ const MOCK_LONG_TERM_CAPACITY = [
 ];
 
 const MOCK_TOP_SUBMARKETS = [
-  { name: 'Midtown', jedi: 82, rentGrowth: '+5.2%', units: 18400 },
-  { name: 'Buckhead', jedi: 78, rentGrowth: '+3.8%', units: 24200 },
-  { name: 'Old Fourth Ward', jedi: 76, rentGrowth: '+6.1%', units: 8900 },
-  { name: 'Decatur', jedi: 74, rentGrowth: '+4.2%', units: 12100 },
-  { name: 'Sandy Springs', jedi: 71, rentGrowth: '+2.9%', units: 15600 },
+  { name: 'Midtown', jedi: 88, rentGrowth: '+4.8%', units: 14800, absorption: 340, concessions: '$128/u' },
+  { name: 'West Midtown', jedi: 86, rentGrowth: '+5.2%', units: 6400, absorption: 165, concessions: '$95/u' },
+  { name: 'Buckhead', jedi: 84, rentGrowth: '+2.1%', units: 11200, absorption: 285, concessions: '$195/u' },
+  { name: 'Sandy Springs', jedi: 81, rentGrowth: '+3.4%', units: 12600, absorption: 245, concessions: '$160/u' },
+  { name: 'Old Fourth Ward', jedi: 80, rentGrowth: '+3.2%', units: 18400, absorption: 180, concessions: '$85/u' },
 ];
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
@@ -616,6 +619,8 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>JEDI</th>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Rent Δ</th>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Absorp/mo</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Concess</th>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Action</th>
                 </tr>
               </thead>
@@ -653,6 +658,12 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
                       </td>
                       <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
                         {sub.units.toLocaleString()}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.cyan, fontWeight: 600 }}>
+                        {sub.absorption}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.amber }}>
+                        {sub.concessions}
                       </td>
                       <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                         <button style={{

@@ -22,17 +22,19 @@ interface SubmarketRow {
   dpp: number;
   cpp: string;
   cycle: string;
+  absorption: number;
+  concessions: string;
 }
 
 const MOCK_SUBMARKETS: SubmarketRow[] = [
-  { id: 'midtown', name: 'Midtown', msa: 'Atlanta, GA', jedi: 88, rent: '$2,056', rentD: '+4.8%', vac: '5.1%', props: 52, units: '14.8K', dpp: 82, cpp: '4.8%', cycle: 'EXPANSION' },
-  { id: 'buckhead', name: 'Buckhead', msa: 'Atlanta, GA', jedi: 84, rent: '$1,883', rentD: '+2.1%', vac: '6.2%', props: 38, units: '11.2K', dpp: 78, cpp: '4.5%', cycle: 'EXPANSION' },
-  { id: 'sandy-springs', name: 'Sandy Springs', msa: 'Atlanta, GA', jedi: 81, rent: '$1,920', rentD: '+3.4%', vac: '5.8%', props: 44, units: '12.6K', dpp: 74, cpp: '5.2%', cycle: 'EXPANSION' },
-  { id: 'ofw', name: 'Old Fourth Ward', msa: 'Atlanta, GA', jedi: 80, rent: '$1,850', rentD: '+3.2%', vac: '6.8%', props: 62, units: '18.4K', dpp: 72, cpp: '', cycle: 'LATE EXP' },
-  { id: 'east-atlanta', name: 'East Atlanta', msa: 'Atlanta, GA', jedi: 78, rent: '$1,720', rentD: '+4.1%', vac: '5.6%', props: 28, units: '8.2K', dpp: 80, cpp: '5.6%', cycle: 'EXPANSION' },
-  { id: 'decatur', name: 'Decatur', msa: 'Atlanta, GA', jedi: 76, rent: '$1,680', rentD: '+4.2%', vac: '5.4%', props: 32, units: '9.8K', dpp: 84, cpp: '5.2%', cycle: 'EXPANSION' },
-  { id: 'downtown', name: 'Downtown', msa: 'Atlanta, GA', jedi: 74, rent: '$1,540', rentD: '+0.4%', vac: '8.5%', props: 52, units: '18.2K', dpp: 38, cpp: '4.4%', cycle: '' },
-  { id: 'west-midtown', name: 'West Midtown', msa: 'Atlanta, GA', jedi: 86, rent: '$2,120', rentD: '+5.2%', vac: '4.8%', props: 24, units: '6.4K', dpp: 88, cpp: '4.2%', cycle: 'EXPANSION' },
+  { id: 'midtown', name: 'Midtown', msa: 'Atlanta, GA', jedi: 88, rent: '$2,056', rentD: '+4.8%', vac: '5.1%', props: 52, units: '14.8K', dpp: 82, cpp: '4.8%', cycle: 'EXPANSION', absorption: 340, concessions: '$128/u' },
+  { id: 'buckhead', name: 'Buckhead', msa: 'Atlanta, GA', jedi: 84, rent: '$1,883', rentD: '+2.1%', vac: '6.2%', props: 38, units: '11.2K', dpp: 78, cpp: '4.5%', cycle: 'EXPANSION', absorption: 285, concessions: '$195/u' },
+  { id: 'sandy-springs', name: 'Sandy Springs', msa: 'Atlanta, GA', jedi: 81, rent: '$1,920', rentD: '+3.4%', vac: '5.8%', props: 44, units: '12.6K', dpp: 74, cpp: '5.2%', cycle: 'EXPANSION', absorption: 245, concessions: '$160/u' },
+  { id: 'ofw', name: 'Old Fourth Ward', msa: 'Atlanta, GA', jedi: 80, rent: '$1,850', rentD: '+3.2%', vac: '6.8%', props: 62, units: '18.4K', dpp: 72, cpp: '', cycle: 'LATE EXP', absorption: 180, concessions: '$85/u' },
+  { id: 'east-atlanta', name: 'East Atlanta', msa: 'Atlanta, GA', jedi: 78, rent: '$1,720', rentD: '+4.1%', vac: '5.6%', props: 28, units: '8.2K', dpp: 80, cpp: '5.6%', cycle: 'EXPANSION', absorption: 155, concessions: '$72/u' },
+  { id: 'decatur', name: 'Decatur', msa: 'Atlanta, GA', jedi: 76, rent: '$1,680', rentD: '+4.2%', vac: '5.4%', props: 32, units: '9.8K', dpp: 84, cpp: '5.2%', cycle: 'EXPANSION', absorption: 210, concessions: '$110/u' },
+  { id: 'downtown', name: 'Downtown', msa: 'Atlanta, GA', jedi: 74, rent: '$1,540', rentD: '+0.4%', vac: '8.5%', props: 52, units: '18.2K', dpp: 38, cpp: '4.4%', cycle: '', absorption: 120, concessions: '$225/u' },
+  { id: 'west-midtown', name: 'West Midtown', msa: 'Atlanta, GA', jedi: 86, rent: '$2,120', rentD: '+5.2%', vac: '4.8%', props: 24, units: '6.4K', dpp: 88, cpp: '4.2%', cycle: 'EXPANSION', absorption: 165, concessions: '$95/u' },
 ];
 
 const HISTORY_LABELS = ['Q1 24', 'Q2 24', 'Q3 24', 'Q4 24', 'Q1 25', 'Q2 25', 'Q3 25', 'Q4 25', 'Q1 26'];
@@ -228,7 +230,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                  {['Submarket', 'MSA', 'JEDI', 'Rent', 'Rent Δ', 'Vac', 'Props', 'Units', 'DPP', 'CPP', 'Cycle'].map((h, i) => (
+                  {['Submarket', 'MSA', 'JEDI', 'Rent', 'Rent Δ', 'Vac', 'Props', 'Units', 'Absorp/mo', 'Concess', 'DPP', 'CPP', 'Cycle'].map((h, i) => (
                     <th key={h} style={{
                       padding: '5px 12px',
                       textAlign: (i <= 1 ? 'left' : 'right') as React.CSSProperties['textAlign'],
@@ -274,6 +276,8 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                       <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.primary, ...mono }}>{sub.vac}</td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.primary, ...mono }}>{sub.props}</td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.primary, ...mono }}>{sub.units}</td>
+                      <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.cyan, fontWeight: 600, ...mono }}>{sub.absorption}</td>
+                      <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.amber, ...mono }}>{sub.concessions}</td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.cyan, ...mono }}>{sub.dpp}</td>
                       <td style={{ padding: '5px 12px', textAlign: 'right', color: BT.text.primary, ...mono }}>{sub.cpp}</td>
                       <td style={{ padding: '5px 12px', textAlign: 'right' }}>

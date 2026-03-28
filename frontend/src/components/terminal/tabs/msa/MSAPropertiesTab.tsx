@@ -579,6 +579,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                                     capRate: capRateVal,
                                     owner: prop.owner,
                                     lastUpdated: prop.purchaseDate,
+                                    concessions: safeNum(prop.concessions),
                                   }}
                                   showComps={false}
                                   onClick={() => onSelectProperty?.(prop.id)}

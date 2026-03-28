@@ -69,6 +69,12 @@ interface BloombergPropertyCardProps {
     owner?: string;
     lastUpdated?: string;
     images?: PropertyImage[];
+    concessions?: number;
+    noi?: number;
+    debtService?: number;
+    revenue?: number;
+    expenses?: number;
+    absorption?: number;
   };
   comps?: CompProperty[];
   sparklineData?: number[];
@@ -466,6 +472,67 @@ export const BloombergPropertyCard: React.FC<BloombergPropertyCardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Deal Financials Row — shown when deal data is available */}
+      {(property.concessions != null || property.noi != null || property.revenue != null || property.absorption != null) && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${[property.concessions, property.noi, property.revenue, property.expenses, property.debtService, property.absorption].filter(v => v != null).length}, 1fr)`,
+          padding: '8px 12px',
+          background: BT.bg.terminal,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+          gap: 8,
+        }}>
+          {property.concessions != null && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 2 }}>CONCESS</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.amber, fontFamily: "'JetBrains Mono', monospace" }}>
+                ${property.concessions.toLocaleString()}
+              </div>
+            </div>
+          )}
+          {property.noi != null && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 2 }}>NOI</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.green, fontFamily: "'JetBrains Mono', monospace" }}>
+                ${property.noi >= 1000 ? `${(property.noi / 1000).toFixed(0)}K` : property.noi.toLocaleString()}
+              </div>
+            </div>
+          )}
+          {property.revenue != null && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 2 }}>REVENUE</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.cyan, fontFamily: "'JetBrains Mono', monospace" }}>
+                ${property.revenue >= 1000 ? `${(property.revenue / 1000).toFixed(0)}K` : property.revenue.toLocaleString()}
+              </div>
+            </div>
+          )}
+          {property.expenses != null && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 2 }}>EXPENSES</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.red, fontFamily: "'JetBrains Mono', monospace" }}>
+                ${property.expenses >= 1000 ? `${(property.expenses / 1000).toFixed(0)}K` : property.expenses.toLocaleString()}
+              </div>
+            </div>
+          )}
+          {property.debtService != null && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 2 }}>DEBT SVC</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.secondary, fontFamily: "'JetBrains Mono', monospace" }}>
+                ${property.debtService >= 1000 ? `${(property.debtService / 1000).toFixed(0)}K` : property.debtService.toLocaleString()}
+              </div>
+            </div>
+          )}
+          {property.absorption != null && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 2 }}>ABSORP/MO</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.cyan, fontFamily: "'JetBrains Mono', monospace" }}>
+                {property.absorption}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Peer Comparison Table */}
       {showComps && (
