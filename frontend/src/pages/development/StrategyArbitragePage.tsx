@@ -34,7 +34,8 @@ const SIGNAL_LABELS = ['D', 'S', 'M', 'P', 'R'];
 
 const TAB_LABELS = ['ARBITRAGE SCORES', 'STRATEGY DETAIL'];
 
-function ScoreRing({ score, color, size = 60 }: { score: number; color: string; size?: number }) {
+function ScoreRing({ score: rawScore, color, size = 60 }: { score: number; color: string; size?: number }) {
+  const score = Number(rawScore ?? 0);
   const r = (size - 8) / 2;
   const circ = 2 * Math.PI * r;
   const dash = (Math.min(100, Math.max(0, score)) / 100) * circ;
@@ -88,7 +89,7 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
           {isWinner && <Bd c={BT.text.amber}>WINNER</Bd>}
           <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: isWinner ? BT.text.amber : BT.text.primary }}>
-            {(score.overall_score ?? 0).toFixed(0)}
+            {Number(score.overall_score ?? 0).toFixed(0)}
           </span>
         </div>
       </div>
@@ -97,14 +98,14 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
         <ScoreRing score={score.overall_score} color={col.color} size={60} />
       </div>
 
-      <DataRow label="IRR"      value={irr != null ? `${(irr * 100).toFixed(1)}%`  : '—'} valueColor={BT.met.financial} />
-      <DataRow label="EM"       value={em  != null ? `${em.toFixed(2)}×`            : '—'} valueColor={BT.text.amber} />
-      <DataRow label="YOC"      value={yoc != null ? `${(yoc * 100).toFixed(1)}%`  : '—'} valueColor={BT.met.occupancy} />
+      <DataRow label="IRR"      value={irr != null ? `${(Number(irr) * 100).toFixed(1)}%`  : '—'} valueColor={BT.met.financial} />
+      <DataRow label="EM"       value={em  != null ? `${Number(em).toFixed(2)}×`            : '—'} valueColor={BT.text.amber} />
+      <DataRow label="YOC"      value={yoc != null ? `${(Number(yoc) * 100).toFixed(1)}%`  : '—'} valueColor={BT.met.occupancy} />
       <DataRow label="TIMELINE" value={timeline != null ? `${timeline}M`            : '—'} valueColor={BT.text.secondary} />
 
       <div style={{ borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 2, paddingBottom: 2 }}>
         {SIGNAL_KEYS.map((key, i) => {
-          const v = (score.sub_scores?.[key] as number | undefined) ?? 0;
+          const v = Number((score.sub_scores?.[key] as number | undefined) ?? 0);
           return (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
               <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, width: 8, flexShrink: 0 }}>
@@ -193,11 +194,11 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
             ARBITRAGE ALERT
           </span>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>
-            {(arbitrage.winning_strategy_name ?? 'Winner').toUpperCase()} wins by {(arbitrage.delta ?? 0).toFixed(1)} pts over {(arbitrage.runner_up_strategy_name ?? 'Runner-up').toUpperCase()}
+            {(arbitrage.winning_strategy_name ?? 'Winner').toUpperCase()} wins by {Number(arbitrage.delta ?? 0).toFixed(1)} pts over {(arbitrage.runner_up_strategy_name ?? 'Runner-up').toUpperCase()}
           </span>
           {irrDelta != null && (
             <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.green }}>
-              +{(irrDelta * 100).toFixed(1)}% IRR advantage
+              +{(Number(irrDelta) * 100).toFixed(1)}% IRR advantage
             </span>
           )}
         </div>
@@ -274,7 +275,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
                           </span>
                           <Spark data={spark.length >= 2 ? spark : [s.overall_score, s.overall_score]} color={col.color} w={80} h={14} />
                           <span style={{ fontFamily: MONO, fontSize: 9, color: col.color, fontWeight: 700, marginLeft: 'auto' }}>
-                            {(s.overall_score ?? 0).toFixed(0)}
+                            {Number(s.overall_score ?? 0).toFixed(0)}
                           </span>
                         </div>
                       );
