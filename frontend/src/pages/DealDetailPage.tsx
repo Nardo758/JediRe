@@ -800,21 +800,6 @@ const DealDetailPage: React.FC = () => {
                 onBlur={e => { e.currentTarget.style.borderColor = BORDER; }}
               />
             </div>
-            {/* Theme toggle */}
-            <button
-              onClick={() => setTheme(isDark ? 'light' : 'dark')}
-              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                height: '100%', padding: '0 10px',
-                background: 'transparent', border: 'none',
-                borderLeft: `1px solid ${BORDER}`,
-                cursor: 'pointer', fontSize: 12,
-                color: TEXT_DIM,
-              }}
-            >
-              {isDark ? '☀' : '☾'}
-            </button>
             {/* Presence indicator */}
             <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', paddingLeft: 10, paddingRight: 10 }}>
               {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
