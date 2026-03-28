@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import BloombergMarketDetail from "../MarketIntelligence/BloombergMarketDetail";
 import PeerComparisonPage from "../MarketIntelligence/PeerComparisonPage";
 import { MSATerminal } from "../../components/terminal/MSATerminal";
@@ -197,6 +198,7 @@ const dataCell: React.CSSProperties = {
 };
 
 export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
+  const nav = useNavigate();
   const [level, setLevel] = useState<DrillLevel>("landing");
   const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("f4-landing");
   const [subTab, setSubTab] = useState<SubTab>("msa-detail");
@@ -400,6 +402,9 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
           <span style={{ ...mono, fontSize: 9, color: C.muted }}>›</span>
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillPropertyName.toUpperCase() || "PROPERTY"}</span>
           <div style={{ flex: 1 }} />
+          <button onClick={() => nav(`/property-card/${drillPropertyId}`)} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.cyan, border: `1px solid ${C.cyan}44`, padding: "4px 12px", cursor: "pointer", letterSpacing: 0.5 }}>
+            STANDALONE CARD ↗
+          </button>
           <button onClick={() => setLevel("property-terminal")} style={{ ...mono, fontSize: 9, fontWeight: 700, background: C.amber, color: C.bg, border: "none", padding: "4px 12px", cursor: "pointer", letterSpacing: 0.5 }}>
             OPEN FULL TERMINAL →
           </button>
