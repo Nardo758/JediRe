@@ -435,7 +435,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
       />
 
       {/* ── Row 1: JEDI Score | 5 Signals | Deal Details ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 190px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 228px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
 
         {/* Col A — JEDI Score Gauge */}
         <div style={{ background: BTV.bg.panel, padding: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
