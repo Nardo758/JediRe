@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
@@ -155,6 +155,26 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
   const [isLoading, setIsLoading] = useState(false);
   const [dealData, setDealData] = useState<Record<string, unknown> | null>(propDeal ?? null);
 
+  interface NarrativeData {
+    executiveSummary: string;
+    categoryNarratives: Array<{
+      categoryId: string;
+      title: string;
+      narrative: string;
+      keyDataPoints: string[];
+      conflictsWithAssumptions: string | null;
+      mitigationStrategy: string;
+    }>;
+    crossCuttingRisks: string;
+    recommendation: string;
+  }
+  const [narrative, setNarrative] = useState<NarrativeData | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrativeStream, setNarrativeStream] = useState('');
+  const [narrativeError, setNarrativeError] = useState<string | null>(null);
+  const streamRef = useRef('');
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (!resolvedDealId) return;
     let cancelled = false;
@@ -191,13 +211,82 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
   const compColor = compositeScore < 40 ? BT.text.green : compositeScore < 60 ? BT.text.amber : BT.text.red;
   const layerData = buildLayerData(dealData);
 
+  const generateNarrative = useCallback(async () => {
+    if (!resolvedDealId || narrativeLoading) return;
+
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setNarrativeLoading(true);
+    setNarrative(null);
+    setNarrativeStream('');
+    setNarrativeError(null);
+    streamRef.current = '';
+
+    try {
+      const resp = await fetch(`/api/v1/risk/narrative/${resolvedDealId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories, compositeScore }),
+        signal: controller.signal,
+      });
+
+      if (!resp.ok) throw new Error(`Server error: ${resp.status}`);
+
+      const reader = resp.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === 'chunk') {
+              streamRef.current += evt.text;
+              setNarrativeStream(streamRef.current);
+            } else if (evt.type === 'done') {
+              if (evt.narrative) {
+                setNarrative(evt.narrative);
+              } else {
+                setNarrativeError('AI returned a non-structured response. Please try again.');
+              }
+            } else if (evt.type === 'error') {
+              setNarrativeError(evt.message);
+            }
+          } catch (_e) {}
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setNarrativeError(err.message || 'Failed to generate assessment');
+    } finally {
+      setNarrativeLoading(false);
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, [resolvedDealId, categories, compositeScore, narrativeLoading]);
+
+  useEffect(() => {
+    return () => { if (abortRef.current) abortRef.current.abort(); };
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
       <style>{BT_CSS}</style>
 
       <PanelHeader
         title="RISK ANALYSIS"
-        subtitle="M09 · INTELLIGENCE ENGINE + EXPOSURE + FILES"
+        subtitle="M09 · JEDI INTELLIGENCE ENGINE + CLAUDE OPUS"
         borderColor={BT.text.red}
         metrics={[
           { l: 'RISK', c: BT.text.red },
@@ -222,21 +311,6 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
 
         {activeTab === 0 && (() => {
-          const dealName = (dealData?.name as string) || (dealData?.address as string)?.split(',')[0] || 'This deal';
-          const dealStrategy = (dealData?.strategy as string) || (dealData?.strategyType as string) || 'value-add';
-          const dealStage = (dealData?.stage as string) || (dealData?.pipeline_stage as string) || 'underwriting';
-          const price = dealData?.purchasePrice || dealData?.price;
-          const priceStr = price ? `$${(Number(price) / 1e6).toFixed(1)}M` : null;
-          const units = dealData?.units || dealData?.totalUnits;
-
-          const sortedCats = [...categories].sort((a, b) => b.score - a.score);
-          const topRisk = sortedCats[0];
-          const secondRisk = sortedCats[1];
-          const improving = categories.filter(c => c.trendDirection === 'improving');
-          const worsening = categories.filter(c => c.trendDirection === 'worsening');
-          const elevated = categories.filter(c => c.severity === 'elevated' || c.severity === 'high');
-          const lowRisks = categories.filter(c => c.severity === 'low');
-
           const verdictText = compositeScore < 35 ? 'LOW RISK — PROCEED'
             : compositeScore < 50 ? 'MANAGEABLE — PROCEED WITH MONITORING'
             : compositeScore < 65 ? 'ELEVATED — ACTIVE MITIGATION REQUIRED'
@@ -246,10 +320,16 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
             : compositeScore < 65 ? BT.text.orange
             : BT.text.red;
 
+          const catColorForId = (id: string) => {
+            const cat = categories.find(c => c.id === id);
+            return cat ? severityColor(cat.severity) : BT.text.muted;
+          };
+
           return (
             <div style={{ padding: 1 }}>
-              <div style={{ background: BT.bg.panel, borderLeft: `3px solid ${verdictColor}`, padding: '10px 14px', marginBottom: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+
+              <div style={{ background: BT.bg.panel, borderLeft: `3px solid ${verdictColor}`, padding: '8px 14px', marginBottom: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontFamily: MONO, fontSize: 28, fontWeight: 800, color: verdictColor }}>{compositeScore.toFixed(0)}</span>
                     <div>
@@ -257,133 +337,152 @@ export function RiskDDPage({ dealId: propDealId, deal: propDeal }: RiskDDPagePro
                       <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginTop: 1 }}>Composite Risk Score · weighted across {categories.length} categories</div>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      {categories.map(c => {
+                        const bc = severityColor(c.severity);
+                        return (
+                          <div key={c.id} style={{ textAlign: 'center', padding: '2px 5px', background: BT.bg.terminal }}>
+                            <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: bc }}>{c.score}</div>
+                            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 0.5 }}>{c.id.slice(0, 3).toUpperCase()}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={generateNarrative}
+                      disabled={narrativeLoading}
+                      style={{
+                        fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 0.8,
+                        padding: '6px 14px', cursor: narrativeLoading ? 'wait' : 'pointer',
+                        background: narrativeLoading ? BT.bg.header : BT.text.cyan,
+                        color: narrativeLoading ? BT.text.muted : BT.bg.terminal,
+                        border: 'none', borderRadius: 0,
+                      }}
+                    >
+                      {narrativeLoading ? 'JEDI ANALYZING...' : narrative ? 'REGENERATE ASSESSMENT' : 'GENERATE JEDI ASSESSMENT'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {narrativeError && (
+                <div style={{ background: BT.bg.panel, borderLeft: `3px solid ${BT.text.red}`, padding: '8px 12px', marginBottom: 1 }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.red }}>{narrativeError}</span>
+                </div>
+              )}
+
+              {narrativeLoading && !narrative && (
+                <div style={{ background: BT.bg.panel, padding: '12px 14px', marginBottom: 1, borderLeft: `3px solid ${BT.text.cyan}` }}>
+                  <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8, marginBottom: 6 }}>
+                    JEDI INTELLIGENCE ENGINE · GENERATING RISK NARRATIVE
+                  </div>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
+                    {narrativeStream || 'Gathering deal data, market intelligence, pro forma assumptions, and supply pipeline...'}
+                    <span style={{ animation: 'blink 1s step-end infinite', color: BT.text.cyan }}>▊</span>
+                  </div>
+                  <style>{`@keyframes blink { 50% { opacity: 0; } }`}</style>
+                </div>
+              )}
+
+              {narrative && (
+                <>
+                  <div style={{ background: BT.bg.panel, padding: '10px 14px', marginBottom: 1, borderLeft: `3px solid ${BT.text.cyan}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: 0.8 }}>EXECUTIVE SUMMARY</div>
+                      <Bd c={BT.text.cyan}>JEDI AI</Bd>
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.primary, lineHeight: 1.7 }}>
+                      {narrative.executiveSummary}
+                    </div>
+                  </div>
+
+                  {narrative.categoryNarratives.map(cn => {
+                    const bc = catColorForId(cn.categoryId);
+                    const cat = categories.find(c => c.id === cn.categoryId);
+                    return (
+                      <div key={cn.categoryId} style={{ background: BT.bg.panel, borderLeft: `3px solid ${bc}`, padding: '8px 12px', marginBottom: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {cat && <Bd c={bc}>{cat.severity.toUpperCase()}</Bd>}
+                            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.white }}>{cn.title}</span>
+                            {cat && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>Score {cat.score}/100</span>}
+                          </div>
+                          {cat && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Spark data={cat.sparkline} color={bc} w={48} h={14} />
+                              <span style={{ fontFamily: MONO, fontSize: 9, color: cat.trendDirection === 'improving' ? BT.text.green : cat.trendDirection === 'worsening' ? BT.text.red : BT.text.muted }}>
+                                {trendArrow(cat.trendDirection)} {cat.trend30d !== 0 ? (cat.trend30d > 0 ? '+' : '') + cat.trend30d : 'flat'} 30d
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, lineHeight: 1.7, marginBottom: 4 }}>
+                          {cn.narrative}
+                        </div>
+
+                        {cn.keyDataPoints && cn.keyDataPoints.length > 0 && (
+                          <div style={{ marginBottom: 4 }}>
+                            {cn.keyDataPoints.map((dp, i) => (
+                              <div key={i} style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, lineHeight: 1.5, paddingLeft: 8, borderLeft: `1px solid ${BT.border.subtle}` }}>
+                                ▸ {dp}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {cn.conflictsWithAssumptions && (
+                          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.red, lineHeight: 1.5, padding: '4px 8px', background: `${BT.text.red}10`, marginBottom: 4 }}>
+                            ⚠ ASSUMPTION CONFLICT: {cn.conflictsWithAssumptions}
+                          </div>
+                        )}
+
+                        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.green, lineHeight: 1.5 }}>
+                          MITIGATION: {cn.mitigationStrategy}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {narrative.crossCuttingRisks && (
+                    <div style={{ background: BT.bg.panel, borderLeft: `3px solid ${BT.text.orange}`, padding: '8px 12px', marginBottom: 1 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.8, marginBottom: 4 }}>CROSS-CUTTING RISKS</div>
+                      <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, lineHeight: 1.7 }}>{narrative.crossCuttingRisks}</div>
+                    </div>
+                  )}
+
+                  <div style={{ background: BT.bg.panel, padding: '8px 12px', borderTop: `2px solid ${verdictColor}` }}>
+                    <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: verdictColor, letterSpacing: 0.8, marginBottom: 4 }}>RECOMMENDATION</div>
+                    <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, lineHeight: 1.7 }}>{narrative.recommendation}</div>
+                  </div>
+                </>
+              )}
+
+              {!narrative && !narrativeLoading && (
+                <div style={{ background: BT.bg.panel, padding: '20px 14px', textAlign: 'center' }}>
+                  <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, marginBottom: 8 }}>
                     {categories.map(c => {
                       const bc = severityColor(c.severity);
                       return (
-                        <div key={c.id} style={{ textAlign: 'center', padding: '2px 6px', background: BT.bg.terminal }}>
-                          <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: bc }}>{c.score}</div>
-                          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 0.5 }}>{c.id.slice(0, 3).toUpperCase()}</div>
-                        </div>
+                        <span key={c.id} style={{ display: 'inline-block', margin: '0 6px', padding: '4px 8px', background: BT.bg.terminal, borderLeft: `2px solid ${bc}` }}>
+                          <span style={{ color: bc, fontWeight: 700 }}>{c.score}</span>
+                          <span style={{ color: BT.text.muted }}> {c.name}</span>
+                          <span style={{ color: c.trendDirection === 'improving' ? BT.text.green : c.trendDirection === 'worsening' ? BT.text.red : BT.text.muted, marginLeft: 4 }}>
+                            {trendArrow(c.trendDirection)}
+                          </span>
+                        </span>
                       );
                     })}
                   </div>
-                </div>
-
-                <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.primary, lineHeight: 1.6, marginBottom: 6 }}>
-                  {dealName}{priceStr ? ` (${priceStr}` : ''}{units ? `${priceStr ? ' · ' : ' ('}${units} units)` : priceStr ? ')' : ''} is currently in <span style={{ color: BT.text.cyan, fontWeight: 600 }}>{dealStage.toUpperCase()}</span> under
-                  a <span style={{ color: BT.text.purple, fontWeight: 600 }}>{dealStrategy.toUpperCase()}</span> strategy.
-                  The composite risk profile scores <span style={{ color: verdictColor, fontWeight: 700 }}>{compositeScore.toFixed(0)}/100</span>,
-                  driven primarily by <span style={{ color: severityColor(topRisk.severity), fontWeight: 600 }}>{topRisk.name}</span> ({topRisk.score}/100)
-                  {secondRisk && secondRisk.score >= 50 ? <> and <span style={{ color: severityColor(secondRisk.severity), fontWeight: 600 }}>{secondRisk.name}</span> ({secondRisk.score}/100)</> : null}.
-                  {worsening.length > 0 && <> {worsening.length === 1 ? `${worsening[0].name} has` : `${worsening.length} categories have`} worsened over the trailing 30 days, requiring active monitoring.</>}
-                  {improving.length > 0 && <> {improving.length === 1 ? `${improving[0].name} is` : `${improving.length} categories are`} trending favorably.</>}
-                </div>
-              </div>
-
-              {elevated.length > 0 && (
-                <div style={{ marginBottom: 1 }}>
-                  <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, borderTop: `2px solid ${BT.text.red}` }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.red, letterSpacing: 0.8 }}>ELEVATED RISK FACTORS — NARRATIVE ASSESSMENT</span>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6 }}>
+                    Click <span style={{ color: BT.text.cyan, fontWeight: 600 }}>GENERATE JEDI ASSESSMENT</span> to produce an AI-powered risk narrative
+                    that synthesizes market data, your pro forma assumptions, supply pipeline, strategy analysis, and rent comps
+                    into a comprehensive risk assessment for this deal.
                   </div>
-                  {elevated.map(cat => {
-                    const bc = severityColor(cat.severity);
-                    const trendC = cat.trendDirection === 'improving' ? BT.text.green : cat.trendDirection === 'worsening' ? BT.text.red : BT.text.secondary;
-                    return (
-                      <div key={cat.id} style={{ background: BT.bg.panel, borderLeft: `3px solid ${bc}`, padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Bd c={bc}>{cat.severity.toUpperCase()}</Bd>
-                            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.white }}>{cat.name.toUpperCase()}</span>
-                            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>WT {cat.weight}%</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: bc }}>{cat.score}</span>
-                            <Spark data={cat.sparkline} color={bc} w={56} h={14} />
-                            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: trendC }}>
-                              {trendArrow(cat.trendDirection)} {cat.trend30d > 0 ? '+' : ''}{cat.trend30d} 30d
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, lineHeight: 1.6, marginBottom: 4 }}>
-                          <span style={{ color: BT.text.amber, fontWeight: 600 }}>ASSESSMENT: </span>{cat.driver}
-                          {cat.trendDirection === 'worsening' && <span style={{ color: BT.text.red }}> Trend is worsening — this factor has increased +{cat.trend30d} pts over the last 30 days and should be monitored closely relative to the {dealStrategy} exit thesis.</span>}
-                          {cat.trendDirection === 'improving' && <span style={{ color: BT.text.green }}> Conditions are improving — down {Math.abs(cat.trend30d)} pts over 30 days.</span>}
-                        </div>
-                        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.5 }}>
-                          <span style={{ color: BT.text.green, fontWeight: 600 }}>MITIGATION: </span>{cat.mitigation}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
 
-              {lowRisks.length > 0 && (
-                <div style={{ marginBottom: 1 }}>
-                  <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, borderTop: `2px solid ${BT.text.green}` }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.green, letterSpacing: 0.8 }}>FAVORABLE CONDITIONS</span>
-                  </div>
-                  {lowRisks.map(cat => {
-                    const bc = severityColor(cat.severity);
-                    return (
-                      <div key={cat.id} style={{ background: BT.bg.panel, borderLeft: `3px solid ${bc}`, padding: '6px 12px', borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                            <Bd c={bc}>LOW</Bd>
-                            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: BT.text.white }}>{cat.name.toUpperCase()}</span>
-                            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>Score {cat.score}/100</span>
-                          </div>
-                          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.5 }}>{cat.driver}</div>
-                        </div>
-                        <Spark data={cat.sparkline} color={bc} w={48} h={14} />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {categories.filter(c => c.severity === 'moderate').length > 0 && (
-                <div style={{ marginBottom: 1 }}>
-                  <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, borderTop: `2px solid ${BT.text.amber}` }}>
-                    <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.amber, letterSpacing: 0.8 }}>MODERATE RISK — MONITOR</span>
-                  </div>
-                  {categories.filter(c => c.severity === 'moderate').map(cat => {
-                    const bc = severityColor(cat.severity);
-                    const trendC = cat.trendDirection === 'improving' ? BT.text.green : cat.trendDirection === 'worsening' ? BT.text.red : BT.text.secondary;
-                    return (
-                      <div key={cat.id} style={{ background: BT.bg.panel, borderLeft: `3px solid ${bc}`, padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <Bd c={bc}>MODERATE</Bd>
-                            <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: BT.text.white }}>{cat.name.toUpperCase()}</span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: bc }}>{cat.score}</span>
-                            <Spark data={cat.sparkline} color={bc} w={48} h={14} />
-                            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: trendC }}>
-                              {trendArrow(cat.trendDirection)} {cat.trend30d !== 0 ? (cat.trend30d > 0 ? '+' : '') + cat.trend30d : 'flat'} 30d
-                            </span>
-                          </div>
-                        </div>
-                        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, lineHeight: 1.5 }}>
-                          {cat.driver} <span style={{ color: BT.text.muted }}>→</span> <span style={{ color: BT.text.green }}>{cat.mitigation}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div style={{ background: BT.bg.panel, padding: '8px 12px', borderTop: `2px solid ${verdictColor}` }}>
-                <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: verdictColor, letterSpacing: 0.8, marginBottom: 6 }}>RECOMMENDATION</div>
-                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, lineHeight: 1.6 }}>
-                  {compositeScore < 35 && <>The risk profile for this {dealStrategy} play is favorable across all measured dimensions. Proceed with standard diligence protocols. No exceptional mitigations required at this stage.</>}
-                  {compositeScore >= 35 && compositeScore < 50 && <>Overall risk is manageable but requires structured monitoring. {topRisk.name} ({topRisk.score}/100) is the primary watch factor — {topRisk.mitigation.toLowerCase()} Key financial assumptions should be stress-tested against the {topRisk.id} scenario before moving past {dealStage}.</>}
-                  {compositeScore >= 50 && compositeScore < 65 && <>Elevated composite risk suggests active mitigation is needed before progressing. {topRisk.name} scores {topRisk.score}/100 and is the dominant contributor. The user's model assumptions should be validated against platform data, particularly where the {dealStrategy} thesis depends on {topRisk.id === 'supply' ? 'absorption outpacing new deliveries' : topRisk.id === 'demand' ? 'sustained demand drivers' : topRisk.id === 'regulatory' ? 'regulatory stability' : 'execution timeline'}. Consider adjusting underwriting contingencies.</>}
-                  {compositeScore >= 65 && <>High composite risk across multiple dimensions. Recommend pausing advancement past {dealStage} until {elevated.map(c => c.name.toLowerCase()).join(' and ')} risks are addressed. The current {dealStrategy} thesis may require restructuring — re-run strategy arbitrage to evaluate whether an alternative approach reduces exposure while preserving returns.</>}
-                </div>
-              </div>
             </div>
           );
         })()}

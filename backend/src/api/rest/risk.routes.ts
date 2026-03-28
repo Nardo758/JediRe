@@ -855,4 +855,160 @@ router.get('/comprehensive/:dealId', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/risk/narrative/:dealId
+ * Generate AI-powered risk narrative assessment using Claude Opus
+ * Synthesizes market data, user assumptions, and upstream model outputs
+ */
+router.post('/narrative/:dealId', async (req: Request, res: Response) => {
+  const { dealId } = req.params;
+  const { categories, compositeScore } = req.body;
+
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropic = new Anthropic({
+      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+    });
+
+    const dealResult = await query(
+      `SELECT * FROM deals WHERE id = $1 OR id::text = $1 LIMIT 1`,
+      [dealId]
+    );
+    const deal = dealResult.rows[0] || {};
+
+    let rentCompsContext = '';
+    try {
+      const rc = await query(`SELECT property_name, total_units, occupancy_pct, rent_per_sf, one_bed_rent, two_bed_rent FROM rent_comps LIMIT 10`);
+      if (rc.rows.length > 0) {
+        rentCompsContext = '\n## Rent Comps\n' + rc.rows.map((r: any) => `- ${r.property_name}: ${r.total_units} units, ${r.occupancy_pct}% occ, $${r.rent_per_sf}/sf, 1BR $${r.one_bed_rent || '-'}, 2BR $${r.two_bed_rent || '-'}`).join('\n');
+      }
+    } catch (_e) {}
+
+    let supplyContext = '';
+    try {
+      const sp = await query(`SELECT COUNT(*) as cnt, SUM(unit_count) as units FROM supply_projects WHERE status IN ('proposed','under_construction','approved')`);
+      if (sp.rows[0]) {
+        supplyContext = `\n## Supply Pipeline\n- Active projects: ${sp.rows[0].cnt}\n- Units in pipeline: ${sp.rows[0].units || 'N/A'}`;
+      }
+    } catch (_e) {}
+
+    let proformaContext = '';
+    try {
+      const pf = await query(`SELECT proforma_data, assumptions FROM opus_proforma_versions WHERE deal_id = $1 ORDER BY version_number DESC LIMIT 1`, [dealId]);
+      if (pf.rows[0]) {
+        const pfData = typeof pf.rows[0].proforma_data === 'string' ? JSON.parse(pf.rows[0].proforma_data) : pf.rows[0].proforma_data;
+        const assumptions = typeof pf.rows[0].assumptions === 'string' ? JSON.parse(pf.rows[0].assumptions) : pf.rows[0].assumptions;
+        proformaContext = `\n## Pro Forma Model (Latest Version)\n${JSON.stringify(pfData, null, 2).substring(0, 2000)}\n### User Assumptions\n${JSON.stringify(assumptions, null, 2).substring(0, 500)}`;
+      }
+    } catch (_e) {}
+
+    let strategyContext = '';
+    try {
+      const sa = await query(`SELECT strategy_type, recommendation, confidence_score, analysis_data FROM strategy_analyses WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1`, [dealId]);
+      if (sa.rows[0]) {
+        strategyContext = `\n## Strategy Analysis\n- Recommended: ${sa.rows[0].strategy_type}\n- Confidence: ${sa.rows[0].confidence_score}%\n- Recommendation: ${sa.rows[0].recommendation}`;
+      }
+    } catch (_e) {}
+
+    const systemPrompt = `You are JEDI, JediRE's risk intelligence engine. You are an expert real estate risk analyst writing a Bloomberg Terminal-style risk assessment narrative for a deal.
+
+Your assessment must:
+1. Synthesize ALL available data — market conditions, supply pipeline, the user's financial model assumptions, strategy analysis, and rent comparables — into a cohesive risk narrative
+2. Explain WHY each risk factor matters for THIS specific deal, not generic descriptions
+3. Identify where the user's model assumptions may conflict with market reality
+4. Call out specific data points that drive risk (e.g., "3,200 units in the construction pipeline within 3 miles will pressure absorption assumptions")
+5. Provide actionable mitigation strategies tied to the deal's strategy
+6. Write in clear, direct, analytical prose — like a senior analyst memo, not bullet points
+
+Structure your response as a JSON object:
+{
+  "executiveSummary": "2-3 sentence overview of the risk posture",
+  "categoryNarratives": [
+    {
+      "categoryId": "supply|demand|regulatory|market|execution|climate",
+      "title": "CATEGORY NAME",
+      "narrative": "3-5 sentences of analysis specific to this deal, referencing concrete data points",
+      "keyDataPoints": ["specific data point 1", "specific data point 2"],
+      "conflictsWithAssumptions": "description of any conflicts with user's model assumptions, or null",
+      "mitigationStrategy": "specific actionable mitigation"
+    }
+  ],
+  "crossCuttingRisks": "2-3 sentences on risks that span multiple categories",
+  "recommendation": "2-3 sentences with clear go/no-go guidance and conditions"
+}`;
+
+    const userPrompt = `## Deal Information
+- Name: ${deal.name || 'Unknown'}
+- Address: ${deal.address || 'N/A'}
+- City: ${deal.city || 'N/A'}, State: ${deal.state || 'N/A'}
+- Property Type: ${deal.property_type || 'Multifamily'}
+- Units: ${deal.units || 'TBD'}
+- Strategy: ${deal.strategy || deal.strategy_type || 'value-add'}
+- Stage: ${deal.stage || deal.pipeline_stage || 'underwriting'}
+- Purchase Price: ${deal.purchase_price || deal.price || 'TBD'}
+
+## Current Risk Scores (from quantitative model)
+Composite: ${compositeScore?.toFixed?.(1) || 'N/A'}/100
+${(categories || []).map((c: any) => `- ${c.name}: ${c.score}/100 (${c.severity}) — Driver: ${c.driver} — Trend: ${c.trendDirection} (${c.trend30d > 0 ? '+' : ''}${c.trend30d} 30d)`).join('\n')}
+${rentCompsContext}
+${supplyContext}
+${proformaContext}
+${strategyContext}
+
+Write a comprehensive risk assessment narrative. Return valid JSON only.`;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    let clientDisconnected = false;
+    req.on('close', () => { clientDisconnected = true; });
+
+    let fullResponse = '';
+
+    const stream = anthropic.messages.stream({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    for await (const event of stream) {
+      if (clientDisconnected) {
+        stream.abort();
+        break;
+      }
+      if (event.type === 'content_block_delta' && (event.delta as any).type === 'text_delta') {
+        const text = (event.delta as any).text;
+        if (text) {
+          fullResponse += text;
+          res.write(`data: ${JSON.stringify({ type: 'chunk', text })}\n\n`);
+        }
+      }
+    }
+
+    let parsed = null;
+    try {
+      const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch (_e) {}
+
+    res.write(`data: ${JSON.stringify({ type: 'done', narrative: parsed, raw: !parsed ? fullResponse : undefined })}\n\n`);
+    res.end();
+  } catch (error: any) {
+    logger.error('Error generating risk narrative:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate risk narrative',
+        message: error.message,
+      });
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
 export default router;
