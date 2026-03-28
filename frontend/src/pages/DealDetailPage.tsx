@@ -562,8 +562,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'comps',       moduleId: 'M15', fkey: 'F10', code: 'M15', short: 'COMPS',      label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
     { id: 'execution',   moduleId: 'M17', fkey: 'F11', code: 'M17', short: 'EXECUTION',  label: 'Execution',        icon: <HardHat size={14} />,         component: ExecutionScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F12', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'ai-agent',    moduleId: 'M20', fkey: 'F13', code: 'M20', short: 'AI AGENT',   label: 'AI Agent',         icon: <Bot size={14} />,             component: AIAgentScreen },
-    { id: 'deal-tools', moduleId: 'M21', fkey: 'F14', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'deal-tools', moduleId: 'M21', fkey: 'F13', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
   // Filter by deal-type visibility rules

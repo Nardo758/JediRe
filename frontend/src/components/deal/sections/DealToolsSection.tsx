@@ -9,9 +9,10 @@ import { apiClient } from '../../../services/api.client';
 import {
   MessageSquare, Users, Calendar, FileText, FolderOpen, Files,
   Plus, Trash2, Pin, Edit2, Save, X, ChevronDown, ChevronUp,
-  Phone, Mail, Building2, User, Clock,
+  Phone, Mail, Building2, User, Clock, Bot,
 } from 'lucide-react';
 import { BT } from '../bloomberg-ui';
+import OpusAISection from './OpusAISection';
 
 interface DealToolsSectionProps {
   deal?: any;
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'decisions', name: 'Decisions', icon: FileText },
   { id: 'files', name: 'Files', icon: Files },
   { id: 'documents', name: 'Documents', icon: FolderOpen },
+  { id: 'ai', name: 'AI Agent', icon: Bot },
 ];
 
 export const DealToolsSection: React.FC<DealToolsSectionProps> = ({ deal, dealId: propDealId }) => {
@@ -107,13 +109,14 @@ export const DealToolsSection: React.FC<DealToolsSectionProps> = ({ deal, dealId
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: activeTab === 'ai' ? 0 : 16 }}>
         {activeTab === 'notes' && <NotesTab dealId={resolvedDealId} />}
         {activeTab === 'contacts' && <ContactsTab dealId={resolvedDealId} />}
         {activeTab === 'dates' && <DatesTab dealId={resolvedDealId} />}
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
         {activeTab === 'files' && <FilesTab dealId={resolvedDealId} />}
         {activeTab === 'documents' && <DocumentsTab dealId={resolvedDealId} />}
+        {activeTab === 'ai' && <OpusAISection dealId={resolvedDealId} deal={deal} />}
       </div>
     </div>
   );
