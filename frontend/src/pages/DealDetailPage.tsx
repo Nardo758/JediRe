@@ -344,7 +344,7 @@ const TrafficScreen = (props: ScreenProps) => (
   </div>
 );
 
-const DealTopStatusBar: React.FC<{ dealName: string }> = ({ dealName }) => {
+const DealTopStatusBar: React.FC<{ dealName: string; isDark: boolean; onToggleTheme: () => void }> = ({ dealName, isDark, onToggleTheme }) => {
   const [clock, setClock] = React.useState('');
   React.useEffect(() => {
     const tick = () => setClock(new Date().toLocaleTimeString('en-GB', { hour12: false }));
@@ -382,6 +382,17 @@ const DealTopStatusBar: React.FC<{ dealName: string }> = ({ dealName }) => {
         <span style={{ fontSize: 9, color: '#F5A623', fontWeight: 700, letterSpacing: 1 }}>
           {clock}
         </span>
+        <button
+          onClick={onToggleTheme}
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace", fontSize: 12, background: 'transparent',
+            border: '1px solid #1E2538', color: '#6B7A90',
+            padding: '2px 8px', cursor: 'pointer', lineHeight: 1,
+          }}
+        >
+          {isDark ? '☀' : '☾'}
+        </button>
       </div>
       <style>{`@keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}`}</style>
     </div>
