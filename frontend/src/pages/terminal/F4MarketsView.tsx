@@ -276,10 +276,11 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     setLevel("submarket-terminal");
   };
 
-  const handlePropertySelect = (propertyId: string) => {
-    setDrillPropertyId(propertyId);
-    const prop = PROPERTY_INDEX.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === propertyId);
-    setDrillPropertyName(prop?.name || propertyId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
+  const handlePropertySelect = (propertyId: string, propertyName?: string) => {
+    const slug = propertyId.toLowerCase().replace(/\s+/g, "-");
+    setDrillPropertyId(slug);
+    const prop = PROPERTY_INDEX.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === slug);
+    setDrillPropertyName(prop?.name || propertyName || propertyId.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()));
     setLevel("property-card");
   };
 
@@ -351,17 +352,22 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   // Property Card View — shows BloombergPropertyCard before full terminal
   if (level === "property-card") {
     const prop = PROPERTY_INDEX.find(p => p.name.toLowerCase().replace(/\s+/g, "-") === drillPropertyId);
+    const normalizeClass = (c?: string): 'A' | 'B' | 'C' => {
+      if (!c) return 'B';
+      const ch = c.charAt(0).toUpperCase();
+      return ch === 'A' ? 'A' : ch === 'C' ? 'C' : 'B';
+    };
     const propertyData = prop ? {
       id: drillPropertyId,
       name: prop.name,
       address: `${prop.submarket}, ${prop.msa}`,
-      class: 'A' as const,
+      class: normalizeClass(),
       avgRent: parseFloat(prop.rent.replace(/[$,]/g, '')),
       rentChange: 45,
       rentChangePercent: 2.4,
       units: prop.units,
       yearBuilt: prop.vintage,
-      occupancy: parseFloat(prop.occ) / 100,
+      occupancy: parseFloat(prop.occ),
       occupancyChange: 0.8,
       capRate: parseFloat(prop.capRate),
       owner: prop.owner,
@@ -373,15 +379,17 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     } : {
       id: drillPropertyId,
       name: drillPropertyName,
-      address: `${drillSubmarketName}, ${drillMsaName}`,
-      class: 'B' as const,
+      address: `${drillSubmarketName || "Submarket"}, ${drillMsaName || "Atlanta, GA"}`,
+      class: normalizeClass(),
       avgRent: 1850,
       rentChange: 32,
       rentChangePercent: 1.8,
       units: 250,
       yearBuilt: 2015,
-      occupancy: 0.94,
+      occupancy: 94,
       occupancyChange: 0.5,
+      capRate: 5.2,
+      owner: "Owner",
     };
 
     return (
@@ -416,7 +424,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
             onClick={() => setLevel("property-terminal")}
             showComps={true}
             comps={[
-              { rank: 1, name: propertyData.name, units: propertyData.units, avgRent: propertyData.avgRent, rentChange1D: 0.12, rentChange1M: 1.8, rentGrowthYoY: 4.2, occupancy: propertyData.occupancy * 100, capRate: propertyData.capRate || 5.0 },
+              { rank: 1, name: propertyData.name, units: propertyData.units, avgRent: propertyData.avgRent, rentChange1D: 0.12, rentChange1M: 1.8, rentGrowthYoY: 4.2, occupancy: propertyData.occupancy, capRate: propertyData.capRate || 5.0 },
               { rank: 2, name: "Comp Property A", units: 280, avgRent: 1920, rentChange1D: 0.08, rentChange1M: 1.2, rentGrowthYoY: 3.8, occupancy: 94.2, capRate: 5.1 },
               { rank: 3, name: "Comp Property B", units: 320, avgRent: 1780, rentChange1D: -0.05, rentChange1M: 0.9, rentGrowthYoY: 3.2, occupancy: 93.8, capRate: 5.3 },
             ]}

@@ -435,7 +435,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onSelectProperty?.(prop.id);
+                                  onSelectProperty?.(prop.name.toLowerCase().replace(/\s+/g, '-'));
                                 }}
                                 style={{
                                   padding: '10px 20px',

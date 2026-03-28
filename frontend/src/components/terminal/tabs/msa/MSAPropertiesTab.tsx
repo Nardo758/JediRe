@@ -582,7 +582,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                                     concessions: safeNum(prop.concessions),
                                   }}
                                   showComps={false}
-                                  onClick={() => onSelectProperty?.(prop.id)}
+                                  onClick={() => onSelectProperty?.(prop.property.toLowerCase().replace(/\s+/g, '-'))}
                                   strategyScore={{
                                     score: prop.jedi,
                                     strategy: 'value-add',
