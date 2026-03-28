@@ -39,6 +39,8 @@ interface AlertItem {
   deal_name?: string;
   message: string;
   created_at: string;
+  read?: boolean;
+  dismissed?: boolean;
 }
 
 interface NewsItem {
@@ -47,6 +49,7 @@ interface NewsItem {
   published_at: string;
   impact?: string;
   jedi_delta?: number;
+  read?: boolean;
 }
 
 interface EmailItem {
@@ -598,6 +601,56 @@ export const BottomPanel: React.FC = () => {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [email, setEmail] = useState<EmailItem[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  
+  // Read state tracking (persisted locally)
+  const [readAlerts, setReadAlerts] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('jedire-read-alerts') || '[]')); }
+    catch { return new Set(); }
+  });
+  const [readNews, setReadNews] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('jedire-read-news') || '[]')); }
+    catch { return new Set(); }
+  });
+
+  // Mark alert as read
+  const markAlertRead = useCallback((id: string) => {
+    setReadAlerts(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem('jedire-read-alerts', JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  // Mark news as read
+  const markNewsRead = useCallback((id: string) => {
+    setReadNews(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      localStorage.setItem('jedire-read-news', JSON.stringify([...next]));
+      return next;
+    });
+  }, []);
+
+  // Mark all alerts as read
+  const markAllAlertsRead = useCallback(() => {
+    setReadAlerts(prev => {
+      const next = new Set(prev);
+      alerts.forEach(a => next.add(a.id));
+      localStorage.setItem('jedire-read-alerts', JSON.stringify([...next]));
+      return next;
+    });
+  }, [alerts]);
+
+  // Mark all news as read
+  const markAllNewsRead = useCallback(() => {
+    setReadNews(prev => {
+      const next = new Set(prev);
+      news.forEach(n => next.add(n.id));
+      localStorage.setItem('jedire-read-news', JSON.stringify([...next]));
+      return next;
+    });
+  }, [news]);
 
   // Media state
   const [mediaWindows, setMediaWindows] = useState<MediaWindow[]>([]);
@@ -707,11 +760,17 @@ export const BottomPanel: React.FC = () => {
     return () => clearInterval(id);
   }, [fetchData]);
 
+  // Calculate unread counts
+  const unreadAlerts = alerts.filter(a => !readAlerts.has(a.id) && !a.dismissed).length;
+  const unreadNews = news.filter(n => !readNews.has(n.id)).length;
+  const unreadEmail = email.filter(e => !e.read).length;
+  const pendingTasks = tasks.filter(t => t.status?.toLowerCase() !== 'done' && t.status?.toLowerCase() !== 'completed').length;
+
   const counts: Record<BottomTabId, number> = {
-    alerts: alerts.length,
-    news: news.length,
-    email: email.filter(e => !e.read).length,
-    tasks: tasks.length,
+    alerts: unreadAlerts,
+    news: unreadNews,
+    email: unreadEmail,
+    tasks: pendingTasks,
     media: mediaWindows.length,
   };
 
@@ -839,50 +898,83 @@ export const BottomPanel: React.FC = () => {
           <div style={{ flex: 1, overflowY: 'auto', padding: '6px 8px' }}>
             {activeTab === 'alerts' && (
               <div>
+                {unreadAlerts > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                    <button onClick={markAllAlertsRead} style={{
+                      fontFamily: T.font.mono, fontSize: '9px', color: T.text.muted,
+                      background: 'transparent', border: `1px solid ${T.border.subtle}`,
+                      padding: '2px 8px', cursor: 'pointer',
+                    }}>MARK ALL READ</button>
+                  </div>
+                )}
                 {alerts.length === 0 && (
                   <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center' }}>No alerts</div>
                 )}
-                {alerts.map(a => (
-                  <div key={a.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
-                    borderLeft: `3px solid ${SEVERITY_COLORS[a.severity] || T.text.muted}`,
-                    marginBottom: 2, fontSize: T.fontSize.sm,
-                    background: T.bg.panelAlt, borderRadius: '0 3px 3px 0',
-                  }}>
-                    <Badge label={a.type?.toUpperCase() || 'ALERT'} color={SEVERITY_COLORS[a.severity] || T.text.amber} />
-                    {a.deal_name && <span style={{ color: T.text.amber, fontWeight: 600 }}>{a.deal_name}</span>}
-                    <span style={{ color: T.text.primary, flex: 1 }}>{a.message}</span>
-                    <span style={{ color: T.text.muted, fontSize: T.fontSize.xs }}>
-                      {a.created_at ? new Date(a.created_at).toLocaleTimeString('en-GB', { hour12: false }) : ''}
-                    </span>
-                  </div>
-                ))}
+                {alerts.map(a => {
+                  const isUnread = !readAlerts.has(a.id) && !a.dismissed;
+                  return (
+                    <div key={a.id} onClick={() => markAlertRead(a.id)} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
+                      borderLeft: `3px solid ${SEVERITY_COLORS[a.severity] || T.text.muted}`,
+                      marginBottom: 2, fontSize: T.fontSize.sm,
+                      background: isUnread ? `${SEVERITY_COLORS[a.severity]}11` : T.bg.panelAlt,
+                      borderRadius: '0 3px 3px 0',
+                      cursor: 'pointer',
+                      opacity: isUnread ? 1 : 0.7,
+                    }}>
+                      {isUnread && <span style={{ color: SEVERITY_COLORS[a.severity], fontSize: '9px', fontWeight: 700 }}>●</span>}
+                      <Badge label={a.type?.toUpperCase() || 'ALERT'} color={SEVERITY_COLORS[a.severity] || T.text.amber} />
+                      {a.deal_name && <span style={{ color: T.text.amber, fontWeight: 600 }}>{a.deal_name}</span>}
+                      <span style={{ color: T.text.primary, flex: 1 }}>{a.message}</span>
+                      <span style={{ color: T.text.muted, fontSize: T.fontSize.xs }}>
+                        {a.created_at ? new Date(a.created_at).toLocaleTimeString('en-GB', { hour12: false }) : ''}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
             {activeTab === 'news' && (
               <div>
+                {unreadNews > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                    <button onClick={markAllNewsRead} style={{
+                      fontFamily: T.font.mono, fontSize: '9px', color: T.text.muted,
+                      background: 'transparent', border: `1px solid ${T.border.subtle}`,
+                      padding: '2px 8px', cursor: 'pointer',
+                    }}>MARK ALL READ</button>
+                  </div>
+                )}
                 {news.length === 0 && (
                   <div style={{ color: T.text.muted, fontSize: T.fontSize.sm, padding: 12, textAlign: 'center' }}>No news</div>
                 )}
-                {news.map(n => (
-                  <div key={n.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
-                    marginBottom: 2, fontSize: T.fontSize.sm,
-                    background: T.bg.panelAlt, borderRadius: 2,
-                  }}>
-                    <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, width: 50 }}>
-                      {n.published_at ? new Date(n.published_at).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
-                    </span>
-                    <span style={{ color: T.text.primary, flex: 1 }}>{n.headline}</span>
-                    {n.impact && <Badge label={n.impact} color={T.text.cyan} />}
-                    {n.jedi_delta != null && (
-                      <span style={{ color: n.jedi_delta >= 0 ? T.text.green : T.text.red, fontWeight: 600, fontSize: T.fontSize.xs }}>
-                        {n.jedi_delta >= 0 ? '+' : ''}{n.jedi_delta} pts
+                {news.map(n => {
+                  const isUnread = !readNews.has(n.id);
+                  return (
+                    <div key={n.id} onClick={() => markNewsRead(n.id)} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '3px 6px',
+                      marginBottom: 2, fontSize: T.fontSize.sm,
+                      background: isUnread ? `${T.text.green}11` : T.bg.panelAlt,
+                      borderLeft: isUnread ? `3px solid ${T.text.green}` : '3px solid transparent',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      opacity: isUnread ? 1 : 0.7,
+                    }}>
+                      {isUnread && <span style={{ color: T.text.green, fontSize: '9px', fontWeight: 700 }}>●</span>}
+                      <span style={{ color: T.text.muted, fontSize: T.fontSize.xs, width: 50 }}>
+                        {n.published_at ? new Date(n.published_at).toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit' }) : ''}
                       </span>
-                    )}
-                  </div>
-                ))}
+                      <span style={{ color: T.text.primary, flex: 1 }}>{n.headline}</span>
+                      {n.impact && <Badge label={n.impact} color={T.text.cyan} />}
+                      {n.jedi_delta != null && (
+                        <span style={{ color: n.jedi_delta >= 0 ? T.text.green : T.text.red, fontWeight: 600, fontSize: T.fontSize.xs }}>
+                          {n.jedi_delta >= 0 ? '+' : ''}{n.jedi_delta} pts
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
