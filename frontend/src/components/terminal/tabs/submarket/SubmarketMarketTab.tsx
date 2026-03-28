@@ -29,6 +29,8 @@ interface PipelineProject {
 export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarketId, submarket }) => {
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
 
   useEffect(() => {
     fetchCommentary('submarket', submarketId, submarket.name);
@@ -275,6 +277,16 @@ export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarke
         </div>
       </div>
 
+      {loading && (
+        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating market analysis...</span>
+        </div>
+      )}
+      {error && (
+        <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+        </div>
+      )}
       {commentary && (
         <div style={{ display: 'flex', gap: 16 }}>
           {commentary.supplyNarrative && (

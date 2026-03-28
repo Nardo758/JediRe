@@ -59,10 +59,28 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+  const loading = isLoading('submarket', submarketId);
+  const error = getError('submarket', submarketId);
 
   useEffect(() => {
     fetchCommentary('submarket', submarketId, subName);
   }, [submarketId, subName]);
+
+  if (loading) {
+    return (
+      <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
+        <span style={{ fontSize: 11, color: BT.text.muted }}>Generating commentary...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ ...terminalStyles.card, padding: 12, borderLeft: `3px solid ${BT.accent.red}` }}>
+        <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', gap: 16 }}>

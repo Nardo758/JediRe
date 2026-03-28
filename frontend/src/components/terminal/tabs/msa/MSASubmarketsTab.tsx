@@ -124,9 +124,10 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
   const [selectedSub, setSelectedSub] = useState<string>('midtown');
   const msaName = msa?.name || msaId || 'Atlanta';
 
-  const { fetchCommentary, getCommentary, isLoading } = useCommentaryStore();
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
+  const error = getError('msa', msaId);
 
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
@@ -402,6 +403,10 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
         }}>
           {loading ? (
             <div style={{ fontSize: 11, color: BT.text.muted }}>Generating analysis...</div>
+          ) : error ? (
+            <div style={{ padding: 8, borderLeft: `3px solid ${BT.accent.red}` }}>
+              <span style={{ fontSize: 11, color: BT.text.muted }}>Commentary unavailable</span>
+            </div>
           ) : commentary?.marketNarrative ? (
             <MarketNarrative narrative={commentary.marketNarrative} compact />
           ) : (
