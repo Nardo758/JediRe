@@ -10,6 +10,7 @@ import { DataTable } from '../../TerminalLayouts';
 import { scoreColor, BT_SIGNAL_COLORS } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
+import { BloombergPropertyCard } from '../../BloombergPropertyCard';
 
 interface MSAPropertiesTabProps {
   msaId: string;
@@ -535,81 +536,60 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                       <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{prop.pricePerUnit}</td>
                     </tr>
 
-                    {/* Expanded Details */}
+                    {/* Expanded Details — BloombergPropertyCard */}
                     {isExpanded && (
                       <tr>
                         <td colSpan={COLUMNS.length + 1} style={{ padding: 0 }}>
                           <div style={{
-                            padding: 20,
+                            padding: 16,
                             background: BT.bg.card,
                             borderBottom: `2px solid ${BT.accent.blue}`,
                           }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20 }}>
-                              {/* Location */}
-                              <div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.cyan, marginBottom: 8 }}>LOCATION</div>
-                                <div style={{ fontSize: 12, color: BT.text.primary, marginBottom: 4 }}>{prop.address}</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>{prop.stories} stories · {prop.acres} acres</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>Zoning: {prop.zoning} ({prop.zoningCapacity})</div>
-                              </div>
+                            {(() => {
+                              const safeNum = (s: string, fallback = 0) => {
+                                const n = parseFloat(s.replace(/[^0-9.-]/g, ''));
+                                return isNaN(n) ? fallback : n;
+                              };
+                              const avgRent = safeNum(prop.rent);
+                              const marketRent = safeNum(prop.marketRent);
+                              const rentDelta = marketRent - avgRent;
+                              const rentDeltaPct = avgRent > 0 ? (rentDelta / avgRent) * 100 : 0;
+                              const occNum = safeNum(prop.occ);
+                              const classChar = (prop.class.charAt(0) === 'A' || prop.class.charAt(0) === 'B' || prop.class.charAt(0) === 'C')
+                                ? prop.class.charAt(0) as 'A' | 'B' | 'C'
+                                : 'B' as const;
+                              const capRateVal = safeNum(prop.pricePerUnit) > 0
+                                ? Math.round((avgRent * 12 * prop.units) / (safeNum(prop.pricePerUnit) * 1000 * prop.units) * 1000) / 10
+                                : 5.0;
 
-                              {/* Ownership */}
-                              <div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.cyan, marginBottom: 8 }}>OWNERSHIP</div>
-                                <div style={{ fontSize: 12, color: BT.text.primary, marginBottom: 4 }}>{prop.owner}</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>Purchased: {prop.purchaseDate}</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>Price: {prop.purchasePrice} ({prop.pricePerUnit}/unit)</div>
-                              </div>
-
-                              {/* Revenue */}
-                              <div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.cyan, marginBottom: 8 }}>REVENUE</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>Asking: {prop.askingRent} · Market: {prop.marketRent}</div>
-                                <div style={{ fontSize: 11, color: BT.accent.amber }}>Loss-to-Lease: {prop.lossToLease} ({prop.lossToLeasePct})</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>Concessions: {prop.concessions}/unit</div>
-                              </div>
-
-                              {/* Tax */}
-                              <div>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.cyan, marginBottom: 8 }}>TAX & RISK</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>Assessed: {prop.taxAssessed}</div>
-                                <div style={{ fontSize: 11, color: BT.accent.red }}>Step-Up Risk: {prop.stepUpRisk}</div>
-                                <div style={{ fontSize: 11, color: BT.text.muted }}>
-                                  Motivation: <span style={{ color: motivColors.btText, fontWeight: 600 }}>{prop.sellerMotivation}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onSelectProperty?.(prop.id);
-                                }}
-                                style={{
-                                  padding: '8px 16px',
-                                  background: BT.accent.blue,
-                                  color: '#fff',
-                                  border: 'none',
-                                  borderRadius: 0,
-                                  fontSize: 11,
-                                  cursor: 'pointer',
-                                }}
-                              >
-                                View Property Terminal →
-                              </button>
-                              <button style={{
-                                padding: '8px 16px',
-                                background: 'transparent',
-                                color: BT.text.secondary,
-                                border: `1px solid ${BT.border.subtle}`,
-                                borderRadius: 0,
-                                fontSize: 11,
-                                cursor: 'pointer',
-                              }}>
-                                Add to Compare
-                              </button>
-                            </div>
+                              return (
+                                <BloombergPropertyCard
+                                  property={{
+                                    id: prop.id,
+                                    name: prop.property,
+                                    address: prop.address,
+                                    class: classChar,
+                                    avgRent,
+                                    rentChange: Math.round(rentDelta),
+                                    rentChangePercent: Math.round(rentDeltaPct * 10) / 10,
+                                    units: prop.units,
+                                    yearBuilt: prop.year,
+                                    occupancy: occNum,
+                                    occupancyChange: occNum >= 95 ? 1.2 : occNum >= 93 ? 0.4 : -0.3,
+                                    capRate: capRateVal,
+                                    owner: prop.owner,
+                                    lastUpdated: prop.purchaseDate,
+                                  }}
+                                  showComps={false}
+                                  onClick={() => onSelectProperty?.(prop.id)}
+                                  strategyScore={{
+                                    score: prop.jedi,
+                                    strategy: 'value-add',
+                                    arbitrageFlag: prop.sellerMotivation >= 70,
+                                  }}
+                                />
+                              );
+                            })()}
                           </div>
                         </td>
                       </tr>
