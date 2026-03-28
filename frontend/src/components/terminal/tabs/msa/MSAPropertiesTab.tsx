@@ -91,6 +91,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [searchQuery, setSearchQuery] = useState('');
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [classFilter, setClassFilter] = useState('All');
+  const [vintageFilter, setVintageFilter] = useState('All');
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -108,6 +109,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   // Get unique values for filters
   const submarkets = ['All', ...Array.from(new Set(MOCK_PROPERTIES.map(p => p.submarket)))];
   const classes = ['All', 'A', 'B+', 'B', 'B-', 'C+', 'C'];
+  const vintages = ['All', 'Pre-1980', '1980s', '1990s', '2000s', '2010s', '2020s'];
 
   // Filter and sort
   const filteredProperties = useMemo(() => {
@@ -116,6 +118,14 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
           !p.address.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (submarketFilter !== 'All' && p.submarket !== submarketFilter) return false;
       if (classFilter !== 'All' && p.class !== classFilter) return false;
+      if (vintageFilter !== 'All') {
+        if (vintageFilter === 'Pre-1980' && p.year >= 1980) return false;
+        if (vintageFilter === '1980s' && (p.year < 1980 || p.year >= 1990)) return false;
+        if (vintageFilter === '1990s' && (p.year < 1990 || p.year >= 2000)) return false;
+        if (vintageFilter === '2000s' && (p.year < 2000 || p.year >= 2010)) return false;
+        if (vintageFilter === '2010s' && (p.year < 2010 || p.year >= 2020)) return false;
+        if (vintageFilter === '2020s' && p.year < 2020) return false;
+      }
       return true;
     });
 
@@ -130,7 +140,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
     });
 
     return result;
-  }, [searchQuery, submarketFilter, classFilter, sortKey, sortDir]);
+  }, [searchQuery, submarketFilter, classFilter, vintageFilter, sortKey, sortDir]);
 
   // Heatmap color calculation
   const getHeatmapColor = (property: PropertyRow) => {
@@ -321,6 +331,25 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Vintage */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>Vintage:</span>
+          <select
+            value={vintageFilter}
+            onChange={(e) => setVintageFilter(e.target.value)}
+            style={{
+              padding: '6px 12px',
+              background: BT.bg.elevated,
+              color: BT.text.primary,
+              border: `1px solid ${BT.border.subtle}`,
+              borderRadius: 0,
+              fontSize: 11,
+            }}
+          >
+            {vintages.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
         </div>
 
         {/* Heatmap */}
