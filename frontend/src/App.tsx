@@ -38,6 +38,7 @@ import TerminalPage from './pages/TerminalPage';
 import { MapPage } from './pages/MapPage';
 const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPage'));
 const PropertyCardPage = lazy(() => import('./pages/PropertyCardPage'));
+const PropertyTerminalPage = lazy(() => import('./pages/terminal/PropertyTerminalPage'));
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
@@ -117,6 +118,7 @@ function AppContent() {
         <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
         <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
         <Route path="/property-card/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
+        <Route path="/terminal/property/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyTerminalPage /></Suspense>} />
 
         {/* ═══ Deal workflow pages — own internal nav, no layout chrome ═══ */}
         <Route path="/deals/create" element={<CreateDealPage />} />

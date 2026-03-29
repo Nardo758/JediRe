@@ -14,7 +14,7 @@ import { SignalCommentary } from '../../commentary';
 interface MSAPropertiesTabProps {
   msaId: string;
   msa: any;
-  onSelectProperty?: (propertyId: string) => void;
+  onSelectProperty?: (propertyId: string, propertyName?: string) => void;
 }
 
 interface PropertyRow {
@@ -467,7 +467,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
                         cursor: 'pointer',
                         background: heatBg,
                       }}
-                      onClick={() => onSelectProperty?.(prop.property.toLowerCase().replace(/\s+/g, '-'))}
+                      onClick={() => onSelectProperty?.(prop.property.toLowerCase().replace(/\s+/g, '-'), prop.property)}
                     >
                       <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                         <input

@@ -14,7 +14,7 @@ import { RiskOpportunity, SignalCommentary } from '../../commentary';
 interface MSAOwnersTabProps {
   msaId: string;
   msa: any;
-  onSelectProperty?: (propertyId: string) => void;
+  onSelectProperty?: (propertyId: string, propertyName?: string) => void;
 }
 
 type SignalType = 'BUY' | 'SELL' | 'SELL?' | 'HOLD';

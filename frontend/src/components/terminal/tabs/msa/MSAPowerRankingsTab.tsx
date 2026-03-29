@@ -14,7 +14,7 @@ import { SignalCommentary, PeerContext } from '../../commentary';
 interface MSAPowerRankingsTabProps {
   msaId: string;
   msa: any;
-  onSelectProperty?: (propertyId: string) => void;
+  onSelectProperty?: (propertyId: string, propertyName?: string) => void;
 }
 
 interface PropertyRanking {
@@ -256,7 +256,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                       borderBottom: `1px solid ${BT.border.subtle}`,
                       cursor: 'pointer',
                     }}
-                    onClick={() => onSelectProperty?.(prop.name.toLowerCase().replace(/\s+/g, '-'))}
+                    onClick={() => onSelectProperty?.(prop.name.toLowerCase().replace(/\s+/g, '-'), prop.name)}
                   >
                     <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
                       <span style={{

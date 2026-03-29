@@ -13,7 +13,7 @@ import { SignalCommentary } from '../../commentary';
 interface SubmarketPropertiesTabProps {
   submarketId: string;
   submarket: SubmarketData;
-  onPropertySelect?: (propertyId: string) => void;
+  onPropertySelect?: (propertyId: string, propertyName?: string) => void;
 }
 
 interface Property {
@@ -249,7 +249,7 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
             {filteredProperties.map((property) => (
               <tr 
                 key={property.id}
-                onClick={() => onPropertySelect?.(property.id)}
+                onClick={() => onPropertySelect?.(property.id, property.name)}
                 style={{ 
                   cursor: 'pointer',
                   borderBottom: `1px solid ${BT.border.subtle}`,

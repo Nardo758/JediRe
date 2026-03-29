@@ -319,8 +319,17 @@ export default function F4MarketsView() {
     setLevel("submarket-terminal");
   };
 
-  const handlePropertySelect = (propertyId: string) => {
-    nav(`/property-card/${propertyId.toLowerCase().replace(/\s+/g, "-")}`);
+  const handlePropertySelect = (propertyId: string, propertyName?: string) => {
+    const slug = propertyId.toLowerCase().replace(/\s+/g, "-");
+    nav(`/terminal/property/${slug}`, {
+      state: {
+        msaId: drillMsaId,
+        msaName: drillMsaName,
+        submarketId: drillSubmarketId,
+        submarketName: drillSubmarketName,
+        propertyName: propertyName || propertyId,
+      }
+    });
   };
 
   // ============================================================================

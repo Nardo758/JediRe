@@ -69,7 +69,7 @@ export interface SubmarketData {
 interface SubmarketTerminalProps {
   submarketId: string;
   submarket?: SubmarketData;
-  onPropertySelect?: (propertyId: string) => void;
+  onPropertySelect?: (propertyId: string, propertyName?: string) => void;
   onMsaNavigate?: () => void;
   embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
 }

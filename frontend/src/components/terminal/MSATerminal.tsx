@@ -81,7 +81,7 @@ interface MSATerminalProps {
   msaId: string;
   msa?: MSAData;
   onSubmarketSelect?: (submarketId: string) => void;
-  onPropertySelect?: (propertyId: string) => void;
+  onPropertySelect?: (propertyId: string, propertyName?: string) => void;
   onDealSelect?: (dealId: string) => void;
   onBackToMarkets?: () => void;
   embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
