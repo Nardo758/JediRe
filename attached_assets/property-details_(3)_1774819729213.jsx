@@ -1,5 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+
+// ═══════════════════════════════════════════════════════════════
+// JEDI RE — PROPERTY DETAILS PAGE (ENHANCED)
+// Bloomberg Terminal aesthetic · Asset intelligence view
+// Now with: M07 Traffic Engine · Performance History · 
+//           Correlation Engine 10-Year Forecasts
+// ═══════════════════════════════════════════════════════════════
 
 const T = {
   bg: { terminal:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117",topBar:"#050810",photo:"#080B12",chart:"#0B0F18" },
@@ -709,8 +715,6 @@ const PatternBadge = ({ pattern }) => {
 // MAIN COMPONENT
 // ═════════════════════════════════════════════════════════════
 export default function PropertyDetailsPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
   const [chartWidth, setChartWidth] = useState(460);
@@ -2091,7 +2095,7 @@ export default function PropertyDetailsPage() {
         display: "flex", alignItems: "center", padding: "6px 12px", gap: 10,
         background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0,
       }}>
-        <span onClick={() => navigate(-1)} style={{ fontSize: 10, color: T.text.muted, cursor: "pointer", fontFamily: T.font.mono }}>‹ BACK</span>
+        <span style={{ fontSize: 10, color: T.text.muted, cursor: "pointer", fontFamily: T.font.mono }}>‹ BACK</span>
         <div style={{ width: 1, height: 16, background: T.border.medium }} />
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
