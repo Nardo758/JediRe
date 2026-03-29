@@ -20,7 +20,6 @@ import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { DataTrackerPage } from './pages/admin/DataTrackerPage';
 import { CommandCenterPage } from './pages/admin/CommandCenterPage';
 import AdminToolsPage from './pages/admin/AdminToolsPage';
@@ -38,7 +37,6 @@ import TerminalPage from './pages/TerminalPage';
 import { MapPage } from './pages/MapPage';
 const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPage'));
 const PropertyCardPage = lazy(() => import('./pages/PropertyCardPage'));
-const PropertyTerminalPage = lazy(() => import('./pages/terminal/PropertyTerminalPage'));
 
 /**
  * Redirect legacy /deals/:id/:module routes to /deals/:id/detail?tab=:module
