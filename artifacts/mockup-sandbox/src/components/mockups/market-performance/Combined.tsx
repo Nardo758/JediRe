@@ -115,85 +115,31 @@ const PatternBadge = ({ pattern }: { pattern: string }) => {
   return <Badge color={c.color}>{c.icon} {pattern.replace("_", " ")}</Badge>;
 };
 
-function MiniLineChart({ data, series, width: cw, height: ch, forecastStartIdx }: any) {
-  const pad = { top: 10, right: 12, bottom: 28, left: 48 };
-  const w = (cw || 500) - pad.left - pad.right;
-  const h = (ch || 180) - pad.top - pad.bottom;
-  const allVals = series.flatMap((s: any) => data.map((d: any) => d[s.key]).filter((v: any) => v != null));
-  const yMin = Math.min(...allVals);
-  const yMax = Math.max(...allVals);
-  const yRange = yMax - yMin || 1;
-  const yPad = yRange * 0.08;
-  const x = (i: number) => pad.left + (i / (data.length - 1)) * w;
-  const y = (v: number) => pad.top + h - ((v - (yMin - yPad)) / (yRange + yPad * 2)) * h;
-  const gridLines = 5;
-  const yTicks = Array.from({ length: gridLines }, (_, i) => yMin - yPad + (yRange + yPad * 2) * (i / (gridLines - 1)));
-
-  return (
-    <svg width="100%" height="100%" viewBox={`0 0 ${cw || 500} ${ch || 180}`} style={{ overflow: "visible" }}>
-      {yTicks.map((tick, i) => (
-        <g key={i}>
-          <line x1={pad.left} y1={y(tick)} x2={pad.left + w} y2={y(tick)} stroke={T.border.subtle} strokeWidth={0.5} strokeDasharray="2,3" />
-          <text x={pad.left - 4} y={y(tick) + 3} fill={T.text.muted} fontSize={7} fontFamily={T.font.mono} textAnchor="end">
-            {tick >= 1000 ? `${(tick/1000).toFixed(tick >= 10000 ? 0 : 1)}k` : tick.toFixed(tick < 10 ? 1 : 0)}
-          </text>
-        </g>
-      ))}
-      {forecastStartIdx != null && (
-        <>
-          <rect x={x(forecastStartIdx)} y={pad.top} width={w - (x(forecastStartIdx) - pad.left)} height={h} fill={T.text.cyan} opacity={0.03} />
-          <line x1={x(forecastStartIdx)} y1={pad.top} x2={x(forecastStartIdx)} y2={pad.top + h} stroke={T.text.cyan} strokeWidth={1} strokeDasharray="4,3" opacity={0.4} />
-        </>
-      )}
-      {series.map((s: any, si: number) => {
-        const pts = data.map((d: any, i: number) => d[s.key] != null ? { x: x(i), y: y(d[s.key]), i } : null).filter(Boolean) as any[];
-        if (pts.length < 2) return null;
-        const pathD = pts.map((p: any, i: number) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
-        return (
-          <g key={si}>
-            {s.confBand && forecastStartIdx != null && (() => {
-              const fcPts = pts.filter((p: any) => p.i >= forecastStartIdx);
-              if (fcPts.length < 2) return null;
-              const upper = fcPts.map((p: any) => ({ x: p.x, y: y(data[p.i][s.key] * (1 + (1 - (data[p.i]?.confidence || 0.5)) * 0.06)) }));
-              const lower = fcPts.map((p: any) => ({ x: p.x, y: y(data[p.i][s.key] * (1 - (1 - (data[p.i]?.confidence || 0.5)) * 0.06)) }));
-              const bandPath = `M${upper.map((p: any) => `${p.x},${p.y}`).join(' L')} L${[...lower].reverse().map((p: any) => `${p.x},${p.y}`).join(' L')} Z`;
-              return <path d={bandPath} fill={s.color} opacity={0.08} />;
-            })()}
-            <path d={pathD} fill="none" stroke={s.color} strokeWidth={1.5} opacity={1} />
-            {pts.map((p: any, i: number) => (
-              <circle key={i} cx={p.x} cy={p.y} r={2} fill={s.color} opacity={p.i >= (forecastStartIdx || Infinity) ? 0.5 : 0.9} />
-            ))}
-          </g>
-        );
-      })}
-      {data.map((d: any, i: number) => {
-        const showLabel = data.length <= 10 || i % Math.ceil(data.length / 10) === 0 || i === data.length - 1;
-        return showLabel ? (
-          <text key={i} x={x(i)} y={pad.top + h + 14} fill={i >= (forecastStartIdx || Infinity) ? T.text.cyan : T.text.muted}
-            fontSize={7} fontFamily={T.font.mono} textAnchor="middle">
-            {d.year}
-          </text>
-        ) : null;
-      })}
-    </svg>
-  );
-}
-
-const ChartBox = ({ title, subtitle, height = 190, borderColor = T.text.cyan, action, children }: any) => (
-  <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-    <SectionHeader title={title} subtitle={subtitle} borderColor={borderColor} action={action} />
-    <div style={{ padding: "8px 4px 4px", height, position: "relative" }}>{children}</div>
-  </div>
-);
-
 export function Combined() {
   const p = PROPERTY;
   const perf = PERF_HISTORY;
   const forecast = generateForecast();
   const td = { aadtHistory: TRAFFIC_AADT, aadtProjected: TRAFFIC_PROJECTED, outputs: { t07_pattern: "DEMAND_SURGE" } };
 
-  const [activeSeries, setActiveSeries] = useState({ traffic: true, rent: true, occ: true, noi: true, concessions: true, rentGrowthCum: true });
-  const toggleSeries = (key: string) => setActiveSeries(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }));
+  const SERIES_CONFIG = [
+    { key: "traffic", label: "TRAFFIC (AADT)", color: T.text.blue, cor: "ANCHOR", thick: true, group: "perf" },
+    { key: "rent", label: "EFF. RENT", color: T.text.green, cor: "COR-01 r=0.65", group: "perf" },
+    { key: "occ", label: "OCCUPANCY", color: T.text.cyan, cor: "COR-05 r=-0.60", group: "perf" },
+    { key: "noi", label: "NOI", color: T.text.amber, cor: "COR-01 × COR-05", group: "perf" },
+    { key: "concessions", label: "CONCESSIONS", color: T.text.red, cor: "inverse occ", group: "perf" },
+    { key: "rentGrowthCum", label: "CUM. RENT GROWTH", color: T.text.purple, cor: "COR-04 capped", group: "perf" },
+    { key: "vacancy", label: "VACANCY RATE", color: "#FF6B6B", cor: "submarket", group: "mkt" },
+    { key: "mktRentGrowth", label: "MKT RENT GRWTH", color: "#66D9A0", cor: "submarket", group: "mkt" },
+    { key: "empGrowth", label: "EMPLOYMENT", color: T.text.teal, cor: "BLS", group: "mkt" },
+    { key: "demandScore", label: "DEMAND SCORE", color: "#7DD3FC", cor: "composite", group: "mkt" },
+  ] as const;
+
+  type SeriesKey = typeof SERIES_CONFIG[number]["key"];
+  const [activeSeries, setActiveSeries] = useState<Record<string, boolean>>({
+    traffic: true, rent: true, occ: true, noi: true, concessions: true, rentGrowthCum: true,
+    vacancy: false, mktRentGrowth: false, empGrowth: false, demandScore: false,
+  });
+  const toggleSeries = (key: string) => setActiveSeries(prev => ({ ...prev, [key]: !prev[key] }));
 
   const trafficAll = [...td.aadtHistory, ...td.aadtProjected.map(p => ({ year: p.year, aadt: p.aadt }))];
   const perfAll = [...perf, ...forecast];
@@ -203,10 +149,20 @@ export function Combined() {
   const baseNoi = perfAll[0].noi;
   const baseConc = Math.max(perfAll[0].concessions, 0.1);
 
+  const mktAll = [...p.marketHistory, ...p.marketForecast];
+  const mktByYear: Record<number, any> = {};
+  mktAll.forEach(d => { mktByYear[d.year] = d; });
+  const baseVacancy = mktAll[0].vacancy;
+  const baseMktRentGrowth = Math.max(mktAll[0].rentGrowth, 0.1);
+  const baseEmpGrowth = mktAll[0].empGrowth;
+  const baseDemandScore = mktAll[0].demandScore;
+  const mktForecastIdx = p.marketHistory.length;
+
   const indexedData = trafficAll.map((t, i) => {
     const pf = perfAll[i];
     if (!pf) return null;
     const cumRentGrowth = ((pf.rent / baseRent) - 1) * 100;
+    const mkt = mktByYear[t.year];
     return {
       year: t.year,
       traffic: (t.aadt / baseTraffic) * 100,
@@ -215,32 +171,34 @@ export function Combined() {
       noi: (pf.noi / baseNoi) * 100,
       concessions: (pf.concessions / baseConc) * 100,
       rentGrowthCum: 100 + cumRentGrowth,
+      vacancy: mkt ? (mkt.vacancy / baseVacancy) * 100 : null,
+      mktRentGrowth: mkt ? (mkt.rentGrowth / baseMktRentGrowth) * 100 : null,
+      empGrowth: mkt ? (mkt.empGrowth / baseEmpGrowth) * 100 : null,
+      demandScore: mkt ? (mkt.demandScore / baseDemandScore) * 100 : null,
       confidence: td.aadtProjected.find(p => p.year === t.year)?.conf,
       isForecast: t.year > 2025,
-      rawTraffic: t.aadt, rawRent: pf.rent, rawOcc: pf.occ, rawNoi: pf.noi, rawConc: pf.concessions, rawRentGrowth: pf.rentGrowth, rawExpRatio: pf.expRatio,
+      rawTraffic: t.aadt, rawRent: pf.rent, rawOcc: pf.occ, rawNoi: pf.noi,
+      rawConc: pf.concessions, rawRentGrowth: pf.rentGrowth, rawExpRatio: pf.expRatio,
+      rawVacancy: mkt?.vacancy, rawMktRentGrowth: mkt?.rentGrowth, rawEmpGrowth: mkt?.empGrowth,
+      rawDemandScore: mkt?.demandScore, rawAbsorption: mkt?.absorption, rawNewSupply: mkt?.newSupply,
+      rawPipelinePct: mkt?.pipelinePct, rawPopGrowth: mkt?.popGrowth, rawHhIncome: mkt?.hhIncome,
+      rawAvgRent: mkt?.avgRent,
     };
   }).filter(Boolean) as any[];
 
   const forecastIdx = indexedData.findIndex((d: any) => d.isForecast);
-
-  const SERIES_CONFIG = [
-    { key: "traffic", label: "TRAFFIC (AADT)", color: T.text.blue, cor: "ANCHOR", thick: true },
-    { key: "rent", label: "EFF. RENT", color: T.text.green, cor: "COR-01 r=0.65" },
-    { key: "occ", label: "OCCUPANCY", color: T.text.cyan, cor: "COR-05 r=-0.60" },
-    { key: "noi", label: "NOI", color: T.text.amber, cor: "COR-01 × COR-05" },
-    { key: "concessions", label: "CONCESSIONS", color: T.text.red, cor: "inverse occ" },
-    { key: "rentGrowthCum", label: "CUM. RENT GROWTH", color: T.text.purple, cor: "COR-04 capped" },
-  ];
-  const activeSerisList = SERIES_CONFIG.filter(s => (activeSeries as any)[s.key]);
-
+  const activeSerisList = SERIES_CONFIG.filter(s => activeSeries[s.key]);
   const fullW = 1340;
-  const chartWidth = 640;
 
   const IndexedChart = () => {
     const pad = { top: 16, right: 16, bottom: 32, left: 52 };
     const w = fullW - pad.left - pad.right;
-    const h = 340 - pad.top - pad.bottom;
-    const allVals = activeSerisList.flatMap(s => indexedData.map((d: any) => d[s.key]).filter((v: any) => v != null));
+    const h = 380 - pad.top - pad.bottom;
+    const activeWithData = activeSerisList.filter(s =>
+      indexedData.some((d: any) => d[s.key] != null)
+    );
+    const allVals = activeWithData.flatMap(s => indexedData.map((d: any) => d[s.key]).filter((v: any) => v != null));
+    if (allVals.length === 0) return <svg width="100%" height="100%" />;
     const yMin = Math.min(...allVals, 100) - 3;
     const yMax = Math.max(...allVals, 100) + 3;
     const yRange = yMax - yMin || 1;
@@ -250,7 +208,7 @@ export function Combined() {
     const yTicks = Array.from({ length: gridCount }, (_, i) => yMin + yRange * (i / (gridCount - 1)));
 
     return (
-      <svg width="100%" height="100%" viewBox={`0 0 ${fullW} 340`} style={{ overflow: "visible" }}>
+      <svg width="100%" height="100%" viewBox={`0 0 ${fullW} 380`} style={{ overflow: "visible" }}>
         {yTicks.map((tick, i) => (
           <g key={`g${i}`}>
             <line x1={pad.left} y1={yPos(tick)} x2={pad.left + w} y2={yPos(tick)}
@@ -273,23 +231,30 @@ export function Combined() {
             <text x={xPos(forecastIdx) - 5} y={pad.top + 10} fill={T.text.green} fontSize={7} fontFamily={T.font.mono} opacity={0.5} textAnchor="end">← ACTUAL</text>
           </>
         )}
-        {activeSerisList.map((s) => {
-          const pts = indexedData.map((d: any, i: number) => ({ x: xPos(i), y: yPos(d[s.key]), i, val: d[s.key] }));
-          const pathD = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x},${pt.y}`).join(' ');
-          const fcPts = pts.filter(pt => pt.i >= forecastIdx && forecastIdx >= 0);
+        {activeWithData.map((s) => {
+          const pts = indexedData
+            .map((d: any, i: number) => d[s.key] != null ? { x: xPos(i), y: yPos(d[s.key]), i, val: d[s.key] } : null)
+            .filter(Boolean) as any[];
+          if (pts.length < 2) return null;
+          const pathD = pts.map((pt: any, i: number) => `${i === 0 ? 'M' : 'L'}${pt.x},${pt.y}`).join(' ');
+          const fcPts = pts.filter((pt: any) => pt.i >= forecastIdx && forecastIdx >= 0);
           let bandPath: string | null = null;
           if (fcPts.length >= 2 && s.key !== "concessions") {
             const spread = s.thick ? 0.04 : 0.05;
-            const upper = fcPts.map(pt => ({ x: pt.x, y: yPos(pt.val * (1 + (1 - (indexedData[pt.i]?.confidence || 0.5)) * spread)) }));
-            const lower = fcPts.map(pt => ({ x: pt.x, y: yPos(pt.val * (1 - (1 - (indexedData[pt.i]?.confidence || 0.5)) * spread)) }));
-            bandPath = `M${upper.map(pt => `${pt.x},${pt.y}`).join(' L')} L${[...lower].reverse().map(pt => `${pt.x},${pt.y}`).join(' L')} Z`;
+            const upper = fcPts.map((pt: any) => ({ x: pt.x, y: yPos(pt.val * (1 + (1 - (indexedData[pt.i]?.confidence || 0.5)) * spread)) }));
+            const lower = fcPts.map((pt: any) => ({ x: pt.x, y: yPos(pt.val * (1 - (1 - (indexedData[pt.i]?.confidence || 0.5)) * spread)) }));
+            bandPath = `M${upper.map((pt: any) => `${pt.x},${pt.y}`).join(' L')} L${[...lower].reverse().map((pt: any) => `${pt.x},${pt.y}`).join(' L')} Z`;
           }
+          const isMkt = s.group === "mkt";
           return (
             <g key={s.key}>
               {bandPath && <path d={bandPath} fill={s.color} opacity={0.06} />}
-              <path d={pathD} fill="none" stroke={s.color} strokeWidth={s.thick ? 2.5 : 1.5} opacity={0.85} />
-              {pts.filter((_, i) => i < forecastIdx || forecastIdx < 0).map((pt, i) => (
-                <circle key={i} cx={pt.x} cy={pt.y} r={2} fill={s.color} opacity={0.7} />
+              <path d={pathD} fill="none" stroke={s.color}
+                strokeWidth={s.thick ? 2.5 : 1.5}
+                strokeDasharray={isMkt ? "6,3" : "none"}
+                opacity={isMkt ? 0.7 : 0.85} />
+              {pts.filter((_: any, i: number) => i < forecastIdx || forecastIdx < 0).map((pt: any, i: number) => (
+                <circle key={i} cx={pt.x} cy={pt.y} r={isMkt ? 1.5 : 2} fill={s.color} opacity={0.7} />
               ))}
               {pts.length > 0 && (
                 <text x={pts[pts.length - 1].x + 4} y={pts[pts.length - 1].y + 3} fill={s.color} fontSize={7} fontFamily={T.font.mono} fontWeight={600}>
@@ -308,9 +273,6 @@ export function Combined() {
       </svg>
     );
   };
-
-  const mktAll = [...p.marketHistory, ...p.marketForecast];
-  const mktForecastIdx = p.marketHistory.length;
 
   return (
     <div style={{
@@ -335,53 +297,93 @@ export function Combined() {
           <PatternBadge pattern="DEMAND_SURGE" />
         </div>
 
-        {/* ━━━ SECTION 1: PERFORMANCE — INDEXED CHART ━━━ */}
+        {/* ━━━ BADGES ━━━ */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
           <Badge color={T.text.green}>ACTUAL 2018–2025</Badge>
           <Badge color={T.text.cyan}>FORECAST 2026–2035</Badge>
           <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
-            Indexed to 100 @ 2018 · Correlation Engine · All metrics relative to Traffic
+            Indexed to 100 @ base year · Correlation Engine · Property + Submarket metrics
           </span>
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>Sources: CoStar · FRED · BLS · Census ACS · FDOT</span>
         </div>
 
+        {/* ━━━ UNIFIED INDEXED CHART ━━━ */}
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="PERFORMANCE vs TRAFFIC — INDEXED" subtitle="Base 100 = 2018 · Click legend to toggle" icon="◈" borderColor={T.text.amber}
-            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>M07 Traffic Engine × Correlation Engine</span>} />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}` }}>
-            {SERIES_CONFIG.map(s => (
-              <div key={s.key} onClick={() => toggleSeries(s.key)} style={{
-                display: "flex", alignItems: "center", gap: 4, padding: "3px 8px",
-                background: (activeSeries as any)[s.key] ? `${s.color}15` : T.bg.input,
-                border: `1px solid ${(activeSeries as any)[s.key] ? `${s.color}50` : T.border.subtle}`,
-                borderRadius: 2, cursor: "pointer", transition: "all 0.15s",
-                opacity: (activeSeries as any)[s.key] ? 1 : 0.4,
-              }}>
-                <div style={{ width: s.key === "traffic" ? 14 : 10, height: s.key === "traffic" ? 3 : 2, background: s.color, borderRadius: 1 }} />
-                <span style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 600, color: (activeSeries as any)[s.key] ? s.color : T.text.muted, letterSpacing: "0.03em" }}>
-                  {s.label}
-                </span>
-                <span style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted }}>{s.cor}</span>
+          <SectionHeader title="PERFORMANCE + MARKET — INDEXED" subtitle="Base 100 · Click legend to toggle · Dashed = submarket" icon="◈" borderColor={T.text.amber}
+            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>M07 Traffic Engine × Correlation Engine × Submarket Fundamentals</span>} />
+
+          {/* Toggleable Legend — two rows: Property perf + Submarket */}
+          <div style={{ padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em", width: 70 }}>PROPERTY</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {SERIES_CONFIG.filter(s => s.group === "perf").map(s => (
+                  <div key={s.key} onClick={() => toggleSeries(s.key)} style={{
+                    display: "flex", alignItems: "center", gap: 4, padding: "3px 8px",
+                    background: activeSeries[s.key] ? `${s.color}15` : T.bg.input,
+                    border: `1px solid ${activeSeries[s.key] ? `${s.color}50` : T.border.subtle}`,
+                    borderRadius: 2, cursor: "pointer", transition: "all 0.15s",
+                    opacity: activeSeries[s.key] ? 1 : 0.4,
+                  }}>
+                    <div style={{ width: s.key === "traffic" ? 14 : 10, height: s.key === "traffic" ? 3 : 2, background: s.color, borderRadius: 1 }} />
+                    <span style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 600, color: activeSeries[s.key] ? s.color : T.text.muted, letterSpacing: "0.03em" }}>
+                      {s.label}
+                    </span>
+                    <span style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted }}>{s.cor}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em", width: 70 }}>SUBMARKET</span>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {SERIES_CONFIG.filter(s => s.group === "mkt").map(s => (
+                  <div key={s.key} onClick={() => toggleSeries(s.key)} style={{
+                    display: "flex", alignItems: "center", gap: 4, padding: "3px 8px",
+                    background: activeSeries[s.key] ? `${s.color}15` : T.bg.input,
+                    border: `1px solid ${activeSeries[s.key] ? `${s.color}50` : T.border.subtle}`,
+                    borderRadius: 2, cursor: "pointer", transition: "all 0.15s",
+                    opacity: activeSeries[s.key] ? 1 : 0.4,
+                  }}>
+                    <div style={{ width: 10, height: 0, borderTop: `2px dashed ${s.color}`, borderRadius: 0 }} />
+                    <span style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 600, color: activeSeries[s.key] ? s.color : T.text.muted, letterSpacing: "0.03em" }}>
+                      {s.label}
+                    </span>
+                    <span style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted }}>{s.cor}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-          <div style={{ height: 340, padding: "0 4px" }}>
+
+          {/* Chart Area */}
+          <div style={{ height: 380, padding: "0 4px" }}>
             <IndexedChart />
           </div>
-          <div style={{ display: "flex", gap: 0, borderTop: `1px solid ${T.border.subtle}` }}>
-            {SERIES_CONFIG.filter(s => (activeSeries as any)[s.key]).map((s, i) => {
+
+          {/* Current values strip */}
+          <div style={{ display: "flex", gap: 0, borderTop: `1px solid ${T.border.subtle}`, flexWrap: "wrap" }}>
+            {SERIES_CONFIG.filter(s => activeSeries[s.key]).map((s, i, arr) => {
               const last = indexedData[indexedData.length - 1];
-              const base = indexedData[0];
-              const delta = ((last[s.key] / base[s.key]) - 1) * 100;
-              const rawNow = s.key === "traffic" ? `${(last.rawTraffic/1000).toFixed(1)}k vpd` :
-                s.key === "rent" ? `$${last.rawRent.toLocaleString()}` :
-                s.key === "occ" ? `${last.rawOcc.toFixed(1)}%` :
-                s.key === "noi" ? fmt(last.rawNoi) :
-                s.key === "concessions" ? `${last.rawConc.toFixed(1)}%` :
-                `+${((last.rawRent / baseRent - 1) * 100).toFixed(0)}%`;
+              const first = indexedData.find((d: any) => d[s.key] != null);
+              if (!first || last[s.key] == null) return null;
+              const delta = ((last[s.key] / first[s.key]) - 1) * 100;
+              let rawNow = "";
+              if (s.key === "traffic") rawNow = `${(last.rawTraffic/1000).toFixed(1)}k vpd`;
+              else if (s.key === "rent") rawNow = `$${last.rawRent.toLocaleString()}`;
+              else if (s.key === "occ") rawNow = `${last.rawOcc.toFixed(1)}%`;
+              else if (s.key === "noi") rawNow = fmt(last.rawNoi);
+              else if (s.key === "concessions") rawNow = `${last.rawConc.toFixed(1)}%`;
+              else if (s.key === "rentGrowthCum") rawNow = `+${((last.rawRent / baseRent - 1) * 100).toFixed(0)}%`;
+              else if (s.key === "vacancy") rawNow = last.rawVacancy != null ? `${last.rawVacancy.toFixed(1)}%` : "—";
+              else if (s.key === "mktRentGrowth") rawNow = last.rawMktRentGrowth != null ? `${last.rawMktRentGrowth.toFixed(1)}%` : "—";
+              else if (s.key === "empGrowth") rawNow = last.rawEmpGrowth != null ? `${last.rawEmpGrowth.toFixed(1)}%` : "—";
+              else if (s.key === "demandScore") rawNow = last.rawDemandScore != null ? `${last.rawDemandScore}` : "—";
               return (
                 <div key={s.key} style={{
-                  flex: 1, padding: "5px 8px", textAlign: "center",
-                  borderRight: i < activeSerisList.length - 1 ? `1px solid ${T.border.subtle}` : "none",
+                  flex: "1 1 0", minWidth: 100, padding: "5px 8px", textAlign: "center",
+                  borderRight: i < arr.length - 1 ? `1px solid ${T.border.subtle}` : "none",
                   background: `${s.color}04`,
                 }}>
                   <div style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em" }}>{s.label}</div>
@@ -419,92 +421,39 @@ export function Combined() {
           ))}
         </div>
 
-        {/* ━━━ DIVIDER ━━━ */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-          <div style={{ flex: 1, height: 1, background: T.border.medium }} />
-          <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber, letterSpacing: "0.1em" }}>SUBMARKET FUNDAMENTALS</span>
-          <div style={{ flex: 1, height: 1, background: T.border.medium }} />
-        </div>
-
-        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
-          <Badge color={T.text.green}>ACTUAL 2021–2025</Badge>
-          <Badge color={T.text.cyan}>FORECAST 2026–2030</Badge>
-          <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
-            {p.submarket} Submarket · {p.market} · Sources: CoStar · FRED · BLS · Census ACS
-          </span>
-        </div>
-
-        {/* ━━━ SECTION 2: MARKET CHARTS (2-col grid) ━━━ */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartBox title="VACANCY RATE" subtitle={`${p.submarket} Submarket`} height={178} borderColor={T.text.red}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].vacancy)} → {pct(mktAll[mktAll.length-1].vacancy)}</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, vacancy: d.vacancy, confidence: (d as any).conf }))}
-              series={[{ key: "vacancy", color: T.text.red, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-          <ChartBox title="RENT GROWTH YoY" subtitle="% · Submarket Avg" height={178} borderColor={T.text.green}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].rentGrowth)} → {pct(mktAll[mktAll.length-1].rentGrowth)}</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, rentGrowth: d.rentGrowth, confidence: (d as any).conf }))}
-              series={[{ key: "rentGrowth", color: T.text.green, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartBox title="NEW SUPPLY DELIVERIES" subtitle="Units / Year" height={178} borderColor={T.text.orange}
-            action={<Badge color={mktAll[mktAll.length-1].newSupply < mktAll[mktForecastIdx-1].newSupply ? T.text.green : T.text.red}>
-              {mktAll[mktAll.length-1].newSupply < mktAll[mktForecastIdx-1].newSupply ? "DECLINING" : "RISING"}
-            </Badge>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, newSupply: d.newSupply, confidence: (d as any).conf }))}
-              series={[{ key: "newSupply", color: T.text.orange, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-          <ChartBox title="ABSORPTION" subtitle="Units absorbed / Year" height={178} borderColor={T.text.cyan}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{mktAll[0].absorption.toLocaleString()} → {mktAll[mktAll.length-1].absorption.toLocaleString()}</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, absorption: d.absorption / 1000, confidence: (d as any).conf }))}
-              series={[{ key: "absorption", color: T.text.cyan, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartBox title="EMPLOYMENT GROWTH" subtitle="% YoY · BLS" height={178} borderColor={T.text.green}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].empGrowth)} → {pct(mktAll[mktAll.length-1].empGrowth)}</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, empGrowth: d.empGrowth, confidence: (d as any).conf }))}
-              series={[{ key: "empGrowth", color: T.text.green, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-          <ChartBox title="DEMAND SCORE" subtitle="Composite 0–100" height={178} borderColor={T.text.green}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{mktAll[0].demandScore} → {mktAll[mktAll.length-1].demandScore}</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, demandScore: d.demandScore, confidence: (d as any).conf }))}
-              series={[{ key: "demandScore", color: T.text.green, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartBox title="POPULATION GROWTH (3mi)" subtitle="% YoY" height={178} borderColor={T.text.purple}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].popGrowth)} → {pct(mktAll[mktAll.length-1].popGrowth)}</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, popGrowth: d.popGrowth, confidence: (d as any).conf }))}
-              series={[{ key: "popGrowth", color: T.text.purple, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-          <ChartBox title="MEDIAN HH INCOME" subtitle="$ · Census ACS" height={178} borderColor={T.text.amber}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>${(mktAll[0].hhIncome/1000).toFixed(1)}K → ${(mktAll[mktAll.length-1].hhIncome/1000).toFixed(1)}K</span>}>
-            <MiniLineChart data={mktAll.map(d => ({ year: d.year, hhIncome: d.hhIncome / 1000, confidence: (d as any).conf }))}
-              series={[{ key: "hhIncome", color: T.text.amber, confBand: true }]} width={chartWidth} height={178} forecastStartIdx={mktForecastIdx} />
-          </ChartBox>
-        </div>
-
-        {/* ━━━ PERFORMANCE TABLE ━━━ */}
+        {/* ━━━ UNIFIED DATA TABLE ━━━ */}
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="PERFORMANCE TABLE" subtitle="Historical + Forecast · Raw Values" icon="≡" borderColor={T.text.amber}
-            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>COR-01 · COR-04 · COR-05 · COR-06 · COR-13</span>} />
+          <SectionHeader title="COMBINED MARKET & PERFORMANCE TABLE" subtitle="Property + Submarket · All Years" icon="≡" borderColor={T.text.amber}
+            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>COR-01 · COR-04 · COR-05 · COR-13 · CoStar · BLS</span>} />
           <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "36px 48px 50px 36px 40px 36px 52px 36px 36px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 440 }}>
-              {["YEAR","TRAFFIC","RENT","OCC","GRWTH","CONC","NOI","CONF","R/I"].map(h => (
-                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
+            {/* Column groups header */}
+            <div style={{ display: "grid", gridTemplateColumns: "36px 290px 310px", borderBottom: `1px solid ${T.border.medium}`, minWidth: 680 }}>
+              <div style={{ padding: "3px 6px" }} />
+              <div style={{ padding: "3px 6px", textAlign: "center", borderLeft: `1px solid ${T.border.medium}`, borderRight: `1px solid ${T.border.medium}` }}>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber, letterSpacing: "0.1em" }}>PROPERTY PERFORMANCE</span>
+              </div>
+              <div style={{ padding: "3px 6px", textAlign: "center" }}>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, fontWeight: 700, color: T.text.cyan, letterSpacing: "0.1em" }}>SUBMARKET FUNDAMENTALS</span>
+              </div>
+            </div>
+            {/* Column headers */}
+            <div style={{ display: "grid", gridTemplateColumns: "36px 48px 50px 36px 40px 36px 52px 36px 38px 40px 48px 48px 38px 48px 38px", padding: "4px 6px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 680 }}>
+              {["YEAR","TRAFFIC","RENT","OCC","GRWTH","CONC","NOI","CONF","VAC","M.GRWTH","SUPPLY","ABSRP","EMP%","INCOME","DMD"].map((h, hi) => (
+                <span key={h} style={{
+                  color: hi <= 7 ? T.text.muted : T.text.cyan,
+                  fontWeight: 600, letterSpacing: "0.04em",
+                  borderLeft: hi === 8 ? `1px solid ${T.border.medium}` : "none",
+                  paddingLeft: hi === 8 ? 4 : 0,
+                }}>{h}</span>
               ))}
             </div>
             {indexedData.map((d: any, i: number) => {
               const rToI = ((d.rawRent * 12) / (78_200 * Math.pow(1.025, Math.max(0, d.year - 2025))) * 100);
+              const hasMkt = d.rawVacancy != null;
               return (
                 <div key={i} style={{
-                  display: "grid", gridTemplateColumns: "36px 48px 50px 36px 40px 36px 52px 36px 36px",
-                  padding: "3px 8px", minWidth: 440,
+                  display: "grid", gridTemplateColumns: "36px 48px 50px 36px 40px 36px 52px 36px 38px 40px 48px 48px 38px 48px 38px",
+                  padding: "3px 6px", minWidth: 680,
                   borderBottom: `1px solid ${T.border.subtle}08`,
                   background: d.isForecast ? `${T.text.cyan}04` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt),
                 }}>
@@ -522,81 +471,60 @@ export function Combined() {
                   <span style={{ color: d.isForecast ? ((d.confidence || 0) > 0.6 ? T.text.green : (d.confidence || 0) > 0.4 ? T.text.amber : T.text.red) : T.text.green }}>
                     {d.isForecast ? `${((d.confidence || 0) * 100).toFixed(0)}%` : "ACT"}
                   </span>
-                  <span style={{ color: rToI > 32 ? T.text.red : rToI > 30 ? T.text.amber : T.text.green }}>
-                    {rToI.toFixed(0)}%
+                  {/* Submarket columns */}
+                  <span style={{ color: hasMkt ? (d.rawVacancy < 7 ? T.text.green : d.rawVacancy < 9 ? T.text.amber : T.text.red) : T.text.muted, borderLeft: `1px solid ${T.border.medium}`, paddingLeft: 4 }}>
+                    {hasMkt ? pct(d.rawVacancy) : "—"}
+                  </span>
+                  <span style={{ color: hasMkt ? (d.rawMktRentGrowth >= 3 ? T.text.green : d.rawMktRentGrowth >= 0 ? T.text.amber : T.text.red) : T.text.muted }}>
+                    {hasMkt ? `${d.rawMktRentGrowth >= 0 ? "+" : ""}${pct(d.rawMktRentGrowth)}` : "—"}
+                  </span>
+                  <span style={{ color: hasMkt ? (d.rawNewSupply > 1500 ? T.text.red : d.rawNewSupply > 1000 ? T.text.orange : T.text.green) : T.text.muted }}>
+                    {hasMkt ? d.rawNewSupply.toLocaleString() : "—"}
+                  </span>
+                  <span style={{ color: hasMkt ? T.text.cyan : T.text.muted }}>
+                    {hasMkt ? `${(d.rawAbsorption/1000).toFixed(1)}k` : "—"}
+                  </span>
+                  <span style={{ color: hasMkt ? (d.rawEmpGrowth >= 3 ? T.text.green : T.text.amber) : T.text.muted }}>
+                    {hasMkt ? pct(d.rawEmpGrowth) : "—"}
+                  </span>
+                  <span style={{ color: hasMkt ? T.text.secondary : T.text.muted }}>
+                    {hasMkt ? `$${(d.rawHhIncome/1000).toFixed(0)}K` : "—"}
+                  </span>
+                  <span style={{ color: hasMkt ? (d.rawDemandScore >= 88 ? T.text.green : d.rawDemandScore >= 80 ? T.text.amber : T.text.red) : T.text.muted }}>
+                    {hasMkt ? d.rawDemandScore : "—"}
                   </span>
                 </div>
               );
             })}
           </div>
-          <div style={{ padding: "5px 8px", background: T.bg.panelAlt, borderTop: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, lineHeight: 1.5 }}>
+
+          {/* Combined footer narrative */}
+          <div style={{ padding: "6px 8px", background: T.bg.panelAlt, borderTop: `1px solid ${T.border.subtle}` }}>
+            <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, lineHeight: 1.6 }}>
               <span style={{ color: T.text.blue }}>■</span> TRAFFIC is the anchor signal ·
               <span style={{ color: T.text.green }}> COR-01</span> Traffic→Rent (lead 3-6mo) ·
               <span style={{ color: T.text.cyan }}> COR-05</span> Traffic→Vacancy (lead 2-4mo) ·
               <span style={{ color: T.text.amber }}> COR-04</span> Wage→Rent Cap ·
               <span style={{ color: T.text.red }}> COR-13</span> Affordability Ceiling (30%) ·
               Confidence bands widen with forecast horizon
+              <br />
+              <span style={{ color: T.text.amber }}>SUPPLY OUTLOOK:</span> Pipeline peaks at {Math.max(...mktAll.map(d => d.newSupply)).toLocaleString()} units ({mktAll.find(d => d.newSupply === Math.max(...mktAll.map(m => m.newSupply)))?.year}),
+              {mktAll[mktAll.length-1].newSupply < mktAll[mktForecastIdx-1].newSupply ?
+                <span style={{ color: T.text.green }}> declining to {mktAll[mktAll.length-1].newSupply.toLocaleString()} by {mktAll[mktAll.length-1].year}</span> :
+                <span style={{ color: T.text.red }}> remaining elevated</span>
+              }.
+              Absorption {mktAll[mktForecastIdx + 2]?.absorption > mktAll[mktForecastIdx-1].absorption ?
+                <span style={{ color: T.text.green }}>strengthening</span> :
+                <span style={{ color: T.text.red }}>softening</span>
+              }.
+              Net: <span style={{ color: T.text.green }}>FAVORABLE — supply retreating as demand recovers</span>
+              <br />
+              <span style={{ color: T.text.muted }}>— = Submarket data unavailable for early property-only years (2018–2020)</span>
             </div>
           </div>
         </div>
 
-        {/* ━━━ MARKET DATA TABLE ━━━ */}
-        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="MARKET DATA TABLE" subtitle={`${p.submarket} · 10-Year View`} icon="≡" borderColor={T.text.amber} />
-          <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "36px 38px 40px 52px 48px 48px 38px 38px 48px 42px 38px", padding: "4px 6px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 520 }}>
-              {["YEAR","VAC","GRWTH","RENT","SUPPLY","ABSRP","P/S%","EMP%","INCOME","POP%","DMD"].map(h => (
-                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.04em" }}>{h}</span>
-              ))}
-            </div>
-            {mktAll.map((d, i) => {
-              const isFc = i >= mktForecastIdx;
-              return (
-                <div key={i} style={{
-                  display: "grid", gridTemplateColumns: "36px 38px 40px 52px 48px 48px 38px 38px 48px 42px 38px",
-                  padding: "3px 6px", minWidth: 520,
-                  borderBottom: `1px solid ${T.border.subtle}08`,
-                  background: isFc ? `${T.text.cyan}04` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt),
-                }}>
-                  <span style={{ color: isFc ? T.text.cyan : T.text.primary, fontWeight: 600 }}>{d.year}</span>
-                  <span style={{ color: d.vacancy < 7 ? T.text.green : d.vacancy < 9 ? T.text.amber : T.text.red }}>{pct(d.vacancy)}</span>
-                  <span style={{ color: d.rentGrowth >= 3 ? T.text.green : d.rentGrowth >= 0 ? T.text.amber : T.text.red }}>
-                    {d.rentGrowth >= 0 ? "+" : ""}{pct(d.rentGrowth)}
-                  </span>
-                  <span style={{ color: T.text.primary }}>${d.avgRent.toLocaleString()}</span>
-                  <span style={{ color: d.newSupply > 1500 ? T.text.red : d.newSupply > 1000 ? T.text.orange : T.text.green }}>{d.newSupply.toLocaleString()}</span>
-                  <span style={{ color: T.text.cyan }}>{(d.absorption/1000).toFixed(1)}k</span>
-                  <span style={{ color: d.pipelinePct < 5 ? T.text.green : T.text.red }}>{pct(d.pipelinePct)}</span>
-                  <span style={{ color: d.empGrowth >= 3 ? T.text.green : T.text.amber }}>{pct(d.empGrowth)}</span>
-                  <span style={{ color: T.text.secondary }}>${(d.hhIncome/1000).toFixed(0)}K</span>
-                  <span style={{ color: d.popGrowth >= 2 ? T.text.green : T.text.amber }}>{pct(d.popGrowth)}</span>
-                  <span style={{ color: d.demandScore >= 88 ? T.text.green : d.demandScore >= 80 ? T.text.amber : T.text.red }}>{d.demandScore}</span>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{ padding: "6px 8px", background: T.bg.panelAlt, borderTop: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, lineHeight: 1.5 }}>
-              {(() => {
-                const curr = mktAll[mktForecastIdx - 1];
-                const fc3 = mktAll[mktForecastIdx + 2];
-                const supplyDeclining = fc3 && fc3.newSupply < curr.newSupply;
-                const absRising = fc3 && fc3.absorption > curr.absorption;
-                return (<>
-                  <span style={{ color: T.text.amber }}>SUPPLY OUTLOOK:</span> Pipeline peaks at {Math.max(...mktAll.map(d => d.newSupply)).toLocaleString()} units ({mktAll.find(d => d.newSupply === Math.max(...mktAll.map(m => m.newSupply)))?.year}),
-                  {supplyDeclining ? <span style={{ color: T.text.green }}> declining to {fc3.newSupply.toLocaleString()} by {fc3.year}</span> : <span style={{ color: T.text.red }}> remaining elevated</span>}.
-                  Absorption {absRising ? <span style={{ color: T.text.green }}>strengthening</span> : <span style={{ color: T.text.red }}>softening</span>}.
-                  Net: {supplyDeclining && absRising ? <span style={{ color: T.text.green }}>FAVORABLE — supply retreating as demand recovers</span> :
-                    supplyDeclining ? <span style={{ color: T.text.amber }}>IMPROVING — supply declining</span> :
-                    <span style={{ color: T.text.red }}>WATCH — supply pressure persists</span>}
-                </>);
-              })()}
-            </div>
-          </div>
-        </div>
-
-        {/* Location scores legend */}
+        {/* Location scores */}
         <div style={{ display: "flex", gap: 12, padding: "0 4px" }}>
           {[
             { label: "Walk Score", color: T.text.green, value: p.walkScore },
