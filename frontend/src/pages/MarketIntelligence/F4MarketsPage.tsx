@@ -3,11 +3,11 @@
  * Shows all MSAs in a grid/table view with drill-down to MSATerminal
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   MapPin, Search, 
-  Award, Users, Grid, List, Filter
+  Award, Users, Grid, List, Filter, ChevronDown
 } from 'lucide-react';
 import { BT } from '../../components/terminal/theme';
 
@@ -45,6 +45,19 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
   const [sortBy, setSortBy] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [regionFilter, setRegionFilter] = useState<string>('all');
+  
+  // Market dropdown state
+  const [selectedMarket, setSelectedMarket] = useState<string | null>(null);
+  const [marketDropdownOpen, setMarketDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll hint state
+  const [tableScrolled, setTableScrolled] = useState(false);
+  const [canScrollMore, setCanScrollMore] = useState(false);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Tracked markets (would come from user preferences in production)
+  const trackedMarketIds = ['atlanta-ga', 'raleigh-nc', 'tampa-fl', 'charlotte-nc', 'nashville-tn', 'miami-fl'];
 
   // Mock MSA data
   const markets: MSACard[] = useMemo(() => [
@@ -66,6 +79,36 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
     ['all', ...new Set(markets.map(m => m.region))],
     [markets]
   );
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setMarketDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Scroll hint handlers
+  const handleTableScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    setTableScrolled(container.scrollLeft > 10);
+    setCanScrollMore(container.scrollLeft + container.clientWidth < container.scrollWidth - 10);
+  };
+
+  useEffect(() => {
+    const checkScroll = () => {
+      if (tableContainerRef.current) {
+        const { scrollWidth, clientWidth, scrollLeft } = tableContainerRef.current;
+        setCanScrollMore(scrollLeft + clientWidth < scrollWidth - 10);
+      }
+    };
+    checkScroll();
+    window.addEventListener('resize', checkScroll);
+    return () => window.removeEventListener('resize', checkScroll);
+  }, [viewMode, markets]);
 
   // Filter and sort
   const filteredMarkets = useMemo(() => {
@@ -122,6 +165,11 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
       {/* Global styles */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        
+        @keyframes scrollPulse {
+          0%, 100% { opacity: 1; transform: translateX(0); }
+          50% { opacity: 0.5; transform: translateX(4px); }
+        }
       `}</style>
 
       {/* Header */}
@@ -143,34 +191,185 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
             </div>
           </div>
           
-          {/* View Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button
-              onClick={() => setViewMode('grid')}
-              style={{
-                padding: 8,
-                background: viewMode === 'grid' ? BT.bg.active : 'transparent',
-                border: `1px solid ${viewMode === 'grid' ? BT.text.amber : BT.border.subtle}`,
-                borderRadius: 4,
-                color: viewMode === 'grid' ? BT.text.amber : BT.text.muted,
-                cursor: 'pointer',
-              }}
-            >
-              <Grid size={18} />
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              style={{
-                padding: 8,
-                background: viewMode === 'table' ? BT.bg.active : 'transparent',
-                border: `1px solid ${viewMode === 'table' ? BT.text.amber : BT.border.subtle}`,
-                borderRadius: 4,
-                color: viewMode === 'table' ? BT.text.amber : BT.text.muted,
-                cursor: 'pointer',
-              }}
-            >
-              <List size={18} />
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Market Dropdown */}
+            <div style={{ position: 'relative' }} ref={dropdownRef}>
+              <button
+                onClick={() => setMarketDropdownOpen(!marketDropdownOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '8px 14px',
+                  background: BT.bg.input,
+                  border: `1px solid ${marketDropdownOpen ? BT.text.amber : BT.border.subtle}`,
+                  borderRadius: 6,
+                  color: BT.text.primary,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  minWidth: 160,
+                }}
+              >
+                <MapPin size={14} color={BT.text.amber} />
+                <span style={{ flex: 1, textAlign: 'left' }}>
+                  {selectedMarket 
+                    ? markets.find(m => m.id === selectedMarket)?.name || 'All Markets'
+                    : 'All Markets'
+                  }
+                </span>
+                <ChevronDown 
+                  size={14} 
+                  color={BT.text.muted}
+                  style={{ 
+                    transition: 'transform 0.2s',
+                    transform: marketDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)'
+                  }}
+                />
+              </button>
+              
+              {/* Dropdown Menu */}
+              {marketDropdownOpen && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  width: 220,
+                  background: BT.bg.panel,
+                  border: `1px solid ${BT.border.subtle}`,
+                  borderRadius: 8,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                  zIndex: 100,
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                }}>
+                  {/* All Markets option */}
+                  <button
+                    onClick={() => {
+                      setSelectedMarket(null);
+                      setMarketDropdownOpen(false);
+                      setSearchQuery('');
+                      setRegionFilter('all');
+                    }}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      padding: '10px 14px',
+                      background: selectedMarket === null ? BT.bg.active : 'transparent',
+                      border: 'none',
+                      borderBottom: `1px solid ${BT.border.subtle}`,
+                      color: BT.text.primary,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <Grid size={14} color={BT.text.muted} />
+                    <span style={{ fontWeight: 500 }}>All Markets</span>
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: BT.text.muted }}>
+                      {markets.length}
+                    </span>
+                  </button>
+
+                  {/* Divider */}
+                  <div style={{ 
+                    padding: '6px 14px', 
+                    fontSize: 9, 
+                    color: BT.text.dim, 
+                    letterSpacing: '0.1em',
+                    borderBottom: `1px solid ${BT.border.subtle}`,
+                    background: BT.bg.header,
+                  }}>
+                    ★ TRACKED MARKETS
+                  </div>
+
+                  {/* Tracked Markets */}
+                  {markets
+                    .filter(m => trackedMarketIds.includes(m.id))
+                    .sort((a, b) => a.rank - b.rank)
+                    .map((market) => (
+                      <button
+                        key={market.id}
+                        onClick={() => {
+                          setSelectedMarket(market.id);
+                          setMarketDropdownOpen(false);
+                          handleMarketClick(market);
+                        }}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: '10px 14px',
+                          background: selectedMarket === market.id ? BT.bg.active : 'transparent',
+                          border: 'none',
+                          borderBottom: `1px solid ${BT.border.subtle}`,
+                          color: BT.text.primary,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <span style={{ 
+                          color: BT.text.amber, 
+                          fontSize: 10,
+                          fontWeight: 700,
+                          width: 20,
+                          textAlign: 'center'
+                        }}>
+                          #{market.rank}
+                        </span>
+                        <span style={{ fontWeight: 500, flex: 1 }}>
+                          {market.name}, {market.state}
+                        </span>
+                        <span style={{ 
+                          fontSize: 10, 
+                          color: getHealthColor(market.healthScore),
+                          fontWeight: 600,
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>
+                          {market.healthScore}
+                        </span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ width: 1, height: 24, background: BT.border.subtle }} />
+
+            {/* View Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                onClick={() => setViewMode('grid')}
+                style={{
+                  padding: 8,
+                  background: viewMode === 'grid' ? BT.bg.active : 'transparent',
+                  border: `1px solid ${viewMode === 'grid' ? BT.text.amber : BT.border.subtle}`,
+                  borderRadius: 4,
+                  color: viewMode === 'grid' ? BT.text.amber : BT.text.muted,
+                  cursor: 'pointer',
+                }}
+              >
+                <Grid size={18} />
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                style={{
+                  padding: 8,
+                  background: viewMode === 'table' ? BT.bg.active : 'transparent',
+                  border: `1px solid ${viewMode === 'table' ? BT.text.amber : BT.border.subtle}`,
+                  borderRadius: 4,
+                  color: viewMode === 'table' ? BT.text.amber : BT.text.muted,
+                  cursor: 'pointer',
+                }}
+              >
+                <List size={18} />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -400,88 +599,143 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
           </div>
         ) : (
           /* Table View */
-          <div style={{
-            background: BT.bg.panel,
-            borderRadius: 8,
-            border: `1px solid ${BT.border.subtle}`,
-            overflow: 'hidden',
-          }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: BT.bg.header }}>
-                  <th style={{ padding: '12px 16px', textAlign: 'center', color: BT.text.muted, fontSize: 10, fontWeight: 500, width: 50 }}>RANK</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'left', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>MARKET</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'center', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>HEALTH</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>POP</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>UNITS</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>AVG RENT</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>GROWTH</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>OCC</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>CAP</th>
-                  <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>PIPELINE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMarkets.map((market) => (
-                  <tr
-                    key={market.id}
-                    onClick={() => handleMarketClick(market)}
-                    style={{ 
-                      borderBottom: `1px solid ${BT.border.subtle}`,
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = BT.bg.cardHover}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        width: 24,
-                        height: 24,
-                        lineHeight: '24px',
-                        borderRadius: '50%',
-                        background: market.rank <= 3 ? `${BT.text.green}22` : BT.bg.cardHover,
-                        color: market.rank <= 3 ? BT.text.green : BT.text.muted,
-                        fontWeight: 700,
-                        fontSize: 11,
-                      }}>
-                        {market.rank}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <div style={{ fontWeight: 600, color: BT.text.primary }}>{market.name}, {market.state}</div>
-                      <div style={{ fontSize: 10, color: BT.text.muted }}>{market.region} • {market.submarketCount} submarkets</div>
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'center' }}>
-                      <span style={{ color: getHealthColor(market.healthScore), fontWeight: 700, fontFamily: "'JetBrains Mono'" }}>
-                        {market.healthScore}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11 }}>
-                      {(market.population / 1000000).toFixed(1)}M
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11 }}>
-                      {(market.totalUnits / 1000).toFixed(0)}K
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: BT.text.green, fontWeight: 600 }}>
-                      ${market.avgRent.toLocaleString()}
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, color: market.rentGrowth >= 0 ? BT.text.green : BT.text.red, fontWeight: 600 }}>
-                      {market.rentGrowth > 0 ? '+' : ''}{market.rentGrowth}%
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: market.occupancy >= 94 ? BT.text.green : BT.text.amber }}>
-                      {market.occupancy}%
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: BT.text.cyan }}>
-                      {market.avgCapRate}%
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: BT.text.amber }}>
-                      {(market.pipelineUnits / 1000).toFixed(0)}K
-                    </td>
+          <div style={{ position: 'relative' }}>
+            <div 
+              ref={tableContainerRef}
+              onScroll={handleTableScroll}
+              style={{
+                background: BT.bg.panel,
+                borderRadius: 8,
+                border: `1px solid ${BT.border.subtle}`,
+                overflow: 'auto',
+              }}
+            >
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+                <thead>
+                  <tr style={{ background: BT.bg.header }}>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', color: BT.text.muted, fontSize: 10, fontWeight: 500, width: 50 }}>RANK</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>MARKET</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>HEALTH</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>POP</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>UNITS</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>AVG RENT</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>GROWTH</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>OCC</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>CAP</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', color: BT.text.muted, fontSize: 10, fontWeight: 500 }}>PIPELINE</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredMarkets.map((market) => (
+                    <tr
+                      key={market.id}
+                      onClick={() => handleMarketClick(market)}
+                      style={{ 
+                        borderBottom: `1px solid ${BT.border.subtle}`,
+                        cursor: 'pointer',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = BT.bg.cardHover}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span style={{
+                          display: 'inline-block',
+                          width: 24,
+                          height: 24,
+                          lineHeight: '24px',
+                          borderRadius: '50%',
+                          background: market.rank <= 3 ? `${BT.text.green}22` : BT.bg.cardHover,
+                          color: market.rank <= 3 ? BT.text.green : BT.text.muted,
+                          fontWeight: 700,
+                          fontSize: 11,
+                        }}>
+                          {market.rank}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <div style={{ fontWeight: 600, color: BT.text.primary }}>{market.name}, {market.state}</div>
+                        <div style={{ fontSize: 10, color: BT.text.muted }}>{market.region} • {market.submarketCount} submarkets</div>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                        <span style={{ color: getHealthColor(market.healthScore), fontWeight: 700, fontFamily: "'JetBrains Mono'" }}>
+                          {market.healthScore}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11 }}>
+                        {(market.population / 1000000).toFixed(1)}M
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11 }}>
+                        {(market.totalUnits / 1000).toFixed(0)}K
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: BT.text.green, fontWeight: 600 }}>
+                        ${market.avgRent.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, color: market.rentGrowth >= 0 ? BT.text.green : BT.text.red, fontWeight: 600 }}>
+                        {market.rentGrowth > 0 ? '+' : ''}{market.rentGrowth}%
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: market.occupancy >= 94 ? BT.text.green : BT.text.amber }}>
+                        {market.occupancy}%
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: BT.text.cyan }}>
+                        {market.avgCapRate}%
+                      </td>
+                      <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: "'JetBrains Mono'", fontSize: 11, color: BT.text.amber }}>
+                        {(market.pipelineUnits / 1000).toFixed(0)}K
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Scroll Hint Bar */}
+            {canScrollMore && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: '8px 16px',
+                marginTop: 8,
+                background: `${BT.text.amber}11`,
+                border: `1px solid ${BT.text.amber}33`,
+                borderRadius: 6,
+                fontSize: 11,
+                color: BT.text.amber,
+              }}>
+                <span style={{ opacity: 0.7 }}>←</span>
+                <span>Scroll for more: CAP RATE, PIPELINE</span>
+                <span style={{ animation: 'scrollPulse 1.5s infinite', display: 'inline-block' }}>→</span>
+              </div>
+            )}
+            
+            {/* Left fade overlay when scrolled */}
+            {tableScrolled && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: 40,
+                height: '100%',
+                background: `linear-gradient(to right, ${BT.bg.panel}, transparent)`,
+                pointerEvents: 'none',
+                borderRadius: '8px 0 0 8px',
+              }} />
+            )}
+            
+            {/* Right fade overlay when can scroll more */}
+            {canScrollMore && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: 40,
+                height: 'calc(100% - 50px)',
+                background: `linear-gradient(to left, ${BT.bg.panel}, transparent)`,
+                pointerEvents: 'none',
+                borderRadius: '0 8px 8px 0',
+              }} />
+            )}
           </div>
         )}
       </div>
