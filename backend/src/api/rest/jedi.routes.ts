@@ -11,6 +11,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { jediScoreService } from '../../services/jedi-score.service';
 import { dealAlertService } from '../../services/deal-alert.service';
+import { agentAlertService } from '../../services/agent-alert.service';
 
 const router = Router();
 const logger = { 
@@ -379,6 +380,71 @@ router.post('/alerts/check', authMiddleware.requireAuth, async (req: Request, re
   dealAlertService.checkDealsForAlerts(userId).catch((error: any) => {
     logger.error('Error checking for alerts:', error);
   });
+});
+
+// ============================================================================
+// Agent Alert Integration
+// ============================================================================
+
+/**
+ * POST /api/v1/jedi/alerts/from-agent
+ * Create alert from any of the 18 AI agents
+ */
+router.post('/alerts/from-agent', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { 
+      deal_id, 
+      agent_code, 
+      alert_type = 'info', 
+      severity = 'medium', 
+      title, 
+      message, 
+      data, 
+      suggested_actions 
+    } = req.body;
+
+    if (!agent_code || !title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: 'agent_code, title, and message are required',
+      });
+    }
+
+    const result = await agentAlertService.createAlert({
+      dealId: deal_id,
+      userId,
+      agentCode: agent_code,
+      alertType: alert_type,
+      severity,
+      title,
+      message,
+      data,
+      suggestedActions: suggested_actions,
+    });
+
+    res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    logger.error('Error creating agent alert:', error);
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/jedi/alerts/read-all
+ * Mark all alerts as read
+ */
+router.post('/alerts/read-all', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { deal_id } = req.body;
+    
+    const count = await agentAlertService.markAllRead(userId, deal_id);
+    res.json({ success: true, data: { marked: count } });
+  } catch (error) {
+    logger.error('Error marking all alerts read:', error);
+    next(error);
+  }
 });
 
 // ============================================================================
