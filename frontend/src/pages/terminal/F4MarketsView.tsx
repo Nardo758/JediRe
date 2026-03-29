@@ -176,8 +176,7 @@ const PROPERTY_INDEX = [
 ];
 
 type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
-type PrimaryTab = "f4-landing" | "all-msas";
-type SubTab = "msa-detail" | "msa-index" | "submarkets" | "watchlist" | "peer-comp" | "property-stock";
+type ActiveTab = "my-markets" | "all-msas" | "overview" | "msa-index" | "submarkets" | "watchlist" | "peer-comp" | "property-stock";
 
 interface F4MarketsViewProps {
   corpHealthData?: CorpHealthData;
@@ -199,10 +198,9 @@ const dataCell: React.CSSProperties = {
 export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
   const nav = useNavigate();
   const [level, setLevel] = useState<DrillLevel>("landing");
-  const [primaryTab, setPrimaryTab] = useState<PrimaryTab>("f4-landing");
-  const [subTab, setSubTab] = useState<SubTab>("msa-detail");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("my-markets");
   const [selectedMsaId, setSelectedMsaId] = useState("atlanta-ga");
-  const [drillOriginTab, setDrillOriginTab] = useState<PrimaryTab>("all-msas");
+  const [drillOriginTab, setDrillOriginTab] = useState<ActiveTab>("my-markets");
   const [drillMsaId, setDrillMsaId] = useState("");
   const [drillMsaName, setDrillMsaName] = useState("");
   const [drillSubmarketId, setDrillSubmarketId] = useState("");
@@ -262,7 +260,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
 
   const handleDrillToMsa = (marketId: string) => {
     const mkt = ALL_MSAS.find(m => m.id === marketId) || TRACKED_MARKETS.find(m => m.id === marketId);
-    setDrillOriginTab(primaryTab);
+    setDrillOriginTab(activeTab);
     setDrillMsaId(marketId);
     setDrillMsaName(mkt?.msa || marketId);
     setLevel("msa-terminal");
@@ -292,13 +290,14 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     m.name.toLowerCase().includes(marketSearch.toLowerCase())
   );
 
-  const originLabel = drillOriginTab === "all-msas" ? "ALL MSAs" : "MY MARKETS";
+  const TAB_LABELS: Record<ActiveTab, string> = { "my-markets": "MY MARKETS", "all-msas": "ALL MSAs", "overview": "OVERVIEW", "msa-index": "MARKET INDEX", "submarkets": "SUBMARKETS", "watchlist": "WATCHLIST", "peer-comp": "PEER COMP", "property-stock": "PROPERTIES" };
+  const originLabel = TAB_LABELS[drillOriginTab] || "MY MARKETS";
 
   if (level === "msa-terminal") {
     return (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", background: C.bg, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-          <button onClick={() => { setPrimaryTab(drillOriginTab); setLevel("landing"); }} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
+          <button onClick={() => { setActiveTab(drillOriginTab); setLevel("landing"); }} style={{ ...mono, fontSize: 9, fontWeight: 700, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "3px 10px", cursor: "pointer", letterSpacing: 0.5 }}>
             ← BACK
           </button>
           <span style={{ ...mono, fontSize: 9, color: C.muted }}>{originLabel}</span>
@@ -462,12 +461,79 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     </div>
   );
 
-  const renderLandingContent = () => {
-    if (subTab === "msa-detail") {
+  const renderMyMarkets = () => {
+    const tracked = TRACKED_MARKETS;
+    const avgJedi = Math.round(tracked.reduce((s, m) => s + m.jedi, 0) / tracked.length);
+    const avgRent = Math.round(tracked.reduce((s, m) => s + m.rentNum, 0) / tracked.length);
+    const avgVac = (tracked.reduce((s, m) => s + m.vacNum, 0) / tracked.length).toFixed(1);
+    const expanding = tracked.filter(m => m.cycle === "EXPANSION" || m.cycle === "LATE EXP").length;
+    return (
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.amber, ...sans }}>My Markets Dashboard</span>
+          <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {tracked.length} tracked · {tracked.filter(m => m.starred).length} starred</span>
+        </div>
+        <div style={{ flex: 1, overflow: "auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 1, background: C.borderS, margin: "0" }}>
+            {[
+              { label: "AVG JEDI SCORE", value: avgJedi, color: avgJedi >= 80 ? C.green : avgJedi >= 65 ? C.amber : C.red },
+              { label: "AVG RENT", value: `$${avgRent.toLocaleString()}`, color: C.primary },
+              { label: "AVG VACANCY", value: `${avgVac}%`, color: parseFloat(avgVac) <= 5 ? C.green : parseFloat(avgVac) <= 8 ? C.amber : C.red },
+              { label: "EXPANDING MKTS", value: `${expanding}/${tracked.length}`, color: C.green },
+            ].map((kpi, i) => (
+              <div key={i} style={{ background: C.panel, padding: "10px 14px", textAlign: "center" }}>
+                <div style={{ fontSize: 9, fontWeight: 600, color: C.muted, letterSpacing: 0.5, ...mono, marginBottom: 4 }}>{kpi.label}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: kpi.color, ...mono }}>{kpi.value}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8, padding: 10 }}>
+            {tracked.map(m => (
+              <div key={m.id} onClick={() => { setSelectedMsaId(m.id); setActiveTab("overview"); }} style={{ background: C.panel, border: `1px solid ${C.borderM}`, padding: "10px 12px", cursor: "pointer", borderLeft: m.starred ? `2px solid ${C.amber}` : `2px solid transparent` }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.amber; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = C.borderM; }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {m.starred && <span style={{ color: C.amber, fontSize: 10 }}>★</span>}
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.primary, ...sans }}>{m.msa}</span>
+                    <Badge label={m.cycle} color={cycleColor(m.cycle)} />
+                  </div>
+                  <ScoreCell value={m.jedi} size={16} />
+                </div>
+                <div style={{ display: "flex", gap: 14, marginBottom: 6 }}>
+                  <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>RENT</span><br /><span style={{ fontSize: 10, color: C.primary, fontWeight: 600, ...mono }}>{m.rent}</span></div>
+                  <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>VAC</span><br /><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></div>
+                  <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>CAP</span><br /><span style={{ fontSize: 10, color: C.secondary, ...mono }}>{m.cap}</span></div>
+                  <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>Δ30</span><br /><DeltaCell value={m.d30 >= 0 ? `+${m.d30}` : `${m.d30}`} /></div>
+                  <div><span style={{ fontSize: 9, color: C.muted, ...mono }}>POP</span><br /><DeltaCell value={m.popD} /></div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={100} h={16} />
+                  <span style={{ fontSize: 9, color: C.muted, ...mono }}>{m.props.toLocaleString()} props · {m.units} units</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderTabContent = () => {
+    if (activeTab === "my-markets") {
+      return renderMyMarkets();
+    }
+
+    if (activeTab === "all-msas") {
+      return renderAllMsasContent();
+    }
+
+    if (activeTab === "overview") {
       return <BloombergMarketDetail embedded marketId={selectedMsaId} corpHealthData={corpHealthData} />;
     }
 
-    if (subTab === "msa-index") {
+    if (activeTab === "msa-index") {
       return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
@@ -481,7 +547,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       );
     }
 
-    if (subTab === "watchlist") {
+    if (activeTab === "watchlist") {
       const watched = TRACKED_MARKETS.filter(m => m.starred);
       return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -517,7 +583,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       );
     }
 
-    if (subTab === "submarkets") {
+    if (activeTab === "submarkets") {
       return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
@@ -541,6 +607,7 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
                       if (mkt) { setDrillMsaId(mkt.id); setDrillMsaName(mkt.msa); }
                       setDrillSubmarketId(s.name.toLowerCase().replace(/\s+/g, "-"));
                       setDrillSubmarketName(s.name);
+                      setDrillOriginTab(activeTab);
                       setLevel("submarket-terminal");
                     }}
                     onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = C.hover; }}
@@ -565,11 +632,11 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       );
     }
 
-    if (subTab === "peer-comp") {
-      return <PeerComparisonPage embedded onViewDetail={() => { setPrimaryTab("f4-landing"); setSubTab("msa-detail"); }} />;
+    if (activeTab === "peer-comp") {
+      return <PeerComparisonPage embedded onViewDetail={() => { setActiveTab("overview"); }} />;
     }
 
-    if (subTab === "property-stock") {
+    if (activeTab === "property-stock") {
       return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
@@ -636,8 +703,10 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     );
   };
 
-  const SUB_TAB_DEFS: { id: SubTab; label: string }[] = [
-    { id: "msa-detail", label: "OVERVIEW" },
+  const TAB_DEFS: { id: ActiveTab; label: string }[] = [
+    { id: "my-markets", label: "MY MARKETS" },
+    { id: "all-msas", label: "ALL MSAs" },
+    { id: "overview", label: "OVERVIEW" },
     { id: "msa-index", label: "MARKET INDEX" },
     { id: "submarkets", label: "SUBMARKETS" },
     { id: "watchlist", label: `WATCHLIST (${TRACKED_MARKETS.filter(m => m.starred).length})` },
@@ -649,41 +718,22 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
     <div style={{ flex: 1, overflow: "hidden", animation: "fadeIn 0.15s", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
       <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
         <span style={{ fontSize: 9, color: C.amberBright, fontWeight: 700, ...mono, marginRight: 8, paddingLeft: 2 }}>F4</span>
-        {([
-          { id: "f4-landing" as PrimaryTab, label: "MY MARKETS" },
-          { id: "all-msas" as PrimaryTab, label: "ALL MSAs" },
-        ]).map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setPrimaryTab(tab.id)}
-            style={{
-              ...mono, fontSize: 9, fontWeight: primaryTab === tab.id ? 700 : 500,
-              padding: "0 12px", height: "100%", cursor: "pointer",
-              background: primaryTab === tab.id ? C.active : "transparent",
-              color: primaryTab === tab.id ? C.amber : C.secondary,
-              border: "none", borderBottom: primaryTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
-              letterSpacing: 0.5,
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-        <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 6px" }} />
-
-        {primaryTab === "f4-landing" && SUB_TAB_DEFS.map((t, idx) => (
-          <React.Fragment key={t.id}>
-            {idx === 3 && <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 2px" }} />}
+        {TAB_DEFS.map((tab, idx) => (
+          <React.Fragment key={tab.id}>
+            {idx === 2 && <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />}
+            {idx === 5 && <span style={{ width: 1, height: 14, background: C.borderM, margin: "0 4px" }} />}
             <button
-              onClick={() => setSubTab(t.id)}
+              onClick={() => setActiveTab(tab.id)}
               style={{
-                ...mono, fontSize: 9, fontWeight: subTab === t.id ? 700 : 400,
-                padding: "0 8px", height: "100%", cursor: "pointer",
-                background: "transparent",
-                color: subTab === t.id ? C.amberBright : C.muted,
-                border: "none", borderBottom: subTab === t.id ? `1px solid ${C.amber}` : "1px solid transparent",
+                ...mono, fontSize: 9, fontWeight: activeTab === tab.id ? 700 : 400,
+                padding: "0 10px", height: "100%", cursor: "pointer",
+                background: activeTab === tab.id ? C.active : "transparent",
+                color: activeTab === tab.id ? (idx < 2 ? C.amber : C.amberBright) : (idx < 2 ? C.secondary : C.muted),
+                border: "none", borderBottom: activeTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
+                letterSpacing: 0.5,
               }}
             >
-              {t.label}
+              {tab.label}
             </button>
           </React.Fragment>
         ))}
@@ -744,11 +794,11 @@ export default function F4MarketsView({ corpHealthData }: F4MarketsViewProps) {
       </div>
 
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {primaryTab === "f4-landing" ? renderLandingContent() : renderAllMsasContent()}
+        {renderTabContent()}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: C.topBar, borderTop: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{primaryTab === "all-msas" ? "Click" : "Double-click"} row to drill · Column header to sort · ★ = watchlist</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{activeTab === "all-msas" ? "Click" : activeTab === "my-markets" ? "Click card to view" : "Double-click"} row to drill · Column header to sort · ★ = watchlist</span>
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{selectedMsa.name} · JEDI {selectedMarketData?.jedi || 87} · MSA Level</span>
       </div>
