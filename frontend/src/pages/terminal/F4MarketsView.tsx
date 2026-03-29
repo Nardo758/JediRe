@@ -321,7 +321,7 @@ export default function F4MarketsView() {
 
   const handlePropertySelect = (propertyId: string, propertyName?: string) => {
     const slug = propertyId.toLowerCase().replace(/\s+/g, "-");
-    nav(`/terminal/property/${slug}`, {
+    nav(`/property-card/${slug}`, {
       state: {
         msaId: drillMsaId,
         msaName: drillMsaName,
