@@ -136,6 +136,75 @@ function computeCorrelations(): CorrelationResult[] {
 
 const CORRELATIONS = computeCorrelations();
 
+interface FiveYearOutlook {
+  metric: string;
+  current: string;
+  yr1: string; yr3: string; yr5: string;
+  delta5yr: string;
+  direction: "up" | "down" | "flat";
+  signal: string;
+  narrative: string;
+}
+
+function compute5YearOutlook(): FiveYearOutlook[] {
+  const now = PROP_ALL.find(p => p.year === 2025)!;
+  const yr1 = PROP_ALL.find(p => p.year === 2026)!;
+  const yr3 = PROP_ALL.find(p => p.year === 2028)!;
+  const yr5 = PROP_ALL.find(p => p.year === 2030)!;
+
+  const sub1 = SUBMARKET.find(d => d.year === 2026)!;
+  const sub3 = SUBMARKET.find(d => d.year === 2028)!;
+  const sub5 = SUBMARKET.find(d => d.year === 2030)!;
+  const subNow = SUBMARKET.find(d => d.year === 2025)!;
+
+  const rentDelta = ((yr5.rent - now.rent) / now.rent * 100);
+  const occDelta = yr5.occ - now.occ;
+  const subRentGrowthAvg = ((sub1.rentGrowth + sub3.rentGrowth + sub5.rentGrowth) / 3);
+
+  const trafficCorr = CORRELATIONS.find(c => c.metricA === "TRAFFIC" && c.metricB === "RENT");
+  const incomeCorr = CORRELATIONS.find(c => c.metricA === "TA INCOME" && c.metricB === "RENT");
+
+  return [
+    {
+      metric: "RENT",
+      current: `$${now.rent.toLocaleString()}`,
+      yr1: `$${yr1.rent.toLocaleString()}`,
+      yr3: `$${yr3.rent.toLocaleString()}`,
+      yr5: `$${yr5.rent.toLocaleString()}`,
+      delta5yr: `+${rentDelta.toFixed(1)}%`,
+      direction: rentDelta > 2 ? "up" : rentDelta < -1 ? "down" : "flat",
+      signal: trafficCorr && trafficCorr.r > 0.7
+        ? `Traffic correlation r=${trafficCorr.r} reinforces upward trajectory`
+        : `Moderate traffic support`,
+      narrative: `Rent projected to grow ${rentDelta.toFixed(1)}% over 5 years ($${now.rent.toLocaleString()} → $${yr5.rent.toLocaleString()}). ${incomeCorr && incomeCorr.r > 0.7 ? `Strong income correlation (r=${incomeCorr.r}) supports sustainability.` : "Monitor income-to-rent ratio for affordability ceiling."} Submarket avg rent growth ${subRentGrowthAvg.toFixed(1)}% provides tailwind.`,
+    },
+    {
+      metric: "OCCUPANCY",
+      current: `${now.occ.toFixed(1)}%`,
+      yr1: `${yr1.occ.toFixed(1)}%`,
+      yr3: `${yr3.occ.toFixed(1)}%`,
+      yr5: `${yr5.occ.toFixed(1)}%`,
+      delta5yr: `${occDelta > 0 ? "+" : ""}${occDelta.toFixed(1)}pp`,
+      direction: occDelta > 0.5 ? "up" : occDelta < -0.5 ? "down" : "flat",
+      signal: `Submarket occ forecast: ${subNow.occupancy.toFixed(1)}% → ${sub5.occupancy.toFixed(1)}% (+${(sub5.occupancy - subNow.occupancy).toFixed(1)}pp)`,
+      narrative: `Property occupancy expected ${occDelta > 0 ? "to improve" : "stable"} at ${yr5.occ.toFixed(1)}% by 2030 (${occDelta > 0 ? "+" : ""}${occDelta.toFixed(1)}pp). ${yr5.occ > sub5.occupancy ? `Outperforming submarket by ${(yr5.occ - sub5.occupancy).toFixed(1)}pp — competitive advantage intact.` : `Tracking submarket trend — aligned with market recovery.`} Absorption trend ${sub5.absorptionPerMonth > subNow.absorptionPerMonth ? "strengthening" : "moderating"} at ${sub5.absorptionPerMonth.toLocaleString()}/mo.`,
+    },
+    {
+      metric: "RENT GROWTH",
+      current: `${now.rentGrowth.toFixed(1)}%`,
+      yr1: `${yr1.rentGrowth.toFixed(1)}%`,
+      yr3: `${yr3.rentGrowth.toFixed(1)}%`,
+      yr5: `${yr5.rentGrowth.toFixed(1)}%`,
+      delta5yr: yr5.rentGrowth > now.rentGrowth ? `+${(yr5.rentGrowth - now.rentGrowth).toFixed(1)}pp` : `${(yr5.rentGrowth - now.rentGrowth).toFixed(1)}pp`,
+      direction: yr5.rentGrowth > now.rentGrowth ? "up" : yr5.rentGrowth < now.rentGrowth - 1 ? "down" : "flat",
+      signal: `Pop growth (${subNow.popGrowth.toFixed(1)}% → ${sub5.popGrowth.toFixed(1)}%) ${sub5.popGrowth > 1.5 ? "sustains demand" : "slowing — headwind"}`,
+      narrative: `Rent growth accelerating from ${now.rentGrowth.toFixed(1)}% to ${yr3.rentGrowth.toFixed(1)}% by 2028, then moderating to ${yr5.rentGrowth.toFixed(1)}% by 2030. ${sub5.capRate < subNow.capRate ? `Cap rate compression (${subNow.capRate.toFixed(1)}% → ${sub5.capRate.toFixed(1)}%) signals investor confidence.` : `Cap rates stable — market equilibrium.`} Concessions forecast to ${yr5.concessions < now.concessions ? `decline to ${yr5.concessions.toFixed(1)}% — pricing power improving` : `hold at ${yr5.concessions.toFixed(1)}%`}.`,
+    },
+  ];
+}
+
+const FIVE_YEAR_OUTLOOK = compute5YearOutlook();
+
 const pct = (n: number) => `${n.toFixed(1)}%`;
 const kFmt = (n: number) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n/1_000).toFixed(1)}k` : `${n}`;
 
@@ -512,30 +581,59 @@ export function Combined() {
         </div>
 
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="CORRELATION ENGINE — KEY FINDINGS" subtitle={`${CORRELATIONS.length} pairs analyzed · Pearson r`} icon="⚡" borderColor={T.text.purple} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 0 }}>
-            {topCorrelations.map((c, i) => (
-              <div key={i} style={{
-                padding: "8px 10px",
-                borderRight: i < topCorrelations.length - 1 ? `1px solid ${T.border.subtle}` : "none",
-                borderBottom: `1px solid ${T.border.subtle}`,
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
-                  <span style={{
-                    fontSize: 11, fontFamily: T.font.mono, fontWeight: 800,
-                    color: corrColor(c.r),
-                  }}>
-                    r={c.r > 0 ? "+" : ""}{c.r.toFixed(2)}
-                  </span>
-                  <Badge color={corrColor(c.r)}>{c.strength}</Badge>
-                </div>
-                <div style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 700, color: T.text.white, marginBottom: 2 }}>
-                  {c.metricA} ↔ {c.metricB}
-                </div>
-                <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.4 }}>
-                  {c.narrative}
+          <SectionHeader title="5-YEAR OUTLOOK — CORRELATION-DRIVEN FORECAST" subtitle="Rents · Occupancy · Rent Growth · 2025→2030" icon="⚡" borderColor={T.text.purple} />
+
+          {FIVE_YEAR_OUTLOOK.map((outlook, oi) => {
+            const dirColor = outlook.direction === "up" ? T.text.green : outlook.direction === "down" ? T.text.red : T.text.amber;
+            const dirIcon = outlook.direction === "up" ? "▲" : outlook.direction === "down" ? "▼" : "═";
+            return (
+              <div key={oi} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                <div style={{ display: "flex", alignItems: "stretch" }}>
+                  <div style={{ flex: "0 0 180px", padding: "10px 12px", borderRight: `1px solid ${T.border.subtle}`, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <span style={{ fontSize: 14, color: dirColor }}>{dirIcon}</span>
+                      <span style={{ fontSize: 11, fontFamily: T.font.mono, fontWeight: 800, color: T.text.white, letterSpacing: "0.05em" }}>{outlook.metric}</span>
+                    </div>
+                    <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>5yr delta</div>
+                    <div style={{ fontSize: 14, fontFamily: T.font.mono, fontWeight: 800, color: dirColor }}>{outlook.delta5yr}</div>
+                  </div>
+
+                  <div style={{ flex: "0 0 320px", display: "flex", alignItems: "center", padding: "10px 0", borderRight: `1px solid ${T.border.subtle}` }}>
+                    {[
+                      { label: "NOW", value: outlook.current, year: "2025", color: T.text.amber },
+                      { label: "YR 1", value: outlook.yr1, year: "2026", color: T.text.primary },
+                      { label: "YR 3", value: outlook.yr3, year: "2028", color: T.text.cyan },
+                      { label: "YR 5", value: outlook.yr5, year: "2030", color: dirColor },
+                    ].map((step, si) => (
+                      <div key={si} style={{ flex: 1, textAlign: "center", position: "relative" }}>
+                        <div style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 2 }}>{step.label}</div>
+                        <div style={{ fontSize: 12, fontFamily: T.font.mono, fontWeight: 700, color: step.color }}>{step.value}</div>
+                        <div style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, marginTop: 1 }}>{step.year}</div>
+                        {si < 3 && <span style={{ position: "absolute", right: -4, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: T.text.muted }}>→</span>}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ flex: 1, padding: "8px 12px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                      <Badge color={dirColor}>{outlook.direction === "up" ? "BULLISH" : outlook.direction === "down" ? "BEARISH" : "NEUTRAL"}</Badge>
+                      <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.purple }}>{outlook.signal}</span>
+                    </div>
+                    <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>
+                      {outlook.narrative}
+                    </div>
+                  </div>
                 </div>
               </div>
+            );
+          })}
+
+          <div style={{ padding: "6px 12px", background: T.bg.panelAlt, display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, fontWeight: 700 }}>CORRELATIONS USED:</span>
+            {topCorrelations.slice(0, 6).map((c, i) => (
+              <span key={i} style={{ fontSize: 7, fontFamily: T.font.mono, color: corrColor(c.r) }}>
+                {c.metricA}↔{c.metricB} r={c.r > 0 ? "+" : ""}{c.r.toFixed(2)}
+              </span>
             ))}
           </div>
         </div>
