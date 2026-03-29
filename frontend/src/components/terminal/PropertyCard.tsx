@@ -131,13 +131,13 @@ const MiniLineChart: React.FC<{
   const max = Math.max(...values);
   const range = max - min || 1;
   const padding = 40;
-  const chartWidth = 100;
+  const vbWidth = 1000;
   const chartHeight = height - (showLabels ? 30 : 10);
 
   const points = data.map((d, i) => {
-    const x = padding + (i / (data.length - 1)) * (chartWidth - padding * 2);
+    const x = (padding / 100) * vbWidth + (i / (data.length - 1)) * vbWidth * (1 - (padding * 2) / 100);
     const y = chartHeight - ((d.value - min) / range) * (chartHeight - 20) - 10;
-    return { x: `${x}%`, y, value: d.value, date: d.date };
+    return { x, y, value: d.value, date: d.date };
   });
 
   const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
@@ -145,15 +145,15 @@ const MiniLineChart: React.FC<{
 
   return (
     <div style={{ position: 'relative', height }}>
-      <svg width="100%" height={chartHeight} style={{ overflow: 'visible' }}>
+      <svg width="100%" height={chartHeight} viewBox={`0 0 ${vbWidth} ${chartHeight}`} preserveAspectRatio="none" style={{ overflow: 'visible' }}>
         {/* Grid lines */}
         {[0, 25, 50, 75, 100].map(pct => (
           <line
             key={pct}
             x1="0"
-            y1={`${pct}%`}
-            x2="100%"
-            y2={`${pct}%`}
+            y1={(pct / 100) * chartHeight}
+            x2={vbWidth}
+            y2={(pct / 100) * chartHeight}
             stroke={BT.border.subtle}
             strokeWidth="1"
             strokeDasharray="2,4"
