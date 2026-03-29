@@ -1585,87 +1585,146 @@ export default function PropertyDetailsPage() {
               ))}
             </div>
           )}
-          <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
-            {tableGroupMode ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: `50px repeat(4, 1fr)`, padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
-                  <span style={{ color: T.text.muted, fontWeight: 600 }}>YEAR</span>
-                  {["PROPERTY", "TRADE AREA", "SUBMARKET", "MSA"].map(h => (
-                    <span key={h} style={{ color: T.text.muted, fontWeight: 600, textAlign: "center" }}>{h}</span>
-                  ))}
+          {(() => {
+            const PROP_COLS = [
+              { key: "rent", label: "RENT", family: "rent", fm: (v) => `$${v.toLocaleString()}` },
+              { key: "occ", label: "OCC", family: "occ", fm: pct },
+              { key: "rentGrowth", label: "GRWTH", family: "rentGrowth", fm: pct, growthCol: true },
+              { key: "concessions", label: "CONC", family: "concessions", fm: pct },
+              { key: "rentPerSF", label: "$/SF", family: "rentPerSF", fm: (v) => `$${v.toFixed(2)}` },
+              { key: "monthlyTraffic", label: "TRAFFIC", family: "traffic", fm: kFmt },
+            ];
+            const GEO_COLS = [
+              { key: "rentGrowth", label: "GRWTH", family: "rentGrowth", fm: pct, growthCol: true },
+              { key: "occupancy", label: "OCC", family: "occ", fm: pct },
+              { key: "concessions", label: "CONC", family: "concessions", fm: pct },
+              { key: "rentPerSF", label: "$/SF", family: "rentPerSF", fm: (v) => `$${v.toFixed(2)}` },
+              { key: "capRate", label: "CAP", family: "capRate", fm: pct },
+              { key: "absorptionPerMonth", label: "ABSRP", family: "absorption", fm: kFmt },
+              { key: "jobsPerUnit", label: "J/U", family: "jobsPerUnit", fm: (v) => v.toFixed(2) },
+              { key: "medianIncome", label: "MED INC", family: "medianIncome", fm: (v) => `$${kFmt(v)}` },
+              { key: "population", label: "POP", family: "population", fm: kFmt },
+              { key: "popGrowth", label: "POP%", family: "popGrowth", fm: pct },
+            ];
+            const GEO_LABELS = [
+              { label: "TRADE AREA (3mi)", dataKey: "ta", color: "#FF9F7F" },
+              { label: "SUBMARKET", dataKey: "sub", color: "#FF6B6B" },
+              { label: "TAMPA MSA", dataKey: "msa", color: "#D4A07F" },
+            ];
+            const filtPropCols = PROP_COLS.filter(c => visibleCols[c.family]);
+            const filtGeoCols = GEO_COLS.filter(c => visibleCols[c.family]);
+            const growthColor = (v) => v > 0 ? T.text.green : v < 0 ? T.text.red : T.text.secondary;
+            const cs = (isFc, isHdr = false, hl = false) => ({
+              padding: "3px 6px", fontSize: 8, fontFamily: T.font.mono, textAlign: "right",
+              borderRight: `1px solid ${T.border.subtle}`, borderBottom: `1px solid ${T.border.subtle}`,
+              color: isFc ? T.text.cyan : T.text.primary,
+              background: hl ? `${T.text.amber}12` : isHdr ? T.bg.header : "transparent",
+              whiteSpace: "nowrap", fontWeight: isHdr ? 700 : 400,
+              boxShadow: hl ? `inset 0 0 0 1px ${T.text.amber}30` : "none",
+            });
+
+            if (tableGroupMode) {
+              const mf = MP_METRIC_FAMILIES.find(m => m.family === tableGroupMode);
+              if (!mf) return null;
+              const grpCols = [];
+              if (mf.propKey) grpCols.push({ label: "PROPERTY", dataKey: "prop", color: T.text.amber, propKey: mf.propKey });
+              if (mf.geoKey) {
+                grpCols.push({ label: "TRADE AREA", dataKey: "ta", color: "#FF9F7F", geoKey: mf.geoKey });
+                grpCols.push({ label: "SUBMARKET", dataKey: "sub", color: "#FF6B6B", geoKey: mf.geoKey });
+                grpCols.push({ label: "TAMPA MSA", dataKey: "msa", color: "#D4A07F", geoKey: mf.geoKey });
+              }
+              const fmtGrp = GEO_COLS.find(gc => gc.family === mf.family) || PROP_COLS.find(pc => pc.family === mf.family);
+              return (
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...cs(false, true), position: "sticky", left: 0, zIndex: 3, background: T.bg.header, textAlign: "center", minWidth: 42 }}>YR</th>
+                        {grpCols.map(c => (
+                          <th key={c.dataKey} style={{ ...cs(false, true), textAlign: "center", color: c.color, borderBottom: `2px solid ${c.color}`, minWidth: 100 }}>{c.label} — {mf.label}</th>
+                        ))}
+                        <th style={{ ...cs(false, true), textAlign: "center", color: T.text.purple, minWidth: 80 }}>DELTA</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {indexedData.map((d, ri) => {
+                        const geoMap = { prop: d.raw, ta: d.raw.ta, sub: d.raw.sub, msa: d.raw.msa };
+                        const vals = grpCols.map(c => {
+                          const src = geoMap[c.dataKey];
+                          if (!src) return null;
+                          const k = c.propKey || c.geoKey;
+                          return src[k] ?? null;
+                        });
+                        const validVals = vals.filter(v => v != null);
+                        const spread = validVals.length >= 2 ? Math.max(...validVals) - Math.min(...validVals) : null;
+                        return (
+                          <tr key={d.year} style={{ background: ri % 2 === 0 ? "transparent" : T.bg.panelAlt }}>
+                            <td style={{ ...cs(d.isForecast), position: "sticky", left: 0, zIndex: 2, background: ri % 2 === 0 ? T.bg.panel : T.bg.panelAlt, fontWeight: 700, textAlign: "center", color: d.isForecast ? T.text.cyan : T.text.amber }}>{d.year}</td>
+                            {vals.map((v, vi) => (
+                              <td key={vi} style={{ ...cs(d.isForecast), fontSize: 10, fontWeight: 600, textAlign: "center" }}>
+                                {v != null && fmtGrp ? fmtGrp.fm(v) : "—"}
+                              </td>
+                            ))}
+                            <td style={{ ...cs(d.isForecast), textAlign: "center", color: T.text.purple, fontSize: 8 }}>
+                              {spread != null ? (spread < 10 ? spread.toFixed(1) : kFmt(spread)) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
-                {indexedData.map((d, i) => {
-                  const pVal = propRawVal(d, tableGroupMode);
-                  const taVal = geoRawVal("ta", d, tableGroupMode);
-                  const subVal = geoRawVal("sub", d, tableGroupMode);
-                  const msaVal = geoRawVal("msa", d, tableGroupMode);
-                  return (
-                    <div key={i} style={{
-                      display: "grid", gridTemplateColumns: `50px repeat(4, 1fr)`, padding: "3px 8px",
-                      background: d.isForecast ? `${T.text.cyan}04` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt),
-                      borderBottom: `1px solid ${T.border.subtle}08`,
-                    }}>
-                      <span style={{ color: d.isForecast ? T.text.cyan : T.text.primary, fontWeight: 600 }}>{d.year}</span>
-                      <span style={{ textAlign: "center", color: T.text.green }}>{pVal != null ? fmtRaw(tableGroupMode, pVal) : "—"}</span>
-                      <span style={{ textAlign: "center", color: "#FF9F7F" }}>{taVal != null ? fmtRaw(tableGroupMode, taVal) : "—"}</span>
-                      <span style={{ textAlign: "center", color: "#FF6B6B" }}>{subVal != null ? fmtRaw(tableGroupMode, subVal) : "—"}</span>
-                      <span style={{ textAlign: "center", color: "#D4A07F" }}>{msaVal != null ? fmtRaw(tableGroupMode, msaVal) : "—"}</span>
-                    </div>
-                  );
-                })}
-              </>
-            ) : (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: `50px repeat(${visibleFamilies.length}, 1fr)`, padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
-                  <span style={{ color: T.text.muted, fontWeight: 600 }}>YEAR</span>
-                  {visibleFamilies.map(m => (
-                    <span key={m.family} onClick={() => handleMetricClick(m.family)} onDoubleClick={() => handleMetricDblClick(m.family)}
-                      style={{ color: isHi(m.family) ? T.text.amber : m.color, fontWeight: 600, textAlign: "center", cursor: "pointer",
-                        textDecoration: isHi(m.family) ? "underline" : "none" }}>
-                      {m.label}
-                    </span>
-                  ))}
-                </div>
-                {indexedData.filter(d => d.year <= 2025).map((d, i) => (
-                  <div key={i} style={{
-                    display: "grid", gridTemplateColumns: `50px repeat(${visibleFamilies.length}, 1fr)`, padding: "3px 8px",
-                    background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}08`,
-                  }}>
-                    <span style={{ color: T.text.primary, fontWeight: 600 }}>{d.year}</span>
-                    {visibleFamilies.map(m => {
-                      const v = propRawVal(d, m.family);
+              );
+            }
+
+            return (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
+                  <thead>
+                    <tr>
+                      <th rowSpan={2} style={{ ...cs(false, true), position: "sticky", left: 0, zIndex: 3, background: T.bg.header, textAlign: "center", minWidth: 42 }}>YR</th>
+                      {filtPropCols.length > 0 && <th colSpan={filtPropCols.length} style={{ ...cs(false, true), textAlign: "center", color: T.text.amber, borderBottom: `2px solid ${T.text.amber}` }}>PROPERTY</th>}
+                      {GEO_LABELS.map(g => filtGeoCols.length > 0 && (
+                        <th key={g.dataKey} colSpan={filtGeoCols.length} style={{ ...cs(false, true), textAlign: "center", color: g.color, borderBottom: `2px solid ${g.color}` }}>{g.label}</th>
+                      ))}
+                    </tr>
+                    <tr>
+                      {filtPropCols.map(c => (
+                        <th key={`ph-${c.key}`} onClick={() => handleMetricClick(c.family)} onDoubleClick={() => handleMetricDblClick(c.family)}
+                          style={{ ...cs(false, true), fontSize: 7, color: isHi(c.family) ? T.text.amber : T.text.secondary, textAlign: "center", minWidth: 52, cursor: "pointer",
+                            boxShadow: isHi(c.family) ? `inset 0 0 0 1px ${T.text.amber}30` : "none" }}>{c.label}</th>
+                      ))}
+                      {GEO_LABELS.map(g => filtGeoCols.map(c => (
+                        <th key={`${g.dataKey}-${c.key}`} onClick={() => handleMetricClick(c.family)} onDoubleClick={() => handleMetricDblClick(c.family)}
+                          style={{ ...cs(false, true), fontSize: 7, color: isHi(c.family) ? T.text.amber : T.text.secondary, textAlign: "center", minWidth: 52, cursor: "pointer",
+                            boxShadow: isHi(c.family) ? `inset 0 0 0 1px ${T.text.amber}30` : "none" }}>{c.label}</th>
+                      )))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {indexedData.map((d, ri) => {
+                      const ta = d.raw.ta; const sub = d.raw.sub; const msa = d.raw.msa;
                       return (
-                        <span key={m.family} style={{ textAlign: "center", color: isHi(m.family) ? T.text.amber : m.color,
-                          fontWeight: isHi(m.family) ? 700 : 400, background: isHi(m.family) ? `${T.text.amber}08` : "transparent" }}>
-                          {v != null ? fmtRaw(m.family, v) : "—"}
-                        </span>
+                        <tr key={d.year} style={{ background: ri % 2 === 0 ? "transparent" : T.bg.panelAlt }}>
+                          <td style={{ ...cs(d.isForecast), position: "sticky", left: 0, zIndex: 2, background: ri % 2 === 0 ? T.bg.panel : T.bg.panelAlt, fontWeight: 700, textAlign: "center", color: d.isForecast ? T.text.cyan : T.text.amber }}>{d.year}</td>
+                          {filtPropCols.map(c => {
+                            const val = d.raw[c.key]; const hl = isHi(c.family);
+                            return <td key={`p-${c.key}`} style={{ ...cs(d.isForecast, false, hl), color: c.growthCol && val != null ? growthColor(val) : d.isForecast ? T.text.cyan : T.text.primary }}>{val != null ? c.fm(val) : "—"}</td>;
+                          })}
+                          {[{ data: ta }, { data: sub }, { data: msa }].map((geo, gi) => (
+                            filtGeoCols.map(c => {
+                              const val = geo.data ? geo.data[c.key] : null; const hl = isHi(c.family);
+                              return <td key={`g${gi}-${c.key}`} style={{ ...cs(d.isForecast, false, hl), color: c.growthCol && val != null ? growthColor(val) : d.isForecast ? T.text.cyan : T.text.primary }}>{val != null ? c.fm(val) : "—"}</td>;
+                            })
+                          ))}
+                        </tr>
                       );
                     })}
-                  </div>
-                ))}
-                <div style={{ padding: "3px 8px", background: `${T.text.cyan}08`, borderBottom: `1px solid ${T.border.subtle}` }}>
-                  <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan, fontWeight: 600 }}>▼ FORECAST</span>
-                </div>
-                {indexedData.filter(d => d.year > 2025).map((d, i) => (
-                  <div key={i} style={{
-                    display: "grid", gridTemplateColumns: `50px repeat(${visibleFamilies.length}, 1fr)`, padding: "3px 8px",
-                    background: `${T.text.cyan}04`, borderBottom: `1px solid ${T.border.subtle}08`,
-                  }}>
-                    <span style={{ color: T.text.cyan, fontWeight: 600 }}>{d.year}</span>
-                    {visibleFamilies.map(m => {
-                      const v = propRawVal(d, m.family);
-                      return (
-                        <span key={m.family} style={{ textAlign: "center", color: isHi(m.family) ? T.text.amber : m.color,
-                          fontWeight: isHi(m.family) ? 700 : 400 }}>
-                          {v != null ? fmtRaw(m.family, v) : "—"}
-                        </span>
-                      );
-                    })}
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
 
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
