@@ -288,6 +288,10 @@ export default function F4MarketsView() {
       vac: `${med(markets.map(m => m.vacNum)).toFixed(1)}%`,
       absorb: Math.round(med(markets.map(m => m.absorbNum))).toLocaleString(),
       pipeline: `${med(markets.map(m => m.pipelineNum)).toFixed(1)}%`,
+      costs: `$${Math.round(med(markets.map(m => m.costsNum))).toLocaleString()}`,
+      dApt: Math.round(med(markets.map(m => m.dAptNum))).toString(),
+      popD: `+${med(markets.map(m => m.popDNum)).toFixed(1)}%`,
+      medInc: `$${Math.round(med(markets.map(m => m.medIncNum))).toLocaleString()}`,
       cap: `${med(markets.map(m => m.capNum)).toFixed(1)}%`,
     };
   }, [filteredMarkets]);
@@ -374,20 +378,23 @@ export default function F4MarketsView() {
           <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
             <th style={{ ...hdrCell, width: 28 }}>#</th>
             <th style={{ ...hdrCell, width: 20 }}>★</th>
-            <th style={{ ...hdrCell, width: 130, textAlign: "left" }} onClick={() => handleSort("msa")}>MSA {sortCol === "msa" && (sortDir === "desc" ? "▼" : "▲")}</th>
-            <th style={{ ...hdrCell, width: 52 }}>PROPS</th>
-            <th style={{ ...hdrCell, width: 48 }}>UNITS</th>
-            <th style={{ ...hdrCell, width: 48, color: C.amber }} onClick={() => handleSort("jedi")}>JEDI {sortCol === "jedi" && (sortDir === "desc" ? "▼" : "▲")}</th>
-            <th style={{ ...hdrCell, width: 36 }} onClick={() => handleSort("d30")}>Δ30 {sortCol === "d30" && (sortDir === "desc" ? "▼" : "▲")}</th>
-            <th style={{ ...hdrCell, width: 56 }}>TREND</th>
-            <th style={{ ...hdrCell, width: 60 }} onClick={() => handleSort("rentNum")}>RENT</th>
-            <th style={{ ...hdrCell, width: 48 }}>RENT Δ</th>
-            <th style={{ ...hdrCell, width: 44 }} onClick={() => handleSort("vacNum")}>VAC</th>
-            <th style={{ ...hdrCell, width: 56 }}>ABSORB</th>
-            <th style={{ ...hdrCell, width: 56 }}>PIPELN</th>
-            <th style={{ ...hdrCell, width: 48 }}>CAP</th>
-            <th style={{ ...hdrCell, width: 48 }}>POP Δ</th>
-            <th style={{ ...hdrCell, width: 80 }}>CYCLE</th>
+            <th style={{ ...hdrCell, width: 120, textAlign: "left" }} onClick={() => handleSort("msa")}>MSA {sortCol === "msa" && (sortDir === "desc" ? "▼" : "▲")}</th>
+            <th style={{ ...hdrCell, width: 48 }}>PROPS</th>
+            <th style={{ ...hdrCell, width: 44 }}>UNITS</th>
+            <th style={{ ...hdrCell, width: 44, color: C.amber }} onClick={() => handleSort("jedi")}>JEDI {sortCol === "jedi" && (sortDir === "desc" ? "▼" : "▲")}</th>
+            <th style={{ ...hdrCell, width: 32 }} onClick={() => handleSort("d30")}>Δ30</th>
+            <th style={{ ...hdrCell, width: 50 }}>TREND</th>
+            <th style={{ ...hdrCell, width: 56 }} onClick={() => handleSort("rentNum")}>RENT</th>
+            <th style={{ ...hdrCell, width: 44 }}>RENT Δ</th>
+            <th style={{ ...hdrCell, width: 40 }} onClick={() => handleSort("vacNum")}>VAC</th>
+            <th style={{ ...hdrCell, width: 50 }}>ABSORB</th>
+            <th style={{ ...hdrCell, width: 50 }}>PIPELN</th>
+            <th style={{ ...hdrCell, width: 52 }}>COSTS</th>
+            <th style={{ ...hdrCell, width: 40 }}>$/APT</th>
+            <th style={{ ...hdrCell, width: 44 }}>POP Δ</th>
+            <th style={{ ...hdrCell, width: 56 }}>MED INC</th>
+            <th style={{ ...hdrCell, width: 40 }}>CAP</th>
+            <th style={{ ...hdrCell, width: 76 }}>CYCLE</th>
           </tr>
         </thead>
         <tbody>
@@ -407,8 +414,11 @@ export default function F4MarketsView() {
               <td style={dataCell}><ThresholdVal value={median.vac} thresholds={[5, 8]} invert /></td>
               <td style={dataCell}><span style={{ color: C.primary }}>{median.absorb}</span></td>
               <td style={dataCell}><ThresholdVal value={median.pipeline} thresholds={[8, 14]} invert /></td>
+              <td style={dataCell}><span style={{ color: C.primary }}>{median.costs}</span></td>
+              <td style={dataCell}><span style={{ color: C.primary }}>{median.dApt}</span></td>
+              <td style={dataCell}><DeltaCell value={median.popD} /></td>
+              <td style={dataCell}><span style={{ color: C.primary }}>{median.medInc}</span></td>
               <td style={dataCell}><span style={{ color: C.primary }}>{median.cap}</span></td>
-              <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
               <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
             </tr>
           )}
@@ -432,14 +442,17 @@ export default function F4MarketsView() {
               <td style={dataCell}><span style={{ color: C.secondary }}>{m.units}</span></td>
               <td style={dataCell}><ScoreCell value={m.jedi} size={10} /></td>
               <td style={dataCell}><DeltaCell value={m.d30} /></td>
-              <td style={dataCell}><Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={44} h={12} /></td>
+              <td style={dataCell}><Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={40} h={12} /></td>
               <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></td>
               <td style={dataCell}><DeltaCell value={m.rentD} /></td>
               <td style={dataCell}><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></td>
               <td style={dataCell}><span style={{ color: C.primary }}>{m.absorb}</span></td>
               <td style={dataCell}><ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert /></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.cap}</span></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.costs}</span></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.dApt}</span></td>
               <td style={dataCell}><DeltaCell value={m.popD} /></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.medInc}</span></td>
+              <td style={dataCell}><span style={{ color: C.secondary }}>{m.cap}</span></td>
               <td style={dataCell}><Badge label={m.cycle} color={cycleColor(m.cycle)} /></td>
             </tr>
           ))}
