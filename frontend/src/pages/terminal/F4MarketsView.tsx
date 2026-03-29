@@ -488,47 +488,50 @@ export default function F4MarketsView() {
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets</span>
       </div>
 
-      {/* Main Content: Table + Side Panels */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Market Table */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {renderMarketTable()}
+      {/* Main Table - Full Width */}
+      <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+        {renderMarketTable()}
+      </div>
+
+      {/* Bottom Panels: Alerts + Top Movers (side by side) */}
+      <div style={{ display: "flex", height: 140, borderTop: `1px solid ${C.borderM}`, flexShrink: 0 }}>
+        {/* Recent Alerts */}
+        <div style={{ flex: 1, borderRight: `1px solid ${C.borderM}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.red, ...mono }}>RECENT ALERTS</span>
+          </div>
+          <div style={{ flex: 1, overflow: "auto", padding: "6px 8px" }}>
+            {MOCK_ALERTS.map(alert => (
+              <div key={alert.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
+                <span style={{ color: alert.type === "positive" ? C.green : alert.type === "negative" ? C.red : C.muted, fontSize: 10 }}>●</span>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: C.primary, ...mono }}>{alert.market}</span>
+                  <span style={{ fontSize: 9, color: C.secondary, ...mono, marginLeft: 6 }}>{alert.message}</span>
+                </div>
+                <span style={{ fontSize: 8, color: C.muted, ...mono }}>{alert.timestamp}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Side Panel: Alerts + Movers */}
-        <div style={{ width: 220, borderLeft: `1px solid ${C.borderM}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
-          {/* Alerts */}
-          <div style={{ flex: 1, borderBottom: `1px solid ${C.borderS}`, overflow: "auto" }}>
-            <div style={{ padding: "6px 10px", background: C.header, borderBottom: `1px solid ${C.borderS}`, position: "sticky", top: 0 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: C.amber, ...mono }}>RECENT ALERTS</span>
-            </div>
-            <div style={{ padding: "6px" }}>
-              {MOCK_ALERTS.map(alert => (
-                <div key={alert.id} style={{ padding: "4px 6px", marginBottom: 4, background: C.panelAlt, borderLeft: `2px solid ${alert.type === "positive" ? C.green : alert.type === "negative" ? C.red : C.muted}` }}>
-                  <div style={{ fontSize: 9, fontWeight: 600, color: C.primary, ...mono }}>{alert.market}</div>
-                  <div style={{ fontSize: 9, color: C.secondary, ...mono }}>{alert.message}</div>
-                  <div style={{ fontSize: 8, color: C.muted, ...mono, marginTop: 2 }}>{alert.timestamp}</div>
-                </div>
-              ))}
-            </div>
+        {/* Top Movers */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.cyan, ...mono }}>TOP MOVERS (30D)</span>
           </div>
-
-          {/* Top Movers */}
-          <div style={{ flex: 1, overflow: "auto" }}>
-            <div style={{ padding: "6px 10px", background: C.header, borderBottom: `1px solid ${C.borderS}`, position: "sticky", top: 0 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: C.cyan, ...mono }}>TOP MOVERS (30D)</span>
-            </div>
-            <div style={{ padding: "6px" }}>
-              {topMovers.map(m => (
-                <div key={m.id} onClick={() => handleDrillToMsa(m)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 6px", marginBottom: 4, background: C.panelAlt, cursor: "pointer" }}>
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 600, color: C.primary, ...mono }}>{m.msa.split(",")[0]}</div>
-                    <Badge label={m.cycle} color={cycleColor(m.cycle)} />
-                  </div>
-                  <DeltaCell value={m.d30} />
-                </div>
-              ))}
-            </div>
+          <div style={{ flex: 1, overflow: "auto", padding: "6px 8px" }}>
+            {topMovers.map(m => (
+              <div 
+                key={m.id} 
+                onClick={() => handleDrillToMsa(m)} 
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
+              >
+                <span style={{ color: m.d30 >= 0 ? C.green : C.red, fontSize: 10 }}>{m.d30 >= 0 ? "▲" : "▼"}</span>
+                <span style={{ fontSize: 9, fontWeight: 600, color: C.primary, ...mono, flex: 1 }}>{m.msa.split(",")[0]}</span>
+                <Badge label={m.cycle} color={cycleColor(m.cycle)} />
+                <DeltaCell value={m.d30} />
+              </div>
+            ))}
           </div>
         </div>
       </div>
