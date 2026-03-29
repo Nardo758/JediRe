@@ -371,10 +371,89 @@ function generateForecast(history, trafficProjected) {
   return forecasts;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// GEO-LEVEL DATA — TRADE AREA · SUBMARKET · MSA
+// Derived from CoStar · FRED · BLS · Census ACS
+// ═══════════════════════════════════════════════════════════════
+const GEO_BASE = [
+  { year: 2018, rentGrowth: 3.8, occupancy: 94.4, concessions: 1.2, rentPerSF: 1.74, capRate: 5.8, absorptionPerMonth: 980, jobsPerUnit: 1.42, medianIncome: 58200, population: 412000, popGrowth: 2.1 },
+  { year: 2019, rentGrowth: 5.4, occupancy: 95.0, concessions: 0.8, rentPerSF: 1.83, capRate: 5.6, absorptionPerMonth: 1120, jobsPerUnit: 1.48, medianIncome: 60100, population: 420600, popGrowth: 2.1 },
+  { year: 2020, rentGrowth: -0.8, occupancy: 90.8, concessions: 5.8, rentPerSF: 1.82, capRate: 6.2, absorptionPerMonth: 640, jobsPerUnit: 1.32, medianIncome: 59800, population: 425200, popGrowth: 1.1 },
+  { year: 2021, rentGrowth: 12.8, occupancy: 94.8, concessions: 2.4, rentPerSF: 2.05, capRate: 5.1, absorptionPerMonth: 1183, jobsPerUnit: 1.51, medianIncome: 63400, population: 437000, popGrowth: 2.8 },
+  { year: 2022, rentGrowth: 10.3, occupancy: 93.2, concessions: 1.6, rentPerSF: 2.26, capRate: 4.8, absorptionPerMonth: 1067, jobsPerUnit: 1.56, medianIncome: 66200, population: 447500, popGrowth: 2.4 },
+  { year: 2023, rentGrowth: 3.2, occupancy: 91.9, concessions: 2.2, rentPerSF: 2.33, capRate: 5.4, absorptionPerMonth: 867, jobsPerUnit: 1.52, medianIncome: 68800, population: 457300, popGrowth: 2.2 },
+  { year: 2024, rentGrowth: 1.3, occupancy: 91.2, concessions: 3.0, rentPerSF: 2.36, capRate: 5.6, absorptionPerMonth: 817, jobsPerUnit: 1.48, medianIncome: 70900, population: 466400, popGrowth: 2.0 },
+  { year: 2025, rentGrowth: 1.1, occupancy: 91.5, concessions: 2.8, rentPerSF: 2.39, capRate: 5.5, absorptionPerMonth: 972, jobsPerUnit: 1.50, medianIncome: 73200, population: 476200, popGrowth: 2.1 },
+];
+
+const GEO_FORECAST_BASE = [
+  { year: 2026, rentGrowth: 2.8, occupancy: 92.0, concessions: 2.2, rentPerSF: 2.46, capRate: 5.3, absorptionPerMonth: 1033, jobsPerUnit: 1.52, medianIncome: 75400, population: 485800, popGrowth: 2.0, conf: 0.88 },
+  { year: 2027, rentGrowth: 3.2, occupancy: 92.6, concessions: 1.8, rentPerSF: 2.54, capRate: 5.1, absorptionPerMonth: 1100, jobsPerUnit: 1.55, medianIncome: 77800, population: 495100, popGrowth: 1.9, conf: 0.80 },
+  { year: 2028, rentGrowth: 3.5, occupancy: 93.2, concessions: 1.4, rentPerSF: 2.63, capRate: 5.0, absorptionPerMonth: 1167, jobsPerUnit: 1.57, medianIncome: 80200, population: 504200, popGrowth: 1.8, conf: 0.72 },
+  { year: 2029, rentGrowth: 3.0, occupancy: 93.5, concessions: 1.2, rentPerSF: 2.71, capRate: 5.1, absorptionPerMonth: 1133, jobsPerUnit: 1.56, medianIncome: 82400, population: 513000, popGrowth: 1.7, conf: 0.63 },
+  { year: 2030, rentGrowth: 2.4, occupancy: 93.0, concessions: 1.6, rentPerSF: 2.77, capRate: 5.2, absorptionPerMonth: 1067, jobsPerUnit: 1.54, medianIncome: 84800, population: 521600, popGrowth: 1.7, conf: 0.55 },
+  { year: 2031, rentGrowth: 2.2, occupancy: 92.8, concessions: 1.8, rentPerSF: 2.83, capRate: 5.3, absorptionPerMonth: 1033, jobsPerUnit: 1.53, medianIncome: 87000, population: 529800, popGrowth: 1.6, conf: 0.48 },
+  { year: 2032, rentGrowth: 2.0, occupancy: 92.9, concessions: 1.6, rentPerSF: 2.89, capRate: 5.3, absorptionPerMonth: 1050, jobsPerUnit: 1.53, medianIncome: 89200, population: 537800, popGrowth: 1.5, conf: 0.42 },
+  { year: 2033, rentGrowth: 2.3, occupancy: 93.2, concessions: 1.4, rentPerSF: 2.96, capRate: 5.2, absorptionPerMonth: 1083, jobsPerUnit: 1.55, medianIncome: 91600, population: 545600, popGrowth: 1.5, conf: 0.37 },
+  { year: 2034, rentGrowth: 2.1, occupancy: 93.1, concessions: 1.5, rentPerSF: 3.02, capRate: 5.2, absorptionPerMonth: 1067, jobsPerUnit: 1.54, medianIncome: 93800, population: 553200, popGrowth: 1.4, conf: 0.33 },
+  { year: 2035, rentGrowth: 1.9, occupancy: 93.0, concessions: 1.6, rentPerSF: 3.08, capRate: 5.3, absorptionPerMonth: 1050, jobsPerUnit: 1.53, medianIncome: 96200, population: 560600, popGrowth: 1.3, conf: 0.30 },
+];
+
+function deriveGeoLevel(base, o) {
+  return base.map(d => ({
+    ...d,
+    occupancy: parseFloat((d.occupancy + o.occOff).toFixed(1)),
+    rentGrowth: parseFloat((d.rentGrowth + o.rgOff).toFixed(1)),
+    concessions: parseFloat(Math.max(0, d.concessions + o.concOff).toFixed(1)),
+    rentPerSF: parseFloat((d.rentPerSF + o.rsfOff).toFixed(2)),
+    capRate: parseFloat((d.capRate + o.capOff).toFixed(1)),
+    absorptionPerMonth: Math.round(d.absorptionPerMonth * o.absScale),
+    jobsPerUnit: parseFloat((d.jobsPerUnit + o.jpuOff).toFixed(2)),
+    medianIncome: Math.round(d.medianIncome + o.incOff),
+    population: Math.round(d.population * o.popScale),
+    popGrowth: parseFloat((d.popGrowth + o.pgOff).toFixed(1)),
+  }));
+}
+
+const ALL_GEO_BASE = [...GEO_BASE, ...GEO_FORECAST_BASE];
+const GEO_TRADE_AREA = deriveGeoLevel(ALL_GEO_BASE, { occOff: 0.7, rgOff: 0.4, concOff: -0.3, rsfOff: 0.08, capOff: -0.2, absScale: 0.35, jpuOff: 0.12, incOff: 4200, popScale: 0.22, pgOff: 0.3 });
+const GEO_SUBMARKET = ALL_GEO_BASE;
+const GEO_MSA = deriveGeoLevel(ALL_GEO_BASE, { occOff: 1.3, rgOff: -0.6, concOff: 0.4, rsfOff: -0.12, capOff: 0.3, absScale: 3.8, jpuOff: -0.08, incOff: -8400, popScale: 7.2, pgOff: -0.4 });
+
+function pearsonR(xs, ys) {
+  const n = Math.min(xs.length, ys.length);
+  if (n < 3) return 0;
+  const mx = xs.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  const my = ys.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  let num = 0, dx2 = 0, dy2 = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx, dy = ys[i] - my;
+    num += dx * dy; dx2 += dx * dx; dy2 += dy * dy;
+  }
+  const denom = Math.sqrt(dx2 * dy2);
+  return denom === 0 ? 0 : num / denom;
+}
+
+const MP_METRIC_FAMILIES = [
+  { family: "rent", label: "RENT", propKey: "rent", geoKey: "", color: "#00D26A" },
+  { family: "occ", label: "OCCUPANCY", propKey: "occ", geoKey: "occupancy", color: "#00BCD4" },
+  { family: "rentGrowth", label: "RENT GROWTH", propKey: "rentGrowth", geoKey: "rentGrowth", color: "#A78BFA" },
+  { family: "concessions", label: "CONCESSIONS", propKey: "concessions", geoKey: "concessions", color: "#FF8C42" },
+  { family: "rentPerSF", label: "RENT/SF", propKey: "rentPerSF", geoKey: "rentPerSF", color: "#7FD4A0" },
+  { family: "traffic", label: "TRAFFIC", propKey: "monthlyTraffic", geoKey: "", color: "#4A9EFF" },
+  { family: "capRate", label: "CAP RATE", propKey: "", geoKey: "capRate", color: "#F5A623" },
+  { family: "absorption", label: "ABSRP/MO", propKey: "", geoKey: "absorptionPerMonth", color: "#14B8A6" },
+  { family: "jobsPerUnit", label: "JOBS/UNIT", propKey: "", geoKey: "jobsPerUnit", color: "#4A9EFF" },
+  { family: "medianIncome", label: "MED. INCOME", propKey: "", geoKey: "medianIncome", color: "#A78BFA" },
+  { family: "population", label: "POPULATION", propKey: "", geoKey: "population", color: "#A0D47F" },
+  { family: "popGrowth", label: "POP GROWTH", propKey: "", geoKey: "popGrowth", color: "#14B8A6" },
+];
+
 // ─── UTILITY ─────────────────────────────────────────────────
 const fmt = (n) => n >= 1_000_000 ? `$${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `$${(n/1_000).toFixed(0)}K` : `$${n}`;
 const fmtFull = (n) => `$${n.toLocaleString()}`;
 const pct = (n) => `${n.toFixed(1)}%`;
+const kFmt = (n) => n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1_000 ? `${(n/1_000).toFixed(1)}k` : `${n}`;
 
 // ─── SHARED COMPONENTS ───────────────────────────────────────
 const Badge = ({ children, color = T.text.amber, bg, border: bdr }) => (
@@ -726,9 +805,8 @@ export default function PropertyDetailsPage() {
     { key: "COMPS", label: "COMPS", hotkey: "F3" },
     { key: "TAX", label: "TAX & TITLE", hotkey: "F4" },
     { key: "ZONING", label: "ZONING", hotkey: "F5" },
-    { key: "MARKET", label: "MARKET", hotkey: "F6" },
+    { key: "MARKET_PERF", label: "MARKET & PERFORMANCE", hotkey: "F6" },
     { key: "TRAFFIC", label: "TRAFFIC", hotkey: "F7" },
-    { key: "PERFORMANCE", label: "PERFORMANCE", hotkey: "F8" },
   ];
 
   useEffect(() => {
@@ -790,7 +868,7 @@ export default function PropertyDetailsPage() {
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="PERFORMANCE SNAPSHOT" icon="▲" borderColor={T.text.green}
-            action={<span onClick={() => setActiveTab("PERFORMANCE")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.green, cursor: "pointer" }}>FULL VIEW →</span>} />
+            action={<span onClick={() => setActiveTab("MARKET_PERF")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.green, cursor: "pointer" }}>FULL VIEW →</span>} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
             {[
               { label: "Occupancy", value: pct(p.currentOccupancy), color: p.currentOccupancy >= 93 ? T.text.green : T.text.amber, spark: perf.map(h => h.occ) },
@@ -1118,147 +1196,248 @@ export default function PropertyDetailsPage() {
     );
   };
 
-  // ─── PERFORMANCE TAB — Unified Indexed Chart ─────────────
-  const PerformanceTab = () => {
-    const [activeSeries, setActiveSeries] = useState({
-      traffic: true, rent: true, occ: true, noi: true, concessions: true, rentGrowthCum: true,
-    });
-
-    const toggleSeries = (key) => setActiveSeries(prev => ({ ...prev, [key]: !prev[key] }));
-
-    // Build unified dataset: all metrics indexed to 100 at base year (2018)
-    const trafficAll = [...td.aadtHistory, ...td.aadtProjected.map(p => ({ year: p.year, aadt: p.aadt }))];
+  // ─── MARKET & PERFORMANCE TAB — Combined ─────────────────
+  const MarketPerformanceTab = () => {
     const perfAll = [...perf, ...forecast];
-    const baseTraffic = trafficAll[0].aadt;
-    const baseRent = perfAll[0].rent;
-    const baseOcc = perfAll[0].occ;
-    const baseNoi = perfAll[0].noi;
-    const baseConc = Math.max(perfAll[0].concessions, 0.1); // avoid /0
+    const trafficAll = [...td.aadtHistory, ...td.aadtProjected.map(tp => ({ year: tp.year, aadt: tp.aadt }))];
+    const propAll = perfAll.map((pf, i) => ({ ...pf, monthlyTraffic: trafficAll[i]?.aadt || 0 }));
 
-    const indexedData = trafficAll.map((t, i) => {
-      const pf = perfAll[i];
-      if (!pf) return null;
-      // Cumulative rent growth from base year (compounding)
-      const cumRentGrowth = ((pf.rent / baseRent) - 1) * 100;
-      return {
-        year: t.year,
-        traffic: (t.aadt / baseTraffic) * 100,
-        rent: (pf.rent / baseRent) * 100,
-        occ: (pf.occ / baseOcc) * 100,
-        noi: (pf.noi / baseNoi) * 100,
-        concessions: (pf.concessions / baseConc) * 100,
-        rentGrowthCum: 100 + cumRentGrowth,
-        confidence: td.aadtProjected.find(p => p.year === t.year)?.conf,
-        isForecast: t.year > 2025,
-        // Raw values for tooltip / table
-        rawTraffic: t.aadt,
-        rawRent: pf.rent,
-        rawOcc: pf.occ,
-        rawNoi: pf.noi,
-        rawConc: pf.concessions,
-        rawRentGrowth: pf.rentGrowth,
-        rawExpRatio: pf.expRatio,
-      };
-    }).filter(Boolean);
+    const taByYear = {};
+    GEO_TRADE_AREA.forEach(d => { taByYear[d.year] = d; });
+    const subByYear = {};
+    GEO_SUBMARKET.forEach(d => { subByYear[d.year] = d; });
+    const msaByYear = {};
+    GEO_MSA.forEach(d => { msaByYear[d.year] = d; });
 
-    const forecastIdx = indexedData.findIndex(d => d.isForecast);
+    const correlations = useMemo(() => {
+      const histProp = propAll.filter(pp => pp.year <= 2025);
+      const histSub = GEO_SUBMARKET.filter(d => d.year <= 2025);
+      const histTA = GEO_TRADE_AREA.filter(d => d.year <= 2025);
+      const pairs = [
+        { a: "TRAFFIC", b: "RENT", xs: histProp.map(pp => pp.monthlyTraffic), ys: histProp.map(pp => pp.rent), narrative: (r) => r > 0.7 ? "Strong traffic→rent link: footfall drives pricing power" : "Moderate traffic impact on rents" },
+        { a: "TRAFFIC", b: "OCCUPANCY", xs: histProp.map(pp => pp.monthlyTraffic), ys: histProp.map(pp => pp.occ), narrative: (r) => r > 0.7 ? "Traffic strongly predicts occupancy gains" : "Traffic has moderate occupancy impact" },
+        { a: "SUB OCC", b: "PROP OCC", xs: histSub.map(d => d.occupancy), ys: histProp.map(pp => pp.occ), narrative: (r) => r > 0.7 ? "Property tracks submarket occupancy closely" : "Property occupancy diverges from submarket" },
+        { a: "TA INCOME", b: "RENT", xs: histTA.map(d => d.medianIncome), ys: histProp.map(pp => pp.rent), narrative: (r) => r > 0.8 ? "Income growth in trade area supports rent increases" : "Rent partially decoupled from local income" },
+        { a: "SUB ABSRP", b: "PROP OCC", xs: histSub.map(d => d.absorptionPerMonth), ys: histProp.map(pp => pp.occ), narrative: (r) => r > 0.6 ? "Submarket absorption drives property occupancy" : "Property occupancy less tied to absorption" },
+        { a: "POP GROWTH", b: "RENT GRWTH", xs: histSub.map(d => d.popGrowth), ys: histProp.map(pp => pp.rentGrowth), narrative: (r) => r > 0.5 ? "Population growth fueling rent growth" : "Rent growth driven by factors beyond population" },
+        { a: "JOBS/UNIT", b: "OCCUPANCY", xs: histSub.map(d => d.jobsPerUnit), ys: histProp.map(pp => pp.occ), narrative: (r) => r > 0.6 ? "Employment density supports occupancy" : "Occupancy less dependent on job density" },
+        { a: "CAP RATE", b: "RENT GRWTH", xs: histSub.map(d => d.capRate), ys: histProp.map(pp => pp.rentGrowth), narrative: (r) => r < -0.4 ? "Cap rate compression signals rent acceleration" : "Cap rates weakly tied to rent growth" },
+      ];
+      return pairs.map(pr => {
+        const r = pearsonR(pr.xs, pr.ys);
+        const absR = Math.abs(r);
+        const strength = absR >= 0.8 ? "VERY STRONG" : absR >= 0.6 ? "STRONG" : absR >= 0.4 ? "MODERATE" : "WEAK";
+        return { metricA: pr.a, metricB: pr.b, r: parseFloat(r.toFixed(2)), strength, narrative: pr.narrative(r) };
+      }).sort((a, b) => Math.abs(b.r) - Math.abs(a.r));
+    }, []);
 
-    const SERIES_CONFIG = [
-      { key: "traffic", label: "TRAFFIC (AADT)", color: T.text.blue, cor: "ANCHOR", thick: true },
-      { key: "rent", label: "EFF. RENT", color: T.text.green, cor: "COR-01 r=0.65" },
-      { key: "occ", label: "OCCUPANCY", color: T.text.cyan, cor: "COR-05 r=-0.60" },
-      { key: "noi", label: "NOI", color: T.text.amber, cor: "COR-01 × COR-05" },
-      { key: "concessions", label: "CONCESSIONS", color: T.text.red, cor: "inverse occ" },
-      { key: "rentGrowthCum", label: "CUM. RENT GROWTH", color: T.text.purple, cor: "COR-04 capped" },
+    const fiveYearOutlook = useMemo(() => {
+      const now = propAll.find(pp => pp.year === 2025);
+      const yr1 = propAll.find(pp => pp.year === 2026);
+      const yr3 = propAll.find(pp => pp.year === 2028);
+      const yr5 = propAll.find(pp => pp.year === 2030);
+      const subNow = subByYear[2025];
+      const sub5 = subByYear[2030];
+      const sub1 = subByYear[2026]; const sub3 = subByYear[2028];
+      if (!now || !yr1 || !yr3 || !yr5 || !subNow || !sub5) return [];
+      const rentDelta = ((yr5.rent - now.rent) / now.rent * 100);
+      const occDelta = yr5.occ - now.occ;
+      const subRentGrowthAvg = ((sub1.rentGrowth + sub3.rentGrowth + sub5.rentGrowth) / 3);
+      const trafficCorr = correlations.find(c => c.metricA === "TRAFFIC" && c.metricB === "RENT");
+      const incomeCorr = correlations.find(c => c.metricA === "TA INCOME" && c.metricB === "RENT");
+      return [
+        { metric: "RENT", metricFamily: "rent", current: `$${now.rent.toLocaleString()}`, yr1: `$${yr1.rent.toLocaleString()}`, yr3: `$${yr3.rent.toLocaleString()}`, yr5: `$${yr5.rent.toLocaleString()}`,
+          delta5yr: `+${rentDelta.toFixed(1)}%`, direction: rentDelta > 2 ? "up" : rentDelta < -1 ? "down" : "flat",
+          signal: trafficCorr && trafficCorr.r > 0.7 ? `Traffic correlation r=${trafficCorr.r} reinforces upward trajectory` : `Moderate traffic support`,
+          narrative: `Rent projected to grow ${rentDelta.toFixed(1)}% over 5 years ($${now.rent.toLocaleString()} → $${yr5.rent.toLocaleString()}). ${incomeCorr && incomeCorr.r > 0.7 ? `Strong income correlation (r=${incomeCorr.r}) supports sustainability.` : "Monitor income-to-rent ratio for affordability ceiling."} Submarket avg rent growth ${subRentGrowthAvg.toFixed(1)}% provides tailwind.` },
+        { metric: "OCCUPANCY", metricFamily: "occ", current: `${now.occ.toFixed(1)}%`, yr1: `${yr1.occ.toFixed(1)}%`, yr3: `${yr3.occ.toFixed(1)}%`, yr5: `${yr5.occ.toFixed(1)}%`,
+          delta5yr: `${occDelta > 0 ? "+" : ""}${occDelta.toFixed(1)}pp`, direction: occDelta > 0.5 ? "up" : occDelta < -0.5 ? "down" : "flat",
+          signal: `Submarket occ forecast: ${subNow.occupancy.toFixed(1)}% → ${sub5.occupancy.toFixed(1)}% (+${(sub5.occupancy - subNow.occupancy).toFixed(1)}pp)`,
+          narrative: `Property occupancy expected ${occDelta > 0 ? "to improve" : "stable"} at ${yr5.occ.toFixed(1)}% by 2030 (${occDelta > 0 ? "+" : ""}${occDelta.toFixed(1)}pp). ${yr5.occ > sub5.occupancy ? `Outperforming submarket by ${(yr5.occ - sub5.occupancy).toFixed(1)}pp — competitive advantage intact.` : `Tracking submarket trend — aligned with market recovery.`} Absorption trend ${sub5.absorptionPerMonth > subNow.absorptionPerMonth ? "strengthening" : "moderating"} at ${sub5.absorptionPerMonth.toLocaleString()}/mo.` },
+        { metric: "RENT GROWTH", metricFamily: "rentGrowth", current: `${now.rentGrowth.toFixed(1)}%`, yr1: `${yr1.rentGrowth.toFixed(1)}%`, yr3: `${yr3.rentGrowth.toFixed(1)}%`, yr5: `${yr5.rentGrowth.toFixed(1)}%`,
+          delta5yr: yr5.rentGrowth > now.rentGrowth ? `+${(yr5.rentGrowth - now.rentGrowth).toFixed(1)}pp` : `${(yr5.rentGrowth - now.rentGrowth).toFixed(1)}pp`,
+          direction: yr5.rentGrowth > now.rentGrowth ? "up" : yr5.rentGrowth < now.rentGrowth - 1 ? "down" : "flat",
+          signal: `Pop growth (${subNow.popGrowth.toFixed(1)}% → ${sub5.popGrowth.toFixed(1)}%) ${sub5.popGrowth > 1.5 ? "sustains demand" : "slowing — headwind"}`,
+          narrative: `Rent growth accelerating from ${now.rentGrowth.toFixed(1)}% to ${yr3.rentGrowth.toFixed(1)}% by 2028, then moderating to ${yr5.rentGrowth.toFixed(1)}% by 2030. ${sub5.capRate < subNow.capRate ? `Cap rate compression (${subNow.capRate.toFixed(1)}% → ${sub5.capRate.toFixed(1)}%) signals investor confidence.` : `Cap rates stable — market equilibrium.`} Concessions forecast to ${yr5.concessions < now.concessions ? `decline to ${yr5.concessions.toFixed(1)}% — pricing power improving` : `hold at ${yr5.concessions.toFixed(1)}%`}.` },
+      ];
+    }, [correlations]);
+
+    const topCorrelations = correlations.filter(c => Math.abs(c.r) >= 0.5).slice(0, 5);
+
+    const PROP_SERIES = [
+      { key: "pRent", label: "RENT", color: T.text.green, group: "prop", family: "rent" },
+      { key: "pOcc", label: "OCCUPANCY", color: T.text.cyan, group: "prop", family: "occ" },
+      { key: "pGrowth", label: "RENT GROWTH", color: T.text.purple, group: "prop", family: "rentGrowth" },
+      { key: "pConc", label: "CONCESSIONS", color: T.text.orange, group: "prop", family: "concessions" },
+      { key: "pRentSF", label: "RENT/SF", color: "#7FD4A0", group: "prop", family: "rentPerSF" },
+      { key: "pTraffic", label: "MO. TRAFFIC", color: T.text.blue, group: "prop", thick: true, family: "traffic" },
     ];
 
-    const activeSerisList = SERIES_CONFIG.filter(s => activeSeries[s.key]);
+    const GEO_METRICS_LIST = [
+      { key: "RentGrowth", label: "RENT GRWTH", color: T.text.green, family: "rentGrowth" },
+      { key: "Occupancy", label: "OCCUPANCY", color: T.text.cyan, family: "occ" },
+      { key: "Concessions", label: "CONCESSIONS", color: T.text.orange, family: "concessions" },
+      { key: "RentPerSF", label: "RENT/SF", color: "#7FD4A0", family: "rentPerSF" },
+      { key: "CapRate", label: "CAP RATE", color: T.text.amber, family: "capRate" },
+      { key: "Absorption", label: "ABSRP/MO", color: T.text.teal, family: "absorption" },
+      { key: "JobsPerUnit", label: "JOBS/UNIT", color: T.text.blue, family: "jobsPerUnit" },
+      { key: "MedianIncome", label: "MED. INCOME", color: T.text.purple, family: "medianIncome" },
+      { key: "Population", label: "POPULATION", color: "#A0D47F", family: "population" },
+      { key: "PopGrowth", label: "POP GROWTH", color: "#14B8A6", family: "popGrowth" },
+    ];
 
-    // ─── INDEXED MULTI-LINE CHART (full width) ──────────────
-    const IndexedChart = () => {
+    const buildGeoSeries = (prefix, group, dashArray) => GEO_METRICS_LIST.map(m => ({ key: `${prefix}${m.key}`, label: m.label, color: m.color, group, dashArray, family: m.family }));
+    const ALL_CHART_SERIES = [...PROP_SERIES, ...buildGeoSeries("ta", "trade", "3,2"), ...buildGeoSeries("sub", "sub", "6,3"), ...buildGeoSeries("msa", "msa", "8,4,2,4")];
+
+    const GEO_GROUP_CFG = [
+      { key: "prop", label: "PROPERTY", color: T.text.amber },
+      { key: "trade", label: "TRADE AREA (3mi)", color: "#FF9F7F" },
+      { key: "sub", label: "SUBMARKET", color: "#FF6B6B" },
+      { key: "msa", label: "TAMPA MSA", color: "#D4A07F" },
+    ];
+
+    const defaultSeriesState = {};
+    ALL_CHART_SERIES.forEach(s => { defaultSeriesState[s.key] = s.group === "prop"; });
+    const [activeSeries, setActiveSeries] = useState(defaultSeriesState);
+    const [highlightFamily, setHighlightFamily] = useState(null);
+    const [tableGroupMode, setTableGroupMode] = useState(null);
+    const [visibleCols, setVisibleCols] = useState(() => {
+      const d = {};
+      MP_METRIC_FAMILIES.forEach(m => { d[m.family] = true; });
+      return d;
+    });
+    const [showColPicker, setShowColPicker] = useState(false);
+
+    const toggleSeries = (key) => setActiveSeries(prev => ({ ...prev, [key]: !prev[key] }));
+    const toggleGroupAll = (grp) => {
+      setActiveSeries(prev => {
+        const next = { ...prev };
+        const grpSeries = ALL_CHART_SERIES.filter(s => s.group === grp);
+        const allOn = grpSeries.every(s => next[s.key]);
+        grpSeries.forEach(s => { next[s.key] = !allOn; });
+        return next;
+      });
+    };
+
+    const handleMetricClick = (family) => {
+      setHighlightFamily(prev => prev === family ? null : family);
+      setTableGroupMode(null);
+    };
+    const handleMetricDblClick = (family) => {
+      setTableGroupMode(prev => prev === family ? null : family);
+      setHighlightFamily(null);
+      setActiveSeries(() => {
+        const next = {};
+        ALL_CHART_SERIES.forEach(s => { next[s.key] = s.family === family; });
+        return next;
+      });
+    };
+
+    const isHi = (family) => highlightFamily === family;
+
+    const baseIdx = {};
+    propAll.forEach(d => {
+      if (d.year === 2018) {
+        baseIdx.rent = d.rent || 1; baseIdx.occ = d.occ || 1; baseIdx.rentGrowth = Math.abs(d.rentGrowth) || 1;
+        baseIdx.concessions = Math.max(d.concessions, 0.1); baseIdx.rentPerSF = d.rentPerSF || 1; baseIdx.traffic = d.monthlyTraffic || 1;
+      }
+    });
+    GEO_SUBMARKET.forEach(d => {
+      if (d.year === 2018) {
+        baseIdx.gRentGrowth = Math.abs(d.rentGrowth) || 1; baseIdx.gOccupancy = d.occupancy || 1; baseIdx.gConcessions = Math.max(d.concessions, 0.1);
+        baseIdx.gRentPerSF = d.rentPerSF || 1; baseIdx.gCapRate = d.capRate || 1; baseIdx.gAbsorption = d.absorptionPerMonth || 1;
+        baseIdx.gJobsPerUnit = d.jobsPerUnit || 1; baseIdx.gMedianIncome = d.medianIncome || 1; baseIdx.gPopulation = d.population || 1; baseIdx.gPopGrowth = Math.abs(d.popGrowth) || 1;
+      }
+    });
+
+    const getGeoVal = (geo, year, key) => {
+      const d = geo.find(g => g.year === year);
+      return d ? d[key] : 0;
+    };
+
+    const indexedData = propAll.map((pp, i) => {
+      const yr = pp.year;
+      const ta = taByYear[yr] || {}; const sub = subByYear[yr] || {}; const msa = msaByYear[yr] || {};
+      const isForecast = yr > 2025;
+      return {
+        year: yr, isForecast,
+        pRent: (pp.rent / baseIdx.rent) * 100, pOcc: (pp.occ / baseIdx.occ) * 100,
+        pGrowth: 100 + ((pp.rent / baseIdx.rent) - 1) * 100, pConc: (pp.concessions / baseIdx.concessions) * 100,
+        pRentSF: (pp.rentPerSF / baseIdx.rentPerSF) * 100, pTraffic: (pp.monthlyTraffic / baseIdx.traffic) * 100,
+        taRentGrowth: ((ta.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, taOccupancy: ((ta.occupancy || 0) / baseIdx.gOccupancy) * 100,
+        taConcessions: ((ta.concessions || 0) / baseIdx.gConcessions) * 100, taRentPerSF: ((ta.rentPerSF || 0) / baseIdx.gRentPerSF) * 100,
+        taCapRate: ((ta.capRate || 0) / baseIdx.gCapRate) * 100, taAbsorption: ((ta.absorptionPerMonth || 0) / baseIdx.gAbsorption) * 100,
+        taJobsPerUnit: ((ta.jobsPerUnit || 0) / baseIdx.gJobsPerUnit) * 100, taMedianIncome: ((ta.medianIncome || 0) / baseIdx.gMedianIncome) * 100,
+        taPopulation: ((ta.population || 0) / baseIdx.gPopulation) * 100, taPopGrowth: ((ta.popGrowth || 0) / baseIdx.gPopGrowth) * 100,
+        subRentGrowth: ((sub.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, subOccupancy: ((sub.occupancy || 0) / baseIdx.gOccupancy) * 100,
+        subConcessions: ((sub.concessions || 0) / baseIdx.gConcessions) * 100, subRentPerSF: ((sub.rentPerSF || 0) / baseIdx.gRentPerSF) * 100,
+        subCapRate: ((sub.capRate || 0) / baseIdx.gCapRate) * 100, subAbsorption: ((sub.absorptionPerMonth || 0) / baseIdx.gAbsorption) * 100,
+        subJobsPerUnit: ((sub.jobsPerUnit || 0) / baseIdx.gJobsPerUnit) * 100, subMedianIncome: ((sub.medianIncome || 0) / baseIdx.gMedianIncome) * 100,
+        subPopulation: ((sub.population || 0) / baseIdx.gPopulation) * 100, subPopGrowth: ((sub.popGrowth || 0) / baseIdx.gPopGrowth) * 100,
+        msaRentGrowth: ((msa.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, msaOccupancy: ((msa.occupancy || 0) / baseIdx.gOccupancy) * 100,
+        msaConcessions: ((msa.concessions || 0) / baseIdx.gConcessions) * 100, msaRentPerSF: ((msa.rentPerSF || 0) / baseIdx.gRentPerSF) * 100,
+        msaCapRate: ((msa.capRate || 0) / baseIdx.gCapRate) * 100, msaAbsorption: ((msa.absorptionPerMonth || 0) / baseIdx.gAbsorption) * 100,
+        msaJobsPerUnit: ((msa.jobsPerUnit || 0) / baseIdx.gJobsPerUnit) * 100, msaMedianIncome: ((msa.medianIncome || 0) / baseIdx.gMedianIncome) * 100,
+        msaPopulation: ((msa.population || 0) / baseIdx.gPopulation) * 100, msaPopGrowth: ((msa.popGrowth || 0) / baseIdx.gPopGrowth) * 100,
+        raw: { ...pp, ta, sub, msa },
+      };
+    });
+
+    const forecastIdx = indexedData.findIndex(d => d.isForecast);
+    const activeSeriesList = ALL_CHART_SERIES.filter(s => activeSeries[s.key]);
+
+    const visibleFamilies = MP_METRIC_FAMILIES.filter(m => visibleCols[m.family]);
+
+    const MPChart = () => {
       const fullW = (chartWidth * 2) + 8;
       const pad = { top: 16, right: 16, bottom: 32, left: 52 };
       const w = fullW - pad.left - pad.right;
-      const h = 340 - pad.top - pad.bottom;
-
-      // Y range across all active series
-      const allVals = activeSerisList.flatMap(s => indexedData.map(d => d[s.key]).filter(v => v != null));
+      const ht = 340 - pad.top - pad.bottom;
+      const allVals = activeSeriesList.flatMap(s => indexedData.map(d => d[s.key]).filter(v => v != null && isFinite(v)));
       const yMin = Math.min(...allVals, 100) - 3;
       const yMax = Math.max(...allVals, 100) + 3;
       const yRange = yMax - yMin || 1;
-
       const xPos = (i) => pad.left + (i / (indexedData.length - 1)) * w;
-      const yPos = (v) => pad.top + h - ((v - yMin) / yRange) * h;
-
+      const yPos = (v) => pad.top + ht - ((v - yMin) / yRange) * ht;
       const gridCount = 7;
       const yTicks = Array.from({ length: gridCount }, (_, i) => yMin + yRange * (i / (gridCount - 1)));
 
       return (
         <svg width="100%" height="100%" viewBox={`0 0 ${fullW} 340`} style={{ overflow: "visible" }}>
-          {/* Grid lines */}
           {yTicks.map((tick, i) => (
             <g key={`g${i}`}>
               <line x1={pad.left} y1={yPos(tick)} x2={pad.left + w} y2={yPos(tick)}
-                stroke={tick === 100 ? T.text.muted : T.border.subtle} 
-                strokeWidth={tick === 100 ? 0.8 : 0.4} 
-                strokeDasharray={tick === 100 ? "none" : "2,4"} 
-                opacity={tick === 100 ? 0.5 : 1} />
-              <text x={pad.left - 5} y={yPos(tick) + 3} fill={tick === 100 ? T.text.secondary : T.text.muted} 
-                fontSize={7} fontFamily={T.font.mono} textAnchor="end" fontWeight={tick === 100 ? 600 : 400}>
+                stroke={Math.abs(tick - 100) < 0.5 ? T.text.muted : T.border.subtle}
+                strokeWidth={Math.abs(tick - 100) < 0.5 ? 0.8 : 0.4}
+                strokeDasharray={Math.abs(tick - 100) < 0.5 ? "none" : "2,4"}
+                opacity={Math.abs(tick - 100) < 0.5 ? 0.5 : 1} />
+              <text x={pad.left - 5} y={yPos(tick) + 3} fill={Math.abs(tick - 100) < 0.5 ? T.text.secondary : T.text.muted}
+                fontSize={7} fontFamily={T.font.mono} textAnchor="end" fontWeight={Math.abs(tick - 100) < 0.5 ? 600 : 400}>
                 {tick.toFixed(0)}
               </text>
             </g>
           ))}
-
-          {/* BASE 100 label */}
-          <text x={pad.left - 5} y={yPos(100) - 6} fill={T.text.secondary} fontSize={6} fontFamily={T.font.mono} textAnchor="end" opacity={0.7}>
-            BASE
-          </text>
-
-          {/* Forecast zone */}
+          <text x={pad.left - 5} y={yPos(100) - 6} fill={T.text.secondary} fontSize={6} fontFamily={T.font.mono} textAnchor="end" opacity={0.7}>BASE</text>
           {forecastIdx >= 0 && (
             <>
-              <rect x={xPos(forecastIdx)} y={pad.top} width={w - (xPos(forecastIdx) - pad.left)} height={h} fill={T.text.cyan} opacity={0.025} />
-              <line x1={xPos(forecastIdx)} y1={pad.top} x2={xPos(forecastIdx)} y2={pad.top + h} stroke={T.text.cyan} strokeWidth={1} strokeDasharray="4,3" opacity={0.35} />
-              <text x={xPos(forecastIdx) + 5} y={pad.top + 10} fill={T.text.cyan} fontSize={7} fontFamily={T.font.mono} opacity={0.5}>
-                FORECAST →
-              </text>
-              <text x={xPos(forecastIdx) - 5} y={pad.top + 10} fill={T.text.green} fontSize={7} fontFamily={T.font.mono} opacity={0.5} textAnchor="end">
-                ← ACTUAL
-              </text>
+              <rect x={xPos(forecastIdx)} y={pad.top} width={w - (xPos(forecastIdx) - pad.left)} height={ht} fill={T.text.cyan} opacity={0.025} />
+              <line x1={xPos(forecastIdx)} y1={pad.top} x2={xPos(forecastIdx)} y2={pad.top + ht} stroke={T.text.cyan} strokeWidth={1} strokeDasharray="4,3" opacity={0.35} />
+              <text x={xPos(forecastIdx) + 5} y={pad.top + 10} fill={T.text.cyan} fontSize={7} fontFamily={T.font.mono} opacity={0.5}>FORECAST →</text>
+              <text x={xPos(forecastIdx) - 5} y={pad.top + 10} fill={T.text.green} fontSize={7} fontFamily={T.font.mono} opacity={0.5} textAnchor="end">← ACTUAL</text>
             </>
           )}
-
-          {/* Series lines */}
-          {activeSerisList.map((s) => {
-            const pts = indexedData.map((d, i) => ({ x: xPos(i), y: yPos(d[s.key]), i, val: d[s.key] }));
+          {activeSeriesList.map((s) => {
+            const pts = indexedData.map((d, i) => ({ x: xPos(i), y: yPos(d[s.key]), i, val: d[s.key] })).filter(pt => isFinite(pt.y));
+            if (!pts.length) return null;
             const pathD = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x},${pt.y}`).join(' ');
-
-            // Confidence band for forecast region
-            const fcPts = pts.filter(pt => pt.i >= forecastIdx && forecastIdx >= 0);
-            let bandPath = null;
-            if (fcPts.length >= 2 && s.key !== "concessions") {
-              const spread = s.thick ? 0.04 : 0.05;
-              const upper = fcPts.map(pt => {
-                const conf = indexedData[pt.i]?.confidence || 0.5;
-                return { x: pt.x, y: yPos(pt.val * (1 + (1 - conf) * spread)) };
-              });
-              const lower = fcPts.map(pt => {
-                const conf = indexedData[pt.i]?.confidence || 0.5;
-                return { x: pt.x, y: yPos(pt.val * (1 - (1 - conf) * spread)) };
-              });
-              bandPath = `M${upper.map(pt => `${pt.x},${pt.y}`).join(' L')} L${[...lower].reverse().map(pt => `${pt.x},${pt.y}`).join(' L')} Z`;
-            }
-
+            const dimmed = highlightFamily && s.family !== highlightFamily;
             return (
-              <g key={s.key}>
-                {bandPath && <path d={bandPath} fill={s.color} opacity={0.06} />}
-                <path d={pathD} fill="none" stroke={s.color} strokeWidth={s.thick ? 2.5 : 1.5} opacity={0.85} />
-                {/* Dots at actual data points */}
-                {pts.filter((_, i) => i < forecastIdx || forecastIdx < 0).map((pt, i) => (
-                  <circle key={i} cx={pt.x} cy={pt.y} r={2} fill={s.color} opacity={0.7} />
+              <g key={s.key} opacity={dimmed ? 0.15 : 0.85}>
+                <path d={pathD} fill="none" stroke={s.color} strokeWidth={s.thick ? 2.5 : 1.5}
+                  strokeDasharray={s.dashArray || "none"} />
+                {pts.filter((_, i) => i < forecastIdx || forecastIdx < 0).map((pt, pi) => (
+                  <circle key={pi} cx={pt.x} cy={pt.y} r={1.8} fill={s.color} opacity={0.7} />
                 ))}
-                {/* End label */}
                 {pts.length > 0 && (
                   <text x={pts[pts.length - 1].x + 4} y={pts[pts.length - 1].y + 3} fill={s.color} fontSize={7} fontFamily={T.font.mono} fontWeight={600}>
                     {pts[pts.length - 1].val.toFixed(0)}
@@ -1267,175 +1446,247 @@ export default function PropertyDetailsPage() {
               </g>
             );
           })}
-
-          {/* X-axis year labels */}
           {indexedData.map((d, i) => (
-            <text key={i} x={xPos(i)} y={pad.top + h + 16} 
-              fill={d.isForecast ? T.text.cyan : T.text.muted} 
-              fontSize={7} fontFamily={T.font.mono} textAnchor="middle"
-              fontWeight={d.year === 2025 ? 700 : 400}>
+            <text key={i} x={xPos(i)} y={pad.top + ht + 16}
+              fill={d.isForecast ? T.text.cyan : T.text.muted}
+              fontSize={7} fontFamily={T.font.mono} textAnchor="middle" fontWeight={d.year === 2025 ? 700 : 400}>
               {d.year}
             </text>
           ))}
-
-          {/* Vertical year markers */}
           {indexedData.map((d, i) => (
-            <line key={`vl${i}`} x1={xPos(i)} y1={pad.top + h} x2={xPos(i)} y2={pad.top + h + 4} stroke={T.text.muted} strokeWidth={0.5} opacity={0.4} />
+            <line key={`vl${i}`} x1={xPos(i)} y1={pad.top + ht} x2={xPos(i)} y2={pad.top + ht + 4} stroke={T.text.muted} strokeWidth={0.5} opacity={0.4} />
           ))}
         </svg>
       );
     };
 
+    const fmtRaw = (key, val) => {
+      if (key === "rent" || key === "medianIncome") return fmt(val);
+      if (key === "occ" || key === "rentGrowth" || key === "concessions" || key === "capRate" || key === "popGrowth") return pct(val);
+      if (key === "rentPerSF") return `$${val.toFixed(2)}`;
+      if (key === "traffic" || key === "absorption") return kFmt(val);
+      if (key === "jobsPerUnit") return val.toFixed(2);
+      if (key === "population") return kFmt(val);
+      return val;
+    };
+
+    const propRawVal = (d, family) => {
+      const mf = MP_METRIC_FAMILIES.find(m => m.family === family);
+      if (!mf || !mf.propKey) return null;
+      return d.raw[mf.propKey];
+    };
+    const geoRawVal = (geo, d, family) => {
+      const mf = MP_METRIC_FAMILIES.find(m => m.family === family);
+      if (!mf || !mf.geoKey) return null;
+      return d.raw[geo]?.[mf.geoKey];
+    };
+
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
-        {/* HEADER BAR */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0", flexWrap: "wrap" }}>
           <Badge color={T.text.green}>ACTUAL 2018–2025</Badge>
           <Badge color={T.text.cyan}>FORECAST 2026–2035</Badge>
           <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
-            Indexed to 100 @ 2018 · Correlation Engine · All metrics relative to Traffic
+            Indexed · 4 Geo Levels · Correlation Engine · Click metric → highlight · Dbl-click → group mode
           </span>
           <div style={{ flex: 1 }} />
           <PatternBadge pattern={td.outputs.t07_pattern} />
         </div>
 
-        {/* MAIN CHART — Full Width */}
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="PERFORMANCE vs TRAFFIC — INDEXED" subtitle="Base 100 = 2018 · Click legend to toggle" icon="◈" borderColor={T.text.amber}
-            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>M07 Traffic Engine × Correlation Engine</span>} />
-          
-          {/* Toggleable Legend */}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}` }}>
-            {SERIES_CONFIG.map(s => (
-              <div key={s.key} onClick={() => toggleSeries(s.key)} style={{
-                display: "flex", alignItems: "center", gap: 4, padding: "3px 8px",
-                background: activeSeries[s.key] ? `${s.color}15` : T.bg.input,
-                border: `1px solid ${activeSeries[s.key] ? `${s.color}50` : T.border.subtle}`,
-                borderRadius: 2, cursor: "pointer", transition: "all 0.15s",
-                opacity: activeSeries[s.key] ? 1 : 0.4,
+          <SectionHeader title="MARKET & PERFORMANCE — INDEXED" subtitle="Base 100 = 2018 · Property + Trade Area + Submarket + MSA" icon="◈" borderColor={T.text.amber}
+            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>4 GEO LEVELS × CORRELATION ENGINE</span>} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 3, padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}` }}>
+            {GEO_GROUP_CFG.map(g => (
+              <div key={g.key} onClick={() => toggleGroupAll(g.key)} style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "2px 8px",
+                background: `${g.color}10`, border: `1px solid ${g.color}40`, borderRadius: 2, cursor: "pointer",
               }}>
-                <div style={{ width: s.key === "traffic" ? 14 : 10, height: s.key === "traffic" ? 3 : 2, background: s.color, borderRadius: 1 }} />
-                <span style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 600, color: activeSeries[s.key] ? s.color : T.text.muted, letterSpacing: "0.03em" }}>
-                  {s.label}
-                </span>
-                <span style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted }}>{s.cor}</span>
+                <div style={{ width: 12, height: 2, background: g.color,
+                  borderBottom: g.key === "trade" ? "1px dotted" : g.key === "sub" ? "1px dashed" : g.key === "msa" ? "1px dotted" : "none" }} />
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, fontWeight: 600, color: g.color, letterSpacing: "0.03em" }}>{g.label}</span>
               </div>
             ))}
+            <div style={{ flex: 1 }} />
+            {highlightFamily && (
+              <div onClick={() => { setHighlightFamily(null); setTableGroupMode(null); setActiveSeries(defaultSeriesState); }}
+                style={{ padding: "2px 8px", background: `${T.text.red}20`, border: `1px solid ${T.text.red}40`, borderRadius: 2, cursor: "pointer" }}>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.red }}>✕ CLEAR HIGHLIGHT</span>
+              </div>
+            )}
+            {tableGroupMode && (
+              <div onClick={() => { setTableGroupMode(null); setActiveSeries(defaultSeriesState); }}
+                style={{ padding: "2px 8px", background: `${T.text.red}20`, border: `1px solid ${T.text.red}40`, borderRadius: 2, cursor: "pointer" }}>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.red }}>✕ EXIT GROUP MODE</span>
+              </div>
+            )}
           </div>
-
-          {/* Chart Area */}
           <div style={{ height: 340, padding: "0 4px" }}>
-            <IndexedChart />
+            <MPChart />
           </div>
+        </div>
 
-          {/* Current values strip */}
-          <div style={{ display: "flex", gap: 0, borderTop: `1px solid ${T.border.subtle}` }}>
-            {SERIES_CONFIG.filter(s => activeSeries[s.key]).map((s, i) => {
-              const last = indexedData[indexedData.length - 1];
-              const base = indexedData[0];
-              const delta = ((last[s.key] / base[s.key]) - 1) * 100;
-              const rawNow = s.key === "traffic" ? `${(last.rawTraffic/1000).toFixed(1)}k vpd` :
-                s.key === "rent" ? `$${last.rawRent.toLocaleString()}` :
-                s.key === "occ" ? `${last.rawOcc.toFixed(1)}%` :
-                s.key === "noi" ? fmt(last.rawNoi) :
-                s.key === "concessions" ? `${last.rawConc.toFixed(1)}%` :
-                `+${((last.rawRent / baseRent - 1) * 100).toFixed(0)}%`;
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="5-YEAR OUTLOOK" subtitle="Forecast 2025 → 2030 · Powered by Correlation Engine" icon="◎" borderColor={T.text.green} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {fiveYearOutlook.map((o, oi) => {
+              const family = o.metricFamily;
+              const hi = isHi(family);
               return (
-                <div key={s.key} style={{
-                  flex: 1, padding: "5px 8px", textAlign: "center",
-                  borderRight: i < activeSerisList.length - 1 ? `1px solid ${T.border.subtle}` : "none",
-                  background: `${s.color}04`,
-                }}>
-                  <div style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em" }}>
-                    {s.label}
+                <div key={oi} onClick={() => handleMetricClick(family)} onDoubleClick={() => handleMetricDblClick(family)}
+                  style={{
+                    padding: "8px 10px", borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer",
+                    background: hi ? `${T.text.amber}10` : "transparent", borderLeft: hi ? `3px solid ${T.text.amber}` : "3px solid transparent",
+                    transition: "all 0.15s",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary }}>{o.metric}</span>
+                    <span style={{ fontSize: 8, fontFamily: T.font.mono, color: o.direction === "up" ? T.text.green : o.direction === "down" ? T.text.red : T.text.amber }}>
+                      {o.direction === "up" ? "▲" : o.direction === "down" ? "▼" : "►"} {o.delta5yr}
+                    </span>
+                    <div style={{ flex: 1 }} />
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>NOW {o.current}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan }}>1Y {o.yr1}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan }}>3Y {o.yr3}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan, fontWeight: 600 }}>5Y {o.yr5}</span>
                   </div>
-                  <div style={{ fontSize: 12, fontFamily: T.font.mono, fontWeight: 700, color: s.color }}>
-                    {rawNow}
-                  </div>
-                  <div style={{ fontSize: 7, fontFamily: T.font.mono, color: delta >= 0 ? T.text.green : T.text.red }}>
-                    {delta >= 0 ? "+" : ""}{delta.toFixed(1)}% from base
-                  </div>
+                  <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>{o.narrative}</div>
+                  <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, marginTop: 2 }}>SIGNAL: {o.signal}</div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* INSIGHT STRIP — Correlation narrative */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          {[
-            { title: "TRAFFIC → RENT", cor: "COR-01", r: "0.65", lead: "3-6mo", color: T.text.green,
-              insight: `Traffic +${((indexedData[indexedData.length-1].traffic / 100 - 1) * 100).toFixed(0)}% from base drives rent +${((indexedData[indexedData.length-1].rent / 100 - 1) * 100).toFixed(0)}%. Surge Index pattern confirms demand acceleration.` },
-            { title: "TRAFFIC → VACANCY", cor: "COR-05", r: "-0.60", lead: "2-4mo", color: T.text.cyan,
-              insight: `Occupancy tracks traffic with 2-4mo lag. Current ${pct(p.currentOccupancy)} with rising traffic → forecast tightening to ${pct(forecast[2]?.occ || 94)}.` },
-            { title: "WAGE → RENT CEILING", cor: "COR-04", r: "0.72", lead: "concurrent", color: T.text.amber,
-              insight: `Rent-to-income at ~${((p.avgEffectiveRent * 12 / 78200) * 100).toFixed(0)}%. Wage growth 2.5%/yr caps sustainable rent growth at ~4.2%. Affordability wall at 30%.` },
-          ].map((c, i) => (
-            <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 8px", borderBottom: `1px solid ${T.border.subtle}`, borderLeft: `2px solid ${c.color}` }}>
-                <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, color: c.color, letterSpacing: "0.03em" }}>{c.title}</span>
-                <div style={{ flex: 1 }} />
-                <Badge color={c.color}>{c.cor} r={c.r}</Badge>
-              </div>
-              <div style={{ padding: "6px 8px" }}>
-                <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>{c.insight}</div>
-                <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, marginTop: 3 }}>Lead time: {c.lead}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* DETAILED TABLE — All Years */}
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="PERFORMANCE TABLE" subtitle="Historical + Forecast · Raw Values" icon="≡" borderColor={T.text.amber}
-            action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>COR-01 · COR-04 · COR-05 · COR-06 · COR-13</span>} />
-          <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "36px 48px 50px 36px 40px 36px 52px 36px 36px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 440 }}>
-              {["YEAR","TRAFFIC","RENT","OCC","GRWTH","CONC","NOI","CONF","R/I"].map(h => (
-                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
+          <div style={{ display: "flex", alignItems: "center", padding: "5px 10px", borderBottom: `1px solid ${T.border.subtle}` }}>
+            <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.amber }}>≡</span>
+            <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary, marginLeft: 6 }}>
+              {tableGroupMode ? `GROUP: ${tableGroupMode.toUpperCase()} ACROSS GEO LEVELS` : "DATA TABLE — ALL METRICS × 4 GEO LEVELS"}
+            </span>
+            <div style={{ flex: 1 }} />
+            <div onClick={() => setShowColPicker(!showColPicker)} style={{
+              padding: "2px 8px", background: showColPicker ? `${T.text.amber}20` : T.bg.input,
+              border: `1px solid ${showColPicker ? T.text.amber : T.border.subtle}`, borderRadius: 2, cursor: "pointer",
+            }}>
+              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: showColPicker ? T.text.amber : T.text.muted }}>⚙ COLUMNS</span>
+            </div>
+          </div>
+          {showColPicker && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 3, padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}`, background: T.bg.panelAlt }}>
+              {MP_METRIC_FAMILIES.map(m => (
+                <div key={m.family} onClick={() => setVisibleCols(prev => ({ ...prev, [m.family]: !prev[m.family] }))} style={{
+                  padding: "2px 6px", background: visibleCols[m.family] ? `${m.color}15` : T.bg.input,
+                  border: `1px solid ${visibleCols[m.family] ? `${m.color}50` : T.border.subtle}`,
+                  borderRadius: 2, cursor: "pointer", opacity: visibleCols[m.family] ? 1 : 0.4,
+                }}>
+                  <span style={{ fontSize: 7, fontFamily: T.font.mono, fontWeight: 600, color: visibleCols[m.family] ? m.color : T.text.muted }}>{m.label}</span>
+                </div>
               ))}
             </div>
-            {indexedData.map((d, i) => {
-              const rToI = ((d.rawRent * 12) / (78_200 * Math.pow(1.025, Math.max(0, d.year - 2025))) * 100);
-              return (
-                <div key={i} style={{
-                  display: "grid", gridTemplateColumns: "36px 48px 50px 36px 40px 36px 52px 36px 36px",
-                  padding: "3px 8px", minWidth: 440,
-                  borderBottom: `1px solid ${T.border.subtle}08`,
-                  background: d.isForecast ? `${T.text.cyan}04` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt),
-                }}>
-                  <span style={{ color: d.isForecast ? T.text.cyan : T.text.primary, fontWeight: 600 }}>{d.year}</span>
-                  <span style={{ color: T.text.blue }}>{(d.rawTraffic/1000).toFixed(1)}k</span>
-                  <span style={{ color: T.text.green, fontWeight: 600 }}>${d.rawRent.toLocaleString()}</span>
-                  <span style={{ color: d.rawOcc >= 93 ? T.text.green : d.rawOcc >= 90 ? T.text.amber : T.text.red }}>{d.rawOcc.toFixed(1)}</span>
-                  <span style={{ color: d.rawRentGrowth >= 3 ? T.text.green : d.rawRentGrowth >= 0 ? T.text.amber : T.text.red }}>
-                    {d.rawRentGrowth >= 0 ? "+" : ""}{d.rawRentGrowth.toFixed(1)}
-                  </span>
-                  <span style={{ color: d.rawConc > 3 ? T.text.red : d.rawConc > 1 ? T.text.amber : T.text.green }}>
-                    {d.rawConc.toFixed(1)}%
-                  </span>
-                  <span style={{ color: T.text.primary }}>{fmt(d.rawNoi)}</span>
-                  <span style={{ color: d.isForecast ? (d.confidence > 0.6 ? T.text.green : d.confidence > 0.4 ? T.text.amber : T.text.red) : T.text.green }}>
-                    {d.isForecast ? `${(d.confidence * 100).toFixed(0)}%` : "ACT"}
-                  </span>
-                  <span style={{ color: rToI > 32 ? T.text.red : rToI > 30 ? T.text.amber : T.text.green }}>
-                    {rToI.toFixed(0)}%
-                  </span>
+          )}
+          <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
+            {tableGroupMode ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: `50px repeat(4, 1fr)`, padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <span style={{ color: T.text.muted, fontWeight: 600 }}>YEAR</span>
+                  {["PROPERTY", "TRADE AREA", "SUBMARKET", "MSA"].map(h => (
+                    <span key={h} style={{ color: T.text.muted, fontWeight: 600, textAlign: "center" }}>{h}</span>
+                  ))}
                 </div>
-              );
-            })}
+                {indexedData.map((d, i) => {
+                  const pVal = propRawVal(d, tableGroupMode);
+                  const taVal = geoRawVal("ta", d, tableGroupMode);
+                  const subVal = geoRawVal("sub", d, tableGroupMode);
+                  const msaVal = geoRawVal("msa", d, tableGroupMode);
+                  return (
+                    <div key={i} style={{
+                      display: "grid", gridTemplateColumns: `50px repeat(4, 1fr)`, padding: "3px 8px",
+                      background: d.isForecast ? `${T.text.cyan}04` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt),
+                      borderBottom: `1px solid ${T.border.subtle}08`,
+                    }}>
+                      <span style={{ color: d.isForecast ? T.text.cyan : T.text.primary, fontWeight: 600 }}>{d.year}</span>
+                      <span style={{ textAlign: "center", color: T.text.green }}>{pVal != null ? fmtRaw(tableGroupMode, pVal) : "—"}</span>
+                      <span style={{ textAlign: "center", color: "#FF9F7F" }}>{taVal != null ? fmtRaw(tableGroupMode, taVal) : "—"}</span>
+                      <span style={{ textAlign: "center", color: "#FF6B6B" }}>{subVal != null ? fmtRaw(tableGroupMode, subVal) : "—"}</span>
+                      <span style={{ textAlign: "center", color: "#D4A07F" }}>{msaVal != null ? fmtRaw(tableGroupMode, msaVal) : "—"}</span>
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: `50px repeat(${visibleFamilies.length}, 1fr)`, padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <span style={{ color: T.text.muted, fontWeight: 600 }}>YEAR</span>
+                  {visibleFamilies.map(m => (
+                    <span key={m.family} onClick={() => handleMetricClick(m.family)} onDoubleClick={() => handleMetricDblClick(m.family)}
+                      style={{ color: isHi(m.family) ? T.text.amber : m.color, fontWeight: 600, textAlign: "center", cursor: "pointer",
+                        textDecoration: isHi(m.family) ? "underline" : "none" }}>
+                      {m.label}
+                    </span>
+                  ))}
+                </div>
+                {indexedData.filter(d => d.year <= 2025).map((d, i) => (
+                  <div key={i} style={{
+                    display: "grid", gridTemplateColumns: `50px repeat(${visibleFamilies.length}, 1fr)`, padding: "3px 8px",
+                    background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}08`,
+                  }}>
+                    <span style={{ color: T.text.primary, fontWeight: 600 }}>{d.year}</span>
+                    {visibleFamilies.map(m => {
+                      const v = propRawVal(d, m.family);
+                      return (
+                        <span key={m.family} style={{ textAlign: "center", color: isHi(m.family) ? T.text.amber : m.color,
+                          fontWeight: isHi(m.family) ? 700 : 400, background: isHi(m.family) ? `${T.text.amber}08` : "transparent" }}>
+                          {v != null ? fmtRaw(m.family, v) : "—"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+                <div style={{ padding: "3px 8px", background: `${T.text.cyan}08`, borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan, fontWeight: 600 }}>▼ FORECAST</span>
+                </div>
+                {indexedData.filter(d => d.year > 2025).map((d, i) => (
+                  <div key={i} style={{
+                    display: "grid", gridTemplateColumns: `50px repeat(${visibleFamilies.length}, 1fr)`, padding: "3px 8px",
+                    background: `${T.text.cyan}04`, borderBottom: `1px solid ${T.border.subtle}08`,
+                  }}>
+                    <span style={{ color: T.text.cyan, fontWeight: 600 }}>{d.year}</span>
+                    {visibleFamilies.map(m => {
+                      const v = propRawVal(d, m.family);
+                      return (
+                        <span key={m.family} style={{ textAlign: "center", color: isHi(m.family) ? T.text.amber : m.color,
+                          fontWeight: isHi(m.family) ? 700 : 400 }}>
+                          {v != null ? fmtRaw(m.family, v) : "—"}
+                        </span>
+                      );
+                    })}
+                  </div>
+                ))}
+              </>
+            )}
           </div>
+        </div>
 
-          {/* Correlation legend footer */}
-          <div style={{ padding: "5px 8px", background: T.bg.panelAlt, borderTop: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, lineHeight: 1.5 }}>
-              <span style={{ color: T.text.blue }}>■</span> TRAFFIC is the anchor signal · 
-              <span style={{ color: T.text.green }}> COR-01</span> Traffic→Rent (lead 3-6mo) · 
-              <span style={{ color: T.text.cyan }}> COR-05</span> Traffic→Vacancy (lead 2-4mo) · 
-              <span style={{ color: T.text.amber }}> COR-04</span> Wage→Rent Cap · 
-              <span style={{ color: T.text.red }}> COR-13</span> Affordability Ceiling (30%) · 
-              Confidence bands widen with forecast horizon
-            </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="CORRELATION ENGINE" subtitle={`Top ${topCorrelations.length} Cross-Signal Correlations`} icon="⊕" borderColor={T.text.purple} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 0 }}>
+            {topCorrelations.map((c, ci) => (
+              <div key={ci} style={{
+                padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}`,
+                borderRight: `1px solid ${T.border.subtle}`, background: ci === 0 ? `${T.text.green}06` : "transparent",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary }}>{c.metricA} → {c.metricB}</span>
+                  <div style={{ flex: 1 }} />
+                  <Badge color={Math.abs(c.r) >= 0.7 ? T.text.green : Math.abs(c.r) >= 0.5 ? T.text.amber : T.text.red}
+                    bg={Math.abs(c.r) >= 0.7 ? `${T.text.green}15` : `${T.text.amber}15`}>
+                    r={c.r} · {c.strength}
+                  </Badge>
+                </div>
+                <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>{c.narrative}</div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -1805,219 +2056,6 @@ export default function PropertyDetailsPage() {
     </div>
   );
 
-  // ─── MARKET TAB ──────────────────────────────────────────
-  const MarketTab = () => {
-    const mktAll = [...p.marketHistory, ...p.marketForecast];
-    const forecastIdx = p.marketHistory.length;
-
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
-        {/* Header strip */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "2px 0" }}>
-          <Badge color={T.text.green}>ACTUAL 2021–2025</Badge>
-          <Badge color={T.text.cyan}>FORECAST 2026–2030</Badge>
-          <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>
-            {p.submarket} Submarket · {p.market} · Sources: CoStar · FRED · BLS · Census ACS
-          </span>
-        </div>
-
-        {/* ROW 1 — Submarket Vitals: Vacancy + Rent */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartContainer title="VACANCY RATE" subtitle={`${p.submarket} Submarket`} height={190} borderColor={T.text.red}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].vacancy)} → {pct(mktAll[mktAll.length-1].vacancy)}</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, vacancy: d.vacancy, confidence: d.conf }))}
-              series={[{ key: "vacancy", color: T.text.red, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-
-          <ChartContainer title="RENT GROWTH YoY" subtitle="% · Submarket Avg" height={190} borderColor={T.text.green}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].rentGrowth)} → {pct(mktAll[mktAll.length-1].rentGrowth)}</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, rentGrowth: d.rentGrowth, confidence: d.conf }))}
-              series={[{ key: "rentGrowth", color: T.text.green, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-        </div>
-
-        {/* ROW 2 — Supply: New Supply + Pipeline % */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartContainer title="NEW SUPPLY DELIVERIES" subtitle="Units / Year" height={190} borderColor={T.text.orange}
-            action={<Badge color={mktAll[mktAll.length-1].newSupply < mktAll[forecastIdx-1].newSupply ? T.text.green : T.text.red}>
-              {mktAll[mktAll.length-1].newSupply < mktAll[forecastIdx-1].newSupply ? "DECLINING" : "RISING"}
-            </Badge>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, newSupply: d.newSupply, confidence: d.conf }))}
-              series={[{ key: "newSupply", color: T.text.orange, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-
-          <ChartContainer title="PIPELINE-TO-STOCK RATIO" subtitle="% · < 5% = healthy" height={190} borderColor={T.text.amber}
-            action={<Badge color={mktAll[mktAll.length-1].pipelinePct < 5 ? T.text.green : T.text.red}>
-              {mktAll[mktAll.length-1].pipelinePct < 5 ? "BELOW THRESHOLD" : "ABOVE THRESHOLD"}
-            </Badge>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, pipelinePct: d.pipelinePct, confidence: d.conf }))}
-              series={[{ key: "pipelinePct", color: T.text.amber, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-        </div>
-
-        {/* ROW 3 — Demand: Absorption + Employment Growth */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartContainer title="ANNUAL ABSORPTION" subtitle="Units absorbed / Year" height={190} borderColor={T.text.cyan}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{mktAll[0].absorption.toLocaleString()} → {mktAll[mktAll.length-1].absorption.toLocaleString()}</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, absorption: d.absorption / 1000, confidence: d.conf }))}
-              series={[{ key: "absorption", color: T.text.cyan, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-
-          <ChartContainer title="EMPLOYMENT GROWTH" subtitle="% YoY · BLS" height={190} borderColor={T.text.green}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].empGrowth)} → {pct(mktAll[mktAll.length-1].empGrowth)}</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, empGrowth: d.empGrowth, confidence: d.conf }))}
-              series={[{ key: "empGrowth", color: T.text.green, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-        </div>
-
-        {/* ROW 4 — Demand Drivers: Population Growth + HH Income */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartContainer title="POPULATION GROWTH (3mi)" subtitle="% YoY" height={190} borderColor={T.text.purple}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{pct(mktAll[0].popGrowth)} → {pct(mktAll[mktAll.length-1].popGrowth)}</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, popGrowth: d.popGrowth, confidence: d.conf }))}
-              series={[{ key: "popGrowth", color: T.text.purple, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-
-          <ChartContainer title="MEDIAN HH INCOME" subtitle="$ · Census ACS" height={190} borderColor={T.text.amber}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>${(mktAll[0].hhIncome/1000).toFixed(1)}K → ${(mktAll[mktAll.length-1].hhIncome/1000).toFixed(1)}K</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, hhIncome: d.hhIncome / 1000, confidence: d.conf }))}
-              series={[{ key: "hhIncome", color: T.text.amber, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-        </div>
-
-        {/* ROW 5 — Location Scores + Demand Score */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <ChartContainer title="LOCATION SCORES" subtitle="Walk · Transit · Bike" height={190} borderColor={T.text.blue}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, walkScore: d.walkScore, transitScore: d.transitScore, bikeScore: d.bikeScore, confidence: d.conf }))}
-              series={[
-                { key: "walkScore", color: T.text.green },
-                { key: "transitScore", color: T.text.cyan },
-                { key: "bikeScore", color: T.text.purple },
-              ]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-              showDots={false}
-            />
-          </ChartContainer>
-
-          <ChartContainer title="DEMAND SCORE" subtitle="Composite 0–100" height={190} borderColor={T.text.green}
-            action={<span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{mktAll[0].demandScore} → {mktAll[mktAll.length-1].demandScore}</span>}>
-            <LineChart
-              data={mktAll.map(d => ({ year: d.year, demandScore: d.demandScore, confidence: d.conf }))}
-              series={[{ key: "demandScore", color: T.text.green, confBand: true }]}
-              width={chartWidth} height={178}
-              forecastStartIdx={forecastIdx}
-            />
-          </ChartContainer>
-        </div>
-
-        {/* FULL DATA TABLE */}
-        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="MARKET DATA TABLE" subtitle={`${p.submarket} · 10-Year View`} icon="≡" borderColor={T.text.amber} />
-          <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "36px 38px 40px 52px 48px 48px 38px 38px 48px 42px 38px", padding: "4px 6px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 520 }}>
-              {["YEAR","VAC","GRWTH","RENT","SUPPLY","ABSRP","P/S%","EMP%","INCOME","POP%","DMD"].map(h => (
-                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.04em" }}>{h}</span>
-              ))}
-            </div>
-            {mktAll.map((d, i) => {
-              const isFc = i >= forecastIdx;
-              return (
-                <div key={i} style={{
-                  display: "grid", gridTemplateColumns: "36px 38px 40px 52px 48px 48px 38px 38px 48px 42px 38px",
-                  padding: "3px 6px", minWidth: 520,
-                  borderBottom: `1px solid ${T.border.subtle}08`,
-                  background: isFc ? `${T.text.cyan}04` : (i % 2 === 0 ? T.bg.panel : T.bg.panelAlt),
-                }}>
-                  <span style={{ color: isFc ? T.text.cyan : T.text.primary, fontWeight: 600 }}>{d.year}</span>
-                  <span style={{ color: d.vacancy < 7 ? T.text.green : d.vacancy < 9 ? T.text.amber : T.text.red }}>{pct(d.vacancy)}</span>
-                  <span style={{ color: d.rentGrowth >= 3 ? T.text.green : d.rentGrowth >= 0 ? T.text.amber : T.text.red }}>
-                    {d.rentGrowth >= 0 ? "+" : ""}{pct(d.rentGrowth)}
-                  </span>
-                  <span style={{ color: T.text.primary }}>${d.avgRent.toLocaleString()}</span>
-                  <span style={{ color: d.newSupply > 1500 ? T.text.red : d.newSupply > 1000 ? T.text.orange : T.text.green }}>{d.newSupply.toLocaleString()}</span>
-                  <span style={{ color: T.text.cyan }}>{(d.absorption/1000).toFixed(1)}k</span>
-                  <span style={{ color: d.pipelinePct < 5 ? T.text.green : T.text.red }}>{pct(d.pipelinePct)}</span>
-                  <span style={{ color: d.empGrowth >= 3 ? T.text.green : T.text.amber }}>{pct(d.empGrowth)}</span>
-                  <span style={{ color: T.text.secondary }}>${(d.hhIncome/1000).toFixed(0)}K</span>
-                  <span style={{ color: d.popGrowth >= 2 ? T.text.green : T.text.amber }}>{pct(d.popGrowth)}</span>
-                  <span style={{ color: d.demandScore >= 88 ? T.text.green : d.demandScore >= 80 ? T.text.amber : T.text.red }}>{d.demandScore}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Supply vs Absorption narrative */}
-          <div style={{ padding: "6px 8px", background: T.bg.panelAlt, borderTop: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, lineHeight: 1.5 }}>
-              {(() => {
-                const curr = mktAll[forecastIdx - 1];
-                const fc3 = mktAll[forecastIdx + 2];
-                const supplyDeclining = fc3 && fc3.newSupply < curr.newSupply;
-                const absRising = fc3 && fc3.absorption > curr.absorption;
-                return (<>
-                  <span style={{ color: T.text.amber }}>SUPPLY OUTLOOK:</span> Pipeline peaks at {Math.max(...mktAll.map(d => d.newSupply)).toLocaleString()} units ({mktAll.find(d => d.newSupply === Math.max(...mktAll.map(m => m.newSupply)))?.year}), 
-                  {supplyDeclining ? <span style={{ color: T.text.green }}> declining to {fc3.newSupply.toLocaleString()} by {fc3.year}</span> : <span style={{ color: T.text.red }}> remaining elevated</span>}. 
-                  Absorption {absRising ? <span style={{ color: T.text.green }}>strengthening</span> : <span style={{ color: T.text.red }}>softening</span>}. 
-                  Net: {supplyDeclining && absRising ? <span style={{ color: T.text.green }}>FAVORABLE — supply retreating as demand recovers</span> : 
-                    supplyDeclining ? <span style={{ color: T.text.amber }}>IMPROVING — supply declining</span> : 
-                    <span style={{ color: T.text.red }}>WATCH — supply pressure persists</span>}
-                </>);
-              })()}
-            </div>
-          </div>
-        </div>
-
-        {/* Location scores legend */}
-        <div style={{ display: "flex", gap: 12, padding: "0 4px" }}>
-          {[
-            { label: "Walk Score", color: T.text.green, value: p.walkScore },
-            { label: "Transit Score", color: T.text.cyan, value: p.transitScore },
-            { label: "Bike Score", color: T.text.purple, value: p.bikeScore },
-          ].map((l, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <div style={{ width: 10, height: 2, background: l.color, borderRadius: 1 }} />
-              <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>{l.label}: {l.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   // ─── TAB CONTENT ROUTER ──────────────────────────────────
   const renderTab = () => {
     switch (activeTab) {
@@ -2026,9 +2064,8 @@ export default function PropertyDetailsPage() {
       case "COMPS": return <CompsTab />;
       case "TAX": return <TaxTab />;
       case "ZONING": return <ZoningTab />;
-      case "MARKET": return <MarketTab />;
+      case "MARKET_PERF": return <MarketPerformanceTab />;
       case "TRAFFIC": return <TrafficTab />;
-      case "PERFORMANCE": return <PerformanceTab />;
       default: return <OverviewTab />;
     }
   };
@@ -2137,11 +2174,11 @@ export default function PropertyDetailsPage() {
         {TABS.map((tab) => (
           <div key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
             padding: "6px 14px", cursor: "pointer", position: "relative",
-            borderBottom: activeTab === tab.key ? `2px solid ${tab.key === "TRAFFIC" ? T.text.blue : tab.key === "PERFORMANCE" ? T.text.green : T.text.amber}` : "2px solid transparent",
+            borderBottom: activeTab === tab.key ? `2px solid ${tab.key === "TRAFFIC" ? T.text.blue : tab.key === "MARKET_PERF" ? T.text.green : T.text.amber}` : "2px solid transparent",
           }}>
             <span style={{
               fontSize: 9, fontWeight: activeTab === tab.key ? 700 : 500,
-              color: activeTab === tab.key ? (tab.key === "TRAFFIC" ? T.text.blue : tab.key === "PERFORMANCE" ? T.text.green : T.text.amber) : T.text.secondary,
+              color: activeTab === tab.key ? (tab.key === "TRAFFIC" ? T.text.blue : tab.key === "MARKET_PERF" ? T.text.green : T.text.amber) : T.text.secondary,
               letterSpacing: "0.05em", fontFamily: T.font.mono,
             }}>{tab.label}</span>
             <span style={{ fontSize: 7, color: T.text.muted, marginLeft: 4 }}>{tab.hotkey}</span>
@@ -2172,7 +2209,7 @@ export default function PropertyDetailsPage() {
           <span>Folio: 123456-7890</span>
         </div>
         <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono }}>
-          <span style={{ color: T.text.muted }}>F1–F8 Navigate</span>
+          <span style={{ color: T.text.muted }}>F1–F7 Navigate</span>
           <span style={{ color: T.text.muted }}>·</span>
           <span style={{ color: T.text.muted }}>/  Command</span>
           <span style={{ color: T.text.muted }}>·</span>
