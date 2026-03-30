@@ -1,14 +1,5 @@
-import React, { useEffect } from 'react';
-import { BT, terminalStyles } from '../../theme';
-import { useCommentaryStore } from '../../../../stores/commentaryStore';
-import {
-  MarketNarrative,
-  InvestmentThesis,
-  RiskOpportunity,
-  PeerContext,
-  SupplyNarrative,
-  StrategyScoreBadge,
-} from '../../commentary';
+import React from 'react';
+import { BT } from '../../theme';
 
 interface MSAOverviewTabProps {
   msaId: string;
@@ -41,13 +32,6 @@ function OvChart({ data, color = BT.text.green, h = 80 }: { data: number[]; colo
       <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
     </svg>
   );
-}
-function ThresholdVal({ value, thresholds, invert }: { value: string; thresholds: number[]; invert?: boolean }) {
-  const n = parseFloat(value);
-  let c: string;
-  if (invert) c = n <= thresholds[0] ? BT.text.green : n <= thresholds[1] ? BT.text.amber : BT.text.red;
-  else c = n >= thresholds[0] ? BT.text.green : n >= thresholds[1] ? BT.text.amber : BT.text.red;
-  return <span style={{ fontSize: 10, fontWeight: 600, color: c, ...mono }}>{value}</span>;
 }
 
 const NEWS_STORIES = [
@@ -90,14 +74,6 @@ const MSA_METRICS = {
   cycle: "EXPANSION", cycleMonth: 38,
 };
 
-const TOP_SUBMARKETS = [
-  { name: "Midtown", jedi: 88, rent: "$2,056", rentD: "+4.8%", vac: "5.1%", pipe: "12.4%", opp: 82, cap: "4.8%", isSub: false },
-  { name: "Buckhead", jedi: 84, rent: "$1,883", rentD: "+2.1%", vac: "6.2%", pipe: "8.8%", opp: 78, cap: "5.0%" },
-  { name: "Sandy Springs", jedi: 81, rent: "$1,920", rentD: "+3.4%", vac: "5.8%", pipe: "10.2%", opp: 74, cap: "5.2%" },
-  { name: "Decatur", jedi: 83, rent: "$1,890", rentD: "+3.8%", vac: "4.8%", pipe: "5.4%", opp: 84, cap: "5.0%" },
-  { name: "West End", jedi: 79, rent: "$1,977", rentD: "+5.2%", vac: "6.8%", pipe: "6.2%", opp: 86, cap: "5.4%" },
-  { name: "Downtown", jedi: 76, rent: "$1,542", rentD: "+2.8%", vac: "7.2%", pipe: "14.8%", opp: 68, cap: "5.6%" },
-];
 
 export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
@@ -105,14 +81,6 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
   const jediScore = msa?.healthScore || MSA_METRICS.jedi;
   const props = msa?.totalProperties || 1028;
   const units = msa?.totalUnits?.toLocaleString() || "250,412";
-
-  const { fetchCommentary, getCommentary, isLoading } = useCommentaryStore();
-  const commentary = getCommentary('msa', msaId);
-  const loading = isLoading('msa', msaId);
-
-  useEffect(() => {
-    fetchCommentary('msa', msaId, msaName);
-  }, [msaId, msaName]);
 
   const M = MSA_METRICS;
 
@@ -306,108 +274,6 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
             <span style={{ fontSize: 8, color: BT.text.green, ...mono }}>Wtd. Growth: +4.8%</span>
           </div>
         </div>
-      </div>
-
-      {/* PEER COMPARISON — TOP SUBMARKETS */}
-      <div style={{ background: BT.bg.panel }}>
-        <div style={{ padding: "6px 12px", borderBottom: `1px solid ${BT.border.subtle}` }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: BT.text.muted, ...mono }}>PEER COMPARISON · SUBMARKETS IN MSA</span>
-        </div>
-        <div style={{ display: "flex", background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
-          {[{ l: "Submarket", w: 110 },{ l: "JEDI", w: 44 },{ l: "Rent", w: 60 },{ l: "Rent Δ", w: 48 },{ l: "Vac", w: 44 },{ l: "Pipe %", w: 48 },{ l: "Opp", w: 40 },{ l: "Cap", w: 40 }].map((c,i) => (
-            <div key={i} style={{ width: c.w, minWidth: c.w, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: BT.text.muted, letterSpacing: 0.5, borderRight: `1px solid ${BT.border.subtle}`, ...mono }}>{c.l}</div>
-          ))}
-        </div>
-        {TOP_SUBMARKETS.map((c,i) => (
-          <div key={i} style={{ display: "flex", background: i === 0 ? BT.text.amber + "0A" : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: i === 0 ? `2px solid ${BT.text.amber}` : "2px solid transparent", cursor: "pointer" }}
-            onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
-            onMouseLeave={e => (e.currentTarget.style.background = i === 0 ? BT.text.amber + "0A" : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt)}>
-            <div style={{ width: 110, minWidth: 110, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}>
-              <span style={{ fontSize: 9, fontWeight: i === 0 ? 700 : 500, color: i === 0 ? BT.text.amber : BT.text.primary, ...sans }}>{c.name}</span>
-            </div>
-            <div style={{ width: 44, minWidth: 44, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}><OvScore value={c.jedi} /></div>
-            <div style={{ width: 60, minWidth: 60, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}><span style={{ fontSize: 10, fontWeight: 600, color: BT.text.primary, ...mono }}>{c.rent}</span></div>
-            <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}><OvDelta value={c.rentD} /></div>
-            <div style={{ width: 44, minWidth: 44, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}><ThresholdVal value={c.vac} thresholds={[5,8]} invert /></div>
-            <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}><ThresholdVal value={c.pipe} thresholds={[8,12]} invert /></div>
-            <div style={{ width: 40, minWidth: 40, padding: "4px 6px", borderRight: `1px solid ${BT.border.subtle}` }}><OvScore value={c.opp || 0} size={9} /></div>
-            <div style={{ width: 40, minWidth: 40, padding: "4px 6px" }}><span style={{ fontSize: 9, color: BT.text.secondary, ...mono }}>{c.cap}</span></div>
-          </div>
-        ))}
-      </div>
-
-      {/* AI COMMENTARY */}
-      {loading && (
-        <div style={{ ...terminalStyles.card, padding: 16, textAlign: 'center' }}>
-          <span style={{ fontSize: 11, color: BT.text.muted }}>Generating market intelligence...</span>
-        </div>
-      )}
-      {!loading && !commentary && (
-        <div style={{ background: BT.bg.panel, padding: 16 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${BT.text.amber}44`, paddingBottom: 4, marginBottom: 8, ...mono }}>Market Narrative</div>
-          <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: '0 0 8px 0' }}>
-            {msaName}'s multifamily market continues to demonstrate resilient fundamentals despite
-            elevated supply pipeline. Demand drivers remain strong with {msa?.populationGrowth || 1.8}%
-            population growth and a favorable {msa?.employmentGrowth || 2.4}% employment trajectory.
-          </p>
-          <p style={{ fontSize: 11, color: BT.text.secondary, lineHeight: 1.6, margin: 0 }}>
-            Near-term supply pressure from {(msa?.pipelineUnits || 18400).toLocaleString()} units
-            delivering in H2 2026 warrants selective positioning in core submarkets with
-            established demand profiles.
-          </p>
-          <div style={{ marginTop: 12, padding: '6px 8px', background: `${BT.text.amber}14`, border: `1px solid ${BT.text.amber}44`, borderRadius: 3, textAlign: 'center', fontSize: 11, fontWeight: 700, color: BT.text.amber, ...mono }}>
-            SELECTIVE BUY
-          </div>
-        </div>
-      )}
-      {commentary && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 1 }}>
-          <div style={{ background: BT.bg.panel, padding: 16 }}>
-            <MarketNarrative narrative={commentary.marketNarrative} />
-            {commentary.investmentThesis && (
-              <div style={{ marginTop: 12 }}>
-                <InvestmentThesis
-                  recommendation={commentary.investmentThesis.recommendation}
-                  points={commentary.investmentThesis.points}
-                  compact
-                />
-              </div>
-            )}
-          </div>
-          <div style={{ background: BT.bg.panel, padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, ...mono }}>STRATEGY SCORE</div>
-              <StrategyScoreBadge
-                score={commentary.jediScore}
-                delta={commentary.arbitrageDelta}
-                size="lg"
-              />
-              <div style={{ fontSize: 10, color: BT.text.muted, ...mono, marginTop: 4 }}>
-                {commentary.recommendedStrategy?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
-              </div>
-            </div>
-            <RiskOpportunity
-              risks={commentary.riskOpportunity.risks}
-              opportunities={commentary.riskOpportunity.opportunities}
-              compact
-            />
-            <PeerContext
-              summary={commentary.peerContext.summary}
-              peerRank={commentary.peerContext.peerRank}
-              peerTotal={commentary.peerContext.peerTotal}
-              topPeers={commentary.peerContext.topPeers}
-              currentScore={commentary.jediScore}
-              compact
-            />
-            <SupplyNarrative narrative={commentary.supplyNarrative} compact />
-          </div>
-        </div>
-      )}
-
-      {/* FOOTER */}
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 12px", background: BT.bg.header }}>
-        <span style={{ fontSize: 8, color: BT.text.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
-        <span style={{ fontSize: 8, color: BT.text.muted, ...mono }}>JediRE Market Intelligence</span>
       </div>
     </div>
   );
