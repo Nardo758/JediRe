@@ -1623,17 +1623,37 @@ export class CorrelationEngineService {
   ): Promise<MetricRecommendation[] | null> {
     try {
       const cacheKey = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+      const geoTypes = marketGeoIds.map(g => g.geoType);
+      const geoIds = marketGeoIds.map(g => g.geoId);
+
       const res = await this.pool.query(
-        `SELECT recommendations FROM metric_recommendations
-         WHERE user_id = $1 AND geography_type = 'batch' AND geography_id = $2
-           AND expires_at > NOW()
-         ORDER BY computed_at DESC LIMIT 1`,
+        `SELECT mr.recommendations, mr.computed_at as cache_computed_at
+         FROM metric_recommendations mr
+         WHERE mr.user_id = $1 AND mr.geography_type = 'batch' AND mr.geography_id = $2
+           AND mr.expires_at > NOW()
+         ORDER BY mr.computed_at DESC LIMIT 1`,
         [userId, cacheKey]
       );
-      if (res.rows.length > 0) {
-        return res.rows[0].recommendations as MetricRecommendation[];
+      if (res.rows.length === 0) return null;
+
+      const cacheTime = new Date(res.rows[0].cache_computed_at);
+
+      const freshRes = await this.pool.query(
+        `SELECT MAX(computed_at) as newest_corr
+         FROM metric_correlations
+         WHERE (geography_type, geography_id) IN (
+           SELECT unnest($1::text[]), unnest($2::text[])
+         )`,
+        [geoTypes, geoIds]
+      );
+      if (freshRes.rows[0]?.newest_corr) {
+        const newestCorr = new Date(freshRes.rows[0].newest_corr);
+        if (newestCorr > cacheTime) {
+          return null;
+        }
       }
-      return null;
+
+      return res.rows[0].recommendations as MetricRecommendation[];
     } catch {
       return null;
     }

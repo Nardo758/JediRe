@@ -287,8 +287,18 @@ export default function F4MarketsView() {
     });
   }, [ALL_MARKETS_RESOLVED]);
 
+  const trackedGeoIds = useMemo(() => {
+    const starred = ALL_MARKETS_RESOLVED.filter(m => m.starred);
+    if (starred.length === 0) return marketGeoIds;
+    return starred.map(m => {
+      const slug = m.id.replace(/-[a-z]{2}$/, "");
+      const state = (m.msa.split(", ").pop() || "FL").toLowerCase();
+      return { geoType: "metro", geoId: `${slug}-${state}-${state}` };
+    });
+  }, [ALL_MARKETS_RESOLVED, marketGeoIds]);
+
   const { correlationMap: columnCorrelations, staleCount: corrStaleCount, totalCount: corrTotalCount } = useColumnCorrelations(marketGeoIds);
-  const { recommendations: metricRecs, loading: recsLoading } = useMetricRecommendations(marketGeoIds);
+  const { recommendations: metricRecs, loading: recsLoading } = useMetricRecommendations(trackedGeoIds);
   const [recsCollapsed, setRecsCollapsed] = useState(false);
 
   const dashCols = useColumnPreferences("f4_dashboard");

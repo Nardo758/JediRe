@@ -184,13 +184,51 @@ export class AgentDelegator {
     const startTime = Date.now();
     try {
       const agent = new MetricRecommendationAgent();
+      let marketGeoIds: Array<{ geoType: string; geoId: string }> = [];
+
       const city = (params.city as string) || '';
       const stateCode = ((params.stateCode as string) || '').toLowerCase();
-      const marketGeoIds: Array<{ geoType: string; geoId: string }> = [];
-
       if (city && stateCode) {
         const slug = city.toLowerCase().replace(/\s+/g, '-');
         marketGeoIds.push({ geoType: 'metro', geoId: `${slug}-${stateCode}-${stateCode}` });
+      }
+
+      if (marketGeoIds.length === 0) {
+        try {
+          const { getPool } = await import('../../database');
+          const pool = getPool();
+          const prefRes = await pool.query(
+            `SELECT am.slug, am.state
+             FROM user_market_preferences ump
+             JOIN available_markets am ON am.id = ump.market_id
+             WHERE ump.user_id = $1 AND ump.is_tracked = true`,
+            [userId]
+          );
+          if (prefRes.rows.length > 0) {
+            marketGeoIds = prefRes.rows.map((r: any) => ({
+              geoType: 'metro',
+              geoId: `${r.slug}-${(r.state || '').toLowerCase()}-${(r.state || '').toLowerCase()}`
+            }));
+          }
+        } catch (dbErr) {
+          logger.warn('Could not fetch tracked markets for recommendations:', dbErr);
+        }
+      }
+
+      if (marketGeoIds.length === 0) {
+        try {
+          const { getPool } = await import('../../database');
+          const pool = getPool();
+          const geoRes = await pool.query(
+            `SELECT DISTINCT geography_type, geography_id FROM metric_correlations LIMIT 20`
+          );
+          marketGeoIds = geoRes.rows.map((r: any) => ({
+            geoType: r.geography_type,
+            geoId: r.geography_id
+          }));
+        } catch {
+          // no-op
+        }
       }
 
       const result = await agent.execute({ marketGeoIds, topN: 5 }, userId);
