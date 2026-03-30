@@ -1738,7 +1738,8 @@ export class CorrelationEngineService {
          FROM metric_correlations
          WHERE (geography_type, geography_id) IN (
            SELECT unnest($1::text[]), unnest($2::text[])
-         )`,
+         )
+         OR (geography_type = ANY($1) AND geography_id NOT IN (SELECT unnest($2::text[])))`,
         [geoTypes, geoIds]
       );
       if (freshRes.rows[0]?.newest_corr) {

@@ -159,7 +159,20 @@ export function useMetricRecommendations(
         topN,
       });
       if (res.data?.success) {
-        setRecommendations(res.data.data);
+        const byMarket = res.data.byMarket as Record<string, MetricRecommendation[]> | undefined;
+        if (byMarket && Object.keys(byMarket).length > 1) {
+          const markets = Object.values(byMarket);
+          const interleaved: MetricRecommendation[] = [];
+          const maxLen = Math.max(...markets.map(m => m.length));
+          for (let i = 0; i < maxLen; i++) {
+            for (const recs of markets) {
+              if (i < recs.length) interleaved.push(recs[i]);
+            }
+          }
+          setRecommendations(interleaved);
+        } else {
+          setRecommendations(res.data.data);
+        }
       }
     } catch {
       setRecommendations([]);
