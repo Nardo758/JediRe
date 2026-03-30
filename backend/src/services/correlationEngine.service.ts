@@ -404,6 +404,127 @@ export class CorrelationEngineService {
     }
   }
 
+  async getTopCorrelations(
+    geographyType: string,
+    geographyId: string,
+    targetMetric?: string,
+    limit: number = 10,
+    minAbsR: number = 0.5
+  ): Promise<MetricCorrelation[]> {
+    try {
+      let query: string;
+      let params: (string | number)[];
+
+      if (targetMetric) {
+        query = `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                        correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id = $2
+                   AND (metric_a = $3 OR metric_b = $3)
+                   AND ABS(correlation_r) >= $4
+                 ORDER BY ABS(correlation_r) DESC
+                 LIMIT $5`;
+        params = [geographyType, geographyId, targetMetric, minAbsR, limit];
+      } else {
+        query = `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                        correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id = $2
+                   AND ABS(correlation_r) >= $3
+                 ORDER BY ABS(correlation_r) DESC
+                 LIMIT $4`;
+        params = [geographyType, geographyId, minAbsR, limit];
+      }
+
+      const result = await this.pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      logger.error(`Error retrieving top correlations: ${String(error)}`);
+      return [];
+    }
+  }
+
+  async getBatchCorrelations(
+    queries: Array<{ geographyType: string; geographyId: string }>
+  ): Promise<Record<string, MetricCorrelation[]>> {
+    const results: Record<string, MetricCorrelation[]> = {};
+    for (const q of queries) {
+      const key = `${q.geographyType}:${q.geographyId}`;
+      results[key] = await this.getCorrelations(q.geographyType, q.geographyId);
+    }
+    return results;
+  }
+
+  async getFreshness(): Promise<Array<{
+    geography_type: string;
+    geography_id: string;
+    correlation_count: number;
+    oldest_computed_at: string;
+    newest_computed_at: string;
+    avg_abs_r: number;
+    stale: boolean;
+  }>> {
+    try {
+      const result = await this.pool.query(
+        `SELECT geography_type, geography_id,
+                COUNT(*)::int as correlation_count,
+                MIN(computed_at) as oldest_computed_at,
+                MAX(computed_at) as newest_computed_at,
+                ROUND(AVG(ABS(correlation_r))::numeric, 4) as avg_abs_r
+         FROM metric_correlations
+         GROUP BY geography_type, geography_id
+         ORDER BY MAX(computed_at) ASC`
+      );
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return result.rows.map((row: Record<string, unknown>) => ({
+        geography_type: row.geography_type as string,
+        geography_id: row.geography_id as string,
+        correlation_count: row.correlation_count as number,
+        oldest_computed_at: String(row.oldest_computed_at),
+        newest_computed_at: String(row.newest_computed_at),
+        avg_abs_r: parseFloat(String(row.avg_abs_r)),
+        stale: new Date(String(row.newest_computed_at)) < sevenDaysAgo,
+      }));
+    } catch (error) {
+      logger.error(`Error retrieving freshness: ${String(error)}`);
+      return [];
+    }
+  }
+
+  async sweepAllGeographies(): Promise<{ processed: number; failed: number }> {
+    let processed = 0;
+    let failed = 0;
+
+    try {
+      const geoRes = await this.pool.query(
+        `SELECT DISTINCT geography_type, geography_id
+         FROM metric_time_series
+         ORDER BY geography_type, geography_id`
+      );
+
+      logger.info(`[CorrelationSweep] Starting sweep across ${geoRes.rows.length} geographies`);
+
+      for (const row of geoRes.rows) {
+        const geoType = row.geography_type as string;
+        const geoId = row.geography_id as string;
+        try {
+          await this.computeTimeSeriesCorrelations(geoType, geoId);
+          processed++;
+        } catch (err) {
+          logger.error(`[CorrelationSweep] Failed for ${geoType}:${geoId}: ${String(err)}`);
+          failed++;
+        }
+      }
+
+      logger.info(`[CorrelationSweep] Complete: ${processed} processed, ${failed} failed`);
+      return { processed, failed };
+    } catch (error) {
+      logger.error(`[CorrelationSweep] Fatal error: ${String(error)}`);
+      throw error;
+    }
+  }
+
   private async getLatestSnapshot(city: string, state: string): Promise<MarketSnapshot | null> {
     try {
       const result = await this.pool.query(

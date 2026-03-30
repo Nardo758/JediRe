@@ -121,6 +121,63 @@ router.post('/admin/correlations/compute', requireAdminApiKey, async (req: Reque
   }
 });
 
+router.get('/top', async (req: Request, res: Response) => {
+  try {
+    const geoType = req.query.geoType as string;
+    const geoId = req.query.geoId as string;
+    const targetMetric = req.query.targetMetric as string | undefined;
+    const limit = parseInt(req.query.limit as string) || 10;
+    const minAbsR = parseFloat(req.query.minAbsR as string) || 0.5;
+
+    if (!geoType || !geoId) {
+      return res.status(400).json({ success: false, error: 'geoType and geoId are required' });
+    }
+
+    const correlations = await engine.getTopCorrelations(geoType, geoId, targetMetric, limit, minAbsR);
+    res.json({ success: true, count: correlations.length, data: correlations });
+  } catch (error: any) {
+    console.error('Top correlations error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/batch', async (req: Request, res: Response) => {
+  try {
+    const { queries } = req.body;
+    if (!Array.isArray(queries) || queries.length === 0) {
+      return res.status(400).json({ success: false, error: 'queries array is required' });
+    }
+    if (queries.length > 50) {
+      return res.status(400).json({ success: false, error: 'Maximum 50 queries per batch' });
+    }
+
+    const results = await engine.getBatchCorrelations(queries);
+    res.json({ success: true, data: results });
+  } catch (error: any) {
+    console.error('Batch correlations error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/freshness', async (_req: Request, res: Response) => {
+  try {
+    const freshness = await engine.getFreshness();
+    const totalStale = freshness.filter(f => f.stale).length;
+    res.json({
+      success: true,
+      summary: {
+        total_geographies: freshness.length,
+        stale: totalStale,
+        fresh: freshness.length - totalStale,
+      },
+      data: freshness,
+    });
+  } catch (error: any) {
+    console.error('Freshness error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Public endpoint: Get pre-computed correlations for a geography
 router.get('/:geographyType/:geographyId', async (req: Request, res: Response) => {
   try {

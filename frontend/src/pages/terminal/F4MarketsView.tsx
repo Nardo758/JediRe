@@ -9,6 +9,7 @@ import { useColumnPreferences } from "../../hooks/useColumnPreferences";
 import { ColumnPicker } from "../../components/terminal/ColumnPicker";
 import { ViewId, getColumnById } from "../../config/columnRegistry";
 import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
+import { useColumnCorrelations } from "../../hooks/useCorrelations";
 
 /**
  * F4 Markets View - Refactored
@@ -275,6 +276,17 @@ export default function F4MarketsView() {
   const marketsEmpty = ALL_MARKETS_RESOLVED.length === 0;
   const subEmpty = SUBMARKET_RESOLVED.length === 0;
   const propEmpty = PROPERTY_RESOLVED.length === 0;
+
+  const activeGeoId = useMemo(() => {
+    if (ALL_MARKETS_RESOLVED.length > 0) {
+      const first = ALL_MARKETS_RESOLVED[0];
+      const slug = first.id.replace(/-[a-z]{2}$/, "");
+      return `${slug}-${first.msa.split(", ").pop()?.toLowerCase() || "fl"}-${first.msa.split(", ").pop()?.toLowerCase() || "fl"}`;
+    }
+    return "tampa-fl-fl";
+  }, [ALL_MARKETS_RESOLVED]);
+
+  const columnCorrelations = useColumnCorrelations("metro", activeGeoId);
 
   const dashCols = useColumnPreferences("f4_dashboard");
   const browseCols = useColumnPreferences("f4_browse");
@@ -576,13 +588,29 @@ export default function F4MarketsView() {
               const label = def?.label || colId.toUpperCase();
               const w = def?.width || 50;
               const sortKey = sortableMap[colId];
+              const corrInfo = columnCorrelations[colId];
               return (
                 <th
                   key={colId}
                   style={{ ...hdrCell, width: w, textAlign: colId === "msa" ? "left" : "center", color: colId === "jedi" ? C.amber : undefined }}
                   onClick={sortKey ? () => handleSort(sortKey) : undefined}
+                  title={corrInfo?.isStrong && corrInfo.topCorrelation
+                    ? `r=${corrInfo.topCorrelation.correlation_r.toFixed(2)} with ${corrInfo.topCorrelation.metric_a === corrInfo.metricId ? corrInfo.topCorrelation.metric_b : corrInfo.topCorrelation.metric_a}${corrInfo.topCorrelation.lead_lag_months ? ` (${corrInfo.topCorrelation.lead_lag_months}mo lag)` : ""}`
+                    : def?.description}
                 >
-                  {label} {sortKey && sortCol === sortKey && (sortDir === "desc" ? "▼" : "▲")}
+                  {label}
+                  {corrInfo?.isStrong && (
+                    <span style={{
+                      ...mono, fontSize: 7, fontWeight: 700, marginLeft: 2,
+                      color: corrInfo.topCorrelation!.correlation_r > 0 ? C.green : C.red,
+                      background: (corrInfo.topCorrelation!.correlation_r > 0 ? C.green : C.red) + "18",
+                      border: `1px solid ${(corrInfo.topCorrelation!.correlation_r > 0 ? C.green : C.red)}33`,
+                      padding: "0px 3px", borderRadius: 2, verticalAlign: "super",
+                    }}>
+                      r{corrInfo.topCorrelation!.correlation_r > 0 ? "+" : ""}{corrInfo.topCorrelation!.correlation_r.toFixed(1)}
+                    </span>
+                  )}
+                  {" "}{sortKey && sortCol === sortKey && (sortDir === "desc" ? "▼" : "▲")}
                 </th>
               );
             })}
