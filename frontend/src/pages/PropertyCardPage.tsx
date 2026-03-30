@@ -1493,6 +1493,9 @@ export default function PropertyDetailsPage() {
           <PatternBadge pattern={td.outputs.t07_pattern} />
         </div>
 
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
           <SectionHeader title="MARKET & PERFORMANCE — INDEXED" subtitle="Base 100 = 2018 · Property + Trade Area + Submarket + MSA" icon="◈" borderColor={T.text.amber}
             action={<span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>4 GEO LEVELS × CORRELATION ENGINE</span>} />
@@ -1523,38 +1526,6 @@ export default function PropertyDetailsPage() {
           </div>
           <div style={{ height: 340, padding: "0 4px" }}>
             <MPChart />
-          </div>
-        </div>
-
-        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="5-YEAR OUTLOOK" subtitle="Forecast 2025 → 2030 · Powered by Correlation Engine" icon="◎" borderColor={T.text.green} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {fiveYearOutlook.map((o, oi) => {
-              const family = o.metricFamily;
-              const hi = isHi(family);
-              return (
-                <div key={oi} onClick={() => handleMetricClick(family)} onDoubleClick={() => handleMetricDblClick(family)}
-                  style={{
-                    padding: "8px 10px", borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer",
-                    background: hi ? `${T.text.amber}10` : "transparent", borderLeft: hi ? `3px solid ${T.text.amber}` : "3px solid transparent",
-                    transition: "all 0.15s",
-                  }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary }}>{o.metric}</span>
-                    <span style={{ fontSize: 8, fontFamily: T.font.mono, color: o.direction === "up" ? T.text.green : o.direction === "down" ? T.text.red : T.text.amber }}>
-                      {o.direction === "up" ? "▲" : o.direction === "down" ? "▼" : "►"} {o.delta5yr}
-                    </span>
-                    <div style={{ flex: 1 }} />
-                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>NOW {o.current}</span>
-                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan }}>1Y {o.yr1}</span>
-                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan }}>3Y {o.yr3}</span>
-                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan, fontWeight: 600 }}>5Y {o.yr5}</span>
-                  </div>
-                  <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>{o.narrative}</div>
-                  <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, marginTop: 2 }}>SIGNAL: {o.signal}</div>
-                </div>
-              );
-            })}
           </div>
         </div>
 
@@ -1727,26 +1698,66 @@ export default function PropertyDetailsPage() {
           })()}
         </div>
 
+        </div>
+
+        <div style={{ width: 320, minWidth: 320, display: "flex", flexDirection: "column", gap: 8 }}>
+
         <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
-          <SectionHeader title="CORRELATION ENGINE" subtitle={`Top ${topCorrelations.length} Cross-Signal Correlations`} icon="⊕" borderColor={T.text.purple} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 0 }}>
+          <SectionHeader title="5-YEAR OUTLOOK" subtitle="2025 → 2030 · Correlation Engine" icon="◎" borderColor={T.text.green} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {fiveYearOutlook.map((o, oi) => {
+              const family = o.metricFamily;
+              const hi = isHi(family);
+              return (
+                <div key={oi} onClick={() => handleMetricClick(family)} onDoubleClick={() => handleMetricDblClick(family)}
+                  style={{
+                    padding: "6px 8px", borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer",
+                    background: hi ? `${T.text.amber}10` : "transparent", borderLeft: hi ? `3px solid ${T.text.amber}` : "3px solid transparent",
+                    transition: "all 0.15s",
+                  }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 3 }}>
+                    <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary }}>{o.metric}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: o.direction === "up" ? T.text.green : o.direction === "down" ? T.text.red : T.text.amber }}>
+                      {o.direction === "up" ? "▲" : o.direction === "down" ? "▼" : "►"} {o.delta5yr}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>NOW {o.current}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan }}>1Y {o.yr1}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan }}>3Y {o.yr3}</span>
+                    <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.cyan, fontWeight: 600 }}>5Y {o.yr5}</span>
+                  </div>
+                  <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>{o.narrative}</div>
+                  <div style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, marginTop: 2 }}>SIGNAL: {o.signal}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="CORRELATION ENGINE" subtitle={`Top ${topCorrelations.length} Correlations`} icon="⊕" borderColor={T.text.purple} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {topCorrelations.map((c, ci) => (
               <div key={ci} style={{
-                padding: "6px 10px", borderBottom: `1px solid ${T.border.subtle}`,
-                borderRight: `1px solid ${T.border.subtle}`, background: ci === 0 ? `${T.text.green}06` : "transparent",
+                padding: "6px 8px", borderBottom: `1px solid ${T.border.subtle}`,
+                background: ci === 0 ? `${T.text.green}06` : "transparent",
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
-                  <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary }}>{c.metricA} → {c.metricB}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                  <span style={{ fontSize: 8, fontFamily: T.font.mono, fontWeight: 700, color: T.text.primary }}>{c.metricA} → {c.metricB}</span>
                   <div style={{ flex: 1 }} />
                   <Badge color={Math.abs(c.r) >= 0.7 ? T.text.green : Math.abs(c.r) >= 0.5 ? T.text.amber : T.text.red}
                     bg={Math.abs(c.r) >= 0.7 ? `${T.text.green}15` : `${T.text.amber}15`}>
                     r={c.r} · {c.strength}
                   </Badge>
                 </div>
-                <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.5 }}>{c.narrative}</div>
+                <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.secondary, lineHeight: 1.4 }}>{c.narrative}</div>
               </div>
             ))}
           </div>
+        </div>
+
+        </div>
         </div>
       </div>
     );
