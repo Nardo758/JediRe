@@ -1475,8 +1475,15 @@ export class CorrelationEngineService {
         const isTracked = !row.is_cross_geo;
 
         for (const metric of metrics) {
-          const perMarketKeys = isTracked ? [`${metric}::${rowGeoId}`] : [];
           const globalKey = metric;
+          const perMarketKeys: string[] = [];
+          if (isTracked) {
+            perMarketKeys.push(`${metric}::${rowGeoId}`);
+          } else {
+            for (const gId of geoIds) {
+              perMarketKeys.push(`${metric}::${gId}`);
+            }
+          }
           const keysToScore = [globalKey, ...perMarketKeys];
 
           for (const key of keysToScore) {
@@ -1590,7 +1597,7 @@ export class CorrelationEngineService {
           byGeo.get(geoId)!.push([key, entry]);
         }
 
-        for (const [, entries] of byGeo) {
+        for (const [geoId, entries] of byGeo) {
           const sorted = entries
             .map(([key, entry]) => {
               const baseMetric = key.split('::')[0];
@@ -1601,6 +1608,7 @@ export class CorrelationEngineService {
                 score: entry.totalScore / Math.max(entry.appearances, 1),
                 crossGeoCount,
                 ...entry,
+                bestGeo: geoId,
               };
             })
             .sort((a, b) => b.score - a.score)

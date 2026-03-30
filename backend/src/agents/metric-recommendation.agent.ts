@@ -35,11 +35,7 @@ export class MetricRecommendationAgent {
       };
     } catch (error: any) {
       logger.error('MetricRecommendationAgent error:', error);
-      return {
-        success: false,
-        error: error.message,
-        recommendations: [],
-      };
+      throw error;
     }
   }
 }
