@@ -203,6 +203,9 @@ router.post('/recommendations', async (req: Request, res: Response) => {
         byMarket[rec.geographyId].push(rec);
       }
     }
+    for (const geoId of Object.keys(byMarket)) {
+      byMarket[geoId] = byMarket[geoId].map((rec, idx) => ({ ...rec, rank: idx + 1 }));
+    }
 
     res.json({ success: true, count: allRecs.length, data: allRecs, byMarket });
   } catch (error: any) {

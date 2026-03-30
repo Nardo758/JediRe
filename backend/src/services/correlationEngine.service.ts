@@ -1380,7 +1380,7 @@ export class CorrelationEngineService {
 
     try {
       if (userId) {
-        const cached = await this.getCachedRecommendations(userId, marketGeoIds);
+        const cached = await this.getCachedRecommendations(userId, marketGeoIds, topN);
         if (cached) return cached;
       }
 
@@ -1696,7 +1696,7 @@ export class CorrelationEngineService {
       });
 
       if (userId && recommendations.length > 0) {
-        await this.cacheRecommendations(userId, marketGeoIds, recommendations);
+        await this.cacheRecommendations(userId, marketGeoIds, recommendations, topN);
       }
 
       return recommendations;
@@ -1706,17 +1706,18 @@ export class CorrelationEngineService {
     }
   }
 
-  private batchCacheKey(marketGeoIds: Array<{ geoType: string; geoId: string }>): string {
-    const raw = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+  private batchCacheKey(marketGeoIds: Array<{ geoType: string; geoId: string }>, topN: number = 5): string {
+    const raw = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',') + `|topN=${topN}`;
     return createHash('sha256').update(raw).digest('hex').slice(0, 64);
   }
 
   private async getCachedRecommendations(
     userId: string,
-    marketGeoIds: Array<{ geoType: string; geoId: string }>
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    topN: number = 5
   ): Promise<MetricRecommendation[] | null> {
     try {
-      const cacheKey = this.batchCacheKey(marketGeoIds);
+      const cacheKey = this.batchCacheKey(marketGeoIds, topN);
       const geoTypes = marketGeoIds.map(g => g.geoType);
       const geoIds = marketGeoIds.map(g => g.geoId);
 
@@ -1756,10 +1757,11 @@ export class CorrelationEngineService {
   private async cacheRecommendations(
     userId: string,
     marketGeoIds: Array<{ geoType: string; geoId: string }>,
-    recommendations: MetricRecommendation[]
+    recommendations: MetricRecommendation[],
+    topN: number = 5
   ): Promise<void> {
     try {
-      const cacheKey = this.batchCacheKey(marketGeoIds);
+      const cacheKey = this.batchCacheKey(marketGeoIds, topN);
       await this.pool.query(
         `INSERT INTO metric_recommendations (user_id, geography_type, geography_id, recommendations, computed_at, expires_at)
          VALUES ($1, 'batch', $2, $3, NOW(), NOW() + INTERVAL '7 days')
