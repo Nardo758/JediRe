@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
 
 export interface CorrelationResult {
@@ -1468,74 +1469,82 @@ export class CorrelationEngineService {
         T_AADT_YOY: 'dApt',
       };
 
+      const trackedGeoSet = new Set(geoIds);
+
       for (const row of corrRes.rows) {
         const metrics = [row.metric_a, row.metric_b];
+        const rowGeoId = row.geography_id;
+        const isTracked = !row.is_cross_geo;
+
         for (const metric of metrics) {
-          if (!metricScores.has(metric)) {
-            metricScores.set(metric, {
-              totalScore: 0,
-              appearances: 0,
-              bestR: 0,
-              bestLag: 0,
-              bestPair: '',
-              bestGeo: '',
-              geoCount: 0,
-              geos: new Set(),
-              trendDirection: 'stable',
-              trendMagnitude: 0,
-            });
-          }
+          const perMarketKeys = isTracked ? [`${metric}::${rowGeoId}`] : [];
+          const globalKey = metric;
+          const keysToScore = [globalKey, ...perMarketKeys];
 
-          const entry = metricScores.get(metric)!;
-          const absR = Math.abs(parseFloat(row.correlation_r));
-          const pVal = row.p_value ? parseFloat(row.p_value) : 1;
-          const sampleSize = parseInt(row.sample_size);
-          const age = (Date.now() - new Date(row.computed_at).getTime()) / (1000 * 60 * 60 * 24);
-          const crossGeoDiscount = row.is_cross_geo ? 0.4 : 1.0;
+          for (const key of keysToScore) {
+            if (!metricScores.has(key)) {
+              metricScores.set(key, {
+                totalScore: 0,
+                appearances: 0,
+                bestR: 0,
+                bestLag: 0,
+                bestPair: '',
+                bestGeo: '',
+                geoCount: 0,
+                geos: new Set(),
+                trendDirection: 'stable',
+                trendMagnitude: 0,
+              });
+            }
 
-          let score = absR * 40 * crossGeoDiscount;
-          if (pVal < 0.01) score += 20;
-          else if (pVal < 0.05) score += 15;
-          else if (pVal < 0.1) score += 10;
+            const entry = metricScores.get(key)!;
+            const absR = Math.abs(parseFloat(row.correlation_r));
+            const pVal = row.p_value ? parseFloat(row.p_value) : 1;
+            const sampleSize = parseInt(row.sample_size);
+            const age = (Date.now() - new Date(row.computed_at).getTime()) / (1000 * 60 * 60 * 24);
+            const crossGeoDiscount = isTracked ? 1.0 : 0.4;
 
-          if (sampleSize >= 36) score += 10;
-          else if (sampleSize >= 24) score += 5;
+            let score = absR * 40 * crossGeoDiscount;
+            if (pVal < 0.01) score += 20;
+            else if (pVal < 0.05) score += 15;
+            else if (pVal < 0.1) score += 10;
 
-          if (age <= 7) score += 10;
-          else if (age <= 14) score += 5;
+            if (sampleSize >= 36) score += 10;
+            else if (sampleSize >= 24) score += 5;
 
-          if (row.lead_lag_months && Math.abs(parseInt(row.lead_lag_months)) > 0) {
-            score += 5;
-          }
+            if (age <= 7) score += 10;
+            else if (age <= 14) score += 5;
 
-          entry.totalScore += score;
-          entry.appearances++;
-          entry.geos.add(`${row.geography_type}:${row.geography_id}`);
+            if (row.lead_lag_months && Math.abs(parseInt(row.lead_lag_months)) > 0) {
+              score += 5;
+            }
 
-          const isTracked = !row.is_cross_geo;
-          const currentBestIsTracked = geoIds.includes(entry.bestGeo);
-          const shouldUpdate = (isTracked && !currentBestIsTracked) ||
-            (isTracked === currentBestIsTracked && absR > Math.abs(entry.bestR));
-          if (shouldUpdate || entry.bestR === 0) {
-            entry.bestR = parseFloat(row.correlation_r);
-            const rawLag = parseInt(row.lead_lag_months) || 0;
-            entry.bestLag = metric === row.metric_a ? rawLag : -rawLag;
-            entry.bestPair = metrics.find(m => m !== metric) || '';
-            entry.bestGeo = row.geography_id;
+            entry.totalScore += score;
+            entry.appearances++;
+            entry.geos.add(`${row.geography_type}:${rowGeoId}`);
+
+            if (absR > Math.abs(entry.bestR) || entry.bestR === 0) {
+              entry.bestR = parseFloat(row.correlation_r);
+              const rawLag = parseInt(row.lead_lag_months) || 0;
+              entry.bestLag = metric === row.metric_a ? rawLag : -rawLag;
+              entry.bestPair = metrics.find(m => m !== metric) || '';
+              entry.bestGeo = rowGeoId;
+            }
           }
         }
       }
 
-      for (const [metric, entry] of metricScores) {
+      for (const [key, entry] of metricScores) {
         entry.geoCount = entry.geos.size;
 
         if (entry.geoCount > 1) {
           entry.totalScore *= (1 + Math.min(entry.geoCount - 1, 5) * 0.1);
         }
 
+        const baseMetric = key.includes('::') ? key.split('::')[0] : key;
         for (const geo of entry.geos) {
           const [geoType, geoId] = geo.split(':');
-          const trendKey = `${metric}:${geoType}:${geoId}`;
+          const trendKey = `${baseMetric}:${geoType}:${geoId}`;
           const trends = trendMap.get(trendKey);
           if (trends && trends.length >= 2) {
             const sorted = trends.sort((a, b) => a.date.localeCompare(b.date));
@@ -1556,14 +1565,28 @@ export class CorrelationEngineService {
         }
       }
 
-      const ranked = Array.from(metricScores.entries())
-        .map(([metric, entry]) => ({
-          metric,
-          score: entry.totalScore / Math.max(entry.appearances, 1),
-          ...entry,
-        }))
+      const perMarketEntries = Array.from(metricScores.entries())
+        .filter(([key]) => key.includes('::'));
+      const globalEntries = Array.from(metricScores.entries())
+        .filter(([key]) => !key.includes('::'));
+
+      const usePerMarket = perMarketEntries.length > 0;
+      const entriesToRank = usePerMarket ? perMarketEntries : globalEntries;
+
+      const ranked = entriesToRank
+        .map(([key, entry]) => {
+          const baseMetric = key.includes('::') ? key.split('::')[0] : key;
+          const globalEntry = metricScores.get(baseMetric);
+          const crossGeoCount = globalEntry ? globalEntry.geos.size - entry.geos.size : 0;
+          return {
+            metric: baseMetric,
+            score: entry.totalScore / Math.max(entry.appearances, 1),
+            crossGeoCount,
+            ...entry,
+          };
+        })
         .sort((a, b) => b.score - a.score)
-        .slice(0, topN);
+        .slice(0, topN * geoIds.length);
 
       const METRIC_LABELS: Record<string, string> = {
         home_value_index: 'Home Value Index',
@@ -1603,12 +1626,13 @@ export class CorrelationEngineService {
           reason += ` — currently ${item.trendDirection} ${pct}%`;
         }
 
-        const trackedGeoSet = new Set(geoIds);
-        const crossGeoCount = [...(metricScores.get(item.metric)?.geos || [])].filter(g => !trackedGeoSet.has(g.split(':')[1])).length;
-        if (item.geoCount > 1 && crossGeoCount > 0) {
-          reason += `. Validated across ${item.geoCount} markets (${crossGeoCount} cross-market)`;
-        } else if (item.geoCount > 1) {
-          reason += `. Consistent across ${item.geoCount} markets`;
+        const globalEntry = metricScores.get(item.metric);
+        const totalGeos = globalEntry ? globalEntry.geos.size : item.geoCount;
+        const crossCount = item.crossGeoCount || 0;
+        if (totalGeos > 1 && crossCount > 0) {
+          reason += `. Validated across ${totalGeos} markets (${crossCount} cross-market)`;
+        } else if (totalGeos > 1) {
+          reason += `. Consistent across ${totalGeos} markets`;
         }
 
         return {
@@ -1640,12 +1664,17 @@ export class CorrelationEngineService {
     }
   }
 
+  private batchCacheKey(marketGeoIds: Array<{ geoType: string; geoId: string }>): string {
+    const raw = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+    return createHash('sha256').update(raw).digest('hex').slice(0, 64);
+  }
+
   private async getCachedRecommendations(
     userId: string,
     marketGeoIds: Array<{ geoType: string; geoId: string }>
   ): Promise<MetricRecommendation[] | null> {
     try {
-      const cacheKey = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+      const cacheKey = this.batchCacheKey(marketGeoIds);
       const geoTypes = marketGeoIds.map(g => g.geoType);
       const geoIds = marketGeoIds.map(g => g.geoId);
 
@@ -1688,7 +1717,7 @@ export class CorrelationEngineService {
     recommendations: MetricRecommendation[]
   ): Promise<void> {
     try {
-      const cacheKey = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+      const cacheKey = this.batchCacheKey(marketGeoIds);
       await this.pool.query(
         `INSERT INTO metric_recommendations (user_id, geography_type, geography_id, recommendations, computed_at, expires_at)
          VALUES ($1, 'batch', $2, $3, NOW(), NOW() + INTERVAL '7 days')

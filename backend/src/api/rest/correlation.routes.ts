@@ -192,8 +192,22 @@ router.post('/recommendations', async (req: Request, res: Response) => {
 
     const userId = (req as any).user?.userId || null;
     const clampedTopN = Math.min(Math.max(typeof topN === 'number' ? topN : 5, 1), 20);
-    const recommendations = await engine.generateMetricRecommendations(marketGeoIds, userId, clampedTopN);
-    res.json({ success: true, count: recommendations.length, data: recommendations });
+    const allRecs = await engine.generateMetricRecommendations(marketGeoIds, userId, clampedTopN);
+
+    const byMarket: Record<string, typeof allRecs> = {};
+    for (const geo of marketGeoIds) {
+      byMarket[geo.geoId] = [];
+    }
+    for (const rec of allRecs) {
+      if (byMarket[rec.geographyId]) {
+        byMarket[rec.geographyId].push(rec);
+      } else {
+        const firstKey = Object.keys(byMarket)[0];
+        if (firstKey) byMarket[firstKey].push(rec);
+      }
+    }
+
+    res.json({ success: true, count: allRecs.length, data: allRecs, byMarket });
   } catch (error: any) {
     console.error('Recommendations error:', error);
     res.status(500).json({ success: false, error: error.message });
