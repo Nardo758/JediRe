@@ -195,6 +195,21 @@ const cycleColor = (c: string) => {
   return C.muted;
 };
 
+function AwaitingData({ loading, label }: { loading: boolean; label: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "48px 24px", color: C.muted }}>
+      <div style={{ fontSize: 13, fontWeight: 700, ...mono, marginBottom: 8, color: loading ? C.amber : C.secondary }}>
+        {loading ? "LOADING DATA..." : "AWAITING DATA"}
+      </div>
+      <div style={{ fontSize: 10, ...mono, textAlign: "center", maxWidth: 360, lineHeight: 1.6 }}>
+        {loading
+          ? `Fetching live ${label} from the server.`
+          : `No ${label} available yet. Data will appear here once market metrics are computed. Try refreshing or check back later.`}
+      </div>
+    </div>
+  );
+}
+
 // ============================================================================
 // Styles
 // ============================================================================
@@ -245,18 +260,21 @@ export default function F4MarketsView() {
   const { properties: liveProperties, loading: propLoading, refresh: refreshProperties } = usePropertyMetrics();
 
   const ALL_MARKETS_RESOLVED = useMemo(() => {
-    return liveMarkets.length > 0 ? liveMarkets as TrackedMarket[] : ALL_MARKETS;
+    return liveMarkets.length > 0 ? liveMarkets as TrackedMarket[] : [];
   }, [liveMarkets]);
 
   const SUBMARKET_RESOLVED = useMemo(() => {
-    return liveSubmarkets.length > 0 ? liveSubmarkets : SUBMARKET_INDEX;
+    return liveSubmarkets.length > 0 ? liveSubmarkets : [];
   }, [liveSubmarkets]);
 
   const PROPERTY_RESOLVED = useMemo(() => {
-    return liveProperties.length > 0 ? liveProperties : PROPERTY_INDEX;
+    return liveProperties.length > 0 ? liveProperties : [];
   }, [liveProperties]);
 
   const isLive = liveMarkets.length > 0;
+  const marketsEmpty = ALL_MARKETS_RESOLVED.length === 0;
+  const subEmpty = SUBMARKET_RESOLVED.length === 0;
+  const propEmpty = PROPERTY_RESOLVED.length === 0;
 
   const dashCols = useColumnPreferences("f4_dashboard");
   const browseCols = useColumnPreferences("f4_browse");
@@ -310,9 +328,10 @@ export default function F4MarketsView() {
 
   const kpis = useMemo(() => {
     const markets = trackedMarkets;
-    const avgJedi = Math.round(markets.reduce((s, m) => s + m.jedi, 0) / markets.length);
-    const avgRent = Math.round(markets.reduce((s, m) => s + m.rentNum, 0) / markets.length);
-    const avgVac = (markets.reduce((s, m) => s + m.vacNum, 0) / markets.length).toFixed(1);
+    const len = markets.length || 1;
+    const avgJedi = Math.round(markets.reduce((s, m) => s + m.jedi, 0) / len);
+    const avgRent = Math.round(markets.reduce((s, m) => s + m.rentNum, 0) / len);
+    const avgVac = (markets.reduce((s, m) => s + m.vacNum, 0) / len).toFixed(1);
     const expanding = markets.filter(m => m.cycle === "EXPANSION" || m.cycle === "LATE EXP").length;
     const alerts = MOCK_ALERTS.filter(a => a.type === "negative").length;
     return { count: markets.length, avgJedi, avgRent, avgVac, expanding, alerts };
@@ -543,6 +562,10 @@ export default function F4MarketsView() {
     const cols = colPrefsMap[viewTab].columns;
     const sortableMap: Record<string, SortKey> = { rank: "rank", msa: "msa", jedi: "jedi", d30: "d30", rent: "rentNum", vac: "vacNum", absorb: "absorbNum", pipeline: "pipelineNum", cap: "capNum", cycle: "cycle" };
 
+    if (marketsEmpty) {
+      return <AwaitingData loading={marketsLoading} label="market metrics" />;
+    }
+
     return (
     <div style={{ flex: 1, overflow: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
@@ -740,6 +763,7 @@ export default function F4MarketsView() {
         <div style={{ flex: 1 }} />
         <GearButton tab="submarkets" />
       </div>
+      {subEmpty ? <AwaitingData loading={subLoading} label="submarket data" /> : (
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
           <thead>
@@ -775,6 +799,7 @@ export default function F4MarketsView() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
   };
@@ -789,6 +814,7 @@ export default function F4MarketsView() {
         <div style={{ flex: 1 }} />
         <GearButton tab="properties" />
       </div>
+      {propEmpty ? <AwaitingData loading={propLoading} label="property data" /> : (
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
           <thead>
@@ -818,6 +844,7 @@ export default function F4MarketsView() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
   };

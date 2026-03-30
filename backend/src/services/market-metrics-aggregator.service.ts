@@ -172,10 +172,45 @@ export class MarketMetricsAggregator {
     );
     const rentYoyMap = new Map(rentYoyRes.rows.map((r: any) => [r.geography_id, r]));
 
+    const prevVitalsRes = await this.pool.query(
+      `SELECT market_id, jedi_score, date
+       FROM market_vitals mv
+       WHERE date <= (CURRENT_DATE - INTERVAL '30 days')
+       AND date >= (CURRENT_DATE - INTERVAL '60 days')
+       ORDER BY market_id, date DESC`
+    );
+    const prevJediMap = new Map<string, number>();
+    for (const r of prevVitalsRes.rows) {
+      if (!prevJediMap.has(r.market_id)) {
+        prevJediMap.set(r.market_id, r.jedi_score);
+      }
+    }
+
+    const trendRes = await this.pool.query(
+      `SELECT market_id, jedi_score, date
+       FROM market_vitals
+       WHERE date >= (CURRENT_DATE - INTERVAL '8 months')
+       ORDER BY market_id, date ASC`
+    );
+    const trendMap = new Map<string, number[]>();
+    for (const r of trendRes.rows) {
+      if (!trendMap.has(r.market_id)) trendMap.set(r.market_id, []);
+      trendMap.get(r.market_id)!.push(r.jedi_score);
+    }
+
+    const m28Res = await this.pool.query(
+      `SELECT DISTINCT ON (market_id)
+              market_id, classified_phase, cap_rate, vacancy, absorption, deliveries
+       FROM m28_market_metrics_history
+       ORDER BY market_id, created_at DESC`
+    );
+    const m28Map = new Map(m28Res.rows.map((r: any) => [r.market_id, r]));
+
     const rows: MarketRow[] = [];
 
     for (const mkt of marketsRes.rows) {
       const vitals = vitalsMap.get(mkt.name) || {} as any;
+      const m28 = m28Map.get(mkt.name) || {} as any;
       const metroSlug = METRO_SLUG_MAP[mkt.name];
       const rentTs = metroSlug ? rentMap.get(metroSlug) : null;
       const rentYoy = metroSlug ? rentYoyMap.get(metroSlug) : null;
@@ -183,21 +218,30 @@ export class MarketMetricsAggregator {
       const rentNum = rentTs ? parseFloat(rentTs.value) : (vitals.avg_rent_per_unit || 0);
       const rentGrowth = rentYoy ? parseFloat(rentYoy.value) : parseFloat(vitals.rent_growth_yoy || '0');
       const occupancy = parseFloat(vitals.occupancy_rate || '93');
-      const vacancy = vitals.vacancy_rate ? parseFloat(vitals.vacancy_rate) : (100 - occupancy);
+      const vacancy = m28.vacancy != null ? parseFloat(m28.vacancy)
+        : (vitals.vacancy_rate ? parseFloat(vitals.vacancy_rate) : (100 - occupancy));
       const popGrowth = parseFloat(vitals.population_growth_yoy || '0');
       const jobGrowth = parseFloat(vitals.job_growth_yoy || '0');
       const medIncome = vitals.median_income || 0;
-      const absorption = parseFloat(vitals.absorption_rate || '0');
-      const newSupply = vitals.new_supply_units || 0;
+      const absorption = m28.absorption != null ? parseFloat(m28.absorption)
+        : parseFloat(vitals.absorption_rate || '0');
+      const newSupply = m28.deliveries != null ? m28.deliveries : (vitals.new_supply_units || 0);
       const propCount = mkt.property_count || 0;
 
       const jedi = vitals.jedi_score || computeMarketJedi(rentGrowth, vacancy, jobGrowth, popGrowth, occupancy);
-      const cycle = deriveCyclePhase(rentGrowth, vacancy, jobGrowth);
 
-      const trendBase = Math.max(40, jedi - 8);
-      const trend = Array.from({ length: 8 }, (_, i) =>
-        Math.round(trendBase + ((jedi - trendBase) * (i + 1)) / 8)
-      );
+      const cycle = m28.classified_phase
+        || deriveCyclePhase(rentGrowth, vacancy, jobGrowth);
+
+      const trendData = trendMap.get(mkt.name);
+      const trend = trendData && trendData.length >= 2
+        ? trendData.slice(-8)
+        : Array.from({ length: 8 }, (_, i) =>
+            Math.round(Math.max(40, jedi - 8) + ((jedi - Math.max(40, jedi - 8)) * (i + 1)) / 8)
+          );
+
+      const prevJedi = prevJediMap.get(mkt.name);
+      const d30 = prevJedi != null ? jedi - prevJedi : 0;
 
       const totalUnits = propCount * 120;
       const pipelinePct = newSupply > 0 && totalUnits > 0
@@ -205,7 +249,8 @@ export class MarketMetricsAggregator {
         : Math.max(5, 20 - jedi * 0.15);
       const costPerUnit = Math.round(rentNum * 3.5 + 1000);
       const dApt = jedi > 0 ? Math.round(100 - (vacancy * 5) + (popGrowth * 10)) : 50;
-      const capRate = 3.5 + (100 - jedi) * 0.04;
+      const capRate = m28.cap_rate != null ? parseFloat(m28.cap_rate)
+        : (3.5 + (100 - jedi) * 0.04);
 
       rows.push({
         id: `${mkt.name}-${mkt.state?.toLowerCase() || 'us'}`,
@@ -215,7 +260,7 @@ export class MarketMetricsAggregator {
         props: propCount,
         units: formatUnits(totalUnits),
         jedi,
-        d30: 0,
+        d30,
         trend,
         rent: formatCurrency(rentNum),
         rentNum: Math.round(rentNum),
@@ -338,18 +383,33 @@ export class MarketMetricsAggregator {
     );
 
     const rcRes = await this.pool.query(
-      `SELECT building_name, occupancy_pct, rent_per_unit, neighborhood FROM rent_comps`
+      `SELECT building_name, address, occupancy_pct, rent_per_unit, neighborhood FROM rent_comps`
     );
-    const rcMap = new Map(rcRes.rows.map((r: any) => [r.building_name?.toLowerCase(), r]));
+    const rcByName = new Map(rcRes.rows.map((r: any) => [r.building_name?.toLowerCase(), r]));
+    const rcByAddr = new Map(rcRes.rows.map((r: any) => [r.address?.toLowerCase(), r]));
+
+    const marketVitalsRes = await this.pool.query(
+      `SELECT DISTINCT ON (market_id) market_id, occupancy_rate
+       FROM market_vitals ORDER BY market_id, date DESC`
+    );
+    const marketOccMap = new Map(marketVitalsRes.rows.map((r: any) => [r.market_id, parseFloat(r.occupancy_rate || '92')]));
 
     return result.rows.map((r: any) => {
       const units = r.units || 0;
       const yearBuilt = r.year_built || 0;
       const assessed = r.assessed_value ? Number(r.assessed_value) : 0;
-      const rc = rcMap.get(r.address?.toLowerCase());
+      const rc = rcByName.get(r.address?.toLowerCase()) || rcByAddr.get(r.address?.toLowerCase());
 
-      const occupancy = rc ? parseFloat(rc.occupancy_pct) : (88 + Math.random() * 10);
-      const rentPerUnit = rc ? parseFloat(rc.rent_per_unit) : (units > 0 && assessed > 0 ? Math.round(assessed / units / 12 * 0.08) : 1500);
+      let occupancy: number;
+      if (rc?.occupancy_pct) {
+        occupancy = parseFloat(rc.occupancy_pct);
+      } else if (r.market_name && marketOccMap.has(r.market_name)) {
+        occupancy = marketOccMap.get(r.market_name)!;
+      } else {
+        occupancy = 92.0;
+      }
+
+      const rentPerUnit = rc ? parseFloat(rc.rent_per_unit) : (units > 0 && assessed > 0 ? Math.round(assessed / units / 12 * 0.08) : 0);
       const capRate = assessed > 0 && rentPerUnit > 0
         ? Math.round((rentPerUnit * 12 * units * 0.65 / assessed) * 100) / 100
         : 5.0;
@@ -366,12 +426,12 @@ export class MarketMetricsAggregator {
       const name = r.address || `Property ${r.id}`;
 
       return {
-        name: name.length > 30 ? name.substring(0, 28) + '…' : name,
+        name: name.length > 30 ? name.substring(0, 28) + '\u2026' : name,
         submarket,
         msa: msa.trim(),
         jedi: propJedi,
         units,
-        rent: formatCurrency(rentPerUnit),
+        rent: rentPerUnit > 0 ? formatCurrency(rentPerUnit) : '\u2014',
         occ: formatPct(occupancy),
         capRate: formatPct(capRate),
         vintage: yearBuilt,
@@ -381,8 +441,74 @@ export class MarketMetricsAggregator {
   }
 
   async refreshMetricsSnapshot(): Promise<{ marketsProcessed: number; timestamp: Date }> {
-    const markets = await this.getMarkets();
-    console.log(`[MarketMetricsAggregator] Refreshed ${markets.length} market snapshots`);
-    return { marketsProcessed: markets.length, timestamp: new Date() };
+    const marketsRes = await this.pool.query(
+      `SELECT am.name FROM available_markets am WHERE am.enabled = true`
+    );
+
+    let processed = 0;
+    const today = new Date().toISOString().split('T')[0];
+
+    for (const mkt of marketsRes.rows) {
+      const metroSlug = METRO_SLUG_MAP[mkt.name];
+      if (!metroSlug) continue;
+
+      const rentRes = await this.pool.query(
+        `SELECT value FROM metric_time_series
+         WHERE metric_id = 'rent_index' AND geography_type = 'metro' AND geography_id = $1
+         ORDER BY period_date DESC LIMIT 1`,
+        [metroSlug]
+      );
+      const rentYoyRes = await this.pool.query(
+        `SELECT value FROM metric_time_series
+         WHERE metric_id = 'rent_index_yoy' AND geography_type = 'metro' AND geography_id = $1
+         ORDER BY period_date DESC LIMIT 1`,
+        [metroSlug]
+      );
+
+      const rentVal = rentRes.rows[0]?.value ? Math.round(parseFloat(rentRes.rows[0].value)) : null;
+      const rentYoy = rentYoyRes.rows[0]?.value ? parseFloat(rentYoyRes.rows[0].value) : null;
+
+      if (rentVal == null) continue;
+
+      const existing = await this.pool.query(
+        `SELECT id, jedi_score, occupancy_rate, vacancy_rate, population_growth_yoy, job_growth_yoy,
+                rent_growth_yoy, median_income
+         FROM market_vitals WHERE market_id = $1 ORDER BY date DESC LIMIT 1`,
+        [mkt.name]
+      );
+
+      const prev = existing.rows[0] || {};
+      const occupancy = parseFloat(prev.occupancy_rate || '93');
+      const vacancy = prev.vacancy_rate ? parseFloat(prev.vacancy_rate) : (100 - occupancy);
+      const popGrowth = parseFloat(prev.population_growth_yoy || '0');
+      const jobGrowth = parseFloat(prev.job_growth_yoy || '0');
+      const rentGrowth = rentYoy ?? parseFloat(prev.rent_growth_yoy || '0');
+
+      const jedi = computeMarketJedi(rentGrowth, vacancy, jobGrowth, popGrowth, occupancy);
+
+      await this.pool.query(
+        `INSERT INTO market_vitals (market_id, date, avg_rent_per_unit, rent_growth_yoy, jedi_score, jedi_rating,
+                                    occupancy_rate, vacancy_rate, population_growth_yoy, job_growth_yoy,
+                                    median_income, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'aggregator_refresh')
+         ON CONFLICT (market_id, date) DO UPDATE SET
+           avg_rent_per_unit = EXCLUDED.avg_rent_per_unit,
+           rent_growth_yoy = EXCLUDED.rent_growth_yoy,
+           jedi_score = EXCLUDED.jedi_score,
+           jedi_rating = EXCLUDED.jedi_rating,
+           source = EXCLUDED.source`,
+        [
+          mkt.name, today, rentVal, rentGrowth, jedi,
+          jedi >= 80 ? 'Strong Buy' : jedi >= 60 ? 'Buy' : jedi >= 40 ? 'Hold' : 'Sell',
+          occupancy, vacancy, popGrowth, jobGrowth,
+          prev.median_income || null,
+        ]
+      );
+
+      processed++;
+    }
+
+    console.log(`[MarketMetricsAggregator] Refreshed ${processed} market vitals from metric_time_series`);
+    return { marketsProcessed: processed, timestamp: new Date() };
   }
 }
