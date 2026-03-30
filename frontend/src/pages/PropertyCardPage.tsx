@@ -1621,7 +1621,7 @@ export default function PropertyDetailsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {indexedData.map((d, ri) => {
+                      {[...indexedData].reverse().map((d, ri) => {
                         const geoMap = { prop: d.raw, ta: d.raw.ta, sub: d.raw.sub, msa: d.raw.msa };
                         const vals = grpCols.map(c => {
                           const src = geoMap[c.dataKey];
@@ -1676,7 +1676,7 @@ export default function PropertyDetailsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {indexedData.map((d, ri) => {
+                    {[...indexedData].reverse().map((d, ri) => {
                       const ta = d.raw.ta; const sub = d.raw.sub; const msa = d.raw.msa;
                       return (
                         <tr key={d.year} style={{ background: ri % 2 === 0 ? "transparent" : T.bg.panelAlt }}>
