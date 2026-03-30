@@ -376,32 +376,33 @@ function generateForecast(history, trafficProjected) {
 // Derived from CoStar · FRED · BLS · Census ACS
 // ═══════════════════════════════════════════════════════════════
 const GEO_BASE = [
-  { year: 2018, rentGrowth: 3.8, occupancy: 94.4, concessions: 1.2, rentPerSF: 1.74, capRate: 5.8, absorptionPerMonth: 980, jobsPerUnit: 1.42, medianIncome: 58200, population: 412000, popGrowth: 2.1 },
-  { year: 2019, rentGrowth: 5.4, occupancy: 95.0, concessions: 0.8, rentPerSF: 1.83, capRate: 5.6, absorptionPerMonth: 1120, jobsPerUnit: 1.48, medianIncome: 60100, population: 420600, popGrowth: 2.1 },
-  { year: 2020, rentGrowth: -0.8, occupancy: 90.8, concessions: 5.8, rentPerSF: 1.82, capRate: 6.2, absorptionPerMonth: 640, jobsPerUnit: 1.32, medianIncome: 59800, population: 425200, popGrowth: 1.1 },
-  { year: 2021, rentGrowth: 12.8, occupancy: 94.8, concessions: 2.4, rentPerSF: 2.05, capRate: 5.1, absorptionPerMonth: 1183, jobsPerUnit: 1.51, medianIncome: 63400, population: 437000, popGrowth: 2.8 },
-  { year: 2022, rentGrowth: 10.3, occupancy: 93.2, concessions: 1.6, rentPerSF: 2.26, capRate: 4.8, absorptionPerMonth: 1067, jobsPerUnit: 1.56, medianIncome: 66200, population: 447500, popGrowth: 2.4 },
-  { year: 2023, rentGrowth: 3.2, occupancy: 91.9, concessions: 2.2, rentPerSF: 2.33, capRate: 5.4, absorptionPerMonth: 867, jobsPerUnit: 1.52, medianIncome: 68800, population: 457300, popGrowth: 2.2 },
-  { year: 2024, rentGrowth: 1.3, occupancy: 91.2, concessions: 3.0, rentPerSF: 2.36, capRate: 5.6, absorptionPerMonth: 817, jobsPerUnit: 1.48, medianIncome: 70900, population: 466400, popGrowth: 2.0 },
-  { year: 2025, rentGrowth: 1.1, occupancy: 91.5, concessions: 2.8, rentPerSF: 2.39, capRate: 5.5, absorptionPerMonth: 972, jobsPerUnit: 1.50, medianIncome: 73200, population: 476200, popGrowth: 2.1 },
+  { year: 2018, avgRent: 1285, rentGrowth: 3.8, occupancy: 94.4, concessions: 1.2, rentPerSF: 1.74, capRate: 5.8, absorptionPerMonth: 980, jobsPerUnit: 1.42, medianIncome: 58200, population: 412000, popGrowth: 2.1 },
+  { year: 2019, avgRent: 1354, rentGrowth: 5.4, occupancy: 95.0, concessions: 0.8, rentPerSF: 1.83, capRate: 5.6, absorptionPerMonth: 1120, jobsPerUnit: 1.48, medianIncome: 60100, population: 420600, popGrowth: 2.1 },
+  { year: 2020, avgRent: 1343, rentGrowth: -0.8, occupancy: 90.8, concessions: 5.8, rentPerSF: 1.82, capRate: 6.2, absorptionPerMonth: 640, jobsPerUnit: 1.32, medianIncome: 59800, population: 425200, popGrowth: 1.1 },
+  { year: 2021, avgRent: 1515, rentGrowth: 12.8, occupancy: 94.8, concessions: 2.4, rentPerSF: 2.05, capRate: 5.1, absorptionPerMonth: 1183, jobsPerUnit: 1.51, medianIncome: 63400, population: 437000, popGrowth: 2.8 },
+  { year: 2022, avgRent: 1671, rentGrowth: 10.3, occupancy: 93.2, concessions: 1.6, rentPerSF: 2.26, capRate: 4.8, absorptionPerMonth: 1067, jobsPerUnit: 1.56, medianIncome: 66200, population: 447500, popGrowth: 2.4 },
+  { year: 2023, avgRent: 1724, rentGrowth: 3.2, occupancy: 91.9, concessions: 2.2, rentPerSF: 2.33, capRate: 5.4, absorptionPerMonth: 867, jobsPerUnit: 1.52, medianIncome: 68800, population: 457300, popGrowth: 2.2 },
+  { year: 2024, avgRent: 1746, rentGrowth: 1.3, occupancy: 91.2, concessions: 3.0, rentPerSF: 2.36, capRate: 5.6, absorptionPerMonth: 817, jobsPerUnit: 1.48, medianIncome: 70900, population: 466400, popGrowth: 2.0 },
+  { year: 2025, avgRent: 1765, rentGrowth: 1.1, occupancy: 91.5, concessions: 2.8, rentPerSF: 2.39, capRate: 5.5, absorptionPerMonth: 972, jobsPerUnit: 1.50, medianIncome: 73200, population: 476200, popGrowth: 2.1 },
 ];
 
 const GEO_FORECAST_BASE = [
-  { year: 2026, rentGrowth: 2.8, occupancy: 92.0, concessions: 2.2, rentPerSF: 2.46, capRate: 5.3, absorptionPerMonth: 1033, jobsPerUnit: 1.52, medianIncome: 75400, population: 485800, popGrowth: 2.0, conf: 0.88 },
-  { year: 2027, rentGrowth: 3.2, occupancy: 92.6, concessions: 1.8, rentPerSF: 2.54, capRate: 5.1, absorptionPerMonth: 1100, jobsPerUnit: 1.55, medianIncome: 77800, population: 495100, popGrowth: 1.9, conf: 0.80 },
-  { year: 2028, rentGrowth: 3.5, occupancy: 93.2, concessions: 1.4, rentPerSF: 2.63, capRate: 5.0, absorptionPerMonth: 1167, jobsPerUnit: 1.57, medianIncome: 80200, population: 504200, popGrowth: 1.8, conf: 0.72 },
-  { year: 2029, rentGrowth: 3.0, occupancy: 93.5, concessions: 1.2, rentPerSF: 2.71, capRate: 5.1, absorptionPerMonth: 1133, jobsPerUnit: 1.56, medianIncome: 82400, population: 513000, popGrowth: 1.7, conf: 0.63 },
-  { year: 2030, rentGrowth: 2.4, occupancy: 93.0, concessions: 1.6, rentPerSF: 2.77, capRate: 5.2, absorptionPerMonth: 1067, jobsPerUnit: 1.54, medianIncome: 84800, population: 521600, popGrowth: 1.7, conf: 0.55 },
-  { year: 2031, rentGrowth: 2.2, occupancy: 92.8, concessions: 1.8, rentPerSF: 2.83, capRate: 5.3, absorptionPerMonth: 1033, jobsPerUnit: 1.53, medianIncome: 87000, population: 529800, popGrowth: 1.6, conf: 0.48 },
-  { year: 2032, rentGrowth: 2.0, occupancy: 92.9, concessions: 1.6, rentPerSF: 2.89, capRate: 5.3, absorptionPerMonth: 1050, jobsPerUnit: 1.53, medianIncome: 89200, population: 537800, popGrowth: 1.5, conf: 0.42 },
-  { year: 2033, rentGrowth: 2.3, occupancy: 93.2, concessions: 1.4, rentPerSF: 2.96, capRate: 5.2, absorptionPerMonth: 1083, jobsPerUnit: 1.55, medianIncome: 91600, population: 545600, popGrowth: 1.5, conf: 0.37 },
-  { year: 2034, rentGrowth: 2.1, occupancy: 93.1, concessions: 1.5, rentPerSF: 3.02, capRate: 5.2, absorptionPerMonth: 1067, jobsPerUnit: 1.54, medianIncome: 93800, population: 553200, popGrowth: 1.4, conf: 0.33 },
-  { year: 2035, rentGrowth: 1.9, occupancy: 93.0, concessions: 1.6, rentPerSF: 3.08, capRate: 5.3, absorptionPerMonth: 1050, jobsPerUnit: 1.53, medianIncome: 96200, population: 560600, popGrowth: 1.3, conf: 0.30 },
+  { year: 2026, avgRent: 1814, rentGrowth: 2.8, occupancy: 92.0, concessions: 2.2, rentPerSF: 2.46, capRate: 5.3, absorptionPerMonth: 1033, jobsPerUnit: 1.52, medianIncome: 75400, population: 485800, popGrowth: 2.0, conf: 0.88 },
+  { year: 2027, avgRent: 1872, rentGrowth: 3.2, occupancy: 92.6, concessions: 1.8, rentPerSF: 2.54, capRate: 5.1, absorptionPerMonth: 1100, jobsPerUnit: 1.55, medianIncome: 77800, population: 495100, popGrowth: 1.9, conf: 0.80 },
+  { year: 2028, avgRent: 1938, rentGrowth: 3.5, occupancy: 93.2, concessions: 1.4, rentPerSF: 2.63, capRate: 5.0, absorptionPerMonth: 1167, jobsPerUnit: 1.57, medianIncome: 80200, population: 504200, popGrowth: 1.8, conf: 0.72 },
+  { year: 2029, avgRent: 1996, rentGrowth: 3.0, occupancy: 93.5, concessions: 1.2, rentPerSF: 2.71, capRate: 5.1, absorptionPerMonth: 1133, jobsPerUnit: 1.56, medianIncome: 82400, population: 513000, popGrowth: 1.7, conf: 0.63 },
+  { year: 2030, avgRent: 2044, rentGrowth: 2.4, occupancy: 93.0, concessions: 1.6, rentPerSF: 2.77, capRate: 5.2, absorptionPerMonth: 1067, jobsPerUnit: 1.54, medianIncome: 84800, population: 521600, popGrowth: 1.7, conf: 0.55 },
+  { year: 2031, avgRent: 2089, rentGrowth: 2.2, occupancy: 92.8, concessions: 1.8, rentPerSF: 2.83, capRate: 5.3, absorptionPerMonth: 1033, jobsPerUnit: 1.53, medianIncome: 87000, population: 529800, popGrowth: 1.6, conf: 0.48 },
+  { year: 2032, avgRent: 2131, rentGrowth: 2.0, occupancy: 92.9, concessions: 1.6, rentPerSF: 2.89, capRate: 5.3, absorptionPerMonth: 1050, jobsPerUnit: 1.53, medianIncome: 89200, population: 537800, popGrowth: 1.5, conf: 0.42 },
+  { year: 2033, avgRent: 2180, rentGrowth: 2.3, occupancy: 93.2, concessions: 1.4, rentPerSF: 2.96, capRate: 5.2, absorptionPerMonth: 1083, jobsPerUnit: 1.55, medianIncome: 91600, population: 545600, popGrowth: 1.5, conf: 0.37 },
+  { year: 2034, avgRent: 2226, rentGrowth: 2.1, occupancy: 93.1, concessions: 1.5, rentPerSF: 3.02, capRate: 5.2, absorptionPerMonth: 1067, jobsPerUnit: 1.54, medianIncome: 93800, population: 553200, popGrowth: 1.4, conf: 0.33 },
+  { year: 2035, avgRent: 2268, rentGrowth: 1.9, occupancy: 93.0, concessions: 1.6, rentPerSF: 3.08, capRate: 5.3, absorptionPerMonth: 1050, jobsPerUnit: 1.53, medianIncome: 96200, population: 560600, popGrowth: 1.3, conf: 0.30 },
 ];
 
 function deriveGeoLevel(base, o) {
   return base.map(d => ({
     ...d,
+    avgRent: Math.round(d.avgRent + (o.rentOff || 0)),
     occupancy: parseFloat((d.occupancy + o.occOff).toFixed(1)),
     rentGrowth: parseFloat((d.rentGrowth + o.rgOff).toFixed(1)),
     concessions: parseFloat(Math.max(0, d.concessions + o.concOff).toFixed(1)),
@@ -416,9 +417,9 @@ function deriveGeoLevel(base, o) {
 }
 
 const ALL_GEO_BASE = [...GEO_BASE, ...GEO_FORECAST_BASE];
-const GEO_TRADE_AREA = deriveGeoLevel(ALL_GEO_BASE, { occOff: 0.7, rgOff: 0.4, concOff: -0.3, rsfOff: 0.08, capOff: -0.2, absScale: 0.35, jpuOff: 0.12, incOff: 4200, popScale: 0.22, pgOff: 0.3 });
+const GEO_TRADE_AREA = deriveGeoLevel(ALL_GEO_BASE, { rentOff: 85, occOff: 0.7, rgOff: 0.4, concOff: -0.3, rsfOff: 0.08, capOff: -0.2, absScale: 0.35, jpuOff: 0.12, incOff: 4200, popScale: 0.22, pgOff: 0.3 });
 const GEO_SUBMARKET = ALL_GEO_BASE;
-const GEO_MSA = deriveGeoLevel(ALL_GEO_BASE, { occOff: 1.3, rgOff: -0.6, concOff: 0.4, rsfOff: -0.12, capOff: 0.3, absScale: 3.8, jpuOff: -0.08, incOff: -8400, popScale: 7.2, pgOff: -0.4 });
+const GEO_MSA = deriveGeoLevel(ALL_GEO_BASE, { rentOff: -120, occOff: 1.3, rgOff: -0.6, concOff: 0.4, rsfOff: -0.12, capOff: 0.3, absScale: 3.8, jpuOff: -0.08, incOff: -8400, popScale: 7.2, pgOff: -0.4 });
 
 function pearsonR(xs, ys) {
   const n = Math.min(xs.length, ys.length);
@@ -435,7 +436,7 @@ function pearsonR(xs, ys) {
 }
 
 const MP_METRIC_FAMILIES = [
-  { family: "rent", label: "RENT", propKey: "rent", geoKey: "", color: "#00D26A" },
+  { family: "rent", label: "RENT", propKey: "rent", geoKey: "avgRent", color: "#00D26A" },
   { family: "occ", label: "OCCUPANCY", propKey: "occ", geoKey: "occupancy", color: "#00BCD4" },
   { family: "rentGrowth", label: "RENT GROWTH", propKey: "rentGrowth", geoKey: "rentGrowth", color: "#A78BFA" },
   { family: "concessions", label: "CONCESSIONS", propKey: "concessions", geoKey: "concessions", color: "#FF8C42" },
@@ -1274,6 +1275,7 @@ export default function PropertyDetailsPage() {
     ];
 
     const GEO_METRICS_LIST = [
+      { key: "AvgRent", label: "AVG RENT", color: "#00D26A", family: "rent" },
       { key: "RentGrowth", label: "RENT GRWTH", color: T.text.green, family: "rentGrowth" },
       { key: "Occupancy", label: "OCCUPANCY", color: T.text.cyan, family: "occ" },
       { key: "Concessions", label: "CONCESSIONS", color: T.text.orange, family: "concessions" },
@@ -1344,7 +1346,7 @@ export default function PropertyDetailsPage() {
     });
     GEO_SUBMARKET.forEach(d => {
       if (d.year === 2018) {
-        baseIdx.gRentGrowth = Math.abs(d.rentGrowth) || 1; baseIdx.gOccupancy = d.occupancy || 1; baseIdx.gConcessions = Math.max(d.concessions, 0.1);
+        baseIdx.gAvgRent = d.avgRent || 1; baseIdx.gRentGrowth = Math.abs(d.rentGrowth) || 1; baseIdx.gOccupancy = d.occupancy || 1; baseIdx.gConcessions = Math.max(d.concessions, 0.1);
         baseIdx.gRentPerSF = d.rentPerSF || 1; baseIdx.gCapRate = d.capRate || 1; baseIdx.gAbsorption = d.absorptionPerMonth || 1;
         baseIdx.gJobsPerUnit = d.jobsPerUnit || 1; baseIdx.gMedianIncome = d.medianIncome || 1; baseIdx.gPopulation = d.population || 1; baseIdx.gPopGrowth = Math.abs(d.popGrowth) || 1;
       }
@@ -1364,17 +1366,17 @@ export default function PropertyDetailsPage() {
         pRent: (pp.rent / baseIdx.rent) * 100, pOcc: (pp.occ / baseIdx.occ) * 100,
         pGrowth: 100 + ((pp.rent / baseIdx.rent) - 1) * 100, pConc: (pp.concessions / baseIdx.concessions) * 100,
         pRentSF: (pp.rentPerSF / baseIdx.rentPerSF) * 100, pTraffic: (pp.monthlyTraffic / baseIdx.traffic) * 100,
-        taRentGrowth: ((ta.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, taOccupancy: ((ta.occupancy || 0) / baseIdx.gOccupancy) * 100,
+        taAvgRent: ((ta.avgRent || 0) / baseIdx.gAvgRent) * 100, taRentGrowth: ((ta.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, taOccupancy: ((ta.occupancy || 0) / baseIdx.gOccupancy) * 100,
         taConcessions: ((ta.concessions || 0) / baseIdx.gConcessions) * 100, taRentPerSF: ((ta.rentPerSF || 0) / baseIdx.gRentPerSF) * 100,
         taCapRate: ((ta.capRate || 0) / baseIdx.gCapRate) * 100, taAbsorption: ((ta.absorptionPerMonth || 0) / baseIdx.gAbsorption) * 100,
         taJobsPerUnit: ((ta.jobsPerUnit || 0) / baseIdx.gJobsPerUnit) * 100, taMedianIncome: ((ta.medianIncome || 0) / baseIdx.gMedianIncome) * 100,
         taPopulation: ((ta.population || 0) / baseIdx.gPopulation) * 100, taPopGrowth: ((ta.popGrowth || 0) / baseIdx.gPopGrowth) * 100,
-        subRentGrowth: ((sub.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, subOccupancy: ((sub.occupancy || 0) / baseIdx.gOccupancy) * 100,
+        subAvgRent: ((sub.avgRent || 0) / baseIdx.gAvgRent) * 100, subRentGrowth: ((sub.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, subOccupancy: ((sub.occupancy || 0) / baseIdx.gOccupancy) * 100,
         subConcessions: ((sub.concessions || 0) / baseIdx.gConcessions) * 100, subRentPerSF: ((sub.rentPerSF || 0) / baseIdx.gRentPerSF) * 100,
         subCapRate: ((sub.capRate || 0) / baseIdx.gCapRate) * 100, subAbsorption: ((sub.absorptionPerMonth || 0) / baseIdx.gAbsorption) * 100,
         subJobsPerUnit: ((sub.jobsPerUnit || 0) / baseIdx.gJobsPerUnit) * 100, subMedianIncome: ((sub.medianIncome || 0) / baseIdx.gMedianIncome) * 100,
         subPopulation: ((sub.population || 0) / baseIdx.gPopulation) * 100, subPopGrowth: ((sub.popGrowth || 0) / baseIdx.gPopGrowth) * 100,
-        msaRentGrowth: ((msa.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, msaOccupancy: ((msa.occupancy || 0) / baseIdx.gOccupancy) * 100,
+        msaAvgRent: ((msa.avgRent || 0) / baseIdx.gAvgRent) * 100, msaRentGrowth: ((msa.rentGrowth || 0) / baseIdx.gRentGrowth) * 100, msaOccupancy: ((msa.occupancy || 0) / baseIdx.gOccupancy) * 100,
         msaConcessions: ((msa.concessions || 0) / baseIdx.gConcessions) * 100, msaRentPerSF: ((msa.rentPerSF || 0) / baseIdx.gRentPerSF) * 100,
         msaCapRate: ((msa.capRate || 0) / baseIdx.gCapRate) * 100, msaAbsorption: ((msa.absorptionPerMonth || 0) / baseIdx.gAbsorption) * 100,
         msaJobsPerUnit: ((msa.jobsPerUnit || 0) / baseIdx.gJobsPerUnit) * 100, msaMedianIncome: ((msa.medianIncome || 0) / baseIdx.gMedianIncome) * 100,
@@ -1566,6 +1568,7 @@ export default function PropertyDetailsPage() {
               { key: "monthlyTraffic", label: "TRAFFIC", family: "traffic", fm: kFmt },
             ];
             const GEO_COLS = [
+              { key: "avgRent", label: "RENT", family: "rent", fm: (v) => `$${kFmt(v)}` },
               { key: "rentGrowth", label: "GRWTH", family: "rentGrowth", fm: pct, growthCol: true },
               { key: "occupancy", label: "OCC", family: "occ", fm: pct },
               { key: "concessions", label: "CONC", family: "concessions", fm: pct },
