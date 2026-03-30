@@ -205,7 +205,7 @@ export class AgentDelegator {
             [userId]
           );
           if (prefRes.rows.length > 0) {
-            marketGeoIds = prefRes.rows.map((r: any) => ({
+            marketGeoIds = prefRes.rows.map((r: { slug: string; state: string }) => ({
               geoType: 'metro',
               geoId: `${r.slug}-${(r.state || '').toLowerCase()}-${(r.state || '').toLowerCase()}`
             }));
