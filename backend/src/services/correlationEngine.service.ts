@@ -447,12 +447,42 @@ export class CorrelationEngineService {
   async getBatchCorrelations(
     queries: Array<{ geographyType: string; geographyId: string }>
   ): Promise<Record<string, MetricCorrelation[]>> {
-    const results: Record<string, MetricCorrelation[]> = {};
-    for (const q of queries) {
-      const key = `${q.geographyType}:${q.geographyId}`;
-      results[key] = await this.getCorrelations(q.geographyType, q.geographyId);
+    if (queries.length === 0) return {};
+
+    try {
+      const geoTypes = queries.map(q => q.geographyType);
+      const geoIds = queries.map(q => q.geographyId);
+
+      const result = await this.pool.query(
+        `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                correlation_r, lead_lag_months, p_value, sample_size, computed_at
+         FROM metric_correlations
+         WHERE (geography_type, geography_id) IN (
+           SELECT unnest($1::text[]), unnest($2::text[])
+         )
+         ORDER BY geography_type, geography_id, ABS(correlation_r) DESC`,
+        [geoTypes, geoIds]
+      );
+
+      const results: Record<string, MetricCorrelation[]> = {};
+      for (const q of queries) {
+        results[`${q.geographyType}:${q.geographyId}`] = [];
+      }
+      for (const row of result.rows) {
+        const key = `${row.geography_type}:${row.geography_id}`;
+        if (results[key]) {
+          results[key].push(row);
+        }
+      }
+      return results;
+    } catch (error) {
+      logger.error(`Error in batch correlations: ${String(error)}`);
+      const results: Record<string, MetricCorrelation[]> = {};
+      for (const q of queries) {
+        results[`${q.geographyType}:${q.geographyId}`] = [];
+      }
+      return results;
     }
-    return results;
   }
 
   async getFreshness(): Promise<Array<{

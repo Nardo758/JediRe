@@ -123,6 +123,12 @@ const COLUMN_TO_METRIC: Record<string, string[]> = {
   rent: ["rent_index"],
   rentD: ["rent_index_yoy"],
   cap: ["home_value_index", "home_value_index_yoy"],
+  vac: ["rent_index_yoy", "home_value_index_yoy"],
+  absorb: ["rent_index", "rent_index_yoy"],
+  pipeline: ["home_value_index_yoy", "rent_index_yoy"],
+  popD: ["DEMO_POPULATION"],
+  medInc: ["DEMO_MED_INCOME"],
+  jedi: ["rent_index_yoy", "home_value_index_yoy"],
 };
 
 export function useColumnCorrelations(
