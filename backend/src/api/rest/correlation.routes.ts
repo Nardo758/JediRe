@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../../database';
 import { CorrelationEngineService } from '../../services/correlationEngine.service';
 import { requireAdminApiKey } from './admin-api-key.routes';
+import { optionalAuth, AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
 const engine = new CorrelationEngineService(pool);
@@ -180,7 +181,7 @@ router.get('/freshness', async (_req: Request, res: Response) => {
   }
 });
 
-router.post('/recommendations', async (req: Request, res: Response) => {
+router.post('/recommendations', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { marketGeoIds, topN } = req.body;
     if (!Array.isArray(marketGeoIds) || marketGeoIds.length === 0) {
@@ -190,7 +191,7 @@ router.post('/recommendations', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Maximum 50 markets per request' });
     }
 
-    const userId = (req as any).user?.userId || null;
+    const userId = req.user?.userId || null;
     const clampedTopN = Math.min(Math.max(typeof topN === 'number' ? topN : 5, 1), 20);
     const allRecs = await engine.generateMetricRecommendations(marketGeoIds, userId, clampedTopN);
 

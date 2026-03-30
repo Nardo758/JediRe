@@ -750,7 +750,8 @@ export default function F4MarketsView() {
                 const rColor = rec.correlationR > 0 ? C.green : C.red;
                 const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
                 const trendColor = rec.trendDirection === "rising" ? C.green : rec.trendDirection === "falling" ? C.red : C.muted;
-                const alreadyActive = rec.columnId ? dashCols.columns.includes(rec.columnId) : false;
+                const activeColPrefs = colPrefsMap[tab];
+                const alreadyActive = rec.columnId ? activeColPrefs.columns.includes(rec.columnId) : false;
 
                 return (
                   <div
@@ -794,7 +795,7 @@ export default function F4MarketsView() {
                           onClick={(e) => {
                             e.stopPropagation();
                             if (!alreadyActive) {
-                              dashCols.toggleColumn(rec.columnId!);
+                              activeColPrefs.toggleColumn(rec.columnId!);
                             }
                           }}
                           disabled={alreadyActive}
