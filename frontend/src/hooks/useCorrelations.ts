@@ -72,7 +72,7 @@ export function useBatchCorrelations(
     if (queries.length === 0) return;
     setLoading(true);
     try {
-      const res = await api.post("/correlations/batch", { queries });
+      const res = await api.post("/correlations/batch", { queries, topN: 10, minAbsR: 0.5 });
       if (res.data?.success) {
         setResults(res.data.data);
       }

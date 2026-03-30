@@ -445,7 +445,9 @@ export class CorrelationEngineService {
   }
 
   async getBatchCorrelations(
-    queries: Array<{ geographyType: string; geographyId: string }>
+    queries: Array<{ geographyType: string; geographyId: string }>,
+    topN: number = 100,
+    minAbsR: number = 0
   ): Promise<Record<string, MetricCorrelation[]>> {
     if (queries.length === 0) return {};
 
@@ -460,18 +462,23 @@ export class CorrelationEngineService {
          WHERE (geography_type, geography_id) IN (
            SELECT unnest($1::text[]), unnest($2::text[])
          )
+         AND ABS(correlation_r) >= $3
          ORDER BY geography_type, geography_id, ABS(correlation_r) DESC`,
-        [geoTypes, geoIds]
+        [geoTypes, geoIds, minAbsR]
       );
 
       const results: Record<string, MetricCorrelation[]> = {};
+      const counts: Record<string, number> = {};
       for (const q of queries) {
-        results[`${q.geographyType}:${q.geographyId}`] = [];
+        const key = `${q.geographyType}:${q.geographyId}`;
+        results[key] = [];
+        counts[key] = 0;
       }
       for (const row of result.rows) {
         const key = `${row.geography_type}:${row.geography_id}`;
-        if (results[key]) {
+        if (results[key] && counts[key] < topN) {
           results[key].push(row);
+          counts[key]++;
         }
       }
       return results;

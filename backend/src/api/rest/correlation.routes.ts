@@ -143,7 +143,7 @@ router.get('/top', async (req: Request, res: Response) => {
 
 router.post('/batch', async (req: Request, res: Response) => {
   try {
-    const { queries } = req.body;
+    const { queries, topN, minAbsR } = req.body;
     if (!Array.isArray(queries) || queries.length === 0) {
       return res.status(400).json({ success: false, error: 'queries array is required' });
     }
@@ -151,7 +151,11 @@ router.post('/batch', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Maximum 50 queries per batch' });
     }
 
-    const results = await engine.getBatchCorrelations(queries);
+    const results = await engine.getBatchCorrelations(
+      queries,
+      typeof topN === 'number' ? topN : 100,
+      typeof minAbsR === 'number' ? minAbsR : 0
+    );
     res.json({ success: true, data: results });
   } catch (error: any) {
     console.error('Batch correlations error:', error);
