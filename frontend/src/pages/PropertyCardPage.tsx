@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { TickerBar } from "../components/terminal/TickerBar";
+import { TerminalChrome } from "../components/terminal/TerminalChrome";
 import { useTheme } from "../contexts/ThemeContext";
 
 const T = {
@@ -515,11 +515,6 @@ const MiniBar = ({ value, max, color = T.text.cyan, width = 60 }) => (
   </div>
 );
 
-function LiveClock() {
-  const [t, setT] = useState(new Date());
-  useEffect(() => { const id = setInterval(() => setT(new Date()), 1000); return () => clearInterval(id); }, []);
-  return <span style={{ fontSize: 10, color: "#F5A623", fontWeight: 600 }}>{t.toLocaleTimeString("en-US", { hour12: false })}</span>;
-}
 
 const ScoreRing = ({ score, size = 72, strokeWidth = 5 }) => {
   const radius = (size - strokeWidth) / 2;
@@ -2207,69 +2202,12 @@ export default function PropertyDetailsPage() {
     <div style={{ width: "100%", height: "100vh", background: T.bg.terminal, fontFamily: T.font.mono, color: T.text.primary, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{css}</style>
 
-      {/* ═══ TERMINAL STATUS BAR ═══ */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px", height: 28, background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-          <span onClick={() => navigate("/terminal/dashboard")} style={{ fontFamily: T.font.display, fontSize: 14, fontWeight: 800, color: T.text.amber, letterSpacing: 2, flexShrink: 0, cursor: "pointer" }}>JediRE</span>
-          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
-          <span style={{ fontSize: 10, color: T.text.secondary, flexShrink: 0 }}>PORTFOLIO</span>
-          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: T.text.amberBright || T.text.amber, flexShrink: 0 }}>PIPELINE: $237.5M</span>
-          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
-          <span style={{ fontSize: 10, fontWeight: 600, color: T.text.cyan, flexShrink: 0 }}>ACTIVE: 1</span>
-          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
-          <span style={{ fontSize: 10, fontWeight: 700, color: T.text.green, flexShrink: 0 }}>ALERTS: 3</span>
-          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
-          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 10, color: T.text.green, display: "flex", alignItems: "center", gap: 3 }}>
-            <span style={{ width: 4, height: 4, borderRadius: "50%", background: T.text.green, display: "inline-block" }} />5 AGT
-          </span>
-          <span style={{ fontSize: 10, color: T.text.cyan }}>MAIL: 2</span>
-          <span style={{ fontSize: 10, color: T.text.secondary }}>KAFKA: 312/s</span>
-          <LiveClock />
-          <button onClick={toggleTheme} style={{ fontFamily: T.font.mono, fontSize: 12, background: "transparent", border: `1px solid ${T.border.medium}`, color: T.text.secondary, padding: "2px 8px", cursor: "pointer", lineHeight: 1 }} title={theme === "dark" ? "Switch to light" : "Switch to dark"}>
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-        </div>
-      </div>
-
-      {/* ═══ TICKER BAR ═══ */}
-      <TickerBar height={20} speed={45} label="LIVE" labelColor={T.text.amber}
-        items={[
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
-        ]}
+      {/* ═══ SHARED TERMINAL CHROME (Status Bar + Ticker + Nav) ═══ */}
+      <TerminalChrome
+        theme={theme as "dark" | "light"}
+        onThemeToggle={toggleTheme}
+        showNavBar={true}
       />
-
-      {/* ═══ F-KEY NAV BAR ═══ */}
-      <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border.medium}`, flexShrink: 0, background: T.bg.header }}>
-        <div style={{ display: "flex", flex: 1, overflowX: "auto" }}>
-          {[
-            { key: "F1", label: "DASHBOARD" }, { key: "F2", label: "PIPELINE" }, { key: "F3", label: "PORTFOLIO" },
-            { key: "F4", label: "MARKETS" }, { key: "F5", label: "EMAIL" }, { key: "F6", label: "NEWS" },
-            { key: "F7", label: "STRATEGIES" }, { key: "F8", label: "REPORTS" }, { key: "F9", label: "ADMIN" }, { key: "F10", label: "SETTINGS" },
-          ].map(n => (
-            <button key={n.key} onClick={() => navigate("/terminal/dashboard")}
-              style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 600, padding: "0 12px", height: 32, cursor: "pointer",
-                background: "transparent", color: T.text.secondary, border: "none", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.7, color: T.text.muted }}>{n.key}</span>
-              {n.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 6, padding: "0 8px", flexShrink: 0 }}>
-          <button onClick={() => setShowCreateDeal(true)} style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.amber, background: `${T.text.amber}15`, border: `1px solid ${T.text.amber}40`, padding: "3px 10px", cursor: "pointer" }}>+ DEAL</button>
-          <button onClick={() => navigate("/terminal/dashboard")} style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 600, color: T.text.muted, background: "transparent", border: `1px solid ${T.border.medium}`, padding: "3px 10px", cursor: "pointer" }}>&gt; CMD (⌘K)</button>
-        </div>
-      </div>
 
       {/* ═══ PROPERTY CARD HEADER ═══ */}
       <div style={{
