@@ -844,241 +844,217 @@ export default function PropertyDetailsPage() {
   }, []);
 
   // ─── OVERVIEW TAB ────────────────────────────────────────
-  const OV_NEWS = [
-    { time: "14:32", tag: "DEAL", tagColor: T.text.green, headline: "Cortland Partners closes $182M acquisition of Midtown Luxe (412 units) at $442K/unit — 4.6% cap", source: "Real Capital Analytics" },
-    { time: "13:15", tag: "SUPPLY", tagColor: T.text.orange, headline: "Midtown Union Phase II (380 units) receives TCO — first move-ins expected Q3 2026", source: "CoStar" },
-    { time: "11:48", tag: "ECON", tagColor: T.text.cyan, headline: "Amazon confirms 2,800 new tech jobs at Midtown campus — $450M investment over 5 years", source: "Atlanta Business Chronicle" },
-    { time: "10:22", tag: "POLICY", tagColor: T.text.purple, headline: "Fulton County approves 10-year tax abatement for workforce housing projects >100 units", source: "County Records" },
-    { time: "09:45", tag: "MARKET", tagColor: T.text.amber, headline: "Tampa MSA rents accelerate for 4th consecutive month — gap vs national avg widens to +8.2%", source: "Apartment Locator AI" },
-    { time: "08:30", tag: "RISK", tagColor: T.text.red, headline: "Insurance premiums up 8.2% across SE region — largest increase in 3 years", source: "REIS" },
-    { time: "07:15", tag: "DEAL", tagColor: T.text.green, headline: "Greystar lists Buckhead Grand (288 units) — asking $68M ($236K/unit), 5.1% cap", source: "Eastdil Secured" },
-  ];
-  const OV_CORP = [
-    { name: "Amazon (HQ2)", sector: "TECH", employees: "12,400", growth: "+18.2%", impact: "HIGH", color: T.text.green, sentiment: 92 },
-    { name: "Delta Air Lines", sector: "TRANSPORT", employees: "38,200", growth: "+3.1%", impact: "HIGH", color: T.text.green, sentiment: 78 },
-    { name: "Home Depot (HQ)", sector: "RETAIL", employees: "8,600", growth: "+1.4%", impact: "MED", color: T.text.amber, sentiment: 72 },
-    { name: "NCR / Voyix", sector: "FINTECH", employees: "4,200", growth: "-2.8%", impact: "MED", color: T.text.red, sentiment: 58 },
-    { name: "Coca-Cola Co.", sector: "CPG", employees: "6,800", growth: "+0.8%", impact: "MED", color: T.text.amber, sentiment: 74 },
-    { name: "Georgia-Pacific", sector: "INDUSTRIAL", employees: "3,400", growth: "+2.2%", impact: "LOW", color: T.text.green, sentiment: 68 },
-    { name: "Anthem / Elevance", sector: "HEALTH", employees: "5,100", growth: "+4.6%", impact: "MED", color: T.text.green, sentiment: 76 },
-  ];
-  const OV_SIGNALS = [
-    { id: "D", name: "DEMAND", score: 82, delta: "+3", weight: 30, desc: "Pop +2.1%, Employment +2.8%, Net migration +14K HH/yr." },
-    { id: "S", name: "SUPPLY", score: 64, delta: "-2", weight: 25, desc: "39,565 pipeline units (15.8% of stock). 14.1 mo supply." },
-    { id: "M", name: "MOMENTUM", score: 78, delta: "+5", weight: 20, desc: "Rent growth accelerating +4.2% YoY. Txn velocity +14%." },
-    { id: "P", name: "POSITION", score: 72, delta: "+1", weight: 15, desc: "40th pctl nationally. Top quartile SE region." },
-    { id: "R", name: "RISK", score: 28, delta: "-4", weight: 10, desc: "Affordability 30.2% approaching threshold. Score inverted." },
-  ];
-  const OV_RENT_DATA = p.marketHistory.map(h => h.avgRent);
-  const OV_MSA = { jedi: 87, d30: "+4", confidence: 84, rent: "$2,150", rentD: "+4.2%", vac: "5.8%", absorb: "2,840/qtr", pipeline: "39,565", pipelinePct: "15.8%", moSupply: "14.1", pop: "6.2M", popD: "+2.1%", jobs: "3.1M", jobsD: "+2.8%", medInc: "$72,400", incD: "+3.4%", afford: "30.2%", cap: "5.2%", capD: "-20bps", ppu: "$218K", ppuD: "+8.4%", cycle: "EXPANSION", cycleMonth: 38 };
-  const OvDelta = ({ value }: { value?: string }) => {
-    if (!value || value === "—") return <span style={{ color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>—</span>;
-    const s = String(value); const pos = s.startsWith("+"); const neg = s.startsWith("-");
-    return <span style={{ fontSize: 9, fontWeight: 600, color: pos ? T.text.green : neg ? T.text.red : T.text.muted, fontFamily: T.font.mono }}>{s}</span>;
-  };
-  const OvScore = ({ value, size = 11 }: { value: number | string; size?: number }) => {
-    const n = typeof value === "string" ? parseInt(value) : value;
-    const c = n >= 80 ? T.text.green : n >= 65 ? T.text.amber : T.text.red;
-    return <span style={{ fontSize: size, fontWeight: 800, color: c, fontFamily: T.font.mono }}>{value}</span>;
-  };
-  const OvBadge = ({ label, color }: { label: string; color: string }) => (
-    <span style={{ fontFamily: T.font.mono, fontSize: 8, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>
-  );
-  const OvChart = ({ data, color = T.text.green, h = 80 }: { data: number[]; color?: string; h?: number }) => {
-    const mx = Math.max(...data), mn = Math.min(...data), r = mx - mn || 1;
-    const pts = data.map((v, i) => `${(i / (data.length - 1)) * 100}%,${h - 8 - ((v - mn) / r) * (h - 16)}`).join(" ");
-    const area = pts + ` 100%,${h} 0%,${h}`;
-    return (
-      <svg width="100%" height={h} style={{ display: "block" }} preserveAspectRatio="none" viewBox={`0 0 100 ${h}`}>
-        <polygon points={area} fill={color + "12"} />
-        <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-      </svg>
-    );
-  };
   const OverviewTab = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1, background: T.border.subtle, animation: "fadeIn 0.15s" }}>
-      {/* MARKET PRIMER */}
-      <div style={{ background: T.bg.panel, padding: "12px 16px" }}>
-        <div style={{ fontSize: 9, letterSpacing: 2, color: T.text.amber, marginBottom: 6, fontFamily: T.font.mono }}>MARKET PRIMER · {p.market.toUpperCase()}</div>
-        <p style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.7, margin: 0, fontFamily: T.font.label }}>
-          {p.market} is a <span style={{ color: T.text.primary, fontWeight: 600 }}>6.2M-person MSA</span> tracking <span style={{ color: T.text.cyan }}>1,028 properties</span> and <span style={{ color: T.text.cyan }}>250,412 units</span> across 8 submarkets.
-          The market is in <span style={{ color: T.text.green }}>month 38 of an expansion cycle</span> — employment growing <span style={{ color: T.text.green }}>+2.8% YoY</span>, population <span style={{ color: T.text.green }}>+2.1%</span> (3x national avg), and median household income <span style={{ color: T.text.green }}>+3.4%</span>.
-          Average effective rent reached <span style={{ color: T.text.green }}>$2,150/mo (+4.2% YoY)</span> with vacancy tightening to <span style={{ color: T.text.green }}>5.8%</span> — a 3-year low.
-          <span style={{ color: T.text.orange }}> Primary risk: </span> supply pipeline is elevated at <span style={{ color: T.text.orange }}>15.8% of existing stock</span> (39,565 units), translating to <span style={{ color: T.text.orange }}>14.1 months of supply</span> at current absorption.
-          However, absorption remains strong at <span style={{ color: T.text.green }}>2,840 units/quarter</span> and permit velocity is decelerating — suggesting past-peak supply.
-          <span style={{ color: T.text.amber }}> Affordability watch: </span> rent-to-income at 30.2%, approaching the 30% burdened threshold.
-          Platform JEDI Score: <span style={{ color: T.text.green, fontWeight: 600 }}>87 (+4 over 30d)</span> — Strong Opportunity.
-        </p>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 8, animation: "fadeIn 0.15s" }}>
+      {/* LEFT COLUMN */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <PhotoGallery photos={p.photos} />
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="PROPERTY VITALS" icon="◈" borderColor={T.text.cyan} />
+          <DataRow label="Type" value={p.type} sub={`· ${p.subtype}`} />
+          <DataRow label="Class" value={p.class} />
+          <DataRow label="Units" value={p.units} />
+          <DataRow label="Stories" value={p.stories} />
+          <DataRow label="Year Built" value={p.yearBuilt} sub={p.yearRenovated ? `· Renov ${p.yearRenovated}` : ""} />
+          <DataRow label="Lot Size" value={`${p.lotSizeAc} ac`} sub={`${p.lotSizeSF.toLocaleString()} SF`} />
+          <DataRow label="Building SF" value={`${p.buildingSF.toLocaleString()}`} />
+          <DataRow label="Avg Unit SF" value={`${p.avgUnitSF}`} sub="SF" />
+          <DataRow label="Parking" value={`${p.parking.total} spaces`} sub={`${p.parking.ratio}:1 · ${p.parking.type}`} />
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="AMENITIES" icon="◆" borderColor={T.text.purple} />
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 3, padding: "6px 10px" }}>
+            {p.amenities.map((a, i) => <Badge key={i} color={T.text.secondary}>{a}</Badge>)}
+          </div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="OWNERSHIP" icon="◇" borderColor={T.text.orange} />
+          <DataRow label="Current Owner" value={p.owner} mono={false} />
+          <DataRow label="Owner Type" value={p.ownerType} />
+          <DataRow label="Acquired" value={p.acquisitionDate} sub={fmtFull(p.acquisitionPrice)} />
+          <DataRow label="Hold Period" value={`${new Date().getFullYear() - parseInt(p.acquisitionDate)}yr`} color={T.text.amber} />
+        </div>
       </div>
 
-      {/* 3-COLUMN: Rent Chart | Supply-Demand | Economic Profile */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 1 }}>
-        <div style={{ background: T.bg.panel, padding: 14 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.muted, fontFamily: T.font.mono }}>AVG RENT · 12MO</span>
-            <div style={{ display: "flex", gap: 4 }}>
-              {["1Y","3Y","5Y"].map((pr,i) => <span key={i} style={{ fontSize: 7, padding: "1px 4px", background: i === 0 ? T.text.amber : "transparent", color: i === 0 ? T.bg.terminal : T.text.muted, fontFamily: T.font.mono, cursor: "pointer" }}>{pr}</span>)}
-            </div>
-          </div>
-          <OvChart data={OV_RENT_DATA} color={T.text.green} h={90} />
-          <div style={{ marginTop: 8, borderTop: `1px solid ${T.border.subtle}`, paddingTop: 6 }}>
+      {/* RIGHT COLUMN */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="PERFORMANCE SNAPSHOT" icon="▲" borderColor={T.text.green}
+            action={<span onClick={() => setActiveTab("MARKET_PERF")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.green, cursor: "pointer" }}>FULL VIEW →</span>} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
             {[
-              { l: "Current Avg Rent", v: OV_MSA.rent }, { l: "Rent Growth YoY", v: OV_MSA.rentD, c: T.text.green },
-              { l: "Avg Rent/SF", v: "$1.92" }, { l: "vs National Avg", v: "+12.4%", c: T.text.green },
-              { l: "Concession Rate", v: "2.4%" }, { l: "RevPAU (Market)", v: "$1,986" },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "2px 0" }}>
-                <span style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>{m.l}</span>
-                <span style={{ fontSize: 9, fontWeight: 600, color: m.c || T.text.primary, fontFamily: T.font.mono }}>{m.v}</span>
+              { label: "Occupancy", value: pct(p.currentOccupancy), color: p.currentOccupancy >= 93 ? T.text.green : T.text.amber, spark: perf.map(h => h.occ) },
+              { label: "Avg Eff. Rent", value: `$${p.avgEffectiveRent.toLocaleString()}`, sub: "/mo", spark: perf.map(h => h.rent) },
+              { label: "Rent/SF", value: `$${p.rentPerSF}`, sub: "/SF/mo" },
+              { label: "NOI (T12)", value: fmt(p.noiTrailing12), color: T.text.green, spark: perf.map(h => h.noi) },
+              { label: "Implied Cap", value: pct(p.capRateImplied), color: T.text.cyan },
+              { label: "Expense Ratio", value: pct(p.expenseRatio), color: p.expenseRatio > 50 ? T.text.red : T.text.amber },
+            ].map((m, i) => (
+              <div key={i} style={{ padding: "8px 10px", borderBottom: `1px solid ${T.border.subtle}08`, borderRight: i % 2 === 0 ? `1px solid ${T.border.subtle}08` : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em", marginBottom: 2 }}>{m.label}</div>
+                  {m.spark && <MiniSparkline data={m.spark} color={m.color || T.text.green} width={40} height={12} />}
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+                  <span style={{ fontSize: 14, fontFamily: T.font.mono, fontWeight: 700, color: m.color || T.text.primary }}>{m.value}</span>
+                  {m.sub && <span style={{ fontSize: 8, color: T.text.muted }}>{m.sub}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: "4px 10px", background: T.bg.panelAlt }}>
+            <div style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>CONCESSIONS</div>
+            <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.amber }}>{p.concessions}</div>
+          </div>
+        </div>
+
+        {/* Traffic Quick-Read — links to TRAFFIC tab */}
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="TRAFFIC INTELLIGENCE" subtitle="M07" icon="▣" borderColor={T.text.blue}
+            action={<span onClick={() => setActiveTab("TRAFFIC")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.blue, cursor: "pointer" }}>DETAIL →</span>} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0 }}>
+            {[
+              { label: "T-02 PHYSICAL", value: td.outputs.t02_physicalScore, max: 100 },
+              { label: "T-03 DIGITAL", value: td.outputs.t03_digitalScore, max: 100 },
+              { label: "T-07 TRAJECTORY", value: `+${(td.outputs.t07_trajectory * 100).toFixed(1)}%`, raw: true },
+            ].map((s, i) => (
+              <div key={i} style={{ padding: "6px 8px", textAlign: "center", borderRight: i < 2 ? `1px solid ${T.border.subtle}08` : "none" }}>
+                <div style={{ fontSize: 6, fontFamily: T.font.mono, color: T.text.muted, letterSpacing: "0.08em" }}>{s.label}</div>
+                {s.raw ? (
+                  <div style={{ fontSize: 14, fontFamily: T.font.mono, fontWeight: 700, color: T.text.green }}>{s.value}</div>
+                ) : (
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: 2 }}>
+                    <ScoreRing score={s.value} size={36} strokeWidth={3} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div style={{ padding: "4px 8px" }}>
+            <QuadrantBadge quadrant={td.outputs.t04_quadrant} />
+          </div>
+        </div>
+
+        {/* Market Position — Trade Area / Submarket / MSA */}
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="MARKET POSITION" subtitle="3-Level Comparison" icon="◉" borderColor={T.text.amber} />
+          {/* Column headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "76px 1fr 1fr 1fr 1fr", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 7, fontFamily: T.font.mono }}>
+            <span style={{ color: T.text.muted, fontWeight: 600 }}>METRIC</span>
+            <span style={{ color: T.text.amber, fontWeight: 600, textAlign: "center" }}>SUBJECT</span>
+            <span style={{ color: T.text.muted, fontWeight: 600, textAlign: "center" }}>TRADE AREA</span>
+            <span style={{ color: T.text.muted, fontWeight: 600, textAlign: "center" }}>SUBMARKET</span>
+            <span style={{ color: T.text.muted, fontWeight: 600, textAlign: "center" }}>MSA</span>
+          </div>
+          {[
+            { label: "Eff. Rent", subj: `$${p.avgEffectiveRent}`, ta: `$${p.marketPosition.tradeArea.rent}`, sm: `$${p.marketPosition.submarket.rent}`, msa: `$${p.marketPosition.msa.rent}`, subjVal: p.avgEffectiveRent, taVal: p.marketPosition.tradeArea.rent },
+            { label: "Vacancy", subj: pct(100 - p.currentOccupancy), ta: pct(p.marketPosition.tradeArea.vacancy), sm: pct(p.marketPosition.submarket.vacancy), msa: pct(p.marketPosition.msa.vacancy), lower: true, subjVal: 100 - p.currentOccupancy, taVal: p.marketPosition.tradeArea.vacancy },
+            { label: "Concessions", subj: pct(p.concessionValue), ta: pct(p.marketPosition.tradeArea.concessions), sm: pct(p.marketPosition.submarket.concessions), msa: pct(p.marketPosition.msa.concessions), lower: true, subjVal: p.concessionValue, taVal: p.marketPosition.tradeArea.concessions },
+            { label: "Mo. Traffic", subj: `${(p.monthlyTraffic/1000).toFixed(1)}k`, ta: `${(p.marketPosition.tradeArea.traffic/1000).toFixed(1)}k`, sm: `${(p.marketPosition.submarket.traffic/1000).toFixed(1)}k`, msa: `${(p.marketPosition.msa.traffic/1000).toFixed(1)}k`, higher: true, subjVal: p.monthlyTraffic, taVal: p.marketPosition.tradeArea.traffic },
+            { label: "Rent Growth", subj: `+${pct(1.1)}`, ta: `+${pct(p.marketPosition.tradeArea.rentGrowth)}`, sm: `+${pct(p.marketPosition.submarket.rentGrowth)}`, msa: `+${pct(p.marketPosition.msa.rentGrowth)}` },
+          ].map((row, i) => (
+            <div key={i} style={{ display: "grid", gridTemplateColumns: "76px 1fr 1fr 1fr 1fr", padding: "3px 8px", borderBottom: `1px solid ${T.border.subtle}08`, fontSize: 8, fontFamily: T.font.mono }}>
+              <span style={{ color: T.text.secondary }}>{row.label}</span>
+              <span style={{ color: T.text.amber, fontWeight: 600, textAlign: "center" }}>{row.subj}</span>
+              <span style={{ color: T.text.secondary, textAlign: "center" }}>{row.ta}</span>
+              <span style={{ color: T.text.secondary, textAlign: "center" }}>{row.sm}</span>
+              <span style={{ color: T.text.secondary, textAlign: "center" }}>{row.msa}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", padding: "6px 10px", gap: 12 }}>
+            {[
+              { label: "Walk", value: p.walkScore },
+              { label: "Transit", value: p.transitScore },
+              { label: "Bike", value: p.bikeScore },
+            ].map((s, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.muted, width: 36 }}>{s.label}</span>
+                <MiniBar value={s.value} max={100} color={s.value >= 70 ? T.text.green : s.value >= 50 ? T.text.amber : T.text.red} width={40} />
+                <span style={{ fontSize: 9, fontFamily: T.font.mono, fontWeight: 600, color: T.text.primary }}>{s.value}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <div style={{ background: T.bg.panel, padding: 14 }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.cyan, fontFamily: T.font.mono }}>SUPPLY-DEMAND BALANCE</span>
-          <div style={{ marginTop: 8 }}>
-            {[
-              { l: "Vacancy Rate", v: OV_MSA.vac, c: T.text.green }, { l: "Net Absorption", v: OV_MSA.absorb },
-              { l: "Pipeline Units", v: OV_MSA.pipeline }, { l: "Pipeline %", v: OV_MSA.pipelinePct, c: T.text.orange },
-              { l: "Months of Supply", v: OV_MSA.moSupply, c: T.text.orange }, { l: "Permit Velocity", v: "-8.2% YoY", c: T.text.green },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${T.border.subtle}` }}>
-                <span style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.label }}>{m.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: m.c || T.text.primary, fontFamily: T.font.mono }}>{m.v}</span>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.border.medium}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.amber, fontFamily: T.font.mono }}>TRANSACTION ACTIVITY</span>
-            <div style={{ marginTop: 4 }}>
-              {[
-                { l: "Avg Cap Rate", v: OV_MSA.cap }, { l: "Cap Δ YoY", v: OV_MSA.capD, c: T.text.green },
-                { l: "Avg $/Unit", v: OV_MSA.ppu }, { l: "$/Unit Δ YoY", v: OV_MSA.ppuD, c: T.text.green },
-                { l: "Txn Volume (12mo)", v: "$4.2B" }, { l: "Deals Closed", v: "127" },
-              ].map((m,i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: `1px solid ${T.border.subtle}` }}>
-                  <span style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.label }}>{m.l}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: m.c || T.text.primary, fontFamily: T.font.mono }}>{m.v}</span>
-                </div>
+        {/* Unit Mix */}
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="UNIT MIX" subtitle={`${p.units} units`} icon="▦" borderColor={T.text.purple}
+            action={<span onClick={() => setActiveTab("COMPS")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.purple, cursor: "pointer" }}>COMP MIX →</span>} />
+          <div style={{ fontSize: 8, fontFamily: T.font.mono }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 36px 36px 50px 36px 38px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}` }}>
+              {["TYPE","UNITS","%","RENT","SF","$/SF"].map(h => (
+                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
               ))}
             </div>
-          </div>
-        </div>
-
-        <div style={{ background: T.bg.panel, padding: 14 }}>
-          <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.muted, fontFamily: T.font.mono }}>ECONOMIC PROFILE</span>
-          <div style={{ marginTop: 8 }}>
-            {[
-              { l: "Population", v: OV_MSA.pop }, { l: "Pop Growth", v: OV_MSA.popD, c: T.text.green },
-              { l: "Employment", v: OV_MSA.jobs }, { l: "Job Growth", v: OV_MSA.jobsD, c: T.text.green },
-              { l: "Median HH Income", v: OV_MSA.medInc }, { l: "Income Growth", v: OV_MSA.incD, c: T.text.green },
-              { l: "Rent/Income Ratio", v: OV_MSA.afford, c: T.text.orange }, { l: "Jobs/Apt Ratio", v: "5.8x" },
-            ].map((m,i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: `1px solid ${T.border.subtle}` }}>
-                <span style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.label }}>{m.l}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: m.c || T.text.primary, fontFamily: T.font.mono }}>{m.v}</span>
+            {p.unitMix.map((u, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 36px 36px 50px 36px 38px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+                <span style={{ color: T.text.primary, fontWeight: 500 }}>{u.type}</span>
+                <span style={{ color: T.text.secondary }}>{u.units}</span>
+                <span style={{ color: T.text.muted }}>{pct(u.pct)}</span>
+                <span style={{ color: T.text.green, fontWeight: 600 }}>${u.rent.toLocaleString()}</span>
+                <span style={{ color: T.text.secondary }}>{u.sf}</span>
+                <span style={{ color: T.text.cyan }}>${(u.rent / u.sf).toFixed(2)}</span>
               </div>
             ))}
-          </div>
-          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.border.medium}` }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.purple, fontFamily: T.font.mono }}>CYCLE POSITION</span>
-            <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-              <OvBadge label={OV_MSA.cycle} color={T.text.green} />
-              <span style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.mono }}>Month {OV_MSA.cycleMonth}</span>
-            </div>
-            <div style={{ marginTop: 6, height: 6, background: T.bg.terminal, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ width: "65%", height: "100%", background: `linear-gradient(90deg, ${T.text.green}, ${T.text.amber})`, borderRadius: 3 }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
-              {["Trough","Expansion","Peak","Contraction"].map((l,i) => <span key={i} style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>{l}</span>)}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* JEDI Score + Signal Bars */}
-      <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 1 }}>
-        <div style={{ background: T.bg.panel, padding: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-          <div style={{ fontSize: 8, color: T.text.muted, letterSpacing: 1.5, fontFamily: T.font.mono }}>MARKET JEDI</div>
-          <div style={{ width: 80, height: 80, borderRadius: "50%", border: `3px solid ${T.text.green}`, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", boxShadow: `0 0 16px ${T.text.green}33` }}>
-            <span style={{ fontSize: 26, fontWeight: 800, color: T.text.green }}>{OV_MSA.jedi}</span>
-            <span style={{ fontSize: 8, color: T.text.green, fontWeight: 600, fontFamily: T.font.mono }}>{OV_MSA.d30} 30d</span>
-          </div>
-          <span style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>Conf: {OV_MSA.confidence}%</span>
-        </div>
-        <div style={{ background: T.bg.panel, padding: 12 }}>
-          {OV_SIGNALS.map(s => (
-            <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-              <span style={{ fontSize: 8, color: T.text.muted, minWidth: 78, fontFamily: T.font.mono }}>{s.name} ({s.weight}%)</span>
-              <div style={{ flex: "0 0 120px", height: 5, background: T.bg.terminal, borderRadius: 1 }}>
-                <div style={{ height: "100%", width: `${s.score}%`, background: s.score >= 70 ? T.text.green : s.score >= 50 ? T.text.amber : T.text.red, borderRadius: 1 }} />
-              </div>
-              <OvScore value={s.score} size={10} />
-              <OvDelta value={s.delta} />
-              <span style={{ fontSize: 8, color: T.text.muted, flex: 1, fontFamily: T.font.label }}>{s.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* NEWS & INTELLIGENCE + CORPORATE HEALTH — side by side */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
-        <div style={{ background: T.bg.panel }}>
-          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.border.subtle}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.amber, fontFamily: T.font.mono }}>◆ NEWS & INTELLIGENCE</span>
-            <span style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>{OV_NEWS.length} stories today</span>
-          </div>
-          {OV_NEWS.map((n, i) => (
-            <div key={i} style={{ display: "flex", gap: 8, padding: "5px 12px", borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer" }}>
-              <span style={{ fontSize: 8, color: T.text.muted, minWidth: 32, flexShrink: 0, fontFamily: T.font.mono }}>{n.time}</span>
-              <span style={{ fontFamily: T.font.mono, fontSize: 7, fontWeight: 700, color: n.tagColor, background: n.tagColor + "18", border: `1px solid ${n.tagColor}33`, padding: "0px 4px", flexShrink: 0, alignSelf: "flex-start", marginTop: 1 }}>{n.tag}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 9, color: T.text.primary, lineHeight: 1.4, fontFamily: T.font.label }}>{n.headline}</div>
-                <div style={{ fontSize: 7, color: T.text.muted, marginTop: 1, fontFamily: T.font.mono }}>{n.source}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ background: T.bg.panel }}>
-          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.border.subtle}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 9, letterSpacing: 1, color: T.text.cyan, fontFamily: T.font.mono }}>◈ CORPORATE HEALTH · TOP EMPLOYERS</span>
-            <span style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>{p.market}</span>
-          </div>
-          <div style={{ display: "flex", background: T.bg.header, borderBottom: `1px solid ${T.border.medium}` }}>
-            {[{ l: "Employer", w: 130 },{ l: "Sector", w: 70 },{ l: "Employees", w: 65 },{ l: "Growth", w: 52 },{ l: "Impact", w: 48 },{ l: "Sent.", w: 38 }].map((c,i) => (
-              <div key={i} style={{ width: c.w, minWidth: c.w, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: T.text.muted, letterSpacing: 0.5, borderRight: i < 5 ? `1px solid ${T.border.subtle}` : "none", fontFamily: T.font.mono }}>{c.l}</div>
-            ))}
-          </div>
-          {OV_CORP.map((c, i) => (
-            <div key={i} style={{ display: "flex", background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}`, cursor: "pointer" }}>
-              <div style={{ width: 130, minWidth: 130, padding: "4px 6px", borderRight: `1px solid ${T.border.subtle}` }}>
-                <span style={{ fontSize: 9, fontWeight: 600, color: T.text.primary, fontFamily: T.font.label }}>{c.name}</span>
-              </div>
-              <div style={{ width: 70, minWidth: 70, padding: "4px 6px", borderRight: `1px solid ${T.border.subtle}` }}>
-                <OvBadge label={c.sector} color={T.text.muted} />
-              </div>
-              <div style={{ width: 65, minWidth: 65, padding: "4px 6px", borderRight: `1px solid ${T.border.subtle}` }}>
-                <span style={{ fontSize: 9, color: T.text.primary, fontFamily: T.font.mono }}>{c.employees}</span>
-              </div>
-              <div style={{ width: 52, minWidth: 52, padding: "4px 6px", borderRight: `1px solid ${T.border.subtle}` }}>
-                <OvDelta value={c.growth} />
-              </div>
-              <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${T.border.subtle}` }}>
-                <OvBadge label={c.impact} color={c.color} />
-              </div>
-              <div style={{ width: 38, minWidth: 38, padding: "4px 6px", display: "flex", alignItems: "center", gap: 3 }}>
-                <div style={{ width: 20, height: 4, background: T.bg.terminal, borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${c.sentiment}%`, height: "100%", background: c.sentiment >= 75 ? T.text.green : c.sentiment >= 60 ? T.text.amber : T.text.red, borderRadius: 2 }} />
+            {/* Totals row — weighted averages */}
+            {(() => {
+              const totalUnits = p.unitMix.reduce((s, u) => s + u.units, 0);
+              const wavgRent = Math.round(p.unitMix.reduce((s, u) => s + u.rent * u.units, 0) / totalUnits);
+              const wavgSF = Math.round(p.unitMix.reduce((s, u) => s + u.sf * u.units, 0) / totalUnits);
+              const wavgRentSF = wavgRent / wavgSF;
+              return (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 36px 36px 50px 36px 38px", padding: "4px 8px", background: `${T.text.amber}08`, borderTop: `1px solid ${T.text.amber}30` }}>
+                  <span style={{ color: T.text.amber, fontWeight: 700 }}>TOTAL / WTD AVG</span>
+                  <span style={{ color: T.text.amber, fontWeight: 700 }}>{totalUnits}</span>
+                  <span style={{ color: T.text.amber }}>100%</span>
+                  <span style={{ color: T.text.amber, fontWeight: 700 }}>${wavgRent.toLocaleString()}</span>
+                  <span style={{ color: T.text.amber }}>{wavgSF}</span>
+                  <span style={{ color: T.text.amber, fontWeight: 700 }}>${wavgRentSF.toFixed(2)}</span>
                 </div>
-                <span style={{ fontSize: 7, color: T.text.muted, fontFamily: T.font.mono }}>{c.sentiment}</span>
-              </div>
+              );
+            })()}
+          </div>
+          {/* Mix bar visualization */}
+          <div style={{ display: "flex", height: 6, margin: "0 8px 6px", borderRadius: 1, overflow: "hidden" }}>
+            {p.unitMix.map((u, i) => (
+              <div key={i} style={{ width: `${u.pct}%`, background: [T.text.purple, T.text.cyan, T.text.green, T.text.amber][i], opacity: 0.7 }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Rent Comps Preview — expanded */}
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 2 }}>
+          <SectionHeader title="RENT COMPS" subtitle={`${p.rentComps.length} properties`} icon="≡" borderColor={T.text.cyan}
+            action={<span onClick={() => setActiveTab("COMPS")} style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.cyan, cursor: "pointer" }}>VIEW ALL →</span>} />
+          <div style={{ fontSize: 8, fontFamily: T.font.mono, overflowX: "auto" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 36px 50px 36px 36px 38px 36px 42px", padding: "4px 8px", background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, minWidth: 380 }}>
+              {["PROPERTY","UNITS","RENT","OCC","YR","STR","CONC","TRAFFIC"].map(h => (
+                <span key={h} style={{ color: T.text.muted, fontWeight: 600, letterSpacing: "0.05em" }}>{h}</span>
+              ))}
             </div>
-          ))}
-          <div style={{ padding: "6px 12px", borderTop: `1px solid ${T.border.medium}`, display: "flex", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>Aggregate Employment: 78,700</span>
-            <span style={{ fontSize: 8, color: T.text.green, fontFamily: T.font.mono }}>Wtd. Growth: +4.8%</span>
+            {/* Subject row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 36px 50px 36px 36px 38px 36px 42px", padding: "4px 8px", borderBottom: `1px solid ${T.text.amber}40`, background: `${T.text.amber}08`, minWidth: 380 }}>
+              <span style={{ color: T.text.amber, fontWeight: 700 }}>SUBJECT</span>
+              <span style={{ color: T.text.amber }}>{p.units}</span>
+              <span style={{ color: T.text.amber, fontWeight: 700 }}>${p.avgEffectiveRent.toLocaleString()}</span>
+              <span style={{ color: T.text.amber }}>{pct(p.currentOccupancy)}</span>
+              <span style={{ color: T.text.amber }}>{p.yearBuilt}</span>
+              <span style={{ color: T.text.amber }}>{p.stories}</span>
+              <span style={{ color: T.text.amber }}>{pct(p.concessionValue)}</span>
+              <span style={{ color: T.text.amber }}>{(p.monthlyTraffic/1000).toFixed(1)}k</span>
+            </div>
+            {p.rentComps.map((c, i) => (
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 36px 50px 36px 36px 38px 36px 42px", padding: "4px 8px", borderBottom: `1px solid ${T.border.subtle}08`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, minWidth: 380 }}>
+                <span style={{ color: T.text.primary, fontWeight: 500 }}>{c.name}</span>
+                <span style={{ color: T.text.secondary }}>{c.units}</span>
+                <span style={{ color: c.rent > p.avgEffectiveRent ? T.text.green : T.text.red, fontWeight: 600 }}>${c.rent.toLocaleString()}</span>
+                <span style={{ color: T.text.secondary }}>{pct(c.occ)}</span>
+                <span style={{ color: T.text.secondary }}>{c.yearBuilt}</span>
+                <span style={{ color: T.text.secondary }}>{c.stories}</span>
+                <span style={{ color: c.concessions > p.concessionValue ? T.text.red : T.text.green }}>{pct(c.concessions)}</span>
+                <span style={{ color: T.text.secondary }}>{(c.monthlyTraffic/1000).toFixed(1)}k</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
