@@ -1609,15 +1609,15 @@ export default function PropertyDetailsPage() {
               }
               const fmtGrp = GEO_COLS.find(gc => gc.family === mf.family) || PROP_COLS.find(pc => pc.family === mf.family);
               return (
-                <div style={{ overflowX: "auto" }}>
+                <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 480 }}>
                   <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                    <thead>
+                    <thead style={{ position: "sticky", top: 0, zIndex: 4 }}>
                       <tr>
-                        <th style={{ ...cs(false, true), position: "sticky", left: 0, zIndex: 3, background: T.bg.header, textAlign: "center", minWidth: 42 }}>YR</th>
+                        <th style={{ ...cs(false, true), position: "sticky", left: 0, zIndex: 5, background: T.bg.header, textAlign: "center", minWidth: 42 }}>YR</th>
                         {grpCols.map(c => (
-                          <th key={c.dataKey} style={{ ...cs(false, true), textAlign: "center", color: c.color, borderBottom: `2px solid ${c.color}`, minWidth: 100 }}>{c.label} — {mf.label}</th>
+                          <th key={c.dataKey} style={{ ...cs(false, true), textAlign: "center", color: c.color, borderBottom: `2px solid ${c.color}`, minWidth: 100, background: T.bg.header }}>{c.label} — {mf.label}</th>
                         ))}
-                        <th style={{ ...cs(false, true), textAlign: "center", color: T.text.purple, minWidth: 80 }}>DELTA</th>
+                        <th style={{ ...cs(false, true), textAlign: "center", color: T.text.purple, minWidth: 80, background: T.bg.header }}>DELTA</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1652,26 +1652,26 @@ export default function PropertyDetailsPage() {
             }
 
             return (
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 480 }}>
                 <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
-                  <thead>
+                  <thead style={{ position: "sticky", top: 0, zIndex: 4 }}>
                     <tr>
-                      <th rowSpan={2} style={{ ...cs(false, true), position: "sticky", left: 0, zIndex: 3, background: T.bg.header, textAlign: "center", minWidth: 42 }}>YR</th>
-                      {filtPropCols.length > 0 && <th colSpan={filtPropCols.length} style={{ ...cs(false, true), textAlign: "center", color: T.text.amber, borderBottom: `2px solid ${T.text.amber}` }}>PROPERTY</th>}
+                      <th rowSpan={2} style={{ ...cs(false, true), position: "sticky", left: 0, zIndex: 5, background: T.bg.header, textAlign: "center", minWidth: 42 }}>YR</th>
+                      {filtPropCols.length > 0 && <th colSpan={filtPropCols.length} style={{ ...cs(false, true), textAlign: "center", color: T.text.amber, borderBottom: `2px solid ${T.text.amber}`, background: T.bg.header }}>PROPERTY</th>}
                       {GEO_LABELS.map(g => filtGeoCols.length > 0 && (
-                        <th key={g.dataKey} colSpan={filtGeoCols.length} style={{ ...cs(false, true), textAlign: "center", color: g.color, borderBottom: `2px solid ${g.color}` }}>{g.label}</th>
+                        <th key={g.dataKey} colSpan={filtGeoCols.length} style={{ ...cs(false, true), textAlign: "center", color: g.color, borderBottom: `2px solid ${g.color}`, background: T.bg.header }}>{g.label}</th>
                       ))}
                     </tr>
                     <tr>
                       {filtPropCols.map(c => (
                         <th key={`ph-${c.key}`} onClick={() => handleMetricClick(c.family)} onDoubleClick={() => handleMetricDblClick(c.family)}
                           style={{ ...cs(false, true), fontSize: 7, color: isHi(c.family) ? T.text.amber : T.text.secondary, textAlign: "center", minWidth: 52, cursor: "pointer",
-                            boxShadow: isHi(c.family) ? `inset 0 0 0 1px ${T.text.amber}30` : "none" }}>{c.label}</th>
+                            boxShadow: isHi(c.family) ? `inset 0 0 0 1px ${T.text.amber}30` : "none", background: T.bg.header }}>{c.label}</th>
                       ))}
                       {GEO_LABELS.map(g => filtGeoCols.map(c => (
                         <th key={`${g.dataKey}-${c.key}`} onClick={() => handleMetricClick(c.family)} onDoubleClick={() => handleMetricDblClick(c.family)}
                           style={{ ...cs(false, true), fontSize: 7, color: isHi(c.family) ? T.text.amber : T.text.secondary, textAlign: "center", minWidth: 52, cursor: "pointer",
-                            boxShadow: isHi(c.family) ? `inset 0 0 0 1px ${T.text.amber}30` : "none" }}>{c.label}</th>
+                            boxShadow: isHi(c.family) ? `inset 0 0 0 1px ${T.text.amber}30` : "none", background: T.bg.header }}>{c.label}</th>
                       )))}
                     </tr>
                   </thead>
