@@ -14,6 +14,7 @@ const css = `
 @keyframes slideUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+@keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @keyframes scanline{0%{top:-100%}100%{top:100%}}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes sweepIn{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
@@ -794,6 +795,8 @@ export default function PropertyDetailsPage() {
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
   const [chartWidth, setChartWidth] = useState(460);
+  const [clockTime, setClockTime] = useState(new Date());
+  useEffect(() => { const id = setInterval(() => setClockTime(new Date()), 1000); return () => clearInterval(id); }, []);
   const p = PROPERTY;
   const td = TRAFFIC_DATA;
   const perf = PERFORMANCE_HISTORY;
@@ -2191,12 +2194,77 @@ export default function PropertyDetailsPage() {
     </div>
   );
 
+  const tickerItems = [
+    "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO",
+    "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO",
+  ];
+
   // ─── MAIN RENDER ─────────────────────────────────────────
   return (
     <div style={{ width: "100%", height: "100vh", background: T.bg.terminal, fontFamily: T.font.mono, color: T.text.primary, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <style>{css}</style>
 
-      {/* TOP BAR */}
+      {/* ═══ TERMINAL STATUS BAR ═══ */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 8px", height: 28, background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span onClick={() => navigate("/terminal/dashboard")} style={{ fontFamily: T.font.display, fontSize: 14, fontWeight: 800, color: T.text.amber, letterSpacing: 2, flexShrink: 0, cursor: "pointer" }}>JediRE</span>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 10, color: T.text.secondary, flexShrink: 0 }}>PORTFOLIO</span>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: T.text.amberBright || T.text.amber, flexShrink: 0 }}>PIPELINE: $237.5M</span>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.text.cyan, flexShrink: 0 }}>ACTIVE: 1</span>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: T.text.green, flexShrink: 0 }}>ALERTS: 3</span>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>|</span>
+          <span style={{ fontSize: 10, color: T.text.muted, flexShrink: 0 }}>{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 10, color: T.text.green, display: "flex", alignItems: "center", gap: 3 }}>
+            <span style={{ width: 4, height: 4, borderRadius: "50%", background: T.text.green, display: "inline-block" }} />5 AGT
+          </span>
+          <span style={{ fontSize: 10, color: T.text.cyan }}>MAIL: 2</span>
+          <span style={{ fontSize: 10, color: T.text.secondary }}>KAFKA: 312/s</span>
+          <span style={{ fontSize: 10, color: T.text.amber, fontWeight: 600 }}>{clockTime.toLocaleTimeString("en-US", { hour12: false })}</span>
+        </div>
+      </div>
+
+      {/* ═══ TICKER BAR ═══ */}
+      <div style={{ display: "flex", alignItems: "center", height: 20, background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0, overflow: "hidden" }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: T.text.amber, padding: "0 8px", flexShrink: 0, background: `${T.text.amber}15`, height: "100%", display: "flex", alignItems: "center" }}>LIVE</span>
+        <span style={{ fontSize: 9, fontWeight: 700, color: T.text.green, padding: "0 6px", flexShrink: 0 }}>pdate INFO</span>
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          <div style={{ display: "flex", gap: 24, whiteSpace: "nowrap", animation: "tickerScroll 60s linear infinite" }}>
+            {tickerItems.map((item, i) => (
+              <span key={i} style={{ fontSize: 9, color: T.text.muted }}>{item}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ═══ F-KEY NAV BAR ═══ */}
+      <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border.medium}`, flexShrink: 0, background: T.bg.header }}>
+        <div style={{ display: "flex", flex: 1, overflowX: "auto" }}>
+          {[
+            { key: "F1", label: "DASHBOARD" }, { key: "F2", label: "PIPELINE" }, { key: "F3", label: "PORTFOLIO" },
+            { key: "F4", label: "MARKETS" }, { key: "F5", label: "EMAIL" }, { key: "F6", label: "NEWS" },
+            { key: "F7", label: "STRATEGIES" }, { key: "F8", label: "REPORTS" }, { key: "F9", label: "ADMIN" }, { key: "F10", label: "SETTINGS" },
+          ].map(n => (
+            <button key={n.key} onClick={() => navigate("/terminal/dashboard")}
+              style={{ fontFamily: T.font.mono, fontSize: 11, fontWeight: 600, padding: "0 12px", height: 32, cursor: "pointer",
+                background: "transparent", color: T.text.secondary, border: "none", display: "flex", alignItems: "center", gap: 5, whiteSpace: "nowrap", flexShrink: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, opacity: 0.7, color: T.text.muted }}>{n.key}</span>
+              {n.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 6, padding: "0 8px", flexShrink: 0 }}>
+          <button onClick={() => setShowCreateDeal(true)} style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 700, color: T.text.amber, background: `${T.text.amber}15`, border: `1px solid ${T.text.amber}40`, padding: "3px 10px", cursor: "pointer" }}>+ DEAL</button>
+          <button onClick={() => navigate("/terminal/dashboard")} style={{ fontFamily: T.font.mono, fontSize: 10, fontWeight: 600, color: T.text.muted, background: "transparent", border: `1px solid ${T.border.medium}`, padding: "3px 10px", cursor: "pointer" }}>&gt; CMD (⌘K)</button>
+        </div>
+      </div>
+
+      {/* ═══ PROPERTY CARD HEADER ═══ */}
       <div style={{
         display: "flex", alignItems: "center", padding: "6px 12px", gap: 10,
         background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0,
