@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const T = {
   bg: "#0A0E17", panel: "#0F1319", panelAlt: "#131821", header: "#1A1F2E",
@@ -9,8 +9,8 @@ const T = {
   blue: "#3B82F6", blueBg: "#1e3a5f",
   borderS: "#1E2538", borderM: "#2A3348",
 };
-const mono = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
-const sans = { fontFamily: "'IBM Plex Sans',sans-serif" };
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
+const sans: React.CSSProperties = { fontFamily: "'IBM Plex Sans',sans-serif" };
 
 function Badge({ label, color }: { label: string; color: string }) {
   return <span style={{ ...mono, fontSize: 8, fontWeight: 700, color, background: color + "18", border: `1px solid ${color}33`, padding: "1px 5px", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{label}</span>;
@@ -47,6 +47,54 @@ function PressureBadge({ p }: { p: string }) {
   const c: Record<string, string> = { BUYER: T.green, BALANCED: T.amber, SELLER: T.cyan };
   return <Badge label={p} color={c[p] || T.muted} />;
 }
+
+function LiveClock() {
+  const [t, setT] = useState(new Date());
+  useEffect(() => { const id = setInterval(() => setT(new Date()), 1000); return () => clearInterval(id); }, []);
+  const fmt = (n: number) => String(n).padStart(2, "0");
+  return <span style={{ fontSize: 10, fontWeight: 700, color: T.amberBright, ...mono }}>{fmt(t.getHours())}:{fmt(t.getMinutes())}:{fmt(t.getSeconds())}</span>;
+}
+
+const TABS = [
+  { key: "OVERVIEW", label: "OVERVIEW", hotkey: "F1" },
+  { key: "FINANCIALS", label: "FINANCIALS", hotkey: "F2" },
+  { key: "COMPS", label: "COMPS", hotkey: "F3" },
+  { key: "TAX", label: "TAX & TITLE", hotkey: "F4" },
+  { key: "ZONING", label: "ZONING", hotkey: "F5" },
+  { key: "MARKET_PERF", label: "MARKET & PERFORMANCE", hotkey: "F6" },
+  { key: "TRAFFIC", label: "TRAFFIC", hotkey: "F7" },
+];
+
+const TICKER_ITEMS = [
+  { text: "ATL MSA Rent +4.2% YoY", color: T.green },
+  { text: "Midtown Vacancy 5.1% (3yr low)", color: T.green },
+  { text: "Pipeline: 39,565 units (15.8%)", color: T.orange },
+  { text: "Cap Rate Compression -20bps", color: T.cyan },
+  { text: "Txn Volume $4.2B TTM", color: T.primary },
+  { text: "Amazon HQ2 expansion confirmed", color: T.green },
+  { text: "Permit velocity -8.2% YoY", color: T.green },
+  { text: "Affordability ratio 30.2%", color: T.orange },
+];
+
+const NEWS_STORIES = [
+  { time: "14:32", tag: "DEAL", tagColor: T.green, headline: "Cortland Partners closes $182M acquisition of Midtown Luxe (412 units) at $442K/unit — 4.6% cap", source: "Real Capital Analytics" },
+  { time: "13:15", tag: "SUPPLY", tagColor: T.orange, headline: "Midtown Union Phase II (380 units) receives TCO — first move-ins expected Q3 2026", source: "CoStar" },
+  { time: "11:48", tag: "ECON", tagColor: T.cyan, headline: "Amazon confirms 2,800 new tech jobs at Midtown campus — $450M investment over 5 years", source: "Atlanta Business Chronicle" },
+  { time: "10:22", tag: "POLICY", tagColor: T.purple, headline: "Fulton County approves 10-year tax abatement for workforce housing projects >100 units", source: "County Records" },
+  { time: "09:45", tag: "MARKET", tagColor: T.amber, headline: "Atlanta MSA rents accelerate for 4th consecutive month — gap vs national avg widens to +12.4%", source: "Apartment Locator AI" },
+  { time: "08:30", tag: "RISK", tagColor: T.red, headline: "Insurance premiums up 8.2% across SE region — largest increase in 3 years", source: "REIS" },
+  { time: "07:15", tag: "DEAL", tagColor: T.green, headline: "Greystar lists Buckhead Grand (288 units) — asking $68M ($236K/unit), 5.1% cap", source: "Eastdil Secured" },
+];
+
+const CORP_HEALTH = [
+  { name: "Amazon (HQ2)", sector: "TECH", employees: "12,400", growth: "+18.2%", impact: "HIGH", color: T.green, sentiment: 92 },
+  { name: "Delta Air Lines", sector: "TRANSPORT", employees: "38,200", growth: "+3.1%", impact: "HIGH", color: T.green, sentiment: 78 },
+  { name: "Home Depot (HQ)", sector: "RETAIL", employees: "8,600", growth: "+1.4%", impact: "MED", color: T.amber, sentiment: 72 },
+  { name: "NCR / Voyix", sector: "FINTECH", employees: "4,200", growth: "-2.8%", impact: "MED", color: T.red, sentiment: 58 },
+  { name: "Coca-Cola Co.", sector: "CPG", employees: "6,800", growth: "+0.8%", impact: "MED", color: T.amber, sentiment: 74 },
+  { name: "Georgia-Pacific", sector: "INDUSTRIAL", employees: "3,400", growth: "+2.2%", impact: "LOW", color: T.green, sentiment: 68 },
+  { name: "Anthem / Elevance", sector: "HEALTH", employees: "5,100", growth: "+4.6%", impact: "MED", color: T.green, sentiment: 76 },
+];
 
 const MSA = {
   name: "Atlanta, GA", full: "Atlanta-Sandy Springs-Roswell MSA",
@@ -193,6 +241,70 @@ function MSAOverview() {
           ))}
         </div>
       </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+        <div style={{ background: T.panel }}>
+          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.borderS}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, letterSpacing: 1, color: T.amber, ...mono }}>◆ NEWS & INTELLIGENCE</span>
+            <span style={{ fontSize: 7, color: T.muted, ...mono }}>{NEWS_STORIES.length} stories today</span>
+          </div>
+          {NEWS_STORIES.map((n, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, padding: "5px 12px", borderBottom: `1px solid ${T.borderS}`, cursor: "pointer" }}
+              onMouseEnter={e => (e.currentTarget.style.background = T.hover)}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+              <span style={{ fontSize: 8, color: T.muted, minWidth: 32, flexShrink: 0, ...mono }}>{n.time}</span>
+              <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: n.tagColor, background: n.tagColor + "18", border: `1px solid ${n.tagColor}33`, padding: "0px 4px", flexShrink: 0, alignSelf: "flex-start", marginTop: 1 }}>{n.tag}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 9, color: T.primary, lineHeight: 1.4, ...sans }}>{n.headline}</div>
+                <div style={{ fontSize: 7, color: T.muted, marginTop: 1, ...mono }}>{n.source}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: T.panel }}>
+          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.borderS}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, letterSpacing: 1, color: T.cyan, ...mono }}>◈ CORPORATE HEALTH · TOP EMPLOYERS</span>
+            <span style={{ fontSize: 7, color: T.muted, ...mono }}>ATL MSA</span>
+          </div>
+          <div style={{ display: "flex", background: T.header, borderBottom: `1px solid ${T.borderM}` }}>
+            {[{ l: "Employer", w: 130 },{ l: "Sector", w: 70 },{ l: "Employees", w: 65 },{ l: "Growth", w: 52 },{ l: "Impact", w: 48 },{ l: "Sent.", w: 38 }].map((c,i) => (
+              <div key={i} style={{ width: c.w, minWidth: c.w, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderRight: i < 5 ? `1px solid ${T.borderS}` : "none", ...mono }}>{c.l}</div>
+            ))}
+          </div>
+          {CORP_HEALTH.map((c, i) => (
+            <div key={i} style={{ display: "flex", background: i % 2 === 0 ? T.panel : T.panelAlt, borderBottom: `1px solid ${T.borderS}`, cursor: "pointer" }}
+              onMouseEnter={e => (e.currentTarget.style.background = T.hover)}
+              onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? T.panel : T.panelAlt)}>
+              <div style={{ width: 130, minWidth: 130, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <span style={{ fontSize: 9, fontWeight: 600, color: T.primary, ...sans }}>{c.name}</span>
+              </div>
+              <div style={{ width: 70, minWidth: 70, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <Badge label={c.sector} color={T.muted} />
+              </div>
+              <div style={{ width: 65, minWidth: 65, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <span style={{ fontSize: 9, color: T.primary, ...mono }}>{c.employees}</span>
+              </div>
+              <div style={{ width: 52, minWidth: 52, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <DeltaCell value={c.growth} />
+              </div>
+              <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <Badge label={c.impact} color={c.color} />
+              </div>
+              <div style={{ width: 38, minWidth: 38, padding: "4px 6px", display: "flex", alignItems: "center", gap: 3 }}>
+                <div style={{ width: 20, height: 4, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${c.sentiment}%`, height: "100%", background: c.sentiment >= 75 ? T.green : c.sentiment >= 60 ? T.amber : T.red, borderRadius: 2 }} />
+                </div>
+                <span style={{ fontSize: 7, color: T.muted, ...mono }}>{c.sentiment}</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ padding: "6px 12px", borderTop: `1px solid ${T.borderM}`, display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 8, color: T.muted, ...mono }}>Aggregate Employment: 78,700</span>
+            <span style={{ fontSize: 8, color: T.green, ...mono }}>Wtd. Growth: +4.8%</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -226,6 +338,22 @@ const SUB_COMPS = [
   { name: "Decatur", msa: "Atlanta", jedi: 83, rent: "$1,890", rentD: "+3.8%", vac: "4.8%", pipe: "5.4%", opp: 84, cap: "5.0%" },
   { name: "West End", msa: "Atlanta", jedi: 79, rent: "$1,977", rentD: "+5.2%", vac: "6.8%", pipe: "6.2%", opp: 86, cap: "5.4%" },
   { name: "Downtown", msa: "Atlanta", jedi: 76, rent: "$1,542", rentD: "+2.8%", vac: "7.2%", pipe: "14.8%", opp: 68, cap: "5.6%" },
+];
+
+const SUB_NEWS = [
+  { time: "14:32", tag: "DEAL", tagColor: T.green, headline: "Cortland Partners closes $182M acquisition of Midtown Luxe (412 units) at $442K/unit — 4.6% cap", source: "Real Capital Analytics" },
+  { time: "13:15", tag: "SUPPLY", tagColor: T.orange, headline: "Midtown Union Phase II (380 units) receives TCO — first move-ins expected Q3 2026", source: "CoStar" },
+  { time: "11:48", tag: "ECON", tagColor: T.cyan, headline: "Amazon confirms 2,800 new tech jobs at Midtown campus — $450M investment over 5 years", source: "Atlanta Business Chronicle" },
+  { time: "10:22", tag: "TENANT", tagColor: T.purple, headline: "Google signs 45K SF lease at Midtown West — 200+ new positions expected", source: "Bisnow Atlanta" },
+  { time: "09:45", tag: "MARKET", tagColor: T.amber, headline: "Midtown rents +4.8% YoY — fastest growth rate in Atlanta MSA for 3rd consecutive quarter", source: "Apartment Locator AI" },
+];
+
+const SUB_CORP = [
+  { name: "Amazon (Midtown)", sector: "TECH", employees: "4,200", growth: "+22.4%", impact: "HIGH", color: T.green, sentiment: 94 },
+  { name: "Google (Midtown West)", sector: "TECH", employees: "1,800", growth: "+12.1%", impact: "HIGH", color: T.green, sentiment: 88 },
+  { name: "Salesforce Tower", sector: "TECH", employees: "2,400", growth: "+6.8%", impact: "HIGH", color: T.green, sentiment: 82 },
+  { name: "Emory Midtown Hospital", sector: "HEALTH", employees: "3,100", growth: "+3.2%", impact: "MED", color: T.green, sentiment: 76 },
+  { name: "WeWork / Spaces", sector: "COWORK", employees: "850", growth: "-4.2%", impact: "LOW", color: T.red, sentiment: 48 },
 ];
 
 function SubmarketOverview() {
@@ -360,6 +488,70 @@ function SubmarketOverview() {
         </div>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+        <div style={{ background: T.panel }}>
+          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.borderS}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, letterSpacing: 1, color: T.amber, ...mono }}>◆ NEWS & INTELLIGENCE · MIDTOWN</span>
+            <span style={{ fontSize: 7, color: T.muted, ...mono }}>{SUB_NEWS.length} stories today</span>
+          </div>
+          {SUB_NEWS.map((n, i) => (
+            <div key={i} style={{ display: "flex", gap: 8, padding: "5px 12px", borderBottom: `1px solid ${T.borderS}`, cursor: "pointer" }}
+              onMouseEnter={e => (e.currentTarget.style.background = T.hover)}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+              <span style={{ fontSize: 8, color: T.muted, minWidth: 32, flexShrink: 0, ...mono }}>{n.time}</span>
+              <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: n.tagColor, background: n.tagColor + "18", border: `1px solid ${n.tagColor}33`, padding: "0px 4px", flexShrink: 0, alignSelf: "flex-start", marginTop: 1 }}>{n.tag}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 9, color: T.primary, lineHeight: 1.4, ...sans }}>{n.headline}</div>
+                <div style={{ fontSize: 7, color: T.muted, marginTop: 1, ...mono }}>{n.source}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: T.panel }}>
+          <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.borderS}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 9, letterSpacing: 1, color: T.cyan, ...mono }}>◈ CORPORATE HEALTH · MIDTOWN EMPLOYERS</span>
+            <span style={{ fontSize: 7, color: T.muted, ...mono }}>Submarket</span>
+          </div>
+          <div style={{ display: "flex", background: T.header, borderBottom: `1px solid ${T.borderM}` }}>
+            {[{ l: "Employer", w: 130 },{ l: "Sector", w: 70 },{ l: "Employees", w: 65 },{ l: "Growth", w: 52 },{ l: "Impact", w: 48 },{ l: "Sent.", w: 38 }].map((c,i) => (
+              <div key={i} style={{ width: c.w, minWidth: c.w, padding: "3px 6px", fontSize: 7, fontWeight: 700, color: T.muted, letterSpacing: 0.5, borderRight: i < 5 ? `1px solid ${T.borderS}` : "none", ...mono }}>{c.l}</div>
+            ))}
+          </div>
+          {SUB_CORP.map((c, i) => (
+            <div key={i} style={{ display: "flex", background: i % 2 === 0 ? T.panel : T.panelAlt, borderBottom: `1px solid ${T.borderS}`, cursor: "pointer" }}
+              onMouseEnter={e => (e.currentTarget.style.background = T.hover)}
+              onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? T.panel : T.panelAlt)}>
+              <div style={{ width: 130, minWidth: 130, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <span style={{ fontSize: 9, fontWeight: 600, color: T.primary, ...sans }}>{c.name}</span>
+              </div>
+              <div style={{ width: 70, minWidth: 70, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <Badge label={c.sector} color={T.muted} />
+              </div>
+              <div style={{ width: 65, minWidth: 65, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <span style={{ fontSize: 9, color: T.primary, ...mono }}>{c.employees}</span>
+              </div>
+              <div style={{ width: 52, minWidth: 52, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <DeltaCell value={c.growth} />
+              </div>
+              <div style={{ width: 48, minWidth: 48, padding: "4px 6px", borderRight: `1px solid ${T.borderS}` }}>
+                <Badge label={c.impact} color={c.color} />
+              </div>
+              <div style={{ width: 38, minWidth: 38, padding: "4px 6px", display: "flex", alignItems: "center", gap: 3 }}>
+                <div style={{ width: 20, height: 4, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${c.sentiment}%`, height: "100%", background: c.sentiment >= 75 ? T.green : c.sentiment >= 60 ? T.amber : T.red, borderRadius: 2 }} />
+                </div>
+                <span style={{ fontSize: 7, color: T.muted, ...mono }}>{c.sentiment}</span>
+              </div>
+            </div>
+          ))}
+          <div style={{ padding: "6px 12px", borderTop: `1px solid ${T.borderM}`, display: "flex", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 8, color: T.muted, ...mono }}>Aggregate Employment: 12,350</span>
+            <span style={{ fontSize: 8, color: T.green, ...mono }}>Wtd. Growth: +11.8%</span>
+          </div>
+        </div>
+      </div>
+
       <div style={{ background: T.panel }}>
         <div style={{ padding: "6px 12px", borderBottom: `1px solid ${T.borderS}` }}>
           <span style={{ fontSize: 9, letterSpacing: 1, color: T.muted, ...mono }}>PEER COMPARISON · SUBMARKETS IN MSA</span>
@@ -396,13 +588,57 @@ export function Overview() {
 
   return (
     <div style={{ background: T.bg, height: "100vh", display: "flex", flexDirection: "column", color: T.primary, overflow: "hidden" }}>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');*{scrollbar-width:thin;scrollbar-color:${T.borderM} ${T.bg}}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:${T.bg}}::-webkit-scrollbar-thumb{background:${T.borderM}}`}</style>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');*{scrollbar-width:thin;scrollbar-color:${T.borderM} ${T.bg};box-sizing:border-box}::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:${T.bg}}::-webkit-scrollbar-thumb{background:${T.borderM}}@keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}`}</style>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 22, padding: "0 10px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: 24, padding: "0 10px", background: T.topBar, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: T.amber, letterSpacing: 2, ...mono }}>JediRE</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: T.amber, letterSpacing: 1.5, ...mono }}>JediRE</span>
           <span style={{ fontSize: 8, color: T.muted }}>|</span>
-          <span style={{ fontSize: 8, color: T.secondary, ...mono }}>F1 OVERVIEW</span>
+          <span style={{ fontSize: 9, color: T.secondary, ...mono }}>PORTFOLIO</span>
+          <span style={{ fontSize: 8, color: T.muted }}>|</span>
+          <span style={{ fontSize: 9, color: T.amber, fontWeight: 700, ...mono }}>PIPELINE: $237.5M</span>
+          <span style={{ fontSize: 8, color: T.muted }}>|</span>
+          <span style={{ fontSize: 9, color: T.primary, ...mono }}>ACTIVE: 1</span>
+          <span style={{ fontSize: 8, color: T.muted }}>|</span>
+          <span style={{ fontSize: 9, color: T.orange, ...mono }}>ALERTS: 3</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 9, color: T.green, display: "flex", alignItems: "center", gap: 3, ...mono }}>
+            <span style={{ width: 4, height: 4, borderRadius: "50%", background: T.green, display: "inline-block" }} />5 AGT
+          </span>
+          <span style={{ fontSize: 9, color: T.cyan, ...mono }}>MAIL: 2</span>
+          <span style={{ fontSize: 9, color: T.secondary, ...mono }}>KAFKA: 312/s</span>
+          <LiveClock />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", height: 20, background: T.header, borderBottom: `1px solid ${T.borderS}`, flexShrink: 0, overflow: "hidden" }}>
+        <span style={{ fontSize: 8, fontWeight: 700, color: T.amber, padding: "0 8px", flexShrink: 0, background: `${T.amber}15`, height: "100%", display: "flex", alignItems: "center", ...mono }}>LIVE</span>
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          <div style={{ display: "flex", gap: 24, whiteSpace: "nowrap", animation: "tickerScroll 40s linear infinite" }}>
+            {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
+              <span key={i} style={{ fontSize: 8, color: item.color, ...mono }}>{item.text}</span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${T.borderM}`, flexShrink: 0, background: T.header }}>
+        <div style={{ display: "flex", flex: 1, overflowX: "auto" }}>
+          {TABS.map(tab => {
+            const isActive = tab.key === "OVERVIEW";
+            const activeColor = tab.key === "TRAFFIC" ? T.blue : tab.key === "MARKET_PERF" ? T.green : T.amber;
+            return (
+              <div key={tab.key} style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "5px 12px",
+                borderBottom: isActive ? `2px solid ${activeColor}` : "2px solid transparent",
+                cursor: "pointer", whiteSpace: "nowrap",
+              }}>
+                <span style={{ fontSize: 8, color: isActive ? activeColor : T.muted, fontWeight: 600, ...mono }}>{tab.hotkey}</span>
+                <span style={{ fontSize: 9, color: isActive ? T.primary : T.secondary, fontWeight: isActive ? 700 : 500, ...mono }}>{tab.label}</span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -453,7 +689,7 @@ export function Overview() {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 10px", background: T.topBar, borderTop: `1px solid ${T.borderS}`, flexShrink: 0 }}>
         <span style={{ fontSize: 8, color: T.muted, ...mono }}>Sources: Apartment Locator AI · Census ACS · BLS QCEW · County Permits · Google Places</span>
-        <span style={{ fontSize: 8, color: T.muted, ...mono }}>{lvl.name} · JEDI {lvl.jedi} · {isSubmarket ? "Submarket" : "MSA"} Level</span>
+        <span style={{ fontSize: 8, color: T.muted, ...mono }}>F1-F7 Navigate · / Command · JediRE v2.2</span>
       </div>
     </div>
   );
