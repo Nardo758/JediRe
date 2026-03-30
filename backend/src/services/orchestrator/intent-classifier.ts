@@ -77,7 +77,7 @@ const SPECIALIST_TRIGGERS: Record<SpecialistAgent, string[]> = {
   COMPS: ['comps', 'comparables', 'sales', 'rent comp', 'benchmark', 'pricing', 'similar properties', 'nearby deals'],
   RISK: ['risk', 'alert', 'warning', 'exposure', 'concern', 'red flag', 'issue', 'problem', 'downside'],
   DEBT: ['debt', 'loan', 'mortgage', 'financing', 'interest rate', 'lender', 'refinance', 'leverage', 'dscr'],
-  RESEARCH: ['research', 'data', 'analyze', 'look up', 'find out', 'what is', 'tell me about', 'what metrics', 'which metrics', 'metrics to watch', 'recommended metrics', 'metric recommendations', 'what should i watch', 'what should i track', 'leading indicators'],
+  RESEARCH: ['research', 'data', 'analyze', 'look up', 'find out', 'what is', 'tell me about'],
   NEWS: ['news', 'headlines', 'sentiment', 'announcement', 'recent', "what's happening", 'market news'],
   STRATEGY: ['strategy', 'recommendation', 'should i', 'hold or sell', 'exit', 'timing', 'best approach'],
 };
