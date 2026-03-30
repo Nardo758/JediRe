@@ -754,7 +754,7 @@ export default function F4MarketsView() {
 
                 return (
                   <div
-                    key={rec.metricId}
+                    key={`${rec.geographyId}:${rec.metricId}`}
                     style={{
                       minWidth: 200, maxWidth: 260, padding: "8px 12px",
                       borderRight: `1px solid ${C.borderS}`,

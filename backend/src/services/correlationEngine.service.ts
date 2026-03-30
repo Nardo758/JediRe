@@ -1567,26 +1567,62 @@ export class CorrelationEngineService {
 
       const perMarketEntries = Array.from(metricScores.entries())
         .filter(([key]) => key.includes('::'));
-      const globalEntries = Array.from(metricScores.entries())
-        .filter(([key]) => !key.includes('::'));
 
-      const usePerMarket = perMarketEntries.length > 0;
-      const entriesToRank = usePerMarket ? perMarketEntries : globalEntries;
+      const ranked: Array<{
+        metric: string;
+        score: number;
+        crossGeoCount: number;
+        totalScore: number;
+        appearances: number;
+        bestR: number;
+        bestLag: number;
+        bestPair: string;
+        bestGeo: string;
+        geoCount: number;
+        geos: Set<string>;
+        trendDirection: string;
+        trendMagnitude: number;
+      }> = [];
 
-      const ranked = entriesToRank
-        .map(([key, entry]) => {
-          const baseMetric = key.includes('::') ? key.split('::')[0] : key;
-          const globalEntry = metricScores.get(baseMetric);
-          const crossGeoCount = globalEntry ? globalEntry.geos.size - entry.geos.size : 0;
-          return {
-            metric: baseMetric,
+      if (perMarketEntries.length > 0) {
+        const byGeo = new Map<string, typeof perMarketEntries>();
+        for (const [key, entry] of perMarketEntries) {
+          const geoId = key.split('::')[1];
+          if (!byGeo.has(geoId)) byGeo.set(geoId, []);
+          byGeo.get(geoId)!.push([key, entry]);
+        }
+
+        for (const [, entries] of byGeo) {
+          const sorted = entries
+            .map(([key, entry]) => {
+              const baseMetric = key.split('::')[0];
+              const globalEntry = metricScores.get(baseMetric);
+              const crossGeoCount = globalEntry ? globalEntry.geos.size - entry.geos.size : 0;
+              return {
+                metric: baseMetric,
+                score: entry.totalScore / Math.max(entry.appearances, 1),
+                crossGeoCount,
+                ...entry,
+              };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topN);
+          ranked.push(...sorted);
+        }
+      } else {
+        const globalEntries = Array.from(metricScores.entries())
+          .filter(([key]) => !key.includes('::'));
+        const sorted = globalEntries
+          .map(([key, entry]) => ({
+            metric: key,
             score: entry.totalScore / Math.max(entry.appearances, 1),
-            crossGeoCount,
+            crossGeoCount: 0,
             ...entry,
-          };
-        })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, topN * geoIds.length);
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topN);
+        ranked.push(...sorted);
+      }
 
       const METRIC_LABELS: Record<string, string> = {
         home_value_index: 'Home Value Index',
