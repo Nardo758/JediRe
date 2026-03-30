@@ -136,6 +136,8 @@ export interface MetricRecommendation {
   trendMagnitude: number;
 }
 
+const RECS_POLL_INTERVAL_MS = 10 * 60 * 1000;
+
 export function useMetricRecommendations(
   marketGeoIds: Array<{ geoType: string; geoId: string }>,
   topN: number = 5
@@ -167,6 +169,12 @@ export function useMetricRecommendations(
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (marketGeoIds.length === 0) return;
+    const id = setInterval(fetchData, RECS_POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [fetchData, marketGeoIds.length]);
 
   return { recommendations, loading, refresh: fetchData };
 }

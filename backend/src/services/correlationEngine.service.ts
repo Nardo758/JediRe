@@ -1387,15 +1387,34 @@ export class CorrelationEngineService {
       const geoIds = marketGeoIds.map(g => g.geoId);
 
       const corrRes = await this.pool.query(
-        `SELECT metric_a, metric_b, geography_type, geography_id,
-                correlation_r, lead_lag_months, p_value, sample_size, computed_at
-         FROM metric_correlations
-         WHERE (geography_type, geography_id) IN (
-           SELECT unnest($1::text[]), unnest($2::text[])
-         )
-         AND ABS(correlation_r) >= 0.4
-         AND sample_size >= 12
-         ORDER BY ABS(correlation_r) DESC`,
+        `SELECT * FROM (
+          (SELECT metric_a, metric_b, geography_type, geography_id,
+                  correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                  FALSE as is_cross_geo
+           FROM metric_correlations
+           WHERE (geography_type, geography_id) IN (
+             SELECT unnest($1::text[]), unnest($2::text[])
+           )
+           AND ABS(correlation_r) >= 0.4
+           AND sample_size >= 12)
+          UNION ALL
+          (SELECT metric_a, metric_b, geography_type, geography_id,
+                  correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                  TRUE as is_cross_geo
+           FROM metric_correlations
+           WHERE (metric_a, metric_b) IN (
+             SELECT DISTINCT metric_a, metric_b FROM metric_correlations
+             WHERE (geography_type, geography_id) IN (
+               SELECT unnest($1::text[]), unnest($2::text[])
+             )
+           )
+           AND NOT ((geography_type, geography_id) IN (
+             SELECT unnest($1::text[]), unnest($2::text[])
+           ))
+           AND ABS(correlation_r) >= 0.6
+           AND sample_size >= 12
+           LIMIT 50)
+        ) combined ORDER BY ABS(correlation_r) DESC`,
         [geoTypes, geoIds]
       );
 
@@ -1472,8 +1491,9 @@ export class CorrelationEngineService {
           const pVal = row.p_value ? parseFloat(row.p_value) : 1;
           const sampleSize = parseInt(row.sample_size);
           const age = (Date.now() - new Date(row.computed_at).getTime()) / (1000 * 60 * 60 * 24);
+          const crossGeoDiscount = row.is_cross_geo ? 0.4 : 1.0;
 
-          let score = absR * 40;
+          let score = absR * 40 * crossGeoDiscount;
           if (pVal < 0.01) score += 20;
           else if (pVal < 0.05) score += 15;
           else if (pVal < 0.1) score += 10;
@@ -1492,7 +1512,11 @@ export class CorrelationEngineService {
           entry.appearances++;
           entry.geos.add(`${row.geography_type}:${row.geography_id}`);
 
-          if (absR > Math.abs(entry.bestR)) {
+          const isTracked = !row.is_cross_geo;
+          const currentBestIsTracked = geoIds.includes(entry.bestGeo);
+          const shouldUpdate = (isTracked && !currentBestIsTracked) ||
+            (isTracked === currentBestIsTracked && absR > Math.abs(entry.bestR));
+          if (shouldUpdate || entry.bestR === 0) {
             entry.bestR = parseFloat(row.correlation_r);
             const rawLag = parseInt(row.lead_lag_months) || 0;
             entry.bestLag = metric === row.metric_a ? rawLag : -rawLag;
@@ -1579,7 +1603,11 @@ export class CorrelationEngineService {
           reason += ` — currently ${item.trendDirection} ${pct}%`;
         }
 
-        if (item.geoCount > 1) {
+        const trackedGeoSet = new Set(geoIds);
+        const crossGeoCount = [...(metricScores.get(item.metric)?.geos || [])].filter(g => !trackedGeoSet.has(g.split(':')[1])).length;
+        if (item.geoCount > 1 && crossGeoCount > 0) {
+          reason += `. Validated across ${item.geoCount} markets (${crossGeoCount} cross-market)`;
+        } else if (item.geoCount > 1) {
           reason += `. Consistent across ${item.geoCount} markets`;
         }
 

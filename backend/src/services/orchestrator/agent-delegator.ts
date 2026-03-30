@@ -216,19 +216,14 @@ export class AgentDelegator {
       }
 
       if (marketGeoIds.length === 0) {
-        try {
-          const { getPool } = await import('../../database/connection');
-          const pool = getPool();
-          const geoRes = await pool.query(
-            `SELECT DISTINCT geography_type, geography_id FROM metric_correlations LIMIT 20`
-          );
-          marketGeoIds = geoRes.rows.map((r: any) => ({
-            geoType: r.geography_type,
-            geoId: r.geography_id
-          }));
-        } catch {
-          // no-op
-        }
+        return {
+          agent: 'METRIC_RECOMMENDATIONS',
+          agentType: 'specialist',
+          data: { message: 'Please specify a market or track markets in your dashboard to get metric recommendations.' },
+          executionTimeMs: Date.now() - startTime,
+          success: false,
+          error: 'No tracked markets found. Star markets in F4 Dashboard or specify a city.',
+        };
       }
 
       const result = await agent.execute({ marketGeoIds, topN: 5 }, userId);
