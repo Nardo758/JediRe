@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { TickerBar } from "../components/terminal/TickerBar";
+import { useTheme } from "../contexts/ThemeContext";
 
 const T = {
   bg: { terminal:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117",topBar:"#050810",photo:"#080B12",chart:"#0B0F18" },
@@ -798,6 +800,8 @@ const PatternBadge = ({ pattern }) => {
 export default function PropertyDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+  const toggleTheme = useCallback(() => { const n = theme === "dark" ? "light" : "dark"; setTheme(n); localStorage.setItem("jedi-theme", n); }, [theme]);
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
   const [chartWidth, setChartWidth] = useState(460);
@@ -2198,11 +2202,6 @@ export default function PropertyDetailsPage() {
     </div>
   );
 
-  const tickerItems = [
-    "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO",
-    "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO", "[–] Market update INFO",
-  ];
-
   // ─── MAIN RENDER ─────────────────────────────────────────
   return (
     <div style={{ width: "100%", height: "100vh", background: T.bg.terminal, fontFamily: T.font.mono, color: T.text.primary, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -2230,21 +2229,25 @@ export default function PropertyDetailsPage() {
           <span style={{ fontSize: 10, color: T.text.cyan }}>MAIL: 2</span>
           <span style={{ fontSize: 10, color: T.text.secondary }}>KAFKA: 312/s</span>
           <LiveClock />
+          <button onClick={toggleTheme} style={{ fontFamily: T.font.mono, fontSize: 12, background: "transparent", border: `1px solid ${T.border.medium}`, color: T.text.secondary, padding: "2px 8px", cursor: "pointer", lineHeight: 1 }} title={theme === "dark" ? "Switch to light" : "Switch to dark"}>
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
         </div>
       </div>
 
       {/* ═══ TICKER BAR ═══ */}
-      <div style={{ display: "flex", alignItems: "center", height: 20, background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0, overflow: "hidden" }}>
-        <span style={{ fontSize: 9, fontWeight: 700, color: T.text.amber, padding: "0 8px", flexShrink: 0, background: `${T.text.amber}15`, height: "100%", display: "flex", alignItems: "center" }}>LIVE</span>
-        <span style={{ fontSize: 9, fontWeight: 700, color: T.text.green, padding: "0 6px", flexShrink: 0 }}>pdate INFO</span>
-        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
-          <div style={{ display: "flex", gap: 24, whiteSpace: "nowrap", animation: "tickerScroll 60s linear infinite" }}>
-            {tickerItems.map((item, i) => (
-              <span key={i} style={{ fontSize: 9, color: T.text.muted }}>{item}</span>
-            ))}
-          </div>
-        </div>
-      </div>
+      <TickerBar height={20} speed={45} label="LIVE" labelColor={T.text.amber}
+        items={[
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+          { raw: "[–] Market update", color: T.text.primary, sub: "INFO", subColor: T.text.cyan },
+        ]}
+      />
 
       {/* ═══ F-KEY NAV BAR ═══ */}
       <div style={{ display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border.medium}`, flexShrink: 0, background: T.bg.header }}>
