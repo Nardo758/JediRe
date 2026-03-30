@@ -2,8 +2,21 @@ import { getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { CorrelationEngineService } from '../services/correlationEngine.service';
 
+interface MetricRecommendationInput {
+  marketGeoIds: Array<{ geoType: string; geoId: string }>;
+  topN?: number;
+}
+
+interface MetricRecommendationResult {
+  success: boolean;
+  summary: string;
+  recommendations: Array<Record<string, unknown>>;
+  marketCount: number;
+  computedAt: string;
+}
+
 export class MetricRecommendationAgent {
-  async execute(inputData: any, userId: string): Promise<any> {
+  async execute(inputData: MetricRecommendationInput, userId: string): Promise<MetricRecommendationResult> {
     logger.info('MetricRecommendationAgent executing...', { inputData, userId });
 
     try {
@@ -33,7 +46,7 @@ export class MetricRecommendationAgent {
         marketCount: marketGeoIds.length,
         computedAt: new Date().toISOString(),
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('MetricRecommendationAgent error:', error);
       throw error;
     }
