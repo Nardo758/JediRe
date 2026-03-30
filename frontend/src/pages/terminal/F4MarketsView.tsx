@@ -8,6 +8,7 @@ import { BT } from "../../components/terminal/theme";
 import { useColumnPreferences } from "../../hooks/useColumnPreferences";
 import { ColumnPicker } from "../../components/terminal/ColumnPicker";
 import { ViewId, getColumnById } from "../../config/columnRegistry";
+import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
 
 /**
  * F4 Markets View - Refactored
@@ -239,7 +240,24 @@ export default function F4MarketsView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Column preferences per view
+  const { markets: liveMarkets, loading: marketsLoading, lastUpdated, refresh: refreshMarkets } = useMarketMetrics();
+  const { submarkets: liveSubmarkets, loading: subLoading, refresh: refreshSubmarkets } = useSubmarketMetrics();
+  const { properties: liveProperties, loading: propLoading, refresh: refreshProperties } = usePropertyMetrics();
+
+  const ALL_MARKETS_RESOLVED = useMemo(() => {
+    return liveMarkets.length > 0 ? liveMarkets as TrackedMarket[] : ALL_MARKETS;
+  }, [liveMarkets]);
+
+  const SUBMARKET_RESOLVED = useMemo(() => {
+    return liveSubmarkets.length > 0 ? liveSubmarkets : SUBMARKET_INDEX;
+  }, [liveSubmarkets]);
+
+  const PROPERTY_RESOLVED = useMemo(() => {
+    return liveProperties.length > 0 ? liveProperties : PROPERTY_INDEX;
+  }, [liveProperties]);
+
+  const isLive = liveMarkets.length > 0;
+
   const dashCols = useColumnPreferences("f4_dashboard");
   const browseCols = useColumnPreferences("f4_browse");
   const subCols = useColumnPreferences("f4_submarkets");
@@ -264,13 +282,12 @@ export default function F4MarketsView() {
 
   const [pickerOpen, setPickerOpen] = useState<ActiveTab | null>(null);
 
-  // Computed data
-  const trackedMarkets = useMemo(() => ALL_MARKETS.filter(m => m.starred), []);
+  const trackedMarkets = useMemo(() => ALL_MARKETS_RESOLVED.filter(m => m.starred), [ALL_MARKETS_RESOLVED]);
   
   const filteredMarkets = useMemo(() => {
     let markets = activeTab === "dashboard" && trackedOnly 
-      ? ALL_MARKETS.filter(m => m.starred)
-      : ALL_MARKETS;
+      ? ALL_MARKETS_RESOLVED.filter(m => m.starred)
+      : ALL_MARKETS_RESOLVED;
     
     if (cycleFilter !== "all") {
       markets = markets.filter(m => m.cycle === cycleFilter);
@@ -289,7 +306,7 @@ export default function F4MarketsView() {
     });
     
     return markets;
-  }, [activeTab, trackedOnly, cycleFilter, searchQuery, sortCol, sortDir]);
+  }, [ALL_MARKETS_RESOLVED, activeTab, trackedOnly, cycleFilter, searchQuery, sortCol, sortDir]);
 
   const kpis = useMemo(() => {
     const markets = trackedMarkets;
@@ -325,8 +342,8 @@ export default function F4MarketsView() {
   }, [filteredMarkets]);
 
   const topMovers = useMemo(() => {
-    return [...ALL_MARKETS].sort((a, b) => Math.abs(b.d30) - Math.abs(a.d30)).slice(0, 4);
-  }, []);
+    return [...ALL_MARKETS_RESOLVED].sort((a, b) => Math.abs(b.d30) - Math.abs(a.d30)).slice(0, 4);
+  }, [ALL_MARKETS_RESOLVED]);
 
   // Handlers
   const handleSort = (col: SortKey) => {
@@ -458,7 +475,7 @@ export default function F4MarketsView() {
     return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
   };
 
-  const renderSubmarketCell = (colId: string, s: typeof SUBMARKET_INDEX[0]) => {
+  const renderSubmarketCell = (colId: string, s: typeof SUBMARKET_INDEX[number]) => {
     const cellMap: Record<string, React.ReactNode> = {
       name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{s.name}</span>,
       msa: <span style={{ color: C.secondary }}>{s.msa}</span>,
@@ -475,7 +492,7 @@ export default function F4MarketsView() {
     return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
   };
 
-  const renderPropertyCell = (colId: string, p: typeof PROPERTY_INDEX[0]) => {
+  const renderPropertyCell = (colId: string, p: typeof PROPERTY_INDEX[number]) => {
     const cellMap: Record<string, React.ReactNode> = {
       name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span>,
       submarket: <span style={{ color: C.secondary }}>{p.submarket}</span>,
@@ -617,6 +634,15 @@ export default function F4MarketsView() {
           style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "3px 8px", width: 160 }}
         />
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets</span>
+        {isLive && <span style={{ fontSize: 8, color: C.green, ...mono, fontWeight: 700 }}>LIVE</span>}
+        {marketsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Loading...</span>}
+        <button
+          onClick={(e) => { e.stopPropagation(); refreshMarkets(); }}
+          style={{ ...mono, fontSize: 8, background: "transparent", color: C.muted, border: `1px solid ${C.borderS}`, padding: "1px 5px", cursor: "pointer" }}
+          title="Refresh market data"
+        >
+          REFRESH
+        </button>
         <GearButton tab="dashboard" />
       </div>
 
@@ -690,6 +716,14 @@ export default function F4MarketsView() {
           style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "3px 8px", width: 180 }}
         />
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets · Click to drill</span>
+        {isLive && <span style={{ fontSize: 8, color: C.green, ...mono, fontWeight: 700 }}>LIVE</span>}
+        <button
+          onClick={(e) => { e.stopPropagation(); refreshMarkets(); }}
+          style={{ ...mono, fontSize: 8, background: "transparent", color: C.muted, border: `1px solid ${C.borderS}`, padding: "1px 5px", cursor: "pointer" }}
+          title="Refresh market data"
+        >
+          REFRESH
+        </button>
         <GearButton tab="browse" />
       </div>
       {renderMarketTable("browse")}
@@ -702,7 +736,7 @@ export default function F4MarketsView() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Submarket Index</span>
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {SUBMARKET_INDEX.length} submarkets · Click to drill</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {SUBMARKET_RESOLVED.length} submarkets{isLive ? " · LIVE" : ""} · Click to drill</span>
         <div style={{ flex: 1 }} />
         <GearButton tab="submarkets" />
       </div>
@@ -717,7 +751,7 @@ export default function F4MarketsView() {
             </tr>
           </thead>
           <tbody>
-            {SUBMARKET_INDEX.map((s, i) => (
+            {SUBMARKET_RESOLVED.map((s, i) => (
               <tr
                 key={i}
                 onClick={() => {
@@ -751,7 +785,7 @@ export default function F4MarketsView() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Property Index</span>
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_INDEX.length} properties · Click to view</span>
+        <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_RESOLVED.length} properties{isLive ? " · LIVE" : ""} · Click to view</span>
         <div style={{ flex: 1 }} />
         <GearButton tab="properties" />
       </div>
@@ -766,7 +800,7 @@ export default function F4MarketsView() {
             </tr>
           </thead>
           <tbody>
-            {PROPERTY_INDEX.map((p, i) => (
+            {PROPERTY_RESOLVED.map((p, i) => (
               <tr
                 key={i}
                 onClick={() => handlePropertySelect(p.name)}

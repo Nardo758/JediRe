@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import { ingestRateData } from '../scripts/ingest-rate-data';
 import { ingestLeadingIndicators } from '../scripts/ingest-leading-indicators';
 import { classifyAllMarkets } from '../scripts/classify-market-cycles';
+import { MarketMetricsAggregator } from './market-metrics-aggregator.service';
+import { pool } from '../database';
 
 let initialized = false;
 
@@ -41,8 +43,20 @@ export function startM28Scheduler() {
     }
   }, { timezone: 'America/New_York' });
 
+  const aggregator = new MarketMetricsAggregator(pool);
+  cron.schedule('0 */6 * * *', async () => {
+    console.log('[M28 Scheduler] Running market metrics refresh...');
+    try {
+      const result = await aggregator.refreshMetricsSnapshot();
+      console.log(`[M28 Scheduler] Market metrics refresh complete: ${result.marketsProcessed} markets processed at ${result.timestamp.toISOString()}`);
+    } catch (err: any) {
+      console.error('[M28 Scheduler] Market metrics refresh failed:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
+
   console.log('[M28 Scheduler] Scheduled:');
   console.log('  - Rate ingestion: daily at 8:00 AM ET');
   console.log('  - Leading indicators: 5th of each month at 9:00 AM ET');
   console.log('  - Cycle classification: 1st of each month at 10:00 AM ET');
+  console.log('  - Market metrics refresh: every 6 hours');
 }

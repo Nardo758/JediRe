@@ -87,6 +87,7 @@ import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
 import scrapeRoutes from './scrape.routes';
 import metricsCatalogRoutes from './metrics-catalog.routes';
+import marketMetricsRoutes from './market-metrics.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
@@ -344,6 +345,8 @@ export function setupRESTRoutes(app: Application): void {
 
   // Metrics Catalog routes (Strategy Engine - metric definitions and historical data)
   app.use(`${API_PREFIX}/metrics`, metricsCatalogRoutes);
+
+  app.use(`${API_PREFIX}/market-metrics`, marketMetricsRoutes);
 
   // Custom Strategies routes (Strategy Engine - user-defined strategy management)
   app.use(`${API_PREFIX}/custom-strategies`, customStrategiesRoutes);
