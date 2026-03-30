@@ -1435,10 +1435,8 @@ export class CorrelationEngineService {
         geos: Set<string>;
         trendDirection: string;
         trendMagnitude: number;
-        reasons: string[];
       }>();
 
-      const activeMetrics = new Set<string>();
       const COLUMN_METRIC_MAP: Record<string, string> = {
         rent_index: 'rent',
         rent_index_yoy: 'rentD',
@@ -1454,8 +1452,6 @@ export class CorrelationEngineService {
       for (const row of corrRes.rows) {
         const metrics = [row.metric_a, row.metric_b];
         for (const metric of metrics) {
-          activeMetrics.add(metric);
-
           if (!metricScores.has(metric)) {
             metricScores.set(metric, {
               totalScore: 0,
@@ -1468,7 +1464,6 @@ export class CorrelationEngineService {
               geos: new Set(),
               trendDirection: 'stable',
               trendMagnitude: 0,
-              reasons: [],
             });
           }
 

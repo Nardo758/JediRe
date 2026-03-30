@@ -195,7 +195,7 @@ export class AgentDelegator {
 
       if (marketGeoIds.length === 0) {
         try {
-          const { getPool } = await import('../../database');
+          const { getPool } = await import('../../database/connection');
           const pool = getPool();
           const prefRes = await pool.query(
             `SELECT am.slug, am.state
@@ -217,7 +217,7 @@ export class AgentDelegator {
 
       if (marketGeoIds.length === 0) {
         try {
-          const { getPool } = await import('../../database');
+          const { getPool } = await import('../../database/connection');
           const pool = getPool();
           const geoRes = await pool.query(
             `SELECT DISTINCT geography_type, geography_id FROM metric_correlations LIMIT 20`
