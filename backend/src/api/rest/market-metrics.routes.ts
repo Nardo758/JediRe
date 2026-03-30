@@ -69,4 +69,23 @@ router.get('/properties', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/aggregated', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as AuthenticatedRequest).user?.userId;
+    const msaId = req.query.msaId as string | undefined;
+    const result = await aggregator.getAggregated(userId, msaId);
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    logger.error('Error fetching aggregated metrics:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch aggregated metrics',
+    });
+  }
+});
+
 export default router;
