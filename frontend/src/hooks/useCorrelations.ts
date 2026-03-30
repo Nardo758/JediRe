@@ -119,6 +119,58 @@ export function useCorrelationFreshness() {
   return { freshness, summary, loading, refresh: fetchData };
 }
 
+export interface MetricRecommendation {
+  rank: number;
+  metricId: string;
+  metricLabel: string;
+  columnId: string | null;
+  score: number;
+  reason: string;
+  correlationR: number;
+  leadLagMonths: number;
+  pairedMetric: string;
+  pairedMetricLabel: string;
+  geographyId: string;
+  geoCount: number;
+  trendDirection: string;
+  trendMagnitude: number;
+}
+
+export function useMetricRecommendations(
+  marketGeoIds: Array<{ geoType: string; geoId: string }>,
+  topN: number = 5
+) {
+  const [recommendations, setRecommendations] = useState<MetricRecommendation[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const geoKey = useMemo(() => JSON.stringify(marketGeoIds), [marketGeoIds]);
+
+  const fetchData = useCallback(async () => {
+    if (marketGeoIds.length === 0) return;
+    setLoading(true);
+    try {
+      const res = await api.post("/correlations/recommendations", {
+        marketGeoIds,
+        topN,
+      });
+      if (res.data?.success) {
+        setRecommendations(res.data.data);
+      }
+    } catch {
+      setRecommendations([]);
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoKey, topN]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { recommendations, loading, refresh: fetchData };
+}
+
 const COLUMN_TO_METRIC: Record<string, string[]> = {
   rent: ["rent_index"],
   rentD: ["rent_index_yoy"],

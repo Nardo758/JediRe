@@ -100,6 +100,23 @@ interface MSAData {
   avg_occupancy: number | null;
 }
 
+export interface MetricRecommendation {
+  rank: number;
+  metricId: string;
+  metricLabel: string;
+  columnId: string | null;
+  score: number;
+  reason: string;
+  correlationR: number;
+  leadLagMonths: number;
+  pairedMetric: string;
+  pairedMetricLabel: string;
+  geographyId: string;
+  geoCount: number;
+  trendDirection: string;
+  trendMagnitude: number;
+}
+
 export class CorrelationEngineService {
   private pool: Pool;
 
@@ -1351,5 +1368,293 @@ export class CorrelationEngineService {
       return `${tier1Bullish.length} Tier-1 bullish signal(s): ${tier1Bullish.map(c => c.id).join(', ')}`;
     }
     return `${bullish.length} bullish signal(s) across tiers`;
+  }
+
+  async generateMetricRecommendations(
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    userId?: string,
+    topN: number = 5
+  ): Promise<MetricRecommendation[]> {
+    if (marketGeoIds.length === 0) return [];
+
+    try {
+      if (userId) {
+        const cached = await this.getCachedRecommendations(userId, marketGeoIds);
+        if (cached) return cached;
+      }
+
+      const geoTypes = marketGeoIds.map(g => g.geoType);
+      const geoIds = marketGeoIds.map(g => g.geoId);
+
+      const corrRes = await this.pool.query(
+        `SELECT metric_a, metric_b, geography_type, geography_id,
+                correlation_r, lead_lag_months, p_value, sample_size, computed_at
+         FROM metric_correlations
+         WHERE (geography_type, geography_id) IN (
+           SELECT unnest($1::text[]), unnest($2::text[])
+         )
+         AND ABS(correlation_r) >= 0.4
+         AND sample_size >= 12
+         ORDER BY ABS(correlation_r) DESC`,
+        [geoTypes, geoIds]
+      );
+
+      if (corrRes.rows.length === 0) return [];
+
+      const trendRes = await this.pool.query(
+        `SELECT metric_id, geography_type, geography_id,
+                value, period_date
+         FROM (
+           SELECT metric_id, geography_type, geography_id, value, period_date,
+                  ROW_NUMBER() OVER (PARTITION BY metric_id, geography_type, geography_id ORDER BY period_date DESC) as rn
+           FROM metric_time_series
+           WHERE (geography_type, geography_id) IN (
+             SELECT unnest($1::text[]), unnest($2::text[])
+           )
+         ) sub
+         WHERE rn <= 6`,
+        [geoTypes, geoIds]
+      );
+
+      const trendMap = new Map<string, Array<{ value: number; date: string }>>();
+      for (const row of trendRes.rows) {
+        const key = `${row.metric_id}:${row.geography_type}:${row.geography_id}`;
+        if (!trendMap.has(key)) trendMap.set(key, []);
+        const dateStr = row.period_date instanceof Date ? row.period_date.toISOString() : String(row.period_date);
+        trendMap.get(key)!.push({ value: parseFloat(row.value), date: dateStr });
+      }
+
+      const metricScores = new Map<string, {
+        totalScore: number;
+        appearances: number;
+        bestR: number;
+        bestLag: number;
+        bestPair: string;
+        bestGeo: string;
+        geoCount: number;
+        geos: Set<string>;
+        trendDirection: string;
+        trendMagnitude: number;
+        reasons: string[];
+      }>();
+
+      const activeMetrics = new Set<string>();
+      const COLUMN_METRIC_MAP: Record<string, string> = {
+        rent_index: 'rent',
+        rent_index_yoy: 'rentD',
+        home_value_index: 'cap',
+        home_value_index_yoy: 'cap',
+        DEMO_MED_INCOME: 'medInc',
+        DEMO_POPULATION: 'popD',
+        DEMO_RENTER_PCT: 'vac',
+        T_AADT: 'dApt',
+        T_AADT_YOY: 'dApt',
+      };
+
+      for (const row of corrRes.rows) {
+        const metrics = [row.metric_a, row.metric_b];
+        for (const metric of metrics) {
+          activeMetrics.add(metric);
+
+          if (!metricScores.has(metric)) {
+            metricScores.set(metric, {
+              totalScore: 0,
+              appearances: 0,
+              bestR: 0,
+              bestLag: 0,
+              bestPair: '',
+              bestGeo: '',
+              geoCount: 0,
+              geos: new Set(),
+              trendDirection: 'stable',
+              trendMagnitude: 0,
+              reasons: [],
+            });
+          }
+
+          const entry = metricScores.get(metric)!;
+          const absR = Math.abs(parseFloat(row.correlation_r));
+          const pVal = row.p_value ? parseFloat(row.p_value) : 1;
+          const sampleSize = parseInt(row.sample_size);
+          const age = (Date.now() - new Date(row.computed_at).getTime()) / (1000 * 60 * 60 * 24);
+
+          let score = absR * 40;
+          if (pVal < 0.01) score += 20;
+          else if (pVal < 0.05) score += 15;
+          else if (pVal < 0.1) score += 10;
+
+          if (sampleSize >= 36) score += 10;
+          else if (sampleSize >= 24) score += 5;
+
+          if (age <= 7) score += 10;
+          else if (age <= 14) score += 5;
+
+          if (row.lead_lag_months && Math.abs(parseInt(row.lead_lag_months)) > 0) {
+            score += 5;
+          }
+
+          entry.totalScore += score;
+          entry.appearances++;
+          entry.geos.add(`${row.geography_type}:${row.geography_id}`);
+
+          if (absR > Math.abs(entry.bestR)) {
+            entry.bestR = parseFloat(row.correlation_r);
+            const rawLag = parseInt(row.lead_lag_months) || 0;
+            entry.bestLag = metric === row.metric_a ? rawLag : -rawLag;
+            entry.bestPair = metrics.find(m => m !== metric) || '';
+            entry.bestGeo = row.geography_id;
+          }
+        }
+      }
+
+      for (const [metric, entry] of metricScores) {
+        entry.geoCount = entry.geos.size;
+
+        if (entry.geoCount > 1) {
+          entry.totalScore *= (1 + Math.min(entry.geoCount - 1, 5) * 0.1);
+        }
+
+        for (const geo of entry.geos) {
+          const [geoType, geoId] = geo.split(':');
+          const trendKey = `${metric}:${geoType}:${geoId}`;
+          const trends = trendMap.get(trendKey);
+          if (trends && trends.length >= 2) {
+            const sorted = trends.sort((a, b) => a.date.localeCompare(b.date));
+            const recent = sorted[sorted.length - 1].value;
+            const prior = sorted[0].value;
+            if (prior !== 0) {
+              const change = (recent - prior) / Math.abs(prior);
+              if (Math.abs(change) > Math.abs(entry.trendMagnitude)) {
+                entry.trendMagnitude = change;
+                entry.trendDirection = change > 0.01 ? 'rising' : change < -0.01 ? 'falling' : 'stable';
+              }
+            }
+          }
+        }
+
+        if (entry.trendDirection !== 'stable') {
+          entry.totalScore *= 1.15;
+        }
+      }
+
+      const ranked = Array.from(metricScores.entries())
+        .map(([metric, entry]) => ({
+          metric,
+          score: entry.totalScore / Math.max(entry.appearances, 1),
+          ...entry,
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topN);
+
+      const METRIC_LABELS: Record<string, string> = {
+        home_value_index: 'Home Value Index',
+        home_value_index_yoy: 'Home Value Growth (YoY)',
+        rent_index: 'Rent Index',
+        rent_index_yoy: 'Rent Growth (YoY)',
+        DEMO_MED_INCOME: 'Median Household Income',
+        DEMO_POPULATION: 'Population',
+        DEMO_RENTER_PCT: 'Renter Percentage',
+        T_AADT: 'Traffic Volume (AADT)',
+        T_AADT_YOY: 'Traffic Growth (YoY)',
+      };
+
+      const recommendations: MetricRecommendation[] = ranked.map((item, idx) => {
+        const columnId = COLUMN_METRIC_MAP[item.metric] || null;
+        const label = METRIC_LABELS[item.metric] || item.metric.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const pairLabel = METRIC_LABELS[item.bestPair] || item.bestPair.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const geoParts = item.bestGeo.split('-');
+        const geoCity = geoParts.slice(0, -2).join(' ').replace(/\b\w/g, c => c.toUpperCase());
+        const geoState = (geoParts[geoParts.length - 2] || '').toUpperCase();
+        const geoName = geoState ? `${geoCity}, ${geoState}` : geoCity;
+
+        let reason = '';
+        const rSign = item.bestR > 0 ? 'positively' : 'inversely';
+        const absR = Math.abs(item.bestR).toFixed(2);
+
+        if (item.bestLag !== 0) {
+          const lagDir = item.bestLag > 0 ? 'leads' : 'lags';
+          const lagAbs = Math.abs(item.bestLag);
+          reason = `${label} ${lagDir} ${pairLabel} by ${lagAbs} month${lagAbs > 1 ? 's' : ''} in ${geoName} (r=${absR}, ${rSign})`;
+        } else {
+          reason = `${label} ${rSign} correlates with ${pairLabel} in ${geoName} (r=${absR})`;
+        }
+
+        if (item.trendDirection !== 'stable') {
+          const pct = (Math.abs(item.trendMagnitude) * 100).toFixed(1);
+          reason += ` — currently ${item.trendDirection} ${pct}%`;
+        }
+
+        if (item.geoCount > 1) {
+          reason += `. Consistent across ${item.geoCount} markets`;
+        }
+
+        return {
+          rank: idx + 1,
+          metricId: item.metric,
+          metricLabel: label,
+          columnId,
+          score: Math.round(item.score * 10) / 10,
+          reason,
+          correlationR: item.bestR,
+          leadLagMonths: item.bestLag,
+          pairedMetric: item.bestPair,
+          pairedMetricLabel: pairLabel,
+          geographyId: item.bestGeo,
+          geoCount: item.geoCount,
+          trendDirection: item.trendDirection,
+          trendMagnitude: Math.round(item.trendMagnitude * 1000) / 1000,
+        };
+      });
+
+      if (userId && recommendations.length > 0) {
+        await this.cacheRecommendations(userId, marketGeoIds, recommendations);
+      }
+
+      return recommendations;
+    } catch (error) {
+      logger.error(`Error generating metric recommendations: ${String(error)}`);
+      return [];
+    }
+  }
+
+  private async getCachedRecommendations(
+    userId: string,
+    marketGeoIds: Array<{ geoType: string; geoId: string }>
+  ): Promise<MetricRecommendation[] | null> {
+    try {
+      const cacheKey = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+      const res = await this.pool.query(
+        `SELECT recommendations FROM metric_recommendations
+         WHERE user_id = $1 AND geography_type = 'batch' AND geography_id = $2
+           AND expires_at > NOW()
+         ORDER BY computed_at DESC LIMIT 1`,
+        [userId, cacheKey]
+      );
+      if (res.rows.length > 0) {
+        return res.rows[0].recommendations as MetricRecommendation[];
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async cacheRecommendations(
+    userId: string,
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    recommendations: MetricRecommendation[]
+  ): Promise<void> {
+    try {
+      const cacheKey = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',');
+      await this.pool.query(
+        `INSERT INTO metric_recommendations (user_id, geography_type, geography_id, recommendations, computed_at, expires_at)
+         VALUES ($1, 'batch', $2, $3, NOW(), NOW() + INTERVAL '7 days')
+         ON CONFLICT (user_id, geography_type, geography_id)
+         DO UPDATE SET recommendations = $3, computed_at = NOW(), expires_at = NOW() + INTERVAL '7 days'`,
+        [userId, cacheKey, JSON.stringify(recommendations)]
+      );
+    } catch (error) {
+      logger.error(`Error caching recommendations: ${String(error)}`);
+    }
   }
 }

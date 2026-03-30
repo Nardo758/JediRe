@@ -9,7 +9,8 @@ import { useColumnPreferences } from "../../hooks/useColumnPreferences";
 import { ColumnPicker } from "../../components/terminal/ColumnPicker";
 import { ViewId, getColumnById } from "../../config/columnRegistry";
 import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
-import { useColumnCorrelations } from "../../hooks/useCorrelations";
+import { useColumnCorrelations, useMetricRecommendations } from "../../hooks/useCorrelations";
+import type { MetricRecommendation } from "../../hooks/useCorrelations";
 
 /**
  * F4 Markets View - Refactored
@@ -287,6 +288,8 @@ export default function F4MarketsView() {
   }, [ALL_MARKETS_RESOLVED]);
 
   const { correlationMap: columnCorrelations, staleCount: corrStaleCount, totalCount: corrTotalCount } = useColumnCorrelations(marketGeoIds);
+  const { recommendations: metricRecs, loading: recsLoading } = useMetricRecommendations(marketGeoIds);
+  const [recsCollapsed, setRecsCollapsed] = useState(false);
 
   const dashCols = useColumnPreferences("f4_dashboard");
   const browseCols = useColumnPreferences("f4_browse");
@@ -712,6 +715,98 @@ export default function F4MarketsView() {
         </button>
         <GearButton tab="dashboard" />
       </div>
+
+      {metricRecs.length > 0 && (
+        <div style={{ borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
+          <div
+            onClick={() => setRecsCollapsed(!recsCollapsed)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "5px 12px",
+              background: C.purple + "12", cursor: "pointer",
+              borderBottom: recsCollapsed ? "none" : `1px solid ${C.borderS}`,
+            }}
+          >
+            <span style={{ fontSize: 9, fontWeight: 700, color: C.purple, ...mono }}>
+              {recsCollapsed ? "▶" : "▼"} SUGGESTED METRICS
+            </span>
+            <span style={{ fontSize: 8, color: C.muted, ...mono }}>
+              {metricRecs.length} recommendation{metricRecs.length !== 1 ? "s" : ""} from correlation analysis
+            </span>
+            {recsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Computing...</span>}
+          </div>
+          {!recsCollapsed && (
+            <div style={{ display: "flex", gap: 0, overflow: "auto", background: C.panel }}>
+              {metricRecs.map((rec: MetricRecommendation) => {
+                const rColor = rec.correlationR > 0 ? C.green : C.red;
+                const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
+                const trendColor = rec.trendDirection === "rising" ? C.green : rec.trendDirection === "falling" ? C.red : C.muted;
+                const alreadyActive = rec.columnId ? dashCols.columns.includes(rec.columnId) : false;
+
+                return (
+                  <div
+                    key={rec.metricId}
+                    style={{
+                      minWidth: 200, maxWidth: 260, padding: "8px 12px",
+                      borderRight: `1px solid ${C.borderS}`,
+                      display: "flex", flexDirection: "column", gap: 4,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: C.primary }}>{rec.metricLabel}</span>
+                      <span style={{
+                        ...mono, fontSize: 7, fontWeight: 700, padding: "1px 4px",
+                        background: rColor + "18", color: rColor,
+                        border: `1px solid ${rColor}33`, borderRadius: 2,
+                      }}>
+                        r{rec.correlationR > 0 ? "+" : ""}{rec.correlationR.toFixed(2)}
+                      </span>
+                    </div>
+                    <div style={{ ...mono, fontSize: 8, color: C.secondary, lineHeight: 1.4 }}>
+                      {rec.reason}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                      <span style={{ ...mono, fontSize: 8, color: trendColor, fontWeight: 700 }}>
+                        {trendIcon} {rec.trendDirection.toUpperCase()}
+                      </span>
+                      {rec.geoCount > 1 && (
+                        <span style={{ ...mono, fontSize: 7, color: C.muted }}>
+                          {rec.geoCount} mkts
+                        </span>
+                      )}
+                      {rec.leadLagMonths !== 0 && (
+                        <span style={{ ...mono, fontSize: 7, color: C.cyan }}>
+                          {Math.abs(rec.leadLagMonths)}mo {rec.leadLagMonths > 0 ? "lead" : "lag"}
+                        </span>
+                      )}
+                      <div style={{ flex: 1 }} />
+                      {rec.columnId && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!alreadyActive) {
+                              dashCols.toggleColumn(rec.columnId!);
+                            }
+                          }}
+                          disabled={alreadyActive}
+                          style={{
+                            ...mono, fontSize: 7, fontWeight: 700,
+                            background: alreadyActive ? C.green + "22" : C.purple + "22",
+                            color: alreadyActive ? C.green : C.purple,
+                            border: `1px solid ${alreadyActive ? C.green : C.purple}44`,
+                            padding: "2px 6px", cursor: alreadyActive ? "default" : "pointer",
+                          }}
+                        >
+                          {alreadyActive ? "ACTIVE" : "+ ADD COL"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main Table - Full Width */}
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>

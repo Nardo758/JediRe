@@ -19,6 +19,7 @@ import { CashFlowAgent } from '../../agents/cashflow.agent';
 import { ZoningAgent } from '../../agents/zoning.agent';
 import { ResearchAgent } from '../../agents/research.agent';
 import { CommentaryAgent } from '../../agents/commentary.agent';
+import { MetricRecommendationAgent } from '../../agents/metric-recommendation.agent';
 
 // ============================================================================
 // Types
@@ -82,14 +83,28 @@ export class AgentDelegator {
   /**
    * Delegate to all required agents based on intent
    */
+  private static METRIC_REC_TRIGGERS = [
+    'what metrics', 'which metrics', 'metrics to watch', 'recommended metrics',
+    'metric recommendations', 'what should i watch', 'what should i track',
+    'leading indicators', 'suggest metrics', 'suggested metrics',
+  ];
+
+  private isMetricRecommendationQuery(message: string): boolean {
+    const lower = message.toLowerCase();
+    return AgentDelegator.METRIC_REC_TRIGGERS.some(t => lower.includes(t));
+  }
+
   async delegate(request: DelegationRequest): Promise<DelegationResult[]> {
     const { intent, userId, modelOverrides } = request;
     const results: DelegationResult[] = [];
     
-    // Build params from intent
     const params = this.buildParams(intent);
+
+    if (this.isMetricRecommendationQuery(intent.question || '')) {
+      const recResult = await this.executeMetricRecommendations(params, userId);
+      results.push(recResult);
+    }
     
-    // Execute specialists in parallel
     if (intent.specialists.length > 0) {
       const specialistPromises = intent.specialists.map(agent =>
         this.executeSpecialist(agent, params, userId)
@@ -162,9 +177,44 @@ export class AgentDelegator {
     }
   }
   
-  /**
-   * Execute an analyst agent (LLM persona)
-   */
+  private async executeMetricRecommendations(
+    params: Record<string, unknown>,
+    userId: string
+  ): Promise<DelegationResult> {
+    const startTime = Date.now();
+    try {
+      const agent = new MetricRecommendationAgent();
+      const city = (params.city as string) || '';
+      const stateCode = ((params.stateCode as string) || '').toLowerCase();
+      const marketGeoIds: Array<{ geoType: string; geoId: string }> = [];
+
+      if (city && stateCode) {
+        const slug = city.toLowerCase().replace(/\s+/g, '-');
+        marketGeoIds.push({ geoType: 'metro', geoId: `${slug}-${stateCode}-${stateCode}` });
+      }
+
+      const result = await agent.execute({ marketGeoIds, topN: 5 }, userId);
+      return {
+        agent: 'METRIC_RECOMMENDATIONS',
+        agentType: 'specialist',
+        data: result,
+        summary: result.summary,
+        executionTimeMs: Date.now() - startTime,
+        success: result.success,
+      };
+    } catch (error: any) {
+      logger.error('MetricRecommendation delegation failed:', error);
+      return {
+        agent: 'METRIC_RECOMMENDATIONS',
+        agentType: 'specialist',
+        data: {},
+        executionTimeMs: Date.now() - startTime,
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
   private async executeAnalyst(
     agent: AnalystAgent,
     params: Record<string, unknown>,

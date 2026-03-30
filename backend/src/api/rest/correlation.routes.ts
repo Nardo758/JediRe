@@ -180,6 +180,26 @@ router.get('/freshness', async (_req: Request, res: Response) => {
   }
 });
 
+router.post('/recommendations', async (req: Request, res: Response) => {
+  try {
+    const { marketGeoIds, topN } = req.body;
+    if (!Array.isArray(marketGeoIds) || marketGeoIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'marketGeoIds array is required' });
+    }
+    if (marketGeoIds.length > 50) {
+      return res.status(400).json({ success: false, error: 'Maximum 50 markets per request' });
+    }
+
+    const userId = (req as any).user?.userId || null;
+    const clampedTopN = Math.min(Math.max(typeof topN === 'number' ? topN : 5, 1), 20);
+    const recommendations = await engine.generateMetricRecommendations(marketGeoIds, userId, clampedTopN);
+    res.json({ success: true, count: recommendations.length, data: recommendations });
+  } catch (error: any) {
+    console.error('Recommendations error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Public endpoint: Get pre-computed correlations for a geography
 router.get('/:geographyType/:geographyId', async (req: Request, res: Response) => {
   try {
