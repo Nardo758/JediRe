@@ -103,6 +103,7 @@ import opportunityEngineRoutes from './opportunity-engine.routes';
 import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 import tickerRoutes from './ticker.routes';
 import agentSettingsRoutes from './agent-settings.routes';
+import columnPreferencesRoutes from './column-preferences.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -155,6 +156,8 @@ export function setupRESTRoutes(app: Application): void {
 
   // Agent Settings routes (model selection, workforce config)
   app.use(`${API_PREFIX}/settings/agents`, agentSettingsRoutes);
+
+  app.use(`${API_PREFIX}/column-preferences`, columnPreferencesRoutes);
 
   // LLM routes (AI-powered features)
   app.use(`${API_PREFIX}/llm`, llmRoutes);

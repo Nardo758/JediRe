@@ -5,6 +5,9 @@ import { MSATerminal } from "../../components/terminal/MSATerminal";
 import { SubmarketTerminal } from "../../components/terminal/SubmarketTerminal";
 import { PropertyTerminal } from "../../components/terminal/PropertyTerminal";
 import { BT } from "../../components/terminal/theme";
+import { useColumnPreferences } from "../../hooks/useColumnPreferences";
+import { ColumnPicker } from "../../components/terminal/ColumnPicker";
+import { ViewId, getColumnById } from "../../config/columnRegistry";
 
 /**
  * F4 Markets View - Refactored
@@ -236,6 +239,31 @@ export default function F4MarketsView() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Column preferences per view
+  const dashCols = useColumnPreferences("f4_dashboard");
+  const browseCols = useColumnPreferences("f4_browse");
+  const subCols = useColumnPreferences("f4_submarkets");
+  const propCols = useColumnPreferences("f4_properties");
+  const compCols = useColumnPreferences("f4_compare");
+
+  const colPrefsMap: Record<ActiveTab, ReturnType<typeof useColumnPreferences>> = {
+    dashboard: dashCols,
+    browse: browseCols,
+    submarkets: subCols,
+    properties: propCols,
+    compare: compCols,
+  };
+
+  const viewIdMap: Record<ActiveTab, ViewId> = {
+    dashboard: "f4_dashboard",
+    browse: "f4_browse",
+    submarkets: "f4_submarkets",
+    properties: "f4_properties",
+    compare: "f4_compare",
+  };
+
+  const [pickerOpen, setPickerOpen] = useState<ActiveTab | null>(null);
+
   // Computed data
   const trackedMarkets = useMemo(() => ALL_MARKETS.filter(m => m.starred), []);
   
@@ -377,98 +405,179 @@ export default function F4MarketsView() {
   }
 
   // ============================================================================
+  // Dynamic Cell Renderer — Market-level data
+  // ============================================================================
+
+  const renderMarketCell = (colId: string, m: TrackedMarket, isMedian = false) => {
+    if (isMedian && median) {
+      const medMap: Record<string, React.ReactNode> = {
+        rank: <span style={{ color: C.muted, fontStyle: "italic" }}>—</span>,
+        starred: null,
+        msa: <span style={{ color: C.muted }}>Median</span>,
+        props: <span style={{ color: C.muted }}>—</span>,
+        units: <span style={{ color: C.muted }}>—</span>,
+        jedi: <ScoreCell value={median.jedi} size={10} />,
+        d30: <span style={{ color: C.muted }}>—</span>,
+        trend: <span style={{ color: C.muted }}>───</span>,
+        rent: <span style={{ color: C.primary }}>{median.rent}</span>,
+        rentD: <DeltaCell value={median.rentD} />,
+        vac: <ThresholdVal value={median.vac} thresholds={[5, 8]} invert />,
+        absorb: <span style={{ color: C.primary }}>{median.absorb}</span>,
+        pipeline: <ThresholdVal value={median.pipeline} thresholds={[8, 14]} invert />,
+        costs: <span style={{ color: C.primary }}>{median.costs}</span>,
+        dApt: <span style={{ color: C.primary }}>{median.dApt}</span>,
+        popD: <DeltaCell value={median.popD} />,
+        medInc: <span style={{ color: C.primary }}>{median.medInc}</span>,
+        cap: <span style={{ color: C.primary }}>{median.cap}</span>,
+        cycle: <span style={{ color: C.muted }}>—</span>,
+      };
+      return medMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
+    }
+
+    const cellMap: Record<string, React.ReactNode> = {
+      rank: <span style={{ color: C.secondary }}>{m.rank}</span>,
+      starred: <span style={{ color: m.starred ? C.amber : C.muted, fontSize: 10 }}>{m.starred ? "★" : "☆"}</span>,
+      msa: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{m.msa}</span>,
+      props: <span style={{ color: C.secondary }}>{m.props.toLocaleString()}</span>,
+      units: <span style={{ color: C.secondary }}>{m.units}</span>,
+      jedi: <ScoreCell value={m.jedi} size={10} />,
+      d30: <DeltaCell value={m.d30} />,
+      trend: <Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={40} h={12} />,
+      rent: <span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span>,
+      rentD: <DeltaCell value={m.rentD} />,
+      vac: <ThresholdVal value={m.vac} thresholds={[5, 8]} invert />,
+      absorb: <span style={{ color: C.primary }}>{m.absorb}</span>,
+      pipeline: <ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert />,
+      costs: <span style={{ color: C.secondary }}>{m.costs}</span>,
+      dApt: <span style={{ color: C.secondary }}>{m.dApt}</span>,
+      popD: <DeltaCell value={m.popD} />,
+      medInc: <span style={{ color: C.secondary }}>{m.medInc}</span>,
+      cap: <span style={{ color: C.secondary }}>{m.cap}</span>,
+      cycle: <Badge label={m.cycle} color={cycleColor(m.cycle)} />,
+    };
+    return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
+  };
+
+  const renderSubmarketCell = (colId: string, s: typeof SUBMARKET_INDEX[0]) => {
+    const cellMap: Record<string, React.ReactNode> = {
+      name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{s.name}</span>,
+      msa: <span style={{ color: C.secondary }}>{s.msa}</span>,
+      jedi: <ScoreCell value={s.jedi} size={10} />,
+      rent: <span style={{ color: C.primary, fontWeight: 600 }}>{s.rent}</span>,
+      rentD: <DeltaCell value={s.rentD} />,
+      vac: <ThresholdVal value={s.vac} thresholds={[5, 8]} invert />,
+      props: <span style={{ color: C.secondary }}>{s.props}</span>,
+      units: <span style={{ color: C.secondary }}>{s.units}</span>,
+      opp: <ScoreCell value={s.opp} size={9} />,
+      cap: <span style={{ color: C.secondary }}>{s.cap}</span>,
+      cycle: <Badge label={s.cycle} color={cycleColor(s.cycle)} />,
+    };
+    return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
+  };
+
+  const renderPropertyCell = (colId: string, p: typeof PROPERTY_INDEX[0]) => {
+    const cellMap: Record<string, React.ReactNode> = {
+      name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span>,
+      submarket: <span style={{ color: C.secondary }}>{p.submarket}</span>,
+      msa: <span style={{ color: C.secondary }}>{p.msa}</span>,
+      jedi: <ScoreCell value={p.jedi} size={10} />,
+      units: <span style={{ color: C.secondary }}>{p.units}</span>,
+      rent: <span style={{ color: C.primary, fontWeight: 600 }}>{p.rent}</span>,
+      occ: <ThresholdVal value={p.occ} thresholds={[94, 91]} />,
+      capRate: <span style={{ color: C.secondary }}>{p.capRate}</span>,
+      vintage: <span style={{ color: C.secondary }}>{p.vintage}</span>,
+      owner: <span style={{ color: C.muted }}>{p.owner}</span>,
+    };
+    return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
+  };
+
+  const GearButton = ({ tab }: { tab: ActiveTab }) => (
+    <div style={{ position: "relative" }}>
+      <button
+        onClick={() => setPickerOpen(pickerOpen === tab ? null : tab)}
+        style={{
+          ...mono, fontSize: 9, background: pickerOpen === tab ? C.active : "transparent",
+          color: pickerOpen === tab ? C.amber : C.muted, border: `1px solid ${pickerOpen === tab ? C.amber + "44" : C.borderS}`,
+          padding: "2px 6px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3,
+        }}
+        title="Customize columns"
+      >
+        ⚙ COLUMNS
+      </button>
+      {pickerOpen === tab && (
+        <ColumnPicker
+          viewId={viewIdMap[tab]}
+          activeColumns={colPrefsMap[tab].columns}
+          onToggle={colPrefsMap[tab].toggleColumn}
+          onReorder={colPrefsMap[tab].reorderColumns}
+          onReset={colPrefsMap[tab].resetToDefaults}
+          onClose={() => setPickerOpen(null)}
+          isDefault={colPrefsMap[tab].isDefault}
+        />
+      )}
+    </div>
+  );
+
+  // ============================================================================
   // Market Table
   // ============================================================================
 
-  const renderMarketTable = () => (
+  const renderMarketTable = (viewTab: ActiveTab = "browse") => {
+    const cols = colPrefsMap[viewTab].columns;
+    const sortableMap: Record<string, SortKey> = { rank: "rank", msa: "msa", jedi: "jedi", d30: "d30", rent: "rentNum", vac: "vacNum", absorb: "absorbNum", pipeline: "pipelineNum", cap: "capNum", cycle: "cycle" };
+
+    return (
     <div style={{ flex: 1, overflow: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
         <thead>
           <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
-            <th style={{ ...hdrCell, width: 28 }}>#</th>
-            <th style={{ ...hdrCell, width: 20 }}>★</th>
-            <th style={{ ...hdrCell, width: 120, textAlign: "left" }} onClick={() => handleSort("msa")}>MSA {sortCol === "msa" && (sortDir === "desc" ? "▼" : "▲")}</th>
-            <th style={{ ...hdrCell, width: 48 }}>PROPS</th>
-            <th style={{ ...hdrCell, width: 44 }}>UNITS</th>
-            <th style={{ ...hdrCell, width: 44, color: C.amber }} onClick={() => handleSort("jedi")}>JEDI {sortCol === "jedi" && (sortDir === "desc" ? "▼" : "▲")}</th>
-            <th style={{ ...hdrCell, width: 32 }} onClick={() => handleSort("d30")}>Δ30</th>
-            <th style={{ ...hdrCell, width: 50 }}>TREND</th>
-            <th style={{ ...hdrCell, width: 56 }} onClick={() => handleSort("rentNum")}>RENT</th>
-            <th style={{ ...hdrCell, width: 44 }}>RENT Δ</th>
-            <th style={{ ...hdrCell, width: 40 }} onClick={() => handleSort("vacNum")}>VAC</th>
-            <th style={{ ...hdrCell, width: 50 }}>ABSORB</th>
-            <th style={{ ...hdrCell, width: 50 }}>PIPELN</th>
-            <th style={{ ...hdrCell, width: 52 }}>COSTS</th>
-            <th style={{ ...hdrCell, width: 40 }}>$/APT</th>
-            <th style={{ ...hdrCell, width: 44 }}>POP Δ</th>
-            <th style={{ ...hdrCell, width: 56 }}>MED INC</th>
-            <th style={{ ...hdrCell, width: 40 }}>CAP</th>
-            <th style={{ ...hdrCell, width: 76 }}>CYCLE</th>
+            {cols.map(colId => {
+              const def = getColumnById(colId);
+              const label = def?.label || colId.toUpperCase();
+              const w = def?.width || 50;
+              const sortKey = sortableMap[colId];
+              return (
+                <th
+                  key={colId}
+                  style={{ ...hdrCell, width: w, textAlign: colId === "msa" ? "left" : "center", color: colId === "jedi" ? C.amber : undefined }}
+                  onClick={sortKey ? () => handleSort(sortKey) : undefined}
+                >
+                  {label} {sortKey && sortCol === sortKey && (sortDir === "desc" ? "▼" : "▲")}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {/* Median Row */}
           {median && (
             <tr style={{ background: C.panelAlt, borderBottom: `1px solid ${C.borderM}` }}>
-              <td style={dataCell}><span style={{ color: C.muted, fontStyle: "italic" }}>—</span></td>
-              <td style={dataCell}></td>
-              <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.muted }}>Median</span></td>
-              <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-              <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-              <td style={dataCell}><ScoreCell value={median.jedi} size={10} /></td>
-              <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
-              <td style={dataCell}><span style={{ color: C.muted }}>───</span></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{median.rent}</span></td>
-              <td style={dataCell}><DeltaCell value={median.rentD} /></td>
-              <td style={dataCell}><ThresholdVal value={median.vac} thresholds={[5, 8]} invert /></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{median.absorb}</span></td>
-              <td style={dataCell}><ThresholdVal value={median.pipeline} thresholds={[8, 14]} invert /></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{median.costs}</span></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{median.dApt}</span></td>
-              <td style={dataCell}><DeltaCell value={median.popD} /></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{median.medInc}</span></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{median.cap}</span></td>
-              <td style={dataCell}><span style={{ color: C.muted }}>—</span></td>
+              {cols.map(colId => (
+                <td key={colId} style={{ ...dataCell, textAlign: colId === "msa" ? "left" : "center" }}>
+                  {renderMarketCell(colId, filteredMarkets[0], true)}
+                </td>
+              ))}
             </tr>
           )}
-          {/* Data Rows */}
           {filteredMarkets.map((m, i) => (
             <tr
               key={m.id}
               onClick={() => handleDrillToMsa(m)}
-              style={{
-                background: i % 2 === 0 ? C.panel : C.panelAlt,
-                borderBottom: `1px solid ${C.borderS}`,
-                cursor: "pointer",
-              }}
+              style={{ background: i % 2 === 0 ? C.panel : C.panelAlt, borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
               onMouseEnter={e => { e.currentTarget.style.background = C.hover; }}
               onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}
             >
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.rank}</span></td>
-              <td style={dataCell}><span style={{ color: m.starred ? C.amber : C.muted, fontSize: 10 }}>{m.starred ? "★" : "☆"}</span></td>
-              <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, fontWeight: 600, ...sans }}>{m.msa}</span></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.props.toLocaleString()}</span></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.units}</span></td>
-              <td style={dataCell}><ScoreCell value={m.jedi} size={10} /></td>
-              <td style={dataCell}><DeltaCell value={m.d30} /></td>
-              <td style={dataCell}><Spark data={m.trend} color={m.d30 >= 0 ? C.green : C.red} w={40} h={12} /></td>
-              <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{m.rent}</span></td>
-              <td style={dataCell}><DeltaCell value={m.rentD} /></td>
-              <td style={dataCell}><ThresholdVal value={m.vac} thresholds={[5, 8]} invert /></td>
-              <td style={dataCell}><span style={{ color: C.primary }}>{m.absorb}</span></td>
-              <td style={dataCell}><ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert /></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.costs}</span></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.dApt}</span></td>
-              <td style={dataCell}><DeltaCell value={m.popD} /></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.medInc}</span></td>
-              <td style={dataCell}><span style={{ color: C.secondary }}>{m.cap}</span></td>
-              <td style={dataCell}><Badge label={m.cycle} color={cycleColor(m.cycle)} /></td>
+              {cols.map(colId => (
+                <td key={colId} style={{ ...dataCell, textAlign: colId === "msa" ? "left" : "center" }}>
+                  {renderMarketCell(colId, m)}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+  };
 
   // ============================================================================
   // Tab Content Renderers
@@ -508,11 +617,12 @@ export default function F4MarketsView() {
           style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "3px 8px", width: 160 }}
         />
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets</span>
+        <GearButton tab="dashboard" />
       </div>
 
       {/* Main Table - Full Width */}
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-        {renderMarketTable()}
+        {renderMarketTable("dashboard")}
       </div>
 
       {/* Bottom Panels: Alerts + Top Movers (side by side) */}
@@ -562,7 +672,6 @@ export default function F4MarketsView() {
 
   const renderBrowse = () => (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {/* Filter Bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 12px", background: C.panel, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>All Markets</span>
         <select value={cycleFilter} onChange={e => setCycleFilter(e.target.value as CycleFilter)} style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "2px 6px" }}>
@@ -581,24 +690,30 @@ export default function F4MarketsView() {
           style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "3px 8px", width: 180 }}
         />
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets · Click to drill</span>
+        <GearButton tab="browse" />
       </div>
-      {renderMarketTable()}
+      {renderMarketTable("browse")}
     </div>
   );
 
-  const renderSubmarkets = () => (
+  const renderSubmarkets = () => {
+    const cols = subCols.columns;
+    return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Submarket Index</span>
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {SUBMARKET_INDEX.length} submarkets · Click to drill</span>
+        <div style={{ flex: 1 }} />
+        <GearButton tab="submarkets" />
       </div>
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
           <thead>
             <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
-              {["SUBMARKET", "MSA", "JEDI", "RENT", "RENT Δ", "VAC", "PROPS", "UNITS", "OPP", "CAP", "CYCLE"].map(h => (
-                <th key={h} style={hdrCell}>{h}</th>
-              ))}
+              {cols.map(colId => {
+                const def = getColumnById(colId);
+                return <th key={colId} style={{ ...hdrCell, textAlign: colId === "name" ? "left" : "center" }}>{def?.label || colId.toUpperCase()}</th>;
+              })}
             </tr>
           </thead>
           <tbody>
@@ -616,17 +731,11 @@ export default function F4MarketsView() {
                 onMouseEnter={e => { e.currentTarget.style.background = C.hover; }}
                 onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}
               >
-                <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, fontWeight: 600, ...sans }}>{s.name}</span></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{s.msa}</span></td>
-                <td style={dataCell}><ScoreCell value={s.jedi} size={10} /></td>
-                <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{s.rent}</span></td>
-                <td style={dataCell}><DeltaCell value={s.rentD} /></td>
-                <td style={dataCell}><ThresholdVal value={s.vac} thresholds={[5, 8]} invert /></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{s.props}</span></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{s.units}</span></td>
-                <td style={dataCell}><ScoreCell value={s.opp} size={9} /></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{s.cap}</span></td>
-                <td style={dataCell}><Badge label={s.cycle} color={cycleColor(s.cycle)} /></td>
+                {cols.map(colId => (
+                  <td key={colId} style={{ ...dataCell, textAlign: colId === "name" ? "left" : "center" }}>
+                    {renderSubmarketCell(colId, s)}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -634,20 +743,26 @@ export default function F4MarketsView() {
       </div>
     </div>
   );
+  };
 
-  const renderProperties = () => (
+  const renderProperties = () => {
+    const cols = propCols.columns;
+    return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Property Index</span>
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_INDEX.length} properties · Click to view</span>
+        <div style={{ flex: 1 }} />
+        <GearButton tab="properties" />
       </div>
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
           <thead>
             <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
-              {["PROPERTY", "SUBMARKET", "MSA", "JEDI", "UNITS", "RENT", "OCC", "CAP", "VINTAGE", "OWNER"].map(h => (
-                <th key={h} style={hdrCell}>{h}</th>
-              ))}
+              {cols.map(colId => {
+                const def = getColumnById(colId);
+                return <th key={colId} style={{ ...hdrCell, textAlign: colId === "name" ? "left" : "center" }}>{def?.label || colId.toUpperCase()}</th>;
+              })}
             </tr>
           </thead>
           <tbody>
@@ -659,16 +774,11 @@ export default function F4MarketsView() {
                 onMouseEnter={e => { e.currentTarget.style.background = C.hover; }}
                 onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}
               >
-                <td style={{ ...dataCell, textAlign: "left" }}><span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{p.submarket}</span></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{p.msa}</span></td>
-                <td style={dataCell}><ScoreCell value={p.jedi} size={10} /></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{p.units}</span></td>
-                <td style={dataCell}><span style={{ color: C.primary, fontWeight: 600 }}>{p.rent}</span></td>
-                <td style={dataCell}><ThresholdVal value={p.occ} thresholds={[94, 91]} /></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{p.capRate}</span></td>
-                <td style={dataCell}><span style={{ color: C.secondary }}>{p.vintage}</span></td>
-                <td style={dataCell}><span style={{ color: C.muted }}>{p.owner}</span></td>
+                {cols.map(colId => (
+                  <td key={colId} style={{ ...dataCell, textAlign: colId === "name" ? "left" : "center" }}>
+                    {renderPropertyCell(colId, p)}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -676,6 +786,7 @@ export default function F4MarketsView() {
       </div>
     </div>
   );
+  };
 
   const renderCompare = () => <PeerComparisonPage embedded onViewDetail={() => {}} />;
 
