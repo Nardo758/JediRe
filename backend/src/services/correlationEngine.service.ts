@@ -1497,6 +1497,7 @@ export class CorrelationEngineService {
                 bestGeo: '',
                 geoCount: 0,
                 geos: new Set(),
+                crossGeoSources: new Set<string>(),
                 trendDirection: 'stable',
                 trendMagnitude: 0,
               });
@@ -1527,6 +1528,9 @@ export class CorrelationEngineService {
             entry.totalScore += score;
             entry.appearances++;
             entry.geos.add(`${row.geography_type}:${rowGeoId}`);
+            if (!isTracked && key.includes('::')) {
+              entry.crossGeoSources.add(rowGeoId);
+            }
 
             if (absR > Math.abs(entry.bestR) || entry.bestR === 0) {
               entry.bestR = parseFloat(row.correlation_r);
@@ -1585,6 +1589,7 @@ export class CorrelationEngineService {
         bestGeo: string;
         geoCount: number;
         geos: Set<string>;
+        crossGeoSources: Set<string>;
         trendDirection: string;
         trendMagnitude: number;
       }> = [];
@@ -1672,7 +1677,18 @@ export class CorrelationEngineService {
         const totalGeos = globalEntry ? globalEntry.geos.size : item.geoCount;
         const crossCount = item.crossGeoCount || 0;
         if (totalGeos > 1 && crossCount > 0) {
-          reason += `. Validated across ${totalGeos} markets (${crossCount} cross-market)`;
+          const formatGeoName = (id: string) => {
+            const parts = id.split('-');
+            const city = parts.slice(0, -2).join(' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            const st = (parts[parts.length - 2] || '').toUpperCase();
+            return st ? `${city}, ${st}` : city;
+          };
+          const topSources = Array.from(item.crossGeoSources).slice(0, 3).map(formatGeoName);
+          if (topSources.length > 0) {
+            reason += `. Also validated in ${topSources.join(', ')}${crossCount > 3 ? ` and ${crossCount - 3} other markets` : ''}`;
+          } else {
+            reason += `. Validated across ${totalGeos} markets (${crossCount} cross-market)`;
+          }
         } else if (totalGeos > 1) {
           reason += `. Consistent across ${totalGeos} markets`;
         }
