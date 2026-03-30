@@ -207,7 +207,11 @@ router.post('/recommendations', async (req: Request, res: Response) => {
       byMarket[geoId] = byMarket[geoId].map((rec, idx) => ({ ...rec, rank: idx + 1 }));
     }
 
-    res.json({ success: true, count: allRecs.length, data: allRecs, byMarket });
+    const flatData = Object.values(byMarket).flat()
+      .sort((a, b) => b.score - a.score)
+      .map((rec, idx) => ({ ...rec, rank: idx + 1 }));
+
+    res.json({ success: true, count: flatData.length, data: flatData, byMarket });
   } catch (error: any) {
     console.error('Recommendations error:', error);
     res.status(500).json({ success: false, error: error.message });
