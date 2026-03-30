@@ -277,16 +277,16 @@ export default function F4MarketsView() {
   const subEmpty = SUBMARKET_RESOLVED.length === 0;
   const propEmpty = PROPERTY_RESOLVED.length === 0;
 
-  const activeGeoId = useMemo(() => {
-    if (ALL_MARKETS_RESOLVED.length > 0) {
-      const first = ALL_MARKETS_RESOLVED[0];
-      const slug = first.id.replace(/-[a-z]{2}$/, "");
-      return `${slug}-${first.msa.split(", ").pop()?.toLowerCase() || "fl"}-${first.msa.split(", ").pop()?.toLowerCase() || "fl"}`;
-    }
-    return "tampa-fl-fl";
+  const marketGeoIds = useMemo(() => {
+    if (ALL_MARKETS_RESOLVED.length === 0) return [];
+    return ALL_MARKETS_RESOLVED.map(m => {
+      const slug = m.id.replace(/-[a-z]{2}$/, "");
+      const state = (m.msa.split(", ").pop() || "FL").toLowerCase();
+      return { geoType: "metro", geoId: `${slug}-${state}-${state}` };
+    });
   }, [ALL_MARKETS_RESOLVED]);
 
-  const columnCorrelations = useColumnCorrelations("metro", activeGeoId);
+  const { correlationMap: columnCorrelations, staleCount: corrStaleCount, totalCount: corrTotalCount } = useColumnCorrelations(marketGeoIds);
 
   const dashCols = useColumnPreferences("f4_dashboard");
   const browseCols = useColumnPreferences("f4_browse");
@@ -686,6 +686,22 @@ export default function F4MarketsView() {
         />
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets</span>
         {isLive && <span style={{ fontSize: 8, color: C.green, ...mono, fontWeight: 700 }}>LIVE</span>}
+        {corrStaleCount > 0 && (
+          <span
+            style={{ fontSize: 8, color: C.red, ...mono, fontWeight: 700 }}
+            title={`${corrStaleCount} of ${corrTotalCount} market correlations are stale (>7 days old)`}
+          >
+            CORR STALE ({corrStaleCount}/{corrTotalCount})
+          </span>
+        )}
+        {corrTotalCount > 0 && corrStaleCount === 0 && (
+          <span
+            style={{ fontSize: 8, color: C.cyan, ...mono, fontWeight: 700 }}
+            title="All market correlations are fresh (<7 days)"
+          >
+            CORR FRESH
+          </span>
+        )}
         {marketsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Loading...</span>}
         <button
           onClick={(e) => { e.stopPropagation(); refreshMarkets(); }}
@@ -768,6 +784,16 @@ export default function F4MarketsView() {
         />
         <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets · Click to drill</span>
         {isLive && <span style={{ fontSize: 8, color: C.green, ...mono, fontWeight: 700 }}>LIVE</span>}
+        {corrStaleCount > 0 && (
+          <span style={{ fontSize: 8, color: C.red, ...mono, fontWeight: 700 }} title={`${corrStaleCount} of ${corrTotalCount} market correlations are stale (>7 days old)`}>
+            CORR STALE ({corrStaleCount}/{corrTotalCount})
+          </span>
+        )}
+        {corrTotalCount > 0 && corrStaleCount === 0 && (
+          <span style={{ fontSize: 8, color: C.cyan, ...mono, fontWeight: 700 }} title="All market correlations are fresh (<7 days)">
+            CORR FRESH
+          </span>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); refreshMarkets(); }}
           style={{ ...mono, fontSize: 8, background: "transparent", color: C.muted, border: `1px solid ${C.borderS}`, padding: "1px 5px", cursor: "pointer" }}

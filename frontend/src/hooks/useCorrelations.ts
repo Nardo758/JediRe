@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import api from "../services/api";
 
 export interface MetricCorrelation {
@@ -15,6 +15,16 @@ export interface MetricCorrelation {
   computed_at: string;
 }
 
+export interface FreshnessEntry {
+  geography_type: string;
+  geography_id: string;
+  correlation_count: number;
+  oldest_computed_at: string;
+  newest_computed_at: string;
+  avg_abs_r: number;
+  stale: boolean;
+}
+
 export interface ColumnCorrelationInfo {
   metricId: string;
   topCorrelation: MetricCorrelation | null;
@@ -26,7 +36,7 @@ export function useTopCorrelations(geoType: string, geoId: string, minAbsR: numb
   const [correlations, setCorrelations] = useState<MetricCorrelation[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetch = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     if (!geoType || !geoId) return;
     setLoading(true);
     try {
@@ -44,33 +54,112 @@ export function useTopCorrelations(geoType: string, geoId: string, minAbsR: numb
   }, [geoType, geoId, minAbsR]);
 
   useEffect(() => {
-    fetch();
-  }, [fetch]);
+    fetchData();
+  }, [fetchData]);
 
-  return { correlations, loading, refresh: fetch };
+  return { correlations, loading, refresh: fetchData };
+}
+
+export function useBatchCorrelations(
+  queries: Array<{ geographyType: string; geographyId: string }>
+) {
+  const [results, setResults] = useState<Record<string, MetricCorrelation[]>>({});
+  const [loading, setLoading] = useState(false);
+
+  const queriesKey = useMemo(() => JSON.stringify(queries), [queries]);
+
+  const fetchData = useCallback(async () => {
+    if (queries.length === 0) return;
+    setLoading(true);
+    try {
+      const res = await api.post("/correlations/batch", { queries });
+      if (res.data?.success) {
+        setResults(res.data.data);
+      }
+    } catch {
+      setResults({});
+    } finally {
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queriesKey]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { results, loading, refresh: fetchData };
+}
+
+export function useCorrelationFreshness() {
+  const [freshness, setFreshness] = useState<FreshnessEntry[]>([]);
+  const [summary, setSummary] = useState<{ total_geographies: number; stale: number; fresh: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/correlations/freshness");
+      if (res.data?.success) {
+        setFreshness(res.data.data);
+        setSummary(res.data.summary);
+      }
+    } catch {
+      setFreshness([]);
+      setSummary(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  return { freshness, summary, loading, refresh: fetchData };
 }
 
 const COLUMN_TO_METRIC: Record<string, string[]> = {
-  rent: ["rent_index", "rent_index_yoy"],
+  rent: ["rent_index"],
   rentD: ["rent_index_yoy"],
-  vac: ["home_value_index_yoy"],
-  popD: ["DEMO_POPULATION"],
-  medInc: ["DEMO_MED_INCOME"],
-  cap: ["home_value_index"],
-  pipeline: ["home_value_index_yoy"],
-  absorb: ["rent_index"],
+  cap: ["home_value_index", "home_value_index_yoy"],
 };
 
-export function useColumnCorrelations(geoType: string, geoId: string): Record<string, ColumnCorrelationInfo> {
-  const { correlations } = useTopCorrelations(geoType, geoId, 0.7);
+export function useColumnCorrelations(
+  marketGeoIds: Array<{ geoType: string; geoId: string }>
+): { correlationMap: Record<string, ColumnCorrelationInfo>; staleCount: number; totalCount: number } {
+  const batchQueries = useMemo(
+    () => marketGeoIds.map(m => ({ geographyType: m.geoType, geographyId: m.geoId })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(marketGeoIds)]
+  );
 
-  const map: Record<string, ColumnCorrelationInfo> = {};
+  const { results } = useBatchCorrelations(batchQueries);
+  const { freshness } = useCorrelationFreshness();
+
+  const allCorrelations = useMemo(() => {
+    const all: MetricCorrelation[] = [];
+    for (const key of Object.keys(results)) {
+      all.push(...results[key]);
+    }
+    return all;
+  }, [results]);
+
+  const staleCount = useMemo(() => {
+    const geoKeys = new Set(marketGeoIds.map(m => `${m.geoType}:${m.geoId}`));
+    return freshness.filter(f => {
+      const key = `${f.geography_type}:${f.geography_id}`;
+      return geoKeys.has(key) && f.stale;
+    }).length;
+  }, [freshness, marketGeoIds]);
+
+  const correlationMap: Record<string, ColumnCorrelationInfo> = {};
 
   for (const [colId, metricIds] of Object.entries(COLUMN_TO_METRIC)) {
     let best: MetricCorrelation | null = null;
     let bestAbsR = 0;
 
-    for (const corr of correlations) {
+    for (const corr of allCorrelations) {
       for (const mId of metricIds) {
         if (corr.metric_a === mId || corr.metric_b === mId) {
           const absR = Math.abs(corr.correlation_r);
@@ -82,7 +171,7 @@ export function useColumnCorrelations(geoType: string, geoId: string): Record<st
       }
     }
 
-    map[colId] = {
+    correlationMap[colId] = {
       metricId: metricIds[0],
       topCorrelation: best,
       absR: bestAbsR,
@@ -90,5 +179,5 @@ export function useColumnCorrelations(geoType: string, geoId: string): Record<st
     };
   }
 
-  return map;
+  return { correlationMap, staleCount, totalCount: marketGeoIds.length };
 }
