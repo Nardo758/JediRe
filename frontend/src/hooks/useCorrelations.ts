@@ -148,7 +148,10 @@ export function useMetricRecommendations(
   const geoKey = useMemo(() => JSON.stringify(marketGeoIds), [marketGeoIds]);
 
   const fetchData = useCallback(async () => {
-    if (marketGeoIds.length === 0) return;
+    if (marketGeoIds.length === 0) {
+      setRecommendations([]);
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.post("/correlations/recommendations", {

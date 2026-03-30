@@ -201,9 +201,6 @@ router.post('/recommendations', async (req: Request, res: Response) => {
     for (const rec of allRecs) {
       if (byMarket[rec.geographyId]) {
         byMarket[rec.geographyId].push(rec);
-      } else {
-        const firstKey = Object.keys(byMarket)[0];
-        if (firstKey) byMarket[firstKey].push(rec);
       }
     }
 

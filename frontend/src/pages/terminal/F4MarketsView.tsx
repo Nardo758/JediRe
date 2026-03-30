@@ -746,7 +746,7 @@ export default function F4MarketsView() {
           </div>
           {!recsCollapsed && (
             <div style={{ display: "flex", gap: 0, overflow: "auto", background: C.panel }}>
-              {metricRecs.map((rec: MetricRecommendation) => {
+              {metricRecs.slice(0, 5).map((rec: MetricRecommendation) => {
                 const rColor = rec.correlationR > 0 ? C.green : C.red;
                 const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
                 const trendColor = rec.trendDirection === "rising" ? C.green : rec.trendDirection === "falling" ? C.red : C.muted;

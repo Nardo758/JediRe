@@ -1469,8 +1469,6 @@ export class CorrelationEngineService {
         T_AADT_YOY: 'dApt',
       };
 
-      const trackedGeoSet = new Set(geoIds);
-
       for (const row of corrRes.rows) {
         const metrics = [row.metric_a, row.metric_b];
         const rowGeoId = row.geography_id;
