@@ -126,8 +126,8 @@ router.get('/top', async (req: Request, res: Response) => {
     const geoType = req.query.geoType as string;
     const geoId = req.query.geoId as string;
     const targetMetric = req.query.targetMetric as string | undefined;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const minAbsR = parseFloat(req.query.minAbsR as string) || 0.5;
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 200);
+    const minAbsR = Math.min(Math.max(parseFloat(req.query.minAbsR as string) || 0.5, 0), 1);
 
     if (!geoType || !geoId) {
       return res.status(400).json({ success: false, error: 'geoType and geoId are required' });
@@ -151,11 +151,9 @@ router.post('/batch', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Maximum 50 queries per batch' });
     }
 
-    const results = await engine.getBatchCorrelations(
-      queries,
-      typeof topN === 'number' ? topN : 100,
-      typeof minAbsR === 'number' ? minAbsR : 0
-    );
+    const clampedTopN = Math.min(Math.max(typeof topN === 'number' ? topN : 100, 1), 200);
+    const clampedMinAbsR = Math.min(Math.max(typeof minAbsR === 'number' ? minAbsR : 0, 0), 1);
+    const results = await engine.getBatchCorrelations(queries, clampedTopN, clampedMinAbsR);
     res.json({ success: true, data: results });
   } catch (error: any) {
     console.error('Batch correlations error:', error);
