@@ -513,6 +513,12 @@ const MiniBar = ({ value, max, color = T.text.cyan, width = 60 }) => (
   </div>
 );
 
+function LiveClock() {
+  const [t, setT] = useState(new Date());
+  useEffect(() => { const id = setInterval(() => setT(new Date()), 1000); return () => clearInterval(id); }, []);
+  return <span style={{ fontSize: 10, color: "#F5A623", fontWeight: 600 }}>{t.toLocaleTimeString("en-US", { hour12: false })}</span>;
+}
+
 const ScoreRing = ({ score, size = 72, strokeWidth = 5 }) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -795,8 +801,6 @@ export default function PropertyDetailsPage() {
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
   const [chartWidth, setChartWidth] = useState(460);
-  const [clockTime, setClockTime] = useState(new Date());
-  useEffect(() => { const id = setInterval(() => setClockTime(new Date()), 1000); return () => clearInterval(id); }, []);
   const p = PROPERTY;
   const td = TRAFFIC_DATA;
   const perf = PERFORMANCE_HISTORY;
@@ -2225,7 +2229,7 @@ export default function PropertyDetailsPage() {
           </span>
           <span style={{ fontSize: 10, color: T.text.cyan }}>MAIL: 2</span>
           <span style={{ fontSize: 10, color: T.text.secondary }}>KAFKA: 312/s</span>
-          <span style={{ fontSize: 10, color: T.text.amber, fontWeight: 600 }}>{clockTime.toLocaleTimeString("en-US", { hour12: false })}</span>
+          <LiveClock />
         </div>
       </div>
 
