@@ -15,7 +15,8 @@ export type MetricCategory =
   | 'risk'
   | 'ownership'
   | 'sfr'
-  | 'demographic';
+  | 'demographic'
+  | 'macro';
 
 export type MetricGranularity = 'property' | 'submarket' | 'zip' | 'county' | 'msa';
 
@@ -881,6 +882,86 @@ export const METRICS_CATALOG: MetricDefinition[] = [
       { metricId: 'M_ABSORPTION', lagMonths: 3, typicalR: 0.47 },
     ],
   },
+
+  // ════════════════════════════════════════════════════════════════
+  // SEARCH COMPOSITE (1 metric)
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'C_SEARCH_GROWTH_INDEX',
+    name: 'Search Growth Index (SGI)',
+    category: 'traffic_digital',
+    formula: '(Current Google Trends Index − Historical Avg Google Trends Index) / Historical Avg Google Trends Index × 100',
+    unit: '%',
+    granularity: ['submarket', 'zip', 'county', 'msa'],
+    source: 'Google Trends (real-time) vs 5-year rolling average baseline',
+    updateFrequency: 'weekly',
+    higherIsBetter: true,
+    description: 'Percentage increase in current Google search interest above the 5-year historical average for that area. Mirrors TGI logic but for search demand instead of physical traffic. Positive = area trending hotter than normal; negative = search interest declining below historical norms. Uses Google Trends relative index (0-100) compared to the same area\'s long-term average.',
+    exampleValue: '+35% above 5yr search baseline',
+    investmentSignal: '+20%+ sustained = digital demand surge, often precedes physical traffic and rent growth by 6-12 months. Negative = market cooling or saturation.',
+    leadsMetrics: [
+      { metricId: 'C_TRAFFIC_GROWTH_INDEX', lagMonths: 3, typicalR: 0.58 },
+      { metricId: 'F_RENT_GROWTH', lagMonths: 9, typicalR: 0.52 },
+      { metricId: 'M_VACANCY', lagMonths: 12, typicalR: -0.45 },
+    ],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // MACRO — ECONOMIC INDICATORS (3 metrics)
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'MACRO_OIL_PRICE',
+    name: 'Crude Oil Price (WTI)',
+    category: 'macro',
+    formula: 'WTI Crude Oil spot price ($/barrel)',
+    unit: '$/barrel',
+    granularity: ['msa'],
+    source: 'U.S. Energy Information Administration (EIA) / FRED',
+    updateFrequency: 'daily',
+    higherIsBetter: false,
+    description: 'West Texas Intermediate crude oil spot price. Directly impacts transportation costs, construction material prices, and operating expenses for CRE. Rising oil prices compress NOI through higher utility and maintenance costs. Energy-dependent markets (Houston, Midland, OKC) see outsized employment and rent effects.',
+    exampleValue: '$78.50/barrel',
+    investmentSignal: 'Sustained >$90 = cost pressure on NOI, but energy-market metros benefit from job growth. <$50 = lower opex but energy-metro risk. Watch the delta, not the level.',
+    leadsMetrics: [
+      { metricId: 'F_CAP_RATE', lagMonths: 6, typicalR: 0.35 },
+      { metricId: 'E_EMPLOYMENT_GROWTH', lagMonths: 3, typicalR: 0.42 },
+    ],
+  },
+  {
+    id: 'MACRO_CPI_OFFICIAL',
+    name: 'CPI — Official (BLS)',
+    category: 'macro',
+    formula: 'Bureau of Labor Statistics CPI-U Year-over-Year % Change',
+    unit: '%',
+    granularity: ['msa'],
+    source: 'Bureau of Labor Statistics (BLS) CPI-U, MSA-level where available',
+    updateFrequency: 'monthly',
+    higherIsBetter: false,
+    description: 'Official Consumer Price Index for All Urban Consumers (CPI-U) year-over-year percentage change as reported by the Bureau of Labor Statistics. Uses current BLS methodology including hedonic adjustments, geometric weighting, and owner\'s equivalent rent (OER) substitution for housing costs. The standard inflation measure used by the Fed for policy decisions. Available at national and select MSA levels.',
+    exampleValue: '3.2% YoY',
+    investmentSignal: 'CPI 2-3% = healthy for CRE (rents rise with inflation). >5% = Fed tightening risk, cap rate expansion. <1% = deflation risk, demand weakness. CRE is a natural inflation hedge when lease escalators track CPI.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 0, typicalR: 0.65 },
+      { metricId: 'F_CAP_RATE', lagMonths: 6, typicalR: 0.48 },
+    ],
+  },
+  {
+    id: 'MACRO_CPI_SHADOW',
+    name: 'CPI — ShadowStats (1980-Based)',
+    category: 'macro',
+    formula: 'BLS CPI-U + ShadowStats adjustment differential (restores pre-1983 methodology)',
+    unit: '%',
+    granularity: ['msa'],
+    source: 'ShadowStats.com methodology (proxy: BLS CPI-U + ~5.5pp pre-1983 adjustment)',
+    updateFrequency: 'monthly',
+    higherIsBetter: false,
+    description: 'Alternative inflation measure using the pre-1983 BLS methodology before hedonic adjustments, geometric weighting, and OER substitution were introduced. Typically runs 4-8 percentage points higher than official CPI. Calculates inflation the way it was measured before the Boskin Commission changes. Useful for understanding true cost-of-living pressure on tenants and real (inflation-adjusted) returns on CRE investments. The gap between Official CPI and ShadowStats CPI reveals how much methodological changes mask actual price increases.',
+    exampleValue: '11.5% YoY (vs 3.2% official)',
+    investmentSignal: 'When ShadowStats CPI is high but official CPI is "controlled," real returns on CRE are lower than they appear. Wide gap (>6pts) = tenants under more cost pressure than official data shows, watch for rent affordability ceilings. Narrow gap = methodologies converging, official numbers more trustworthy.',
+    laggedBy: [
+      { metricId: 'MACRO_CPI_OFFICIAL', leadMonths: 0, typicalR: 0.95 },
+    ],
+  },
 ];
 
 /**
@@ -928,6 +1009,7 @@ export function getCategoriesWithCounts(): Array<{
     'ownership',
     'sfr',
     'demographic',
+    'macro',
   ];
 
   const categoryLabels: Record<MetricCategory, string> = {
@@ -943,6 +1025,7 @@ export function getCategoriesWithCounts(): Array<{
     ownership: 'Ownership & Financing',
     sfr: 'Single-Family Residential',
     demographic: 'Demographics',
+    macro: 'Macroeconomic Indicators',
   };
 
   return categories.map((cat) => ({

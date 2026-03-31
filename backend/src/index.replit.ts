@@ -109,6 +109,7 @@ import visibilityRouter from './api/rest/visibility.routes';
 import propertyAnalyticsRouter from './api/rest/property-analytics.routes';
 import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
+import macroIndicatorsRouter from './api/rest/macro-indicators.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
 import marketRouter from './api/rest/market.routes';
@@ -389,6 +390,7 @@ app.use('/api/v1/visibility', requireAuth, visibilityRouter);
 app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
+app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
