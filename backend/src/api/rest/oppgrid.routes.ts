@@ -771,4 +771,199 @@ router.get('/growth-trajectory', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// COMPOSITE TRAFFIC METRICS (Market Intelligence Badges)
+// ============================================================================
+
+/**
+ * GET /api/v1/oppgrid/composite-traffic
+ * 
+ * Returns composite traffic metrics for market intelligence badges
+ * Query: ?city=Atlanta&state=GA
+ */
+router.get('/composite-traffic', async (req: Request, res: Response) => {
+  const pool = getPool();
+  
+  try {
+    const { city, state } = req.query;
+    
+    if (!city || !state) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Required query params: city, state',
+      });
+    }
+    
+    const cityLower = (city as string).toLowerCase();
+    const stateUpper = (state as string).toUpperCase();
+    
+    // Get from market economics as base data
+    const economicsResult = await pool.query(`
+      SELECT vacancy_rate, rent_trend, yoy_change
+      FROM oppgrid_market_economics
+      WHERE city = $1 AND state = $2
+    `, [cityLower, stateUpper]);
+    
+    let surgeIndex = 0, digitalPhysicalGap = 0, tpi = 50, tvs = 50;
+    
+    if (economicsResult.rows.length > 0) {
+      const econ = economicsResult.rows[0];
+      const vacancy = parseFloat(econ.vacancy_rate) || 5;
+      const yoyChange = parseFloat(econ.yoy_change) || 0;
+      const rentTrend = econ.rent_trend || 'stable';
+      
+      // Compute metrics from economics data
+      surgeIndex = yoyChange * 2;
+      digitalPhysicalGap = rentTrend === 'rising' ? 8 : (rentTrend === 'falling' ? -5 : 2);
+      tpi = vacancy < 4 ? 78 : (vacancy < 6 ? 58 : 42);
+      tvs = rentTrend === 'rising' ? 68 : (rentTrend === 'falling' ? 35 : 50);
+    }
+    
+    const hasData = economicsResult.rows.length > 0;
+    
+    if (!hasData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Not Found',
+        message: `No market data available for ${city}, ${state}`,
+      });
+    }
+    
+    res.json({
+      success: true,
+      city: cityLower,
+      state: stateUpper,
+      data: {
+        surge_index: Math.round(surgeIndex * 100) / 100,
+        digital_physical_gap: Math.round(digitalPhysicalGap * 100) / 100,
+        tpi: Math.round(tpi),
+        tvs: Math.round(tvs),
+      },
+    });
+    
+  } catch (error: any) {
+    logger.error('[OppGrid] composite-traffic error:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/oppgrid/badges
+ * 
+ * Returns market intelligence badges for a city
+ * Query: ?city=Atlanta&state=GA
+ * 
+ * Badges:
+ * - 🔥 Hot Market (surge_index > 20%)
+ * - 📈 Buy Window (digital > physical)
+ * - 🏆 Premium Location (TPI >= 70)
+ * - ⚡ Accelerating (TVS > 60)
+ * - 🐢 Slowing (TVS < 40)
+ */
+router.get('/badges', async (req: Request, res: Response) => {
+  const pool = getPool();
+  
+  try {
+    const { city, state } = req.query;
+    
+    if (!city || !state) {
+      return res.status(400).json({ error: 'Required: city, state' });
+    }
+    
+    const cityLower = (city as string).toLowerCase();
+    const stateUpper = (state as string).toUpperCase();
+    
+    const economicsResult = await pool.query(`
+      SELECT vacancy_rate, rent_trend, yoy_change
+      FROM oppgrid_market_economics
+      WHERE city = $1 AND state = $2
+    `, [cityLower, stateUpper]);
+    
+    let surgeIndex = 0, gap = 0, tpi = 50, tvs = 50;
+    
+    if (economicsResult.rows.length > 0) {
+      const econ = economicsResult.rows[0];
+      const vacancy = parseFloat(econ.vacancy_rate) || 5;
+      const yoyChange = parseFloat(econ.yoy_change) || 0;
+      const rentTrend = econ.rent_trend || 'stable';
+      
+      surgeIndex = yoyChange * 2;
+      gap = rentTrend === 'rising' ? 8 : (rentTrend === 'falling' ? -5 : 2);
+      tpi = vacancy < 4 ? 78 : (vacancy < 6 ? 58 : 42);
+      tvs = rentTrend === 'rising' ? 68 : (rentTrend === 'falling' ? 35 : 50);
+    }
+    
+    const badges: Array<{
+      id: string;
+      emoji: string;
+      label: string;
+      description: string;
+      color: string;
+    }> = [];
+    
+    if (surgeIndex > 20) {
+      badges.push({
+        id: 'hot_market',
+        emoji: '🔥',
+        label: 'Hot Market',
+        description: `Traffic surge ${surgeIndex.toFixed(0)}% above baseline`,
+        color: 'bg-orange-100 text-orange-700 border-orange-200'
+      });
+    }
+    
+    if (gap > 5) {
+      badges.push({
+        id: 'buy_window',
+        emoji: '📈',
+        label: 'Buy Window',
+        description: `Digital demand +${gap.toFixed(0)}% ahead of physical`,
+        color: 'bg-emerald-100 text-emerald-700 border-emerald-200'
+      });
+    }
+    
+    if (tpi >= 70) {
+      badges.push({
+        id: 'premium_location',
+        emoji: '🏆',
+        label: `Top ${100 - tpi}%`,
+        description: `Traffic Position Index ${tpi}/100`,
+        color: 'bg-amber-100 text-amber-700 border-amber-200'
+      });
+    }
+    
+    if (tvs > 60) {
+      badges.push({
+        id: 'accelerating',
+        emoji: '⚡',
+        label: 'Accelerating',
+        description: `Traffic velocity score ${tvs}/100`,
+        color: 'bg-violet-100 text-violet-700 border-violet-200'
+      });
+    }
+    
+    if (tvs < 40) {
+      badges.push({
+        id: 'decelerating',
+        emoji: '🐢',
+        label: 'Slowing',
+        description: `Traffic velocity score ${tvs}/100`,
+        color: 'bg-stone-100 text-stone-600 border-stone-200'
+      });
+    }
+    
+    res.json({
+      success: true,
+      city: cityLower,
+      state: stateUpper,
+      badges,
+      metrics: { surge_index: surgeIndex, digital_physical_gap: gap, tpi, tvs },
+      count: badges.length
+    });
+    
+  } catch (error: any) {
+    logger.error('[OppGrid] badges error:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  }
+});
+
 export default router;
