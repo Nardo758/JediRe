@@ -494,4 +494,281 @@ router.get('/cities', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// RECEIVE ENDPOINTS (OppGrid → JediRE)
+// These endpoints receive signals from OppGrid for use in Strategy Builder
+// ============================================================================
+
+/**
+ * POST /api/v1/oppgrid/sync-signals
+ * 
+ * Receives opportunity signals from OppGrid
+ * Body: { city, state, source, signals: [{ signal_type, score, confidence, category, trend }] }
+ */
+router.post('/sync-signals', validateOppGridAuth, async (req: Request, res: Response) => {
+  const pool = getPool();
+  
+  try {
+    const { city, state, source, signals } = req.body;
+    
+    if (!city || !state || !signals || !Array.isArray(signals)) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Required: city, state, signals (array)',
+      });
+    }
+    
+    let upserted = 0;
+    
+    for (const signal of signals) {
+      const { signal_type, score, confidence, category, trend, metadata } = signal;
+      
+      if (!signal_type) continue;
+      
+      await pool.query(`
+        INSERT INTO oppgrid_opportunity_signals 
+          (city, state, source, signal_type, score, confidence, category, trend, metadata, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+        ON CONFLICT (city, state, signal_type, source) 
+        DO UPDATE SET
+          score = EXCLUDED.score,
+          confidence = EXCLUDED.confidence,
+          category = COALESCE(EXCLUDED.category, oppgrid_opportunity_signals.category),
+          trend = COALESCE(EXCLUDED.trend, oppgrid_opportunity_signals.trend),
+          metadata = COALESCE(EXCLUDED.metadata, oppgrid_opportunity_signals.metadata),
+          updated_at = NOW()
+      `, [
+        city.toLowerCase(),
+        state.toUpperCase(),
+        source || 'oppgrid',
+        signal_type.toLowerCase(),
+        score || 0,
+        confidence || 0.5,
+        category || null,
+        trend || 'stable',
+        metadata ? JSON.stringify(metadata) : null
+      ]);
+      
+      upserted++;
+    }
+    
+    logger.info(`[OppGrid] Received ${upserted} opportunity signals for ${city}, ${state}`);
+    
+    res.json({
+      success: true,
+      message: `Synced ${upserted} opportunity signals`,
+      city,
+      state,
+      count: upserted,
+    });
+    
+  } catch (error: any) {
+    logger.error('[OppGrid] sync-signals error:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  }
+});
+
+/**
+ * POST /api/v1/oppgrid/sync-trajectory
+ * 
+ * Receives market growth trajectory from OppGrid
+ * Body: { city, state, growth_score, growth_category, population_growth_rate, ... }
+ */
+router.post('/sync-trajectory', validateOppGridAuth, async (req: Request, res: Response) => {
+  const pool = getPool();
+  
+  try {
+    const { 
+      city, state, source,
+      growth_score, growth_category,
+      population_growth_rate, job_growth_rate, income_growth_rate,
+      business_formation_rate, net_migration_rate,
+      opportunity_signal_count, avg_opportunity_score, signal_density_percentile
+    } = req.body;
+    
+    if (!city || !state) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Required: city, state',
+      });
+    }
+    
+    await pool.query(`
+      INSERT INTO oppgrid_growth_trajectories 
+        (city, state, source, growth_score, growth_category,
+         population_growth_rate, job_growth_rate, income_growth_rate,
+         business_formation_rate, net_migration_rate,
+         opportunity_signal_count, avg_opportunity_score, signal_density_percentile,
+         updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+      ON CONFLICT (city, state, source) 
+      DO UPDATE SET
+        growth_score = COALESCE(EXCLUDED.growth_score, oppgrid_growth_trajectories.growth_score),
+        growth_category = COALESCE(EXCLUDED.growth_category, oppgrid_growth_trajectories.growth_category),
+        population_growth_rate = COALESCE(EXCLUDED.population_growth_rate, oppgrid_growth_trajectories.population_growth_rate),
+        job_growth_rate = COALESCE(EXCLUDED.job_growth_rate, oppgrid_growth_trajectories.job_growth_rate),
+        income_growth_rate = COALESCE(EXCLUDED.income_growth_rate, oppgrid_growth_trajectories.income_growth_rate),
+        business_formation_rate = COALESCE(EXCLUDED.business_formation_rate, oppgrid_growth_trajectories.business_formation_rate),
+        net_migration_rate = COALESCE(EXCLUDED.net_migration_rate, oppgrid_growth_trajectories.net_migration_rate),
+        opportunity_signal_count = COALESCE(EXCLUDED.opportunity_signal_count, oppgrid_growth_trajectories.opportunity_signal_count),
+        avg_opportunity_score = COALESCE(EXCLUDED.avg_opportunity_score, oppgrid_growth_trajectories.avg_opportunity_score),
+        signal_density_percentile = COALESCE(EXCLUDED.signal_density_percentile, oppgrid_growth_trajectories.signal_density_percentile),
+        updated_at = NOW()
+    `, [
+      city.toLowerCase(),
+      state.toUpperCase(),
+      source || 'oppgrid',
+      growth_score || null,
+      growth_category || null,
+      population_growth_rate || null,
+      job_growth_rate || null,
+      income_growth_rate || null,
+      business_formation_rate || null,
+      net_migration_rate || null,
+      opportunity_signal_count || null,
+      avg_opportunity_score || null,
+      signal_density_percentile || null
+    ]);
+    
+    logger.info(`[OppGrid] Received growth trajectory for ${city}, ${state}`);
+    
+    res.json({
+      success: true,
+      message: `Synced growth trajectory for ${city}, ${state}`,
+      city,
+      state,
+    });
+    
+  } catch (error: any) {
+    logger.error('[OppGrid] sync-trajectory error:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/oppgrid/opportunity-signals
+ * 
+ * Returns opportunity signals for a city (from OppGrid)
+ * Query: ?city=Atlanta&state=GA
+ */
+router.get('/opportunity-signals', async (req: Request, res: Response) => {
+  const pool = getPool();
+  
+  try {
+    const { city, state, category } = req.query;
+    
+    if (!city || !state) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Required query params: city, state',
+      });
+    }
+    
+    let query = `
+      SELECT 
+        signal_type,
+        score,
+        confidence,
+        category,
+        trend,
+        metadata,
+        updated_at
+      FROM oppgrid_opportunity_signals
+      WHERE city = $1 AND state = $2
+    `;
+    const params: any[] = [
+      (city as string).toLowerCase(),
+      (state as string).toUpperCase()
+    ];
+    
+    if (category) {
+      query += ` AND category = $3`;
+      params.push(category);
+    }
+    
+    query += ` ORDER BY score DESC`;
+    
+    const result = await pool.query(query, params);
+    
+    res.json({
+      city: (city as string).toLowerCase(),
+      state: (state as string).toUpperCase(),
+      signals: result.rows.map(row => ({
+        signal_type: row.signal_type,
+        score: parseFloat(row.score) || 0,
+        confidence: parseFloat(row.confidence) || 0,
+        category: row.category,
+        trend: row.trend || 'stable',
+        metadata: row.metadata,
+      })),
+      count: result.rows.length,
+    });
+    
+  } catch (error: any) {
+    logger.error('[OppGrid] opportunity-signals error:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  }
+});
+
+/**
+ * GET /api/v1/oppgrid/growth-trajectory
+ * 
+ * Returns growth trajectory for a city (from OppGrid)
+ * Query: ?city=Atlanta&state=GA
+ */
+router.get('/growth-trajectory', async (req: Request, res: Response) => {
+  const pool = getPool();
+  
+  try {
+    const { city, state } = req.query;
+    
+    if (!city || !state) {
+      return res.status(400).json({
+        error: 'Bad Request',
+        message: 'Required query params: city, state',
+      });
+    }
+    
+    const result = await pool.query(`
+      SELECT *
+      FROM oppgrid_growth_trajectories
+      WHERE city = $1 AND state = $2
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [
+      (city as string).toLowerCase(),
+      (state as string).toUpperCase()
+    ]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: 'Not Found',
+        message: `No growth trajectory for ${city}, ${state}`,
+      });
+    }
+    
+    const row = result.rows[0];
+    
+    res.json({
+      city: row.city,
+      state: row.state,
+      growth_score: parseFloat(row.growth_score) || null,
+      growth_category: row.growth_category,
+      population_growth_rate: parseFloat(row.population_growth_rate) || null,
+      job_growth_rate: parseFloat(row.job_growth_rate) || null,
+      income_growth_rate: parseFloat(row.income_growth_rate) || null,
+      business_formation_rate: parseFloat(row.business_formation_rate) || null,
+      net_migration_rate: parseFloat(row.net_migration_rate) || null,
+      opportunity_signal_count: parseInt(row.opportunity_signal_count) || null,
+      avg_opportunity_score: parseFloat(row.avg_opportunity_score) || null,
+      signal_density_percentile: parseFloat(row.signal_density_percentile) || null,
+      updated_at: row.updated_at,
+    });
+    
+  } catch (error: any) {
+    logger.error('[OppGrid] growth-trajectory error:', error.message);
+    res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  }
+});
+
 export default router;

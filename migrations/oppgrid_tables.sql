@@ -83,11 +83,71 @@ CREATE INDEX IF NOT EXISTS idx_oppgrid_location_scores_expires
   ON oppgrid_location_scores(expires_at);
 
 -- ============================================================================
+-- OppGrid Opportunity Signals Table (OppGrid → JediRE)
+-- Stores opportunity signals from OppGrid for Strategy Builder
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS oppgrid_opportunity_signals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'oppgrid',
+  signal_type TEXT NOT NULL,           -- 'coffee_shop_demand', 'gym_demand', etc.
+  score DECIMAL(5,2),                   -- 0-100 opportunity score
+  confidence DECIMAL(3,2),              -- 0-1 confidence level
+  category TEXT,                        -- business category
+  trend TEXT DEFAULT 'stable',          -- 'rising', 'stable', 'declining'
+  metadata JSONB,                       -- additional signal data
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(city, state, signal_type, source)
+);
+
+-- Indexes for opportunity_signals
+CREATE INDEX IF NOT EXISTS idx_oppgrid_opportunity_signals_city_state 
+  ON oppgrid_opportunity_signals(city, state);
+CREATE INDEX IF NOT EXISTS idx_oppgrid_opportunity_signals_category 
+  ON oppgrid_opportunity_signals(category);
+CREATE INDEX IF NOT EXISTS idx_oppgrid_opportunity_signals_score 
+  ON oppgrid_opportunity_signals(score DESC);
+
+-- ============================================================================
+-- OppGrid Growth Trajectories Table (OppGrid → JediRE)
+-- Stores market growth data from OppGrid
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS oppgrid_growth_trajectories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'oppgrid',
+  growth_score DECIMAL(5,2),            -- 0-100 overall growth score
+  growth_category TEXT,                 -- 'booming', 'growing', 'stable', 'declining'
+  population_growth_rate DECIMAL(5,2),  -- % annual growth
+  job_growth_rate DECIMAL(5,2),         -- % annual growth
+  income_growth_rate DECIMAL(5,2),      -- % annual growth
+  business_formation_rate DECIMAL(5,2), -- new business rate
+  net_migration_rate DECIMAL(5,2),      -- % net migration
+  opportunity_signal_count INT,         -- number of signals in area
+  avg_opportunity_score DECIMAL(5,2),   -- average opp score
+  signal_density_percentile DECIMAL(5,2), -- signal concentration percentile
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(city, state, source)
+);
+
+-- Indexes for growth_trajectories
+CREATE INDEX IF NOT EXISTS idx_oppgrid_growth_trajectories_city_state 
+  ON oppgrid_growth_trajectories(city, state);
+CREATE INDEX IF NOT EXISTS idx_oppgrid_growth_trajectories_growth_score 
+  ON oppgrid_growth_trajectories(growth_score DESC);
+
+-- ============================================================================
 -- Comments
 -- ============================================================================
 COMMENT ON TABLE oppgrid_demand_signals IS 'ApartmentIQ user preference data aggregated by city';
 COMMENT ON TABLE oppgrid_market_economics IS 'ApartmentIQ rent and vacancy data by city';
 COMMENT ON TABLE oppgrid_location_scores IS 'Cached location scores for OppGrid business analysis';
+COMMENT ON TABLE oppgrid_opportunity_signals IS 'OppGrid opportunity signals for JediRE Strategy Builder';
+COMMENT ON TABLE oppgrid_growth_trajectories IS 'OppGrid market growth trajectories for JediRE';
 
 -- ============================================================================
 -- Sample data for testing (can be removed in production)
