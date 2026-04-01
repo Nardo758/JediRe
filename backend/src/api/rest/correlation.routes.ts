@@ -221,7 +221,7 @@ router.post('/recommendations', optionalAuth, async (req: AuthenticatedRequest, 
 
 router.post('/compute', requireAdminApiKey, async (req: Request, res: Response) => {
   try {
-    const { metricIds, scope, geographyId } = req.body;
+    const { metricIds, scope, geographyId, windowMonths } = req.body;
     if (!Array.isArray(metricIds) || metricIds.length < 2) {
       return res.status(400).json({ success: false, error: 'metricIds array with at least 2 metrics is required' });
     }
@@ -231,8 +231,9 @@ router.post('/compute', requireAdminApiKey, async (req: Request, res: Response) 
     if (metricIds.length > 20) {
       return res.status(400).json({ success: false, error: 'Maximum 20 metrics per computation' });
     }
+    const wm = windowMonths && Number(windowMonths) > 0 ? Number(windowMonths) : 36;
 
-    const result = await engine.computeMatrix(metricIds, scope, geographyId);
+    const result = await engine.computeMatrix(metricIds, scope, geographyId, wm);
     res.json({
       success: true,
       computed: result.computed,

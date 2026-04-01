@@ -257,6 +257,9 @@ export class CorrelationEngineService {
   ): Promise<boolean> {
     const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
     try {
+      const windowClause = windowMonths > 0
+        ? `AND ts_a.period_date >= (NOW() - INTERVAL '${windowMonths} months')`
+        : '';
       const dataRes = await this.pool.query(
         `WITH ts_a AS (
            SELECT period_date, value as val_a
@@ -274,6 +277,7 @@ export class CorrelationEngineService {
          FROM ts_a
          FULL OUTER JOIN ts_b ON ts_a.period_date = ts_b.period_date
          WHERE ts_a.val_a IS NOT NULL AND ts_b.val_b IS NOT NULL
+         ${windowClause}
          ORDER BY ts_a.period_date`,
         [metricA, geographyType, geographyId, metricB]
       );
@@ -283,19 +287,16 @@ export class CorrelationEngineService {
         return false;
       }
 
-      // Compute Pearson correlation coefficient
       const correlation = this.computePearsonCorrelation(
         data.map((d: any) => d.val_a),
         data.map((d: any) => d.val_b)
       );
 
-      // Compute cross-correlation with lags -12 to +12 months
       const lagResults = this.computeLagCorrelations(
         data.map((d: any) => d.val_a),
         data.map((d: any) => d.val_b)
       );
 
-      // Compute p-value using t-distribution approximation
       const n = data.length;
       const pValue = this.computePValue(correlation.r, n);
 
@@ -305,13 +306,13 @@ export class CorrelationEngineService {
       await this.pool.query(
         `DELETE FROM metric_correlations
          WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5`,
-        [metricA, metricB, geographyType, geographyId, 36]
+        [metricA, metricB, geographyType, geographyId, windowMonths]
       );
       await this.pool.query(
         `INSERT INTO metric_correlations
          (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
-        [metricA, metricB, geographyType, geographyId, 36, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
+        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
       );
 
       return true;
@@ -584,7 +585,8 @@ export class CorrelationEngineService {
   async computeMatrix(
     metricIds: string[],
     scope: string,
-    geographyId?: string
+    geographyId?: string,
+    windowMonths: number = 36
   ): Promise<{ computed: number; skipped: number; matrix: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }> }> {
     const matrix: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }> = [];
     let computed = 0;
@@ -597,7 +599,7 @@ export class CorrelationEngineService {
     if (geographyId) {
       for (let i = 0; i < metricIds.length; i++) {
         for (let j = i + 1; j < metricIds.length; j++) {
-          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geographyId, 36);
+          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geographyId, windowMonths);
           if (success) computed++;
           else skipped++;
         }
@@ -615,7 +617,7 @@ export class CorrelationEngineService {
       const geoId = row.geography_id as string;
       for (let i = 0; i < metricIds.length; i++) {
         for (let j = i + 1; j < metricIds.length; j++) {
-          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geoId, 36);
+          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geoId, windowMonths);
           if (success) computed++;
           else skipped++;
         }
@@ -635,21 +637,21 @@ export class CorrelationEngineService {
                   COUNT(*) as geo_count
            FROM metric_correlations
            WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3
-             AND geography_id IS NOT NULL`,
-          [mA, mB, scope]
+             AND geography_id IS NOT NULL AND window_months = $4`,
+          [mA, mB, scope, windowMonths]
         );
         const agg = aggRes.rows[0];
         if (agg && parseInt(agg.geo_count) > 0) {
           await this.pool.query(
             `DELETE FROM metric_correlations
-             WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id IS NULL AND window_months = 36`,
-            [mA, mB, scope]
+             WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id IS NULL AND window_months = $4`,
+            [mA, mB, scope, windowMonths]
           );
           await this.pool.query(
             `INSERT INTO metric_correlations
              (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
-             VALUES ($1, $2, $3, NULL, 36, $4, $5, $6, $7, $8, $9, NOW())`,
-            [mA, mB, scope, parseFloat(agg.avg_r), parseInt(agg.avg_lag) || 0, parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+            [mA, mB, scope, windowMonths, parseFloat(agg.avg_r), parseInt(agg.avg_lag) || 0, parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
           );
         }
       }
