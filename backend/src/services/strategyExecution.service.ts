@@ -252,7 +252,7 @@ export class StrategyExecutionService {
 
           // Evaluate the condition
           const { passed, score, percentile } = await this.evaluateCondition(
-            condition,
+            { ...condition, metricId: condition.dbMetricId },
             metricValue.value,
             scope,
             metricIds

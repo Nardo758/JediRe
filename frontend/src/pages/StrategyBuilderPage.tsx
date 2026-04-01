@@ -296,7 +296,6 @@ export const StrategyBuilderPage: React.FC = () => {
     }
   };
 
-  const [runResults, setRunResults] = useState<{ strategyId: string; results: any[] } | null>(null);
   const [runLoading, setRunLoading] = useState<string | null>(null);
 
   const handleRunStrategy = async (id: string) => {
@@ -304,7 +303,6 @@ export const StrategyBuilderPage: React.FC = () => {
       setRunLoading(id);
       const response = await api.post(`/strategies/${id}/run`);
       const results = response.data?.data || response.data?.results || [];
-      setRunResults({ strategyId: id, results });
       const strategy = strategies.find(s => s.id === id);
       if (strategy) {
         loadPreset(strategy);
@@ -481,7 +479,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           color: COLORS.accent,
                         }}
                       >
-                        {strategy.type === 'preset' ? 'Clone' : 'Edit'}
+                        {strategy.type === 'preset' ? 'Clone to Customize' : 'Edit'}
                       </button>
                       <button
                         onClick={e => {
