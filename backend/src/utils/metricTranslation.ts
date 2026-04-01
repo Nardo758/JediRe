@@ -41,3 +41,17 @@ export function translateMetricId(raw: string): string {
   if (!raw) return raw;
   return METRIC_ID_TRANSLATE[raw.toUpperCase()] ?? METRIC_ID_TRANSLATE[raw] ?? raw.toLowerCase();
 }
+
+const DB_TO_CATALOG_CACHE = new Map<string, string[]>();
+
+export function reverseTranslateDbId(dbId: string): string[] {
+  if (DB_TO_CATALOG_CACHE.size === 0) {
+    for (const [catalogId, mappedDbId] of Object.entries(METRIC_ID_TRANSLATE)) {
+      if (!DB_TO_CATALOG_CACHE.has(mappedDbId)) {
+        DB_TO_CATALOG_CACHE.set(mappedDbId, []);
+      }
+      DB_TO_CATALOG_CACHE.get(mappedDbId)!.push(catalogId);
+    }
+  }
+  return DB_TO_CATALOG_CACHE.get(dbId) || [dbId];
+}

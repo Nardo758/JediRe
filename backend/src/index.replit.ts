@@ -293,6 +293,10 @@ app.use('/', messageRouter.createRouter());
 // Correlations - public read, admin-key-protected compute
 app.use('/api/v1/correlations', correlationRouter);
 
+// Lead/Lag Discovery - public read, admin-key-protected compute
+import leadLagRoutes from './api/rest/lead-lag.routes';
+app.use('/api/v1/lead-lag', leadLagRoutes);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -890,6 +894,41 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     });
   } catch (error) {
     console.error('Preset correlation engine startup failed (non-fatal):', error);
+  }
+
+  try {
+    const { LeadLagDiscoveryService } = await import('./services/leadLagDiscovery.service');
+    const leadLagPool = getPool();
+    const leadLagService = new LeadLagDiscoveryService(leadLagPool);
+    const existingRes = await leadLagPool.query('SELECT COUNT(*) as cnt FROM metric_lead_lag_results');
+    const existingCount = parseInt(existingRes.rows[0].cnt);
+    if (existingCount === 0) {
+      leadLagService.runDiscoveryPipeline('metro').then(async result => {
+        console.log(`Lead/lag discovery pipeline: ${result.pairsProcessed} processed, ${result.pairsDiscovered} discovered, ${result.pairsSkipped} skipped`);
+        try {
+          const { applyEmpiricalLeadLag } = await import('./services/metricsCatalog.service');
+          const overrides = await leadLagService.getEmpiricalCatalogOverrides();
+          applyEmpiricalLeadLag(overrides);
+          console.log(`Applied ${overrides.length} empirical lead/lag overrides to metrics catalog`);
+        } catch (e) {
+          console.error('Failed to apply empirical overrides (non-fatal):', e);
+        }
+      }).catch(err => {
+        console.error('Lead/lag discovery pipeline failed (non-fatal):', err);
+      });
+    } else {
+      console.log(`Lead/lag discovery: ${existingCount} existing results, applying catalog overrides`);
+      try {
+        const { applyEmpiricalLeadLag } = await import('./services/metricsCatalog.service');
+        const overrides = await leadLagService.getEmpiricalCatalogOverrides();
+        applyEmpiricalLeadLag(overrides);
+        console.log(`Applied ${overrides.length} empirical lead/lag overrides to metrics catalog`);
+      } catch (e) {
+        console.error('Failed to apply empirical overrides (non-fatal):', e);
+      }
+    }
+  } catch (error) {
+    console.error('Lead/lag discovery startup failed (non-fatal):', error);
   }
 
   await initStripe();

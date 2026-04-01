@@ -117,6 +117,7 @@ export const StrategyBuilderPage: React.FC = () => {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [correlationData, setCorrelationData] = useState<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }>>([]);
   const [correlationLoading, setCorrelationLoading] = useState(false);
+  const [leadLagData, setLeadLagData] = useState<Record<string, { leadsOutcomes: any[]; ledByMetrics: any[] }>>({});
 
   // Peer-group dimension filters
   const [peerVintage, setPeerVintage] = useState<'all' | 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s'>('all');
@@ -239,6 +240,24 @@ export const StrategyBuilderPage: React.FC = () => {
       .catch(() => setCorrelationData([]))
       .finally(() => setCorrelationLoading(false));
   }, [conditions.map(c => c.metricId).join(','), scope]);
+
+  useEffect(() => {
+    if (conditions.length === 0) return;
+    const metricIds = [...new Set(conditions.map(c => c.metricId))];
+    const fetchAll = async () => {
+      const results: Record<string, { leadsOutcomes: any[]; ledByMetrics: any[] }> = {};
+      for (const mid of metricIds) {
+        try {
+          const res = await api.get(`/lead-lag/metric/${mid}`);
+          if (res.data?.success && res.data?.data) {
+            results[mid] = res.data.data;
+          }
+        } catch { /* ignore */ }
+      }
+      setLeadLagData(results);
+    };
+    fetchAll();
+  }, [conditions.map(c => c.metricId).join(',')]);
 
   const addCondition = (metricId: string) => {
     const metric = metrics.find(m => m.id === metricId);
@@ -770,6 +789,18 @@ export const StrategyBuilderPage: React.FC = () => {
                                 REQUIRED
                               </span>
                             )}
+                            {leadLagData[cond.metricId]?.leadsOutcomes?.length > 0 && (() => {
+                              const best = leadLagData[cond.metricId].leadsOutcomes[0];
+                              const outcomeName = best.metricBId?.replace(/_/g, ' ').replace(/yoy/gi, 'YoY');
+                              return (
+                                <span style={{
+                                  fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+                                  background: `${COLORS.cyan}15`, color: COLORS.cyan, letterSpacing: 0.3,
+                                }}>
+                                  LEADS {outcomeName?.toUpperCase()} BY {best.optimalLagMonths}mo (r={best.rAtOptimalLag?.toFixed(2)})
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 8 }}>
                             {metric?.description}
@@ -1313,6 +1344,71 @@ export const StrategyBuilderPage: React.FC = () => {
                         No cached correlations available for these metrics. Run a correlation compute to populate.
                       </div>
                     )}
+                  </div>
+                )}
+
+                {conditions.length > 0 && Object.keys(leadLagData).length > 0 && (
+                  <div style={{
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderRadius: 6,
+                    border: `1px solid ${COLORS.border}`,
+                    marginTop: 8,
+                  }}>
+                    <div style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                      color: COLORS.textDim, marginBottom: 8,
+                    }}>
+                      SIGNAL TIMELINE
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {conditions.map(cond => {
+                        const ll = leadLagData[cond.metricId];
+                        if (!ll || ll.leadsOutcomes.length === 0) return null;
+                        const metricName = metrics.find(m => m.id === cond.metricId)?.name || cond.metricId;
+                        return (
+                          <div key={cond.id} style={{
+                            padding: '6px 8px', borderRadius: 4,
+                            background: `${COLORS.cyan}06`, border: `1px solid ${COLORS.cyan}15`,
+                          }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.text, marginBottom: 4 }}>
+                              {metricName}
+                            </div>
+                            {ll.leadsOutcomes.slice(0, 3).map((lead: any, i: number) => {
+                              const outName = lead.metricBId?.replace(/_/g, ' ') || '';
+                              const confColor = lead.confidenceLevel === 'high' ? COLORS.success
+                                : lead.confidenceLevel === 'medium' ? COLORS.warning : COLORS.textDim;
+                              return (
+                                <div key={i} style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  padding: '2px 0', fontSize: 9,
+                                }}>
+                                  <span style={{ color: COLORS.textMuted }}>
+                                    Leads <span style={{ fontWeight: 600, color: COLORS.text }}>{outName}</span> by {lead.optimalLagMonths}mo
+                                  </span>
+                                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.cyan }}>
+                                      r={lead.rAtOptimalLag?.toFixed(2)}
+                                    </span>
+                                    <span style={{
+                                      fontSize: 7, fontWeight: 700, padding: '1px 3px', borderRadius: 2,
+                                      background: `${confColor}15`, color: confColor,
+                                    }}>
+                                      {lead.confidenceLevel?.toUpperCase()}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }).filter(Boolean)}
+                      {Object.values(leadLagData).every(d => d.leadsOutcomes.length === 0) && (
+                        <div style={{ fontSize: 9, color: COLORS.textDim, textAlign: 'center', padding: 6 }}>
+                          No leading indicator relationships found for current conditions.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

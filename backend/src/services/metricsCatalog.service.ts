@@ -991,6 +991,28 @@ export function getAvailableGranularities(metricId: string): MetricGranularity[]
 /**
  * Get list of all unique categories with metric counts
  */
+export function applyEmpiricalLeadLag(overrides: Array<{
+  metricId: string;
+  leadsMetrics: Array<{ metricId: string; lagMonths: number; typicalR: number }>;
+  laggedBy: Array<{ metricId: string; leadMonths: number; typicalR: number }>;
+  empiricallyValidated: boolean;
+}>): void {
+  for (const override of overrides) {
+    const metric = METRICS_CATALOG.find(m => {
+      const id = m.id.toLowerCase();
+      return id === override.metricId.toLowerCase() || id === override.metricId;
+    });
+    if (metric) {
+      if (override.leadsMetrics.length > 0) {
+        metric.leadsMetrics = override.leadsMetrics;
+      }
+      if (override.laggedBy.length > 0) {
+        metric.laggedBy = override.laggedBy;
+      }
+    }
+  }
+}
+
 export function getCategoriesWithCounts(): Array<{
   category: MetricCategory;
   name: string;
