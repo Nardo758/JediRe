@@ -16,6 +16,7 @@ interface LeadLagResult {
   optimalLagMonths: number;
   rAtOptimalLag: number;
   rAtZeroLag: number;
+  improvementAbs: number;
   improvementPct: number;
   lagProfile: LagProfileEntry[];
   geographyType: string;
@@ -147,8 +148,9 @@ export class LeadLagDiscoveryService {
         }
       }
 
+      const improvementAbs = Math.abs(rAtOptimal) - Math.abs(rAtZeroLag);
       const improvementPct = Math.abs(rAtZeroLag) > 0.001
-        ? ((Math.abs(rAtOptimal) - Math.abs(rAtZeroLag)) / Math.abs(rAtZeroLag)) * 100
+        ? (improvementAbs / Math.abs(rAtZeroLag)) * 100
         : Math.abs(rAtOptimal) > 0.1 ? 100 : 0;
 
       let confidenceLevel = 'low';
@@ -164,6 +166,7 @@ export class LeadLagDiscoveryService {
         optimalLagMonths: optimalLag,
         rAtOptimalLag: Math.round(rAtOptimal * 10000) / 10000,
         rAtZeroLag: Math.round(rAtZeroLag * 10000) / 10000,
+        improvementAbs: Math.round(improvementAbs * 10000) / 10000,
         improvementPct: Math.round(improvementPct * 100) / 100,
         lagProfile,
         geographyType,
@@ -180,17 +183,17 @@ export class LeadLagDiscoveryService {
     await this.pool.query(
       `INSERT INTO metric_lead_lag_results
        (metric_a_id, metric_b_id, optimal_lag_months, r_at_optimal_lag, r_at_zero_lag,
-        improvement_pct, lag_profile, geography_type, sample_size, confidence_level, computed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        improvement_abs, improvement_pct, lag_profile, geography_type, sample_size, confidence_level, computed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
        ON CONFLICT (metric_a_id, metric_b_id, geography_type)
        DO UPDATE SET
          optimal_lag_months = $3, r_at_optimal_lag = $4, r_at_zero_lag = $5,
-         improvement_pct = $6, lag_profile = $7, sample_size = $9,
-         confidence_level = $10, computed_at = NOW()`,
+         improvement_abs = $6, improvement_pct = $7, lag_profile = $8, sample_size = $10,
+         confidence_level = $11, computed_at = NOW()`,
       [
         result.metricAId, result.metricBId, result.optimalLagMonths,
-        result.rAtOptimalLag, result.rAtZeroLag, result.improvementPct,
-        JSON.stringify(result.lagProfile), result.geographyType,
+        result.rAtOptimalLag, result.rAtZeroLag, result.improvementAbs,
+        result.improvementPct, JSON.stringify(result.lagProfile), result.geographyType,
         result.sampleSize, result.confidenceLevel,
       ]
     );
@@ -239,7 +242,7 @@ export class LeadLagDiscoveryService {
       processed++;
       try {
         const result = await this.discoverLeadLag(leader, outcome, geographyType);
-        if (result && result.optimalLagMonths > 0 && result.sampleSize >= 24 && result.improvementPct > 10) {
+        if (result && result.optimalLagMonths > 0 && result.sampleSize >= 24 && result.improvementAbs > 0.1) {
           await this.persistResult(result);
           discovered++;
         } else {
@@ -397,13 +400,18 @@ export class LeadLagDiscoveryService {
   }
 
   private formatRow(row: any) {
+    const catalogAIds = reverseTranslateDbId(row.metric_a_id);
+    const catalogBIds = reverseTranslateDbId(row.metric_b_id);
     return {
       id: row.id,
       metricAId: row.metric_a_id,
       metricBId: row.metric_b_id,
+      metricACatalogIds: catalogAIds,
+      metricBCatalogIds: catalogBIds,
       optimalLagMonths: row.optimal_lag_months,
       rAtOptimalLag: parseFloat(row.r_at_optimal_lag),
       rAtZeroLag: parseFloat(row.r_at_zero_lag),
+      improvementAbs: parseFloat(row.improvement_abs || '0'),
       improvementPct: parseFloat(row.improvement_pct),
       lagProfile: row.lag_profile,
       geographyType: row.geography_type,

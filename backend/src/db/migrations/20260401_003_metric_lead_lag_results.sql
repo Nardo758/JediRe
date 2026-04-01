@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS metric_lead_lag_results (
   optimal_lag_months INTEGER NOT NULL,
   r_at_optimal_lag REAL NOT NULL,
   r_at_zero_lag REAL NOT NULL,
+  improvement_abs REAL NOT NULL DEFAULT 0,
   improvement_pct REAL NOT NULL,
   lag_profile JSONB NOT NULL DEFAULT '[]',
   geography_type VARCHAR(20) NOT NULL DEFAULT 'submarket',

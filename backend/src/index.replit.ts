@@ -908,8 +908,8 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
         try {
           const { applyEmpiricalLeadLag } = await import('./services/metricsCatalog.service');
           const overrides = await leadLagService.getEmpiricalCatalogOverrides();
-          applyEmpiricalLeadLag(overrides);
-          console.log(`Applied ${overrides.length} empirical lead/lag overrides to metrics catalog`);
+          const applied = applyEmpiricalLeadLag(overrides);
+          console.log(`Applied ${applied} empirical lead/lag overrides to metrics catalog`);
         } catch (e) {
           console.error('Failed to apply empirical overrides (non-fatal):', e);
         }
@@ -921,8 +921,8 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
       try {
         const { applyEmpiricalLeadLag } = await import('./services/metricsCatalog.service');
         const overrides = await leadLagService.getEmpiricalCatalogOverrides();
-        applyEmpiricalLeadLag(overrides);
-        console.log(`Applied ${overrides.length} empirical lead/lag overrides to metrics catalog`);
+        const applied = applyEmpiricalLeadLag(overrides);
+        console.log(`Applied ${applied} empirical lead/lag overrides to metrics catalog`);
       } catch (e) {
         console.error('Failed to apply empirical overrides (non-fatal):', e);
       }

@@ -996,21 +996,32 @@ export function applyEmpiricalLeadLag(overrides: Array<{
   leadsMetrics: Array<{ metricId: string; lagMonths: number; typicalR: number }>;
   laggedBy: Array<{ metricId: string; leadMonths: number; typicalR: number }>;
   empiricallyValidated: boolean;
-}>): void {
+}>): number {
+  const overrideIds = new Set(overrides.map(o => o.metricId.toLowerCase()));
+  let applied = 0;
+
   for (const override of overrides) {
     const metric = METRICS_CATALOG.find(m => {
       const id = m.id.toLowerCase();
       return id === override.metricId.toLowerCase() || id === override.metricId;
     });
     if (metric) {
-      if (override.leadsMetrics.length > 0) {
-        metric.leadsMetrics = override.leadsMetrics;
-      }
-      if (override.laggedBy.length > 0) {
-        metric.laggedBy = override.laggedBy;
-      }
+      metric.leadsMetrics = override.leadsMetrics.length > 0 ? override.leadsMetrics : [];
+      metric.laggedBy = override.laggedBy.length > 0 ? override.laggedBy : [];
+      (metric as any).empiricallyValidated = true;
+      applied++;
     }
   }
+
+  for (const metric of METRICS_CATALOG) {
+    if (!overrideIds.has(metric.id.toLowerCase()) && (metric as any).empiricallyValidated) {
+      metric.leadsMetrics = [];
+      metric.laggedBy = [];
+      (metric as any).empiricallyValidated = false;
+    }
+  }
+
+  return applied;
 }
 
 export function getCategoriesWithCounts(): Array<{
