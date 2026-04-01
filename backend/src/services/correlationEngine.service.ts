@@ -580,6 +580,217 @@ export class CorrelationEngineService {
     }
   }
 
+  async computeMatrix(
+    metricIds: string[],
+    scope: string,
+    geographyId?: string
+  ): Promise<{ computed: number; skipped: number; matrix: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }> }> {
+    const matrix: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }> = [];
+    let computed = 0;
+    let skipped = 0;
+
+    if (metricIds.length < 2) {
+      return { computed: 0, skipped: 0, matrix: [] };
+    }
+
+    if (geographyId) {
+      for (let i = 0; i < metricIds.length; i++) {
+        for (let j = i + 1; j < metricIds.length; j++) {
+          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geographyId, 36);
+          if (success) computed++;
+          else skipped++;
+        }
+      }
+      const cached = await this.getCorrelationMatrix(metricIds, scope, geographyId);
+      return { computed, skipped, matrix: cached };
+    }
+
+    const geoRes = await this.pool.query(
+      `SELECT DISTINCT geography_id FROM metric_time_series WHERE geography_type = $1 ORDER BY geography_id LIMIT 50`,
+      [scope]
+    );
+
+    for (const row of geoRes.rows) {
+      const geoId = row.geography_id as string;
+      for (let i = 0; i < metricIds.length; i++) {
+        for (let j = i + 1; j < metricIds.length; j++) {
+          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geoId, 36);
+          if (success) computed++;
+          else skipped++;
+        }
+      }
+    }
+
+    const aggregated = await this.getCorrelationMatrix(metricIds, scope);
+    return { computed, skipped, matrix: aggregated };
+  }
+
+  async getCorrelationMatrix(
+    metricIds: string[],
+    scope: string,
+    geographyId?: string
+  ): Promise<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null }>> {
+    try {
+      let query: string;
+      let params: any[];
+
+      if (geographyId) {
+        query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id = $2
+                   AND metric_a = ANY($3) AND metric_b = ANY($3)
+                 ORDER BY ABS(correlation_r) DESC`;
+        params = [scope, geographyId, metricIds];
+      } else {
+        query = `SELECT metric_a, metric_b,
+                        ROUND(AVG(correlation_r)::numeric, 4) as correlation_r,
+                        ROUND(AVG(p_value)::numeric, 6) as p_value,
+                        SUM(sample_size)::int as sample_size,
+                        ROUND(AVG(lead_lag_months))::int as lead_lag_months
+                 FROM metric_correlations
+                 WHERE geography_type = $1
+                   AND metric_a = ANY($2) AND metric_b = ANY($2)
+                 GROUP BY metric_a, metric_b
+                 ORDER BY ABS(AVG(correlation_r)) DESC`;
+        params = [scope, metricIds];
+      }
+
+      const result = await this.pool.query(query, params);
+      return result.rows.map((row: any) => ({
+        metricA: row.metric_a,
+        metricB: row.metric_b,
+        r: parseFloat(row.correlation_r) || 0,
+        pValue: parseFloat(row.p_value) || 0,
+        sampleSize: parseInt(row.sample_size) || 0,
+        leadLagMonths: row.lead_lag_months != null ? parseInt(row.lead_lag_months) : null,
+      }));
+    } catch (error) {
+      logger.error(`Error retrieving correlation matrix: ${String(error)}`);
+      return [];
+    }
+  }
+
+  async getStrategyCorrelations(strategyId: string): Promise<{
+    strategyName: string;
+    conditionMetrics: string[];
+    outcomeMetrics: string[];
+    pairwise: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null; type: 'condition-condition' | 'condition-outcome' }>;
+    redundant: Array<{ metricA: string; metricB: string; r: number }>;
+    complementary: Array<{ metricA: string; metricB: string; r: number }>;
+  }> {
+    const OUTCOME_METRICS = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
+
+    const stratRes = await this.pool.query(
+      `SELECT name, conditions, scope FROM strategy_definitions WHERE id = $1`,
+      [strategyId]
+    );
+
+    if (stratRes.rows.length === 0) {
+      throw new Error('Strategy not found');
+    }
+
+    const strategy = stratRes.rows[0];
+    const conditions = typeof strategy.conditions === 'string' ? JSON.parse(strategy.conditions) : (strategy.conditions || []);
+    const scope = strategy.scope || 'submarket';
+
+    const conditionMetricIds = [...new Set(conditions.map((c: any) => {
+      const raw = c.metricId || c.metric_id || '';
+      const TRANSLATE: Record<string, string> = {
+        F_CAP_RATE: 'home_value_index', F_RENT_GROWTH: 'rent_index_yoy',
+        F_RENT_TO_INCOME: 'rent_index', SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
+        C_SURGE_INDEX: 'home_value_index_yoy', C_TRAFFIC_GROWTH_INDEX: 'home_value_index_yoy',
+        C_SEARCH_GROWTH_INDEX: 'rent_index_yoy', D_SEARCH_MOMENTUM: 'rent_index_yoy',
+        D_DIGITAL_SCORE: 'rent_index', T_PHYSICAL_SCORE: 'home_value_index',
+        S_PIPELINE_TO_STOCK: 'home_value_index_yoy', S_PERMIT_VELOCITY: 'home_value_index_yoy',
+        S_PIPELINE_UNITS: 'home_value_index', E_EMPLOYMENT_GROWTH: 'rent_index_yoy',
+        E_WAGE_GROWTH: 'rent_index_yoy', E_POPULATION_GROWTH: 'home_value_index_yoy',
+        M_VACANCY: 'home_value_index', M_ABSORPTION: 'home_value_index_yoy',
+        O_DEBT_MATURITY_MO: 'home_value_index', DEMO_NET_MIGRATION: 'home_value_index_yoy',
+        HM_DISTRESS_SCORE: 'home_value_index_yoy',
+      };
+      return TRANSLATE[raw.toUpperCase()] || raw.toLowerCase();
+    }))];
+
+    const allMetrics = [...new Set([...conditionMetricIds, ...OUTCOME_METRICS])];
+    const matrix = await this.getCorrelationMatrix(allMetrics, scope);
+
+    const pairwise = matrix
+      .filter(m => {
+        const aIsCondition = conditionMetricIds.includes(m.metricA);
+        const bIsCondition = conditionMetricIds.includes(m.metricB);
+        const aIsOutcome = OUTCOME_METRICS.includes(m.metricA);
+        const bIsOutcome = OUTCOME_METRICS.includes(m.metricB);
+        return (aIsCondition && bIsCondition) || (aIsCondition && bIsOutcome) || (bIsCondition && aIsOutcome);
+      })
+      .map(m => ({
+        ...m,
+        type: (conditionMetricIds.includes(m.metricA) && conditionMetricIds.includes(m.metricB))
+          ? 'condition-condition' as const
+          : 'condition-outcome' as const,
+      }));
+
+    const redundant = pairwise.filter(p => p.type === 'condition-condition' && Math.abs(p.r) > 0.85);
+    const complementary = pairwise.filter(p => p.type === 'condition-condition' && Math.abs(p.r) >= 0.3 && Math.abs(p.r) <= 0.7);
+
+    return {
+      strategyName: strategy.name,
+      conditionMetrics: conditionMetricIds,
+      outcomeMetrics: OUTCOME_METRICS,
+      pairwise,
+      redundant,
+      complementary,
+    };
+  }
+
+  async seedPresetStrategyCorrelations(): Promise<{ strategiesProcessed: number; correlationsComputed: number }> {
+    const OUTCOME_DB = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
+    const TRANSLATE: Record<string, string> = {
+      F_CAP_RATE: 'home_value_index', F_RENT_GROWTH: 'rent_index_yoy',
+      F_RENT_TO_INCOME: 'rent_index', SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
+      C_SURGE_INDEX: 'home_value_index_yoy', C_TRAFFIC_GROWTH_INDEX: 'home_value_index_yoy',
+      C_SEARCH_GROWTH_INDEX: 'rent_index_yoy', D_SEARCH_MOMENTUM: 'rent_index_yoy',
+      D_DIGITAL_SCORE: 'rent_index', T_PHYSICAL_SCORE: 'home_value_index',
+      S_PIPELINE_TO_STOCK: 'home_value_index_yoy', S_PERMIT_VELOCITY: 'home_value_index_yoy',
+      S_PIPELINE_UNITS: 'home_value_index', E_EMPLOYMENT_GROWTH: 'rent_index_yoy',
+      E_WAGE_GROWTH: 'rent_index_yoy', E_POPULATION_GROWTH: 'home_value_index_yoy',
+      M_VACANCY: 'home_value_index', M_ABSORPTION: 'home_value_index_yoy',
+      O_DEBT_MATURITY_MO: 'home_value_index', DEMO_NET_MIGRATION: 'home_value_index_yoy',
+      HM_DISTRESS_SCORE: 'home_value_index_yoy',
+    };
+
+    try {
+      const strategiesRes = await this.pool.query(
+        `SELECT id, name, conditions, scope FROM strategy_definitions WHERE type = 'preset'`
+      );
+
+      let totalComputed = 0;
+      for (const row of strategiesRes.rows) {
+        try {
+          const conditions = typeof row.conditions === 'string' ? JSON.parse(row.conditions) : (row.conditions || []);
+          const condMetrics = [...new Set(conditions.map((c: any) => {
+            const raw = (c.metricId || c.metric_id || '').toUpperCase();
+            return TRANSLATE[raw] || raw.toLowerCase();
+          }))];
+          const allMetrics = [...new Set([...condMetrics, ...OUTCOME_DB])];
+
+          if (allMetrics.length >= 2) {
+            const result = await this.computeMatrix(allMetrics as string[], row.scope || 'submarket');
+            totalComputed += result.computed;
+            logger.info(`[CorrelationSeed] ${row.name}: ${result.computed} computed, ${result.skipped} skipped`);
+          }
+        } catch (e) {
+          logger.warn(`Skipping preset strategy ${row.name}: ${String(e)}`);
+        }
+      }
+
+      logger.info(`[CorrelationSeed] Seeded correlations for ${strategiesRes.rows.length} preset strategies (${totalComputed} total computed)`);
+      return { strategiesProcessed: strategiesRes.rows.length, correlationsComputed: totalComputed };
+    } catch (error) {
+      logger.error(`Error seeding preset strategy correlations: ${String(error)}`);
+      return { strategiesProcessed: 0, correlationsComputed: 0 };
+    }
+  }
+
   private async getLatestSnapshot(city: string, state: string): Promise<MarketSnapshot | null> {
     try {
       const result = await this.pool.query(

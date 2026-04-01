@@ -115,6 +115,8 @@ export const StrategyBuilderPage: React.FC = () => {
   const [catalogFilter, setCatalogFilter] = useState<string | null>(null);
   const [previewResults, setPreviewResults] = useState<PreviewResult[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [correlationData, setCorrelationData] = useState<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }>>([]);
+  const [correlationLoading, setCorrelationLoading] = useState(false);
 
   // Peer-group dimension filters
   const [peerVintage, setPeerVintage] = useState<'all' | 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s'>('all');
@@ -202,6 +204,27 @@ export const StrategyBuilderPage: React.FC = () => {
     const timer = setTimeout(debouncedPreview, 500);
     return () => clearTimeout(timer);
   }, [debouncedPreview]);
+
+  useEffect(() => {
+    if (conditions.length < 2) {
+      setCorrelationData([]);
+      return;
+    }
+    const metricIds = [...new Set(conditions.map(c => c.metricId))];
+    if (metricIds.length < 2) {
+      setCorrelationData([]);
+      return;
+    }
+
+    setCorrelationLoading(true);
+    api.get(`/correlations/matrix?metricIds=${metricIds.join(',')}&scope=${scope}`)
+      .then(res => {
+        const data = res.data?.data || [];
+        setCorrelationData(Array.isArray(data) ? data : []);
+      })
+      .catch(() => setCorrelationData([]))
+      .finally(() => setCorrelationLoading(false));
+  }, [conditions.map(c => c.metricId).join(','), scope]);
 
   const addCondition = (metricId: string) => {
     const metric = metrics.find(m => m.id === metricId);
@@ -1196,6 +1219,88 @@ export const StrategyBuilderPage: React.FC = () => {
                     </div>
                   ) : null}
                 </div>
+
+                {conditions.length >= 2 && (
+                  <div style={{
+                    marginTop: 14,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderRadius: 6,
+                    border: `1px solid ${COLORS.border}`,
+                  }}>
+                    <div style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: 1,
+                      color: COLORS.textDim,
+                      marginBottom: 8,
+                    }}>
+                      SIGNAL CORRELATIONS
+                    </div>
+                    {correlationData.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {correlationData.map((c, i) => {
+                          const absR = Math.abs(c.r);
+                          const color = absR > 0.85 ? COLORS.error : absR > 0.5 ? COLORS.warning : COLORS.success;
+                          const label = absR > 0.85 ? 'REDUNDANT' : absR > 0.5 ? 'MODERATE' : 'COMPLEMENTARY';
+                          const metricAName = metrics.find(m => m.id.toLowerCase() === c.metricA)?.name?.split(' ').slice(0, 2).join(' ') || c.metricA;
+                          const metricBName = metrics.find(m => m.id.toLowerCase() === c.metricB)?.name?.split(' ').slice(0, 2).join(' ') || c.metricB;
+                          return (
+                            <div key={i} style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '4px 6px',
+                              borderRadius: 3,
+                              background: `${color}08`,
+                              border: `1px solid ${color}20`,
+                            }}>
+                              <div style={{ fontSize: 9, color: COLORS.text, flex: 1 }}>
+                                <span style={{ fontWeight: 600 }}>{metricAName}</span>
+                                <span style={{ color: COLORS.textDim }}> vs </span>
+                                <span style={{ fontWeight: 600 }}>{metricBName}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                  fontWeight: 800,
+                                  color,
+                                }}>
+                                  r={c.r.toFixed(2)}
+                                </span>
+                                <span style={{
+                                  fontSize: 7,
+                                  fontWeight: 700,
+                                  padding: '1px 4px',
+                                  borderRadius: 2,
+                                  background: `${color}15`,
+                                  color,
+                                  letterSpacing: 0.5,
+                                }}>
+                                  {label}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {correlationData.filter(c => Math.abs(c.r) > 0.85).length > 0 && (
+                          <div style={{ fontSize: 8, color: COLORS.warning, marginTop: 4, fontStyle: 'italic' }}>
+                            Redundant signals (r {'>'} 0.85) may not add unique screening value. Consider replacing one.
+                          </div>
+                        )}
+                      </div>
+                    ) : correlationLoading ? (
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, textAlign: 'center', padding: 6 }}>
+                        Loading correlations...
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 9, color: COLORS.textDim, textAlign: 'center', padding: 6 }}>
+                        No cached correlations available for these metrics. Run a correlation compute to populate.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button

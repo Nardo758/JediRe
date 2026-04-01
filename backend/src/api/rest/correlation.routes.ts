@@ -219,6 +219,78 @@ router.post('/recommendations', optionalAuth, async (req: AuthenticatedRequest, 
   }
 });
 
+router.post('/compute', optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const { metricIds, scope, geographyId } = req.body;
+    if (!Array.isArray(metricIds) || metricIds.length < 2) {
+      return res.status(400).json({ success: false, error: 'metricIds array with at least 2 metrics is required' });
+    }
+    if (!scope) {
+      return res.status(400).json({ success: false, error: 'scope is required' });
+    }
+    if (metricIds.length > 20) {
+      return res.status(400).json({ success: false, error: 'Maximum 20 metrics per computation' });
+    }
+
+    const result = await engine.computeMatrix(metricIds, scope, geographyId);
+    res.json({
+      success: true,
+      computed: result.computed,
+      skipped: result.skipped,
+      matrix: result.matrix,
+      count: result.matrix.length,
+    });
+  } catch (error: any) {
+    console.error('Correlation compute error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/matrix', async (req: Request, res: Response) => {
+  try {
+    const metricIds = (req.query.metricIds as string || '').split(',').filter(Boolean);
+    const scope = req.query.scope as string;
+    const geographyId = req.query.geographyId as string | undefined;
+
+    if (metricIds.length < 2) {
+      return res.status(400).json({ success: false, error: 'At least 2 metricIds are required (comma-separated)' });
+    }
+    if (!scope) {
+      return res.status(400).json({ success: false, error: 'scope is required' });
+    }
+
+    const matrix = await engine.getCorrelationMatrix(metricIds, scope, geographyId);
+    res.json({ success: true, data: matrix, count: matrix.length });
+  } catch (error: any) {
+    console.error('Correlation matrix error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/strategy/:strategyId', async (req: Request, res: Response) => {
+  try {
+    const { strategyId } = req.params;
+    const result = await engine.getStrategyCorrelations(strategyId);
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('Strategy correlation error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/seed-presets', requireAdminApiKey, async (_req: Request, res: Response) => {
+  try {
+    const result = await engine.seedPresetStrategyCorrelations();
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Seed presets error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Public endpoint: Get pre-computed correlations for a geography
 router.get('/:geographyType/:geographyId', async (req: Request, res: Response) => {
   try {
