@@ -219,7 +219,7 @@ router.post('/recommendations', optionalAuth, async (req: AuthenticatedRequest, 
   }
 });
 
-router.post('/compute', optionalAuth, async (req: Request, res: Response) => {
+router.post('/compute', requireAdminApiKey, async (req: Request, res: Response) => {
   try {
     const { metricIds, scope, geographyId } = req.body;
     if (!Array.isArray(metricIds) || metricIds.length < 2) {

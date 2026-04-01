@@ -198,7 +198,7 @@ export class CorrelationEngineService {
          FROM metric_time_series
          WHERE geography_type = $1 AND geography_id = $2
          GROUP BY metric_id
-         HAVING COUNT(*) >= 24`,
+         HAVING COUNT(*) >= 12`,
         [geographyType, geographyId]
       );
 
@@ -278,8 +278,8 @@ export class CorrelationEngineService {
       );
 
       const data = dataRes.rows;
-      if (data.length < 24) {
-        return false; // Not enough aligned data points
+      if (data.length < 12) {
+        return false;
       }
 
       // Compute Pearson correlation coefficient
@@ -298,19 +298,23 @@ export class CorrelationEngineService {
       const n = data.length;
       const pValue = this.computePValue(correlation.r, n);
 
-      // Insert into metric_correlations with ON CONFLICT DO UPDATE
+      const obsStart = data[0]?.period_date || null;
+      const obsEnd = data[data.length - 1]?.period_date || null;
+
       await this.pool.query(
         `INSERT INTO metric_correlations
-         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, computed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
          ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
          DO UPDATE SET
            correlation_r = $6,
            lead_lag_months = $7,
            p_value = $8,
            sample_size = $9,
+           observation_start = $10,
+           observation_end = $11,
            computed_at = NOW()`,
-        [metricA, metricB, geographyType, geographyId, 36, correlation.r, lagResults.bestLag, pValue, n]
+        [metricA, metricB, geographyType, geographyId, 36, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
       );
 
       return true;
@@ -361,7 +365,7 @@ export class CorrelationEngineService {
         alignedY.push(...y);
       }
 
-      if (shiftedX.length >= 24) {
+      if (shiftedX.length >= 12) {
         const corr = this.computePearsonCorrelation(shiftedX, alignedY);
         const absR = Math.abs(corr.r);
         if (absR > bestAbsR) {
@@ -629,13 +633,14 @@ export class CorrelationEngineService {
     metricIds: string[],
     scope: string,
     geographyId?: string
-  ): Promise<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null }>> {
+  ): Promise<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null; observationStart: string | null; observationEnd: string | null }>> {
     try {
       let query: string;
       let params: any[];
 
       if (geographyId) {
-        query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months
+        query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months,
+                        observation_start, observation_end
                  FROM metric_correlations
                  WHERE geography_type = $1 AND geography_id = $2
                    AND metric_a = ANY($3) AND metric_b = ANY($3)
@@ -646,7 +651,9 @@ export class CorrelationEngineService {
                         ROUND(AVG(correlation_r)::numeric, 4) as correlation_r,
                         ROUND(AVG(p_value)::numeric, 6) as p_value,
                         SUM(sample_size)::int as sample_size,
-                        ROUND(AVG(lead_lag_months))::int as lead_lag_months
+                        ROUND(AVG(lead_lag_months))::int as lead_lag_months,
+                        MIN(observation_start) as observation_start,
+                        MAX(observation_end) as observation_end
                  FROM metric_correlations
                  WHERE geography_type = $1
                    AND metric_a = ANY($2) AND metric_b = ANY($2)
@@ -663,6 +670,8 @@ export class CorrelationEngineService {
         pValue: parseFloat(row.p_value) || 0,
         sampleSize: parseInt(row.sample_size) || 0,
         leadLagMonths: row.lead_lag_months != null ? parseInt(row.lead_lag_months) : null,
+        observationStart: row.observation_start ? String(row.observation_start) : null,
+        observationEnd: row.observation_end ? String(row.observation_end) : null,
       }));
     } catch (error) {
       logger.error(`Error retrieving correlation matrix: ${String(error)}`);
@@ -674,11 +683,13 @@ export class CorrelationEngineService {
     strategyName: string;
     conditionMetrics: string[];
     outcomeMetrics: string[];
-    pairwise: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null; type: 'condition-condition' | 'condition-outcome' }>;
+    pairwise: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null; observationStart: string | null; observationEnd: string | null; type: 'condition-condition' | 'condition-outcome' }>;
     redundant: Array<{ metricA: string; metricB: string; r: number }>;
     complementary: Array<{ metricA: string; metricB: string; r: number }>;
   }> {
-    const OUTCOME_METRICS = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
+    const OUTCOME_METRIC_LABELS = ['F_RENT_GROWTH', 'SFR_HOME_VALUE_GROWTH', 'M_VACANCY', 'F_CAP_RATE'];
+    const OUTCOME_METRICS_DB = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
+    const OUTCOME_METRICS = OUTCOME_METRICS_DB;
 
     const stratRes = await this.pool.query(
       `SELECT name, conditions, scope FROM strategy_definitions WHERE id = $1`,

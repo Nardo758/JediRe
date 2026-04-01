@@ -879,6 +879,19 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('Correlation engine startup failed (non-fatal):', error);
   }
 
+  try {
+    const { CorrelationEngineService } = await import('./services/correlationEngine.service');
+    const presetSeedPool = getPool();
+    const presetSeedEngine = new CorrelationEngineService(presetSeedPool);
+    presetSeedEngine.seedPresetStrategyCorrelations().then(result => {
+      console.log(`Preset strategy correlation seeding: ${result.strategiesProcessed} strategies, ${result.correlationsComputed} correlations`);
+    }).catch(err => {
+      console.error('Preset strategy correlation seeding failed (non-fatal):', err);
+    });
+  } catch (error) {
+    console.error('Preset correlation engine startup failed (non-fatal):', error);
+  }
+
   await initStripe();
 });
 

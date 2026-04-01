@@ -210,7 +210,21 @@ export const StrategyBuilderPage: React.FC = () => {
       setCorrelationData([]);
       return;
     }
-    const metricIds = [...new Set(conditions.map(c => c.metricId))];
+    const METRIC_TRANSLATE: Record<string, string> = {
+      F_CAP_RATE: 'home_value_index', F_RENT_GROWTH: 'rent_index_yoy',
+      F_RENT_TO_INCOME: 'rent_index', SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
+      C_SURGE_INDEX: 'home_value_index_yoy', C_TRAFFIC_GROWTH_INDEX: 'home_value_index_yoy',
+      C_SEARCH_GROWTH_INDEX: 'rent_index_yoy', D_SEARCH_MOMENTUM: 'rent_index_yoy',
+      D_DIGITAL_SCORE: 'rent_index', T_PHYSICAL_SCORE: 'home_value_index',
+      S_PIPELINE_TO_STOCK: 'home_value_index_yoy', S_PERMIT_VELOCITY: 'home_value_index_yoy',
+      S_PIPELINE_UNITS: 'home_value_index', E_EMPLOYMENT_GROWTH: 'rent_index_yoy',
+      E_WAGE_GROWTH: 'rent_index_yoy', E_POPULATION_GROWTH: 'home_value_index_yoy',
+      M_VACANCY: 'home_value_index', M_ABSORPTION: 'home_value_index_yoy',
+      O_DEBT_MATURITY_MO: 'home_value_index', DEMO_NET_MIGRATION: 'home_value_index_yoy',
+      HM_DISTRESS_SCORE: 'home_value_index_yoy',
+    };
+    const rawIds = [...new Set(conditions.map(c => c.metricId))];
+    const metricIds = [...new Set(rawIds.map(id => METRIC_TRANSLATE[id.toUpperCase()] || id.toLowerCase()))];
     if (metricIds.length < 2) {
       setCorrelationData([]);
       return;
