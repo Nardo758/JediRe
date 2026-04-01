@@ -42,16 +42,27 @@ export function translateMetricId(raw: string): string {
   return METRIC_ID_TRANSLATE[raw.toUpperCase()] ?? METRIC_ID_TRANSLATE[raw] ?? raw.toLowerCase();
 }
 
-const DB_TO_CATALOG_CACHE = new Map<string, string[]>();
+const DB_TO_ALL_CATALOG = new Map<string, string[]>();
 
 export function reverseTranslateDbId(dbId: string): string[] {
-  if (DB_TO_CATALOG_CACHE.size === 0) {
+  if (DB_TO_ALL_CATALOG.size === 0) {
     for (const [catalogId, mappedDbId] of Object.entries(METRIC_ID_TRANSLATE)) {
-      if (!DB_TO_CATALOG_CACHE.has(mappedDbId)) {
-        DB_TO_CATALOG_CACHE.set(mappedDbId, []);
+      if (!DB_TO_ALL_CATALOG.has(mappedDbId)) {
+        DB_TO_ALL_CATALOG.set(mappedDbId, []);
       }
-      DB_TO_CATALOG_CACHE.get(mappedDbId)!.push(catalogId);
+      DB_TO_ALL_CATALOG.get(mappedDbId)!.push(catalogId);
     }
   }
-  return DB_TO_CATALOG_CACHE.get(dbId) || [dbId];
+  return DB_TO_ALL_CATALOG.get(dbId) || [dbId];
+}
+
+const DB_TO_PRIMARY_CATALOG: Record<string, string> = {
+  'home_value_index': 'SFR_HOME_VALUE',
+  'home_value_index_yoy': 'SFR_HOME_VALUE_GROWTH',
+  'rent_index': 'RENT',
+  'rent_index_yoy': 'F_RENT_GROWTH',
+};
+
+export function reverseTranslateDbIdPrimary(dbId: string): string {
+  return DB_TO_PRIMARY_CATALOG[dbId] || dbId;
 }

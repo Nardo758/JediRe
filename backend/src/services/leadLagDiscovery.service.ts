@@ -1,8 +1,13 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
-import { translateMetricId, OUTCOME_METRICS_DB, reverseTranslateDbId } from '../utils/metricTranslation';
+import { translateMetricId, OUTCOME_METRICS_DB, reverseTranslateDbId, reverseTranslateDbIdPrimary } from '../utils/metricTranslation';
 
-const OUTCOME_METRIC_LABELS = ['F_RENT_GROWTH', 'SFR_HOME_VALUE_GROWTH', 'M_VACANCY', 'F_CAP_RATE'];
+const OUTCOME_METRIC_LABELS: Record<string, string> = {
+  'rent_index_yoy': 'F_RENT_GROWTH',
+  'home_value_index_yoy': 'SFR_HOME_VALUE_GROWTH',
+  'home_value_index': 'SFR_HOME_VALUE',
+  'rent_index': 'F_RENT_INDEX',
+};
 
 interface LagProfileEntry {
   lagMonths: number;
@@ -318,9 +323,7 @@ export class LeadLagDiscoveryService {
   async getOutcomeSummary(): Promise<Record<string, any[]>> {
     const result: Record<string, any[]> = {};
 
-    for (let i = 0; i < OUTCOME_METRIC_LABELS.length; i++) {
-      const dbId = OUTCOME_METRICS_DB[i];
-      const label = OUTCOME_METRIC_LABELS[i];
+    for (const [dbId, label] of Object.entries(OUTCOME_METRIC_LABELS)) {
       const res = await this.pool.query(
         `SELECT * FROM metric_lead_lag_results
          WHERE metric_b_id = $1
@@ -377,37 +380,35 @@ export class LeadLagDiscoveryService {
     }> = [];
 
     for (const dbMetricId of allDbMetrics) {
-      const catalogIds = reverseTranslateDbId(dbMetricId);
-      const leads = (leadsMap.get(dbMetricId) || []).flatMap(l => {
-        const targetCatalogIds = reverseTranslateDbId(l.metricId);
-        return targetCatalogIds.map(cid => ({ metricId: cid, lagMonths: l.lagMonths, typicalR: l.typicalR }));
+      const primaryCatalogId = reverseTranslateDbIdPrimary(dbMetricId);
+      const leads = (leadsMap.get(dbMetricId) || []).map(l => ({
+        metricId: reverseTranslateDbIdPrimary(l.metricId),
+        lagMonths: l.lagMonths,
+        typicalR: l.typicalR,
+      }));
+      const lagged = (laggedByMap.get(dbMetricId) || []).map(l => ({
+        metricId: reverseTranslateDbIdPrimary(l.metricId),
+        leadMonths: l.leadMonths,
+        typicalR: l.typicalR,
+      }));
+      overrides.push({
+        metricId: primaryCatalogId,
+        leadsMetrics: leads,
+        laggedBy: lagged,
+        empiricallyValidated: true,
       });
-      const lagged = (laggedByMap.get(dbMetricId) || []).flatMap(l => {
-        const sourceCatalogIds = reverseTranslateDbId(l.metricId);
-        return sourceCatalogIds.map(cid => ({ metricId: cid, leadMonths: l.leadMonths, typicalR: l.typicalR }));
-      });
-      for (const catalogId of catalogIds) {
-        overrides.push({
-          metricId: catalogId,
-          leadsMetrics: leads,
-          laggedBy: lagged,
-          empiricallyValidated: true,
-        });
-      }
     }
 
     return overrides;
   }
 
   private formatRow(row: any) {
-    const catalogAIds = reverseTranslateDbId(row.metric_a_id);
-    const catalogBIds = reverseTranslateDbId(row.metric_b_id);
     return {
       id: row.id,
       metricAId: row.metric_a_id,
       metricBId: row.metric_b_id,
-      metricACatalogIds: catalogAIds,
-      metricBCatalogIds: catalogBIds,
+      metricACatalogId: reverseTranslateDbIdPrimary(row.metric_a_id),
+      metricBCatalogId: reverseTranslateDbIdPrimary(row.metric_b_id),
       optimalLagMonths: row.optimal_lag_months,
       rAtOptimalLag: parseFloat(row.r_at_optimal_lag),
       rAtZeroLag: parseFloat(row.r_at_zero_lag),

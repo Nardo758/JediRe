@@ -47,6 +47,7 @@ export interface MetricDefinition {
   investmentSignal: string;
   leadsMetrics?: LeadLagRelationship[];
   laggedBy?: LaggedByRelationship[];
+  empiricallyValidated?: boolean;
 }
 
 /**
@@ -1008,16 +1009,16 @@ export function applyEmpiricalLeadLag(overrides: Array<{
     if (metric) {
       metric.leadsMetrics = override.leadsMetrics.length > 0 ? override.leadsMetrics : [];
       metric.laggedBy = override.laggedBy.length > 0 ? override.laggedBy : [];
-      (metric as any).empiricallyValidated = true;
+      metric.empiricallyValidated = true;
       applied++;
     }
   }
 
   for (const metric of METRICS_CATALOG) {
-    if (!overrideIds.has(metric.id.toLowerCase()) && (metric as any).empiricallyValidated) {
+    if (!overrideIds.has(metric.id.toLowerCase()) && metric.empiricallyValidated) {
       metric.leadsMetrics = [];
       metric.laggedBy = [];
-      (metric as any).empiricallyValidated = false;
+      metric.empiricallyValidated = false;
     }
   }
 
