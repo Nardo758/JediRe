@@ -118,18 +118,29 @@ router.get('/', async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
 
     const result = await query(
-      `SELECT id, name, description, type, scope, combinator, sort_by,
+      `SELECT id, name, description, type, scope, conditions, combinator, sort_by,
+              sort_direction, max_results, asset_classes, deal_types, tags,
               run_count, last_run_at, created_at
        FROM strategy_definitions
        WHERE user_id = $1 OR type = 'preset'
-       ORDER BY created_at DESC`,
+       ORDER BY type = 'preset' DESC, created_at DESC`,
       [userId]
     );
 
+    const strategies = result.rows.map((row: any) => ({
+      ...row,
+      conditions: typeof row.conditions === 'string' ? JSON.parse(row.conditions) : (row.conditions || []),
+      assetClasses: row.asset_classes || [],
+      tags: row.tags || [],
+      matchCount: row.run_count || 0,
+      lastRunAt: row.last_run_at,
+    }));
+
     res.json({
       success: true,
-      data: result.rows,
-      count: result.rows.length,
+      strategies,
+      data: strategies,
+      count: strategies.length,
     });
   } catch (error: any) {
     logger.error('Error fetching strategies:', error);
@@ -203,16 +214,22 @@ router.put('/:id', async (req: Request, res: Response) => {
       tags,
     } = req.body;
 
-    // Verify ownership
-    const ownershipCheck = await query(
-      `SELECT id FROM strategy_definitions WHERE id = $1 AND user_id = $2`,
+    const typeCheck = await query(
+      `SELECT id, type FROM strategy_definitions WHERE id = $1 AND (user_id = $2 OR type = 'preset')`,
       [id, userId]
     );
 
-    if (ownershipCheck.rows.length === 0) {
+    if (typeCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Strategy not found or access denied',
+      });
+    }
+
+    if (typeCheck.rows[0].type === 'preset') {
+      return res.status(403).json({
+        success: false,
+        error: 'Platform preset strategies cannot be modified. Clone it to create your own version.',
       });
     }
 
@@ -311,16 +328,22 @@ router.delete('/:id', async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
     const { id } = req.params;
 
-    // Verify ownership
-    const ownershipCheck = await query(
-      `SELECT id FROM strategy_definitions WHERE id = $1 AND user_id = $2`,
+    const typeCheck = await query(
+      `SELECT id, type FROM strategy_definitions WHERE id = $1 AND (user_id = $2 OR type = 'preset')`,
       [id, userId]
     );
 
-    if (ownershipCheck.rows.length === 0) {
+    if (typeCheck.rows.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'Strategy not found or access denied',
+      });
+    }
+
+    if (typeCheck.rows[0].type === 'preset') {
+      return res.status(403).json({
+        success: false,
+        error: 'Platform preset strategies cannot be deleted.',
       });
     }
 
@@ -356,7 +379,21 @@ router.delete('/:id', async (req: Request, res: Response) => {
  */
 router.post('/:id/run', async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).user?.userId;
     const { id } = req.params;
+
+    const authCheck = await query(
+      `SELECT id FROM strategy_definitions WHERE id = $1 AND (user_id = $2 OR type = 'preset')`,
+      [id, userId]
+    );
+
+    if (authCheck.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Strategy not found or access denied',
+      });
+    }
+
     const results = await strategyExecutionService.executeStrategy(id);
 
     res.json({

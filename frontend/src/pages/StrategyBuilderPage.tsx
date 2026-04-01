@@ -90,6 +90,9 @@ const METRIC_COLORS: Record<string, string> = {
   competition: COLORS.orange,
   risk: COLORS.error,
   ownership: COLORS.purple,
+  sfr: '#E2A96E',
+  demographic: '#9AE6B4',
+  macro: '#FBD38D',
 };
 
 export const StrategyBuilderPage: React.FC = () => {
@@ -172,6 +175,7 @@ export const StrategyBuilderPage: React.FC = () => {
       const response = await api.post('/strategies/preview', {
         conditions,
         scope,
+        combinator: 'AND',
         assetClasses: selectedAssetClasses,
         maxResults: 10,
         peerGroup: {
@@ -179,7 +183,13 @@ export const StrategyBuilderPage: React.FC = () => {
           typology: peerTypology !== 'all' ? peerTypology : undefined,
         },
       });
-      setPreviewResults(response.data.results || []);
+      const resData = response.data?.data || response.data?.results || [];
+      setPreviewResults(Array.isArray(resData) ? resData.map((r: any) => ({
+        name: r.targetName || r.name || '',
+        market: r.targetType || r.market || '',
+        score: r.overallScore || r.score || 0,
+        metrics: r.metrics || {},
+      })) : []);
     } catch (error) {
       console.error('Error fetching preview:', error);
       setPreviewResults([]);
@@ -215,12 +225,19 @@ export const StrategyBuilderPage: React.FC = () => {
     setConditions(conditions.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
+  const [editingType, setEditingType] = useState<'preset' | 'custom'>('custom');
+
   const loadPreset = (strategy: Strategy) => {
-    setStrategyName(strategy.name || '');
+    if (strategy.type === 'preset') {
+      setStrategyName(`${strategy.name} (Copy)`);
+    } else {
+      setStrategyName(strategy.name || '');
+    }
     setStrategyDescription(strategy.description || '');
     setScope(strategy.scope || 'submarket');
     setSelectedAssetClasses(strategy.assetClasses || ['multifamily']);
     setConditions(strategy.conditions || []);
+    setEditingType(strategy.type || 'custom');
     setActiveTab('builder');
   };
 
@@ -243,6 +260,7 @@ export const StrategyBuilderPage: React.FC = () => {
         description: strategyDescription,
         scope,
         conditions,
+        combinator: 'AND',
         assetClasses: selectedAssetClasses,
         type: 'custom',
         peerGroup: {
@@ -251,12 +269,13 @@ export const StrategyBuilderPage: React.FC = () => {
         },
       };
 
-      if (strategyId) {
+      if (strategyId && editingType !== 'preset') {
         await api.put(`/strategies/${strategyId}`, payload);
       } else {
         await api.post('/strategies', payload);
       }
 
+      setEditingType('custom');
       navigate('/strategies');
     } catch (error) {
       console.error('Error saving strategy:', error);
@@ -277,13 +296,29 @@ export const StrategyBuilderPage: React.FC = () => {
     }
   };
 
+  const [runResults, setRunResults] = useState<{ strategyId: string; results: any[] } | null>(null);
+  const [runLoading, setRunLoading] = useState<string | null>(null);
+
   const handleRunStrategy = async (id: string) => {
     try {
+      setRunLoading(id);
       const response = await api.post(`/strategies/${id}/run`);
-      console.log('Strategy run results:', response.data);
-      // TODO: Show results in modal or expand inline
+      const results = response.data?.data || response.data?.results || [];
+      setRunResults({ strategyId: id, results });
+      const strategy = strategies.find(s => s.id === id);
+      if (strategy) {
+        loadPreset(strategy);
+        setPreviewResults(results.map((r: any) => ({
+          name: r.targetName || r.name || '',
+          market: r.targetType || '',
+          score: r.overallScore || 0,
+          metrics: {},
+        })));
+      }
     } catch (error) {
       console.error('Error running strategy:', error);
+    } finally {
+      setRunLoading(null);
     }
   };
 
@@ -446,25 +481,27 @@ export const StrategyBuilderPage: React.FC = () => {
                           color: COLORS.accent,
                         }}
                       >
-                        Edit
+                        {strategy.type === 'preset' ? 'Clone' : 'Edit'}
                       </button>
                       <button
                         onClick={e => {
                           e.stopPropagation();
                           handleRunStrategy(strategy.id);
                         }}
+                        disabled={runLoading === strategy.id}
                         style={{
                           padding: '3px 10px',
                           borderRadius: 4,
                           fontSize: 9,
                           fontWeight: 600,
-                          cursor: 'pointer',
+                          cursor: runLoading === strategy.id ? 'wait' : 'pointer',
                           border: `1px solid ${COLORS.success}40`,
                           background: `${COLORS.success}08`,
                           color: COLORS.success,
+                          opacity: runLoading === strategy.id ? 0.5 : 1,
                         }}
                       >
-                        Run
+                        {runLoading === strategy.id ? 'Running...' : 'Run'}
                       </button>
                     </div>
                   </div>
@@ -723,11 +760,11 @@ export const StrategyBuilderPage: React.FC = () => {
                               ))}
                             </select>
 
-                            {!['increasing', 'decreasing'].includes(cond.operator) && (
+                            {!['increasing', 'decreasing'].includes(cond.operator) && cond.operator !== 'between' && (
                               <input
                                 type="number"
                                 step="0.1"
-                                value={cond.value || ''}
+                                value={typeof cond.value === 'number' ? cond.value : (Array.isArray(cond.value) ? cond.value[0] : (cond.value || ''))}
                                 onChange={e => updateCondition(cond.id, 'value', parseFloat(e.target.value) || 0)}
                                 style={{
                                   width: 80,
@@ -740,6 +777,51 @@ export const StrategyBuilderPage: React.FC = () => {
                                   textAlign: 'center',
                                 }}
                               />
+                            )}
+                            {cond.operator === 'between' && (
+                              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={Array.isArray(cond.value) ? cond.value[0] : (cond.value || '')}
+                                  onChange={e => {
+                                    const min = parseFloat(e.target.value) || 0;
+                                    const max = Array.isArray(cond.value) ? cond.value[1] : 100;
+                                    updateCondition(cond.id, 'value', [min, max]);
+                                  }}
+                                  style={{
+                                    width: 60,
+                                    padding: '4px 6px',
+                                    borderRadius: 4,
+                                    border: `1px solid ${COLORS.border}`,
+                                    background: 'rgba(255,255,255,0.02)',
+                                    color: COLORS.text,
+                                    fontSize: 11,
+                                    textAlign: 'center',
+                                  }}
+                                />
+                                <span style={{ fontSize: 9, color: COLORS.textDim }}>to</span>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={Array.isArray(cond.value) ? cond.value[1] : ''}
+                                  onChange={e => {
+                                    const max = parseFloat(e.target.value) || 0;
+                                    const min = Array.isArray(cond.value) ? cond.value[0] : 0;
+                                    updateCondition(cond.id, 'value', [min, max]);
+                                  }}
+                                  style={{
+                                    width: 60,
+                                    padding: '4px 6px',
+                                    borderRadius: 4,
+                                    border: `1px solid ${COLORS.border}`,
+                                    background: 'rgba(255,255,255,0.02)',
+                                    color: COLORS.text,
+                                    fontSize: 11,
+                                    textAlign: 'center',
+                                  }}
+                                />
+                              </div>
                             )}
 
                             <span style={{ fontSize: 9, color: COLORS.textDim }}>Weight:</span>
@@ -965,9 +1047,9 @@ export const StrategyBuilderPage: React.FC = () => {
                     color: COLORS.success,
                   }}
                 >
-                  {strategyId ? 'Update Strategy' : 'Save Strategy'}
+                  {strategyId && editingType !== 'preset' ? 'Update Strategy' : 'Save as Custom Strategy'}
                 </button>
-                {strategyId && (
+                {strategyId && editingType !== 'preset' && (
                   <button
                     onClick={handleDeleteStrategy}
                     style={{
@@ -1048,7 +1130,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           {i > 0 && <span style={{ color: COLORS.textDim }}> AND </span>}
                           <span style={{ color }}>{m?.name?.split(' ').slice(0, 3).join(' ')}</span>
                           <span style={{ color: COLORS.textDim }}> {c.operator} </span>
-                          <span style={{ color: COLORS.text }}>{c.value}</span>
+                          <span style={{ color: COLORS.text }}>{Array.isArray(c.value) ? `${c.value[0]} - ${c.value[1]}` : c.value}</span>
                           {c.required && <span style={{ color: COLORS.error, marginLeft: 4 }}>*</span>}
                         </div>
                       );
