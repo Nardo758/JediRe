@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { translateMetricId, OUTCOME_METRICS_DB } from '../utils/metricTranslation';
 
 export interface CorrelationResult {
   id: string;
@@ -248,14 +249,14 @@ export class CorrelationEngineService {
   }
 
   private async computePairCorrelation(
-    metricA: string,
-    metricB: string,
+    rawMetricA: string,
+    rawMetricB: string,
     geographyType: string,
     geographyId: string,
     windowMonths: number
   ): Promise<boolean> {
+    const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
     try {
-      // Pull both time series aligned by period_date
       const dataRes = await this.pool.query(
         `WITH ts_a AS (
            SELECT period_date, value as val_a
@@ -302,18 +303,14 @@ export class CorrelationEngineService {
       const obsEnd = data[data.length - 1]?.period_date || null;
 
       await this.pool.query(
+        `DELETE FROM metric_correlations
+         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5`,
+        [metricA, metricB, geographyType, geographyId, 36]
+      );
+      await this.pool.query(
         `INSERT INTO metric_correlations
          (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
-         ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
-         DO UPDATE SET
-           correlation_r = $6,
-           lead_lag_months = $7,
-           p_value = $8,
-           sample_size = $9,
-           observation_start = $10,
-           observation_end = $11,
-           computed_at = NOW()`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
         [metricA, metricB, geographyType, geographyId, 36, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
       );
 
@@ -610,7 +607,7 @@ export class CorrelationEngineService {
     }
 
     const geoRes = await this.pool.query(
-      `SELECT DISTINCT geography_id FROM metric_time_series WHERE geography_type = $1 ORDER BY geography_id LIMIT 50`,
+      `SELECT DISTINCT geography_id FROM metric_time_series WHERE geography_type = $1 ORDER BY geography_id`,
       [scope]
     );
 
@@ -621,6 +618,39 @@ export class CorrelationEngineService {
           const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geoId, 36);
           if (success) computed++;
           else skipped++;
+        }
+      }
+    }
+
+    for (let i = 0; i < metricIds.length; i++) {
+      for (let j = i + 1; j < metricIds.length; j++) {
+        const [mA, mB] = [metricIds[i], metricIds[j]].sort();
+        const aggRes = await this.pool.query(
+          `SELECT ROUND(AVG(correlation_r)::numeric, 4) as avg_r,
+                  ROUND(AVG(p_value)::numeric, 6) as avg_p,
+                  SUM(sample_size)::int as total_samples,
+                  ROUND(AVG(lead_lag_months))::int as avg_lag,
+                  MIN(observation_start) as obs_start,
+                  MAX(observation_end) as obs_end,
+                  COUNT(*) as geo_count
+           FROM metric_correlations
+           WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3
+             AND geography_id IS NOT NULL`,
+          [mA, mB, scope]
+        );
+        const agg = aggRes.rows[0];
+        if (agg && parseInt(agg.geo_count) > 0) {
+          await this.pool.query(
+            `DELETE FROM metric_correlations
+             WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id IS NULL AND window_months = 36`,
+            [mA, mB, scope]
+          );
+          await this.pool.query(
+            `INSERT INTO metric_correlations
+             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
+             VALUES ($1, $2, $3, NULL, 36, $4, $5, $6, $7, $8, $9, NOW())`,
+            [mA, mB, scope, parseFloat(agg.avg_r), parseInt(agg.avg_lag) || 0, parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
+          );
         }
       }
     }
@@ -643,22 +673,16 @@ export class CorrelationEngineService {
                         observation_start, observation_end
                  FROM metric_correlations
                  WHERE geography_type = $1 AND geography_id = $2
-                   AND metric_a = ANY($3) AND metric_b = ANY($3)
+                   AND ((metric_a = ANY($3) AND metric_b = ANY($3)))
                  ORDER BY ABS(correlation_r) DESC`;
         params = [scope, geographyId, metricIds];
       } else {
-        query = `SELECT metric_a, metric_b,
-                        ROUND(AVG(correlation_r)::numeric, 4) as correlation_r,
-                        ROUND(AVG(p_value)::numeric, 6) as p_value,
-                        SUM(sample_size)::int as sample_size,
-                        ROUND(AVG(lead_lag_months))::int as lead_lag_months,
-                        MIN(observation_start) as observation_start,
-                        MAX(observation_end) as observation_end
+        query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months,
+                        observation_start, observation_end
                  FROM metric_correlations
-                 WHERE geography_type = $1
-                   AND metric_a = ANY($2) AND metric_b = ANY($2)
-                 GROUP BY metric_a, metric_b
-                 ORDER BY ABS(AVG(correlation_r)) DESC`;
+                 WHERE geography_type = $1 AND geography_id IS NULL
+                   AND ((metric_a = ANY($2) AND metric_b = ANY($2)))
+                 ORDER BY ABS(correlation_r) DESC`;
         params = [scope, metricIds];
       }
 
@@ -687,8 +711,6 @@ export class CorrelationEngineService {
     redundant: Array<{ metricA: string; metricB: string; r: number }>;
     complementary: Array<{ metricA: string; metricB: string; r: number }>;
   }> {
-    const OUTCOME_METRIC_LABELS = ['F_RENT_GROWTH', 'SFR_HOME_VALUE_GROWTH', 'M_VACANCY', 'F_CAP_RATE'];
-    const OUTCOME_METRICS_DB = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
     const OUTCOME_METRICS = OUTCOME_METRICS_DB;
 
     const stratRes = await this.pool.query(
@@ -706,20 +728,7 @@ export class CorrelationEngineService {
 
     const conditionMetricIds = [...new Set(conditions.map((c: any) => {
       const raw = c.metricId || c.metric_id || '';
-      const TRANSLATE: Record<string, string> = {
-        F_CAP_RATE: 'home_value_index', F_RENT_GROWTH: 'rent_index_yoy',
-        F_RENT_TO_INCOME: 'rent_index', SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
-        C_SURGE_INDEX: 'home_value_index_yoy', C_TRAFFIC_GROWTH_INDEX: 'home_value_index_yoy',
-        C_SEARCH_GROWTH_INDEX: 'rent_index_yoy', D_SEARCH_MOMENTUM: 'rent_index_yoy',
-        D_DIGITAL_SCORE: 'rent_index', T_PHYSICAL_SCORE: 'home_value_index',
-        S_PIPELINE_TO_STOCK: 'home_value_index_yoy', S_PERMIT_VELOCITY: 'home_value_index_yoy',
-        S_PIPELINE_UNITS: 'home_value_index', E_EMPLOYMENT_GROWTH: 'rent_index_yoy',
-        E_WAGE_GROWTH: 'rent_index_yoy', E_POPULATION_GROWTH: 'home_value_index_yoy',
-        M_VACANCY: 'home_value_index', M_ABSORPTION: 'home_value_index_yoy',
-        O_DEBT_MATURITY_MO: 'home_value_index', DEMO_NET_MIGRATION: 'home_value_index_yoy',
-        HM_DISTRESS_SCORE: 'home_value_index_yoy',
-      };
-      return TRANSLATE[raw.toUpperCase()] || raw.toLowerCase();
+      return translateMetricId(raw);
     }))];
 
     const allMetrics = [...new Set([...conditionMetricIds, ...OUTCOME_METRICS])];
@@ -754,21 +763,6 @@ export class CorrelationEngineService {
   }
 
   async seedPresetStrategyCorrelations(): Promise<{ strategiesProcessed: number; correlationsComputed: number }> {
-    const OUTCOME_DB = ['rent_index_yoy', 'home_value_index_yoy', 'home_value_index', 'rent_index'];
-    const TRANSLATE: Record<string, string> = {
-      F_CAP_RATE: 'home_value_index', F_RENT_GROWTH: 'rent_index_yoy',
-      F_RENT_TO_INCOME: 'rent_index', SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
-      C_SURGE_INDEX: 'home_value_index_yoy', C_TRAFFIC_GROWTH_INDEX: 'home_value_index_yoy',
-      C_SEARCH_GROWTH_INDEX: 'rent_index_yoy', D_SEARCH_MOMENTUM: 'rent_index_yoy',
-      D_DIGITAL_SCORE: 'rent_index', T_PHYSICAL_SCORE: 'home_value_index',
-      S_PIPELINE_TO_STOCK: 'home_value_index_yoy', S_PERMIT_VELOCITY: 'home_value_index_yoy',
-      S_PIPELINE_UNITS: 'home_value_index', E_EMPLOYMENT_GROWTH: 'rent_index_yoy',
-      E_WAGE_GROWTH: 'rent_index_yoy', E_POPULATION_GROWTH: 'home_value_index_yoy',
-      M_VACANCY: 'home_value_index', M_ABSORPTION: 'home_value_index_yoy',
-      O_DEBT_MATURITY_MO: 'home_value_index', DEMO_NET_MIGRATION: 'home_value_index_yoy',
-      HM_DISTRESS_SCORE: 'home_value_index_yoy',
-    };
-
     try {
       const strategiesRes = await this.pool.query(
         `SELECT id, name, conditions, scope FROM strategy_definitions WHERE type = 'preset'`
@@ -779,10 +773,10 @@ export class CorrelationEngineService {
         try {
           const conditions = typeof row.conditions === 'string' ? JSON.parse(row.conditions) : (row.conditions || []);
           const condMetrics = [...new Set(conditions.map((c: any) => {
-            const raw = (c.metricId || c.metric_id || '').toUpperCase();
-            return TRANSLATE[raw] || raw.toLowerCase();
+            const raw = c.metricId || c.metric_id || '';
+            return translateMetricId(raw);
           }))];
-          const allMetrics = [...new Set([...condMetrics, ...OUTCOME_DB])];
+          const allMetrics = [...new Set([...condMetrics, ...OUTCOME_METRICS_DB])];
 
           if (allMetrics.length >= 2) {
             const result = await this.computeMatrix(allMetrics as string[], row.scope || 'submarket');
