@@ -20,8 +20,8 @@ export const BT = {
   },
   text: {
     primary:   '#E8ECF1',
-    secondary: '#8B95A5',
-    muted:     '#4A5568',
+    secondary: '#A0ABBE',
+    muted:     '#6B7A8D',
     white:     '#FFFFFF',
     amber:     '#F5A623',
     amberBright: '#FFD166',
