@@ -1015,7 +1015,7 @@ export function applyEmpiricalLeadLag(overrides: Array<{
   }
 
   for (const metric of METRICS_CATALOG) {
-    if (!overrideIds.has(metric.id.toLowerCase()) && metric.empiricallyValidated) {
+    if (!overrideIds.has(metric.id.toLowerCase())) {
       metric.leadsMetrics = [];
       metric.laggedBy = [];
       metric.empiricallyValidated = false;

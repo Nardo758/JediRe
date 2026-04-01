@@ -5,8 +5,8 @@ import { translateMetricId, OUTCOME_METRICS_DB, reverseTranslateDbId, reverseTra
 const OUTCOME_METRIC_LABELS: Record<string, string> = {
   'rent_index_yoy': 'F_RENT_GROWTH',
   'home_value_index_yoy': 'SFR_HOME_VALUE_GROWTH',
-  'home_value_index': 'SFR_HOME_VALUE',
-  'rent_index': 'F_RENT_INDEX',
+  'home_value_index': 'M_VACANCY',
+  'rent_index': 'F_CAP_RATE',
 };
 
 interface LagProfileEntry {
