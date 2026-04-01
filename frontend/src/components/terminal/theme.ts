@@ -28,9 +28,9 @@ export const BT = {
   // Text
   text: {
     primary: '#E8ECF1',       // Primary text
-    secondary: '#8B95A5',     // Secondary text
-    muted: '#4A5568',         // Muted text
-    dim: '#2A3348',           // Very dim text
+    secondary: '#A0ABBE',     // Secondary text (brightened)
+    muted: '#6B7A8D',         // Muted text (brightened for readability)
+    dim: '#3D4B5E',           // Very dim text (brightened slightly)
     
     // Semantic colors
     green: '#00D26A',         // Positive/up
