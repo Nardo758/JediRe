@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../../database';
 import { LeadLagDiscoveryService } from '../../services/leadLagDiscovery.service';
+import { applyEmpiricalLeadLag } from '../../services/metricsCatalog.service';
 import { requireAdminApiKey } from './admin-api-key.routes';
 
 const router = Router();
@@ -69,7 +70,9 @@ router.post('/compute', requireAdminApiKey, async (req: Request, res: Response) 
       return res.status(400).json({ success: false, error: `geographyType must be one of: ${VALID_GEO_TYPES.join(', ')}` });
     }
     const result = await service.runDiscoveryPipeline(geo);
-    res.json({ success: true, ...result });
+    const overrides = await service.getEmpiricalCatalogOverrides();
+    const applied = applyEmpiricalLeadLag(overrides);
+    res.json({ success: true, ...result, catalogOverridesApplied: applied });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

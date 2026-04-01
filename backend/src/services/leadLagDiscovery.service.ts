@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { translateMetricId, OUTCOME_METRICS_DB, reverseTranslateDbId, reverseTranslateDbIdPrimary } from '../utils/metricTranslation';
+import { METRICS_CATALOG } from './metricsCatalog.service';
 
 const OUTCOME_METRIC_LABELS: Record<string, string> = {
   'rent_index_yoy': 'F_RENT_GROWTH',
@@ -86,10 +87,7 @@ export class LeadLagDiscoveryService {
         return null;
       }
 
-      const lagProfile: LagProfileEntry[] = [];
-      let rAtZeroLag = 0;
-
-      for (let lag = 0; lag <= maxLag; lag++) {
+      const computeLagR = (lag: number): { avgR: number; totalSamples: number } | null => {
         let sumR = 0;
         let geoCount = 0;
         let totalSamples = 0;
@@ -123,15 +121,23 @@ export class LeadLagDiscoveryService {
         }
 
         if (geoCount > 0) {
-          const avgR = sumR / geoCount;
+          return { avgR: sumR / geoCount, totalSamples };
+        }
+        return null;
+      };
+
+      const zeroLagResult = computeLagR(0);
+      const rAtZeroLag = zeroLagResult ? zeroLagResult.avgR : 0;
+
+      const lagProfile: LagProfileEntry[] = [];
+      for (let lag = 1; lag <= maxLag; lag++) {
+        const result = computeLagR(lag);
+        if (result) {
           lagProfile.push({
             lagMonths: lag,
-            r: Math.round(avgR * 10000) / 10000,
-            sampleSize: totalSamples,
+            r: Math.round(result.avgR * 10000) / 10000,
+            sampleSize: result.totalSamples,
           });
-          if (lag === 0) {
-            rAtZeroLag = avgR;
-          }
         }
       }
 
@@ -211,31 +217,36 @@ export class LeadLagDiscoveryService {
   }> {
     const outcomeDbIds = OUTCOME_METRICS_DB;
 
-    const catalogMetricsRes = await this.pool.query(
+    const availableRes = await this.pool.query(
       `SELECT DISTINCT metric_id FROM metric_time_series
        WHERE geography_type = $1
        GROUP BY metric_id
        HAVING COUNT(*) >= 12`,
       [geographyType]
     );
+    const availableDbIds = new Set(availableRes.rows.map((r: any) => r.metric_id as string));
 
-    const allMetricIds = catalogMetricsRes.rows.map((r: any) => r.metric_id as string);
-
-    const pairs: Array<[string, string]> = [];
-    for (const leader of allMetricIds) {
-      for (const outcome of outcomeDbIds) {
-        if (leader === outcome) continue;
-        pairs.push([leader, outcome]);
+    const catalogDbIds = new Set<string>();
+    for (const metric of METRICS_CATALOG) {
+      const dbId = translateMetricId(metric.id);
+      if (availableDbIds.has(dbId)) {
+        catalogDbIds.add(dbId);
       }
     }
-    for (let i = 0; i < outcomeDbIds.length; i++) {
-      for (let j = i + 1; j < outcomeDbIds.length; j++) {
-        if (!pairs.some(p => p[0] === outcomeDbIds[i] && p[1] === outcomeDbIds[j])) {
-          pairs.push([outcomeDbIds[i], outcomeDbIds[j]]);
-        }
-        if (!pairs.some(p => p[0] === outcomeDbIds[j] && p[1] === outcomeDbIds[i])) {
-          pairs.push([outcomeDbIds[j], outcomeDbIds[i]]);
-        }
+
+    const pairSet = new Set<string>();
+    const pairs: Array<[string, string]> = [];
+    const addPair = (a: string, b: string) => {
+      const key = `${a}|${b}`;
+      if (a !== b && !pairSet.has(key)) {
+        pairSet.add(key);
+        pairs.push([a, b]);
+      }
+    };
+
+    for (const leaderDbId of catalogDbIds) {
+      for (const outcomeDbId of outcomeDbIds) {
+        addPair(leaderDbId, outcomeDbId);
       }
     }
 
