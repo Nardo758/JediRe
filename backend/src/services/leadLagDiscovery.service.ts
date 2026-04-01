@@ -3,12 +3,24 @@ import { logger } from '../utils/logger';
 import { translateMetricId, OUTCOME_METRICS_DB, reverseTranslateDbId, reverseTranslateDbIdPrimary } from '../utils/metricTranslation';
 import { METRICS_CATALOG } from './metricsCatalog.service';
 
-const OUTCOME_METRIC_LABELS: Record<string, string> = {
+const OUTCOME_DB_TO_CATALOG: Record<string, string> = {
   'rent_index_yoy': 'F_RENT_GROWTH',
   'home_value_index_yoy': 'SFR_HOME_VALUE_GROWTH',
   'home_value_index': 'M_VACANCY',
   'rent_index': 'F_CAP_RATE',
 };
+
+function toYearMonth(dateStr: string): string {
+  return dateStr.substring(0, 7);
+}
+
+function addMonthsYM(ym: string, months: number): string {
+  const [y, m] = ym.split('-').map(Number);
+  const totalMonths = y * 12 + (m - 1) + months;
+  const newY = Math.floor(totalMonths / 12);
+  const newM = (totalMonths % 12) + 1;
+  return `${newY}-${String(newM).padStart(2, '0')}`;
+}
 
 interface LagProfileEntry {
   lagMonths: number;
@@ -69,7 +81,8 @@ export class LeadLagDiscoveryService {
         const seriesB = new Map<string, number>();
 
         for (const row of tsRes.rows) {
-          const key = String(row.period_date).substring(0, 7);
+          const d = row.period_date instanceof Date ? row.period_date.toISOString() : String(row.period_date);
+          const key = d.substring(0, 7);
           if (row.metric_id === metricAId) {
             seriesA.set(key, parseFloat(row.value));
           } else {
@@ -94,17 +107,14 @@ export class LeadLagDiscoveryService {
 
         for (const [geoId, seriesA] of allSeriesA) {
           const seriesB = allSeriesB.get(geoId)!;
-          const allMonths = [...new Set([...seriesA.keys(), ...seriesB.keys()])].sort();
 
           const xVals: number[] = [];
           const yVals: number[] = [];
 
-          for (let i = lag; i < allMonths.length; i++) {
-            const monthA = allMonths[i - lag];
-            const monthB = allMonths[i];
-            const valA = seriesA.get(monthA);
-            const valB = seriesB.get(monthB);
-            if (valA !== undefined && valB !== undefined) {
+          for (const [ymB, valB] of seriesB) {
+            const ymA = addMonthsYM(ymB, -lag);
+            const valA = seriesA.get(ymA);
+            if (valA !== undefined) {
               xVals.push(valA);
               yVals.push(valB);
             }
@@ -334,7 +344,7 @@ export class LeadLagDiscoveryService {
   async getOutcomeSummary(): Promise<Record<string, any[]>> {
     const result: Record<string, any[]> = {};
 
-    for (const [dbId, label] of Object.entries(OUTCOME_METRIC_LABELS)) {
+    for (const [dbId, label] of Object.entries(OUTCOME_DB_TO_CATALOG)) {
       const res = await this.pool.query(
         `SELECT * FROM metric_lead_lag_results
          WHERE metric_b_id = $1
