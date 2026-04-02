@@ -208,15 +208,23 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
           </span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full table-fixed">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[6%]" />
+              <col className="w-[5%]" />
+              <col className="w-[45%]" />
+              <col className="w-[20%]" />
+            </colgroup>
             <thead>
               <tr className="bg-gray-50">
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Risk Category</th>
-                <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Level</th>
-                <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Score</th>
-                <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Trend</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Impact</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Cost Impact</th>
+                <th className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide px-3 py-2">Category</th>
+                <th className="text-center text-[10px] font-medium text-gray-500 uppercase tracking-wide px-2 py-2">Level</th>
+                <th className="text-center text-[10px] font-medium text-gray-500 uppercase tracking-wide px-2 py-2">Score</th>
+                <th className="text-center text-[10px] font-medium text-gray-500 uppercase tracking-wide px-2 py-2">Trend</th>
+                <th className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide px-3 py-2">Impact</th>
+                <th className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide px-3 py-2">Cost Impact</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -224,21 +232,21 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
                 const catLevelCfg = LEVEL_CONFIG[cat.level] || LEVEL_CONFIG.moderate;
                 return (
                   <tr key={cat.category} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{cat.label}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${catLevelCfg.bg}`}>
+                    <td className="px-3 py-2 text-xs font-medium text-gray-900 truncate">{cat.label}</td>
+                    <td className="px-2 py-2 text-center">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${catLevelCfg.bg}`}>
                         <span>{catLevelCfg.dot}</span>
                         <span className="capitalize">{cat.level}</span>
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-mono text-gray-700">{cat.score}</span>
+                    <td className="px-2 py-2 text-center">
+                      <span className="text-xs font-mono text-gray-700">{cat.score}</span>
                     </td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-600 font-mono">
+                    <td className="px-2 py-2 text-center text-xs text-gray-600 font-mono">
                       {TREND_ICONS[cat.trend] || '\u2192'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">{cat.impact}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-3 py-2 text-xs text-gray-600">{cat.impact}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">
                       {cat.costImpact || <span className="text-gray-400">&mdash;</span>}
                     </td>
                   </tr>
