@@ -327,11 +327,11 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
                     {entitlementPhases.map((phase, i) => (
                       <div key={i} className="flex items-center gap-1.5">
                         <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{phase.name}</span>
-                        <div className="flex-1 h-3 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                        <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
                           <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
                           <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
                           <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
-                          <span className="absolute text-[7px] text-gray-700 font-semibold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '0px', transform: 'translateX(-50%)' }}>
+                          <span className="absolute text-[8px] text-white font-bold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '0px', transform: 'translateX(-50%)', textShadow: '0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.7)' }}>
                             {phase.p50Duration}mo
                           </span>
                         </div>
@@ -344,11 +344,11 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
                     <div className="text-[8px] text-gray-400 uppercase tracking-wide">Construction</div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{constructionPhase.name}</span>
-                      <div className="flex-1 h-3 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                      <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
                         <div className="absolute h-full bg-orange-200 rounded" style={{ left: 0, width: '100%' }} />
                         <div className="absolute h-full bg-orange-400 rounded" style={{ left: 0, width: `${(constructionPhase.p50Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
                         <div className="absolute h-full bg-orange-500 rounded" style={{ left: 0, width: `${(constructionPhase.p10Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
-                        <span className="absolute text-[7px] text-white font-semibold" style={{ left: '50%', top: '0px', transform: 'translateX(-50%)' }}>
+                        <span className="absolute text-[8px] text-white font-bold" style={{ left: '50%', top: '0px', transform: 'translateX(-50%)', textShadow: '0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.7)' }}>
                           {constructionPhase.p50Duration}mo
                         </span>
                       </div>

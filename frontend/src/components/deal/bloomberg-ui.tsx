@@ -246,6 +246,7 @@ export const BT_TAB_CSS = `
 .bt-tab-wrap .bg-green-100{background-color:#00D26A18!important}
 .bt-tab-wrap .hover\\:bg-gray-50\\/50:hover{background-color:#1E2538!important}
 .bt-tab-wrap .divide-gray-200>*+*{border-top-color:#1E2538!important}
+.bt-tab-wrap .bg-gray-50\\/50{background-color:#13182188!important}
 `;
 
 // ─── BtTabWrapper — applies Bloomberg dark theme to light-mode tab components ──
