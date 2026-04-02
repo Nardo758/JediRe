@@ -300,8 +300,43 @@ export default function F4MarketsView() {
     });
   }, [ALL_MARKETS_RESOLVED, marketGeoIds]);
 
+  const submarketGeoIds = useMemo(() => {
+    const msaSet = new Set<string>();
+    SUBMARKET_RESOLVED.forEach(s => {
+      if (s.msaId) msaSet.add(s.msaId);
+    });
+    return Array.from(msaSet).map(id => {
+      const slug = id.replace(/-[a-z]{2}$/, "");
+      const state = id.split("-").pop() || "fl";
+      return { geoType: "metro", geoId: `${slug}-${state}-${state}` };
+    });
+  }, [SUBMARKET_RESOLVED]);
+
+  const propertyGeoIds = useMemo(() => {
+    const msaSet = new Set<string>();
+    PROPERTY_RESOLVED.forEach(p => {
+      const msaSlug = (p.msa || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+$/, "");
+      if (msaSlug) msaSet.add(msaSlug);
+    });
+    return Array.from(msaSet).map(slug => {
+      const parts = slug.split("-");
+      const state = parts.pop() || "fl";
+      const city = parts.join("-");
+      return { geoType: "metro", geoId: `${city}-${state}-${state}` };
+    });
+  }, [PROPERTY_RESOLVED]);
+
+  const recommendationGeoIds = useMemo(() => {
+    switch (activeTab) {
+      case "submarkets": return submarketGeoIds.length > 0 ? submarketGeoIds : trackedGeoIds;
+      case "properties": return propertyGeoIds.length > 0 ? propertyGeoIds : trackedGeoIds;
+      case "browse": return marketGeoIds;
+      default: return trackedGeoIds;
+    }
+  }, [activeTab, submarketGeoIds, propertyGeoIds, marketGeoIds, trackedGeoIds]);
+
   const { correlationMap: columnCorrelations, staleCount: corrStaleCount, totalCount: corrTotalCount } = useColumnCorrelations(marketGeoIds);
-  const { recommendations: metricRecs, loading: recsLoading } = useMetricRecommendations(trackedGeoIds);
+  const { recommendations: metricRecs, loading: recsLoading } = useMetricRecommendations(recommendationGeoIds);
   const [recsCollapsed, setRecsCollapsed] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
 
@@ -1131,17 +1166,22 @@ export default function F4MarketsView() {
       {
         icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#4CAF50", background: "#4CAF5015", border: "1px solid #4CAF5030", padding: "0px 3px", borderRadius: 2 }}>r+0.82</span>,
         label: "Strong Correlation (|r| >= 0.7)",
-        desc: "This metric has a strong statistical relationship with an outcome metric",
+        desc: "Column header badge: strong statistical relationship. Green in grid headers by strength",
       },
       {
         icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#00BCD4", background: "#00BCD415", border: "1px solid #00BCD430", padding: "0px 3px", borderRadius: 2 }}>r+0.55</span>,
         label: "Moderate Correlation (|r| >= 0.5)",
-        desc: "Moderate statistical relationship — useful signal but not definitive",
+        desc: "Column header badge: moderate relationship. Cyan in grid headers by strength",
       },
       {
         icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#78909C", background: "#78909C15", border: "1px solid #78909C30", padding: "0px 3px", borderRadius: 2 }}>r+0.35</span>,
         label: "Weak Correlation (|r| < 0.5)",
-        desc: "Weak or no significant correlation detected",
+        desc: "Column header badge: weak or no significant relationship. Gray in grid headers",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#4CAF50", background: "#4CAF5015", border: "1px solid #4CAF5030", padding: "0px 3px", borderRadius: 2 }}>r+0.82</span>,
+        label: "Positive r (Suggestion Card)",
+        desc: "In suggested metrics cards: green = positive correlation, red = negative correlation (by sign)",
       },
       {
         icon: <span style={{ color: C.green, fontSize: 9, fontWeight: 700 }}>▲</span>,
