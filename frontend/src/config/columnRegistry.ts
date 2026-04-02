@@ -149,6 +149,9 @@ export interface DynamicColumnDef extends ColumnDef {
   metricSource?: string;
   metricFrequency?: string;
   higherIsBetter?: boolean;
+  aggregation: 'latest' | 'yoy' | '3mo_avg';
+  geoScope: 'auto' | 'msa' | 'submarket' | 'property';
+  displayFormat: 'auto' | 'pct' | 'dollar' | 'decimals';
 }
 
 export function buildDynamicColumn(metric: CatalogMetric): DynamicColumnDef {
@@ -176,6 +179,9 @@ export function buildDynamicColumn(metric: CatalogMetric): DynamicColumnDef {
     metricSource: metric.source,
     metricFrequency: metric.updateFrequency,
     higherIsBetter: metric.higherIsBetter,
+    aggregation: 'latest',
+    geoScope: 'auto',
+    displayFormat: 'auto',
     format,
   };
 

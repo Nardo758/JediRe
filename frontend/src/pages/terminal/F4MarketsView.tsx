@@ -590,7 +590,9 @@ export default function F4MarketsView() {
 
     const effectiveGeoId = config.pinnedGeoId || geoId;
     const geoKey = `${geoType}:${effectiveGeoId}`;
-    const cell = metricData[geoKey];
+    const altGeoType = geoType === 'msa' ? 'metro' : geoType === 'metro' ? 'msa' : null;
+    const altGeoKey = altGeoType ? `${altGeoType}:${effectiveGeoId}` : null;
+    const cell = metricData[geoKey] || (altGeoKey ? metricData[altGeoKey] : null);
     if (!cell || cell.value == null) return <span style={{ color: C.muted }}>—</span>;
 
     const def = getColumnById(colId);

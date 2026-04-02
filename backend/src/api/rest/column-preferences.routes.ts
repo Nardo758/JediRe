@@ -23,7 +23,7 @@ router.get('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ success: false, error: `Invalid view: ${viewId}. Valid views: ${VALID_VIEWS.join(', ')}` });
     }
 
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
     const result = await pool.query(
@@ -50,7 +50,7 @@ router.put('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ success: false, error: `Invalid view: ${viewId}` });
     }
 
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
     const { columns, columnConfig } = req.body;
@@ -78,7 +78,7 @@ router.put('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
 router.delete('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { viewId } = req.params;
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
     if (!VALID_VIEWS.includes(viewId)) {
@@ -99,7 +99,7 @@ router.delete('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
 
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user?.userId;
     if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
     const result = await pool.query(
