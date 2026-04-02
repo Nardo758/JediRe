@@ -7,11 +7,12 @@ import { PropertyTerminal } from "../../components/terminal/PropertyTerminal";
 import { BT } from "../../components/terminal/theme";
 import { useColumnPreferences } from "../../hooks/useColumnPreferences";
 import { ColumnPicker } from "../../components/terminal/ColumnPicker";
-import { ViewId, getColumnById, isDynamicColumn, extractMetricId, formatMetricValue, buildDynamicColumn } from "../../config/columnRegistry";
+import { ViewId, getColumnById, isDynamicColumn, extractMetricId, formatMetricValue, buildDynamicColumn, CatalogMetric } from "../../config/columnRegistry";
 import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
 import { useColumnCorrelations, useMetricRecommendations } from "../../hooks/useCorrelations";
 import type { MetricRecommendation } from "../../hooks/useCorrelations";
 import { useGridTemplates } from "../../hooks/useGridTemplates";
+import { ColumnConfigPopover, ColumnConfig, DEFAULT_COLUMN_CONFIG } from "../../components/terminal/ColumnConfigPopover";
 import api from "../../services/api";
 
 /**
@@ -331,6 +332,17 @@ export default function F4MarketsView() {
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [saveTemplateName, setSaveTemplateName] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [columnConfigs, setColumnConfigs] = useState<Record<string, ColumnConfig>>({});
+  const [configPopoverCol, setConfigPopoverCol] = useState<string | null>(null);
+  const [catalogMetricsMap, setCatalogMetricsMap] = useState<Map<string, CatalogMetric>>(new Map());
+
+  const getColumnConfig = useCallback((colId: string): ColumnConfig => {
+    return columnConfigs[colId] || DEFAULT_COLUMN_CONFIG;
+  }, [columnConfigs]);
+
+  const setColumnConfig = useCallback((colId: string, config: ColumnConfig) => {
+    setColumnConfigs(prev => ({ ...prev, [colId]: config }));
+  }, []);
 
   const allActiveColumns = useMemo(() => {
     const all = new Set<string>();
@@ -345,15 +357,24 @@ export default function F4MarketsView() {
     [allActiveColumns]
   );
 
-  const [gridData, setGridData] = useState<Record<string, Record<string, any>>>({});
-  const [columnInsights, setColumnInsights] = useState<Record<string, any>>({});
-
   useEffect(() => {
     if (dynamicMetricIds.length === 0) return;
-    api.get(`/columns/grid-data?metricIds=${dynamicMetricIds.join(',')}`).then(res => {
-      if (res.data.success) setGridData(res.data.data);
+    const unhydrated = dynamicMetricIds.filter(id => !getColumnById(`metric:${id}`));
+    if (unhydrated.length === 0) return;
+    api.get('/columns/catalog').then(res => {
+      if (res.data.success) {
+        const map = new Map<string, CatalogMetric>();
+        for (const m of res.data.metrics) {
+          map.set(m.id, m);
+          if (unhydrated.includes(m.id)) buildDynamicColumn(m);
+        }
+        setCatalogMetricsMap(map);
+      }
     }).catch(() => {});
   }, [dynamicMetricIds.join(',')]);
+
+  const [gridData, setGridData] = useState<Record<string, Record<string, any>>>({});
+  const [columnInsights, setColumnInsights] = useState<Record<string, any>>({});
 
   useEffect(() => {
     api.get('/columns/insights').then(res => {
@@ -420,6 +441,24 @@ export default function F4MarketsView() {
       cap: `${med(markets.map(m => m.capNum)).toFixed(1)}%`,
     };
   }, [filteredMarkets]);
+
+  const visibleGeoIds = useMemo(() => {
+    const geos: string[] = [];
+    for (const m of filteredMarkets) {
+      const slug = m.id.replace(/-[a-z]{2}$/, "");
+      const state = (m.msa.split(", ").pop() || "FL").toLowerCase();
+      geos.push(`${slug}-${state}-${state}`);
+    }
+    return geos.slice(0, 100);
+  }, [filteredMarkets]);
+
+  useEffect(() => {
+    if (dynamicMetricIds.length === 0) return;
+    const geoParam = visibleGeoIds.length > 0 ? `&geoIds=${visibleGeoIds.join(',')}` : '';
+    api.get(`/columns/grid-data?metricIds=${dynamicMetricIds.join(',')}${geoParam}`).then(res => {
+      if (res.data.success) setGridData(res.data.data);
+    }).catch(() => {});
+  }, [dynamicMetricIds.join(','), visibleGeoIds.join(',')]);
 
   const topMovers = useMemo(() => {
     return [...ALL_MARKETS_RESOLVED].sort((a, b) => Math.abs(b.d30) - Math.abs(a.d30)).slice(0, 4);
@@ -510,12 +549,37 @@ export default function F4MarketsView() {
     if (!metricId) return <span style={{ color: C.muted }}>—</span>;
     const metricData = gridData[metricId];
     if (!metricData) return <span style={{ color: C.muted, fontSize: 8 }}>…</span>;
+
+    const config = getColumnConfig(colId);
+
+    if (config.geoScope !== 'all' && config.geoScope !== geoType) {
+      return <span style={{ color: C.muted }}>—</span>;
+    }
+
     const geoKey = `${geoType}:${geoId}`;
     const cell = metricData[geoKey];
     if (!cell || cell.value == null) return <span style={{ color: C.muted }}>—</span>;
 
     const def = getColumnById(colId);
-    const formatted = def?.format ? def.format(cell.value) : formatMetricValue(cell.value, def?.unit);
+
+    let displayValue = cell.value;
+    if (config.aggregation === 'yoy' && cell.yoyChange != null) {
+      displayValue = cell.yoyChange;
+    } else if (config.aggregation === 'delta' && cell.previousValue != null) {
+      displayValue = cell.value - cell.previousValue;
+    }
+
+    let formatted: string;
+    if (config.displayFormat === 'pct') {
+      formatted = `${displayValue.toFixed(1)}%`;
+    } else if (config.displayFormat === 'delta') {
+      formatted = `${displayValue >= 0 ? '+' : ''}${displayValue.toFixed(2)}`;
+    } else if (config.displayFormat === 'rank') {
+      formatted = `#${Math.round(displayValue)}`;
+    } else {
+      formatted = def?.format ? def.format(displayValue) : formatMetricValue(displayValue, def?.unit);
+    }
+
     const trendColor = cell.trend === 'up' ? C.green : cell.trend === 'down' ? C.red : C.muted;
     const trendArrow = cell.trend === 'up' ? '▲' : cell.trend === 'down' ? '▼' : '';
 
@@ -787,18 +851,22 @@ export default function F4MarketsView() {
               const sortKey = sortableMap[colId];
               const corrInfo = columnCorrelations[colId];
               const metricId = extractMetricId(colId);
-              const driverInsight = metricId ? columnInsights[metricId] || columnInsights[def?.catalogMetricId || ''] : columnInsights[def?.catalogMetricId || ''];
+              const dbMetricId = metricId || def?.catalogMetricId || '';
+              const driverInsight = columnInsights[dbMetricId] || null;
+              const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
+              const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.4 ? 'moderate' : 'weak';
+              const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#FFA726' : '#78909C';
               return (
                 <th
                   key={colId}
                   style={{
-                    ...hdrCell, width: w,
+                    ...hdrCell, width: w, position: "relative",
                     textAlign: colId === "msa" ? "left" : "center",
                     color: colId === "jedi" ? C.amber : isDynamicColumn(colId) ? "#2196F3" : undefined,
                   }}
-                  onClick={sortKey ? () => handleSort(sortKey) : undefined}
+                  onClick={sortKey ? () => handleSort(sortKey) : isDynamicColumn(colId) ? () => setConfigPopoverCol(configPopoverCol === colId ? null : colId) : undefined}
                   title={driverInsight
-                    ? `Driver: r=${driverInsight.pearsonR.toFixed(2)} → ${driverInsight.outcomeMetricId} (${driverInsight.lagWeeks}w lead)`
+                    ? `r=${driverInsight.pearsonR > 0 ? '+' : ''}${driverInsight.pearsonR.toFixed(3)} (R²=${driverInsight.rSquared.toFixed(2)}) ${driverInsight.direction} → ${driverInsight.outcomeMetricId} (${driverInsight.lagWeeks}w lead) [${insightStrength.toUpperCase()}]`
                     : corrInfo?.isStrong && corrInfo.topCorrelation
                     ? `r=${corrInfo.topCorrelation.correlation_r.toFixed(2)} with ${corrInfo.topCorrelation.metric_a === corrInfo.metricId ? corrInfo.topCorrelation.metric_b : corrInfo.topCorrelation.metric_a}${corrInfo.topCorrelation.lead_lag_months ? ` (${corrInfo.topCorrelation.lead_lag_months}mo lag)` : ""}`
                     : def?.description}
@@ -808,12 +876,12 @@ export default function F4MarketsView() {
                   {driverInsight && (
                     <span style={{
                       ...mono, fontSize: 6, fontWeight: 700, marginLeft: 2,
-                      color: driverInsight.pearsonR > 0 ? "#4CAF50" : "#FF5252",
-                      background: (driverInsight.pearsonR > 0 ? "#4CAF50" : "#FF5252") + "15",
-                      border: `1px solid ${(driverInsight.pearsonR > 0 ? "#4CAF50" : "#FF5252")}30`,
+                      color: insightColor,
+                      background: insightColor + "15",
+                      border: `1px solid ${insightColor}30`,
                       padding: "0px 3px", borderRadius: 2, verticalAlign: "super",
                     }}>
-                      {driverInsight.lagWeeks}w→{driverInsight.outcomeMetricId.replace('OP_', '').substring(0, 4)}
+                      r{driverInsight.pearsonR > 0 ? '+' : ''}{driverInsight.pearsonR.toFixed(2)} {driverInsight.lagWeeks}w
                     </span>
                   )}
                   {!driverInsight && corrInfo?.isStrong && (
@@ -828,6 +896,15 @@ export default function F4MarketsView() {
                     </span>
                   )}
                   {" "}{sortKey && sortCol === sortKey && (sortDir === "desc" ? "▼" : "▲")}
+                  {configPopoverCol === colId && isDynamicColumn(colId) && def && (
+                    <ColumnConfigPopover
+                      colDef={def}
+                      config={getColumnConfig(colId)}
+                      onConfigChange={(cfg) => setColumnConfig(colId, cfg)}
+                      onClose={() => setConfigPopoverCol(null)}
+                      insight={driverInsight}
+                    />
+                  )}
                 </th>
               );
             })}
