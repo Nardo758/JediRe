@@ -1088,7 +1088,7 @@ export default function F4MarketsView() {
           {recsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Computing...</span>}
         </div>
         {!recsCollapsed && missing.length > 0 && (
-          <div style={{ display: "flex", gap: 0, overflow: "auto", background: C.panel }}>
+          <div style={{ display: "flex", gap: 0, overflowX: "auto", overflowY: "hidden", background: C.panel }}>
             {missing.slice(0, 5).map((rec: MetricRecommendation) => {
               const rColor = rec.correlationR > 0 ? C.green : C.red;
               const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
@@ -1620,7 +1620,6 @@ export default function F4MarketsView() {
             {tab.label}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
         <button
           onClick={() => setShowLegend(!showLegend)}
           style={{
@@ -1629,7 +1628,7 @@ export default function F4MarketsView() {
             background: showLegend ? C.cyan + "18" : "transparent",
             color: showLegend ? C.cyan : C.muted,
             border: "none", borderBottom: showLegend ? `2px solid ${C.cyan}` : "2px solid transparent",
-            letterSpacing: 0.5, outline: "none",
+            letterSpacing: 0.5, outline: "none", marginLeft: "auto",
           }}
           title="Toggle metrics legend"
         >
