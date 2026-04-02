@@ -263,7 +263,13 @@ export class DotFetcherService {
         throw new Error(`ArcGIS API returned ${response.status}: ${response.statusText}`);
       }
 
-      const data: any = await response.json();
+      interface ArcGISResponse {
+        error?: { message?: string; code?: number };
+        features?: Array<{ attributes: Record<string, unknown>; geometry?: Record<string, unknown> }>;
+        exceededTransferLimit?: boolean;
+      }
+
+      const data: ArcGISResponse = await response.json() as ArcGISResponse;
 
       if (data.error) {
         throw new Error(`ArcGIS error: ${data.error.message || JSON.stringify(data.error)}`);
