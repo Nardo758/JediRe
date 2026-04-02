@@ -20,6 +20,7 @@ import { query } from '../../database/connection';
 import { IntentClassifier, ExtractedIntent } from './intent-classifier';
 import { AgentDelegator, DelegationResult } from './agent-delegator';
 import { ResponseSynthesizer, SynthesizedResponse } from './response-synthesizer';
+import { getDealFinancialContext } from '../deal-financial-context.service';
 
 // ============================================================================
 // Types

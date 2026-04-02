@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import { query } from '../database/connection';
 import { unifiedOrchestrator } from './orchestrator';
 import type { SpecialistAgent } from './orchestrator/intent-classifier';
+import { getDealFinancialContext, formatFinancialContextForPrompt } from './deal-financial-context.service';
 
 // ============================================================================
 // Types
@@ -279,13 +280,17 @@ export async function agentChat(request: AgentChatRequest): Promise<AgentChatRes
       throw new Error(`Unknown agent: ${agentCode}`);
     }
 
-    // Build context
-    const dealContext = dealId ? await getDealContext(dealId) : null;
-    const marketContext = msaId ? await getMarketContext(msaId) : null;
-    const alerts = await getRecentAlerts(dealId);
+    const [dealContext, marketContext, alerts, financialContext] = await Promise.all([
+      dealId ? getDealContext(dealId) : null,
+      msaId ? getMarketContext(msaId) : null,
+      getRecentAlerts(dealId),
+      dealId ? getDealFinancialContext(dealId).catch(err => {
+        logger.warn('Failed to get financial context:', err);
+        return null;
+      }) : null,
+    ]);
 
-    // Build system prompt
-    const systemPrompt = buildSystemPrompt(agentCode, agentConfig, dealContext, marketContext, alerts);
+    const systemPrompt = buildSystemPrompt(agentCode, agentConfig, dealContext, marketContext, alerts, financialContext);
 
     // Call LLM
     const llmResponse = await generateCompletion({
@@ -327,7 +332,8 @@ function buildSystemPrompt(
   config: AgentSystemPrompt,
   dealContext: Record<string, unknown> | null,
   marketContext: Record<string, unknown> | null,
-  alerts: unknown[]
+  alerts: unknown[],
+  financialContext?: import('./deal-financial-context.service').DealFinancialContext | null
 ): string {
   let prompt = `You are the ${config.role} for JEDI RE, a real estate investment intelligence platform.
 
@@ -350,6 +356,11 @@ CURRENT DEAL CONTEXT:
 - Recommended Strategy: ${dealContext.recommended_strategy || 'Pending analysis'}
 
 `;
+  }
+
+  if (financialContext && financialContext.hasFinancialData) {
+    prompt += formatFinancialContextForPrompt(financialContext);
+    prompt += '\n';
   }
 
   if (marketContext) {
@@ -375,10 +386,10 @@ ${alerts.map((a: any) => `- [${a.severity.toUpperCase()}] ${a.title}: ${a.messag
 
   prompt += `
 RESPONSE GUIDELINES:
-1. Be specific and data-driven
-2. Reference the context data when relevant
-3. Provide actionable insights
-4. If you don't have enough information, say so and suggest what data would help
+1. Be specific and data-driven — use the ACTUAL FINANCIAL DATA above when available
+2. Reference the data source (uploaded P&L, rent roll, balance sheet, etc.) when citing numbers
+3. Provide actionable insights grounded in real performance data
+4. If financial data is missing, say what documents would help (e.g., "Upload a recent rent roll for occupancy analysis")
 5. Keep responses concise (under 200 words unless complex analysis required)
 `;
 

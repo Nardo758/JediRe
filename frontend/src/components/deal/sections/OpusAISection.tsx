@@ -239,10 +239,12 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
 
   const loadLiveContext = async () => {
     try {
-      const [marketRes, strategyRes, riskRes] = await Promise.allSettled([
+      const [marketRes, strategyRes, riskRes, financialRes, assumptionsRes] = await Promise.allSettled([
         apiClient.get('/api/v1/apartment-sync/submarkets', { params: { city: 'Atlanta' } }),
         apiClient.get(`/api/v1/strategy-analyses/${deal.id}`),
         apiClient.get(`/api/v1/risk/comprehensive/${deal.id}`),
+        apiClient.get(`/api/v1/deals/${deal.id}/data-sources`),
+        apiClient.get(`/api/v1/deals/${deal.id}/assumptions`),
       ]);
 
       const ctx: any = {};
@@ -260,6 +262,12 @@ export const OpusAISection: React.FC<OpusAISectionProps> = ({ deal }) => {
       }
       if (riskRes.status === 'fulfilled' && riskRes.value.data?.data) {
         ctx.risk = riskRes.value.data.data;
+      }
+      if (financialRes.status === 'fulfilled' && financialRes.value.data?.data) {
+        ctx.financialSources = financialRes.value.data.data;
+      }
+      if (assumptionsRes.status === 'fulfilled' && assumptionsRes.value.data?.data) {
+        ctx.assumptions = assumptionsRes.value.data.data;
       }
 
       if (Object.keys(ctx).length > 0) {
@@ -1066,6 +1074,7 @@ const AnalysisMetadata: React.FC<AnalysisMetadataProps> = ({ analysis }) => {
 function buildDealContext(deal: Deal, role: AIRole, liveCtx?: any): OpusDealContext {
   const hasLiveMarket = liveCtx?.market?.submarkets?.length > 0;
   const hasLiveStrategy = liveCtx?.strategy?.length > 0;
+  const hasLiveFinancial = liveCtx?.financialSources || liveCtx?.assumptions;
 
   let liveSources = 0;
   const totalSources = 9;
@@ -1082,6 +1091,36 @@ function buildDealContext(deal: Deal, role: AIRole, liveCtx?: any): OpusDealCont
     analyses: liveCtx.strategy,
     dataSource: 'live' as const,
   }; })() : mockStrategyData;
+
+  const financialCtx = hasLiveFinancial ? (() => {
+    liveSources++;
+    const assumptions = liveCtx.assumptions || {};
+    const sources = liveCtx.financialSources || {};
+    return {
+      ...mockFinancialData,
+      proForma: {
+        ...mockFinancialData.proForma,
+        ...(assumptions.purchase_price || assumptions.purchasePrice ? {
+          purchasePrice: assumptions.purchase_price || assumptions.purchasePrice,
+        } : {}),
+        ...(assumptions.cap_rate || assumptions.capRate ? {
+          capRate: assumptions.cap_rate || assumptions.capRate,
+        } : {}),
+      },
+      liveAssumptions: assumptions,
+      dataSources: sources,
+      dataSource: 'live' as const,
+    };
+  })() : mockFinancialData;
+
+  const debtCtx = (liveCtx?.financialSources?.debt?.length > 0) ? (() => {
+    liveSources++;
+    return {
+      ...mockDebtData,
+      liveDebt: liveCtx.financialSources.debt,
+      dataSource: 'live' as const,
+    };
+  })() : mockDebtData;
 
   const completeness = Math.round(((liveSources / totalSources) * 40) + 60);
 
@@ -1111,8 +1150,8 @@ function buildDealContext(deal: Deal, role: AIRole, liveCtx?: any): OpusDealCont
     competition: mockCompetitionData,
     supply: mockSupplyData,
     market: marketCtx,
-    debt: mockDebtData,
-    financial: mockFinancialData,
+    debt: debtCtx,
+    financial: financialCtx,
     strategy: strategyCtx,
     dueDiligence: mockDueDiligenceData,
     team: mockTeamData,

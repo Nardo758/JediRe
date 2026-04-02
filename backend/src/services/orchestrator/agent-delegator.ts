@@ -12,6 +12,7 @@ import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
 import { generateCompletion, isLLMAvailable } from '../llm.service';
 import type { SpecialistAgent, AnalystAgent, ExtractedIntent } from './intent-classifier';
+import { getDealFinancialContext, formatFinancialContextForPrompt, DealFinancialContext } from '../deal-financial-context.service';
 
 // Import agent executors
 import { SupplyAgent } from '../../agents/supply.agent';
@@ -100,6 +101,16 @@ export class AgentDelegator {
     
     const params = this.buildParams(intent);
 
+    let financialContext: DealFinancialContext | null = null;
+    if (intent.dealId) {
+      try {
+        financialContext = await getDealFinancialContext(intent.dealId);
+        params.financialContext = financialContext;
+      } catch (err) {
+        logger.warn('Failed to fetch financial context for delegation:', err);
+      }
+    }
+
     if (this.isMetricRecommendationQuery(intent.question || '')) {
       const recResult = await this.executeMetricRecommendations(params, userId);
       results.push(recResult);
@@ -113,13 +124,15 @@ export class AgentDelegator {
       results.push(...specialistResults);
     }
     
-    // Execute analysts (may depend on specialist data)
     if (intent.analysts.length > 0) {
-      // Get context from specialist results
       const specialistData = results
         .filter(r => r.success && r.agentType === 'specialist')
         .reduce((acc, r) => ({ ...acc, [r.agent]: r.data }), {});
       
+      if (financialContext && financialContext.hasFinancialData) {
+        specialistData['FINANCIAL_DATA'] = financialContext;
+      }
+
       const analystPromises = intent.analysts.map(agent =>
         this.executeAnalyst(agent, params, specialistData, userId, modelOverrides?.[agent])
       );
@@ -350,10 +363,16 @@ Your expertise: ${config.focus}
       prompt += `Price: $${Number(params.price).toLocaleString()}\n`;
     }
     
-    // Add specialist data as context
-    if (Object.keys(contextData).length > 0) {
+    if (contextData['FINANCIAL_DATA']) {
+      const finCtx = contextData['FINANCIAL_DATA'] as DealFinancialContext;
+      prompt += formatFinancialContextForPrompt(finCtx);
+      prompt += '\n';
+    }
+
+    const nonFinancialData = Object.entries(contextData).filter(([k]) => k !== 'FINANCIAL_DATA');
+    if (nonFinancialData.length > 0) {
       prompt += `\nAvailable Data:\n`;
-      for (const [source, data] of Object.entries(contextData)) {
+      for (const [source, data] of nonFinancialData) {
         prompt += `\n[${source}]:\n${JSON.stringify(data, null, 2)}\n`;
       }
     }

@@ -2,12 +2,32 @@ import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { getDealFinancialContext } from '../../services/deal-financial-context.service';
 
 const router = Router();
 const pool = getPool();
 
+async function verifyDealOwnership(req: AuthenticatedRequest, res: Response): Promise<boolean> {
+  const { dealId } = req.params;
+  const userId = req.user?.id;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return false;
+  }
+  const check = await pool.query(
+    'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+    [dealId, userId]
+  );
+  if (check.rows.length === 0) {
+    res.status(403).json({ error: 'Access denied' });
+    return false;
+  }
+  return true;
+}
+
 router.get('/:dealId/balance-sheets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
     const result = await pool.query(
       'SELECT * FROM deal_balance_sheets WHERE deal_id = $1 ORDER BY report_month DESC',
@@ -22,6 +42,7 @@ router.get('/:dealId/balance-sheets', requireAuth, async (req: AuthenticatedRequ
 
 router.post('/:dealId/balance-sheets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
     const body = req.body;
     const result = await pool.query(`
@@ -71,6 +92,7 @@ router.post('/:dealId/balance-sheets', requireAuth, async (req: AuthenticatedReq
 
 router.get('/:dealId/capex-items', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
     const result = await pool.query(
       'SELECT * FROM deal_capex_items WHERE deal_id = $1 ORDER BY created_at DESC',
@@ -96,6 +118,7 @@ router.get('/:dealId/capex-items', requireAuth, async (req: AuthenticatedRequest
 
 router.post('/:dealId/capex-items', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
     const body = req.body;
     const result = await pool.query(`
@@ -121,6 +144,7 @@ router.post('/:dealId/capex-items', requireAuth, async (req: AuthenticatedReques
 
 router.put('/:dealId/capex-items/:itemId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId, itemId } = req.params;
     const body = req.body;
     const result = await pool.query(`
@@ -147,6 +171,7 @@ router.put('/:dealId/capex-items/:itemId', requireAuth, async (req: Authenticate
 
 router.get('/:dealId/debt-schedule', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
     const result = await pool.query(
       'SELECT * FROM deal_debt_schedule WHERE deal_id = $1 ORDER BY is_active DESC, maturity_date ASC',
@@ -177,6 +202,7 @@ router.get('/:dealId/debt-schedule', requireAuth, async (req: AuthenticatedReque
 
 router.post('/:dealId/debt-schedule', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
     const body = req.body;
     const result = await pool.query(`
@@ -207,6 +233,7 @@ router.post('/:dealId/debt-schedule', requireAuth, async (req: AuthenticatedRequ
 
 router.get('/:dealId/data-sources', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!await verifyDealOwnership(req, res)) return;
     const { dealId } = req.params;
 
     const propertyIdResult = await pool.query(
@@ -239,6 +266,18 @@ router.get('/:dealId/data-sources', requireAuth, async (req: AuthenticatedReques
     });
   } catch (error: any) {
     logger.error('Error fetching data sources:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/:dealId/financial-context', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!await verifyDealOwnership(req, res)) return;
+    const { dealId } = req.params;
+    const context = await getDealFinancialContext(dealId);
+    res.json({ success: true, data: context });
+  } catch (error: any) {
+    logger.error('Error fetching financial context:', error);
     res.status(500).json({ error: error.message });
   }
 });
