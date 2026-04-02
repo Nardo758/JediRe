@@ -1284,7 +1284,34 @@ export default function F4MarketsView() {
             <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
               {cols.map(colId => {
                 const def = getColumnById(colId);
-                return <th key={colId} style={{ ...hdrCell, textAlign: colId === "name" ? "left" : "center" }}>{def?.label || colId.toUpperCase()}</th>;
+                const dynDef = def && 'isDynamic' in def ? (def as DynamicColumnDef) : null;
+                const catalogId = dynDef?.catalogMetricId || colId.replace(/^metric:/, '');
+                const dbMetricId = dynDef?.dbMetricId || catalogMetricsMap.get(catalogId)?.dbMetricId || catalogId;
+                const driverInsight = columnInsights[catalogId] || columnInsights[dbMetricId] || null;
+                const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
+                const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';
+                const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#00BCD4' : '#78909C';
+                return (
+                  <th key={colId} style={{
+                    ...hdrCell, textAlign: colId === "name" ? "left" : "center",
+                    color: isDynamicColumn(colId) ? "#2196F3" : undefined, position: "relative",
+                  }}>
+                    {def?.label || colId.toUpperCase()}
+                    {isDynamicColumn(colId) && (
+                      <span onClick={e => { e.stopPropagation(); setConfigPopoverCol(configPopoverCol === colId ? null : colId); }}
+                        style={{ fontSize: 7, marginLeft: 2, cursor: "pointer", opacity: configPopoverCol === colId ? 1 : 0.5, color: "#2196F3" }}
+                        title="Column config">⚙</span>
+                    )}
+                    {driverInsight && (
+                      <span style={{ ...mono, fontSize: 6, fontWeight: 700, marginLeft: 2, color: insightColor, background: insightColor + "15", border: `1px solid ${insightColor}30`, padding: "0px 3px", borderRadius: 2, verticalAlign: "super" }}>
+                        {driverInsight.direction === 'positive' ? '↗' : '↘'}r{driverInsight.pearsonR > 0 ? '+' : ''}{driverInsight.pearsonR.toFixed(2)}
+                      </span>
+                    )}
+                    {configPopoverCol === colId && isDynamicColumn(colId) && def && (
+                      <ColumnConfigPopover colDef={def} config={getColumnConfig(colId)} onConfigChange={(cfg) => setColumnConfig(colId, cfg)} onClose={() => setConfigPopoverCol(null)} insight={driverInsight} />
+                    )}
+                  </th>
+                );
               })}
             </tr>
           </thead>
@@ -1335,7 +1362,34 @@ export default function F4MarketsView() {
             <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
               {cols.map(colId => {
                 const def = getColumnById(colId);
-                return <th key={colId} style={{ ...hdrCell, textAlign: colId === "name" ? "left" : "center" }}>{def?.label || colId.toUpperCase()}</th>;
+                const dynDef = def && 'isDynamic' in def ? (def as DynamicColumnDef) : null;
+                const catalogId = dynDef?.catalogMetricId || colId.replace(/^metric:/, '');
+                const dbMetricId = dynDef?.dbMetricId || catalogMetricsMap.get(catalogId)?.dbMetricId || catalogId;
+                const driverInsight = columnInsights[catalogId] || columnInsights[dbMetricId] || null;
+                const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
+                const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';
+                const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#00BCD4' : '#78909C';
+                return (
+                  <th key={colId} style={{
+                    ...hdrCell, textAlign: colId === "name" ? "left" : "center",
+                    color: isDynamicColumn(colId) ? "#2196F3" : undefined, position: "relative",
+                  }}>
+                    {def?.label || colId.toUpperCase()}
+                    {isDynamicColumn(colId) && (
+                      <span onClick={e => { e.stopPropagation(); setConfigPopoverCol(configPopoverCol === colId ? null : colId); }}
+                        style={{ fontSize: 7, marginLeft: 2, cursor: "pointer", opacity: configPopoverCol === colId ? 1 : 0.5, color: "#2196F3" }}
+                        title="Column config">⚙</span>
+                    )}
+                    {driverInsight && (
+                      <span style={{ ...mono, fontSize: 6, fontWeight: 700, marginLeft: 2, color: insightColor, background: insightColor + "15", border: `1px solid ${insightColor}30`, padding: "0px 3px", borderRadius: 2, verticalAlign: "super" }}>
+                        {driverInsight.direction === 'positive' ? '↗' : '↘'}r{driverInsight.pearsonR > 0 ? '+' : ''}{driverInsight.pearsonR.toFixed(2)}
+                      </span>
+                    )}
+                    {configPopoverCol === colId && isDynamicColumn(colId) && def && (
+                      <ColumnConfigPopover colDef={def} config={getColumnConfig(colId)} onConfigChange={(cfg) => setColumnConfig(colId, cfg)} onClose={() => setConfigPopoverCol(null)} insight={driverInsight} />
+                    )}
+                  </th>
+                );
               })}
             </tr>
           </thead>
