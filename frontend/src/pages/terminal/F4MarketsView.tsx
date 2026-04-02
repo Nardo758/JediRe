@@ -336,13 +336,24 @@ export default function F4MarketsView() {
   const [configPopoverCol, setConfigPopoverCol] = useState<string | null>(null);
   const [catalogMetricsMap, setCatalogMetricsMap] = useState<Map<string, CatalogMetric>>(new Map());
 
+  useEffect(() => {
+    const activePrefs = colPrefsMap[activeTab];
+    if (activePrefs.columnConfig && Object.keys(activePrefs.columnConfig).length > 0) {
+      setColumnConfigs(prev => ({ ...prev, ...activePrefs.columnConfig }));
+    }
+  }, [activeTab]);
+
   const getColumnConfig = useCallback((colId: string): ColumnConfig => {
     return columnConfigs[colId] || DEFAULT_COLUMN_CONFIG;
   }, [columnConfigs]);
 
   const setColumnConfig = useCallback((colId: string, config: ColumnConfig) => {
-    setColumnConfigs(prev => ({ ...prev, [colId]: config }));
-  }, []);
+    setColumnConfigs(prev => {
+      const next = { ...prev, [colId]: config };
+      colPrefsMap[activeTab].saveColumnConfig(next);
+      return next;
+    });
+  }, [activeTab]);
 
   const allActiveColumns = useMemo(() => {
     const all = new Set<string>();
@@ -358,17 +369,18 @@ export default function F4MarketsView() {
   );
 
   useEffect(() => {
-    if (dynamicMetricIds.length === 0) return;
-    const unhydrated = dynamicMetricIds.filter(id => !getColumnById(`metric:${id}`));
-    if (unhydrated.length === 0) return;
     api.get('/columns/catalog').then(res => {
       if (res.data.success) {
         const map = new Map<string, CatalogMetric>();
         for (const m of res.data.metrics) {
           map.set(m.id, m);
-          if (unhydrated.includes(m.id)) buildDynamicColumn(m);
         }
         setCatalogMetricsMap(map);
+        const unhydrated = dynamicMetricIds.filter(id => !getColumnById(`metric:${id}`));
+        for (const id of unhydrated) {
+          const metric = map.get(id);
+          if (metric) buildDynamicColumn(metric);
+        }
       }
     }).catch(() => {});
   }, [dynamicMetricIds.join(',')]);
@@ -443,13 +455,14 @@ export default function F4MarketsView() {
   }, [filteredMarkets]);
 
   const visibleGeoIds = useMemo(() => {
-    const geos: string[] = [];
+    const geos = new Set<string>();
     for (const m of filteredMarkets) {
       const slug = m.id.replace(/-[a-z]{2}$/, "");
       const state = (m.msa.split(", ").pop() || "FL").toLowerCase();
-      geos.push(`${slug}-${state}-${state}`);
+      geos.add(`${slug}-${state}-${state}`);
+      geos.add(m.id);
     }
-    return geos.slice(0, 100);
+    return [...geos].slice(0, 200);
   }, [filteredMarkets]);
 
   useEffect(() => {
@@ -565,8 +578,8 @@ export default function F4MarketsView() {
     let displayValue = cell.value;
     if (config.aggregation === 'yoy' && cell.yoyChange != null) {
       displayValue = cell.yoyChange;
-    } else if (config.aggregation === '3mo_avg' && cell.previousValue != null) {
-      displayValue = (cell.value + cell.previousValue + (cell.previousValue * 0.98)) / 3;
+    } else if (config.aggregation === '3mo_avg' && cell.trailing3Avg != null) {
+      displayValue = cell.trailing3Avg;
     }
 
     let formatted: string;
@@ -869,8 +882,10 @@ export default function F4MarketsView() {
               const sortKey = sortableMap[colId];
               const corrInfo = columnCorrelations[colId];
               const metricId = extractMetricId(colId);
-              const dbMetricId = metricId || def?.catalogMetricId || '';
-              const driverInsight = columnInsights[dbMetricId] || null;
+              const catalogId = metricId || def?.catalogMetricId || '';
+              const catalogMetric = catalogMetricsMap.get(catalogId);
+              const dbMetricId = catalogMetric?.dbMetricId || catalogId;
+              const driverInsight = columnInsights[catalogId] || columnInsights[dbMetricId] || null;
               const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
               const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';
               const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#FFA726' : '#78909C';

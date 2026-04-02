@@ -255,11 +255,14 @@ export function ColumnPicker({ viewId, activeColumns, onToggle, onReorder, onRes
                           <div style={{ ...mono, fontSize: 7, color: BT.text.muted, marginTop: 1, display: "flex", gap: 6 }}>
                             <span>{metric.description}</span>
                           </div>
-                          <div style={{ ...mono, fontSize: 7, color: BT.text.muted, marginTop: 1, display: "flex", gap: 8 }}>
+                          <div style={{ ...mono, fontSize: 7, color: BT.text.muted, marginTop: 1, display: "flex", gap: 8, flexWrap: "wrap" }}>
                             <span style={{ color: "#2196F3" }}>{metric.unit}</span>
                             <span>{metric.geoCount} geos</span>
                             <span>{metric.pointCount.toLocaleString()} pts</span>
                             <span>{metric.source}</span>
+                            {metric.earliest && metric.latest && (
+                              <span style={{ color: "#4CAF50" }}>{metric.earliest.substring(0, 7)}→{metric.latest.substring(0, 7)}</span>
+                            )}
                           </div>
                         </div>
                       </div>

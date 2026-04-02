@@ -27,15 +27,16 @@ router.get('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
     if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
     const result = await pool.query(
-      'SELECT columns FROM user_column_preferences WHERE user_id = $1 AND view_id = $2',
+      'SELECT columns, column_config FROM user_column_preferences WHERE user_id = $1 AND view_id = $2',
       [userId, viewId]
     );
 
     const columns = result.rows.length > 0
       ? result.rows[0].columns
       : DEFAULT_COLUMNS[viewId] || [];
+    const columnConfig = result.rows.length > 0 ? (result.rows[0].column_config || {}) : {};
 
-    res.json({ success: true, viewId, columns, isDefault: result.rows.length === 0 });
+    res.json({ success: true, viewId, columns, columnConfig, isDefault: result.rows.length === 0 });
   } catch (error) {
     logger.error('Error fetching column preferences:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch column preferences' });
@@ -52,20 +53,22 @@ router.put('/:viewId', async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, error: 'Not authenticated' });
 
-    const { columns } = req.body;
+    const { columns, columnConfig } = req.body;
     if (!Array.isArray(columns) || columns.length === 0) {
       return res.status(400).json({ success: false, error: 'columns must be a non-empty array of column IDs' });
     }
 
+    const configJson = columnConfig && typeof columnConfig === 'object' ? JSON.stringify(columnConfig) : null;
+
     await pool.query(
-      `INSERT INTO user_column_preferences (user_id, view_id, columns, updated_at)
-       VALUES ($1, $2, $3, NOW())
+      `INSERT INTO user_column_preferences (user_id, view_id, columns, column_config, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (user_id, view_id)
-       DO UPDATE SET columns = $3, updated_at = NOW()`,
-      [userId, viewId, JSON.stringify(columns)]
+       DO UPDATE SET columns = $3, column_config = COALESCE($4, user_column_preferences.column_config), updated_at = NOW()`,
+      [userId, viewId, JSON.stringify(columns), configJson]
     );
 
-    res.json({ success: true, viewId, columns });
+    res.json({ success: true, viewId, columns, columnConfig: columnConfig || {} });
   } catch (error) {
     logger.error('Error saving column preferences:', error);
     res.status(500).json({ success: false, error: 'Failed to save column preferences' });

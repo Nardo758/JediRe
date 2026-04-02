@@ -159,14 +159,21 @@ router.get('/grid-data', async (req: Request, res: Response) => {
       const previous = rows.find((r: any) => +r.rn === 2);
       const yoyPoint = rows.find((r: any) => +r.rn === 13);
 
+      const latestVal = latest ? parseFloat(latest.value) : null;
+      const prevVal = previous ? parseFloat(previous.value) : null;
+      const thirdVal = rows.find((r: any) => +r.rn === 3);
+      const trailing3Vals = [latestVal, prevVal, thirdVal ? parseFloat(thirdVal.value) : null].filter(v => v != null) as number[];
+      const trailing3Avg = trailing3Vals.length >= 2 ? trailing3Vals.reduce((a, b) => a + b, 0) / trailing3Vals.length : null;
+
       data[catalogId][geoKey] = {
-        value: latest ? parseFloat(latest.value) : null,
-        previousValue: previous ? parseFloat(previous.value) : null,
+        value: latestVal,
+        previousValue: prevVal,
+        trailing3Avg,
         date: latest?.date?.substring(0, 10),
         geoName: latest?.geography_name,
         geoType: latest?.geography_type,
         geoId: latest?.geography_id,
-        trend: previous ? (parseFloat(latest.value) > parseFloat(previous.value) ? 'up' : parseFloat(latest.value) < parseFloat(previous.value) ? 'down' : 'flat') : null,
+        trend: prevVal != null && latestVal != null ? (latestVal > prevVal ? 'up' : latestVal < prevVal ? 'down' : 'flat') : null,
         yoyChange: (latest && yoyPoint && parseFloat(yoyPoint.value) !== 0)
           ? ((parseFloat(latest.value) - parseFloat(yoyPoint.value)) / Math.abs(parseFloat(yoyPoint.value))) * 100
           : null,
