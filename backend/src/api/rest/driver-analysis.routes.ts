@@ -35,12 +35,13 @@ router.post('/run', async (req: Request, res: Response) => {
 router.get('/results/:propertyId', async (req: Request, res: Response) => {
   try {
     const { propertyId } = req.params;
-    const { outcomeMetric, minR, maxPValue, minLag, maxLag, limit, sortBy, sortDir } = req.query;
+    const { outcomeMetric, minR, minRSquared, maxPValue, minLag, maxLag, limit, sortBy, sortDir } = req.query;
 
     const service = new DriverAnalysisService(getPool());
     const results = await service.getResults(propertyId, {
       outcomeMetric: outcomeMetric as string,
       minR: minR ? parseFloat(minR as string) : undefined,
+      minRSquared: minRSquared ? parseFloat(minRSquared as string) : undefined,
       maxPValue: maxPValue ? parseFloat(maxPValue as string) : undefined,
       minLag: minLag ? parseInt(minLag as string) : undefined,
       maxLag: maxLag ? parseInt(maxLag as string) : undefined,

@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
-import { METRICS_CATALOG, getMetricById } from './metricsCatalog.service';
+import { METRICS_CATALOG, getMetricById, applyEmpiricalLeadLag } from './metricsCatalog.service';
 import { translateMetricId } from '../utils/metricTranslation';
 
 interface TimeSeriesPoint {
@@ -457,23 +457,17 @@ export class DriverAnalysisService {
       laggedByMap.get(outcomeCatalogId)!.push({ metricId: driverCatalogId, leadMonths: lagMonths, typicalR: r.pearsonR });
     }
 
-    let updated = 0;
     const allIds = new Set([...leadsMap.keys(), ...laggedByMap.keys()]);
-    for (const id of allIds) {
-      const metric = getMetricById(id);
-      if (!metric) continue;
+    const overrides = Array.from(allIds).map(id => ({
+      metricId: id,
+      leadsMetrics: (leadsMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5),
+      laggedBy: (laggedByMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5),
+      empiricallyValidated: true,
+    }));
 
-      const leads = (leadsMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5);
-      const lagged = (laggedByMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5);
-
-      if (leads.length > 0) metric.leadsMetrics = leads;
-      if (lagged.length > 0) metric.laggedBy = lagged;
-      metric.empiricallyValidated = true;
-      updated++;
-    }
-
-    if (updated > 0) {
-      logger.info(`[DriverAnalysis] Updated ${updated} catalog metrics with empirical lead/lag data for ${propertyId}`);
+    if (overrides.length > 0) {
+      const applied = applyEmpiricalLeadLag(overrides);
+      logger.info(`[DriverAnalysis] Applied ${applied} empirical lead/lag overrides to catalog for ${propertyId}`);
     }
   }
 
@@ -490,6 +484,7 @@ export class DriverAnalysisService {
     options?: {
       outcomeMetric?: string;
       minR?: number;
+      minRSquared?: number;
       maxPValue?: number;
       minLag?: number;
       maxLag?: number;
@@ -509,6 +504,10 @@ export class DriverAnalysisService {
     if (options?.minR) {
       query += ` AND ABS(pearson_r) >= $${idx++}`;
       params.push(options.minR);
+    }
+    if (options?.minRSquared) {
+      query += ` AND r_squared >= $${idx++}`;
+      params.push(options.minRSquared);
     }
     if (options?.maxPValue) {
       query += ` AND p_value <= $${idx++}`;
