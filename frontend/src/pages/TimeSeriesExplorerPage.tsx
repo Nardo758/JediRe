@@ -221,42 +221,6 @@ export function TimeSeriesExplorerPage() {
       <div style={{ display: 'flex', height: 'calc(100vh - 53px)' }}>
         <div style={{ width: 280, borderRight: `1px solid ${T.border.subtle}`, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, marginBottom: 8, letterSpacing: 1 }}>DATA SOURCES</div>
-            {sources.map(s => (
-              <div key={s.source} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 10 }}>
-                <span style={{ color: T.text.secondary }}>{displaySource(s.source)}</span>
-                <span style={{ color: T.text.cyan }}>{Number(s.total_points).toLocaleString()} pts</span>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border.subtle}` }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, marginBottom: 8, letterSpacing: 1 }}>INGEST DATA</div>
-            {['fred', 'census-acs'].map(src => (
-              <button
-                key={src}
-                onClick={() => triggerIngest(src)}
-                disabled={!!ingesting}
-                style={{
-                  display: 'block', width: '100%', padding: '6px 8px', marginBottom: 4,
-                  background: ingesting === src ? T.text.orange + '22' : T.bg.hover,
-                  border: `1px solid ${T.border.accent}`,
-                  color: ingesting === src ? T.text.orange : T.text.primary,
-                  fontSize: 10, fontWeight: 600, cursor: ingesting ? 'wait' : 'pointer',
-                  fontFamily: 'inherit', letterSpacing: 0.5, textAlign: 'left',
-                }}
-              >
-                {ingesting === src ? `INGESTING ${src.toUpperCase()}...` : `INGEST ${src.toUpperCase()}`}
-              </button>
-            ))}
-            {ingestResult && (
-              <div style={{ fontSize: 9, color: T.text.green, marginTop: 4, lineHeight: 1.4, wordBreak: 'break-all' }}>
-                {ingestResult}
-              </div>
-            )}
-          </div>
-
-          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border.subtle}` }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, marginBottom: 6, letterSpacing: 1 }}>FILTER</div>
             <input
               value={searchFilter}
@@ -286,9 +250,43 @@ export function TimeSeriesExplorerPage() {
                 color: T.text.primary, fontSize: 10, fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 6,
               }}
             >
-              <option value="">All Sources ({uniqueSources.length})</option>
-              {uniqueSources.map(s => <option key={s} value={s}>{displaySource(s)}</option>)}
+              <option value="">All Sources ({sources.length})</option>
+              {sources.map(s => {
+                const pts = Number(s.total_points).toLocaleString();
+                return <option key={s.source} value={s.source}>{displaySource(s.source)} ({pts} pts)</option>;
+              })}
             </select>
+            {totals && (
+              <div style={{ fontSize: 9, color: T.text.muted, marginTop: 6 }}>
+                {Number(totals.total_points).toLocaleString()} pts · {totals.total_metrics} metrics · {Number(totals.total_geos).toLocaleString()} geos
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: '10px 12px', borderBottom: `1px solid ${T.border.subtle}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, marginBottom: 8, letterSpacing: 1 }}>INGEST DATA</div>
+            {['fred', 'census-acs'].map(src => (
+              <button
+                key={src}
+                onClick={() => triggerIngest(src)}
+                disabled={!!ingesting}
+                style={{
+                  display: 'block', width: '100%', padding: '6px 8px', marginBottom: 4,
+                  background: ingesting === src ? T.text.orange + '22' : T.bg.hover,
+                  border: `1px solid ${T.border.accent}`,
+                  color: ingesting === src ? T.text.orange : T.text.primary,
+                  fontSize: 10, fontWeight: 600, cursor: ingesting ? 'wait' : 'pointer',
+                  fontFamily: 'inherit', letterSpacing: 0.5, textAlign: 'left',
+                }}
+              >
+                {ingesting === src ? `INGESTING ${src.toUpperCase()}...` : `INGEST ${src.toUpperCase()}`}
+              </button>
+            ))}
+            {ingestResult && (
+              <div style={{ fontSize: 9, color: T.text.green, marginTop: 4, lineHeight: 1.4, wordBreak: 'break-all' }}>
+                {ingestResult}
+              </div>
+            )}
           </div>
 
           <div style={{ flex: 1, overflow: 'auto' }}>
