@@ -51,7 +51,8 @@ router.get('/catalog', async (_req: Request, res: Response) => {
        GROUP BY metric_id`
     );
 
-    const statsMap = new Map<string, any>();
+    interface MetricStats { pointCount: number; geoCount: number; earliest: string; latest: string; }
+    const statsMap = new Map<string, MetricStats>();
     for (const r of statsRes.rows) {
       statsMap.set(r.metric_id, {
         pointCount: parseInt(r.point_count),
@@ -145,43 +146,83 @@ router.get('/grid-data', async (req: Request, res: Response) => {
 
     const result = await pool.query(query, params);
 
-    const data: Record<string, Record<string, any>> = {};
-    const grouped = new Map<string, any[]>();
+    interface TimeSeriesRow {
+      metric_id: string;
+      geography_type: string;
+      geography_id: string;
+      geography_name: string;
+      date: string;
+      value: string;
+      rn: string;
+    }
+    interface GridCell {
+      value: number | null;
+      previousValue: number | null;
+      trailing3Avg: number | null;
+      date: string;
+      geoName: string;
+      geoType: string;
+      geoId: string;
+      trend: 'up' | 'down' | 'flat' | null;
+      yoyChange: number | null;
+    }
+    const data: Record<string, Record<string, GridCell>> = {};
+    const grouped = new Map<string, TimeSeriesRow[]>();
 
-    for (const r of result.rows) {
+    for (const r of result.rows as TimeSeriesRow[]) {
       const key = `${r.metric_id}|${r.geography_type}|${r.geography_id}`;
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(r);
     }
 
-    for (const [key, rows] of grouped) {
+    for (const [, rows] of grouped) {
       const catalogId = dbToCatalog.get(rows[0].metric_id) || rows[0].metric_id;
       const geoKey = `${rows[0].geography_type}:${rows[0].geography_id}`;
 
       if (!data[catalogId]) data[catalogId] = {};
 
-      const latest = rows.find((r: any) => +r.rn === 1);
-      const previous = rows.find((r: any) => +r.rn === 2);
-      const yoyPoint = rows.find((r: any) => +r.rn === 13);
+      const latest = rows.find(r => +r.rn === 1);
+      const previous = rows.find(r => +r.rn === 2);
 
       const latestVal = latest ? parseFloat(latest.value) : null;
       const prevVal = previous ? parseFloat(previous.value) : null;
-      const thirdVal = rows.find((r: any) => +r.rn === 3);
-      const trailing3Vals = [latestVal, prevVal, thirdVal ? parseFloat(thirdVal.value) : null].filter(v => v != null) as number[];
+
+      const thirdPoint = rows.find(r => +r.rn === 3);
+      const trailing3Vals = [latestVal, prevVal, thirdPoint ? parseFloat(thirdPoint.value) : null].filter((v): v is number => v != null);
       const trailing3Avg = trailing3Vals.length >= 2 ? trailing3Vals.reduce((a, b) => a + b, 0) / trailing3Vals.length : null;
+
+      let yoyChange: number | null = null;
+      if (latest) {
+        const latestDate = new Date(latest.date);
+        const oneYearAgo = new Date(latestDate);
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        const targetMs = oneYearAgo.getTime();
+
+        let closestYoy: TimeSeriesRow | null = null;
+        let closestDiff = Infinity;
+        for (const r of rows) {
+          if (+r.rn <= 1) continue;
+          const diff = Math.abs(new Date(r.date).getTime() - targetMs);
+          if (diff < closestDiff && diff < 45 * 24 * 3600 * 1000) {
+            closestDiff = diff;
+            closestYoy = r;
+          }
+        }
+        if (closestYoy && parseFloat(closestYoy.value) !== 0) {
+          yoyChange = ((parseFloat(latest.value) - parseFloat(closestYoy.value)) / Math.abs(parseFloat(closestYoy.value))) * 100;
+        }
+      }
 
       data[catalogId][geoKey] = {
         value: latestVal,
         previousValue: prevVal,
         trailing3Avg,
-        date: latest?.date?.substring(0, 10),
-        geoName: latest?.geography_name,
-        geoType: latest?.geography_type,
-        geoId: latest?.geography_id,
+        date: latest?.date?.substring(0, 10) || '',
+        geoName: latest?.geography_name || '',
+        geoType: latest?.geography_type || '',
+        geoId: latest?.geography_id || '',
         trend: prevVal != null && latestVal != null ? (latestVal > prevVal ? 'up' : latestVal < prevVal ? 'down' : 'flat') : null,
-        yoyChange: (latest && yoyPoint && parseFloat(yoyPoint.value) !== 0)
-          ? ((parseFloat(latest.value) - parseFloat(yoyPoint.value)) / Math.abs(parseFloat(yoyPoint.value))) * 100
-          : null,
+        yoyChange,
       };
     }
 
@@ -215,7 +256,11 @@ router.get('/insights', async (req: Request, res: Response) => {
       ORDER BY driver_metric_id, ABS(pearson_r) DESC
     `, params);
 
-    const insights: Record<string, any> = {};
+    interface InsightEntry {
+      outcomeMetricId: string; pearsonR: number; rSquared: number;
+      lagWeeks: number; direction: string; driverName: string;
+    }
+    const insights: Record<string, InsightEntry> = {};
     for (const r of result.rows) {
       insights[r.driver_metric_id] = {
         outcomeMetricId: r.outcome_metric_id,

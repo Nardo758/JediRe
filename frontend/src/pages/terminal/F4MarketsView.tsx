@@ -7,7 +7,7 @@ import { PropertyTerminal } from "../../components/terminal/PropertyTerminal";
 import { BT } from "../../components/terminal/theme";
 import { useColumnPreferences } from "../../hooks/useColumnPreferences";
 import { ColumnPicker } from "../../components/terminal/ColumnPicker";
-import { ViewId, getColumnById, isDynamicColumn, extractMetricId, formatMetricValue, buildDynamicColumn, CatalogMetric } from "../../config/columnRegistry";
+import { ViewId, getColumnById, isDynamicColumn, extractMetricId, formatMetricValue, buildDynamicColumn, CatalogMetric, DynamicColumnDef } from "../../config/columnRegistry";
 import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
 import { useColumnCorrelations, useMetricRecommendations } from "../../hooks/useCorrelations";
 import type { MetricRecommendation } from "../../hooks/useCorrelations";
@@ -336,12 +336,12 @@ export default function F4MarketsView() {
   const [configPopoverCol, setConfigPopoverCol] = useState<string | null>(null);
   const [catalogMetricsMap, setCatalogMetricsMap] = useState<Map<string, CatalogMetric>>(new Map());
 
+  const activeColumnConfig = colPrefsMap[activeTab].columnConfig;
   useEffect(() => {
-    const activePrefs = colPrefsMap[activeTab];
-    if (activePrefs.columnConfig && Object.keys(activePrefs.columnConfig).length > 0) {
-      setColumnConfigs(prev => ({ ...prev, ...activePrefs.columnConfig }));
+    if (activeColumnConfig && Object.keys(activeColumnConfig).length > 0) {
+      setColumnConfigs(prev => ({ ...prev, ...activeColumnConfig }));
     }
-  }, [activeTab]);
+  }, [activeTab, activeColumnConfig]);
 
   const getColumnConfig = useCallback((colId: string): ColumnConfig => {
     return columnConfigs[colId] || DEFAULT_COLUMN_CONFIG;
@@ -684,7 +684,8 @@ export default function F4MarketsView() {
 
   const renderSubmarketCell = (colId: string, s: typeof SUBMARKET_INDEX[number]) => {
     if (isDynamicColumn(colId)) {
-      return renderDynamicCell(colId, "submarket", (s as any).geoId || s.name);
+      const subGeoId = s.name.toLowerCase().replace(/\s+/g, "-");
+      return renderDynamicCell(colId, "submarket", subGeoId);
     }
     const cellMap: Record<string, React.ReactNode> = {
       name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{s.name}</span>,
@@ -704,7 +705,8 @@ export default function F4MarketsView() {
 
   const renderPropertyCell = (colId: string, p: typeof PROPERTY_INDEX[number]) => {
     if (isDynamicColumn(colId)) {
-      return renderDynamicCell(colId, "property", (p as any).geoId || p.name);
+      const propGeoId = p.name.toLowerCase().replace(/\s+/g, "-");
+      return renderDynamicCell(colId, "property", propGeoId);
     }
     const cellMap: Record<string, React.ReactNode> = {
       name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span>,
@@ -747,10 +749,13 @@ export default function F4MarketsView() {
           }
         } catch {}
       }
-      if (template.column_config && typeof template.column_config === 'object') {
-        setColumnConfigs(template.column_config);
+      const templateConfig = template.column_config && typeof template.column_config === 'object'
+        ? template.column_config as Record<string, ColumnConfig>
+        : {};
+      if (Object.keys(templateConfig).length > 0) {
+        setColumnConfigs(templateConfig);
       }
-      colPrefsMap[activeTab].saveColumns(template.columns);
+      colPrefsMap[activeTab].saveColumns(template.columns, templateConfig);
       gridTemplates.setActiveTemplate(template.id);
     }
     setTemplateDropdownOpen(false);
@@ -903,8 +908,8 @@ export default function F4MarketsView() {
               const corrInfo = columnCorrelations[colId];
               const metricId = extractMetricId(colId);
               const catalogId = metricId || def?.catalogMetricId || '';
-              const catalogMetric = catalogMetricsMap.get(catalogId);
-              const dbMetricId = catalogMetric?.dbMetricId || catalogId;
+              const dynDef = def as DynamicColumnDef | undefined;
+              const dbMetricId = dynDef?.dbMetricId || catalogMetricsMap.get(catalogId)?.dbMetricId || catalogId;
               const driverInsight = columnInsights[catalogId] || columnInsights[dbMetricId] || null;
               const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
               const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';

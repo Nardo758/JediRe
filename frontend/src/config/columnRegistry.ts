@@ -141,14 +141,24 @@ export interface CatalogMetric {
   latest: string;
 }
 
-export function buildDynamicColumn(metric: CatalogMetric): ColumnDef {
+export interface DynamicColumnDef extends ColumnDef {
+  isDynamic: true;
+  catalogMetricId: string;
+  dbMetricId: string;
+  metricUnit: string;
+  metricSource?: string;
+  metricFrequency?: string;
+  higherIsBetter?: boolean;
+}
+
+export function buildDynamicColumn(metric: CatalogMetric): DynamicColumnDef {
   const colId = `metric:${metric.id}`;
-  if (dynamicColumnCache.has(colId)) return dynamicColumnCache.get(colId)!;
+  if (dynamicColumnCache.has(colId)) return dynamicColumnCache.get(colId)! as DynamicColumnDef;
 
   const cat = (CATEGORY_META[metric.category] ? metric.category : 'market') as ColumnCategory;
   const format = UNIT_FORMATS[metric.unit] || ((v: number | null) => v != null ? v.toFixed(2) : '—');
 
-  const col: ColumnDef = {
+  const col: DynamicColumnDef = {
     id: colId,
     label: metric.name.length > 12 ? metric.name.substring(0, 10) + '…' : metric.name,
     shortLabel: metric.id,
@@ -158,9 +168,14 @@ export function buildDynamicColumn(metric: CatalogMetric): ColumnDef {
     align: "center",
     description: metric.description,
     catalogMetricId: metric.id,
+    dbMetricId: metric.dbMetricId,
     views: ALL_VIEWS,
     isDynamic: true,
     unit: metric.unit,
+    metricUnit: metric.unit,
+    metricSource: metric.source,
+    metricFrequency: metric.updateFrequency,
+    higherIsBetter: metric.higherIsBetter,
     format,
   };
 
