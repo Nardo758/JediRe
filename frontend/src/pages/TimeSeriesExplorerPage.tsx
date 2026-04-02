@@ -73,6 +73,25 @@ function MiniChart({ data, width = 200, height = 40 }: { data: DataPoint[]; widt
   );
 }
 
+const SOURCE_DISPLAY: Record<string, string> = {
+  'DOT_FL': 'DOT Traffic',
+  'census_acs': 'Census ACS',
+  'census_acs5': 'Census ACS-5',
+  'fred': 'FRED',
+  'fred_atlfed': 'FRED (Atlanta Fed)',
+  'fred_bea': 'FRED (BEA)',
+  'fred_bls': 'FRED (BLS)',
+  'fred_census': 'FRED (Census)',
+  'fred_eia': 'FRED (EIA)',
+  'fred_fhfa': 'FRED (FHFA)',
+  'fred_sp': 'FRED (S&P)',
+  'zillow': 'Zillow',
+};
+
+function displaySource(raw: string): string {
+  return SOURCE_DISPLAY[raw] || raw.toUpperCase();
+}
+
 export function TimeSeriesExplorerPage() {
   const [metrics, setMetrics] = useState<MetricSummary[]>([]);
   const [sources, setSources] = useState<SourceSummary[]>([]);
@@ -200,7 +219,7 @@ export function TimeSeriesExplorerPage() {
             <div style={{ fontSize: 10, fontWeight: 700, color: T.text.muted, marginBottom: 8, letterSpacing: 1 }}>DATA SOURCES</div>
             {sources.map(s => (
               <div key={s.source} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 10 }}>
-                <span style={{ color: T.text.secondary, textTransform: 'uppercase' }}>{s.source}</span>
+                <span style={{ color: T.text.secondary }}>{displaySource(s.source)}</span>
                 <span style={{ color: T.text.cyan }}>{Number(s.total_points).toLocaleString()} pts</span>
               </div>
             ))}
@@ -263,7 +282,7 @@ export function TimeSeriesExplorerPage() {
               }}
             >
               <option value="">All Sources ({uniqueSources.length})</option>
-              {uniqueSources.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
+              {uniqueSources.map(s => <option key={s} value={s}>{displaySource(s)}</option>)}
             </select>
           </div>
 
@@ -286,7 +305,7 @@ export function TimeSeriesExplorerPage() {
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: T.text.primary, flex: 1 }}>{m.metric_id}</div>
-                    <span style={{ fontSize: 8, color: T.text.orange, background: 'rgba(255,170,0,0.1)', padding: '1px 4px', textTransform: 'uppercase', letterSpacing: 0.5 }}>{m.source}</span>
+                    <span style={{ fontSize: 8, color: T.text.orange, background: 'rgba(255,170,0,0.1)', padding: '1px 4px', letterSpacing: 0.5 }}>{displaySource(m.source)}</span>
                   </div>
                   <div style={{ fontSize: 9, color: T.text.secondary, marginTop: 2 }}>{m.geography_name || m.geography_id}</div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 3 }}>
