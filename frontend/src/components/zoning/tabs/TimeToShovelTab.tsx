@@ -277,8 +277,6 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
   const expectedCase = mcData?.percentiles.p50 ?? 0;
   const worstCase = mcData?.percentiles.p90 ?? 0;
 
-  const maxProb = mcData ? Math.max(...mcData.histogram.map(h => h.probability)) : 1;
-
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <div className="px-4 py-2 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-cyan-50 flex items-center justify-between">
@@ -289,134 +287,84 @@ function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, i
         {mcData && <button onClick={onRerun} className="text-[10px] text-teal-600 hover:text-teal-800 font-medium">Recalculate</button>}
       </div>
 
-      <div className="px-4 py-3 space-y-3">
-        <div className="grid grid-cols-3 gap-2 bg-gradient-to-b from-gray-50 to-white rounded border border-gray-200 p-2">
-          <div className="text-center">
-            <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Best Case</div>
-            <div className="text-2xl font-bold text-green-600 mt-1">{bestCase}</div>
-            <div className="text-[9px] text-gray-500">months</div>
+      <div className="px-4 py-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div>
+            <div className="grid grid-cols-3 gap-2 bg-gradient-to-b from-gray-50 to-white rounded border border-gray-200 p-2">
+              <div className="text-center">
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Best Case</div>
+                <div className="text-2xl font-bold text-green-600 mt-1">{bestCase}</div>
+                <div className="text-[9px] text-gray-500">months</div>
+              </div>
+              <div className="text-center border-l border-r border-gray-300">
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Expected</div>
+                <div className="text-2xl font-bold text-blue-700 mt-1">{expectedCase}</div>
+                <div className="text-[9px] text-gray-500">months</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Worst Case</div>
+                <div className="text-2xl font-bold text-red-600 mt-1">{worstCase}</div>
+                <div className="text-[9px] text-gray-500">months</div>
+              </div>
+            </div>
+            {mcData && (
+              <p className="text-[9px] text-gray-400 text-center mt-1.5">Monte Carlo ({mcData.nSimulations.toLocaleString()} iterations)</p>
+            )}
           </div>
-          <div className="text-center border-l border-r border-gray-300">
-            <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Expected</div>
-            <div className="text-2xl font-bold text-blue-700 mt-1">{expectedCase}</div>
-            <div className="text-[9px] text-gray-500">months</div>
-          </div>
-          <div className="text-center">
-            <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Worst Case</div>
-            <div className="text-2xl font-bold text-red-600 mt-1">{worstCase}</div>
-            <div className="text-[9px] text-gray-500">months</div>
-          </div>
-        </div>
 
-        {mcData && (
-          <p className="text-[9px] text-gray-400 text-center">Monte Carlo ({mcData.nSimulations.toLocaleString()} iterations)</p>
-        )}
-
-        {mcData && (() => {
-          const isConstruction = (name: string) => /construction/i.test(name);
-          const entitlementPhases = mcData.ganttPhases.filter(p => !isConstruction(p.name));
-          const constructionPhase = mcData.ganttPhases.find(p => isConstruction(p.name));
-          const entitlementMaxEnd = entitlementPhases.reduce((max, p) => Math.max(max, p.startMonth + p.p90Duration), 0.1);
-          const entitlementScale = 100 / entitlementMaxEnd;
-          return (
-            <div>
-              <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Phase Timeline</h4>
-              {entitlementPhases.length > 0 && (
-                <div className="space-y-1 mb-2">
-                  <div className="text-[8px] text-gray-400 uppercase tracking-wide">Entitlement — {entitlementMaxEnd.toFixed(1)} mo (p90)</div>
-                  {entitlementPhases.map((phase, i) => (
-                    <div key={i} className="flex items-center gap-1.5">
-                      <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{phase.name}</span>
+          {mcData && (() => {
+            const isConstruction = (name: string) => /construction/i.test(name);
+            const entitlementPhases = mcData.ganttPhases.filter(p => !isConstruction(p.name));
+            const constructionPhase = mcData.ganttPhases.find(p => isConstruction(p.name));
+            const entitlementMaxEnd = entitlementPhases.reduce((max, p) => Math.max(max, p.startMonth + p.p90Duration), 0.1);
+            const entitlementScale = 100 / entitlementMaxEnd;
+            return (
+              <div>
+                <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Phase Timeline</h4>
+                {entitlementPhases.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    <div className="text-[8px] text-gray-400 uppercase tracking-wide">Entitlement — {entitlementMaxEnd.toFixed(1)} mo (p90)</div>
+                    {entitlementPhases.map((phase, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{phase.name}</span>
+                        <div className="flex-1 h-3 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                          <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
+                          <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
+                          <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
+                          <span className="absolute text-[7px] text-gray-700 font-semibold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '0px', transform: 'translateX(-50%)' }}>
+                            {phase.p50Duration}mo
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {constructionPhase && (
+                  <div className="space-y-1">
+                    <div className="text-[8px] text-gray-400 uppercase tracking-wide">Construction</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{constructionPhase.name}</span>
                       <div className="flex-1 h-3 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
-                        <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
-                        <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
-                        <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
-                        <span className="absolute text-[7px] text-gray-700 font-semibold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '0px', transform: 'translateX(-50%)' }}>
-                          {phase.p50Duration}mo
+                        <div className="absolute h-full bg-orange-200 rounded" style={{ left: 0, width: '100%' }} />
+                        <div className="absolute h-full bg-orange-400 rounded" style={{ left: 0, width: `${(constructionPhase.p50Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
+                        <div className="absolute h-full bg-orange-500 rounded" style={{ left: 0, width: `${(constructionPhase.p10Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
+                        <span className="absolute text-[7px] text-white font-semibold" style={{ left: '50%', top: '0px', transform: 'translateX(-50%)' }}>
+                          {constructionPhase.p50Duration}mo
                         </span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-              {constructionPhase && (
-                <div className="space-y-1">
-                  <div className="text-[8px] text-gray-400 uppercase tracking-wide">Construction</div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{constructionPhase.name}</span>
-                    <div className="flex-1 h-3 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
-                      <div className="absolute h-full bg-orange-200 rounded" style={{ left: 0, width: '100%' }} />
-                      <div className="absolute h-full bg-orange-400 rounded" style={{ left: 0, width: `${(constructionPhase.p50Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
-                      <div className="absolute h-full bg-orange-500 rounded" style={{ left: 0, width: `${(constructionPhase.p10Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
-                      <span className="absolute text-[7px] text-white font-semibold" style={{ left: '50%', top: '0px', transform: 'translateX(-50%)' }}>
-                        {constructionPhase.p50Duration}mo
-                      </span>
-                    </div>
                   </div>
+                )}
+                <div className="flex items-center gap-3 mt-1.5 justify-center text-[8px] text-gray-500 flex-wrap">
+                  <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-green-400 rounded" />Best</span>
+                  <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-blue-300 rounded" />Expected</span>
+                  <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-red-200 rounded" />Worst</span>
+                  {constructionPhase && <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-orange-400 rounded" />Construction</span>}
                 </div>
-              )}
-              <div className="flex items-center gap-3 mt-1.5 justify-center text-[8px] text-gray-500 flex-wrap">
-                <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-green-400 rounded" />Best</span>
-                <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-blue-300 rounded" />Expected</span>
-                <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-red-200 rounded" />Worst</span>
-                {constructionPhase && <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-orange-400 rounded" />Construction</span>}
               </div>
-            </div>
-          );
-        })()}
-
-        {mcData && mcData.histogram.filter(h => h.probability > 0.001).length > 0 && (
-          <div>
-            <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Probability Distribution</h4>
-            <div className="flex items-end gap-px bg-gray-50 rounded border border-gray-200 px-1.5 pt-1.5" style={{ height: '56px' }}>
-              {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
-                const heightPct = (h.probability / maxProb) * 100;
-                const isExpected = Math.abs(h.monthBucket - expectedCase) < 2;
-                return (
-                  <div
-                    key={i}
-                    className={`flex-1 rounded-t transition-colors cursor-default ${isExpected ? 'bg-blue-600' : 'bg-blue-300 hover:bg-blue-400'}`}
-                    style={{ height: `${Math.max(3, heightPct)}%` }}
-                    title={`${h.monthBucket} months: ${(h.probability * 100).toFixed(1)}%`}
-                  />
-                );
-              })}
-            </div>
-            <div className="flex justify-between text-[7px] text-gray-400 mt-0.5 px-1.5">
-              {(() => {
-                const bars = mcData.histogram.filter(h => h.probability > 0.001);
-                if (bars.length === 0) return null;
-                const first = bars[0];
-                const mid = bars[Math.floor(bars.length / 2)];
-                const last = bars[bars.length - 1];
-                return [first, mid, last].filter(Boolean).map(b => (
-                  <span key={b.monthBucket}>{b.monthBucket}mo</span>
-                ));
-              })()}
-            </div>
-          </div>
-        )}
-
-        {mcData && (
-          <div>
-            <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Financial Impact</h4>
-            <div className="grid grid-cols-3 gap-1.5">
-              {[
-                { label: 'Best (P10)', data: mcData.financialImpact.p10, color: 'border-green-200 bg-green-50' },
-                { label: 'Expected (P50)', data: mcData.financialImpact.p50, color: 'border-blue-200 bg-blue-50' },
-                { label: 'Worst (P90)', data: mcData.financialImpact.p90, color: 'border-red-200 bg-red-50' },
-              ].map(item => (
-                <div key={item.label} className={`border rounded px-2 py-1.5 ${item.color}`}>
-                  <div className="text-[8px] font-medium text-gray-600">{item.label}</div>
-                  <div className="text-[10px] font-bold text-gray-900">${(item.data.carryingCost / 1000).toFixed(0)}K</div>
-                  <div className={`text-[8px] font-medium ${item.data.irrImpact < -1 ? 'text-red-600' : 'text-amber-600'}`}>
-                    {item.data.irrImpact > 0 ? '+' : ''}{item.data.irrImpact}% IRR
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+            );
+          })()}
+        </div>
       </div>
     </div>
   );
