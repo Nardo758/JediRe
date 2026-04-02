@@ -921,7 +921,7 @@ export default function F4MarketsView() {
               const driverInsight = columnInsights[catalogId] || columnInsights[dbMetricId] || null;
               const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
               const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';
-              const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#FFA726' : '#78909C';
+              const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#00BCD4' : '#78909C';
               return (
                 <th
                   key={colId}

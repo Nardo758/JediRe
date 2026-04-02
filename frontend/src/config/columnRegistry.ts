@@ -49,12 +49,12 @@ export const CATEGORY_META: Record<string, { label: string; color: string }> = {
   traffic_physical: { label: "TRAFFIC PHYSICAL", color: "#2196F3" },
   traffic_digital: { label: "TRAFFIC DIGITAL", color: "#42A5F5" },
   traffic_composite: { label: "TRAFFIC COMPOSITE", color: "#1E88E5" },
-  competition: { label: "COMPETITION", color: "#E91E63" },
-  risk: { label: "RISK", color: "#FF5252" },
-  cycle: { label: "CYCLE", color: "#AB47BC" },
-  macro: { label: "MACRO", color: "#78909C" },
+  market: { label: "MARKET", color: "#AB47BC" },
+  risk: { label: "RISK", color: "#EF5350" },
   sfr: { label: "SFR", color: "#26A69A" },
-  market: { label: "MARKET", color: "#FFA726" },
+  macro: { label: "MACRO", color: "#78909C" },
+  competition: { label: "COMPETITION", color: "#E91E63" },
+  cycle: { label: "CYCLE", color: "#AB47BC" },
 };
 
 const DASH_BROWSE: ViewId[] = ["f4_dashboard", "f4_browse"];
