@@ -108,6 +108,7 @@ import tickerRoutes from './ticker.routes';
 import agentSettingsRoutes from './agent-settings.routes';
 import columnPreferencesRoutes from './column-preferences.routes';
 import timeSeriesRoutes from './time-series.routes';
+import driverAnalysisRoutes from './driver-analysis.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -398,6 +399,8 @@ export function setupRESTRoutes(app: Application): void {
   app.use(`${API_PREFIX}/admin/ingest`, ingestionRoutes);
 
   app.use(`${API_PREFIX}/time-series`, timeSeriesRoutes);
+
+  app.use(`${API_PREFIX}/driver-analysis`, driverAnalysisRoutes);
 
   // Deal Capsule routes (3-layer capsule CRUD, documents, shares, collision)
   const { getPool: getCapsulePool } = require('../../database/connection');
