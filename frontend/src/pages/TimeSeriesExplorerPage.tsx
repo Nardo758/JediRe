@@ -88,6 +88,7 @@ const SOURCE_DISPLAY: Record<string, string> = {
   'fred_fhfa': 'FRED (FHFA)',
   'fred_sp': 'FRED (S&P)',
   'zillow': 'Zillow',
+  'derived': 'Computed',
 };
 
 function displaySource(raw: string): string {
