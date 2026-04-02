@@ -1322,8 +1322,6 @@ export default function F4MarketsView() {
         <GearButton tab="dashboard" />
       </div>
 
-      {renderSuggestedMetrics()}
-
       {/* Main Table - Full Width */}
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
         {renderMarketTable("dashboard")}
@@ -1414,7 +1412,6 @@ export default function F4MarketsView() {
         </button>
         <GearButton tab="browse" />
       </div>
-      {renderSuggestedMetrics()}
       {renderMarketTable("browse")}
     </div>
   );
@@ -1429,7 +1426,6 @@ export default function F4MarketsView() {
         <div style={{ flex: 1 }} />
         <GearButton tab="submarkets" />
       </div>
-      {renderSuggestedMetrics()}
       {subEmpty ? <AwaitingData loading={subLoading} label="submarket data" /> : (
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
@@ -1508,7 +1504,6 @@ export default function F4MarketsView() {
         <div style={{ flex: 1 }} />
         <GearButton tab="properties" />
       </div>
-      {renderSuggestedMetrics()}
       {propEmpty ? <AwaitingData loading={propLoading} label="property data" /> : (
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
@@ -1636,6 +1631,9 @@ export default function F4MarketsView() {
 
       {/* Metrics Legend */}
       {renderMetricsLegend()}
+
+      {/* Suggested Metrics (shared across all tabs) */}
+      {renderSuggestedMetrics()}
 
       {/* Tab Content */}
       {renderTabContent()}
