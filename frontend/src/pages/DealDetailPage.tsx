@@ -380,15 +380,18 @@ const DealTypeBadge: React.FC<{
   return (
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
       <button
-        onClick={() => setOpen(p => !p)}
+        onClick={() => { if (!saving) setOpen(p => !p); }}
+        disabled={saving}
         style={{
           fontSize: 8, fontWeight: 700, letterSpacing: 0.8,
           padding: '1px 6px', textTransform: 'uppercase',
           color: opt.color, border: `1px solid ${opt.color}44`,
           background: open ? `${opt.color}15` : 'transparent',
-          cursor: 'pointer', fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
+          cursor: saving ? 'wait' : 'pointer',
+          fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
           display: 'flex', alignItems: 'center', gap: 4,
           opacity: saving ? 0.5 : 1,
+          pointerEvents: saving ? 'none' : 'auto',
         }}
       >
         {opt.label}
