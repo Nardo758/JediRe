@@ -161,7 +161,17 @@ export function TimeSeriesExplorerPage() {
     setIngesting(null);
   };
 
-  const uniqueGeos = [...new Set(metrics.map(m => m.geography_id))].sort();
+  const geoNameMap = new Map<string, string>();
+  for (const m of metrics) {
+    if (m.geography_name && !geoNameMap.has(m.geography_id)) {
+      geoNameMap.set(m.geography_id, m.geography_name);
+    }
+  }
+  const uniqueGeos = [...new Set(metrics.map(m => m.geography_id))].sort((a, b) => {
+    const nameA = geoNameMap.get(a) || a;
+    const nameB = geoNameMap.get(b) || b;
+    return nameA.localeCompare(nameB);
+  });
   const uniqueSources = [...new Set(metrics.map(m => m.source))].sort();
   const filteredMetrics = metrics.filter(m => {
     if (searchFilter && !m.metric_id.toLowerCase().includes(searchFilter.toLowerCase()) && !m.geography_name.toLowerCase().includes(searchFilter.toLowerCase())) return false;
@@ -242,7 +252,7 @@ export function TimeSeriesExplorerPage() {
               }}
             >
               <option value="">All Geographies ({uniqueGeos.length})</option>
-              {uniqueGeos.map(g => <option key={g} value={g}>{g}</option>)}
+              {uniqueGeos.map(g => <option key={g} value={g}>{geoNameMap.get(g) || g}</option>)}
             </select>
             <select
               value={sourceFilter}
