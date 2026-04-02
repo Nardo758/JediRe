@@ -933,6 +933,13 @@ export default function F4MarketsView() {
                 >
                   {isDynamicColumn(colId) && <span style={{ fontSize: 6, marginRight: 1, opacity: 0.6 }}>◆</span>}
                   {label}
+                  {isDynamicColumn(colId) && (
+                    <span
+                      onClick={e => { e.stopPropagation(); setConfigPopoverCol(configPopoverCol === colId ? null : colId); }}
+                      style={{ fontSize: 7, marginLeft: 2, cursor: "pointer", opacity: configPopoverCol === colId ? 1 : 0.5, color: "#2196F3" }}
+                      title="Column config"
+                    >⚙</span>
+                  )}
                   {driverInsight && (
                     <span style={{
                       ...mono, fontSize: 6, fontWeight: 700, marginLeft: 2,

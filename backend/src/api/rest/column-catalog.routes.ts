@@ -140,7 +140,7 @@ router.get('/grid-data', async (req: Request, res: Response) => {
     query += `
       )
       SELECT metric_id, geography_type, geography_id, geography_name, date, value, rn
-      FROM ranked WHERE rn <= 13
+      FROM ranked WHERE rn <= 60
       ORDER BY metric_id, geography_type, geography_id, rn
     `;
 
