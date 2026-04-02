@@ -82,7 +82,8 @@ export function TimeSeriesExplorerPage() {
   const [detailData, setDetailData] = useState<DataPoint[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
-  const [geoFilter, setGeoFilter] = useState<string>('atlanta-ga-ga');
+  const [geoFilter, setGeoFilter] = useState<string>('');
+  const [sourceFilter, setSourceFilter] = useState<string>('');
   const [ingesting, setIngesting] = useState<string | null>(null);
   const [ingestResult, setIngestResult] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -161,9 +162,11 @@ export function TimeSeriesExplorerPage() {
   };
 
   const uniqueGeos = [...new Set(metrics.map(m => m.geography_id))].sort();
+  const uniqueSources = [...new Set(metrics.map(m => m.source))].sort();
   const filteredMetrics = metrics.filter(m => {
     if (searchFilter && !m.metric_id.toLowerCase().includes(searchFilter.toLowerCase()) && !m.geography_name.toLowerCase().includes(searchFilter.toLowerCase())) return false;
     if (geoFilter && m.geography_id !== geoFilter) return false;
+    if (sourceFilter && m.source !== sourceFilter) return false;
     return true;
   });
 
@@ -238,8 +241,19 @@ export function TimeSeriesExplorerPage() {
                 color: T.text.primary, fontSize: 10, fontFamily: 'inherit', boxSizing: 'border-box',
               }}
             >
-              <option value="">All Geographies</option>
+              <option value="">All Geographies ({uniqueGeos.length})</option>
               {uniqueGeos.map(g => <option key={g} value={g}>{g}</option>)}
+            </select>
+            <select
+              value={sourceFilter}
+              onChange={e => setSourceFilter(e.target.value)}
+              style={{
+                width: '100%', padding: '5px 8px', background: T.bg.panel, border: `1px solid ${T.border.accent}`,
+                color: T.text.primary, fontSize: 10, fontFamily: 'inherit', boxSizing: 'border-box', marginTop: 6,
+              }}
+            >
+              <option value="">All Sources ({uniqueSources.length})</option>
+              {uniqueSources.map(s => <option key={s} value={s}>{s.toUpperCase()}</option>)}
             </select>
           </div>
 
@@ -260,7 +274,10 @@ export function TimeSeriesExplorerPage() {
                     borderLeft: isSelected ? `2px solid ${T.text.orange}` : '2px solid transparent',
                   }}
                 >
-                  <div style={{ fontSize: 10, fontWeight: 700, color: T.text.primary }}>{m.metric_id}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: T.text.primary, flex: 1 }}>{m.metric_id}</div>
+                    <span style={{ fontSize: 8, color: T.text.orange, background: 'rgba(255,170,0,0.1)', padding: '1px 4px', textTransform: 'uppercase', letterSpacing: 0.5 }}>{m.source}</span>
+                  </div>
                   <div style={{ fontSize: 9, color: T.text.secondary, marginTop: 2 }}>{m.geography_name || m.geography_id}</div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 3 }}>
                     <span style={{ fontSize: 9, color: T.text.cyan }}>{m.data_points} pts</span>
