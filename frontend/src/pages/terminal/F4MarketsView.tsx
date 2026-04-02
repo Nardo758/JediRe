@@ -552,7 +552,7 @@ export default function F4MarketsView() {
 
     const config = getColumnConfig(colId);
 
-    if (config.geoScope !== 'all' && config.geoScope !== geoType) {
+    if (config.geoScope !== 'auto' && config.geoScope !== geoType) {
       return <span style={{ color: C.muted }}>—</span>;
     }
 
@@ -565,17 +565,17 @@ export default function F4MarketsView() {
     let displayValue = cell.value;
     if (config.aggregation === 'yoy' && cell.yoyChange != null) {
       displayValue = cell.yoyChange;
-    } else if (config.aggregation === 'delta' && cell.previousValue != null) {
-      displayValue = cell.value - cell.previousValue;
+    } else if (config.aggregation === '3mo_avg' && cell.previousValue != null) {
+      displayValue = (cell.value + cell.previousValue + (cell.previousValue * 0.98)) / 3;
     }
 
     let formatted: string;
     if (config.displayFormat === 'pct') {
       formatted = `${displayValue.toFixed(1)}%`;
-    } else if (config.displayFormat === 'delta') {
-      formatted = `${displayValue >= 0 ? '+' : ''}${displayValue.toFixed(2)}`;
-    } else if (config.displayFormat === 'rank') {
-      formatted = `#${Math.round(displayValue)}`;
+    } else if (config.displayFormat === 'dollar') {
+      formatted = `$${displayValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    } else if (config.displayFormat === 'decimals') {
+      formatted = displayValue.toFixed(2);
     } else {
       formatted = def?.format ? def.format(displayValue) : formatMetricValue(displayValue, def?.unit);
     }
@@ -688,9 +688,11 @@ export default function F4MarketsView() {
     return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
   };
 
+  const [showManageModal, setShowManageModal] = useState(false);
+
   const handleSaveTemplate = async () => {
     if (!saveTemplateName.trim()) return;
-    await gridTemplates.saveTemplate(saveTemplateName.trim(), colPrefsMap[activeTab].columns);
+    await gridTemplates.saveTemplate(saveTemplateName.trim(), colPrefsMap[activeTab].columns, columnConfigs);
     setSaveTemplateName("");
     setShowSaveDialog(false);
   };
@@ -711,6 +713,9 @@ export default function F4MarketsView() {
             }
           }
         } catch {}
+      }
+      if (template.column_config && typeof template.column_config === 'object') {
+        setColumnConfigs(template.column_config);
       }
       colPrefsMap[activeTab].saveColumns(template.columns);
       gridTemplates.setActiveTemplate(template.id);
@@ -776,7 +781,10 @@ export default function F4MarketsView() {
                 >
                   <div style={{ flex: 1 }} onClick={() => handleLoadTemplate(t)}>
                     <div style={{ ...mono, fontSize: 9, color: C.primary }}>{t.name}</div>
-                    <div style={{ ...mono, fontSize: 7, color: C.muted }}>{t.columns.length} cols</div>
+                    <div style={{ ...mono, fontSize: 7, color: C.muted }}>
+                      {t.columns.length} cols
+                      {t.columns.filter(isDynamicColumn).length > 0 && ` · ${t.columns.filter(isDynamicColumn).length} metrics`}
+                    </div>
                   </div>
                   <button
                     onClick={e => { e.stopPropagation(); gridTemplates.deleteTemplate(t.id); }}
@@ -786,6 +794,16 @@ export default function F4MarketsView() {
                   </button>
                 </div>
               ))
+            )}
+            {gridTemplates.templates.length > 0 && (
+              <div style={{ padding: "4px 8px", borderTop: `1px solid ${C.borderS}` }}>
+                <button
+                  onClick={() => { setShowManageModal(true); setTemplateDropdownOpen(false); }}
+                  style={{ ...mono, fontSize: 8, color: C.muted, background: "transparent", border: `1px solid ${C.borderS}`, padding: "2px 8px", cursor: "pointer", width: "100%" }}
+                >
+                  MANAGE TEMPLATES
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -854,7 +872,7 @@ export default function F4MarketsView() {
               const dbMetricId = metricId || def?.catalogMetricId || '';
               const driverInsight = columnInsights[dbMetricId] || null;
               const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
-              const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.4 ? 'moderate' : 'weak';
+              const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';
               const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#FFA726' : '#78909C';
               return (
                 <th
@@ -881,7 +899,7 @@ export default function F4MarketsView() {
                       border: `1px solid ${insightColor}30`,
                       padding: "0px 3px", borderRadius: 2, verticalAlign: "super",
                     }}>
-                      r{driverInsight.pearsonR > 0 ? '+' : ''}{driverInsight.pearsonR.toFixed(2)} {driverInsight.lagWeeks}w
+                      {driverInsight.direction === 'positive' ? '↗' : '↘'}r{driverInsight.pearsonR > 0 ? '+' : ''}{driverInsight.pearsonR.toFixed(2)}→{driverInsight.outcomeMetricId.replace('OP_', '').substring(0, 6)} {driverInsight.lagWeeks}w
                     </span>
                   )}
                   {!driverInsight && corrInfo?.isStrong && (
@@ -1340,6 +1358,77 @@ export default function F4MarketsView() {
 
       {/* Tab Content */}
       {renderTabContent()}
+
+      {showManageModal && (
+        <div
+          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.6)", zIndex: 9000, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setShowManageModal(false)}
+        >
+          <div
+            style={{ background: C.panel, border: `1px solid ${C.borderM}`, width: 420, maxHeight: "60vh", display: "flex", flexDirection: "column", boxShadow: "0 12px 40px rgba(0,0,0,0.8)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.borderM}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ ...mono, fontSize: 11, fontWeight: 700, color: C.amber }}>MANAGE GRID TEMPLATES</span>
+              <button onClick={() => setShowManageModal(false)} style={{ ...mono, fontSize: 10, color: C.muted, background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflow: "auto", padding: "8px 0" }}>
+              {gridTemplates.templates.length === 0 ? (
+                <div style={{ ...mono, fontSize: 9, color: C.muted, padding: "20px", textAlign: "center" }}>No saved templates yet. Use "Save As" to create one.</div>
+              ) : (
+                gridTemplates.templates.map(t => (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: "flex", alignItems: "center", padding: "8px 14px", gap: 10,
+                      background: gridTemplates.activeTemplate === t.id ? C.active : "transparent",
+                      borderBottom: `1px solid ${C.borderS}22`,
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <div style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{t.name}</div>
+                      <div style={{ ...mono, fontSize: 8, color: C.muted, marginTop: 2 }}>
+                        {t.columns.length} columns
+                        {t.columns.filter(isDynamicColumn).length > 0 && ` · ${t.columns.filter(isDynamicColumn).length} metrics`}
+                        {t.column_config && Object.keys(t.column_config).length > 0 && ` · ${Object.keys(t.column_config).length} configured`}
+                      </div>
+                      <div style={{ ...mono, fontSize: 7, color: C.muted, marginTop: 1 }}>
+                        Created {new Date(t.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { handleLoadTemplate(t); setShowManageModal(false); }}
+                      style={{ ...mono, fontSize: 8, color: C.cyan, background: C.cyan + "15", border: `1px solid ${C.cyan}33`, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}
+                    >
+                      LOAD
+                    </button>
+                    <button
+                      onClick={() => gridTemplates.updateTemplate(t.id, { columns: colPrefsMap[activeTab].columns, columnConfig: columnConfigs })}
+                      style={{ ...mono, fontSize: 8, color: C.amber, background: C.amber + "15", border: `1px solid ${C.amber}33`, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}
+                    >
+                      UPDATE
+                    </button>
+                    <button
+                      onClick={() => gridTemplates.deleteTemplate(t.id)}
+                      style={{ ...mono, fontSize: 8, color: C.red, background: C.red + "15", border: `1px solid ${C.red}33`, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}
+                    >
+                      DELETE
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            <div style={{ padding: "8px 14px", borderTop: `1px solid ${C.borderM}`, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowManageModal(false)}
+                style={{ ...mono, fontSize: 9, color: C.primary, background: "transparent", border: `1px solid ${C.borderS}`, padding: "4px 14px", cursor: "pointer" }}
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
