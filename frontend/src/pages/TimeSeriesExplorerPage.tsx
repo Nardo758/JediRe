@@ -76,6 +76,7 @@ function MiniChart({ data, width = 200, height = 40 }: { data: DataPoint[]; widt
 const SOURCE_DISPLAY: Record<string, string> = {
   'DOT_FL': 'DOT Traffic (FL)',
   'DOT_GA': 'DOT Traffic (GA)',
+  'google_trends': 'Google Trends',
   'census_acs': 'Census ACS',
   'census_acs5': 'Census ACS-5',
   'fred': 'FRED',
