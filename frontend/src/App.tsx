@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -78,7 +78,25 @@ function DealIdRedirectByDealId() {
   return <Navigate to={`/deals/${dealId}/detail`} replace />;
 }
 
+function useResponsiveZoom() {
+  const applyZoom = useCallback(() => {
+    const w = window.innerWidth;
+    let zoom = 1;
+    if (w >= 2560) zoom = 1.25;
+    else if (w >= 1920) zoom = 1 + ((w - 1920) / (2560 - 1920)) * 0.15 + 0.1;
+    else if (w >= 1600) zoom = 1 + ((w - 1600) / (1920 - 1600)) * 0.1;
+    document.documentElement.style.zoom = String(zoom);
+  }, []);
+
+  useEffect(() => {
+    applyZoom();
+    window.addEventListener('resize', applyZoom);
+    return () => window.removeEventListener('resize', applyZoom);
+  }, [applyZoom]);
+}
+
 function AppContent() {
+  useResponsiveZoom();
   const { isOpen, currentInfo, closeArchitecture } = useArchitecture();
 
   return (
