@@ -274,6 +274,9 @@ app.use('/api/v1/ticker', tickerRoutes);
 import timeSeriesRoutes from './api/rest/time-series.routes';
 app.use('/api/v1/time-series', timeSeriesRoutes);
 
+import driverAnalysisRoutes from './api/rest/driver-analysis.routes';
+app.use('/api/v1/driver-analysis', driverAnalysisRoutes);
+
 app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 

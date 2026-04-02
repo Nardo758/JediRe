@@ -6,9 +6,7 @@ import { logger } from '../../utils/logger';
 
 const router = Router();
 
-router.use(requireAuth);
-
-router.post('/run', async (req: Request, res: Response) => {
+router.post('/run', requireAuth, async (req: Request, res: Response) => {
   try {
     const { propertyId, maxLagWeeks, minSampleSize, outcomeMetrics } = req.body;
 
