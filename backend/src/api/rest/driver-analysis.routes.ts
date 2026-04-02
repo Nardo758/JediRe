@@ -37,15 +37,18 @@ router.get('/results/:propertyId', async (req: Request, res: Response) => {
     const { propertyId } = req.params;
     const { outcomeMetric, minR, minRSquared, maxPValue, minLag, maxLag, limit, sortBy, sortDir } = req.query;
 
+    const safeFloat = (v: any): number | undefined => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+    const safeInt = (v: any): number | undefined => { const n = parseInt(v, 10); return isNaN(n) ? undefined : n; };
+
     const service = new DriverAnalysisService(getPool());
     const results = await service.getResults(propertyId, {
       outcomeMetric: outcomeMetric as string,
-      minR: minR ? parseFloat(minR as string) : undefined,
-      minRSquared: minRSquared ? parseFloat(minRSquared as string) : undefined,
-      maxPValue: maxPValue ? parseFloat(maxPValue as string) : undefined,
-      minLag: minLag ? parseInt(minLag as string) : undefined,
-      maxLag: maxLag ? parseInt(maxLag as string) : undefined,
-      limit: limit ? parseInt(limit as string) : undefined,
+      minR: minR ? safeFloat(minR) : undefined,
+      minRSquared: minRSquared ? safeFloat(minRSquared) : undefined,
+      maxPValue: maxPValue ? safeFloat(maxPValue) : undefined,
+      minLag: minLag ? safeInt(minLag) : undefined,
+      maxLag: maxLag ? safeInt(maxLag) : undefined,
+      limit: limit ? safeInt(limit) : undefined,
       sortBy: sortBy as string,
       sortDir: sortDir as string,
     });
