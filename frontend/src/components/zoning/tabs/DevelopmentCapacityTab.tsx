@@ -1269,6 +1269,114 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   return (
     <div className="space-y-5">
+      <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500 font-medium">Zoning:</span>
+          {editingZoningCode ? (
+            <>
+              <input
+                type="text"
+                value={newZoningCode}
+                onChange={(e) => setNewZoningCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveZoningCode();
+                  if (e.key === 'Escape') { setEditingZoningCode(false); setNewZoningCode(''); }
+                }}
+                placeholder={profile.base_district_code || 'e.g. MRC-3'}
+                autoFocus
+                className="w-28 px-2 py-0.5 border border-blue-400 rounded text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleSaveZoningCode}
+                disabled={!newZoningCode.trim() || resolving}
+                className="text-green-600 hover:text-green-800 disabled:opacity-40"
+                title="Save"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { setEditingZoningCode(false); setNewZoningCode(''); }}
+                className="text-gray-400 hover:text-gray-600"
+                title="Cancel"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="text-gray-900 font-semibold">{profile.base_district_code || '--'}</span>
+              {profile.municipality && <span className="text-gray-400">({profile.municipality})</span>}
+              {municodeUrl && <MunicodeLink url={municodeUrl} />}
+              <button
+                onClick={() => { setEditingZoningCode(true); setNewZoningCode(profile.base_district_code || ''); }}
+                className="text-blue-500 hover:text-blue-700"
+                title="Change zoning code"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+        <div className="w-px h-5 bg-gray-200" />
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500 font-medium">Lot:</span>
+          <span className="text-gray-900">{formatNumber(parseFloat(String(profile.lot_area_sf)))} SF</span>
+          {lotAreaAcres != null && <span className="text-gray-400">({lotAreaAcres.toFixed(2)} ac)</span>}
+        </div>
+        <div className="w-px h-5 bg-gray-200" />
+        <div className="flex items-center gap-2">
+          <span className="text-gray-500 font-medium">Asset Type:</span>
+          {changingAssetType ? (
+            <select
+              value={dealInfo?.project_type || 'multifamily'}
+              onChange={(e) => handleChangeAssetType(e.target.value)}
+              className="text-xs border border-gray-300 rounded px-2 py-1"
+            >
+              {PROJECT_TYPE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label} — {opt.hint}</option>
+              ))}
+            </select>
+          ) : (
+            <>
+              <span className="text-gray-900 font-semibold capitalize">{PROJECT_TYPE_OPTIONS.find(o => o.value === dealInfo?.project_type)?.label || (dealInfo?.project_type || 'multifamily').replace('_', '-')}</span>
+              <button onClick={() => setChangingAssetType(true)} className="text-blue-500 hover:text-blue-700" title="Change asset type">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+        <div className="w-px h-5 bg-gray-200" />
+        {getSourceBadge(profile.constraint_source)}
+        <button onClick={handleResolveProfile} disabled={resolving} className="ml-auto text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1" title="Re-resolve from base data">
+          <svg className={`h-3.5 w-3.5 ${resolving ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          {resolving ? 'Resolving...' : 'Re-resolve'}
+        </button>
+      </div>
+
+      {hasResolutionErrors && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-start gap-3">
+          <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-amber-800">Resolution Warnings</p>
+            {profile.resolution_errors.map((err: any, i: number) => (
+              <p key={i} className="text-xs text-amber-700 mt-0.5">{err.step}: {err.message}</p>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Entitlement Comparison */}
       {(() => {
         const cols = comparison?.columns || [];
