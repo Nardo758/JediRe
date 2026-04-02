@@ -297,7 +297,10 @@ export class StrategyBacktestService {
         if (!series) return null;
         const val = findLatestAsOf(series, screenDate);
         if (val === undefined) return null;
-        return this.evaluateConditionValue(c.operator, c.value, val);
+        const prevDate = new Date(screenDate);
+        prevDate.setMonth(prevDate.getMonth() - 3);
+        const prevVal = findLatestAsOf(series, prevDate.toISOString().split('T')[0]);
+        return this.evaluateConditionValue(c.operator, c.value, val, prevVal);
       });
 
       const valid = condResults.filter(r => r !== null) as boolean[];
@@ -417,7 +420,8 @@ export class StrategyBacktestService {
   private evaluateConditionValue(
     operator: string,
     threshold: number | [number, number] | string | null,
-    value: number
+    value: number,
+    prevValue?: number
   ): boolean {
     switch (operator) {
       case 'gt': return value > (threshold as number);
@@ -428,8 +432,8 @@ export class StrategyBacktestService {
         const [min, max] = threshold as [number, number];
         return value >= min && value <= max;
       }
-      case 'increasing': return true;
-      case 'decreasing': return true;
+      case 'increasing': return prevValue !== undefined ? value > prevValue : true;
+      case 'decreasing': return prevValue !== undefined ? value < prevValue : true;
       default: return value > (threshold as number);
     }
   }

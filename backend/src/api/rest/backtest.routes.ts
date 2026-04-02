@@ -142,12 +142,12 @@ const summaryHandler = async (req: Request, res: Response) => {
   }
 };
 
-router.post('/run/:strategyId', runHandler);
-router.get('/results/:strategyId', resultsHandler);
-router.get('/summary/:strategyId', summaryHandler);
-
 router.post('/strategy/:strategyId/run', runHandler);
 router.get('/strategy/:strategyId/results', resultsHandler);
 router.get('/strategy/:strategyId/summary', summaryHandler);
+
+router.post('/run/strategy/:strategyId', runHandler);
+router.get('/results/strategy/:strategyId', resultsHandler);
+router.get('/summary/strategy/:strategyId', summaryHandler);
 
 export default router;
