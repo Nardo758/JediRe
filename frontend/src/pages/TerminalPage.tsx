@@ -8,7 +8,7 @@ import { layersService } from "../services/layers.service";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
-import F4MarketsView from "./terminal/F4MarketsView";
+import F4MarketsView, { type MarketMover } from "./terminal/F4MarketsView";
 import F9AdminView from "./terminal/F9AdminView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 import { StrategyBuilderPage } from "./StrategyBuilderPage";
@@ -571,6 +571,7 @@ export default function TerminalPage() {
   const [liveMacroTicker, setLiveMacroTicker] = useState<{raw:string;color:string}[]>(
     TICKERS.map(t => ({ raw: t, color: t.startsWith('^') ? DARK.text.green : t.startsWith('v') ? DARK.text.red : DARK.text.amber }))
   );
+  const [marketMoversTicker, setMarketMoversTicker] = useState<{raw:string;color:string}[]>([]);
   const [rawCatalogMetricsT, setRawCatalogMetricsT] = useState<Array<Record<string,unknown>>>([]);
   const [metricsScope, setMetricsScope] = useState<string>('submarket');
 
@@ -2061,26 +2062,20 @@ export default function TerminalPage() {
   };
 
   // ─── VIEW: F4 MARKETS ──────────────────────────────────────
-  const viewMarketsCorpHealthData = {
-    schi: corpHealthLive.schi ?? DEMO_SCHI,
-    reHealth: corpHealthLive.reHealth ?? DEMO_RE_HEALTH,
-    divergence: corpHealthLive.divergence ?? DEMO_DIVERGENCE,
-    herfindahl: corpHealthLive.herfindahl ?? DEMO_HERFINDAHL,
-    portfolioSubmarkets: corpHealthLive.portfolioSubmarkets.length > 0 ? corpHealthLive.portfolioSubmarkets : [
-      {name:"Bellevue CBD",msa:"Seattle",schi:72.4,divergence:-18.2,signal:"bearish_divergence",reHealth:85.1,hhi:0.091,employerCount:24,publicCount:8},
-      {name:"South Lake Union",msa:"Seattle",schi:81.3,divergence:12.7,signal:"aligned",reHealth:78.9,hhi:0.145,employerCount:18,publicCount:6},
-      {name:"Redmond Tech",msa:"Seattle",schi:76.9,divergence:-8.1,signal:"aligned",reHealth:71.2,hhi:0.203,employerCount:12,publicCount:5},
-      {name:"Downtown Seattle",msa:"Seattle",schi:65.1,divergence:22.4,signal:"bullish_divergence",reHealth:45.3,hhi:0.067,employerCount:45,publicCount:15},
-      {name:"Eastside Suburban",msa:"Seattle",schi:58.2,divergence:-25.1,signal:"bearish_divergence",reHealth:79.8,hhi:0.112,employerCount:30,publicCount:9},
-    ],
-    topEmployerText: corpHealthLive.employers.length > 0
-      ? `Top employer: ${corpHealthLive.employers[0]?.company_name||corpHealthLive.employers[0]?.company||"\u2014"}.`
-      : `Top employer (Amazon) represents ${CORP_HEALTH_DEMO[0].share}% of submarket employment.`,
-  };
+  const handleTopMovers = useCallback((movers: MarketMover[]) => {
+    const items = movers.map(m => {
+      const arrow = m.d30 > 0 ? '^' : m.d30 < 0 ? 'v' : '*';
+      const color = m.d30 > 0 ? T.text.green : m.d30 < 0 ? T.text.red : T.text.amber;
+      const sign = m.d30 > 0 ? '+' : '';
+      const city = m.msa.split(',')[0].toUpperCase();
+      return { raw: `${arrow} ${city}·MF  JEDI ${m.jedi} (${sign}${m.d30})  ${m.cycle}`, color };
+    });
+    setMarketMoversTicker(items);
+  }, [T.text.green, T.text.red, T.text.amber]);
 
   const ViewMarkets = () => {
     return (
-      <F4MarketsView corpHealthData={viewMarketsCorpHealthData} />
+      <F4MarketsView onTopMovers={handleTopMovers} />
     );
   };
 
@@ -2527,6 +2522,7 @@ export default function TerminalPage() {
             return { raw: `[${n.time}]${(n as {mkt?:string}).mkt ? ` [${(n as {mkt?:string}).mkt}]` : ''} ${n.hl}`, color: T.text.primary, sub: `${n.impact}`, subColor: impactColor };
           }),
           ...liveMacroTicker,
+          ...marketMoversTicker,
           ...metricsTicker,
         ]}
       />

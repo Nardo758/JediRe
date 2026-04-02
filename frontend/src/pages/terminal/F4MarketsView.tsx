@@ -89,14 +89,6 @@ interface TrackedMarket {
   cycle: string;
 }
 
-interface Alert {
-  id: string;
-  market: string;
-  message: string;
-  type: "positive" | "negative" | "neutral";
-  timestamp: string;
-}
-
 // ============================================================================
 // Mock Data
 // ============================================================================
@@ -138,12 +130,6 @@ const PROPERTY_INDEX = [
   { name: "Nocatee Town Center", submarket: "Nocatee", msa: "Jacksonville, FL", jedi: 84, units: 320, rent: "$1,650", occ: "96.8%", capRate: "5.4%", vintage: 2022, owner: "NexMetro" },
 ];
 
-const MOCK_ALERTS: Alert[] = [
-  { id: "1", market: "Jacksonville", message: "JEDI +5 pts (30d)", type: "positive", timestamp: "2h ago" },
-  { id: "2", market: "Atlanta", message: "Rent growth +4.2% YoY", type: "positive", timestamp: "4h ago" },
-  { id: "3", market: "Miami", message: "Vacancy hit 8.4%", type: "negative", timestamp: "6h ago" },
-  { id: "4", market: "Denver", message: "Entering contraction", type: "negative", timestamp: "1d ago" },
-];
 
 // ============================================================================
 // Helper Components
@@ -242,7 +228,14 @@ type CycleFilter = "all" | "EXPANSION" | "LATE EXP" | "PEAK" | "CONTRACTION";
 // Main Component
 // ============================================================================
 
-export default function F4MarketsView() {
+export interface MarketMover {
+  msa: string;
+  d30: number;
+  jedi: number;
+  cycle: string;
+}
+
+export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: MarketMover[]) => void }) {
   const nav = useNavigate();
   
   // Tab & drill state
@@ -482,8 +475,7 @@ export default function F4MarketsView() {
     const avgRent = Math.round(markets.reduce((s, m) => s + m.rentNum, 0) / len);
     const avgVac = (markets.reduce((s, m) => s + m.vacNum, 0) / len).toFixed(1);
     const expanding = markets.filter(m => m.cycle === "EXPANSION" || m.cycle === "LATE EXP").length;
-    const alerts = MOCK_ALERTS.filter(a => a.type === "negative").length;
-    return { count: markets.length, avgJedi, avgRent, avgVac, expanding, alerts };
+    return { count: markets.length, avgJedi, avgRent, avgVac, expanding };
   }, [trackedMarkets]);
 
   const median = useMemo(() => {
@@ -535,8 +527,14 @@ export default function F4MarketsView() {
   }, [dynamicMetricIds.join(','), visibleGeoIds.join(',')]);
 
   const topMovers = useMemo(() => {
-    return [...ALL_MARKETS_RESOLVED].sort((a, b) => Math.abs(b.d30) - Math.abs(a.d30)).slice(0, 4);
+    return [...ALL_MARKETS_RESOLVED].sort((a, b) => Math.abs(b.d30) - Math.abs(a.d30)).slice(0, 6);
   }, [ALL_MARKETS_RESOLVED]);
+
+  useEffect(() => {
+    if (onTopMovers) {
+      onTopMovers(topMovers.map(m => ({ msa: m.msa, d30: m.d30, jedi: m.jedi, cycle: m.cycle })));
+    }
+  }, [topMovers, onTopMovers]);
 
   // Handlers
   const handleSort = (col: SortKey) => {
@@ -1277,7 +1275,6 @@ export default function F4MarketsView() {
         <KPICard label="AVG RENT" value={`$${kpis.avgRent.toLocaleString()}`} />
         <KPICard label="AVG VAC" value={`${kpis.avgVac}%`} color={parseFloat(kpis.avgVac) <= 6 ? C.green : C.amber} />
         <KPICard label="EXPANDING" value={`${kpis.expanding}/${kpis.count}`} color={C.green} />
-        <KPICard label="ALERTS" value={kpis.alerts} subtext="unread" color={kpis.alerts > 0 ? C.red : C.muted} />
       </div>
 
       {/* Filter Bar */}
@@ -1335,48 +1332,6 @@ export default function F4MarketsView() {
         {renderMarketTable("dashboard")}
       </div>
 
-      {/* Bottom Panels: Alerts + Top Movers (side by side) */}
-      <div style={{ display: "flex", height: 140, borderTop: `1px solid ${C.borderM}`, flexShrink: 0 }}>
-        {/* Recent Alerts */}
-        <div style={{ flex: 1, borderRight: `1px solid ${C.borderM}`, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, color: C.red, ...mono }}>RECENT ALERTS</span>
-          </div>
-          <div style={{ flex: 1, overflow: "auto", padding: "6px 8px" }}>
-            {MOCK_ALERTS.map(alert => (
-              <div key={alert.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.borderS}` }}>
-                <span style={{ color: alert.type === "positive" ? C.green : alert.type === "negative" ? C.red : C.muted, fontSize: 10 }}>●</span>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: 9, fontWeight: 600, color: C.primary, ...mono }}>{alert.market}</span>
-                  <span style={{ fontSize: 9, color: C.secondary, ...mono, marginLeft: 6 }}>{alert.message}</span>
-                </div>
-                <span style={{ fontSize: 8, color: C.muted, ...mono }}>{alert.timestamp}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Top Movers */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "6px 12px", background: C.header, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-            <span style={{ fontSize: 9, fontWeight: 700, color: C.cyan, ...mono }}>TOP MOVERS (30D)</span>
-          </div>
-          <div style={{ flex: 1, overflow: "auto", padding: "6px 8px" }}>
-            {topMovers.map(m => (
-              <div 
-                key={m.id} 
-                onClick={() => handleDrillToMsa(m)} 
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
-              >
-                <span style={{ color: m.d30 >= 0 ? C.green : C.red, fontSize: 10 }}>{m.d30 >= 0 ? "▲" : "▼"}</span>
-                <span style={{ fontSize: 9, fontWeight: 600, color: C.primary, ...mono, flex: 1 }}>{m.msa.split(",")[0]}</span>
-                <Badge label={m.cycle} color={cycleColor(m.cycle)} />
-                <DeltaCell value={m.d30} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 
