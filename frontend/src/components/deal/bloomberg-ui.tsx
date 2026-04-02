@@ -258,7 +258,7 @@ export function BtTabWrapper({
       flex: 1,
       overflow: 'auto',
       background: BT.bg.terminal,
-      padding: '12px 16px',
+      padding: '20px 24px 40px 24px',
       animation: 'bt-fade 0.15s',
       ...style,
     }}>
