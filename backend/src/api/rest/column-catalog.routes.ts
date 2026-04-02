@@ -79,7 +79,7 @@ export const gridDataHandler = async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const metricIds = (req.query.metricIds as string || '').split(',').filter(Boolean).slice(0, 30);
-    const geoIds = (req.query.geoIds as string || '').split(',').filter(Boolean).slice(0, 200);
+    const geoIds = (req.query.geoIds as string || '').split(',').filter(Boolean).slice(0, 500);
 
     if (metricIds.length === 0) {
       return res.json({ success: true, data: {} });
