@@ -48,6 +48,21 @@ router.get('/results/:runId', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/run/traffic', async (req: Request, res: Response) => {
+  try {
+    const { propertyId, config } = req.body;
+    if (!propertyId || typeof propertyId !== 'string') {
+      return res.status(400).json({ error: 'propertyId is required and must be a string' });
+    }
+
+    const result = await engine.runTrafficBacktest(propertyId, config || {});
+    res.json(result);
+  } catch (error) {
+    logger.error(`Traffic backtest error: ${String(error)}`);
+    res.status(500).json({ error: 'Traffic backtest execution failed' });
+  }
+});
+
 router.get('/property/:propertyId', async (req: Request, res: Response) => {
   try {
     const results = await engine.getPropertyResults(req.params.propertyId);

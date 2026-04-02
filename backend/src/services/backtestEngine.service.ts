@@ -594,4 +594,199 @@ export class BacktestEngineService {
     );
     return res.rows;
   }
+
+  async runTrafficBacktest(
+    propertyId: string,
+    config: BacktestConfig = {}
+  ): Promise<{ trafficAsLeader: BacktestRunResult; trafficAsOutcome: BacktestRunResult }> {
+    const TRAFFIC_LEADER_METRICS = [
+      'OP_TRAFFIC',
+      'OP_WALKINS',
+    ];
+
+    const TRAFFIC_OUTCOME_TARGETS = [
+      'OP_EFFECTIVE_RENT',
+      'OP_AVG_MARKET_RENT',
+      'OP_OCCUPANCY_PCT',
+      'OP_LEASED_PCT',
+      'OP_NET_LEASES',
+      'OP_APPLICATIONS',
+      'OP_MOVE_INS',
+      'OP_MOVE_OUTS',
+      'OP_TOTAL_VACANT',
+      'OP_AVAILABILITY_PCT',
+      'OP_VACANT_UNRENTED',
+    ];
+
+    const trafficLeaderConfig: BacktestConfig = {
+      ...config,
+      minCorrelation: config.minCorrelation ?? 0.2,
+      maxLagWeeks: config.maxLagWeeks ?? 26,
+      topNLeaders: config.topNLeaders ?? 5,
+      outcomeMetrics: TRAFFIC_OUTCOME_TARGETS,
+    };
+
+    const trafficOutcomeConfig: BacktestConfig = {
+      ...config,
+      minCorrelation: config.minCorrelation ?? 0.2,
+      topNLeaders: config.topNLeaders ?? 10,
+      outcomeMetrics: ['OP_TRAFFIC', 'OP_WALKINS'],
+    };
+
+    logger.info(`[TrafficBacktest] Running traffic-as-leader for ${propertyId}`);
+    const trafficAsLeader = await this.runBacktestWithCustomLeaders(
+      propertyId,
+      trafficLeaderConfig,
+      TRAFFIC_LEADER_METRICS,
+      'traffic_leader'
+    );
+
+    logger.info(`[TrafficBacktest] Running traffic-as-outcome for ${propertyId}`);
+    const trafficAsOutcome = await this.runBacktest(propertyId, trafficOutcomeConfig);
+
+    return { trafficAsLeader, trafficAsOutcome };
+  }
+
+  private async runBacktestWithCustomLeaders(
+    propertyId: string,
+    config: BacktestConfig,
+    customLeaderMetrics: string[],
+    runLabel: string
+  ): Promise<BacktestRunResult> {
+    const {
+      trainPct,
+      maxLagWeeks,
+      minCorrelation,
+      topNLeaders,
+      outcomeMetrics,
+    } = clampConfig(config);
+
+    const propRes = await this.pool.query(
+      `SELECT DISTINCT geography_name FROM metric_time_series WHERE geography_id = $1 LIMIT 1`,
+      [propertyId]
+    );
+    const propertyName = propRes.rows[0]?.geography_name || propertyId;
+
+    const dateRange = await this.pool.query(
+      `SELECT MIN(period_date)::text as earliest, MAX(period_date)::text as latest
+       FROM metric_time_series
+       WHERE geography_id = $1 AND source = 'property_ops' AND value IS NOT NULL
+         AND metric_id NOT IN ('OP_BEG_OCCUPANCY', 'OP_END_OCCUPANCY', 'OP_TOTAL_VACANT', 'OP_TOTAL_NOTICE', 'OP_NET_LEASES')`,
+      [propertyId]
+    );
+
+    if (!dateRange.rows[0]?.earliest) {
+      throw new Error(`No property data found for ${propertyId}`);
+    }
+
+    const earliest = new Date(dateRange.rows[0].earliest);
+    const latest = new Date(dateRange.rows[0].latest);
+    const totalDays = (latest.getTime() - earliest.getTime()) / (1000 * 60 * 60 * 24);
+    const trainDays = Math.floor(totalDays * trainPct);
+
+    const trainEnd = new Date(earliest.getTime() + trainDays * 24 * 60 * 60 * 1000);
+    const testStart = new Date(trainEnd.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    const trainStartStr = earliest.toISOString().substring(0, 10);
+    const trainEndStr = trainEnd.toISOString().substring(0, 10);
+    const testStartStr = testStart.toISOString().substring(0, 10);
+    const testEndStr = latest.toISOString().substring(0, 10);
+
+    logger.info(`[Backtest:${runLabel}] ${propertyName}: Train ${trainStartStr} -> ${trainEndStr}, Test ${testStartStr} -> ${testEndStr}`);
+
+    const runRes = await this.pool.query(
+      `INSERT INTO backtest_runs (property_id, property_name, train_start, train_end, test_start, test_end, outcome_metrics, config, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'running')
+       RETURNING id`,
+      [propertyId, propertyName, trainStartStr, trainEndStr, testStartStr, testEndStr,
+       outcomeMetrics, JSON.stringify({ ...config, runLabel, customLeaders: customLeaderMetrics })]
+    );
+    const runId = runRes.rows[0].id;
+
+    try {
+      const accuracyResults: AccuracyResult[] = [];
+
+      for (const outcomeMetric of outcomeMetrics) {
+        const outcomeSeries = await this.getPropertySeries(propertyId, outcomeMetric);
+        if (outcomeSeries.length < 20) continue;
+
+        const trainOutcome = outcomeSeries.filter(p => p.date <= trainEndStr);
+        const testOutcome = outcomeSeries.filter(p => p.date >= testStartStr);
+
+        if (trainOutcome.length < 12 || testOutcome.length < 8) continue;
+
+        const candidates: CorrelationCandidate[] = [];
+
+        for (const leaderMetric of customLeaderMetrics) {
+          const leaderSeries = await this.getPropertySeries(propertyId, leaderMetric);
+          if (leaderSeries.length < 8) continue;
+
+          const leaderTrain = leaderSeries.filter(p => p.date <= trainEndStr);
+
+          const best = this.findBestLag(
+            leaderTrain, trainOutcome, maxLagWeeks, minCorrelation
+          );
+
+          if (best) {
+            candidates.push({
+              leaderMetric,
+              lagWeeks: best.lagWeeks,
+              correlationR: best.r,
+              slope: best.slope,
+              intercept: best.intercept,
+              trainSampleSize: best.sampleSize,
+            });
+          }
+        }
+
+        candidates.sort((a, b) => Math.abs(b.correlationR) - Math.abs(a.correlationR));
+        const topCandidates = candidates.slice(0, topNLeaders);
+
+        for (const candidate of topCandidates) {
+          const fullLeaderSeries = await this.getPropertySeries(propertyId, candidate.leaderMetric);
+          const forecasts = this.generateForecasts(
+            candidate, fullLeaderSeries, testOutcome
+          );
+
+          if (forecasts.length < 4) continue;
+
+          const accuracy = this.computeAccuracy(
+            outcomeMetric, candidate, forecasts, trainOutcome.length
+          );
+
+          if (!Number.isFinite(accuracy.rmse) || !Number.isFinite(accuracy.mape)) continue;
+
+          accuracyResults.push(accuracy);
+          await this.persistForecasts(runId, candidate, forecasts, outcomeMetric);
+          await this.persistAccuracy(runId, accuracy);
+        }
+      }
+
+      const summary = this.computeSummary(accuracyResults);
+
+      await this.pool.query(
+        `UPDATE backtest_runs SET status = 'completed', summary = $2, leader_metrics_used = $3, completed_at = NOW()
+         WHERE id = $1`,
+        [runId, JSON.stringify({ ...summary, runLabel }), accuracyResults.map(a => a.leaderMetric)]
+      );
+
+      logger.info(`[Backtest:${runLabel}] Run #${runId} complete: ${accuracyResults.length} models, avg MAPE ${summary.avgMape.toFixed(2)}%`);
+
+      return {
+        runId,
+        propertyId,
+        propertyName,
+        trainPeriod: { start: trainStartStr, end: trainEndStr },
+        testPeriod: { start: testStartStr, end: testEndStr },
+        accuracyResults,
+        summary,
+      };
+    } catch (err) {
+      await this.pool.query(
+        `UPDATE backtest_runs SET status = 'failed', summary = $2, completed_at = NOW() WHERE id = $1`,
+        [runId, JSON.stringify({ error: String(err) })]
+      );
+      throw err;
+    }
+  }
 }
