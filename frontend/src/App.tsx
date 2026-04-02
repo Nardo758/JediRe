@@ -36,6 +36,7 @@ import WatchlistPage from './pages/MarketIntelligence/WatchlistPage';
 import TerminalPage from './pages/TerminalPage';
 import { MapPage } from './pages/MapPage';
 const F4CommentarySpecPage = lazy(() => import('./pages/docs/F4CommentarySpecPage'));
+const TimeSeriesExplorerPage = lazy(() => import('./pages/TimeSeriesExplorerPage'));
 const PropertyCardPage = lazy(() => import('./pages/PropertyCardPage'));
 
 /**
@@ -95,6 +96,7 @@ function AppContent() {
 
         {/* Terminal — full-page Bloomberg layout */}
         <Route path="/terminal" element={<Navigate to="/terminal/dashboard" replace />} />
+        <Route path="/terminal/data" element={<Suspense fallback={<PageLoadingFallback />}><TimeSeriesExplorerPage /></Suspense>} />
         <Route path="/terminal/:section" element={<TerminalPage />} />
 
         <Route path="/docs/f4-commentary-spec" element={<Suspense fallback={<PageLoadingFallback />}><F4CommentarySpecPage /></Suspense>} />

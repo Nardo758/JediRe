@@ -105,6 +105,7 @@ import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 import tickerRoutes from './ticker.routes';
 import agentSettingsRoutes from './agent-settings.routes';
 import columnPreferencesRoutes from './column-preferences.routes';
+import timeSeriesRoutes from './time-series.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -387,6 +388,8 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data Ingestion routes (Admin-only — Zillow, FRED, other data sources)
   app.use(`${API_PREFIX}/admin/ingest`, ingestionRoutes);
+
+  app.use(`${API_PREFIX}/time-series`, timeSeriesRoutes);
 
   // Deal Capsule routes (3-layer capsule CRUD, documents, shares, collision)
   const { getPool: getCapsulePool } = require('../../database/connection');

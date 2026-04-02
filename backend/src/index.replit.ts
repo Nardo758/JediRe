@@ -270,6 +270,10 @@ app.use('/api/v1', taxCompAnalysisRouter);
 import tickerRoutes from './api/rest/ticker.routes';
 app.use('/api/v1/ticker', tickerRoutes);
 
+// Time Series Explorer — public (no auth required) — used by TimeSeriesExplorerPage
+import timeSeriesRoutes from './api/rest/time-series.routes';
+app.use('/api/v1/time-series', timeSeriesRoutes);
+
 app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 
