@@ -1613,7 +1613,8 @@ export default function F4MarketsView() {
               padding: "0 12px", height: "100%", cursor: "pointer",
               background: activeTab === tab.id ? C.active : "transparent",
               color: activeTab === tab.id ? C.amber : C.secondary,
-              border: "none", borderBottom: activeTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
+              borderTop: "none", borderLeft: "none", borderRight: "none",
+              borderBottom: activeTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
               letterSpacing: 0.5, outline: "none",
             }}
           >
@@ -1627,7 +1628,8 @@ export default function F4MarketsView() {
             padding: "0 8px", height: "100%", cursor: "pointer",
             background: showLegend ? C.cyan + "18" : "transparent",
             color: showLegend ? C.cyan : C.muted,
-            border: "none", borderBottom: showLegend ? `2px solid ${C.cyan}` : "2px solid transparent",
+            borderTop: "none", borderLeft: "none", borderRight: "none",
+            borderBottom: showLegend ? `2px solid ${C.cyan}` : "2px solid transparent",
             letterSpacing: 0.5, outline: "none", marginLeft: "auto",
           }}
           title="Toggle metrics legend"
