@@ -617,7 +617,7 @@ const DealDetailPage: React.FC = () => {
     if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
       setActiveTab(dealScreens[0].id);
     }
-  }, [dealType]);
+  }, [dealType, activeTab]);
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];
   const ActiveComponent = activeScreenData.component;
