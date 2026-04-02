@@ -197,6 +197,55 @@ export const BT_TAB_CSS = `
 .bt-tab-wrap .from-neutral-800{--tw-gradient-from:#131821!important}
 .bt-tab-wrap .to-neutral-950{--tw-gradient-to:#0A0E17!important}
 .bt-tab-wrap .to-neutral-900{--tw-gradient-to:#0F1319!important}
+.bt-tab-wrap .bg-teal-50\\/60,.bt-tab-wrap [class*="bg-teal-50"]{background-color:#00E5A010!important}
+.bt-tab-wrap .bg-teal-600{background-color:#00E5A0!important}
+.bt-tab-wrap .bg-teal-600,.bt-tab-wrap .bg-teal-600 *{color:#0A0E17!important}
+.bt-tab-wrap .text-teal-600,.bt-tab-wrap .text-teal-700,.bt-tab-wrap .text-teal-800{color:#00E5A0!important}
+.bt-tab-wrap .border-teal-200{border-color:#00E5A044!important}
+.bt-tab-wrap .from-teal-50{--tw-gradient-from:#00E5A008!important}
+.bt-tab-wrap .to-cyan-50{--tw-gradient-to:#00BCD408!important}
+.bt-tab-wrap .text-blue-800,.bt-tab-wrap .text-blue-900{color:#00BCD4!important}
+.bt-tab-wrap .text-gray-300{color:#3B4A6B!important}
+.bt-tab-wrap .bg-gray-200{background-color:#1E2538!important}
+.bt-tab-wrap .border-gray-50{border-color:#1E2538!important}
+.bt-tab-wrap .bg-gray-50\\/30{background-color:#13182166!important}
+.bt-tab-wrap .bg-blue-50\\/30,.bt-tab-wrap .bg-blue-50\\/50{background-color:#00BCD40D!important}
+.bt-tab-wrap .bg-red-50\\/40{background-color:#FF47570A!important}
+.bt-tab-wrap .border-blue-400,.bt-tab-wrap .border-blue-500,.bt-tab-wrap .border-blue-600{border-color:#00BCD444!important}
+.bt-tab-wrap .border-blue-100{border-color:#00BCD422!important}
+.bt-tab-wrap .border-violet-300,.bt-tab-wrap .border-violet-200\\/60{border-color:#A78BFA33!important}
+.bt-tab-wrap .border-purple-600{border-color:#A78BFA55!important}
+.bt-tab-wrap .border-red-300{border-color:#FF475733!important}
+.bt-tab-wrap .text-purple-500{color:#A78BFA!important}
+.bt-tab-wrap .text-orange-800{color:#FF8C42!important}
+.bt-tab-wrap .bg-amber-500{background-color:#F5A623!important}
+.bt-tab-wrap .bg-amber-200{background-color:#F5A62333!important}
+.bt-tab-wrap .text-amber-800{color:#F5A623!important}
+.bt-tab-wrap .from-blue-50\\/50{--tw-gradient-from:#00BCD40D!important}
+.bt-tab-wrap .from-gray-50{--tw-gradient-from:#131821!important}
+.bt-tab-wrap .from-purple-50{--tw-gradient-from:#A78BFA08!important}
+.bt-tab-wrap .to-indigo-50\\/50{--tw-gradient-to:#818CF808!important}
+.bt-tab-wrap .bg-blue-200{background-color:#00BCD422!important}
+.bt-tab-wrap .bg-blue-300{background-color:#00BCD433!important}
+.bt-tab-wrap .bg-blue-700{background-color:#00BCD4CC!important}
+.bt-tab-wrap .bg-red-200{background-color:#FF475722!important}
+.bt-tab-wrap .bg-red-500{background-color:#FF4757!important}
+.bt-tab-wrap .bg-green-500{background-color:#00D26A!important}
+.bt-tab-wrap .bg-orange-200{background-color:#FF8C4222!important}
+.bt-tab-wrap .bg-orange-400{background-color:#FF8C42!important}
+.bt-tab-wrap .bg-orange-500{background-color:#FF8C42DD!important}
+.bt-tab-wrap .text-green-800{color:#00D26A!important}
+.bt-tab-wrap .text-violet-400{color:#7C6FCD!important}
+.bt-tab-wrap .text-violet-700{color:#A78BFA!important}
+.bt-tab-wrap .bg-violet-200{background-color:#A78BFA22!important}
+.bt-tab-wrap .bg-purple-50{background-color:#A78BFA08!important}
+.bt-tab-wrap .bg-green-400{background-color:#00D26A!important}
+.bt-tab-wrap .bg-orange-100{background-color:#FF8C4218!important}
+.bt-tab-wrap .text-white{color:#FFFFFF!important}
+.bt-tab-wrap .bg-red-100{background-color:#FF475718!important}
+.bt-tab-wrap .bg-green-100{background-color:#00D26A18!important}
+.bt-tab-wrap .hover\\:bg-gray-50\\/50:hover{background-color:#1E2538!important}
+.bt-tab-wrap .divide-gray-200>*+*{border-top-color:#1E2538!important}
 `;
 
 // ─── BtTabWrapper — applies Bloomberg dark theme to light-mode tab components ──
