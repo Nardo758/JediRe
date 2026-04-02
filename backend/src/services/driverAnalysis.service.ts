@@ -82,6 +82,32 @@ export class DriverAnalysisService {
       const driverMetrics = await this.collectDriverMetrics(propertyId);
       logger.info(`[DriverAnalysis] Property ${propertyId}: found ${driverMetrics.length} driver metrics to test against ${outcomeMetrics.length} outcomes`);
 
+      const driverCache = new Map<string, TimeSeriesPoint[]>();
+      const BATCH_SIZE = 200;
+      for (let i = 0; i < driverMetrics.length; i += BATCH_SIZE) {
+        const batch = driverMetrics.slice(i, i + BATCH_SIZE);
+        const conditions = batch.map((d, idx) => {
+          const base = idx * 3;
+          return `(metric_id = $${base + 1} AND geography_type = $${base + 2} AND geography_id = $${base + 3})`;
+        });
+        const params = batch.flatMap(d => [d.metricId, d.geographyType, d.geographyId]);
+        const batchRes = await this.pool.query(
+          `SELECT metric_id, geography_type, geography_id, period_date::text as date, AVG(value) as value
+           FROM metric_time_series
+           WHERE (${conditions.join(' OR ')}) AND value IS NOT NULL
+           GROUP BY metric_id, geography_type, geography_id, period_date
+           ORDER BY metric_id, period_date`,
+          params
+        );
+        for (const row of batchRes.rows) {
+          const key = `${row.metric_id}|${row.geography_type}|${row.geography_id}`;
+          if (!driverCache.has(key)) driverCache.set(key, []);
+          driverCache.get(key)!.push({ date: row.date.substring(0, 10), value: parseFloat(row.value) });
+        }
+        if (i % 1000 === 0) logger.info(`[DriverAnalysis] Prefetched ${Math.min(i + BATCH_SIZE, driverMetrics.length)}/${driverMetrics.length} driver series`);
+      }
+      logger.info(`[DriverAnalysis] Prefetch complete: ${driverCache.size} driver series cached`);
+
       const allResults: DriverResult[] = [];
 
       for (const outcomeMetricId of outcomeMetrics) {
@@ -92,8 +118,9 @@ export class DriverAnalysisService {
         }
 
         for (const driver of driverMetrics) {
-          const driverSeries = await this.getDriverSeries(driver.metricId, driver.geographyType, driver.geographyId);
-          if (driverSeries.length < minSampleSize) continue;
+          const cacheKey = `${driver.metricId}|${driver.geographyType}|${driver.geographyId}`;
+          const driverSeries = driverCache.get(cacheKey);
+          if (!driverSeries || driverSeries.length < minSampleSize) continue;
 
           const best = this.findBestLag(driverSeries, outcomeSeries, maxLagWeeks, minSampleSize);
           if (!best) continue;
@@ -192,12 +219,12 @@ export class DriverAnalysisService {
 
       for (const tryId of idsToTry) {
         const geoRes = await this.pool.query(
-          `SELECT DISTINCT geography_type, geography_id
+          `SELECT geography_type, geography_id, COUNT(*) as cnt
            FROM metric_time_series
            WHERE metric_id = $1 AND value IS NOT NULL
            GROUP BY geography_type, geography_id
            HAVING COUNT(*) >= 8
-           ORDER BY COUNT(*) DESC
+           ORDER BY cnt DESC
            LIMIT 5`,
           [tryId]
         );
@@ -213,7 +240,7 @@ export class DriverAnalysisService {
     const geoMapping = PROPERTY_GEO_MAP[propertyId];
     if (geoMapping) {
       const csRes = await this.pool.query(
-        `SELECT DISTINCT metric_id
+        `SELECT metric_id
          FROM metric_time_series
          WHERE metric_id LIKE 'CS_%' AND geography_type = 'submarket'
            AND geography_id = $1
@@ -228,7 +255,7 @@ export class DriverAnalysisService {
     }
 
     const fredRes = await this.pool.query(
-      `SELECT DISTINCT metric_id, geography_type, geography_id
+      `SELECT metric_id, geography_type, geography_id
        FROM metric_time_series
        WHERE source LIKE 'fred%' AND value IS NOT NULL
        GROUP BY metric_id, geography_type, geography_id
@@ -240,7 +267,7 @@ export class DriverAnalysisService {
     }
 
     const zillowRes = await this.pool.query(
-      `SELECT DISTINCT metric_id, geography_type, geography_id
+      `SELECT metric_id, geography_type, geography_id
        FROM metric_time_series
        WHERE source = 'zillow' AND value IS NOT NULL
        GROUP BY metric_id, geography_type, geography_id
@@ -252,7 +279,7 @@ export class DriverAnalysisService {
     }
 
     const otherRes = await this.pool.query(
-      `SELECT DISTINCT metric_id, geography_type, geography_id, source
+      `SELECT metric_id, geography_type, geography_id, source
        FROM metric_time_series
        WHERE source IN ('census_acs5', 'google_trends', 'derived')
          AND value IS NOT NULL AND metric_id NOT LIKE 'OP_%'
@@ -299,34 +326,31 @@ export class DriverAnalysisService {
     let bestResult: { lagWeeks: number; r: number; pValue: number; slope: number; intercept: number; sampleSize: number } | null = null;
     let bestAbsR = 0;
 
-    const driverDates = driverSeries.map(p => ({ time: new Date(p.date).getTime(), value: p.value }));
+    const driverTimes = driverSeries.map(p => new Date(p.date).getTime());
+    const driverValues = driverSeries.map(p => p.value);
+    const MAX_DIST = 45 * 24 * 60 * 60 * 1000;
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-    const findNearestDriverValue = (targetDate: Date, lagWeeks: number): number | null => {
-      const laggedTime = targetDate.getTime() - lagWeeks * 7 * 24 * 60 * 60 * 1000;
-      let closestIdx = -1;
-      let closestDist = Infinity;
-      for (let i = 0; i < driverDates.length; i++) {
-        const dist = Math.abs(driverDates[i].time - laggedTime);
-        if (dist < closestDist) {
-          closestDist = dist;
-          closestIdx = i;
-        }
-      }
-      if (closestIdx >= 0 && closestDist < 45 * 24 * 60 * 60 * 1000) {
-        return driverDates[closestIdx].value;
-      }
-      return null;
-    };
+    const outcomeTimes = outcomeSeries.map(p => new Date(p.date).getTime());
+    const outcomeValues = outcomeSeries.map(p => p.value);
 
     for (let lag = 0; lag <= maxLagWeeks; lag++) {
       const xVals: number[] = [];
       const yVals: number[] = [];
+      const lagMs = lag * WEEK_MS;
 
-      for (const outcomePoint of outcomeSeries) {
-        const driverVal = findNearestDriverValue(new Date(outcomePoint.date), lag);
-        if (driverVal !== null) {
-          xVals.push(driverVal);
-          yVals.push(outcomePoint.value);
+      for (let oi = 0; oi < outcomeTimes.length; oi++) {
+        const target = outcomeTimes[oi] - lagMs;
+        let lo = 0, hi = driverTimes.length - 1;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (driverTimes[mid] < target) lo = mid + 1; else hi = mid;
+        }
+        let bestIdx = lo;
+        if (lo > 0 && Math.abs(driverTimes[lo - 1] - target) < Math.abs(driverTimes[lo] - target)) bestIdx = lo - 1;
+        if (bestIdx < driverTimes.length && Math.abs(driverTimes[bestIdx] - target) < MAX_DIST) {
+          xVals.push(driverValues[bestIdx]);
+          yVals.push(outcomeValues[oi]);
         }
       }
 
