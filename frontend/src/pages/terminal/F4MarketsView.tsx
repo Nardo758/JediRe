@@ -1600,7 +1600,7 @@ export default function F4MarketsView() {
   ];
 
   return (
-    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: C.bg, color: C.primary }}>
+    <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", background: C.bg, color: C.primary, outline: "none" }}>
       {/* Tab Bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 0, padding: "0 10px", height: 28, background: C.header, borderBottom: `1px solid ${C.borderM}`, flexShrink: 0 }}>
         <span style={{ fontSize: 9, color: C.amberBright, fontWeight: 700, ...mono, marginRight: 12, paddingLeft: 2 }}>F4</span>
@@ -1614,7 +1614,7 @@ export default function F4MarketsView() {
               background: activeTab === tab.id ? C.active : "transparent",
               color: activeTab === tab.id ? C.amber : C.secondary,
               border: "none", borderBottom: activeTab === tab.id ? `2px solid ${C.amber}` : "2px solid transparent",
-              letterSpacing: 0.5,
+              letterSpacing: 0.5, outline: "none",
             }}
           >
             {tab.label}
@@ -1629,7 +1629,7 @@ export default function F4MarketsView() {
             background: showLegend ? C.cyan + "18" : "transparent",
             color: showLegend ? C.cyan : C.muted,
             border: "none", borderBottom: showLegend ? `2px solid ${C.cyan}` : "2px solid transparent",
-            letterSpacing: 0.5,
+            letterSpacing: 0.5, outline: "none",
           }}
           title="Toggle metrics legend"
         >
