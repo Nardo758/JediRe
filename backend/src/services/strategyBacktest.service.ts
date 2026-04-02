@@ -72,7 +72,7 @@ const PROXY_INVERSE: Record<string, boolean> = {
   'K_GOOGLE_RATING': true,
 };
 
-const FORWARD_MONTHS = [12, 24, 36, 60];
+const FORWARD_MONTHS = [3, 6, 12, 24, 36, 60];
 
 function generateQuarterlyDates(startYear: number, endYear: number): string[] {
   const dates: string[] = [];
@@ -320,7 +320,7 @@ export class StrategyBacktestService {
       isInverse: PROXY_INVERSE[c.metricId] || false,
     }));
 
-    const medians = new Map<string, number>();
+    const distributions = new Map<string, number[]>();
     const geoValues = new Map<string, Map<string, number>>();
     const geoSet = new Set<string>();
 
@@ -340,12 +340,7 @@ export class StrategyBacktestService {
       }
 
       if (vals.length > 0) {
-        const sorted = [...vals].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        medians.set(
-          c.dbMetric,
-          sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
-        );
+        distributions.set(c.dbMetric, [...vals].sort((a, b) => a - b));
       }
     }
 
@@ -357,12 +352,16 @@ export class StrategyBacktestService {
       const condResults = mappedConds.map(c => {
         const val = geoVals.get(c.dbMetric);
         if (val === undefined) return null;
-        const median = medians.get(c.dbMetric);
-        if (median === undefined) return null;
+        const dist = distributions.get(c.dbMetric);
+        if (!dist || dist.length === 0) return null;
 
-        const wantHigh = c.operator === 'gt' || c.operator === 'gte' || c.operator === 'increasing';
-        const effectiveWantHigh = c.isInverse ? !wantHigh : wantHigh;
-        return effectiveWantHigh ? val > median : val < median;
+        if (c.value != null && !c.isInverse) {
+          return this.evaluateConditionValue(c.operator, c.value, val);
+        }
+
+        const percentile = this.getPercentile(dist, val);
+        const effectiveOp = c.isInverse ? this.invertOperator(c.operator) : c.operator;
+        return this.evaluatePercentileCondition(effectiveOp, c.value, percentile);
       });
 
       const valid = condResults.filter(r => r !== null) as boolean[];
@@ -370,6 +369,46 @@ export class StrategyBacktestService {
 
       const passes = combinator === 'AND' ? valid.every(r => r) : valid.some(r => r);
       if (passes) passingGeos.push(geoId);
+    }
+  }
+
+  private getPercentile(sortedDist: number[], value: number): number {
+    let idx = 0;
+    for (let i = 0; i < sortedDist.length; i++) {
+      if (sortedDist[i] <= value) idx = i + 1;
+      else break;
+    }
+    return (idx / sortedDist.length) * 100;
+  }
+
+  private invertOperator(op: string): string {
+    switch (op) {
+      case 'gt': return 'lt';
+      case 'gte': return 'lte';
+      case 'lt': return 'gt';
+      case 'lte': return 'gte';
+      default: return op;
+    }
+  }
+
+  private evaluatePercentileCondition(
+    operator: string,
+    _threshold: number | [number, number] | string | null,
+    percentile: number
+  ): boolean {
+    switch (operator) {
+      case 'gt':
+      case 'gte':
+      case 'increasing':
+        return percentile >= 60;
+      case 'lt':
+      case 'lte':
+      case 'decreasing':
+        return percentile <= 40;
+      case 'between':
+        return percentile >= 25 && percentile <= 75;
+      default:
+        return percentile >= 60;
     }
   }
 
@@ -577,16 +616,11 @@ export class StrategyBacktestService {
   }
 
   private computeGrade(hitRate: number, alpha1y: number, consistency: number): string {
-    const score =
-      (hitRate > 65 ? 4 : hitRate > 55 ? 3 : hitRate > 48 ? 2 : hitRate > 40 ? 1 : 0) +
-      (alpha1y > 2 ? 4 : alpha1y > 1 ? 3 : alpha1y > 0.3 ? 2 : alpha1y > 0 ? 1 : 0) +
-      (consistency > 70 ? 4 : consistency > 55 ? 3 : consistency > 45 ? 2 : consistency > 35 ? 1 : 0);
-
-    if (score >= 10) return 'A';
-    if (score >= 8) return 'B+';
-    if (score >= 6) return 'B';
-    if (score >= 4) return 'C';
-    if (score >= 2) return 'D';
+    if (hitRate >= 65 && alpha1y >= 2 && consistency >= 60) return 'A';
+    if (hitRate >= 58 && alpha1y >= 1 && consistency >= 55) return 'B+';
+    if (hitRate >= 52 && alpha1y >= 0.3 && consistency >= 45) return 'B';
+    if (hitRate >= 48 && alpha1y > 0 && consistency >= 35) return 'C';
+    if (hitRate >= 40 || alpha1y > 0) return 'D';
     return 'F';
   }
 
