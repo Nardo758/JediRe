@@ -118,6 +118,7 @@ export const StrategyBuilderPage: React.FC = () => {
   const [correlationData, setCorrelationData] = useState<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }>>([]);
   const [correlationLoading, setCorrelationLoading] = useState(false);
   const [leadLagData, setLeadLagData] = useState<Record<string, { leadsOutcomes: any[]; ledByMetrics: any[] }>>({});
+  const [backtestSummaries, setBacktestSummaries] = useState<Record<string, any>>({});
 
   // Peer-group dimension filters
   const [peerVintage, setPeerVintage] = useState<'all' | 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s'>('all');
@@ -127,9 +128,10 @@ export const StrategyBuilderPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [strategiesRes, catalogRes] = await Promise.all([
+        const [strategiesRes, catalogRes, backtestRes] = await Promise.all([
           api.get('/strategies'),
           api.get('/metrics/catalog'),
+          api.get('/backtest/strategy/summaries').catch(() => ({ data: { data: {} } })),
         ]);
 
         const raw = strategiesRes.data;
@@ -142,6 +144,10 @@ export const StrategyBuilderPage: React.FC = () => {
         if (catalogRes.data) {
           setMetrics(catalogRes.data.metrics || []);
           setMetricCategories(catalogRes.data.categories || []);
+        }
+
+        if (backtestRes.data?.data) {
+          setBacktestSummaries(backtestRes.data.data);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -466,16 +472,39 @@ export const StrategyBuilderPage: React.FC = () => {
                     marginBottom: 8,
                   }}>
                     <span style={{ fontSize: 14 }}>📊</span>
-                    <span style={{
-                      fontSize: 9,
-                      fontWeight: 600,
-                      padding: '2px 8px',
-                      borderRadius: 10,
-                      background: strategy.type === 'preset' ? `${COLORS.success}15` : `${COLORS.accent}15`,
-                      color: strategy.type === 'preset' ? COLORS.success : COLORS.accent,
-                    }}>
-                      {(strategy.type || 'custom').toUpperCase()}
-                    </span>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {(() => {
+                        const g = backtestSummaries[strategy.id]?.grade;
+                        if (!g || g === 'F') return null;
+                        return (
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 10,
+                            background: g === 'A' ? `${COLORS.success}20`
+                              : g.startsWith('B') ? `${COLORS.accent}20`
+                              : `${COLORS.warning}20`,
+                            color: g === 'A' ? COLORS.success
+                              : g.startsWith('B') ? COLORS.accent
+                              : COLORS.warning,
+                            fontFamily: 'monospace',
+                          }}>
+                            {g}
+                          </span>
+                        );
+                      })()}
+                      <span style={{
+                        fontSize: 9,
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        background: strategy.type === 'preset' ? `${COLORS.success}15` : `${COLORS.accent}15`,
+                        color: strategy.type === 'preset' ? COLORS.success : COLORS.accent,
+                      }}>
+                        {(strategy.type || 'custom').toUpperCase()}
+                      </span>
+                    </div>
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 4 }}>
                     {strategy.name}
@@ -505,6 +534,23 @@ export const StrategyBuilderPage: React.FC = () => {
                       );
                     })}
                   </div>
+                  {(() => {
+                    const s = backtestSummaries[strategy.id];
+                    if (!s || !s.grade || s.grade === 'F') return null;
+                    return (
+                      <div style={{
+                        fontSize: 9,
+                        color: COLORS.textMuted,
+                        marginBottom: 6,
+                        fontFamily: 'monospace',
+                        display: 'flex',
+                        gap: 8,
+                      }}>
+                        <span>HR: {Number(s.avg_hit_rate).toFixed(0)}%</span>
+                        <span>Alpha: {Number(s.avg_alpha_1y) >= 0 ? '+' : ''}{Number(s.avg_alpha_1y).toFixed(1)}pp</span>
+                      </div>
+                    );
+                  })()}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -1409,6 +1455,125 @@ export const StrategyBuilderPage: React.FC = () => {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {strategyId && backtestSummaries[strategyId] && (
+                  <div style={{
+                    marginTop: 14,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderRadius: 6,
+                    border: `1px solid ${COLORS.border}`,
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 8,
+                    }}>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                        color: COLORS.textDim,
+                      }}>
+                        HISTORICAL PERFORMANCE
+                      </span>
+                      <span style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        color: backtestSummaries[strategyId].grade === 'A' ? COLORS.success
+                          : backtestSummaries[strategyId].grade?.startsWith('B') ? COLORS.accent
+                          : backtestSummaries[strategyId].grade === 'F' ? COLORS.error
+                          : COLORS.warning,
+                      }}>
+                        {backtestSummaries[strategyId].grade}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                      <div style={{
+                        padding: '6px 8px', borderRadius: 4,
+                        background: `${COLORS.success}06`, border: `1px solid ${COLORS.success}15`,
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: COLORS.success }}>
+                          {Number(backtestSummaries[strategyId].avg_hit_rate).toFixed(0)}%
+                        </div>
+                        <div style={{ fontSize: 8, color: COLORS.textDim }}>Hit Rate</div>
+                      </div>
+                      <div style={{
+                        padding: '6px 8px', borderRadius: 4,
+                        background: `${COLORS.accent}06`, border: `1px solid ${COLORS.accent}15`,
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: COLORS.accent }}>
+                          +{Number(backtestSummaries[strategyId].avg_alpha_1y).toFixed(1)}pp
+                        </div>
+                        <div style={{ fontSize: 8, color: COLORS.textDim }}>Alpha (1Y)</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {backtestSummaries[strategyId].avg_alpha_3y != null && (
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '3px 6px', fontSize: 9,
+                        }}>
+                          <span style={{ color: COLORS.textMuted }}>Alpha (3Y avg)</span>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.text }}>
+                            +{Number(backtestSummaries[strategyId].avg_alpha_3y).toFixed(2)}pp
+                          </span>
+                        </div>
+                      )}
+                      {backtestSummaries[strategyId].avg_alpha_5y != null && (
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '3px 6px', fontSize: 9,
+                        }}>
+                          <span style={{ color: COLORS.textMuted }}>Alpha (5Y avg)</span>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.text }}>
+                            +{Number(backtestSummaries[strategyId].avg_alpha_5y).toFixed(2)}pp
+                          </span>
+                        </div>
+                      )}
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '3px 6px', fontSize: 9,
+                      }}>
+                        <span style={{ color: COLORS.textMuted }}>Consistency</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.text }}>
+                          {Number(backtestSummaries[strategyId].consistency_score).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {backtestSummaries[strategyId].signal_decay && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 8, color: COLORS.textDim, marginBottom: 4 }}>SIGNAL DECAY (ALPHA)</div>
+                        <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 24 }}>
+                          {(() => {
+                            const entries = Object.entries(backtestSummaries[strategyId].signal_decay as Record<string, number>)
+                              .sort(([a], [b]) => parseInt(a) - parseInt(b));
+                            const maxAlpha = Math.max(...entries.map(([, v]) => Math.abs(Number(v))), 0.1);
+                            return entries.map(([label, alpha]) => {
+                              const alphaNum = Number(alpha);
+                              const barH = Math.max(4, (Math.abs(alphaNum) / maxAlpha) * 24);
+                              const color = alphaNum > 1 ? COLORS.success : alphaNum > 0 ? COLORS.warning : COLORS.error;
+                              return (
+                                <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                                  <div style={{
+                                    width: '100%', height: barH, borderRadius: 2,
+                                    background: color + '40', border: `1px solid ${color}60`,
+                                  }} title={`${label}: ${alphaNum >= 0 ? '+' : ''}${alphaNum.toFixed(1)}pp alpha`} />
+                                  <div style={{ fontSize: 7, color: COLORS.textDim, marginTop: 2 }}>{label}</div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
