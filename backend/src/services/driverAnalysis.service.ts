@@ -181,23 +181,32 @@ export class DriverAnalysisService {
     };
 
     for (const catalogMetric of METRICS_CATALOG) {
+      if (catalogMetric.id.startsWith('OP_')) continue;
+
       const dbId = translateMetricId(catalogMetric.id);
-      if (dbId === catalogMetric.id && !catalogMetric.id.startsWith('OP_')) {
-        continue;
+
+      const idsToTry = [dbId];
+      if (dbId !== catalogMetric.id) {
+        idsToTry.push(catalogMetric.id);
       }
 
-      const geoRes = await this.pool.query(
-        `SELECT DISTINCT geography_type, geography_id
-         FROM metric_time_series
-         WHERE metric_id = $1 AND value IS NOT NULL
-         GROUP BY geography_type, geography_id
-         HAVING COUNT(*) >= 8
-         ORDER BY COUNT(*) DESC
-         LIMIT 5`,
-        [dbId]
-      );
-      for (const row of geoRes.rows) {
-        addDriver(dbId, row.geography_type, row.geography_id, catalogMetric.source, catalogMetric.id);
+      for (const tryId of idsToTry) {
+        const geoRes = await this.pool.query(
+          `SELECT DISTINCT geography_type, geography_id
+           FROM metric_time_series
+           WHERE metric_id = $1 AND value IS NOT NULL
+           GROUP BY geography_type, geography_id
+           HAVING COUNT(*) >= 8
+           ORDER BY COUNT(*) DESC
+           LIMIT 5`,
+          [tryId]
+        );
+        if (geoRes.rows.length > 0) {
+          for (const row of geoRes.rows) {
+            addDriver(tryId, row.geography_type, row.geography_id, catalogMetric.source, catalogMetric.id);
+          }
+          break;
+        }
       }
     }
 
@@ -207,20 +216,14 @@ export class DriverAnalysisService {
         `SELECT DISTINCT metric_id
          FROM metric_time_series
          WHERE metric_id LIKE 'CS_%' AND geography_type = 'submarket'
+           AND geography_id = $1
          GROUP BY metric_id
          HAVING COUNT(*) >= 8
-         ORDER BY metric_id`
+         ORDER BY metric_id`,
+        [geoMapping.submarket]
       );
       for (const row of csRes.rows) {
-        const geoCheckRes = await this.pool.query(
-          `SELECT geography_id FROM metric_time_series
-           WHERE metric_id = $1 AND geography_type = 'submarket'
-           GROUP BY geography_id HAVING COUNT(*) >= 8 LIMIT 3`,
-          [row.metric_id]
-        );
-        for (const geoRow of geoCheckRes.rows) {
-          addDriver(row.metric_id, 'submarket', geoRow.geography_id, 'costar');
-        }
+        addDriver(row.metric_id, 'submarket', geoMapping.submarket, 'costar');
       }
     }
 
@@ -326,7 +329,7 @@ export class DriverAnalysisService {
       return null;
     };
 
-    for (let lag = 0; lag <= maxLagWeeks; lag += (lag < 12 ? 1 : 2)) {
+    for (let lag = 0; lag <= maxLagWeeks; lag++) {
       const xVals: number[] = [];
       const yVals: number[] = [];
 
