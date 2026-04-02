@@ -481,7 +481,13 @@ export default function F4MarketsView() {
       geos.add(`${slug}-${state}-${state}`);
       geos.add(m.id);
     }
-    return [...geos].slice(0, 200);
+    for (const s of SUBMARKET_INDEX) {
+      geos.add(s.name.toLowerCase().replace(/\s+/g, "-"));
+    }
+    for (const p of PROPERTY_INDEX) {
+      geos.add(p.name.toLowerCase().replace(/\s+/g, "-"));
+    }
+    return [...geos].slice(0, 500);
   }, [filteredMarkets]);
 
   useEffect(() => {
