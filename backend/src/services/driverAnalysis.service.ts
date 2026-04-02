@@ -1,35 +1,7 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { METRICS_CATALOG, getMetricById, applyEmpiricalLeadLag } from './metricsCatalog.service';
-
-const CATALOG_TO_DB: Record<string, string> = {
-  SFR_HOME_VALUE: 'home_value_index',
-  SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
-  SFR_PRICE_TO_RENT: 'D_PRICE_TO_RENT',
-  MACRO_OIL_PRICE: 'M_OIL_PRICE',
-  MACRO_CPI_OFFICIAL: 'M_CPI_OFFICIAL',
-  MACRO_CPI_SHADOW: 'M_CPI_SHADOWSTATS',
-  F_CAP_RATE: 'CS_CAP_RATE',
-  F_RENT_TO_INCOME: 'D_RENT_TO_INCOME',
-  F_RENT_GROWTH: 'rent_index_yoy',
-  F_RENT_INDEX: 'rent_index',
-  F_PRICE_PER_UNIT: 'CS_MEDIAN_PRICE_UNIT',
-  E_EMPLOYMENT_GROWTH: 'D_EMP_GROWTH_YOY',
-  E_WAGE_GROWTH: 'D_WAGE_GROWTH_YOY',
-  E_POPULATION_GROWTH: 'D_POP_GROWTH_YOY',
-  E_BIZ_FORMATIONS: 'D_BIZ_FORMATIONS',
-  M_VACANCY: 'CS_VACANCY_RATE',
-  M_ABSORPTION: 'CS_NET_ABSORPTION',
-  S_PIPELINE_UNITS: 'CS_UNDER_CONSTRUCTION',
-  S_PIPELINE_TO_STOCK: 'CS_UNDER_CONSTR_PCT',
-  S_PERMIT_VELOCITY: 'D_PERMIT_VELOCITY_YOY',
-  DEMO_MED_AGE: 'D_MEDIAN_AGE',
-  DEMO_HH_GROWTH: 'D_HOUSEHOLD_GROWTH_YOY',
-  L_JOBS_PER_UNIT: 'D_JOBS_TO_HOUSING',
-  DEMO_POPULATION: 'D_POPULATION',
-  DEMO_MED_INCOME: 'D_MEDIAN_INCOME',
-  DEMO_RENTER_PCT: 'D_RENTER_PCT',
-};
+import { CATALOG_TO_DB } from '../config/metricIdMapping';
 
 const DB_METRIC_NAMES: Record<string, string> = {
   home_value_index: 'Median Home Value (Zillow)',

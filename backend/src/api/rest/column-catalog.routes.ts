@@ -1,43 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { METRICS_CATALOG, MetricDefinition } from '../../services/metricsCatalog.service';
-
-const CATALOG_TO_DB: Record<string, string> = {
-  SFR_HOME_VALUE: 'home_value_index',
-  SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
-  SFR_PRICE_TO_RENT: 'D_PRICE_TO_RENT',
-  MACRO_OIL_PRICE: 'M_OIL_PRICE',
-  MACRO_CPI_OFFICIAL: 'M_CPI_OFFICIAL',
-  MACRO_CPI_SHADOW: 'M_CPI_SHADOWSTATS',
-  F_CAP_RATE: 'CS_CAP_RATE',
-  F_RENT_TO_INCOME: 'D_RENT_TO_INCOME',
-  F_RENT_GROWTH: 'rent_index_yoy',
-  F_RENT_INDEX: 'rent_index',
-  F_PRICE_PER_UNIT: 'CS_MEDIAN_PRICE_UNIT',
-  E_EMPLOYMENT_GROWTH: 'D_EMP_GROWTH_YOY',
-  E_WAGE_GROWTH: 'D_WAGE_GROWTH_YOY',
-  E_POPULATION_GROWTH: 'D_POP_GROWTH_YOY',
-  E_BIZ_FORMATIONS: 'D_BIZ_FORMATIONS',
-  M_VACANCY: 'CS_VACANCY_RATE',
-  M_ABSORPTION: 'CS_NET_ABSORPTION',
-  S_PIPELINE_UNITS: 'CS_UNDER_CONSTRUCTION',
-  S_PIPELINE_TO_STOCK: 'CS_UNDER_CONSTR_PCT',
-  S_PERMIT_VELOCITY: 'D_PERMIT_VELOCITY_YOY',
-  DEMO_MED_AGE: 'D_MEDIAN_AGE',
-  DEMO_HH_GROWTH: 'D_HOUSEHOLD_GROWTH_YOY',
-  L_JOBS_PER_UNIT: 'D_JOBS_TO_HOUSING',
-  DEMO_POPULATION: 'D_POPULATION',
-  DEMO_MED_INCOME: 'D_MEDIAN_INCOME',
-  DEMO_RENTER_PCT: 'D_RENTER_PCT',
-};
-
-function resolveDbId(catalogId: string): string {
-  return CATALOG_TO_DB[catalogId] || catalogId;
-}
+import { CATALOG_TO_DB, resolveDbId } from '../../config/metricIdMapping';
 
 const router = Router();
 
-router.get('/catalog', async (_req: Request, res: Response) => {
+export const catalogHandler = async (_req: Request, res: Response) => {
   try {
     const pool = getPool();
     const statsRes = await pool.query(
@@ -104,9 +72,10 @@ router.get('/catalog', async (_req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Unknown error';
     res.status(500).json({ success: false, error: message });
   }
-});
+};
+router.get('/catalog', catalogHandler);
 
-router.get('/grid-data', async (req: Request, res: Response) => {
+export const gridDataHandler = async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const metricIds = (req.query.metricIds as string || '').split(',').filter(Boolean).slice(0, 30);
@@ -231,9 +200,10 @@ router.get('/grid-data', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Unknown error';
     res.status(500).json({ success: false, error: message });
   }
-});
+};
+router.get('/grid-data', gridDataHandler);
 
-router.get('/insights', async (req: Request, res: Response) => {
+export const insightsHandler = async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const propertyId = req.query.propertyId as string;
@@ -277,6 +247,7 @@ router.get('/insights', async (req: Request, res: Response) => {
     const message = err instanceof Error ? err.message : 'Unknown error';
     res.status(500).json({ success: false, error: message });
   }
-});
+};
+router.get('/insights', insightsHandler);
 
 export default router;

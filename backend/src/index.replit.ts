@@ -280,11 +280,11 @@ app.use('/api/v1/driver-analysis', driverAnalysisRoutes);
 import derivedMetricsRoutes from './api/rest/derived-metrics.routes';
 app.use('/api/v1/derived-metrics', derivedMetricsRoutes);
 
-import columnCatalogRoutes from './api/rest/column-catalog.routes';
+import columnCatalogRoutes, { catalogHandler, gridDataHandler, insightsHandler } from './api/rest/column-catalog.routes';
 app.use('/api/v1/columns', columnCatalogRoutes);
-app.get('/api/v1/column-catalog', (req, res, next) => { req.url = '/catalog' + (req._parsedUrl?.search || ''); next(); }, columnCatalogRoutes);
-app.get('/api/v1/grid-data', (req, res, next) => { req.url = '/grid-data' + (req._parsedUrl?.search || ''); next(); }, columnCatalogRoutes);
-app.get('/api/v1/column-insights', (req, res, next) => { req.url = '/insights' + (req._parsedUrl?.search || ''); next(); }, columnCatalogRoutes);
+app.get('/api/v1/column-catalog', catalogHandler);
+app.get('/api/v1/grid-data', gridDataHandler);
+app.get('/api/v1/column-insights', insightsHandler);
 
 import gridTemplatesRoutes from './api/rest/grid-templates.routes';
 app.use('/api/v1/grid-templates', optionalAuth, gridTemplatesRoutes);
