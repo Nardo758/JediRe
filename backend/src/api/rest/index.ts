@@ -73,6 +73,7 @@ import developmentScenariosRoutes from './development-scenarios.routes';
 import trafficDataRoutes from './traffic-data.routes';
 import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
+import leadLagRoutes from './lead-lag.routes';
 import dealContextRoutes from './deal-context.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
 import createMarketIntelligenceRoutes from './market-intelligence.routes';
@@ -343,6 +344,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Correlation Engine routes (COR-01 through COR-20 market correlations)
   app.use(`${API_PREFIX}/correlations`, correlationRoutes);
+
+  // Lead/Lag Discovery routes
+  app.use(`${API_PREFIX}/lead-lag`, leadLagRoutes);
 
   // Metrics Catalog routes (Strategy Engine - metric definitions and historical data)
   app.use(`${API_PREFIX}/metrics`, metricsCatalogRoutes);

@@ -39,7 +39,7 @@ export const OUTCOME_METRICS_DB = ['rent_index_yoy', 'home_value_index_yoy', 'ho
 
 export function translateMetricId(raw: string): string {
   if (!raw) return raw;
-  return METRIC_ID_TRANSLATE[raw.toUpperCase()] ?? METRIC_ID_TRANSLATE[raw] ?? raw.toLowerCase();
+  return METRIC_ID_TRANSLATE[raw.toUpperCase()] ?? METRIC_ID_TRANSLATE[raw] ?? raw;
 }
 
 const DB_TO_ALL_CATALOG = new Map<string, string[]>();

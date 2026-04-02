@@ -6,8 +6,8 @@ import { METRICS_CATALOG } from './metricsCatalog.service';
 const OUTCOME_DB_TO_CATALOG: Record<string, string> = {
   'rent_index_yoy': 'F_RENT_GROWTH',
   'home_value_index_yoy': 'SFR_HOME_VALUE_GROWTH',
-  'home_value_index': 'M_VACANCY',
-  'rent_index': 'F_CAP_RATE',
+  'home_value_index': 'SFR_HOME_VALUE',
+  'rent_index': 'RENT',
 };
 
 function toYearMonth(dateStr: string): string {
