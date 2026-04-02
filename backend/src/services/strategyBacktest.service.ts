@@ -186,10 +186,12 @@ export class StrategyBacktestService {
       };
     }
 
+    const now = new Date();
+    const startYear = now.getFullYear() - 10;
     const maxScreenDate = new Date(latestOutcomeDate);
-    maxScreenDate.setFullYear(maxScreenDate.getFullYear() - 1);
-    const endYear = Math.min(maxScreenDate.getFullYear(), 2024);
-    const screeningDates = generateQuarterlyDates(2017, endYear);
+    maxScreenDate.setFullYear(maxScreenDate.getFullYear() - 2);
+    const endYear = Math.min(maxScreenDate.getFullYear(), now.getFullYear() - 2);
+    const screeningDates = generateQuarterlyDates(startYear, endYear);
 
     const allResults: ScreeningResult[] = [];
 

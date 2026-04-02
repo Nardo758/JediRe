@@ -105,7 +105,7 @@ router.post('/strategy/run-all-presets', async (_req: Request, res: Response) =>
   }
 });
 
-router.post('/strategy/:strategyId/run', async (req: Request, res: Response) => {
+const runHandler = async (req: Request, res: Response) => {
   try {
     const { strategyId } = req.params;
     if (!strategyId) {
@@ -117,9 +117,9 @@ router.post('/strategy/:strategyId/run', async (req: Request, res: Response) => 
     logger.error(`Strategy backtest run error: ${String(error)}`);
     res.status(500).json({ error: 'Strategy backtest execution failed' });
   }
-});
+};
 
-router.get('/strategy/:strategyId/results', async (req: Request, res: Response) => {
+const resultsHandler = async (req: Request, res: Response) => {
   try {
     const results = await strategyBacktest.getResults(req.params.strategyId);
     res.json({ success: true, data: results });
@@ -127,9 +127,9 @@ router.get('/strategy/:strategyId/results', async (req: Request, res: Response) 
     logger.error(`Strategy backtest results error: ${String(error)}`);
     res.status(500).json({ error: 'Failed to retrieve strategy backtest results' });
   }
-});
+};
 
-router.get('/strategy/:strategyId/summary', async (req: Request, res: Response) => {
+const summaryHandler = async (req: Request, res: Response) => {
   try {
     const summary = await strategyBacktest.getSummary(req.params.strategyId);
     if (!summary) {
@@ -140,6 +140,14 @@ router.get('/strategy/:strategyId/summary', async (req: Request, res: Response) 
     logger.error(`Strategy backtest summary error: ${String(error)}`);
     res.status(500).json({ error: 'Failed to retrieve strategy backtest summary' });
   }
-});
+};
+
+router.post('/run/:strategyId', runHandler);
+router.get('/results/:strategyId', resultsHandler);
+router.get('/summary/:strategyId', summaryHandler);
+
+router.post('/strategy/:strategyId/run', runHandler);
+router.get('/strategy/:strategyId/results', resultsHandler);
+router.get('/strategy/:strategyId/summary', summaryHandler);
 
 export default router;
