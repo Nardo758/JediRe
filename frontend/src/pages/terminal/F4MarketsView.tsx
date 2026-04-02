@@ -1057,6 +1057,18 @@ export default function F4MarketsView() {
   const renderSuggestedMetrics = () => {
     if (metricRecs.length === 0 && !recsLoading) return null;
     const activeColPrefs = colPrefsMap[activeTab];
+    const activeCols = new Set(activeColPrefs.columns);
+    const activeMetricIds = new Set(
+      activeColPrefs.columns
+        .filter(c => c.startsWith("metric:"))
+        .map(c => c.substring(7))
+    );
+    const missing = metricRecs.filter(rec => {
+      if (rec.columnId && activeCols.has(rec.columnId)) return false;
+      if (rec.metricId && activeMetricIds.has(rec.metricId)) return false;
+      return true;
+    });
+    if (missing.length === 0 && !recsLoading) return null;
     return (
       <div style={{ borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
         <div
@@ -1071,17 +1083,16 @@ export default function F4MarketsView() {
             {recsCollapsed ? "▶" : "▼"} SUGGESTED METRICS
           </span>
           <span style={{ fontSize: 8, color: C.muted, ...mono }}>
-            {metricRecs.length} recommendation{metricRecs.length !== 1 ? "s" : ""} from correlation analysis
+            {missing.length} metric{missing.length !== 1 ? "s" : ""} you may be missing
           </span>
           {recsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Computing...</span>}
         </div>
-        {!recsCollapsed && metricRecs.length > 0 && (
+        {!recsCollapsed && missing.length > 0 && (
           <div style={{ display: "flex", gap: 0, overflow: "auto", background: C.panel }}>
-            {metricRecs.slice(0, 5).map((rec: MetricRecommendation) => {
+            {missing.slice(0, 5).map((rec: MetricRecommendation) => {
               const rColor = rec.correlationR > 0 ? C.green : C.red;
               const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
               const trendColor = rec.trendDirection === "rising" ? C.green : rec.trendDirection === "falling" ? C.red : C.muted;
-              const alreadyActive = rec.columnId ? activeColPrefs.columns.includes(rec.columnId) : false;
 
               return (
                 <div
@@ -1124,20 +1135,17 @@ export default function F4MarketsView() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (!alreadyActive) {
-                            activeColPrefs.toggleColumn(rec.columnId!);
-                          }
+                          activeColPrefs.toggleColumn(rec.columnId!);
                         }}
-                        disabled={alreadyActive}
                         style={{
                           ...mono, fontSize: 7, fontWeight: 700,
-                          background: alreadyActive ? C.green + "22" : C.purple + "22",
-                          color: alreadyActive ? C.green : C.purple,
-                          border: `1px solid ${alreadyActive ? C.green : C.purple}44`,
-                          padding: "2px 6px", cursor: alreadyActive ? "default" : "pointer",
+                          background: C.purple + "22",
+                          color: C.purple,
+                          border: `1px solid ${C.purple}44`,
+                          padding: "2px 6px", cursor: "pointer",
                         }}
                       >
-                        {alreadyActive ? "ACTIVE" : "+ ADD COL"}
+                        + ADD COL
                       </button>
                     )}
                   </div>
