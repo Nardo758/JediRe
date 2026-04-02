@@ -593,7 +593,7 @@ const AgentsTabContent: React.FC<{ onSelectAgent: (code: AgentCode) => void }> =
 // ============================================================================
 
 export const BottomPanel: React.FC = () => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState<BottomTabId>('alerts');
   
   // Data state
