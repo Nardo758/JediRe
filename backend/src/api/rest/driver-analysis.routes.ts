@@ -15,8 +15,8 @@ router.post('/run', async (req: Request, res: Response) => {
     if (!propertyId || typeof propertyId !== 'string') {
       return res.status(400).json({ success: false, error: 'propertyId is required and must be a string' });
     }
-    if (maxLagWeeks !== undefined && (typeof maxLagWeeks !== 'number' || isNaN(maxLagWeeks) || maxLagWeeks < 1 || maxLagWeeks > 52)) {
-      return res.status(400).json({ success: false, error: 'maxLagWeeks must be a number between 1 and 52' });
+    if (maxLagWeeks !== undefined && (typeof maxLagWeeks !== 'number' || isNaN(maxLagWeeks) || maxLagWeeks < 1 || maxLagWeeks > 26)) {
+      return res.status(400).json({ success: false, error: 'maxLagWeeks must be a number between 1 and 26' });
     }
     if (minSampleSize !== undefined && (typeof minSampleSize !== 'number' || isNaN(minSampleSize) || minSampleSize < 3)) {
       return res.status(400).json({ success: false, error: 'minSampleSize must be a number >= 3' });

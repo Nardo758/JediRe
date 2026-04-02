@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
-import { METRICS_CATALOG, applyEmpiricalLeadLag, getMetricById } from './metricsCatalog.service';
+import { METRICS_CATALOG, getMetricById } from './metricsCatalog.service';
 import { translateMetricId } from '../utils/metricTranslation';
 
 interface TimeSeriesPoint {
@@ -60,7 +60,7 @@ export class DriverAnalysisService {
     propertyId: string,
     options?: { maxLagWeeks?: number; minSampleSize?: number; outcomeMetrics?: string[] }
   ): Promise<DriverAnalysisRunResult> {
-    const maxLagWeeks = Math.min(52, Math.max(1, options?.maxLagWeeks ?? 26));
+    const maxLagWeeks = Math.min(26, Math.max(1, options?.maxLagWeeks ?? 26));
     const minSampleSize = Math.max(8, options?.minSampleSize ?? 12);
     const outcomeMetrics = options?.outcomeMetrics ?? OUTCOME_METRICS;
 
@@ -132,7 +132,7 @@ export class DriverAnalysisService {
         [runId, driverMetrics.length, allResults.length, JSON.stringify(summary)]
       );
 
-      this.updateCatalogFromResults(allResults);
+      this.updateCatalogFromResults(allResults, propertyId);
 
       logger.info(`[DriverAnalysis] Run #${runId} complete: ${allResults.length} significant relationships found from ${driverMetrics.length} drivers`);
 
@@ -264,17 +264,6 @@ export class DriverAnalysisService {
       addDriver(row.metric_id, row.geography_type, row.geography_id, row.source);
     }
 
-    const propOpsRes = await this.pool.query(
-      `SELECT DISTINCT metric_id
-       FROM metric_time_series
-       WHERE geography_id = $1 AND metric_id LIKE 'OP_%' AND value IS NOT NULL
-       GROUP BY metric_id HAVING COUNT(*) >= 12`,
-      [propertyId]
-    );
-    for (const row of propOpsRes.rows) {
-      addDriver(row.metric_id, 'property', propertyId, 'property_ops');
-    }
-
     return drivers;
   }
 
@@ -344,7 +333,7 @@ export class DriverAnalysisService {
       if (xVals.length < minSampleSize) continue;
 
       const { r, slope, intercept } = this.linearRegression(xVals, yVals);
-      if (!Number.isFinite(r) || Math.abs(r) < 0.2) continue;
+      if (!Number.isFinite(r)) continue;
 
       const pValue = this.computePValue(r, xVals.length);
 
@@ -450,11 +439,11 @@ export class DriverAnalysisService {
     return summary;
   }
 
-  private updateCatalogFromResults(results: DriverResult[]): void {
+  private updateCatalogFromResults(allResults: DriverResult[], propertyId: string): void {
     const leadsMap = new Map<string, Array<{ metricId: string; lagMonths: number; typicalR: number }>>();
     const laggedByMap = new Map<string, Array<{ metricId: string; leadMonths: number; typicalR: number }>>();
 
-    for (const r of results) {
+    for (const r of allResults) {
       if (Math.abs(r.pearsonR) < 0.3 || r.optimalLagWeeks === 0) continue;
 
       const driverCatalogId = this.findCatalogId(r.driverMetricId);
@@ -468,17 +457,23 @@ export class DriverAnalysisService {
       laggedByMap.get(outcomeCatalogId)!.push({ metricId: driverCatalogId, leadMonths: lagMonths, typicalR: r.pearsonR });
     }
 
+    let updated = 0;
     const allIds = new Set([...leadsMap.keys(), ...laggedByMap.keys()]);
-    const overrides = Array.from(allIds).map(id => ({
-      metricId: id,
-      leadsMetrics: (leadsMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5),
-      laggedBy: (laggedByMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5),
-      empiricallyValidated: true,
-    }));
+    for (const id of allIds) {
+      const metric = getMetricById(id);
+      if (!metric) continue;
 
-    if (overrides.length > 0) {
-      const applied = applyEmpiricalLeadLag(overrides);
-      logger.info(`[DriverAnalysis] Updated ${applied} catalog metrics with empirical lead/lag data`);
+      const leads = (leadsMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5);
+      const lagged = (laggedByMap.get(id) || []).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR)).slice(0, 5);
+
+      if (leads.length > 0) metric.leadsMetrics = leads;
+      if (lagged.length > 0) metric.laggedBy = lagged;
+      metric.empiricallyValidated = true;
+      updated++;
+    }
+
+    if (updated > 0) {
+      logger.info(`[DriverAnalysis] Updated ${updated} catalog metrics with empirical lead/lag data for ${propertyId}`);
     }
   }
 
