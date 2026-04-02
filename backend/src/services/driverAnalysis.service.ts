@@ -1,7 +1,114 @@
 import { Pool } from 'pg';
 import { logger } from '../utils/logger';
 import { METRICS_CATALOG, getMetricById, applyEmpiricalLeadLag } from './metricsCatalog.service';
-import { translateMetricId } from '../utils/metricTranslation';
+
+const CATALOG_TO_DB: Record<string, string> = {
+  SFR_HOME_VALUE: 'home_value_index',
+  SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
+  SFR_PRICE_TO_RENT: 'D_PRICE_TO_RENT',
+  MACRO_OIL_PRICE: 'M_OIL_PRICE',
+  MACRO_CPI_OFFICIAL: 'M_CPI_OFFICIAL',
+  MACRO_CPI_SHADOW: 'M_CPI_SHADOWSTATS',
+  F_CAP_RATE: 'CS_CAP_RATE',
+  F_RENT_TO_INCOME: 'D_RENT_TO_INCOME',
+  F_RENT_GROWTH: 'rent_index_yoy',
+  F_RENT_INDEX: 'rent_index',
+  F_PRICE_PER_UNIT: 'CS_MEDIAN_PRICE_UNIT',
+  E_EMPLOYMENT_GROWTH: 'D_EMP_GROWTH_YOY',
+  E_WAGE_GROWTH: 'D_WAGE_GROWTH_YOY',
+  E_POPULATION_GROWTH: 'D_POP_GROWTH_YOY',
+  E_BIZ_FORMATIONS: 'D_BIZ_FORMATIONS',
+  M_VACANCY: 'CS_VACANCY_RATE',
+  M_ABSORPTION: 'CS_NET_ABSORPTION',
+  S_PIPELINE_UNITS: 'CS_UNDER_CONSTRUCTION',
+  S_PIPELINE_TO_STOCK: 'CS_UNDER_CONSTR_PCT',
+  S_PERMIT_VELOCITY: 'D_PERMIT_VELOCITY_YOY',
+  DEMO_MED_AGE: 'D_MEDIAN_AGE',
+  DEMO_HH_GROWTH: 'D_HOUSEHOLD_GROWTH_YOY',
+  L_JOBS_PER_UNIT: 'D_JOBS_TO_HOUSING',
+  DEMO_POPULATION: 'D_POPULATION',
+  DEMO_MED_INCOME: 'D_MEDIAN_INCOME',
+  DEMO_RENTER_PCT: 'D_RENTER_PCT',
+};
+
+const DB_METRIC_NAMES: Record<string, string> = {
+  home_value_index: 'Median Home Value (Zillow)',
+  home_value_index_yoy: 'Home Value Growth YoY (Zillow)',
+  rent_index: 'Rent Index (Zillow)',
+  rent_index_yoy: 'Rent Growth YoY (Zillow)',
+  RATE_FED_FUNDS: 'Federal Funds Rate',
+  RATE_MORTGAGE_30Y: '30-Year Mortgage Rate',
+  RATE_SOFR: 'SOFR Rate',
+  RATE_TREASURY_10Y: '10-Year Treasury Yield',
+  M_GDP: 'GDP',
+  M_PERSONAL_INCOME: 'Personal Income',
+  M_CPI_OFFICIAL: 'CPI — Official (BLS)',
+  M_CPI_SHADOWSTATS: 'CPI — ShadowStats (1980-Based)',
+  M_CPI_STICKY: 'Sticky CPI',
+  M_OIL_PRICE: 'Crude Oil Price (WTI)',
+  M_EMPLOYED: 'Total Employed',
+  M_LABOR_FORCE: 'Labor Force',
+  M_UNEMPLOYMENT_RATE: 'Unemployment Rate',
+  M_POPULATION: 'Population (National)',
+  M_BUILDING_PERMITS: 'Building Permits',
+  M_HOUSING_STARTS: 'Housing Starts',
+  M_HOME_PRICE_INDEX: 'Home Price Index',
+  M_CASE_SHILLER_HPI: 'Case-Shiller HPI',
+  M_LEISURE_HOSPITALITY_EMP: 'Leisure & Hospitality Employment',
+  D_POPULATION: 'Total Population',
+  D_MEDIAN_INCOME: 'Median Household Income',
+  D_MEDIAN_RENT: 'Median Rent',
+  D_MEDIAN_HOME_VALUE: 'Median Home Value',
+  D_MEDIAN_AGE: 'Median Age',
+  D_HOUSEHOLD_COUNT: 'Household Count',
+  D_HOUSEHOLD_GROWTH_YOY: 'Household Growth YoY',
+  D_RENTER_PCT: 'Renter Household %',
+  D_RENTER_OCCUPIED: 'Renter-Occupied Units',
+  D_TOTAL_OCCUPIED: 'Total Occupied Housing',
+  D_TOTAL_HOUSING_UNITS: 'Total Housing Units',
+  D_TOTAL_POP_POVERTY: 'Population in Poverty',
+  D_POVERTY_POP: 'Poverty Population Count',
+  D_POVERTY_RATE: 'Poverty Rate',
+  D_POP_25_PLUS: 'Population 25+',
+  D_BACHELOR_PLUS: 'Bachelor Degree or Higher',
+  D_EDUCATION_BACHELOR_PCT: 'Education: Bachelor %',
+  D_AVG_HOURLY_EARNINGS: 'Avg Hourly Earnings',
+  D_AVG_WEEKLY_WAGE: 'Avg Weekly Wage',
+  D_EMP_GROWTH_YOY: 'Employment Growth YoY',
+  D_WAGE_GROWTH_YOY: 'Wage Growth YoY',
+  D_POP_GROWTH_YOY: 'Population Growth YoY',
+  D_BIZ_FORMATIONS: 'Business Formations',
+  D_PERMIT_VELOCITY_YOY: 'Permit Filing Velocity YoY',
+  D_RENT_TO_INCOME: 'Rent-to-Income Ratio',
+  D_PRICE_TO_RENT: 'Price-to-Rent Ratio',
+  D_JOBS_TO_HOUSING: 'Jobs-to-Housing Ratio',
+  D_SEARCH_VOL: 'Search Volume (Branded + Category)',
+  D_SEARCH_VOL_YOY: 'Search Volume Growth YoY',
+  T_AADT: 'AADT (Annual Average Daily Traffic)',
+  T_AADT_YOY: 'AADT Growth YoY',
+  C_SEARCH_GROWTH_INDEX: 'Search Growth Index (SGI)',
+  CS_VACANCY_RATE: 'Vacancy Rate (CoStar)',
+  CS_OCCUPANCY_RATE: 'Occupancy Rate (CoStar)',
+  CS_NET_ABSORPTION: 'Net Absorption (CoStar)',
+  CS_ABSORPTION_UNITS: 'Absorption Units (CoStar)',
+  CS_ABSORPTION_PCT: 'Absorption % (CoStar)',
+  CS_UNDER_CONSTRUCTION: 'Under Construction (CoStar)',
+  CS_UNDER_CONSTR_PCT: 'Under Construction % (CoStar)',
+  CS_DELIVERIES: 'Deliveries (CoStar)',
+  CS_DEMAND_UNITS: 'Demand Units (CoStar)',
+  CS_EFFECTIVE_RENT: 'Effective Rent (CoStar)',
+  CS_EFF_RENT_GROWTH: 'Effective Rent Growth (CoStar)',
+  CS_MARKET_RENT: 'Market Rent (CoStar)',
+  CS_RENT_GROWTH: 'Rent Growth (CoStar)',
+  CS_CAP_RATE: 'Cap Rate (CoStar)',
+  CS_MEDIAN_PRICE_UNIT: 'Price per Unit (CoStar)',
+  CS_INVENTORY_UNITS: 'Inventory Units (CoStar)',
+  CS_CONSTR_STARTS: 'Construction Starts (CoStar)',
+  CS_RENT_INDEX: 'Rent Index (CoStar)',
+  CS_PRICE_INDEX: 'Price Index (CoStar)',
+  CS_SALES_VOLUME: 'Sales Volume (CoStar)',
+  CS_ASSET_VALUE: 'Asset Value (CoStar)',
+};
 
 interface TimeSeriesPoint {
   date: string;
@@ -126,10 +233,12 @@ export class DriverAnalysisService {
           if (!best) continue;
 
           const catalogMetric = getMetricById(driver.catalogId || '');
+          const displayName = catalogMetric?.name || DB_METRIC_NAMES[driver.metricId] || driver.metricId;
+          const displayCategory = catalogMetric?.category || DB_METRIC_NAMES[driver.metricId] ? driver.source : driver.source || 'unknown';
 
           const result: DriverResult = {
             driverMetricId: driver.metricId,
-            driverMetricName: catalogMetric?.name || driver.metricId,
+            driverMetricName: displayName,
             driverCategory: catalogMetric?.category || driver.source || 'unknown',
             driverGeographyType: driver.geographyType,
             driverGeographyId: driver.geographyId,
@@ -210,12 +319,10 @@ export class DriverAnalysisService {
     for (const catalogMetric of METRICS_CATALOG) {
       if (catalogMetric.id.startsWith('OP_')) continue;
 
-      const dbId = translateMetricId(catalogMetric.id);
-
-      const idsToTry = [dbId];
-      if (dbId !== catalogMetric.id) {
-        idsToTry.push(catalogMetric.id);
-      }
+      const mappedId = CATALOG_TO_DB[catalogMetric.id];
+      const idsToTry: string[] = [];
+      if (mappedId) idsToTry.push(mappedId);
+      idsToTry.push(catalogMetric.id);
 
       for (const tryId of idsToTry) {
         const geoRes = await this.pool.query(
@@ -497,8 +604,8 @@ export class DriverAnalysisService {
 
   private findCatalogId(dbMetricId: string): string {
     for (const m of METRICS_CATALOG) {
-      const translated = translateMetricId(m.id);
-      if (translated === dbMetricId) return m.id;
+      const mapped = CATALOG_TO_DB[m.id];
+      if (mapped === dbMetricId || m.id === dbMetricId) return m.id;
     }
     return dbMetricId;
   }
@@ -517,48 +624,57 @@ export class DriverAnalysisService {
       sortDir?: string;
     }
   ): Promise<any[]> {
-    let query = `SELECT * FROM driver_analysis_results WHERE property_id = $1`;
+    let whereClause = `WHERE property_id = $1`;
     const params: any[] = [propertyId];
     let idx = 2;
 
     if (options?.outcomeMetric) {
-      query += ` AND outcome_metric_id = $${idx++}`;
+      whereClause += ` AND outcome_metric_id = $${idx++}`;
       params.push(options.outcomeMetric);
     }
     if (options?.minR) {
-      query += ` AND ABS(pearson_r) >= $${idx++}`;
+      whereClause += ` AND ABS(pearson_r) >= $${idx++}`;
       params.push(options.minR);
     }
     if (options?.minRSquared) {
-      query += ` AND r_squared >= $${idx++}`;
+      whereClause += ` AND r_squared >= $${idx++}`;
       params.push(options.minRSquared);
     }
     if (options?.maxPValue) {
-      query += ` AND p_value <= $${idx++}`;
+      whereClause += ` AND p_value <= $${idx++}`;
       params.push(options.maxPValue);
     }
     if (options?.minLag !== undefined) {
-      query += ` AND optimal_lag_weeks >= $${idx++}`;
+      whereClause += ` AND optimal_lag_weeks >= $${idx++}`;
       params.push(options.minLag);
     }
     if (options?.maxLag !== undefined) {
-      query += ` AND optimal_lag_weeks <= $${idx++}`;
+      whereClause += ` AND optimal_lag_weeks <= $${idx++}`;
       params.push(options.maxLag);
     }
 
     const sortCol = options?.sortBy === 'r_squared' ? 'r_squared'
       : options?.sortBy === 'lag' ? 'optimal_lag_weeks'
       : options?.sortBy === 'p_value' ? 'p_value'
-      : 'ABS(pearson_r)';
+      : 'abs_r';
     const sortDir = options?.sortDir === 'asc' ? 'ASC' : 'DESC';
-    query += ` ORDER BY ${sortCol} ${sortDir}`;
 
-    if (options?.limit) {
-      query += ` LIMIT $${idx++}`;
-      params.push(options.limit);
-    }
+    const query = `
+      SELECT DISTINCT ON (driver_metric_id, outcome_metric_id) *,
+             ABS(pearson_r) as abs_r
+      FROM driver_analysis_results
+      ${whereClause}
+      ORDER BY driver_metric_id, outcome_metric_id, ABS(pearson_r) DESC
+    `;
 
-    const res = await this.pool.query(query, params);
+    const wrapQuery = `
+      SELECT * FROM (${query}) deduped
+      ORDER BY ${sortCol} ${sortDir}
+      ${options?.limit ? `LIMIT $${idx++}` : ''}
+    `;
+    if (options?.limit) params.push(options.limit);
+
+    const res = await this.pool.query(wrapQuery, params);
     return res.rows.map(this.formatRow);
   }
 

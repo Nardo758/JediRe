@@ -130,7 +130,7 @@ export default function DriverAnalysisPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ sortBy: 'r_squared', sortDir: 'desc', limit: '500' });
+      const params = new URLSearchParams({ sortBy: 'r_squared', sortDir: 'desc', limit: '2000' });
       const resp = await fetch(`/api/v1/driver-analysis/results/${propId}?${params}`, { headers: getHeaders() });
       if (!resp.ok) throw new Error(`API ${resp.status}`);
       const data = await resp.json();
