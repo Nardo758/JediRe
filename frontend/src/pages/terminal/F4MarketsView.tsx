@@ -303,6 +303,7 @@ export default function F4MarketsView() {
   const { correlationMap: columnCorrelations, staleCount: corrStaleCount, totalCount: corrTotalCount } = useColumnCorrelations(marketGeoIds);
   const { recommendations: metricRecs, loading: recsLoading } = useMetricRecommendations(trackedGeoIds);
   const [recsCollapsed, setRecsCollapsed] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
 
   const dashCols = useColumnPreferences("f4_dashboard");
   const browseCols = useColumnPreferences("f4_browse");
@@ -1018,6 +1019,207 @@ export default function F4MarketsView() {
   // Tab Content Renderers
   // ============================================================================
 
+  const renderSuggestedMetrics = () => {
+    if (metricRecs.length === 0 && !recsLoading) return null;
+    const activeColPrefs = colPrefsMap[activeTab];
+    return (
+      <div style={{ borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
+        <div
+          onClick={() => setRecsCollapsed(!recsCollapsed)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 12px",
+            background: C.purple + "12", cursor: "pointer",
+            borderBottom: recsCollapsed ? "none" : `1px solid ${C.borderS}`,
+          }}
+        >
+          <span style={{ fontSize: 9, fontWeight: 700, color: C.purple, ...mono }}>
+            {recsCollapsed ? "▶" : "▼"} SUGGESTED METRICS
+          </span>
+          <span style={{ fontSize: 8, color: C.muted, ...mono }}>
+            {metricRecs.length} recommendation{metricRecs.length !== 1 ? "s" : ""} from correlation analysis
+          </span>
+          {recsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Computing...</span>}
+        </div>
+        {!recsCollapsed && metricRecs.length > 0 && (
+          <div style={{ display: "flex", gap: 0, overflow: "auto", background: C.panel }}>
+            {metricRecs.slice(0, 5).map((rec: MetricRecommendation) => {
+              const rColor = rec.correlationR > 0 ? C.green : C.red;
+              const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
+              const trendColor = rec.trendDirection === "rising" ? C.green : rec.trendDirection === "falling" ? C.red : C.muted;
+              const alreadyActive = rec.columnId ? activeColPrefs.columns.includes(rec.columnId) : false;
+
+              return (
+                <div
+                  key={`${rec.geographyId}:${rec.metricId}`}
+                  style={{
+                    minWidth: 200, maxWidth: 260, padding: "8px 12px",
+                    borderRight: `1px solid ${C.borderS}`,
+                    display: "flex", flexDirection: "column", gap: 4,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: C.primary }}>{rec.metricLabel}</span>
+                    <span style={{
+                      ...mono, fontSize: 7, fontWeight: 700, padding: "1px 4px",
+                      background: rColor + "18", color: rColor,
+                      border: `1px solid ${rColor}33`, borderRadius: 2,
+                    }}>
+                      r{rec.correlationR > 0 ? "+" : ""}{rec.correlationR.toFixed(2)}
+                    </span>
+                  </div>
+                  <div style={{ ...mono, fontSize: 8, color: C.secondary, lineHeight: 1.4 }}>
+                    {rec.reason}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                    <span style={{ ...mono, fontSize: 8, color: trendColor, fontWeight: 700 }}>
+                      {trendIcon} {rec.trendDirection.toUpperCase()}
+                    </span>
+                    {rec.geoCount > 1 && (
+                      <span style={{ ...mono, fontSize: 7, color: C.muted }}>
+                        {rec.geoCount} mkts
+                      </span>
+                    )}
+                    {rec.leadLagMonths !== 0 && (
+                      <span style={{ ...mono, fontSize: 7, color: C.cyan }}>
+                        {Math.abs(rec.leadLagMonths)}mo {rec.leadLagMonths > 0 ? "lead" : "lag"}
+                      </span>
+                    )}
+                    <div style={{ flex: 1 }} />
+                    {rec.columnId && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!alreadyActive) {
+                            activeColPrefs.toggleColumn(rec.columnId!);
+                          }
+                        }}
+                        disabled={alreadyActive}
+                        style={{
+                          ...mono, fontSize: 7, fontWeight: 700,
+                          background: alreadyActive ? C.green + "22" : C.purple + "22",
+                          color: alreadyActive ? C.green : C.purple,
+                          border: `1px solid ${alreadyActive ? C.green : C.purple}44`,
+                          padding: "2px 6px", cursor: alreadyActive ? "default" : "pointer",
+                        }}
+                      >
+                        {alreadyActive ? "ACTIVE" : "+ ADD COL"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderMetricsLegend = () => {
+    if (!showLegend) return null;
+    const legendItems: { icon: React.ReactNode; label: string; desc: string }[] = [
+      {
+        icon: <span style={{ color: "#2196F3", fontSize: 8 }}>◆</span>,
+        label: "Dynamic Column",
+        desc: "Data-backed metric from the catalog, added via Metrics Library",
+      },
+      {
+        icon: <span style={{ color: "#2196F3", fontSize: 9 }}>⚙</span>,
+        label: "Column Config",
+        desc: "Click to set aggregation (latest / YoY / 3mo avg), geo scope, and display format",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#4CAF50", background: "#4CAF5015", border: "1px solid #4CAF5030", padding: "0px 3px", borderRadius: 2 }}>r+0.82</span>,
+        label: "Strong Correlation (|r| >= 0.7)",
+        desc: "This metric has a strong statistical relationship with an outcome metric",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#00BCD4", background: "#00BCD415", border: "1px solid #00BCD430", padding: "0px 3px", borderRadius: 2 }}>r+0.55</span>,
+        label: "Moderate Correlation (|r| >= 0.5)",
+        desc: "Moderate statistical relationship — useful signal but not definitive",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#78909C", background: "#78909C15", border: "1px solid #78909C30", padding: "0px 3px", borderRadius: 2 }}>r+0.35</span>,
+        label: "Weak Correlation (|r| < 0.5)",
+        desc: "Weak or no significant correlation detected",
+      },
+      {
+        icon: <span style={{ color: C.green, fontSize: 9, fontWeight: 700 }}>▲</span>,
+        label: "Trend Rising",
+        desc: "Metric value is increasing in the most recent period",
+      },
+      {
+        icon: <span style={{ color: C.red, fontSize: 9, fontWeight: 700 }}>▼</span>,
+        label: "Trend Falling",
+        desc: "Metric value is decreasing in the most recent period",
+      },
+      {
+        icon: <span style={{ color: C.muted, fontSize: 9, fontWeight: 700 }}>─</span>,
+        label: "Trend Flat",
+        desc: "No significant change in the most recent period",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, color: C.green, fontWeight: 700 }}>+4.2%</span>,
+        label: "YoY Change (green)",
+        desc: "Year-over-year increase — positive for metrics where higher is better",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, color: C.red, fontWeight: 700 }}>-2.1%</span>,
+        label: "YoY Change (red)",
+        desc: "Year-over-year decrease — negative for metrics where higher is better",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: C.purple, background: C.purple + "22", border: `1px solid ${C.purple}44`, padding: "1px 4px", borderRadius: 2 }}>+ ADD COL</span>,
+        label: "Suggested Metric",
+        desc: "Correlation analysis recommends this metric — click to add as a grid column",
+      },
+      {
+        icon: <span style={{ ...mono, fontSize: 7, color: C.cyan }}>3mo lead</span>,
+        label: "Lead / Lag",
+        desc: "This metric leads or lags an outcome metric by the shown number of months",
+      },
+    ];
+
+    return (
+      <div style={{ borderBottom: `1px solid ${C.borderS}`, flexShrink: 0, background: C.panel }}>
+        <div
+          onClick={() => setShowLegend(false)}
+          style={{
+            display: "flex", alignItems: "center", gap: 8, padding: "5px 12px",
+            cursor: "pointer", borderBottom: `1px solid ${C.borderS}`,
+          }}
+        >
+          <span style={{ fontSize: 9, fontWeight: 700, color: C.cyan, ...mono }}>
+            ▼ METRICS LEGEND
+          </span>
+          <span style={{ fontSize: 8, color: C.muted, ...mono }}>
+            Visual indicators used in data grids
+          </span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
+          {legendItems.map((item, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 12px",
+                borderBottom: `1px solid ${C.borderS}22`,
+                borderRight: i % 2 === 0 ? `1px solid ${C.borderS}22` : "none",
+              }}
+            >
+              <div style={{ minWidth: 28, display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 1 }}>
+                {item.icon}
+              </div>
+              <div>
+                <div style={{ ...mono, fontSize: 9, fontWeight: 700, color: C.primary, lineHeight: 1.3 }}>{item.label}</div>
+                <div style={{ ...mono, fontSize: 8, color: C.secondary, lineHeight: 1.4, marginTop: 1 }}>{item.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboard = () => (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* KPI Strip */}
@@ -1080,98 +1282,7 @@ export default function F4MarketsView() {
         <GearButton tab="dashboard" />
       </div>
 
-      {metricRecs.length > 0 && (
-        <div style={{ borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-          <div
-            onClick={() => setRecsCollapsed(!recsCollapsed)}
-            style={{
-              display: "flex", alignItems: "center", gap: 8, padding: "5px 12px",
-              background: C.purple + "12", cursor: "pointer",
-              borderBottom: recsCollapsed ? "none" : `1px solid ${C.borderS}`,
-            }}
-          >
-            <span style={{ fontSize: 9, fontWeight: 700, color: C.purple, ...mono }}>
-              {recsCollapsed ? "▶" : "▼"} SUGGESTED METRICS
-            </span>
-            <span style={{ fontSize: 8, color: C.muted, ...mono }}>
-              {metricRecs.length} recommendation{metricRecs.length !== 1 ? "s" : ""} from correlation analysis
-            </span>
-            {recsLoading && <span style={{ fontSize: 8, color: C.amber, ...mono }}>Computing...</span>}
-          </div>
-          {!recsCollapsed && (
-            <div style={{ display: "flex", gap: 0, overflow: "auto", background: C.panel }}>
-              {metricRecs.slice(0, 5).map((rec: MetricRecommendation) => {
-                const rColor = rec.correlationR > 0 ? C.green : C.red;
-                const trendIcon = rec.trendDirection === "rising" ? "▲" : rec.trendDirection === "falling" ? "▼" : "─";
-                const trendColor = rec.trendDirection === "rising" ? C.green : rec.trendDirection === "falling" ? C.red : C.muted;
-                const activeColPrefs = colPrefsMap[activeTab];
-                const alreadyActive = rec.columnId ? activeColPrefs.columns.includes(rec.columnId) : false;
-
-                return (
-                  <div
-                    key={`${rec.geographyId}:${rec.metricId}`}
-                    style={{
-                      minWidth: 200, maxWidth: 260, padding: "8px 12px",
-                      borderRight: `1px solid ${C.borderS}`,
-                      display: "flex", flexDirection: "column", gap: 4,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: C.primary }}>{rec.metricLabel}</span>
-                      <span style={{
-                        ...mono, fontSize: 7, fontWeight: 700, padding: "1px 4px",
-                        background: rColor + "18", color: rColor,
-                        border: `1px solid ${rColor}33`, borderRadius: 2,
-                      }}>
-                        r{rec.correlationR > 0 ? "+" : ""}{rec.correlationR.toFixed(2)}
-                      </span>
-                    </div>
-                    <div style={{ ...mono, fontSize: 8, color: C.secondary, lineHeight: 1.4 }}>
-                      {rec.reason}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-                      <span style={{ ...mono, fontSize: 8, color: trendColor, fontWeight: 700 }}>
-                        {trendIcon} {rec.trendDirection.toUpperCase()}
-                      </span>
-                      {rec.geoCount > 1 && (
-                        <span style={{ ...mono, fontSize: 7, color: C.muted }}>
-                          {rec.geoCount} mkts
-                        </span>
-                      )}
-                      {rec.leadLagMonths !== 0 && (
-                        <span style={{ ...mono, fontSize: 7, color: C.cyan }}>
-                          {Math.abs(rec.leadLagMonths)}mo {rec.leadLagMonths > 0 ? "lead" : "lag"}
-                        </span>
-                      )}
-                      <div style={{ flex: 1 }} />
-                      {rec.columnId && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!alreadyActive) {
-                              activeColPrefs.toggleColumn(rec.columnId!);
-                            }
-                          }}
-                          disabled={alreadyActive}
-                          style={{
-                            ...mono, fontSize: 7, fontWeight: 700,
-                            background: alreadyActive ? C.green + "22" : C.purple + "22",
-                            color: alreadyActive ? C.green : C.purple,
-                            border: `1px solid ${alreadyActive ? C.green : C.purple}44`,
-                            padding: "2px 6px", cursor: alreadyActive ? "default" : "pointer",
-                          }}
-                        >
-                          {alreadyActive ? "ACTIVE" : "+ ADD COL"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+      {renderSuggestedMetrics()}
 
       {/* Main Table - Full Width */}
       <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
@@ -1263,6 +1374,7 @@ export default function F4MarketsView() {
         </button>
         <GearButton tab="browse" />
       </div>
+      {renderSuggestedMetrics()}
       {renderMarketTable("browse")}
     </div>
   );
@@ -1277,6 +1389,7 @@ export default function F4MarketsView() {
         <div style={{ flex: 1 }} />
         <GearButton tab="submarkets" />
       </div>
+      {renderSuggestedMetrics()}
       {subEmpty ? <AwaitingData loading={subLoading} label="submarket data" /> : (
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
@@ -1355,6 +1468,7 @@ export default function F4MarketsView() {
         <div style={{ flex: 1 }} />
         <GearButton tab="properties" />
       </div>
+      {renderSuggestedMetrics()}
       {propEmpty ? <AwaitingData loading={propLoading} label="property data" /> : (
       <div style={{ flex: 1, overflow: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
@@ -1463,7 +1577,25 @@ export default function F4MarketsView() {
             {tab.label}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={() => setShowLegend(!showLegend)}
+          style={{
+            ...mono, fontSize: 8, fontWeight: 700,
+            padding: "0 8px", height: "100%", cursor: "pointer",
+            background: showLegend ? C.cyan + "18" : "transparent",
+            color: showLegend ? C.cyan : C.muted,
+            border: "none", borderBottom: showLegend ? `2px solid ${C.cyan}` : "2px solid transparent",
+            letterSpacing: 0.5,
+          }}
+          title="Toggle metrics legend"
+        >
+          ? LEGEND
+        </button>
       </div>
+
+      {/* Metrics Legend */}
+      {renderMetricsLegend()}
 
       {/* Tab Content */}
       {renderTabContent()}
