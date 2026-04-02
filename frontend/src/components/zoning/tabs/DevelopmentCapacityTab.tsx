@@ -105,6 +105,7 @@ interface ZoningProfile {
 interface DevelopmentCapacityTabProps {
   dealId?: string;
   deal?: any;
+  costPerSf?: number;
 }
 
 const PROJECT_TYPE_OPTIONS = [
@@ -148,7 +149,7 @@ function calculateBuildableArea(parcel: any, zoning: any) {
   };
 }
 
-function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}) {
+function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}, costPerSfOverride?: number) {
   const area = calculateBuildableArea(parcel, zoning);
   const lot_acres = (parcel.lot_size_sf || 0) / 43560;
   const density = overrides.density || zoning.max_density_units_per_acre || 100;
@@ -208,7 +209,8 @@ function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}) {
 
   // ─── ESTIMATED VALUES ───
   const est_value_per_unit = 250000;
-  const est_construction_cost_per_sf = 185;
+  const _cpsf = Number(costPerSfOverride);
+  const est_construction_cost_per_sf = Number.isFinite(_cpsf) && _cpsf > 0 ? _cpsf : 185;
   const total_gfa = max_units * avg_unit_sf * common_area_factor;
   const est_construction_cost = total_gfa * est_construction_cost_per_sf;
   const est_total_value = max_units * est_value_per_unit;
@@ -244,8 +246,8 @@ function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}) {
   };
 }
 
-function generatePathScenarios(parcel: any, currentZoning: any) {
-  const byRight = calculateEnvelope(parcel, currentZoning);
+function generatePathScenarios(parcel: any, currentZoning: any, costPerSf?: number) {
+  const byRight = calculateEnvelope(parcel, currentZoning, {}, costPerSf);
 
   const overlayDensity = (currentZoning.max_density_units_per_acre || 100) * 1.2;
   const overlayParking = (currentZoning.parking?.per_unit || 1.0) * 0.8;
@@ -253,7 +255,7 @@ function generatePathScenarios(parcel: any, currentZoning: any) {
     ...currentZoning,
     max_density_units_per_acre: overlayDensity,
     parking: { ...currentZoning.parking, per_unit: overlayParking },
-  });
+  }, {}, costPerSf);
 
   const varianceDensity = (currentZoning.max_density_units_per_acre || 100) * 1.25;
   const varianceHeight = (currentZoning.max_height_ft || 85) * 1.10;
@@ -261,7 +263,7 @@ function generatePathScenarios(parcel: any, currentZoning: any) {
     ...currentZoning,
     max_density_units_per_acre: varianceDensity,
     max_height_ft: varianceHeight,
-  });
+  }, {}, costPerSf);
 
   return {
     paths: [
@@ -648,7 +650,7 @@ function EnvelopeDetail({ envelope, label }: { envelope: any, label: string }) {
   );
 }
 
-export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
+export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCostPerSf }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
@@ -941,7 +943,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         };
 
         // Compute scenarios immediately (client-side preview)
-        const scenarios = generatePathScenarios(parcel, currentZoning);
+        const scenarios = generatePathScenarios(parcel, currentZoning, propCostPerSf);
         setPathScenarios(scenarios);
         console.log('🔄 Computed client-side scenarios:', scenarios);
 
@@ -1011,6 +1013,26 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     loadData();
     loadScenarios();
   }, [loadData, loadScenarios]);
+
+  useEffect(() => {
+    if (!propCostPerSf || !profile) return;
+    const parcel = {
+      lot_size_sf: profile.lot_size_sf || profile.parcel_size_sf || 0,
+      lot_width_ft: profile.lot_width_ft,
+      lot_depth_ft: profile.lot_depth_ft,
+    };
+    const currentZoning: any = {
+      max_density_units_per_acre: profile.max_density_units_per_acre || 100,
+      max_height_ft: profile.max_height_ft || 85,
+      max_stories: profile.max_stories,
+      max_far: profile.max_far,
+      max_lot_coverage_pct: profile.max_lot_coverage_pct || 80,
+      setbacks: profile.setbacks || { front_ft: 10, side_ft: 10, rear_ft: 20 },
+      parking: { per_unit: profile.parking_per_unit || 1.0, guest_per_unit: profile.guest_parking_per_unit || 0.15 },
+    };
+    const scenarios = generatePathScenarios(parcel, currentZoning, propCostPerSf);
+    setPathScenarios(scenarios);
+  }, [propCostPerSf, profile]);
 
   useEffect(() => {
     return () => { recsAbortRef.current?.abort(); };

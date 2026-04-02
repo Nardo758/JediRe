@@ -19,6 +19,7 @@ import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import { BT as BT2, BtTabWrapper, PanelHeader, SubTabBar } from '../bloomberg-ui';
 import { useDealType } from '../../../stores/dealStore';
 import { getZoningDepth } from '../../../shared/config/deal-type-visibility';
+import { useDealAssumptions } from '../../../hooks/useDealAssumptions';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -40,6 +41,8 @@ const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: n
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const dealType = useDealType();
+  const resolvedDealIdForAssumptions = propDealId || deal?.id || null;
+  const { assumptions } = useDealAssumptions(resolvedDealIdForAssumptions);
   const zoningDepth = useMemo(() => {
     const explicitType = deal?.projectType || deal?.project_type || deal?.identity?.mode;
     if (!explicitType) return 'full';
@@ -127,7 +130,7 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           />
         );
       case 'capacity':
-        return <DevelopmentCapacityTab dealId={resolvedDealId} deal={deal} />;
+        return <DevelopmentCapacityTab dealId={resolvedDealId} deal={deal} costPerSf={(assumptions?.hardCostPsf || (assumptions as any)?.hard_cost_psf) ?? undefined} />;
       case 'hbu':
         return <HighestBestUseTab dealId={resolvedDealId} deal={deal} />;
       case 'risk':
