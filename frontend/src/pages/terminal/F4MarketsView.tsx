@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import PeerComparisonPage from "../MarketIntelligence/PeerComparisonPage";
 import { MSATerminal } from "../../components/terminal/MSATerminal";
@@ -7,10 +7,12 @@ import { PropertyTerminal } from "../../components/terminal/PropertyTerminal";
 import { BT } from "../../components/terminal/theme";
 import { useColumnPreferences } from "../../hooks/useColumnPreferences";
 import { ColumnPicker } from "../../components/terminal/ColumnPicker";
-import { ViewId, getColumnById } from "../../config/columnRegistry";
+import { ViewId, getColumnById, isDynamicColumn, extractMetricId, formatMetricValue, buildDynamicColumn } from "../../config/columnRegistry";
 import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
 import { useColumnCorrelations, useMetricRecommendations } from "../../hooks/useCorrelations";
 import type { MetricRecommendation } from "../../hooks/useCorrelations";
+import { useGridTemplates } from "../../hooks/useGridTemplates";
+import api from "../../services/api";
 
 /**
  * F4 Markets View - Refactored
@@ -325,6 +327,40 @@ export default function F4MarketsView() {
 
   const [pickerOpen, setPickerOpen] = useState<ActiveTab | null>(null);
 
+  const gridTemplates = useGridTemplates(viewIdMap[activeTab]);
+  const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
+  const [saveTemplateName, setSaveTemplateName] = useState("");
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+
+  const allActiveColumns = useMemo(() => {
+    const all = new Set<string>();
+    for (const prefs of Object.values(colPrefsMap)) {
+      for (const c of prefs.columns) all.add(c);
+    }
+    return [...all];
+  }, [dashCols.columns, browseCols.columns, subCols.columns, propCols.columns, compCols.columns]);
+
+  const dynamicMetricIds = useMemo(() =>
+    allActiveColumns.filter(isDynamicColumn).map(c => extractMetricId(c)!).filter(Boolean),
+    [allActiveColumns]
+  );
+
+  const [gridData, setGridData] = useState<Record<string, Record<string, any>>>({});
+  const [columnInsights, setColumnInsights] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    if (dynamicMetricIds.length === 0) return;
+    api.get(`/columns/grid-data?metricIds=${dynamicMetricIds.join(',')}`).then(res => {
+      if (res.data.success) setGridData(res.data.data);
+    }).catch(() => {});
+  }, [dynamicMetricIds.join(',')]);
+
+  useEffect(() => {
+    api.get('/columns/insights').then(res => {
+      if (res.data.success) setColumnInsights(res.data.insights);
+    }).catch(() => {});
+  }, []);
+
   const trackedMarkets = useMemo(() => ALL_MARKETS_RESOLVED.filter(m => m.starred), [ALL_MARKETS_RESOLVED]);
   
   const filteredMarkets = useMemo(() => {
@@ -469,7 +505,37 @@ export default function F4MarketsView() {
   // Dynamic Cell Renderer — Market-level data
   // ============================================================================
 
+  const renderDynamicCell = (colId: string, geoType: string, geoId: string) => {
+    const metricId = extractMetricId(colId);
+    if (!metricId) return <span style={{ color: C.muted }}>—</span>;
+    const metricData = gridData[metricId];
+    if (!metricData) return <span style={{ color: C.muted, fontSize: 8 }}>…</span>;
+    const geoKey = `${geoType}:${geoId}`;
+    const cell = metricData[geoKey];
+    if (!cell || cell.value == null) return <span style={{ color: C.muted }}>—</span>;
+
+    const def = getColumnById(colId);
+    const formatted = def?.format ? def.format(cell.value) : formatMetricValue(cell.value, def?.unit);
+    const trendColor = cell.trend === 'up' ? C.green : cell.trend === 'down' ? C.red : C.muted;
+    const trendArrow = cell.trend === 'up' ? '▲' : cell.trend === 'down' ? '▼' : '';
+
+    return (
+      <span style={{ color: C.primary, fontSize: 9 }}>
+        {formatted}
+        {trendArrow && <span style={{ color: trendColor, fontSize: 6, marginLeft: 2 }}>{trendArrow}</span>}
+      </span>
+    );
+  };
+
   const renderMarketCell = (colId: string, m: TrackedMarket, isMedian = false) => {
+    if (isDynamicColumn(colId)) {
+      if (isMedian) return <span style={{ color: C.muted }}>—</span>;
+      const slug = m.id.replace(/-[a-z]{2}$/, "");
+      const state = (m.msa.split(", ").pop() || "FL").toLowerCase();
+      const geoId = `${slug}-${state}-${state}`;
+      return renderDynamicCell(colId, "msa", geoId);
+    }
+
     if (isMedian && median) {
       const medMap: Record<string, React.ReactNode> = {
         rank: <span style={{ color: C.muted, fontStyle: "italic" }}>—</span>,
@@ -520,6 +586,9 @@ export default function F4MarketsView() {
   };
 
   const renderSubmarketCell = (colId: string, s: typeof SUBMARKET_INDEX[number]) => {
+    if (isDynamicColumn(colId)) {
+      return renderDynamicCell(colId, "submarket", (s as any).geoId || s.name);
+    }
     const cellMap: Record<string, React.ReactNode> = {
       name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{s.name}</span>,
       msa: <span style={{ color: C.secondary }}>{s.msa}</span>,
@@ -537,6 +606,9 @@ export default function F4MarketsView() {
   };
 
   const renderPropertyCell = (colId: string, p: typeof PROPERTY_INDEX[number]) => {
+    if (isDynamicColumn(colId)) {
+      return renderDynamicCell(colId, "property", (p as any).geoId || p.name);
+    }
     const cellMap: Record<string, React.ReactNode> = {
       name: <span style={{ color: C.primary, fontWeight: 600, ...sans }}>{p.name}</span>,
       submarket: <span style={{ color: C.secondary }}>{p.submarket}</span>,
@@ -552,8 +624,38 @@ export default function F4MarketsView() {
     return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
   };
 
+  const handleSaveTemplate = async () => {
+    if (!saveTemplateName.trim()) return;
+    await gridTemplates.saveTemplate(saveTemplateName.trim(), colPrefsMap[activeTab].columns);
+    setSaveTemplateName("");
+    setShowSaveDialog(false);
+  };
+
+  const handleLoadTemplate = async (template: any) => {
+    if (template.columns && Array.isArray(template.columns)) {
+      const dynamicCols = template.columns.filter(isDynamicColumn);
+      if (dynamicCols.length > 0) {
+        try {
+          const catalogRes = await api.get('/columns/catalog');
+          if (catalogRes.data.success) {
+            const metricsMap = new Map(catalogRes.data.metrics.map((m: any) => [m.id, m]));
+            for (const colId of dynamicCols) {
+              const metricId = extractMetricId(colId);
+              if (metricId && metricsMap.has(metricId)) {
+                buildDynamicColumn(metricsMap.get(metricId));
+              }
+            }
+          }
+        } catch {}
+      }
+      colPrefsMap[activeTab].saveColumns(template.columns);
+      gridTemplates.setActiveTemplate(template.id);
+    }
+    setTemplateDropdownOpen(false);
+  };
+
   const GearButton = ({ tab }: { tab: ActiveTab }) => (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", display: "flex", gap: 4, alignItems: "center" }}>
       <button
         onClick={() => setPickerOpen(pickerOpen === tab ? null : tab)}
         style={{
@@ -564,7 +666,89 @@ export default function F4MarketsView() {
         title="Customize columns"
       >
         ⚙ COLUMNS
+        {colPrefsMap[tab].columns.filter(isDynamicColumn).length > 0 && (
+          <span style={{ color: "#2196F3", fontSize: 8 }}>+{colPrefsMap[tab].columns.filter(isDynamicColumn).length}</span>
+        )}
       </button>
+
+      <div style={{ position: "relative" }}>
+        <button
+          onClick={() => setTemplateDropdownOpen(!templateDropdownOpen)}
+          style={{
+            ...mono, fontSize: 9, background: templateDropdownOpen ? C.active : "transparent",
+            color: templateDropdownOpen ? C.amber : C.muted, border: `1px solid ${templateDropdownOpen ? C.amber + "44" : C.borderS}`,
+            padding: "2px 6px", cursor: "pointer",
+          }}
+        >
+          TEMPLATES {gridTemplates.templates.length > 0 && `(${gridTemplates.templates.length})`}
+        </button>
+        {templateDropdownOpen && (
+          <div style={{
+            position: "absolute", top: 24, right: 0, width: 220, background: C.panel,
+            border: `1px solid ${C.borderM}`, zIndex: 100, boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+          }}>
+            <div style={{ padding: "6px 8px", borderBottom: `1px solid ${C.borderS}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ ...mono, fontSize: 9, fontWeight: 700, color: C.amber }}>GRID TEMPLATES</span>
+              <button
+                onClick={() => { setShowSaveDialog(true); setTemplateDropdownOpen(false); }}
+                style={{ ...mono, fontSize: 8, color: C.green, background: C.green + "15", border: `1px solid ${C.green}33`, padding: "1px 6px", cursor: "pointer" }}
+              >
+                + SAVE AS
+              </button>
+            </div>
+            {gridTemplates.templates.length === 0 ? (
+              <div style={{ ...mono, fontSize: 8, color: C.muted, padding: "8px", textAlign: "center" }}>No saved templates</div>
+            ) : (
+              gridTemplates.templates.map(t => (
+                <div
+                  key={t.id}
+                  style={{
+                    display: "flex", alignItems: "center", padding: "4px 8px", cursor: "pointer",
+                    background: gridTemplates.activeTemplate === t.id ? C.active : "transparent",
+                    borderBottom: `1px solid ${C.borderS}22`,
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = C.hover}
+                  onMouseLeave={e => e.currentTarget.style.background = gridTemplates.activeTemplate === t.id ? C.active : "transparent"}
+                >
+                  <div style={{ flex: 1 }} onClick={() => handleLoadTemplate(t)}>
+                    <div style={{ ...mono, fontSize: 9, color: C.primary }}>{t.name}</div>
+                    <div style={{ ...mono, fontSize: 7, color: C.muted }}>{t.columns.length} cols</div>
+                  </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); gridTemplates.deleteTemplate(t.id); }}
+                    style={{ ...mono, fontSize: 8, color: C.red, background: "transparent", border: "none", cursor: "pointer", padding: "2px" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {showSaveDialog && (
+        <div style={{
+          position: "absolute", top: 24, right: 0, width: 240, background: C.panel,
+          border: `1px solid ${C.amber}44`, zIndex: 100, padding: "8px", boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+        }}>
+          <div style={{ ...mono, fontSize: 9, fontWeight: 700, color: C.amber, marginBottom: 6 }}>SAVE TEMPLATE</div>
+          <input
+            type="text"
+            value={saveTemplateName}
+            onChange={e => setSaveTemplateName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
+            placeholder="Template name..."
+            autoFocus
+            style={{ ...mono, fontSize: 9, width: "100%", background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "4px 6px", outline: "none", marginBottom: 6 }}
+          />
+          <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+            <button onClick={() => setShowSaveDialog(false)} style={{ ...mono, fontSize: 8, color: C.muted, background: "transparent", border: `1px solid ${C.borderS}`, padding: "2px 8px", cursor: "pointer" }}>CANCEL</button>
+            <button onClick={handleSaveTemplate} style={{ ...mono, fontSize: 8, color: C.bg, background: C.amber, border: "none", padding: "2px 8px", cursor: "pointer", fontWeight: 700 }}>SAVE</button>
+          </div>
+        </div>
+      )}
+
       {pickerOpen === tab && (
         <ColumnPicker
           viewId={viewIdMap[tab]}
@@ -598,21 +782,41 @@ export default function F4MarketsView() {
           <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
             {cols.map(colId => {
               const def = getColumnById(colId);
-              const label = def?.label || colId.toUpperCase();
-              const w = def?.width || 50;
+              const label = def?.label || (isDynamicColumn(colId) ? extractMetricId(colId) : colId.toUpperCase());
+              const w = def?.width || (isDynamicColumn(colId) ? 64 : 50);
               const sortKey = sortableMap[colId];
               const corrInfo = columnCorrelations[colId];
+              const metricId = extractMetricId(colId);
+              const driverInsight = metricId ? columnInsights[metricId] || columnInsights[def?.catalogMetricId || ''] : columnInsights[def?.catalogMetricId || ''];
               return (
                 <th
                   key={colId}
-                  style={{ ...hdrCell, width: w, textAlign: colId === "msa" ? "left" : "center", color: colId === "jedi" ? C.amber : undefined }}
+                  style={{
+                    ...hdrCell, width: w,
+                    textAlign: colId === "msa" ? "left" : "center",
+                    color: colId === "jedi" ? C.amber : isDynamicColumn(colId) ? "#2196F3" : undefined,
+                  }}
                   onClick={sortKey ? () => handleSort(sortKey) : undefined}
-                  title={corrInfo?.isStrong && corrInfo.topCorrelation
+                  title={driverInsight
+                    ? `Driver: r=${driverInsight.pearsonR.toFixed(2)} → ${driverInsight.outcomeMetricId} (${driverInsight.lagWeeks}w lead)`
+                    : corrInfo?.isStrong && corrInfo.topCorrelation
                     ? `r=${corrInfo.topCorrelation.correlation_r.toFixed(2)} with ${corrInfo.topCorrelation.metric_a === corrInfo.metricId ? corrInfo.topCorrelation.metric_b : corrInfo.topCorrelation.metric_a}${corrInfo.topCorrelation.lead_lag_months ? ` (${corrInfo.topCorrelation.lead_lag_months}mo lag)` : ""}`
                     : def?.description}
                 >
+                  {isDynamicColumn(colId) && <span style={{ fontSize: 6, marginRight: 1, opacity: 0.6 }}>◆</span>}
                   {label}
-                  {corrInfo?.isStrong && (
+                  {driverInsight && (
+                    <span style={{
+                      ...mono, fontSize: 6, fontWeight: 700, marginLeft: 2,
+                      color: driverInsight.pearsonR > 0 ? "#4CAF50" : "#FF5252",
+                      background: (driverInsight.pearsonR > 0 ? "#4CAF50" : "#FF5252") + "15",
+                      border: `1px solid ${(driverInsight.pearsonR > 0 ? "#4CAF50" : "#FF5252")}30`,
+                      padding: "0px 3px", borderRadius: 2, verticalAlign: "super",
+                    }}>
+                      {driverInsight.lagWeeks}w→{driverInsight.outcomeMetricId.replace('OP_', '').substring(0, 4)}
+                    </span>
+                  )}
+                  {!driverInsight && corrInfo?.isStrong && (
                     <span style={{
                       ...mono, fontSize: 7, fontWeight: 700, marginLeft: 2,
                       color: corrInfo.topCorrelation!.correlation_r > 0 ? C.green : C.red,

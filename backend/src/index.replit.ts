@@ -280,6 +280,12 @@ app.use('/api/v1/driver-analysis', driverAnalysisRoutes);
 import derivedMetricsRoutes from './api/rest/derived-metrics.routes';
 app.use('/api/v1/derived-metrics', derivedMetricsRoutes);
 
+import columnCatalogRoutes from './api/rest/column-catalog.routes';
+app.use('/api/v1/columns', columnCatalogRoutes);
+
+import gridTemplatesRoutes from './api/rest/grid-templates.routes';
+app.use('/api/v1/grid-templates', optionalAuth, gridTemplatesRoutes);
+
 app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
 app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 

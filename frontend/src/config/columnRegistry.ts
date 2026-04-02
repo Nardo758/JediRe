@@ -9,6 +9,9 @@ export interface ColumnDef {
   description?: string;
   catalogMetricId?: string;
   views: ViewId[];
+  isDynamic?: boolean;
+  unit?: string;
+  format?: (value: number | null) => string;
 }
 
 export type ViewId = "f4_dashboard" | "f4_browse" | "f4_submarkets" | "f4_properties" | "f4_compare";
@@ -25,9 +28,15 @@ export type ColumnCategory =
   | "traffic"
   | "competition"
   | "risk"
-  | "cycle";
+  | "cycle"
+  | "traffic_physical"
+  | "traffic_digital"
+  | "traffic_composite"
+  | "macro"
+  | "sfr"
+  | "market";
 
-export const CATEGORY_META: Record<ColumnCategory, { label: string; color: string }> = {
+export const CATEGORY_META: Record<string, { label: string; color: string }> = {
   identity: { label: "IDENTITY", color: "#8E99A4" },
   score: { label: "SCORES", color: "#FFD166" },
   rent: { label: "RENT", color: "#00D26A" },
@@ -37,14 +46,21 @@ export const CATEGORY_META: Record<ColumnCategory, { label: string; color: strin
   financial: { label: "FINANCIAL", color: "#F5A623" },
   demographic: { label: "DEMOGRAPHIC", color: "#14B8A6" },
   traffic: { label: "TRAFFIC", color: "#2196F3" },
+  traffic_physical: { label: "TRAFFIC PHYSICAL", color: "#2196F3" },
+  traffic_digital: { label: "TRAFFIC DIGITAL", color: "#42A5F5" },
+  traffic_composite: { label: "TRAFFIC COMPOSITE", color: "#1E88E5" },
   competition: { label: "COMPETITION", color: "#E91E63" },
   risk: { label: "RISK", color: "#FF5252" },
   cycle: { label: "CYCLE", color: "#AB47BC" },
+  macro: { label: "MACRO", color: "#78909C" },
+  sfr: { label: "SFR", color: "#26A69A" },
+  market: { label: "MARKET", color: "#FFA726" },
 };
 
 const DASH_BROWSE: ViewId[] = ["f4_dashboard", "f4_browse"];
 const SUB: ViewId[] = ["f4_submarkets"];
 const PROP: ViewId[] = ["f4_properties"];
+const ALL_VIEWS: ViewId[] = ["f4_dashboard", "f4_browse", "f4_submarkets", "f4_properties", "f4_compare"];
 
 export const COLUMN_REGISTRY: ColumnDef[] = [
   { id: "rank", label: "#", category: "identity", width: 28, sortable: true, align: "center", views: DASH_BROWSE },
@@ -90,11 +106,85 @@ export const DEFAULT_COLUMNS: Record<ViewId, string[]> = {
   f4_compare: [],
 };
 
+const dynamicColumnCache = new Map<string, ColumnDef>();
+
+const UNIT_FORMATS: Record<string, (v: number | null) => string> = {
+  '%': (v) => v != null ? `${v.toFixed(1)}%` : '—',
+  '$': (v) => v != null ? `$${v.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : '—',
+  '$/sqft': (v) => v != null ? `$${v.toFixed(2)}` : '—',
+  'bps': (v) => v != null ? `${v.toFixed(0)}bp` : '—',
+  'units': (v) => v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—',
+  'months': (v) => v != null ? `${v.toFixed(1)}mo` : '—',
+  'index': (v) => v != null ? v.toFixed(1) : '—',
+  'ratio': (v) => v != null ? v.toFixed(2) : '—',
+  'score': (v) => v != null ? v.toFixed(1) : '—',
+  'permits': (v) => v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—',
+  'jobs': (v) => v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—',
+  'people': (v) => v != null ? v.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—',
+  'rank': (v) => v != null ? `#${v.toFixed(0)}` : '—',
+};
+
+export interface CatalogMetric {
+  id: string;
+  dbMetricId: string;
+  name: string;
+  category: string;
+  unit: string;
+  description: string;
+  investmentSignal?: string;
+  higherIsBetter?: boolean;
+  source?: string;
+  updateFrequency?: string;
+  pointCount: number;
+  geoCount: number;
+  earliest: string;
+  latest: string;
+}
+
+export function buildDynamicColumn(metric: CatalogMetric): ColumnDef {
+  const colId = `metric:${metric.id}`;
+  if (dynamicColumnCache.has(colId)) return dynamicColumnCache.get(colId)!;
+
+  const cat = (CATEGORY_META[metric.category] ? metric.category : 'market') as ColumnCategory;
+  const format = UNIT_FORMATS[metric.unit] || ((v: number | null) => v != null ? v.toFixed(2) : '—');
+
+  const col: ColumnDef = {
+    id: colId,
+    label: metric.name.length > 12 ? metric.name.substring(0, 10) + '…' : metric.name,
+    shortLabel: metric.id,
+    category: cat,
+    width: 64,
+    sortable: true,
+    align: "center",
+    description: metric.description,
+    catalogMetricId: metric.id,
+    views: ALL_VIEWS,
+    isDynamic: true,
+    unit: metric.unit,
+    format,
+  };
+
+  dynamicColumnCache.set(colId, col);
+  return col;
+}
+
+export function isDynamicColumn(colId: string): boolean {
+  return colId.startsWith("metric:");
+}
+
+export function extractMetricId(colId: string): string | null {
+  if (!colId.startsWith("metric:")) return null;
+  return colId.substring(7);
+}
+
 export function getColumnsForView(viewId: ViewId): ColumnDef[] {
   return COLUMN_REGISTRY.filter(col => col.views.includes(viewId));
 }
 
 export function getColumnById(id: string): ColumnDef | undefined {
+  if (id.startsWith("metric:")) {
+    return dynamicColumnCache.get(id);
+  }
   return COLUMN_REGISTRY.find(col => col.id === id);
 }
 
@@ -106,4 +196,13 @@ export function getColumnsByCategory(viewId: ViewId): Record<string, ColumnDef[]
     grouped[col.category].push(col);
   }
   return grouped;
+}
+
+export function formatMetricValue(value: number | null, unit?: string): string {
+  if (value == null) return '—';
+  const formatter = unit ? UNIT_FORMATS[unit] : null;
+  if (formatter) return formatter(value);
+  if (Math.abs(value) >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  return value.toFixed(2);
 }
