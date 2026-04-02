@@ -6,6 +6,7 @@ import { ingestZillowZHVI } from '../../services/ingestion/zillow-zhvi-ingest.se
 import { ingestZillowZORI } from '../../services/ingestion/zillow-zori-ingest.service';
 import { ingestFRED } from '../../services/ingestion/fred-ingest.service';
 import { ingestCensusACS } from '../../services/ingestion/census-acs-ingest.service';
+import { ingestAllLeaseFiles } from '../../services/ingestion/lease-rent-ingest.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
@@ -236,6 +237,26 @@ router.get('/status', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Status check error:', error);
+    res.status(500).json({ success: false, error: String(error) });
+  }
+});
+
+router.post('/lease-rents', async (req: Request, res: Response) => {
+  try {
+    const startTime = new Date();
+
+    const results = await ingestAllLeaseFiles();
+
+    const elapsed = ((new Date().getTime() - startTime.getTime()) / 1000).toFixed(1);
+    logger.info(`Lease rent ingestion completed in ${elapsed}s`, { results });
+
+    res.json({
+      success: true,
+      results,
+      elapsed: `${elapsed}s`,
+    });
+  } catch (error) {
+    logger.error('Lease rent ingestion error:', error);
     res.status(500).json({ success: false, error: String(error) });
   }
 });
