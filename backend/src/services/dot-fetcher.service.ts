@@ -263,7 +263,7 @@ export class DotFetcherService {
         throw new Error(`ArcGIS API returned ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
 
       if (data.error) {
         throw new Error(`ArcGIS error: ${data.error.message || JSON.stringify(data.error)}`);
