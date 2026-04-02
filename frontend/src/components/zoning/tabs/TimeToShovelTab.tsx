@@ -131,47 +131,88 @@ function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampl
         <p className="text-[10px] text-gray-500">Raw data from benchmark analysis</p>
       </div>
 
-      <div className="px-4 py-3 space-y-4">
-        {detailedSteps.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <div>
-                <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide">Historical Processing Timeline</h4>
-                <p className="text-[9px] text-gray-500">Based on {totalSampleSize} {dataSource === 'real' ? 'real entitlement records' : 'estimated applications'}</p>
+      <div className="px-4 py-3 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {detailedSteps.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div>
+                  <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide">Historical Processing Timeline</h4>
+                  <p className="text-[9px] text-gray-500">{totalSampleSize} {dataSource === 'real' ? 'real records' : 'estimated'}</p>
+                </div>
+                <DataSourceBadge source={dataSource} count={totalSampleSize} />
               </div>
-              <DataSourceBadge source={dataSource} count={totalSampleSize} />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px]">
-                <thead>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="text-left py-1 px-1.5 font-semibold text-gray-700 uppercase tracking-wide text-[9px]">Step</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P25</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Median</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P75</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P90</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">n=</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detailedSteps.map((row, idx) => (
-                    <tr key={idx} className={`border-b border-gray-100 ${row.isSubRow ? '' : 'hover:bg-gray-50'}`}>
-                      <td className={`py-1 px-1.5 ${row.isSubRow ? 'pl-4 text-gray-500 italic' : 'text-gray-900 font-medium'}`}>
-                        {row.isSubRow && <span className="text-gray-300 mr-0.5">{'\u251C\u2500'}</span>}
-                        {row.step}
-                      </td>
-                      <td className="py-1 px-1.5 text-right text-gray-600">{row.p25}</td>
-                      <td className="py-1 px-1.5 text-right text-gray-700 font-semibold">{row.median}</td>
-                      <td className="py-1 px-1.5 text-right text-gray-600">{row.p75}</td>
-                      <td className="py-1 px-1.5 text-right text-red-600 font-semibold">{row.p90}</td>
-                      <td className="py-1 px-1.5 text-right text-gray-400">{row.n}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300">
+                      <th className="text-left py-1 px-1.5 font-semibold text-gray-700 uppercase tracking-wide text-[9px]">Step</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P25</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Median</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P75</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P90</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">n=</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {detailedSteps.map((row, idx) => (
+                      <tr key={idx} className={`border-b border-gray-100 ${row.isSubRow ? '' : 'hover:bg-gray-50'}`}>
+                        <td className={`py-1 px-1.5 ${row.isSubRow ? 'pl-4 text-gray-500 italic' : 'text-gray-900 font-medium'}`}>
+                          {row.isSubRow && <span className="text-gray-300 mr-0.5">{'\u251C\u2500'}</span>}
+                          {row.step}
+                        </td>
+                        <td className="py-1 px-1.5 text-right text-gray-600">{row.p25}</td>
+                        <td className="py-1 px-1.5 text-right text-gray-700 font-semibold">{row.median}</td>
+                        <td className="py-1 px-1.5 text-right text-gray-600">{row.p75}</td>
+                        <td className="py-1 px-1.5 text-right text-red-600 font-semibold">{row.p90}</td>
+                        <td className="py-1 px-1.5 text-right text-gray-400">{row.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {jurisdictions.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div>
+                  <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide">Jurisdiction Comparison</h4>
+                  <p className="text-[9px] text-gray-500">Median timeline across markets</p>
+                </div>
+                <DataSourceBadge source={jurisdictionDataSource} count={jurisdictions.length} />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300">
+                      <th className="text-left py-1 px-1.5 font-semibold text-gray-700 text-[9px] uppercase tracking-wide">Jurisdiction</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">TTS</th>
+                      <th className="text-center py-1 px-1.5 font-medium text-gray-500 text-[9px]">#</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Carry Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jurisdictions.map((j) => {
+                      const isSubject = j.carryCostDelta === 0 || (j as any).isSubject;
+                      return (
+                        <tr key={j.municipality} className={`border-b border-gray-100 ${isSubject ? 'bg-blue-50 border-l-2 border-l-blue-400' : 'hover:bg-gray-50'}`}>
+                          <td className="py-1 px-1.5 font-medium text-gray-900">{j.municipality}</td>
+                          <td className="py-1 px-1.5 text-right text-gray-700 font-semibold">{j.medianTts}mo</td>
+                          <td className="py-1 px-1.5 text-center text-gray-600">#{j.rank}</td>
+                          <td className={`py-1 px-1.5 text-right font-semibold text-[9px] ${j.carryCostDelta < 0 ? 'text-green-600' : j.carryCostDelta > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                            {j.carryCostDeltaLabel || (isSubject ? 'Subject' : '')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
 
         {benchmarks.length > 0 && (
           <div>
@@ -184,45 +225,6 @@ function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampl
                   <p className="text-[8px] text-gray-500">n={b.sampleSize}</p>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {jurisdictions.length > 0 && (
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <div>
-                <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide">Jurisdiction Comparison</h4>
-                <p className="text-[9px] text-gray-500">Median timeline across markets in this state</p>
-              </div>
-              <DataSourceBadge source={jurisdictionDataSource} count={jurisdictions.length} />
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[10px]">
-                <thead>
-                  <tr className="border-b-2 border-gray-300">
-                    <th className="text-left py-1 px-1.5 font-semibold text-gray-700 text-[9px] uppercase tracking-wide">Jurisdiction</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Median TTS</th>
-                    <th className="text-center py-1 px-1.5 font-medium text-gray-500 text-[9px]">Rank</th>
-                    <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Carry Cost Delta</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jurisdictions.map((j) => {
-                    const isSubject = j.carryCostDelta === 0 || (j as any).isSubject;
-                    return (
-                      <tr key={j.municipality} className={`border-b border-gray-100 ${isSubject ? 'bg-blue-50 border-l-2 border-l-blue-400' : 'hover:bg-gray-50'}`}>
-                        <td className="py-1 px-1.5 font-medium text-gray-900">{j.municipality}</td>
-                        <td className="py-1 px-1.5 text-right text-gray-700 font-semibold">{j.medianTts}mo</td>
-                        <td className="py-1 px-1.5 text-center text-gray-600">#{j.rank}</td>
-                        <td className={`py-1 px-1.5 text-right font-semibold text-[9px] ${j.carryCostDelta < 0 ? 'text-green-600' : j.carryCostDelta > 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                          {j.carryCostDeltaLabel || (isSubject ? 'Subject' : '')}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
             </div>
           </div>
         )}
