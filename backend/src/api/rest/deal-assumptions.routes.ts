@@ -56,15 +56,20 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
     const { dealId } = req.params;
     const input: DealAssumptionsInput = req.body;
     
+    const sourceType = (input as any).sourceType || 'manual';
+    const sourceRef = (input as any).sourceRef || null;
+    const sourceDate = (input as any).sourceDate || null;
+
     const result = await pool.query(`
       INSERT INTO deal_assumptions (
         deal_id, land_cost, hard_cost_psf, soft_cost_pct, contingency_pct,
         developer_fee_pct, total_units, avg_unit_sf, efficiency, stories,
         construction_type, parking_type, unit_mix, avg_rent_per_unit,
         vacancy_pct, opex_ratio, interest_rate, ltc, exit_cap, hold_period_years,
+        source_type, source_ref, source_date,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW()
       )
       ON CONFLICT (deal_id) DO UPDATE SET
         land_cost = COALESCE($2, deal_assumptions.land_cost),
@@ -86,6 +91,9 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
         ltc = COALESCE($18, deal_assumptions.ltc),
         exit_cap = COALESCE($19, deal_assumptions.exit_cap),
         hold_period_years = COALESCE($20, deal_assumptions.hold_period_years),
+        source_type = COALESCE($21, deal_assumptions.source_type),
+        source_ref = $22,
+        source_date = $23,
         updated_at = NOW()
       RETURNING *
     `, [
@@ -108,7 +116,10 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
       input.interestRate,
       input.ltc,
       input.exitCap,
-      input.holdPeriodYears
+      input.holdPeriodYears,
+      sourceType,
+      sourceRef,
+      sourceDate,
     ]);
     
     res.json({

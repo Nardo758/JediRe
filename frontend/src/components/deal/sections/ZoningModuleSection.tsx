@@ -20,6 +20,7 @@ import { BT as BT2, BtTabWrapper, PanelHeader, SubTabBar } from '../bloomberg-ui
 import { useDealType } from '../../../stores/dealStore';
 import { getZoningDepth } from '../../../shared/config/deal-type-visibility';
 import { useDealAssumptions } from '../../../hooks/useDealAssumptions';
+import { DataSourceBadge } from '../../ui/DataSourceBadge';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -165,20 +166,30 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
         subtitle="M02 · ENTITLEMENT ENGINE"
         borderColor={BT2.text.amber}
         metrics={deal?.strategy ? [{ l: deal.strategy, c: BT2.text.amber }] : undefined}
-        right={!boundaryAndZoningComplete ? (
-          <button
-            onClick={() => checkCompletionStatus()}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 4,
-              fontFamily: MONO, fontSize: 9, color: BT2.text.secondary,
-              background: 'transparent', border: `1px solid ${BT2.border.subtle}`,
-              padding: '2px 8px', cursor: 'pointer',
-            }}
-          >
-            <RefreshCw size={10} />
-            REFRESH
-          </button>
-        ) : undefined}
+        right={<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {assumptions?.exists && (
+            <DataSourceBadge
+              sourceType={assumptions?.source_type || assumptions?.sourceType || 'manual'}
+              sourceRef={assumptions?.source_ref || assumptions?.sourceRef}
+              sourceDate={assumptions?.source_date || assumptions?.sourceDate}
+              compact
+            />
+          )}
+          {!boundaryAndZoningComplete && (
+            <button
+              onClick={() => checkCompletionStatus()}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontFamily: MONO, fontSize: 9, color: BT2.text.secondary,
+                background: 'transparent', border: `1px solid ${BT2.border.subtle}`,
+                padding: '2px 8px', cursor: 'pointer',
+              }}
+            >
+              <RefreshCw size={10} />
+              REFRESH
+            </button>
+          )}
+        </div>}
       />
 
       {/* Status Banner */}

@@ -363,6 +363,7 @@ export function processRows(
         isBudget,
         isProforma: false,
         dataSource,
+        sourceDocumentType: isBudget ? 'budget' : 'income_statement',
       };
 
       for (const [targetCol, meta] of Object.entries(TARGET_COLUMNS)) {
@@ -383,6 +384,13 @@ export function processRows(
         } else {
           record[camelCase(targetCol)] = cleanNumeric(rawVal);
         }
+      }
+
+      if (record.reportMonth) {
+        try {
+          const d = new Date(record.reportMonth as string + 'T00:00:00');
+          record.sourcePeriodLabel = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        } catch { /* ignore formatting error */ }
       }
 
       if (!record.reportMonth) {
@@ -484,6 +492,8 @@ export async function insertActuals(
         strRevenue: sql`EXCLUDED.str_revenue`,
         dataSource: sql`EXCLUDED.data_source`,
         uploadId: sql`EXCLUDED.upload_id`,
+        sourceDocumentType: sql`EXCLUDED.source_document_type`,
+        sourcePeriodLabel: sql`EXCLUDED.source_period_label`,
         updatedAt: sql`now()`,
       },
     });

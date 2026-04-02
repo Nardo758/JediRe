@@ -270,8 +270,10 @@ class DataUploadService {
         if (!endDate || mapped.report_month > endDate) endDate = mapped.report_month;
 
         const cols = Object.keys(mapped).filter(k => VALID_ACTUALS_COLUMNS.includes(k) || k === 'report_month');
-        const allCols = ['property_id', ...cols, 'data_source', 'upload_id', 'is_budget'];
-        const allVals = [propertyId, ...cols.map(c => mapped[c]), 'csv_upload', uploadId, isBudget];
+        const periodLabel = mapped.report_month ? new Date(mapped.report_month + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : null;
+        const allCols = ['property_id', ...cols, 'data_source', 'upload_id', 'is_budget', 'source_document_type', 'source_period_label'];
+        const docType = isBudget ? 'budget' : 'income_statement';
+        const allVals = [propertyId, ...cols.map(c => mapped[c]), 'csv_upload', uploadId, isBudget, docType, periodLabel];
         const placeholders = allVals.map((_, idx) => `$${idx + 1}`);
 
         const upsertCols = cols.filter(c => c !== 'report_month');
@@ -281,7 +283,7 @@ class DataUploadService {
           `INSERT INTO deal_monthly_actuals (${allCols.join(', ')})
            VALUES (${placeholders.join(', ')})
            ON CONFLICT (property_id, report_month, is_budget, is_proforma)
-           DO UPDATE SET ${updateSet || 'updated_at = now()'}, data_source = EXCLUDED.data_source, upload_id = EXCLUDED.upload_id`,
+           DO UPDATE SET ${updateSet || 'updated_at = now()'}, data_source = EXCLUDED.data_source, upload_id = EXCLUDED.upload_id, source_document_type = EXCLUDED.source_document_type, source_period_label = EXCLUDED.source_period_label`,
           allVals
         );
         succeeded++;
