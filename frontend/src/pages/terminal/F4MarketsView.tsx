@@ -1180,8 +1180,8 @@ export default function F4MarketsView() {
       },
       {
         icon: <span style={{ ...mono, fontSize: 7, fontWeight: 700, color: "#4CAF50", background: "#4CAF5015", border: "1px solid #4CAF5030", padding: "0px 3px", borderRadius: 2 }}>r+0.82</span>,
-        label: "Positive r (Suggestion Card)",
-        desc: "In suggested metrics cards: green = positive correlation, red = negative correlation (by sign)",
+        label: "Suggestion Card Badge",
+        desc: "In suggested metrics bar: colored by sign (green = positive r, red = negative r). Distinct from header badges above",
       },
       {
         icon: <span style={{ color: C.green, fontSize: 9, fontWeight: 700 }}>▲</span>,
