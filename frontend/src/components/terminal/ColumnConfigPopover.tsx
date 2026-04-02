@@ -8,12 +8,14 @@ export interface ColumnConfig {
   aggregation: "latest" | "yoy" | "3mo_avg";
   geoScope: "auto" | "msa" | "submarket" | "property";
   displayFormat: "auto" | "pct" | "dollar" | "decimals";
+  pinnedGeoId?: string | null;
 }
 
 export const DEFAULT_COLUMN_CONFIG: ColumnConfig = {
   aggregation: "latest",
   geoScope: "auto",
   displayFormat: "auto",
+  pinnedGeoId: null,
 };
 
 interface ColumnConfigPopoverProps {
@@ -87,12 +89,24 @@ export function ColumnConfigPopover({ colDef, config, onConfigChange, onClose, i
         {(["auto", "msa", "submarket", "property"] as const).map(scope => (
           <label key={scope} style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0", cursor: "pointer" }}>
             <input type="radio" name="geoScope" checked={localConfig.geoScope === scope}
-              onChange={() => setLocalConfig({ ...localConfig, geoScope: scope })} style={{ accentColor: C.blue }} />
+              onChange={() => setLocalConfig({ ...localConfig, geoScope: scope, pinnedGeoId: null })} style={{ accentColor: C.blue }} />
             <span style={{ ...mono, fontSize: 8, color: localConfig.geoScope === scope ? C.primary : C.secondary }}>
               {{ auto: "Auto (Match View)", msa: "MSA Only", submarket: "Submarket Only", property: "Property Only" }[scope]}
             </span>
           </label>
         ))}
+        {localConfig.geoScope !== 'auto' && (
+          <div style={{ marginTop: 4 }}>
+            <div style={{ ...mono, fontSize: 7, color: C.muted, marginBottom: 2 }}>PIN TO GEO ID (optional)</div>
+            <input
+              type="text"
+              value={localConfig.pinnedGeoId || ''}
+              onChange={e => setLocalConfig({ ...localConfig, pinnedGeoId: e.target.value || null })}
+              placeholder="e.g. atlanta-ga-ga"
+              style={{ ...mono, fontSize: 8, width: "100%", padding: "2px 4px", background: C.panel, color: C.primary, border: `1px solid ${C.border}`, boxSizing: "border-box" }}
+            />
+          </div>
+        )}
       </div>
 
       <div style={{ padding: "6px 10px", borderTop: `1px solid ${C.borderS}` }}>

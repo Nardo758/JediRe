@@ -1,13 +1,26 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
+import { AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
 
-function getUserId(req: Request): string | null {
-  return (req as any).user?.id || null;
+function getUserId(req: AuthenticatedRequest): string | null {
+  return req.user?.userId || null;
 }
 
-router.get('/', async (req: Request, res: Response) => {
+interface GridTemplateRow {
+  id: string;
+  user_id: string;
+  name: string;
+  view_id: string;
+  columns: string[];
+  column_config: Record<string, unknown>;
+  is_shared: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const pool = getPool();
     const viewId = req.query.viewId as string;
@@ -18,7 +31,7 @@ router.get('/', async (req: Request, res: Response) => {
     }
 
     let query = `SELECT * FROM grid_templates WHERE (user_id = $1 OR is_shared = TRUE)`;
-    const params: any[] = [userId];
+    const params: string[] = [userId];
 
     if (viewId) {
       query += ` AND view_id = $2`;
@@ -26,14 +39,15 @@ router.get('/', async (req: Request, res: Response) => {
     }
     query += ` ORDER BY updated_at DESC`;
 
-    const result = await pool.query(query, params);
+    const result = await pool.query<GridTemplateRow>(query, params);
     res.json({ success: true, templates: result.rows });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const pool = getPool();
     const { name, viewId, columns, columnConfig } = req.body;
@@ -47,18 +61,19 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'name, viewId, and columns are required' });
     }
 
-    const result = await pool.query(
+    const result = await pool.query<GridTemplateRow>(
       `INSERT INTO grid_templates (user_id, name, view_id, columns, column_config)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [userId, name, viewId, JSON.stringify(columns), JSON.stringify(columnConfig || {})]
     );
     res.json({ success: true, template: result.rows[0] });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
-router.put('/:id', async (req: Request, res: Response) => {
+router.put('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const pool = getPool();
     const { id } = req.params;
@@ -70,7 +85,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     }
 
     const sets: string[] = ['updated_at = NOW()'];
-    const params: any[] = [];
+    const params: string[] = [];
     let idx = 1;
 
     if (name) { sets.push(`name = $${idx}`); params.push(name); idx++; }
@@ -79,7 +94,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     params.push(id);
     params.push(userId);
-    const result = await pool.query(
+    const result = await pool.query<GridTemplateRow>(
       `UPDATE grid_templates SET ${sets.join(', ')} WHERE id = $${idx} AND user_id = $${idx + 1} RETURNING *`,
       params
     );
@@ -88,12 +103,13 @@ router.put('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Template not found or not owned by you' });
     }
     res.json({ success: true, template: result.rows[0] });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
-router.delete('/:id', async (req: Request, res: Response) => {
+router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const pool = getPool();
     const userId = getUserId(req);
@@ -110,8 +126,9 @@ router.delete('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Template not found or not owned by you' });
     }
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 

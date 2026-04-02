@@ -11,7 +11,7 @@ import { ViewId, getColumnById, isDynamicColumn, extractMetricId, formatMetricVa
 import { useMarketMetrics, useSubmarketMetrics, usePropertyMetrics } from "../../hooks/useMarketMetrics";
 import { useColumnCorrelations, useMetricRecommendations } from "../../hooks/useCorrelations";
 import type { MetricRecommendation } from "../../hooks/useCorrelations";
-import { useGridTemplates } from "../../hooks/useGridTemplates";
+import { useGridTemplates, GridTemplate } from "../../hooks/useGridTemplates";
 import { ColumnConfigPopover, ColumnConfig, DEFAULT_COLUMN_CONFIG } from "../../components/terminal/ColumnConfigPopover";
 import api from "../../services/api";
 
@@ -385,8 +385,27 @@ export default function F4MarketsView() {
     }).catch(() => {});
   }, [dynamicMetricIds.join(',')]);
 
-  const [gridData, setGridData] = useState<Record<string, Record<string, any>>>({});
-  const [columnInsights, setColumnInsights] = useState<Record<string, any>>({});
+  interface GridCellData {
+    value: number | null;
+    previousValue: number | null;
+    trailing3Avg: number | null;
+    date: string;
+    geoName: string;
+    geoType: string;
+    geoId: string;
+    trend: 'up' | 'down' | 'flat' | null;
+    yoyChange: number | null;
+  }
+  interface DriverInsightData {
+    outcomeMetricId: string;
+    pearsonR: number;
+    rSquared: number;
+    lagWeeks: number;
+    direction: string;
+    driverName: string;
+  }
+  const [gridData, setGridData] = useState<Record<string, Record<string, GridCellData>>>({});
+  const [columnInsights, setColumnInsights] = useState<Record<string, DriverInsightData>>({});
 
   useEffect(() => {
     api.get('/columns/insights').then(res => {
@@ -569,7 +588,8 @@ export default function F4MarketsView() {
       return <span style={{ color: C.muted }}>—</span>;
     }
 
-    const geoKey = `${geoType}:${geoId}`;
+    const effectiveGeoId = config.pinnedGeoId || geoId;
+    const geoKey = `${geoType}:${effectiveGeoId}`;
     const cell = metricData[geoKey];
     if (!cell || cell.value == null) return <span style={{ color: C.muted }}>—</span>;
 
@@ -710,14 +730,14 @@ export default function F4MarketsView() {
     setShowSaveDialog(false);
   };
 
-  const handleLoadTemplate = async (template: any) => {
+  const handleLoadTemplate = async (template: GridTemplate) => {
     if (template.columns && Array.isArray(template.columns)) {
       const dynamicCols = template.columns.filter(isDynamicColumn);
       if (dynamicCols.length > 0) {
         try {
           const catalogRes = await api.get('/columns/catalog');
           if (catalogRes.data.success) {
-            const metricsMap = new Map(catalogRes.data.metrics.map((m: any) => [m.id, m]));
+            const metricsMap = new Map(catalogRes.data.metrics.map((m: CatalogMetric) => [m.id, m]));
             for (const colId of dynamicCols) {
               const metricId = extractMetricId(colId);
               if (metricId && metricsMap.has(metricId)) {

@@ -61,7 +61,13 @@ router.get('/catalog', async (_req: Request, res: Response) => {
       });
     }
 
-    const metrics: any[] = [];
+    interface CatalogEntry {
+      id: string; dbMetricId: string; name: string; category: string;
+      unit: string; description: string; investmentSignal?: string;
+      higherIsBetter?: boolean; source?: string; updateFrequency?: string;
+      pointCount: number; geoCount: number; earliest: string; latest: string;
+    }
+    const metrics: CatalogEntry[] = [];
     for (const m of METRICS_CATALOG) {
       if (m.id.startsWith('OP_')) continue;
       const dbId = resolveDbId(m.id);
@@ -87,14 +93,15 @@ router.get('/catalog', async (_req: Request, res: Response) => {
     }
 
     const categories = [...new Set(metrics.map(m => m.category))];
-    const grouped: Record<string, any[]> = {};
+    const grouped: Record<string, CatalogEntry[]> = {};
     for (const cat of categories) {
       grouped[cat] = metrics.filter(m => m.category === cat);
     }
 
     res.json({ success: true, totalMetrics: metrics.length, categories, grouped, metrics });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -109,10 +116,8 @@ router.get('/grid-data', async (req: Request, res: Response) => {
     }
 
     const dbIds = metricIds.map(id => resolveDbId(id));
-    const catalogToDb = new Map<string, string>();
     const dbToCatalog = new Map<string, string>();
     for (let i = 0; i < metricIds.length; i++) {
-      catalogToDb.set(metricIds[i], dbIds[i]);
       dbToCatalog.set(dbIds[i], metricIds[i]);
     }
 
@@ -124,7 +129,7 @@ router.get('/grid-data', async (req: Request, res: Response) => {
         FROM metric_time_series
         WHERE metric_id = ANY($1) AND value IS NOT NULL
     `;
-    const params: any[] = [dbIds];
+    const params: (string[] | string)[] = [dbIds];
 
     if (geoIds.length > 0) {
       query += ` AND geography_id = ANY($2)`;
@@ -181,8 +186,9 @@ router.get('/grid-data', async (req: Request, res: Response) => {
     }
 
     res.json({ success: true, data });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -192,7 +198,7 @@ router.get('/insights', async (req: Request, res: Response) => {
     const propertyId = req.query.propertyId as string;
 
     let runFilter = '';
-    const params: any[] = [];
+    const params: string[] = [];
     if (propertyId) {
       runFilter = `AND run_id = (SELECT id FROM driver_analysis_runs WHERE property_id = $1 ORDER BY created_at DESC LIMIT 1)`;
       params.push(propertyId);
@@ -222,8 +228,9 @@ router.get('/insights', async (req: Request, res: Response) => {
     }
 
     res.json({ success: true, insights });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
