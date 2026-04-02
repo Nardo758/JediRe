@@ -28,7 +28,7 @@
  *       units split sourced from the envelope's selected_path metadata.
  * ═══════════════════════════════════════════════════════════════════
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   DollarSign, Bot, TrendingUp,
@@ -44,7 +44,7 @@ import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
-import type { ModuleId } from '../shared/config/deal-type-visibility';
+import type { DealType, ModuleId } from '../shared/config/deal-type-visibility';
 
 import { BT, BT_CSS, PanelHeader, SectionPanel } from '../components/deal/bloomberg-ui';
 import { BottomPanel } from '../components/layout/BottomPanel';
@@ -354,6 +354,77 @@ const DealTopStatusBar: React.FC<{ dealName: string; isDark: boolean; onToggleTh
   );
 };
 
+const DEAL_TYPE_OPTIONS: { value: DealType; label: string; color: string }[] = [
+  { value: 'existing',       label: 'EXISTING',       color: '#F5A623' },
+  { value: 'development',    label: 'DEVELOPMENT',    color: '#10B981' },
+  { value: 'redevelopment',  label: 'REDEVELOPMENT',  color: '#8B5CF6' },
+];
+
+const DealTypeBadge: React.FC<{
+  current: DealType;
+  onChange: (dt: DealType) => void;
+  saving?: boolean;
+}> = ({ current, onChange, saving }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const opt = DEAL_TYPE_OPTIONS.find(o => o.value === current) || DEAL_TYPE_OPTIONS[0];
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        onClick={() => setOpen(p => !p)}
+        style={{
+          fontSize: 8, fontWeight: 700, letterSpacing: 0.8,
+          padding: '1px 6px', textTransform: 'uppercase',
+          color: opt.color, border: `1px solid ${opt.color}44`,
+          background: open ? `${opt.color}15` : 'transparent',
+          cursor: 'pointer', fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
+          display: 'flex', alignItems: 'center', gap: 4,
+          opacity: saving ? 0.5 : 1,
+        }}
+      >
+        {opt.label}
+        <span style={{ fontSize: 6, opacity: 0.6 }}>▼</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, marginTop: 2, zIndex: 999,
+          background: '#0F1319', border: '1px solid #1e2a3d',
+          minWidth: 130, boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        }}>
+          {DEAL_TYPE_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '5px 10px', border: 'none', cursor: 'pointer',
+                fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
+                fontSize: 9, fontWeight: o.value === current ? 700 : 500,
+                letterSpacing: 0.6,
+                color: o.value === current ? o.color : '#9EA8B4',
+                background: o.value === current ? `${o.color}12` : 'transparent',
+              }}
+              onMouseEnter={e => { if (o.value !== current) e.currentTarget.style.background = '#1a2133'; }}
+              onMouseLeave={e => { if (o.value !== current) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
@@ -372,6 +443,21 @@ const DealDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
+  const [savingDealType, setSavingDealType] = useState(false);
+
+  const handleDealTypeChange = useCallback(async (newType: DealType) => {
+    if (!dealId || newType === dealType) return;
+    setSavingDealType(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}`, { project_type: newType });
+      setDeal((prev: any) => prev ? { ...prev, project_type: newType, projectType: newType } : prev);
+      await fetchDealContext(dealId);
+    } catch (err) {
+      console.error('[DealType] Failed to update:', err);
+    } finally {
+      setSavingDealType(false);
+    }
+  }, [dealId, dealType, fetchDealContext]);
   
   useEffect(() => {
     if (dealId) {
@@ -522,9 +608,13 @@ const DealDetailPage: React.FC = () => {
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F12', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
-  // Filter by deal-type visibility rules
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
 
+  useEffect(() => {
+    if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
+      setActiveTab(dealScreens[0].id);
+    }
+  }, [dealType]);
 
   const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];
   const ActiveComponent = activeScreenData.component;
@@ -608,9 +698,7 @@ const DealDetailPage: React.FC = () => {
               {dealType && (
                 <>
                   <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
-                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '1px 6px', color: AMBER, border: `1px solid ${AMBER}44`, textTransform: 'uppercase', flexShrink: 0 }}>
-                    {dealType}
-                  </span>
+                  <DealTypeBadge current={dealType} onChange={handleDealTypeChange} saving={savingDealType} />
                 </>
               )}
               {deal.pipeline_stage && (
