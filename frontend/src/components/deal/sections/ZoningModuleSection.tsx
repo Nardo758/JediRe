@@ -28,14 +28,14 @@ interface ZoningModuleSectionProps {
 }
 
 const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk'];
-const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline'];
+const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'risk', 'timeline', 'hbu'];
 
 const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
   { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
-  { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
-  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
-  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
+  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 3 },
+  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 4 },
+  { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 5 },
 ];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
