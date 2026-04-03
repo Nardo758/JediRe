@@ -735,7 +735,7 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 // ─────────────────────────────────────────────────────────
 //  TAB 2 — PROGRAM EDITOR
 // ─────────────────────────────────────────────────────────
-function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[] }) {
+function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[]; gaps?: GapItem[] }) {
   const mono = "var(--bt-mono)";
   const { totalSF, mixTotal, grossRevPA, wtdPSF } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
@@ -747,8 +747,20 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { 
   }
 
   function applyOptimalMix() {
-    const optimal = computeOptimalProgram(program.totalUnits, comps);
+    const demandScores: Record<string, number> = {};
+    if (gaps) gaps.forEach(g => { demandScores[g.key] = g.demandScore; });
+    const optimal = computeOptimalProgram(program.totalUnits, comps, {
+      zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
+      demandScores: gaps ? demandScores : undefined,
+    });
     onProgramChange(optimal);
+  }
+
+  function resetProgram() {
+    const base = computeOptimalProgram(zoning.maxUnits > 0 ? Math.min(PROGRAM_SEED.totalUnits, zoning.maxUnits) : PROGRAM_SEED.totalUnits, comps, {
+      zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
+    });
+    onProgramChange(base);
   }
 
   return (
@@ -766,7 +778,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { 
           <button onClick={applyOptimalMix} style={{ background: C.blue + "14", border: `1px solid ${C.blue}35`,
             borderRadius: 5, padding: "3px 10px", color: C.blue, fontSize: 9, fontFamily: mono,
             fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em" }}>AI OPTIMIZE</button>
-          <button onClick={() => onProgramChange(PROGRAM_SEED)} style={{ background: "none",
+          <button onClick={resetProgram} style={{ background: "none",
             border: `1px solid ${C.border}`, borderRadius: 5, padding: "3px 10px",
             color: C.faint, fontSize: 9, fontFamily: mono, cursor: "pointer" }}>RESET</button>
         </div>
