@@ -246,6 +246,8 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
               </SectionPanel>
             </div>
 
+            <RentCompUnitMixTable unitMix={data.demographics?.unitMixBreakdown || []} />
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
               {cached && <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
               <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 9, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
@@ -547,6 +549,83 @@ function ImpactMatrixSection({ matrix }: { matrix: ReturnType<typeof buildImpact
         <Column title="ASSET IMPACT" icon={Target} items={matrix.asset} borderColor={BT2.text.cyan} />
         <Column title="SUBMARKET" icon={MapPin} items={matrix.submarket} borderColor={BT2.met.occupancy} />
         <Column title="MSA / METRO" icon={Building2} items={matrix.msa} borderColor={BT2.text.purple} />
+      </div>
+    </div>
+  );
+}
+
+interface UnitMixRow {
+  unitType: string;
+  propertyCount: number;
+  avgRent: number;
+  avgSf: number;
+  rentPerSf: number;
+  mixPct: number;
+  vacancy: number;
+}
+
+function RentCompUnitMixTable({ unitMix }: { unitMix: UnitMixRow[] }) {
+  if (!unitMix || unitMix.length === 0) return null;
+
+  const mono = 'var(--bt-mono)';
+  const hdr: React.CSSProperties = { fontSize: 9, fontWeight: 700, color: BT2.text.muted, letterSpacing: 0.8, fontFamily: mono, padding: '6px 8px', textAlign: 'right', borderBottom: `1px solid ${BT2.border.subtle}`, whiteSpace: 'nowrap' };
+  const cell: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: BT2.text.primary, fontFamily: mono, padding: '5px 8px', textAlign: 'right', borderBottom: `1px solid ${BT2.border.subtle}` };
+  const labelCell: React.CSSProperties = { ...cell, textAlign: 'left', fontWeight: 700, color: BT2.text.cyan };
+
+  const totals = unitMix.reduce((acc, r) => ({
+    avgRent: acc.avgRent + r.avgRent * (r.propertyCount || 1),
+    avgSf: acc.avgSf + r.avgSf * (r.propertyCount || 1),
+    rentPerSf: 0,
+    weight: acc.weight + (r.propertyCount || 1),
+    mixPct: acc.mixPct + r.mixPct,
+  }), { avgRent: 0, avgSf: 0, rentPerSf: 0, weight: 0, mixPct: 0 });
+  const wAvgRent = totals.weight > 0 ? Math.round(totals.avgRent / totals.weight) : 0;
+  const wAvgSf = totals.weight > 0 ? Math.round(totals.avgSf / totals.weight) : 0;
+  const wRentPerSf = wAvgSf > 0 ? (wAvgRent / wAvgSf).toFixed(2) : '—';
+
+  return (
+    <div style={{ background: BT2.bg.panel }}>
+      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Home size={13} color={BT2.met.economic} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.met.economic, letterSpacing: 1, fontFamily: mono }}>UNIT MIX BREAKDOWN</span>
+        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>BY BEDROOM TYPE · COMP AVERAGES</span>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono }}>
+          <thead>
+            <tr style={{ background: BT2.bg.header }}>
+              <th style={{ ...hdr, textAlign: 'left', minWidth: 90 }}>UNIT TYPE</th>
+              <th style={{ ...hdr, minWidth: 60 }}>MIX %</th>
+              <th style={{ ...hdr, minWidth: 75 }}>AVG RENT</th>
+              <th style={{ ...hdr, minWidth: 65 }}>AVG SF</th>
+              <th style={{ ...hdr, minWidth: 70 }}>RENT/SF</th>
+              <th style={{ ...hdr, minWidth: 55 }}>COMPS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {unitMix.map((row, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? BT2.bg.panel : BT2.bg.header }}>
+                <td style={labelCell}>{row.unitType}</td>
+                <td style={cell}>{row.mixPct > 0 ? `${row.mixPct}%` : '—'}</td>
+                <td style={{ ...cell, color: BT2.text.cyan, fontWeight: 700 }}>{row.avgRent > 0 ? `$${row.avgRent.toLocaleString()}` : '—'}</td>
+                <td style={cell}>{row.avgSf > 0 ? row.avgSf.toLocaleString() : '—'}</td>
+                <td style={{ ...cell, color: BT2.met.occupancy }}>{row.rentPerSf > 0 ? `$${row.rentPerSf}` : '—'}</td>
+                <td style={{ ...cell, color: BT2.text.muted }}>{row.propertyCount || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr style={{ background: `${BT2.text.amber}08`, borderTop: `2px solid ${BT2.text.amber}40` }}>
+              <td style={{ ...labelCell, color: BT2.text.amber, fontWeight: 800 }}>WEIGHTED AVG</td>
+              <td style={{ ...cell, color: BT2.text.amber, fontWeight: 700 }}>{totals.mixPct > 0 ? `${totals.mixPct.toFixed(0)}%` : '—'}</td>
+              <td style={{ ...cell, color: BT2.text.amber, fontWeight: 800 }}>{wAvgRent > 0 ? `$${wAvgRent.toLocaleString()}` : '—'}</td>
+              <td style={{ ...cell, color: BT2.text.amber, fontWeight: 700 }}>{wAvgSf > 0 ? wAvgSf.toLocaleString() : '—'}</td>
+              <td style={{ ...cell, color: BT2.text.amber, fontWeight: 700 }}>{wRentPerSf !== '—' ? `$${wRentPerSf}` : '—'}</td>
+              <td style={{ ...cell, color: BT2.text.muted }}>{unitMix.length}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );
