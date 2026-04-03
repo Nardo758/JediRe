@@ -736,8 +736,11 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 //  TAB 2 — PROGRAM EDITOR
 // ─────────────────────────────────────────────────────────
 function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[] }) {
+  const mono = "var(--bt-mono)";
   const { totalSF, mixTotal, grossRevPA, wtdPSF } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
+  const sfPct = zoning.maxNetSF > 0 ? (totalSF / zoning.maxNetSF) * 100 : 0;
+  const sfOver = sfPct > 100;
 
   function setUnit(utKey: UnitKey, field: string, val: number) {
     onProgramChange({ ...program, units: { ...program.units, [utKey]: { ...program.units[utKey], [field]: val } } });
@@ -748,130 +751,150 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { 
     onProgramChange(optimal);
   }
 
-  const gridTpl = "96px 90px 76px 100px 80px 100px 80px 68px 100px";
-
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`,
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+
+      <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <SecLabel mod="PROGRAM EDITOR" title="Unit Program"
-          sub="Edit mix %, unit SF, and target rent. All views update live." />
-        <div style={{ display: "flex", gap: 8 }}>
-          {!mixOk && <Tag label={`MIX = ${mixTotal}% ≠ 100`} color={C.red} />}
-          <button onClick={applyOptimalMix} style={{ background: "none", border: `1px solid ${C.border}`,
-            borderRadius: 6, padding: "4px 11px", color: C.dim, fontSize: 10, fontFamily: "var(--bt-mono)", cursor: "pointer" }}>
-            ↓ Optimal Mix
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M03</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>Unit Program</span>
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {!mixOk && <Tag label={`MIX ${mixTotal}%`} color={C.red} />}
+          <button onClick={applyOptimalMix} style={{ background: C.blue + "14", border: `1px solid ${C.blue}35`,
+            borderRadius: 5, padding: "3px 10px", color: C.blue, fontSize: 9, fontFamily: mono,
+            fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em" }}>AI OPTIMIZE</button>
           <button onClick={() => onProgramChange(PROGRAM_SEED)} style={{ background: "none",
-            border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 11px",
-            color: C.dim, fontSize: 10, fontFamily: "var(--bt-mono)", cursor: "pointer" }}>↺ Reset</button>
+            border: `1px solid ${C.border}`, borderRadius: 5, padding: "3px 10px",
+            color: C.faint, fontSize: 9, fontFamily: mono, cursor: "pointer" }}>RESET</button>
         </div>
       </div>
 
-      {/* Totals bar */}
-      <div style={{ padding: "9px 20px", background: "#0A0E17", borderBottom: `1px solid ${C.border}`,
-        display: "flex", gap: 20, alignItems: "center" }}>
-        <span style={{ color: C.dim, fontSize: 12 }}>Total Units</span>
-        <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="units" width={52} accent
-          onChange={v => onProgramChange({ ...program, totalUnits: v })} />
-        <span style={{ color: C.faint, fontSize: 11 }}>
-          of <span style={{ color: C.blue, fontFamily: "var(--bt-mono)" }}>{zoning.maxUnits}</span> max (M02)
-        </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
-          <span style={{ color: C.dim, fontSize: 11 }}>
-            Net SF: <span style={{ color: totalSF > zoning.maxNetSF ? C.red : C.text,
-              fontFamily: "var(--bt-mono)", fontWeight: 700 }}>{totalSF.toLocaleString()}</span>
-            <span style={{ color: C.faint }}> / {zoning.maxNetSF.toLocaleString()}</span>
-          </span>
-          <span style={{ color: C.dim, fontSize: 11 }}>
-            Rev: <span style={{ color: C.green, fontFamily: "var(--bt-mono)", fontWeight: 700 }}>${(grossRevPA/1e6).toFixed(2)}M/yr</span>
-          </span>
-          <span style={{ color: C.dim, fontSize: 11 }}>
-            Wtd $/SF: <span style={{ color: C.yellow, fontFamily: "var(--bt-mono)", fontWeight: 700 }}>${wtdPSF.toFixed(2)}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Col headers */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "7px 20px",
-        background: "#0A0E17", borderBottom: `1px solid ${C.border}`, gap: 0 }}>
-        {["Type","Mix %","Count","Unit SF","vs Avg SF","Rent/mo","vs Avg Rent","Rent/SF","Annual Rev"].map((h, i) => (
-          <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)",
-            letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</div>
-        ))}
-      </div>
-
-      {UT_META.map((ut, ri) => {
-        const u = program.units[ut.key];
-        const avg = compAvg(ut.key, comps);
-        const count = Math.round(program.totalUnits * u.mix / 100);
-        const psf = u.sf ? +(u.rent / u.sf).toFixed(2) : 0;
-        const annRev = count * u.rent * 12 * 0.95;
-        return (
-          <div key={ut.key} style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "10px 20px",
-            borderBottom: `1px solid ${C.border}`, background: ri % 2 === 0 ? "transparent" : "#1A1F2E18",
-            alignItems: "center", gap: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 7, height: 7, background: ut.color, borderRadius: 2 }} />
-              <span style={{ color: ut.color, fontSize: 12, fontWeight: 700 }}>{ut.label}</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-              <NumInput value={u.mix} min={0} max={100} suffix="%" width={36} accent onChange={v => setUnit(ut.key,"mix",v)} />
-              {avg.mix > 0 && <Delt value={u.mix - avg.mix} unit="pp" />}
-            </div>
-            <div style={{ textAlign: "right", color: C.dim, fontFamily: "var(--bt-mono)", fontSize: 12 }}>{count}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <NumInput value={u.sf} min={200} max={3000} step={5} suffix="SF" width={52} accent onChange={v => setUnit(ut.key,"sf",v)} />
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.faint, fontFamily: "var(--bt-mono)", fontSize: 10 }}>{avg.sf||"—"}</div>
-              {avg.sf > 0 && <Delt value={u.sf - avg.sf} unit=" SF" />}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={52} accent onChange={v => setUnit(ut.key,"rent",v)} />
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.faint, fontFamily: "var(--bt-mono)", fontSize: 10 }}>{avg.rent ? `$${avg.rent}` : "—"}</div>
-              {avg.rent > 0 && <Delt value={u.rent - avg.rent} unit="$" />}
-            </div>
-            <div style={{ textAlign: "right", color: C.text, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>${psf}</div>
-            <div style={{ textAlign: "right", color: C.green, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-              ${(annRev/1000).toFixed(0)}K
-            </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: C.border,
+        borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>TOTAL UNITS</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+            <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="" width={44} accent
+              onChange={v => onProgramChange({ ...program, totalUnits: v })} />
+            <span style={{ color: C.faint, fontSize: 10, fontFamily: mono }}>/ {zoning.maxUnits}</span>
           </div>
-        );
-      })}
-
-      {/* Totals row */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "10px 20px",
-        background: "#0A0E17", borderTop: `2px solid ${C.border}`, alignItems: "center", gap: 0 }}>
-        <div style={{ color: C.dim, fontSize: 11, fontWeight: 700 }}>TOTAL</div>
-        <div style={{ textAlign: "right" }}>
-          <span style={{ color: mixOk ? C.green : C.red, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 800 }}>{mixTotal}%</span>
         </div>
-        <div style={{ textAlign: "right", color: C.text, fontFamily: "var(--bt-mono)", fontWeight: 700 }}>{program.totalUnits}</div>
-        <div style={{ textAlign: "right", color: C.dim, fontFamily: "var(--bt-mono)", fontSize: 10 }}>
-          {Math.round(totalSF/program.totalUnits).toLocaleString()} avg
+        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>NET SF</div>
+          <div style={{ color: sfOver ? C.red : C.text, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+            {totalSF.toLocaleString()}
+          </div>
         </div>
-        <div /><div /><div /><div />
-        <div style={{ textAlign: "right", color: C.green, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          ${(grossRevPA/1e6).toFixed(2)}M
+        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>GROSS REV</div>
+          <div style={{ color: C.green, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+            ${(grossRevPA/1e6).toFixed(2)}M
+          </div>
+        </div>
+        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>WTD $/SF</div>
+          <div style={{ color: C.yellow, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+            ${wtdPSF.toFixed(2)}
+          </div>
         </div>
       </div>
 
-      {/* SF envelope */}
-      <div style={{ padding: "8px 20px", background: "#0A0E17", borderTop: `1px solid ${C.border}`,
-        display: "flex", gap: 14, alignItems: "center" }}>
-        <span style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)" }}>SF ENVELOPE:</span>
-        <span style={{ color: C.text, fontFamily: "var(--bt-mono)", fontSize: 11 }}>
-          {totalSF.toLocaleString()} of {zoning.maxNetSF.toLocaleString()} allowed
+      <div style={{ padding: "0 14px" }}>
+        {UT_META.map((ut, ri) => {
+          const u = program.units[ut.key];
+          const avg = compAvg(ut.key, comps);
+          const count = Math.round(program.totalUnits * u.mix / 100);
+          const psf = u.sf ? +(u.rent / u.sf).toFixed(2) : 0;
+          const annRev = count * u.rent * 12 * 0.95;
+          const sfDelta = avg.sf > 0 ? u.sf - avg.sf : null;
+          const rentDelta = avg.rent > 0 ? u.rent - avg.rent : null;
+
+          return (
+            <div key={ut.key} style={{ padding: "12px 0", borderBottom: ri < UT_META.length - 1 ? `1px solid ${C.border}40` : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, background: ut.color, flexShrink: 0 }} />
+                <span style={{ color: ut.color, fontSize: 12, fontWeight: 700, fontFamily: mono, minWidth: 54 }}>{ut.label}</span>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ flex: 1, height: 6, background: C.muted, borderRadius: 3, overflow: "hidden", maxWidth: 140 }}>
+                    <div style={{ width: `${Math.min(u.mix, 100)}%`, height: "100%", background: ut.color + "aa",
+                      borderRadius: 3, transition: "width 0.3s" }} />
+                  </div>
+                  <NumInput value={u.mix} min={0} max={100} suffix="%" width={32} accent onChange={v => setUnit(ut.key,"mix",v)} />
+                  {avg.mix > 0 && <Delt value={u.mix - avg.mix} unit="pp" />}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.muted, borderRadius: 4, padding: "2px 8px" }}>
+                  <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>×</span>
+                  <span style={{ color: C.text, fontSize: 13, fontWeight: 700, fontFamily: mono }}>{count}</span>
+                </div>
+                <div style={{ marginLeft: "auto", color: C.green, fontSize: 13, fontWeight: 700, fontFamily: mono }}>
+                  ${(annRev/1000).toFixed(0)}K
+                  <span style={{ color: C.faint, fontSize: 9, marginLeft: 2 }}>/yr</span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginLeft: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#0A0E17", borderRadius: 5, padding: "4px 10px", border: `1px solid ${C.border}40` }}>
+                  <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>SF</span>
+                  <NumInput value={u.sf} min={200} max={3000} step={5} suffix="" width={44} accent onChange={v => setUnit(ut.key,"sf",v)} />
+                  {avg.sf > 0 && (
+                    <span style={{ color: C.faint, fontSize: 9, fontFamily: mono }}>
+                      avg {avg.sf} {sfDelta !== null && <Delt value={sfDelta} unit="" />}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#0A0E17", borderRadius: 5, padding: "4px 10px", border: `1px solid ${C.border}40` }}>
+                  <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>RENT</span>
+                  <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={44} accent onChange={v => setUnit(ut.key,"rent",v)} />
+                  {avg.rent > 0 && (
+                    <span style={{ color: C.faint, fontSize: 9, fontFamily: mono }}>
+                      avg ${avg.rent} {rentDelta !== null && <Delt value={rentDelta} unit="$" />}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px" }}>
+                  <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>$/SF</span>
+                  <span style={{ color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>${psf}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px",
+        background: "#0A0E17", borderTop: `2px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ color: C.faint, fontSize: 9, fontFamily: mono, fontWeight: 700, letterSpacing: "0.08em" }}>TOTALS</span>
+          <span style={{ color: mixOk ? C.green : C.red, fontFamily: mono, fontSize: 13, fontWeight: 800 }}>{mixTotal}%</span>
+          <span style={{ color: C.border }}>|</span>
+          <span style={{ color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>{program.totalUnits} units</span>
+          <span style={{ color: C.border }}>|</span>
+          <span style={{ color: C.dim, fontFamily: mono, fontSize: 11 }}>
+            {Math.round(totalSF/program.totalUnits).toLocaleString()} avg SF
+          </span>
+        </div>
+        <span style={{ color: C.green, fontFamily: mono, fontSize: 13, fontWeight: 700 }}>
+          ${(grossRevPA/1e6).toFixed(2)}M/yr
         </span>
-        {totalSF > zoning.maxNetSF
-          ? <Tag label={`OVER BY ${(totalSF-zoning.maxNetSF).toLocaleString()} SF`} color={C.red} />
-          : <Tag label={`${(zoning.maxNetSF-totalSF).toLocaleString()} SF remaining`} color={C.green} size="xs" />}
-        <span style={{ color: C.faint, fontSize: 9, marginLeft: "auto" }}>
-          {zoning.excludesParking ? "Excl. parking per M02" : "All enclosed SF"}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px",
+        background: "#0A0E17", borderTop: `1px solid ${C.border}` }}>
+        <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>SF ENVELOPE</span>
+        <div style={{ flex: 1, height: 4, background: C.muted, borderRadius: 2, overflow: "hidden", maxWidth: 200 }}>
+          <div style={{ width: `${Math.min(sfPct, 100)}%`, height: "100%",
+            background: sfOver ? C.red : sfPct > 88 ? C.yellow : C.green,
+            borderRadius: 2, transition: "width 0.3s" }} />
+        </div>
+        <span style={{ color: sfOver ? C.red : C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>
+          {totalSF.toLocaleString()} / {zoning.maxNetSF.toLocaleString()}
         </span>
+        {sfOver
+          ? <Tag label={`OVER ${(totalSF-zoning.maxNetSF).toLocaleString()} SF`} color={C.red} />
+          : <Tag label={`${(zoning.maxNetSF-totalSF).toLocaleString()} remaining`} color={C.green} size="xs" />}
       </div>
     </div>
   );
