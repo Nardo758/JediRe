@@ -1,12 +1,12 @@
 import { T as BT } from '../../components/deal/bloomberg-tokens';
-import { BT as BT2, BT_CSS, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper } from '../../components/deal/bloomberg-ui';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { BT as BT2, BT_CSS, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper, TableHeader, TableRow } from '../../components/deal/bloomberg-ui';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   TrendingUp, Users, Newspaper, Building2, MapPin,
   Briefcase, Factory, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, Activity, DollarSign, Home, Layers, Link2,
-  FileText, Shield, Target, BarChart3, Zap, Crosshair, ArrowRightLeft, Eye
+  FileText, Shield, Target, BarChart3, Zap, Crosshair, ArrowRightLeft, Eye, Trash2
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
@@ -31,6 +31,46 @@ interface MarketIntelData {
   news: any[];
   supplyContext: any;
   documentIntelligence: any;
+}
+
+interface SaleComp {
+  id: string;
+  recording_date: string;
+  property_address: string;
+  units: number;
+  year_built: number;
+  derived_sale_price: number;
+  price_per_unit: number;
+  implied_cap_rate: number | null;
+  buyer_type: string;
+  distance_miles: number;
+}
+
+interface SaleCompSet {
+  comp_count: number;
+  avg_price_per_unit: number;
+  avg_implied_cap_rate: number | null;
+  median_price_per_unit: number;
+  median_implied_cap_rate: number | null;
+  comps: SaleComp[];
+}
+
+function fmtUsd(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function fmtCapRate(v: number | null): string {
+  return v != null ? `${(v * 100).toFixed(2)}%` : '—';
+}
+
+function fmtSaleDate(s: string): string {
+  return s ? s.slice(0, 10) : '—';
+}
+
+function fmtMi(v: number): string {
+  return `${v.toFixed(2)} mi`;
 }
 
 function n(v: any): number | null {
@@ -139,6 +179,38 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const [umTableUT, setUmTableUT] = useState<UnitKey>('twoBR');
   const umInitRef = useRef(false);
   const umHasDbRef = useRef(false);
+
+  const [saleCompSet, setSaleCompSet] = useState<SaleCompSet | null>(null);
+  const [saleCompsLoading, setSaleCompsLoading] = useState(false);
+  const [saleCompDeletingId, setSaleCompDeletingId] = useState<string | null>(null);
+
+  const loadSaleComps = useCallback(() => {
+    if (!dealId) return;
+    setSaleCompsLoading(true);
+    apiClient
+      .get<{ data?: SaleCompSet }>(`/api/v1/deals/${dealId}/comps`)
+      .then((res) => {
+        const payload = res.data?.data ?? (res.data as unknown as SaleCompSet);
+        setSaleCompSet(payload ?? null);
+      })
+      .catch(() => setSaleCompSet(null))
+      .finally(() => setSaleCompsLoading(false));
+  }, [dealId]);
+
+  useEffect(() => { loadSaleComps(); }, [loadSaleComps]);
+
+  const handleDeleteSaleComp = useCallback(async (compId: string, address: string) => {
+    if (!dealId || saleCompDeletingId) return;
+    if (!window.confirm(`Remove comp "${address}" from this set?`)) return;
+    setSaleCompDeletingId(compId);
+    try {
+      const res = await apiClient.delete<{ data?: SaleCompSet }>(`/api/v1/deals/${dealId}/comps/${compId}`);
+      const payload = res.data?.data ?? (res.data as unknown as SaleCompSet);
+      if (payload) setSaleCompSet(payload);
+      else loadSaleComps();
+    } catch { loadSaleComps(); }
+    finally { setSaleCompDeletingId(null); }
+  }, [dealId, saleCompDeletingId, loadSaleComps]);
 
   useEffect(() => {
     if (umLoading || umInitRef.current) return;
@@ -372,11 +444,97 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     </div>
   );
 
+  const saleComps = saleCompSet?.comps ?? [];
+  const saleCompCount = saleCompSet?.comp_count ?? saleComps.length;
+
+  const SALE_COMP_COLS = [
+    { label: 'PROPERTY',  flex: 3, color: BT2.text.secondary },
+    { label: 'DATE',      flex: 1, color: BT2.text.muted },
+    { label: 'PRICE',     flex: 1, color: BT2.met.financial },
+    { label: '$/UNIT',    flex: 1, color: BT2.text.cyan },
+    { label: 'CAP RATE',  flex: 1, color: BT2.text.amber },
+    { label: 'DIST',      flex: 1, color: BT2.text.muted },
+    { label: '',          flex: 0.4, color: BT2.text.muted },
+  ];
+
   const renderCompsTab = () => (
     <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       <MixMatrix program={umProgram} comps={umComps} />
       <RentSFScatter program={umProgram} filterUT={umFilterUT} setFilterUT={setUmFilterUT} comps={umComps} />
       <CompTable program={umProgram} utKey={umTableUT} setUtKey={setUmTableUT} comps={umComps} />
+
+      <SectionPanel
+        title="SALE COMP TRANSACTIONS"
+        subtitle={`${saleCompCount} RECORDS · PROPERTY / DATE / PRICE / $/UNIT / CAP RATE / DIST`}
+        borderColor={BT2.text.amber}
+      >
+        {saleCompsLoading && (
+          <div style={{ padding: 12, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', fontSize: 9 }}>LOADING SALE COMPS…</div>
+        )}
+        {!saleCompsLoading && saleComps.length === 0 && (
+          <div style={{ padding: 12, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', fontSize: 9 }}>NO SALE COMP DATA</div>
+        )}
+        {!saleCompsLoading && saleComps.length > 0 && (
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: BT2.border.subtle, marginBottom: 1 }}>
+              <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>COMP COUNT</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{saleCompCount}</div>
+              </div>
+              <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>AVG $/UNIT</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BT2.met.financial, fontFamily: 'var(--bt-mono)' }}>{saleCompSet?.avg_price_per_unit ? fmtUsd(saleCompSet.avg_price_per_unit) : '—'}</div>
+              </div>
+              <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>MEDIAN $/UNIT</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.cyan, fontFamily: 'var(--bt-mono)' }}>{saleCompSet?.median_price_per_unit ? fmtUsd(saleCompSet.median_price_per_unit) : '—'}</div>
+              </div>
+              <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>AVG CAP RATE</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{fmtCapRate(saleCompSet?.avg_implied_cap_rate ?? null)}</div>
+              </div>
+            </div>
+            <TableHeader cols={SALE_COMP_COLS} />
+            {saleComps.map((c, i) => (
+              <div key={c.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <TableRow
+                    index={i}
+                    cells={[
+                      { value: c.property_address || '—',    flex: 3, color: BT2.text.secondary, weight: 600 },
+                      { value: fmtSaleDate(c.recording_date), flex: 1, color: BT2.text.muted },
+                      { value: fmtUsd(c.derived_sale_price),  flex: 1, color: BT2.met.financial },
+                      { value: fmtUsd(c.price_per_unit),      flex: 1, color: BT2.text.cyan },
+                      { value: fmtCapRate(c.implied_cap_rate), flex: 1, color: BT2.text.amber },
+                      { value: fmtMi(c.distance_miles),       flex: 1, color: BT2.text.muted },
+                      { value: '', flex: 0.4 },
+                    ]}
+                  />
+                </div>
+                <button
+                  onClick={() => handleDeleteSaleComp(c.id, c.property_address || 'this comp')}
+                  disabled={saleCompDeletingId === c.id}
+                  title="Remove comp"
+                  style={{
+                    position: 'absolute', right: 8,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 20, height: 20,
+                    background: 'transparent', border: 'none',
+                    cursor: saleCompDeletingId === c.id ? 'wait' : 'pointer',
+                    color: saleCompDeletingId === c.id ? BT2.text.muted : BT2.text.red,
+                    opacity: saleCompDeletingId === c.id ? 0.4 : 0.6,
+                    padding: 0, transition: 'opacity 0.15s',
+                  }}
+                  onMouseEnter={(e) => { if (saleCompDeletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                  onMouseLeave={(e) => { if (saleCompDeletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'; }}
+                >
+                  <Trash2 size={10} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionPanel>
     </div>
   );
 

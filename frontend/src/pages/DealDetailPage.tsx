@@ -81,7 +81,6 @@ import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
-import { CompsShellPage } from './development/CompsShellPage';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
@@ -158,14 +157,6 @@ const OverviewScreen = (props: ScreenProps) => {
 };
 const MarketScreen = (props: ScreenProps) => (
   <MarketIntelligencePage dealId={props.dealId} deal={props.deal} dealType={props.dealType} />
-);
-const CompsScreen = (props: ScreenProps) => (
-  <CompsShellPage
-    dealId={props.dealId}
-    deal={props.deal}
-    dealType={props.dealType}
-    onUpdate={props.onUpdate}
-  />
 );
 const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
@@ -562,9 +553,9 @@ const DealDetailPage: React.FC = () => {
       }
       const fKeyMap: { [key: string]: string } = {
         F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
-        F5: 'strategy',   F6: 'comps',     F7: 'traffic',     F8: 'design-3d',
-        F9: 'capital',    F10: 'proforma', F11: 'risk',
-        F12: 'deal-tools',
+        F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',
+        F8: 'capital',    F9: 'proforma',  F10: 'risk',
+        F11: 'deal-tools',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -602,13 +593,12 @@ const DealDetailPage: React.FC = () => {
     { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', short: 'MARKET',     label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
     { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
     { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
-    { id: 'comps',       moduleId: 'M15', fkey: 'F6',  code: 'M15', short: 'COMPS',      label: 'Comps',            icon: <Target size={14} />,          component: CompsScreen },
-    { id: 'traffic',     moduleId: 'M07', fkey: 'F7',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
-    { id: 'design-3d',   moduleId: 'M03', fkey: 'F8',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
-    { id: 'capital',     moduleId: 'M11', fkey: 'F9',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'proforma',    moduleId: 'M08', fkey: 'F10', code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
-    { id: 'risk',        moduleId: 'M13', fkey: 'F11', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'deal-tools', moduleId: 'M21', fkey: 'F12', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F9',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
