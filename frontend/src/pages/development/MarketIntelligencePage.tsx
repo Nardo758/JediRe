@@ -371,8 +371,10 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
   const renderProgramTab = () => (
     <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
-      {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
-      <ZoningPanel zoning={umZoning} program={umProgram} computed={umComputed} onZoningChange={setUmZoning} />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14 }}>
+        {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
+        <ZoningCompactPanel zoning={umZoning} program={umProgram} computed={umComputed} onZoningChange={setUmZoning} />
+      </div>
       <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} />
     </div>
   );
@@ -485,6 +487,67 @@ function ZoningContextBar({ hasZoningContext, zoningCode, activeScenario }: { ha
     <div style={{ background: BT2.bg.header, padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
       <div style={{ width: 6, height: 6, borderRadius: '50%', background: BT2.text.muted }} />
       <span style={{ fontSize: 11, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Select a development path in Property & Zoning to contextualize market analysis</span>
+    </div>
+  );
+}
+
+function ZoningCompactPanel({ zoning, program, computed, onZoningChange }: { zoning: ZoningData; program: Program; computed: any; onZoningChange: (z: ZoningData) => void }) {
+  const mono = 'var(--bt-mono)';
+  const unitUtil = zoning.maxUnits > 0 ? (program.totalUnits / zoning.maxUnits) * 100 : 0;
+  const sfUtil = zoning.maxNetSF > 0 ? (computed.totalSF / zoning.maxNetSF) * 100 : 0;
+  const unitOver = unitUtil > 100;
+  const sfOver = sfUtil > 100;
+
+  const utilColor = (pct: number) => pct > 100 ? BT2.text.red : pct > 88 ? BT2.text.amber : BT2.met.occupancy;
+
+  const rows: Array<{ label: string; allowed: number; yours: number | null; util: number | null; suffix: string }> = [
+    { label: 'MAX UNITS', allowed: zoning.maxUnits, yours: program.totalUnits, util: unitUtil, suffix: 'units' },
+    { label: 'MAX NET SF', allowed: zoning.maxNetSF, yours: computed.totalSF, util: sfUtil, suffix: 'SF' },
+    { label: 'MAX HEIGHT', allowed: zoning.maxHeight, yours: null, util: null, suffix: 'fl' },
+    { label: 'LOT COV', allowed: zoning.maxLotCoverage, yours: null, util: null, suffix: '%' },
+  ];
+
+  return (
+    <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${(sfOver || unitOver) ? BT2.text.red + '60' : BT2.border.subtle}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT2.border.subtle}`, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Layers size={12} color={BT2.text.cyan} />
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.cyan, letterSpacing: 1, fontFamily: mono }}>M02 · ZONING</span>
+        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono, padding: '0 4px', background: `${BT2.text.cyan}12`, borderRadius: 3 }}>{zoning.zoningCode}</span>
+        {(sfOver || unitOver) && <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.red, fontFamily: mono, marginLeft: 'auto' }}>EXCEEDED</span>}
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{ padding: '7px 12px', borderBottom: i < rows.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono, width: 72, flexShrink: 0 }}>{r.label}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: BT2.text.primary, fontFamily: mono, minWidth: 60, textAlign: 'right' }}>
+              {r.allowed.toLocaleString()}
+              <span style={{ fontSize: 9, color: BT2.text.muted, marginLeft: 2 }}>{r.suffix}</span>
+            </span>
+            {r.yours !== null && r.util !== null && (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ flex: 1, height: 4, background: BT2.border.medium, borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.min(100, r.util)}%`, height: '100%', background: utilColor(r.util), borderRadius: 2, transition: 'width 0.3s' }} />
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 700, color: utilColor(r.util), fontFamily: mono, minWidth: 36, textAlign: 'right' }}>{r.util.toFixed(0)}%</span>
+              </div>
+            )}
+            {r.yours === null && (
+              <span style={{ fontSize: 11, color: BT2.text.secondary, fontFamily: mono }}>{r.allowed}{r.suffix}</span>
+            )}
+          </div>
+        ))}
+      </div>
+      {!sfOver && !unitOver && (
+        <div style={{ padding: '6px 12px', background: BT2.bg.header, borderTop: `1px solid ${BT2.border.subtle}`, display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>HEADROOM:</span>
+          <span style={{ fontSize: 10, color: BT2.met.occupancy, fontFamily: mono, fontWeight: 700 }}>
+            {zoning.maxUnits - program.totalUnits} units
+          </span>
+          <span style={{ fontSize: 10, color: BT2.met.occupancy, fontFamily: mono, fontWeight: 700 }}>
+            {(zoning.maxNetSF - computed.totalSF).toLocaleString()} SF
+          </span>
+        </div>
+      )}
     </div>
   );
 }
