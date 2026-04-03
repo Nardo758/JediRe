@@ -179,7 +179,7 @@ function computeProgram(program: Program) {
   return { totalSF, mixTotal, grossRevPA, wtdPSF };
 }
 
-function computeOptimalProgram(totalUnits: number, comps: CompData[]): Program {
+function computeOptimalProgram(totalUnits: number, comps: CompData[], opts?: { zoning?: ZoningData; demandScores?: Record<string, number> }): Program {
   const inventory = computeInventory(comps);
   const gaps = computeGaps(inventory);
 
@@ -190,34 +190,72 @@ function computeOptimalProgram(totalUnits: number, comps: CompData[]): Program {
   const maxPsf = Math.max(...psfPerType, 1);
   const psfScores = psfPerType.map(p => (p / maxPsf) * 100);
 
+  const velocityScores = UT_META.map(ut => {
+    const avg = compAvg(ut.key, comps);
+    const vacPenalty = Math.max(0, 100 - avg.vac * 8);
+    const domPenalty = avg.dom > 0 ? Math.max(0, 100 - avg.dom * 3) : 60;
+    return (vacPenalty * 0.6 + domPenalty * 0.4);
+  });
+
+  const zoningMaxUnits = opts?.zoning?.maxUnits || totalUnits;
+  const effectiveUnits = Math.min(totalUnits, zoningMaxUnits);
+
   const rawScores = UT_META.map((ut, i) => {
     const inv = gaps[i];
-    const demandScore = inv.demandScore || 0;
+    const demandScore = opts?.demandScores?.[ut.key] ?? inv.demandScore ?? 0;
     const psfScore = psfScores[i];
     const gapScore = Math.max(0, inv.gap || 0) * 5;
-    return demandScore * 0.45 + psfScore * 0.35 + Math.min(gapScore, 100) * 0.20;
+    const velocity = velocityScores[i];
+
+    return demandScore * 0.35 + psfScore * 0.25 + Math.min(gapScore, 100) * 0.20 + velocity * 0.20;
   });
 
   const totalScore = rawScores.reduce((s, v) => s + v, 0) || 1;
-  const mixPcts = rawScores.map(s => Math.round(s / totalScore * 100));
+  const mixPcts = rawScores.map(s => {
+    const raw = Math.round(s / totalScore * 100);
+    return Math.max(5, Math.min(55, raw));
+  });
 
-  const mixSum = mixPcts.reduce((s, v) => s + v, 0);
-  if (mixSum !== 100 && mixPcts.length > 0) {
-    const maxIdx = mixPcts.indexOf(Math.max(...mixPcts));
-    mixPcts[maxIdx] += 100 - mixSum;
+  let mixSum = mixPcts.reduce((s, v) => s + v, 0);
+  const maxIter = 50;
+  let iter = 0;
+  while (mixSum !== 100 && iter++ < maxIter) {
+    const delta = 100 - mixSum;
+    const sortedIdxs = rawScores.map((_, i) => i).sort((a, b) =>
+      delta > 0 ? rawScores[b] - rawScores[a] : rawScores[a] - rawScores[b]
+    );
+    for (const idx of sortedIdxs) {
+      if (mixSum === 100) break;
+      const room = delta > 0 ? 55 - mixPcts[idx] : mixPcts[idx] - 5;
+      if (room <= 0) continue;
+      const step = delta > 0 ? Math.min(delta, room, 3) : Math.max(delta, -room, -3);
+      mixPcts[idx] += step;
+      mixSum += step;
+    }
   }
 
   const units: Record<string, { mix: number; sf: number; rent: number }> = {};
   UT_META.forEach((ut, i) => {
     const avg = compAvg(ut.key, comps);
-    units[ut.key] = {
-      mix: mixPcts[i],
-      sf: avg.sf || PROGRAM_SEED.units[ut.key].sf,
-      rent: avg.rent || PROGRAM_SEED.units[ut.key].rent,
-    };
+    const baseSf = avg.sf || PROGRAM_SEED.units[ut.key].sf;
+    const baseRent = avg.rent || PROGRAM_SEED.units[ut.key].rent;
+
+    let sfTarget = baseSf;
+    let rentTarget = baseRent;
+    if (opts?.zoning?.maxNetSF) {
+      const budgetedSfPerUnit = opts.zoning.maxNetSF / effectiveUnits;
+      if (baseSf > budgetedSfPerUnit * 1.3) {
+        sfTarget = Math.round(baseSf * 0.95);
+      }
+    }
+
+    const gapBonus = (gaps[i]?.gap ?? 0) > 3 ? 1.05 : 1;
+    rentTarget = Math.round(baseRent * gapBonus);
+
+    units[ut.key] = { mix: mixPcts[i], sf: sfTarget, rent: rentTarget };
   });
 
-  return { totalUnits, units: units as Record<UnitKey, ProgramUnit> };
+  return { totalUnits: effectiveUnits, units: units as Record<UnitKey, ProgramUnit> };
 }
 
 // Inventory: per unit-type aggregate across all comps
@@ -1354,6 +1392,15 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
 // ─────────────────────────────────────────────────────────
 //  ROOT
 // ─────────────────────────────────────────────────────────
+export {
+  DemandMatrix, GapAnalysis, ProgramEditor, ZoningPanel, InventorySnapshot,
+  PropertyDrillDown, TrendDetail, MixMatrix, RentSFScatter, CompTable,
+  computeOptimalProgram, computeProgram, computeInventory, computeGaps,
+  compAvg, buildScatter, demandLabel, COMPS, TREND_DATA, PROGRAM_SEED, ZONING_SEED,
+  UT_META, C as UMC,
+};
+export type { Program, UnitKey, CompData, ZoningData, ProgramUnit, InventoryItem, GapItem };
+
 export default function UnitMixIntelligence() {
   const { dealId } = useParams<{ dealId: string }>();
   const { activeTradeArea } = useTradeAreaStore();
@@ -1392,7 +1439,9 @@ export default function UnitMixIntelligence() {
       setProgram(apiProgram as Program);
     } else {
       const seedUnits = developmentEnvelope?.max_units || PROGRAM_SEED.totalUnits;
-      const optimal = computeOptimalProgram(seedUnits, comps);
+      const optimal = computeOptimalProgram(seedUnits, comps, {
+        zoning: apiZoning as ZoningData || undefined,
+      });
       setProgram(optimal);
     }
   }, [loading, apiZoning, apiProgram]);

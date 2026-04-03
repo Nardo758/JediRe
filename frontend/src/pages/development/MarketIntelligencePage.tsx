@@ -6,11 +6,21 @@ import {
   TrendingUp, Users, Newspaper, Building2, MapPin,
   Briefcase, Factory, ChevronDown, ChevronUp,
   AlertTriangle, RefreshCw, Activity, DollarSign, Home, Layers, Link2,
-  FileText, Shield, Target, BarChart3, Zap
+  FileText, Shield, Target, BarChart3, Zap, Crosshair, ArrowRightLeft, Eye
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
-import UnitMixIntelligence from '../../components/deal/sections/UnitMixIntelligence';
+import UnitMixIntelligence, {
+  DemandMatrix, GapAnalysis, ProgramEditor, ZoningPanel, InventorySnapshot,
+  PropertyDrillDown, TrendDetail, MixMatrix, RentSFScatter, CompTable,
+  computeOptimalProgram, computeProgram, computeInventory, computeGaps,
+  compAvg, demandLabel, COMPS, TREND_DATA, PROGRAM_SEED, ZONING_SEED,
+  UT_META, UMC,
+  type Program, type UnitKey, type CompData, type ZoningData, type GapItem,
+} from '../../components/deal/sections/UnitMixIntelligence';
+import { useUnitMixIntelligence } from '../../hooks/useUnitMixIntelligence';
+import { useTradeAreaStore } from '../../stores/tradeAreaStore';
+import { useDealStore } from '../../stores/dealStore';
 import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnalysisSection';
 import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
 
@@ -50,16 +60,118 @@ interface MarketIntelPageProps {
   dealType?: string;
 }
 
+type DealMode = 'development' | 'redevelopment' | 'existing';
+
+function resolveDealMode(dealType?: string): DealMode {
+  if (!dealType) return 'development';
+  const dt = dealType.toLowerCase();
+  if (dt.includes('redev') || dt.includes('rehab') || dt.includes('value-add') || dt.includes('renovation')) return 'redevelopment';
+  if (dt.includes('exist') || dt.includes('acquisition') || dt.includes('stabilized')) return 'existing';
+  return 'development';
+}
+
+function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
+  switch (mode) {
+    case 'development':
+      return [
+        { id: 'overview', label: 'OVERVIEW' },
+        { id: 'demand', label: 'DEMAND' },
+        { id: 'comps', label: 'COMPS' },
+        { id: 'program', label: 'PROGRAM' },
+        { id: 'trends', label: 'TRENDS' },
+      ];
+    case 'redevelopment':
+      return [
+        { id: 'overview', label: 'OVERVIEW' },
+        { id: 'positioning', label: 'POSITIONING' },
+        { id: 'comps', label: 'COMPS' },
+        { id: 'repositioning', label: 'REPOSITIONING' },
+        { id: 'trends', label: 'TRENDS' },
+      ];
+    case 'existing':
+      return [
+        { id: 'overview', label: 'OVERVIEW' },
+        { id: 'positioning', label: 'POSITIONING' },
+        { id: 'comps', label: 'COMPS' },
+        { id: 'trends', label: 'TRENDS' },
+      ];
+  }
+}
+
 export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProps) => {
   const { dealId: paramDealId } = useParams<{ dealId: string }>();
   const dealId = outerProps.dealId || paramDealId || '';
   const { updateMarketIntelligence, emitEvent, activeScenario, zoningProfile, lastEvent } = useDealModule();
-  const [moduleTab, setModuleTab] = useState(0);
+  const dealMode = resolveDealMode(outerProps.dealType);
+  const tabs = useMemo(() => getTabsForMode(dealMode), [dealMode]);
+  const [activeTabId, setActiveTabId] = useState(tabs[0].id);
+  const activeTabIndex = tabs.findIndex(t => t.id === activeTabId);
   const [data, setData] = useState<MarketIntelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState(false);
   const lastProcessedEventRef = useRef<number>(0);
+
+  const { activeTradeArea } = useTradeAreaStore();
+  const tradeAreaId = activeTradeArea?.id;
+  const developmentEnvelope = useDealStore(s => s.developmentEnvelope);
+  const {
+    comps: apiComps, demandScores: apiDemandScores, trends: apiTrends,
+    zoning: apiZoning, program: apiProgram, loading: umLoading,
+    handleProgramChange: saveProgram,
+  } = useUnitMixIntelligence(dealId, tradeAreaId);
+
+  const hasApiComps = apiComps && apiComps.length > 0;
+  const hasApiTrends = apiTrends && Object.keys(apiTrends).some(k => (apiTrends as any)[k]?.length > 0);
+  const umComps: CompData[] = hasApiComps ? (apiComps as CompData[]) : COMPS;
+  const umTrendData = hasApiTrends ? apiTrends : TREND_DATA;
+
+  const [umZoning, setUmZoning] = useState<ZoningData>(ZONING_SEED);
+  const [umProgram, setUmProgram] = useState<Program>(PROGRAM_SEED);
+  const [umDrillType, setUmDrillType] = useState<UnitKey>('twoBR');
+  const [umTrendType, setUmTrendType] = useState<UnitKey>('twoBR');
+  const [umFilterUT, setUmFilterUT] = useState('all');
+  const [umTableUT, setUmTableUT] = useState<UnitKey>('twoBR');
+  const umInitRef = useRef(false);
+  const umHasDbRef = useRef(false);
+
+  useEffect(() => {
+    if (umLoading || umInitRef.current) return;
+    umInitRef.current = true;
+    if (apiZoning) setUmZoning(apiZoning as ZoningData);
+    const hasSaved = apiProgram && typeof apiProgram === 'object' && 'totalUnits' in apiProgram && (apiProgram as Program).totalUnits > 0;
+    if (hasSaved) {
+      umHasDbRef.current = true;
+      setUmProgram(apiProgram as Program);
+    } else {
+      const seedUnits = developmentEnvelope?.max_units || PROGRAM_SEED.totalUnits;
+      const optimal = computeOptimalProgram(seedUnits, umComps, {
+        zoning: apiZoning as ZoningData || umZoning,
+        demandScores: apiDemandScores as Record<string, number> | undefined,
+      });
+      setUmProgram(optimal);
+    }
+  }, [umLoading, apiZoning, apiProgram]);
+
+  useEffect(() => {
+    if (!developmentEnvelope?.max_units || !umInitRef.current || umHasDbRef.current) return;
+    const newUnits = developmentEnvelope.max_units;
+    setUmProgram(prev => prev.totalUnits === newUnits ? prev : { ...prev, totalUnits: newUnits });
+  }, [developmentEnvelope?.max_units]);
+
+  const handleProgramChange = (p: Program) => {
+    setUmProgram(p);
+    umHasDbRef.current = true;
+    saveProgram(p);
+  };
+
+  const umComputed = computeProgram(umProgram);
+  const umInventory = computeInventory(umComps);
+  const umGaps = computeGaps(umInventory);
+
+  useEffect(() => {
+    if (tabs.findIndex(t => t.id === activeTabId) === -1) setActiveTabId(tabs[0].id);
+  }, [dealMode]);
 
   const hasZoningContext = !!(activeScenario && (activeScenario.maxUnits || activeScenario.maxGba));
   const zoningCode = zoningProfile?.baseDistrictCode || activeScenario?.name || null;
@@ -138,10 +250,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   const narrative = useMemo(() => data ? generateNarrative(data) : null, [data]);
   const riskSignals = useMemo(() => data ? detectRiskSignals(data) : [], [data]);
   const impactMatrix = useMemo(() => data ? buildImpactMatrix(data) : null, [data]);
+  const programRationale = useMemo(() => data ? buildProgramRationale(data, umGaps, umComps, dealMode, hasZoningContext, activeScenario) : null, [data, umGaps, umComps, dealMode, hasZoningContext, activeScenario]);
 
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorState message={error} onRetry={() => fetchData()} />;
   if (!data) return <ErrorState message="No data available" onRetry={() => fetchData()} />;
+
+  const modeLabel = dealMode === 'development' ? 'DEVELOPMENT' : dealMode === 'redevelopment' ? 'REDEVELOPMENT' : 'EXISTING';
+  const modeColor = dealMode === 'development' ? BT2.text.cyan : dealMode === 'redevelopment' ? BT2.text.amber : BT2.met.occupancy;
 
   const kpiEconomy = [
     {
@@ -190,18 +306,117 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     },
   ];
 
+  const renderOverviewTab = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      {narrative && <NarrativeSection narrative={narrative} riskSignals={riskSignals} />}
+      {impactMatrix && <ImpactMatrixSection matrix={impactMatrix} />}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle }}>
+        <SectionPanel title="DEMAND DRIVERS" subtitle="Labour + population signals" borderColor={BT2.text.cyan}>
+          <DataRow label="JOBS ADDED (12M)" value={data.economy?.metrics?.jobsAdded?.value ?? '—'} valueColor={BT2.met.economic} />
+          <DataRow label="WAGE GROWTH" value={data.economy?.metrics?.wageGrowth?.value ?? '—'} valueColor={BT2.met.economic} />
+          <DataRow label="NET MIGRATION" value={data.economy?.metrics?.netMigration?.value ?? '—'} valueColor={BT2.text.purple} />
+          <DataRow label="ECONOMIC HEALTH" value={data.economy?.healthScore != null ? `${data.economy.healthScore}/100` : '—'} valueColor={data.economy?.healthScore >= 70 ? BT2.met.occupancy : data.economy?.healthScore >= 50 ? BT2.text.amber : BT2.text.red} />
+          <DataRow label="POPULATION" value={data.demographics?.census?.population != null ? Number(data.demographics.census.population).toLocaleString() : '—'} valueColor={BT2.text.secondary} />
+        </SectionPanel>
+        <SectionPanel title="RENT COMP MATRIX" subtitle="Submarket benchmarks" borderColor={BT2.met.economic}>
+          <DataRow label="MEDIAN RENT" value={data.demographics?.census?.medianRent != null ? `$${Number(data.demographics.census.medianRent).toLocaleString()}` : '—'} valueColor={BT2.text.cyan} />
+          <DataRow label="SUBMARKET AVG RENT" value={smRent(data.demographics?.submarket) != null ? fmt$(smRent(data.demographics?.submarket)) : '—'} valueColor={BT2.text.cyan} />
+          <DataRow label="RENT GROWTH" value={data.demographics?.submarket?.rentGrowth ?? data.economy?.metrics?.rentGrowth?.value ?? '—'} valueColor={BT2.met.occupancy} />
+          <DataRow label="AFFORDABILITY" value={data.economy?.metrics?.affordabilityRatio?.value ?? '—'} valueColor={data.economy?.metrics?.affordabilityRatio?.status === 'green' ? BT2.met.occupancy : BT2.text.amber} />
+          <DataRow label="MEDIAN INCOME" value={data.demographics?.census?.medianIncome != null ? `$${Number(data.demographics.census.medianIncome).toLocaleString()}` : '—'} valueColor={BT2.text.secondary} />
+        </SectionPanel>
+      </div>
+
+      <RentCompUnitMixTable unitMix={data.demographics?.unitMixBreakdown || []} />
+
+      <ZoningContextBar hasZoningContext={hasZoningContext} zoningCode={zoningCode} activeScenario={activeScenario} />
+
+      <EconomySection data={data.economy} />
+      <DemographicsSection data={data.demographics} supply={data.supplyContext} />
+      <NewsSection events={data.news} />
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, flexShrink: 0 }}>
+        {cached && <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
+        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 9, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
+          <RefreshCw size={10} />REFRESH DATA
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderDemandTab = () => (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+      <DemandMatrix inventory={umInventory} trendData={umTrendData} />
+      <GapAnalysis gaps={umGaps} />
+      <InventorySnapshot inventory={umInventory} comps={umComps} />
+    </div>
+  );
+
+  const renderPositioningTab = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      <PositioningScorecard data={data} umComps={umComps} umInventory={umInventory} umGaps={umGaps} dealMode={dealMode} />
+      <RentCompUnitMixTable unitMix={data.demographics?.unitMixBreakdown || []} />
+      <DemographicsSection data={data.demographics} supply={data.supplyContext} />
+    </div>
+  );
+
+  const renderCompsTab = () => (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+      <MixMatrix program={umProgram} comps={umComps} />
+      <RentSFScatter program={umProgram} filterUT={umFilterUT} setFilterUT={setUmFilterUT} comps={umComps} />
+      <CompTable program={umProgram} utKey={umTableUT} setUtKey={setUmTableUT} comps={umComps} />
+    </div>
+  );
+
+  const renderProgramTab = () => (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+      {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
+      <ZoningPanel zoning={umZoning} program={umProgram} computed={umComputed} onZoningChange={setUmZoning} />
+      <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} />
+    </div>
+  );
+
+  const renderRepositioningTab = () => (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+      {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
+      <RepositioningPanel umComps={umComps} umGaps={umGaps} umProgram={umProgram} data={data} onProgramChange={handleProgramChange} />
+      <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} />
+    </div>
+  );
+
+  const renderTrendsTab = () => (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+      <TrendDetail selectedType={umTrendType} onSelect={setUmTrendType} trendData={umTrendData} />
+      <PropertyDrillDown selectedType={umDrillType} onSelect={setUmDrillType} comps={umComps} />
+    </div>
+  );
+
+  const renderTabContent = () => {
+    switch (activeTabId) {
+      case 'overview': return renderOverviewTab();
+      case 'demand': return renderDemandTab();
+      case 'positioning': return renderPositioningTab();
+      case 'comps': return renderCompsTab();
+      case 'program': return renderProgramTab();
+      case 'repositioning': return renderRepositioningTab();
+      case 'trends': return renderTrendsTab();
+      default: return renderOverviewTab();
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal }}>
       <style>{BT_CSS}</style>
       <PanelHeader
         title="MARKET INTELLIGENCE"
-        subtitle="M03 · DEMAND + RENT + SUPPLY"
-        borderColor={BT2.text.cyan}
+        subtitle={`M03 · ${modeLabel} · DEMAND + RENT + SUPPLY`}
+        borderColor={modeColor}
         metrics={[
+          { l: modeLabel, c: modeColor },
           { l: 'F_RENT', c: BT2.text.cyan },
           { l: 'O_ABSORB', c: BT2.met.occupancy },
           { l: 'E_JOBS', c: BT2.met.economic },
-          { l: 'D_SEARCH', c: BT2.met.digTraffic },
         ]}
       />
 
@@ -212,94 +427,14 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       </div>
 
       <SubTabBar
-        tabs={['MARKET INTEL', 'UNIT MIX', 'TRENDS', 'OPPORTUNITY']}
-        active={moduleTab}
-        setActive={setModuleTab}
-        color={BT2.text.cyan}
+        tabs={tabs.map(t => t.label)}
+        active={activeTabIndex >= 0 ? activeTabIndex : 0}
+        setActive={(i: number) => setActiveTabId(tabs[i].id)}
+        color={modeColor}
       />
 
       <BtTabWrapper>
-        {moduleTab === 1 && <UnitMixIntelligence />}
-        {moduleTab === 2 && <TrendsAnalysisSection deal={outerProps.deal} />}
-        {moduleTab === 3 && <OpportunityEngineSection deal={outerProps.deal} />}
-        {moduleTab === 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
-
-            {narrative && <NarrativeSection narrative={narrative} riskSignals={riskSignals} />}
-
-            {impactMatrix && <ImpactMatrixSection matrix={impactMatrix} />}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle }}>
-              <SectionPanel title="DEMAND DRIVERS" subtitle="Labour + population signals" borderColor={BT2.text.cyan}>
-                <DataRow label="JOBS ADDED (12M)" value={data.economy?.metrics?.jobsAdded?.value ?? '—'} valueColor={BT2.met.economic} />
-                <DataRow label="WAGE GROWTH" value={data.economy?.metrics?.wageGrowth?.value ?? '—'} valueColor={BT2.met.economic} />
-                <DataRow label="NET MIGRATION" value={data.economy?.metrics?.netMigration?.value ?? '—'} valueColor={BT2.text.purple} />
-                <DataRow label="ECONOMIC HEALTH" value={data.economy?.healthScore != null ? `${data.economy.healthScore}/100` : '—'} valueColor={data.economy?.healthScore >= 70 ? BT2.met.occupancy : data.economy?.healthScore >= 50 ? BT2.text.amber : BT2.text.red} />
-                <DataRow label="POPULATION" value={data.demographics?.census?.population != null ? Number(data.demographics.census.population).toLocaleString() : '—'} valueColor={BT2.text.secondary} />
-              </SectionPanel>
-              <SectionPanel title="RENT COMP MATRIX" subtitle="Submarket benchmarks" borderColor={BT2.met.economic}>
-                <DataRow label="MEDIAN RENT" value={data.demographics?.census?.medianRent != null ? `$${Number(data.demographics.census.medianRent).toLocaleString()}` : '—'} valueColor={BT2.text.cyan} />
-                <DataRow label="SUBMARKET AVG RENT" value={smRent(data.demographics?.submarket) != null ? fmt$(smRent(data.demographics?.submarket)) : '—'} valueColor={BT2.text.cyan} />
-                <DataRow label="RENT GROWTH" value={data.demographics?.submarket?.rentGrowth ?? data.economy?.metrics?.rentGrowth?.value ?? '—'} valueColor={BT2.met.occupancy} />
-                <DataRow label="AFFORDABILITY" value={data.economy?.metrics?.affordabilityRatio?.value ?? '—'} valueColor={data.economy?.metrics?.affordabilityRatio?.status === 'green' ? BT2.met.occupancy : BT2.text.amber} />
-                <DataRow label="MEDIAN INCOME" value={data.demographics?.census?.medianIncome != null ? `$${Number(data.demographics.census.medianIncome).toLocaleString()}` : '—'} valueColor={BT2.text.secondary} />
-              </SectionPanel>
-            </div>
-
-            <RentCompUnitMixTable unitMix={data.demographics?.unitMixBreakdown || []} />
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
-              {cached && <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
-              <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 9, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
-                <RefreshCw size={10} />
-                REFRESH DATA
-              </button>
-            </div>
-
-            {hasZoningContext ? (
-              <div style={{ background: BT2.bg.header, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${BT2.border.subtle}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#8B5CF6', animation: 'pulse 2s infinite' }} />
-                    <span style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>ZONING LINKED</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {zoningCode && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', fontWeight: 700, color: '#C4B5FD', background: '#1a1228', border: '1px solid #4C1D95' }}>
-                        <Layers size={10} />{zoningCode}
-                      </span>
-                    )}
-                    {activeScenario?.maxUnits && <ZoneBadge>{activeScenario.maxUnits.toLocaleString()} units</ZoneBadge>}
-                    {activeScenario?.maxGba && <ZoneBadge>{activeScenario.maxGba.toLocaleString()} SF GBA</ZoneBadge>}
-                    {activeScenario?.appliedFar && <ZoneBadge>{activeScenario.appliedFar.toFixed(2)} FAR</ZoneBadge>}
-                    {activeScenario?.maxStories && <ZoneBadge>{activeScenario.maxStories} stories</ZoneBadge>}
-                    {activeScenario?.bindingConstraint && (
-                      <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', color: BT2.text.amber, border: `1px solid ${BT2.text.amber}55` }}>
-                        Binding: {activeScenario.bindingConstraint}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#8B5CF6' }}>
-                  <Link2 size={12} />
-                  <span style={{ fontSize: 9, fontFamily: 'var(--bt-mono)' }}>from Property & Zoning</span>
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: BT2.bg.header, padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-                <div style={{ width: 6, height: 6, borderRadius: '50%', background: BT2.text.muted }} />
-                <span style={{ fontSize: 11, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Select a development path in Property & Zoning to contextualize market analysis</span>
-              </div>
-            )}
-
-            <EconomySection data={data.economy} />
-
-            <DemographicsSection data={data.demographics} supply={data.supplyContext} />
-
-            <NewsSection events={data.news} />
-
-          </div>
-        )}
+        {renderTabContent()}
       </BtTabWrapper>
     </div>
   );
@@ -310,6 +445,342 @@ function ZoneBadge({ children }: { children: React.ReactNode }) {
     <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', color: '#9EA8B4', background: '#131920', border: '1px solid #1e2a3d' }}>
       {children}
     </span>
+  );
+}
+
+function ZoningContextBar({ hasZoningContext, zoningCode, activeScenario }: { hasZoningContext: boolean; zoningCode: string | null; activeScenario: any }) {
+  if (hasZoningContext) {
+    return (
+      <div style={{ background: BT2.bg.header, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#8B5CF6', animation: 'pulse 2s infinite' }} />
+            <span style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>ZONING LINKED</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {zoningCode && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', fontWeight: 700, color: '#C4B5FD', background: '#1a1228', border: '1px solid #4C1D95' }}>
+                <Layers size={10} />{zoningCode}
+              </span>
+            )}
+            {activeScenario?.maxUnits && <ZoneBadge>{activeScenario.maxUnits.toLocaleString()} units</ZoneBadge>}
+            {activeScenario?.maxGba && <ZoneBadge>{activeScenario.maxGba.toLocaleString()} SF GBA</ZoneBadge>}
+            {activeScenario?.appliedFar && <ZoneBadge>{activeScenario.appliedFar.toFixed(2)} FAR</ZoneBadge>}
+            {activeScenario?.maxStories && <ZoneBadge>{activeScenario.maxStories} stories</ZoneBadge>}
+            {activeScenario?.bindingConstraint && (
+              <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', color: BT2.text.amber, border: `1px solid ${BT2.text.amber}55` }}>
+                Binding: {activeScenario.bindingConstraint}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#8B5CF6' }}>
+          <Link2 size={12} />
+          <span style={{ fontSize: 9, fontFamily: 'var(--bt-mono)' }}>from Property & Zoning</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ background: BT2.bg.header, padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+      <div style={{ width: 6, height: 6, borderRadius: '50%', background: BT2.text.muted }} />
+      <span style={{ fontSize: 11, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Select a development path in Property & Zoning to contextualize market analysis</span>
+    </div>
+  );
+}
+
+interface ProgramRationaleData {
+  headline: string;
+  signals: Array<{ label: string; detail: string; impact: 'positive' | 'neutral' | 'caution' }>;
+  recommendation: string;
+}
+
+function buildProgramRationale(
+  data: MarketIntelData, gaps: GapItem[], comps: CompData[],
+  dealMode: DealMode, hasZoning: boolean, activeScenario: any
+): ProgramRationaleData {
+  const eco = data.economy;
+  const demo = data.demographics;
+  const supply = data.supplyContext;
+  const submarket = demo?.submarket;
+  const signals: ProgramRationaleData['signals'] = [];
+
+  const undersupplied = gaps.filter(g => g.gap > 2).map(g => g.label);
+  const oversupplied = gaps.filter(g => g.gap < -2).map(g => g.label);
+  const highDemand = gaps.filter(g => g.demandScore >= 78).map(g => g.label);
+
+  if (undersupplied.length > 0) {
+    signals.push({ label: 'SUPPLY GAP', detail: `${undersupplied.join(', ')} undersupplied in trade area — opportunity to over-index`, impact: 'positive' });
+  }
+  if (oversupplied.length > 0) {
+    signals.push({ label: 'OVERSUPPLY RISK', detail: `${oversupplied.join(', ')} oversupplied — minimize allocation or differentiate`, impact: 'caution' });
+  }
+  if (highDemand.length > 0) {
+    signals.push({ label: 'STRONG DEMAND', detail: `${highDemand.join(', ')} showing high demand scores (low vacancy, fast lease-up)`, impact: 'positive' });
+  }
+
+  const occ = smOcc(submarket) ?? (supply?.marketOccupancy ? supply.marketOccupancy * 100 : null);
+  if (occ != null) {
+    signals.push({
+      label: 'OCCUPANCY',
+      detail: `Submarket at ${typeof occ === 'number' ? occ.toFixed(1) : occ}% — ${(occ as number) >= 95 ? 'very tight, pricing power exists' : (occ as number) >= 92 ? 'healthy fundamentals support rent targets' : 'softening may require concession budget'}`,
+      impact: (occ as number) >= 93 ? 'positive' : (occ as number) >= 90 ? 'neutral' : 'caution',
+    });
+  }
+
+  const healthScore = eco?.healthScore ?? 0;
+  if (healthScore > 0) {
+    signals.push({
+      label: 'ECONOMY',
+      detail: `Health score ${healthScore}/100 — ${healthScore >= 70 ? 'strong job/wage growth supports premium rents' : healthScore >= 50 ? 'moderate growth supports market-rate rents' : 'weak economy suggests conservative rent assumptions'}`,
+      impact: healthScore >= 70 ? 'positive' : healthScore >= 50 ? 'neutral' : 'caution',
+    });
+  }
+
+  if (hasZoning && activeScenario?.maxUnits) {
+    signals.push({
+      label: 'ZONING ENVELOPE',
+      detail: `${activeScenario.maxUnits} max units allowed${activeScenario.maxGba ? `, ${activeScenario.maxGba.toLocaleString()} SF GBA` : ''}${activeScenario.bindingConstraint ? ` (binding: ${activeScenario.bindingConstraint})` : ''}`,
+      impact: 'neutral',
+    });
+  }
+
+  if (supply?.competingProperties?.totalPipelineUnits > 500) {
+    signals.push({
+      label: 'PIPELINE',
+      detail: `${Number(supply.competingProperties.totalPipelineUnits).toLocaleString()} units in pipeline — may pressure rents at delivery`,
+      impact: supply.competingProperties.totalPipelineUnits > 1500 ? 'caution' : 'neutral',
+    });
+  }
+
+  let headline = '';
+  let recommendation = '';
+
+  if (dealMode === 'development') {
+    const bestType = gaps.reduce((a, b) => (a.demandScore * (1 + Math.max(0, a.gap) / 10)) > (b.demandScore * (1 + Math.max(0, b.gap) / 10)) ? a : b);
+    headline = `Market signals favor ${bestType.label}-weighted program with ${healthScore >= 70 ? 'premium' : 'market-rate'} rent positioning`;
+    const topPsf = comps.length > 0 ? UT_META.map(ut => { const avg = compAvg(ut.key as UnitKey, comps); return avg.sf > 0 ? avg.rent / avg.sf : 0; }) : [];
+    const bestPsfIdx = topPsf.indexOf(Math.max(...topPsf));
+    const bestPsfType = UT_META[bestPsfIdx >= 0 ? bestPsfIdx : 1];
+    recommendation = `Optimize for ${bestType.label} allocation (highest demand + gap score). ${bestPsfType.label} delivers best rent/SF ($${topPsf[bestPsfIdx >= 0 ? bestPsfIdx : 1]?.toFixed(2) || '—'}/SF). ${undersupplied.length > 0 ? `Lean into ${undersupplied.join(' and ')} to capture unmet demand.` : 'Current comp averages suggest balanced allocation.'} ${hasZoning ? `Constrained to ${activeScenario?.maxUnits || '—'} max units by zoning.` : 'No zoning constraints linked — connect M02 for envelope-aware recommendations.'}`;
+  } else if (dealMode === 'redevelopment') {
+    headline = `Repositioning opportunity identified: ${undersupplied.length > 0 ? `${undersupplied.join(', ')} undersupplied` : 'market gaps available'}`;
+    recommendation = `Consider converting oversupplied types (${oversupplied.length > 0 ? oversupplied.join(', ') : 'none identified'}) to capture demand in ${undersupplied.length > 0 ? undersupplied.join(', ') : 'high-demand segments'}. Target rent premium of 10–15% over current position to justify renovation costs. Focus on unit size optimization for best rent/SF.`;
+  } else {
+    headline = `Current positioning ${(occ as number) >= 93 ? 'strong' : (occ as number) >= 90 ? 'adequate' : 'requires attention'} relative to submarket`;
+    recommendation = `${highDemand.length > 0 ? `${highDemand.join(', ')} types show strongest leasing velocity.` : 'No standout demand signals.'} ${oversupplied.length > 0 ? `Watch ${oversupplied.join(', ')} — softening demand may require adjusted pricing or concessions.` : 'Unit mix appears well-balanced against market.'} Focus on competitive rent positioning and concession management.`;
+  }
+
+  return { headline, signals, recommendation };
+}
+
+function ProgramRationale({ rationale, dealMode }: { rationale: ProgramRationaleData; dealMode: DealMode }) {
+  const impactColor = { positive: BT2.met.occupancy, neutral: BT2.text.cyan, caution: BT2.text.amber };
+  const impactIcon = { positive: '▲', neutral: '●', caution: '◆' };
+  const modeIcon = dealMode === 'development' ? Crosshair : dealMode === 'redevelopment' ? ArrowRightLeft : Eye;
+  const ModeIcon = modeIcon;
+  const modeLabel = dealMode === 'development' ? 'DESIGN RATIONALE' : dealMode === 'redevelopment' ? 'REPOSITIONING RATIONALE' : 'POSITIONING ANALYSIS';
+
+  return (
+    <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${BT2.border.subtle}`, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <ModeIcon size={13} color={BT2.text.amber} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.amber, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>{modeLabel}</span>
+        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>AI SYNTHESIS · MARKET + DEMAND + ZONING</span>
+      </div>
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.primary, marginBottom: 10, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>
+          {rationale.headline}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          {rationale.signals.map((sig, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '4px 10px', borderRadius: 4, background: `${impactColor[sig.impact]}08`, border: `1px solid ${impactColor[sig.impact]}20` }}>
+              <span style={{ fontSize: 10, color: impactColor[sig.impact], fontFamily: 'var(--bt-mono)', flexShrink: 0, marginTop: 1 }}>{impactIcon[sig.impact]}</span>
+              <div>
+                <span style={{ fontSize: 9, fontWeight: 700, color: impactColor[sig.impact], fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>{sig.label}</span>
+                <span style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', marginLeft: 8 }}>{sig.detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: '8px 12px', borderRadius: 4, border: `1px solid ${BT2.text.cyan}25`, background: `${BT2.text.cyan}06`, fontSize: 11, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.6 }}>
+          <span style={{ color: BT2.text.cyan, fontWeight: 700, fontSize: 9, letterSpacing: 1 }}>RECOMMENDATION </span>
+          {rationale.recommendation}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PositioningScorecard({ data, umComps, umInventory, umGaps, dealMode }: { data: MarketIntelData; umComps: CompData[]; umInventory: any[]; umGaps: GapItem[]; dealMode: DealMode }) {
+  const mono = 'var(--bt-mono)';
+  const submarket = data.demographics?.submarket;
+  const occ = smOcc(submarket);
+  const rent = smRent(submarket);
+
+  const scorecardItems = UT_META.map((ut, i) => {
+    const avg = compAvg(ut.key as UnitKey, umComps);
+    const gap = umGaps[i];
+    const dl = demandLabel(gap?.demandScore || 0);
+    return {
+      type: ut.label,
+      color: ut.color,
+      avgRent: avg.rent,
+      avgSf: avg.sf,
+      psf: avg.sf > 0 ? (avg.rent / avg.sf).toFixed(2) : '—',
+      vacancy: avg.vac.toFixed(1),
+      dom: Math.round(avg.dom),
+      demandScore: gap?.demandScore || 0,
+      demandLabel: dl.label,
+      demandColor: dl.color,
+      gap: gap?.gap || 0,
+      supplyShare: gap?.supplyShare?.toFixed(1) || '—',
+    };
+  });
+
+  const title = dealMode === 'existing' ? 'COMPETITIVE POSITIONING' : 'CURRENT MARKET POSITION';
+  const subtitle = dealMode === 'existing' ? 'Your rents vs market · pricing power analysis' : 'Pre-repositioning baseline · identify conversion targets';
+
+  return (
+    <div style={{ background: BT2.bg.panel }}>
+      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Eye size={13} color={BT2.met.occupancy} />
+        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.met.occupancy, letterSpacing: 1, fontFamily: mono }}>{title}</span>
+        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>{subtitle}</span>
+      </div>
+
+      {occ != null && rent != null && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+          <div style={{ background: BT2.bg.panel, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: BT2.met.occupancy, fontFamily: mono }}>{typeof occ === 'number' ? occ.toFixed(1) : occ}%</div>
+            <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>SUBMARKET OCC</div>
+          </div>
+          <div style={{ background: BT2.bg.panel, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: BT2.text.cyan, fontFamily: mono }}>${rent?.toLocaleString()}</div>
+            <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>AVG RENT</div>
+          </div>
+          <div style={{ background: BT2.bg.panel, padding: '10px 12px', textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: BT2.text.amber, fontFamily: mono }}>{umComps.length}</div>
+            <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>COMPS TRACKED</div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono }}>
+          <thead>
+            <tr style={{ background: BT2.bg.header }}>
+              {['TYPE', 'AVG RENT', 'AVG SF', '$/SF', 'VAC %', 'DOM', 'SUPPLY %', 'DEMAND', 'GAP'].map(h => (
+                <th key={h} style={{ fontSize: 9, fontWeight: 700, color: BT2.text.muted, letterSpacing: 0.8, padding: '6px 8px', textAlign: h === 'TYPE' ? 'left' : 'right', borderBottom: `1px solid ${BT2.border.subtle}`, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {scorecardItems.map((item, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? BT2.bg.panel : BT2.bg.header }}>
+                <td style={{ padding: '6px 8px', fontWeight: 700, color: item.color, fontSize: 11 }}>{item.type}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.cyan, fontWeight: 700, fontSize: 11 }}>{item.avgRent > 0 ? `$${item.avgRent.toLocaleString()}` : '—'}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.primary, fontSize: 11 }}>{item.avgSf > 0 ? item.avgSf.toLocaleString() : '—'}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.met.occupancy, fontSize: 11 }}>${item.psf}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: parseFloat(item.vacancy) > 8 ? BT2.text.red : parseFloat(item.vacancy) > 5 ? BT2.text.amber : BT2.met.occupancy, fontSize: 11 }}>{item.vacancy}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: item.dom > 25 ? BT2.text.red : item.dom > 15 ? BT2.text.amber : BT2.met.occupancy, fontSize: 11 }}>{item.dom}d</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.secondary, fontSize: 11 }}>{item.supplyShare}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3, color: item.demandColor, background: `${item.demandColor}18`, border: `1px solid ${item.demandColor}30` }}>{item.demandLabel.slice(0, 5)}</span>
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: item.gap > 2 ? BT2.met.occupancy : item.gap < -2 ? BT2.text.red : BT2.text.muted, fontWeight: 700, fontSize: 11 }}>{item.gap > 0 ? '+' : ''}{item.gap.toFixed(1)}pp</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RepositioningPanel({ umComps, umGaps, umProgram, data, onProgramChange }: { umComps: CompData[]; umGaps: GapItem[]; umProgram: Program; data: MarketIntelData; onProgramChange: (p: Program) => void }) {
+  const mono = 'var(--bt-mono)';
+
+  const conversions = umGaps.map((gap, i) => {
+    const ut = UT_META[i];
+    const avg = compAvg(ut.key as UnitKey, umComps);
+    const currentMix = umProgram.units[ut.key as UnitKey].mix;
+    const optimalMix = Math.max(5, Math.min(60, Math.round(
+      currentMix + (gap.gap > 3 ? gap.gap * 1.5 : gap.gap < -3 ? gap.gap * 0.8 : 0)
+    )));
+    const currentRent = umProgram.units[ut.key as UnitKey].rent;
+    const targetRent = avg.rent > 0 ? Math.round(avg.rent * 1.12) : currentRent;
+    const uplift = currentRent > 0 ? ((targetRent - currentRent) / currentRent * 100).toFixed(1) : '—';
+    return {
+      type: ut.label,
+      color: ut.color,
+      key: ut.key,
+      currentMix,
+      optimalMix,
+      mixDelta: optimalMix - currentMix,
+      currentRent,
+      targetRent,
+      uplift,
+      gap: gap.gap,
+      demandScore: gap.demandScore,
+      action: gap.gap > 3 ? 'EXPAND' : gap.gap < -3 ? 'REDUCE' : 'HOLD',
+      actionColor: gap.gap > 3 ? BT2.met.occupancy : gap.gap < -3 ? BT2.text.red : BT2.text.muted,
+    };
+  });
+
+  const applyRepositioning = () => {
+    const newUnits = { ...umProgram.units };
+    conversions.forEach(c => {
+      (newUnits as any)[c.key] = { ...(newUnits as any)[c.key], mix: c.optimalMix, rent: c.targetRent };
+    });
+    const mixSum = Object.values(newUnits).reduce((s: number, u: any) => s + u.mix, 0);
+    if (mixSum !== 100) {
+      const maxKey = conversions.reduce((a, b) => a.optimalMix > b.optimalMix ? a : b).key;
+      (newUnits as any)[maxKey].mix += 100 - mixSum;
+    }
+    onProgramChange({ ...umProgram, units: newUnits as any });
+  };
+
+  return (
+    <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${BT2.border.subtle}`, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ArrowRightLeft size={13} color={BT2.text.amber} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.amber, letterSpacing: 1, fontFamily: mono }}>REPOSITIONING MATRIX</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>CURRENT → TARGET · RENT UPLIFT</span>
+        </div>
+        <button onClick={applyRepositioning} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: 9, fontWeight: 700, color: BT2.text.amber, background: `${BT2.text.amber}12`, border: `1px solid ${BT2.text.amber}40`, borderRadius: 4, cursor: 'pointer', fontFamily: mono }}>
+          APPLY REPOSITIONING
+        </button>
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono }}>
+          <thead>
+            <tr style={{ background: BT2.bg.header }}>
+              {['TYPE', 'ACTION', 'CURRENT MIX', 'TARGET MIX', 'Δ MIX', 'CURRENT RENT', 'TARGET RENT', 'UPLIFT'].map(h => (
+                <th key={h} style={{ fontSize: 9, fontWeight: 700, color: BT2.text.muted, letterSpacing: 0.8, padding: '6px 8px', textAlign: h === 'TYPE' || h === 'ACTION' ? 'left' : 'right', borderBottom: `1px solid ${BT2.border.subtle}`, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {conversions.map((c, i) => (
+              <tr key={i} style={{ background: i % 2 === 0 ? BT2.bg.panel : BT2.bg.header }}>
+                <td style={{ padding: '6px 8px', fontWeight: 700, color: c.color, fontSize: 11 }}>{c.type}</td>
+                <td style={{ padding: '6px 8px' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 3, color: c.actionColor, background: `${c.actionColor}15`, border: `1px solid ${c.actionColor}30` }}>{c.action}</span>
+                </td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.secondary, fontSize: 11 }}>{c.currentMix}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.cyan, fontWeight: 700, fontSize: 11 }}>{c.optimalMix}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: c.mixDelta > 0 ? BT2.met.occupancy : c.mixDelta < 0 ? BT2.text.red : BT2.text.muted, fontWeight: 700, fontSize: 11 }}>{c.mixDelta > 0 ? '+' : ''}{c.mixDelta}pp</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.secondary, fontSize: 11 }}>${c.currentRent.toLocaleString()}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.text.cyan, fontWeight: 700, fontSize: 11 }}>${c.targetRent.toLocaleString()}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: BT2.met.occupancy, fontWeight: 700, fontSize: 11 }}>+{c.uplift}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 
