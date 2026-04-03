@@ -219,14 +219,16 @@ export interface FinancialEngineTabProps {
 }
 
 export const fmt$ = (n: number): string => {
-  if (n === 0) return '$0';
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  if (Math.abs(n) >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
-  return `$${Math.round(n).toLocaleString()}`;
+  const v = Number(n);
+  if (isNaN(v)) return '—';
+  if (v === 0) return '$0';
+  if (Math.abs(v) >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+  if (Math.abs(v) >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+  return `$${Math.round(v).toLocaleString()}`;
 };
 
-export const fmtPct = (n: number): string => `${n.toFixed(1)}%`;
-export const fmtPctRaw = (n: number): string => `${(n * 100).toFixed(2)}%`;
-export const fmtX = (n: number): string => `${n.toFixed(2)}×`;
-export const fmtN = (n: number): string => n.toLocaleString();
+export const fmtPct = (n: number): string => { const v = Number(n); return isNaN(v) ? '—' : `${v.toFixed(1)}%`; };
+export const fmtPctRaw = (n: number): string => { const v = Number(n); return isNaN(v) ? '—' : `${(v * 100).toFixed(2)}%`; };
+export const fmtX = (n: number): string => { const v = Number(n); return isNaN(v) ? '—' : `${v.toFixed(2)}×`; };
+export const fmtN = (n: number): string => { const v = Number(n); return isNaN(v) ? '—' : v.toLocaleString(); };
