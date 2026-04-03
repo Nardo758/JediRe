@@ -4,6 +4,7 @@ export const modules: ModuleMap = {
   "./components/mockups/commentary-wireframes/InlineCards.tsx": () => import("../components/mockups/commentary-wireframes/InlineCards.tsx"),
   "./components/mockups/commentary-wireframes/MetricsEnhanced.tsx": () => import("../components/mockups/commentary-wireframes/MetricsEnhanced.tsx"),
   "./components/mockups/commentary-wireframes/SidePanel.tsx": () => import("../components/mockups/commentary-wireframes/SidePanel.tsx"),
+  "./components/mockups/f3-discovery-tab/DiscoveryTab.tsx": () => import("../components/mockups/f3-discovery-tab/DiscoveryTab.tsx"),
   "./components/mockups/market-performance/Combined.tsx": () => import("../components/mockups/market-performance/Combined.tsx"),
   "./components/mockups/msa-overview/Overview.tsx": () => import("../components/mockups/msa-overview/Overview.tsx")
 };
