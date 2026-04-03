@@ -71,6 +71,7 @@ const MONO = BT.font.mono;
 
 // ─── CSS animations injected once ─────────────────────────────────────────────
 export const BT_CSS = `
+  :root { --bt-mono: 'JetBrains Mono','Fira Code','SF Mono','Cascadia Code','Consolas',monospace; }
   @keyframes bt-glow  { 0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66} }
   @keyframes bt-glowR { 0%,100%{box-shadow:0 0 4px #FF475744}50%{box-shadow:0 0 10px #FF475766} }
   @keyframes bt-pulse { 0%,100%{opacity:1}50%{opacity:0.6} }
