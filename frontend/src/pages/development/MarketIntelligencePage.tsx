@@ -95,6 +95,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'positioning', label: 'POSITIONING' },
         { id: 'comps', label: 'COMPS' },
         { id: 'trends', label: 'TRENDS' },
+        { id: 'program', label: 'PROGRAM' },
       ];
   }
 }
@@ -377,21 +378,15 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderProgramTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 14 }}>
-        {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
-        <ZoningCompactPanel zoning={umZoning} program={umProgram} computed={umComputed} onZoningChange={setUmZoning} />
-      </div>
-      <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} gaps={umGaps} />
-    </div>
+    <ProgramDevPanel program={umProgram} computed={umComputed} zoning={umZoning} comps={umComps} gaps={umGaps} onProgramChange={handleProgramChange} onZoningChange={setUmZoning} />
   );
 
   const renderRepositioningTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
-      {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
-      <RepositioningPanel umComps={umComps} umGaps={umGaps} umProgram={umProgram} data={data} onProgramChange={handleProgramChange} />
-      <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} gaps={umGaps} />
-    </div>
+    <ProgramRedevPanel rationale={programRationale} umComps={umComps} umGaps={umGaps} umProgram={umProgram} onProgramChange={handleProgramChange} />
+  );
+
+  const renderExistingProgramTab = () => (
+    <ProgramExistingPanel umComps={umComps} />
   );
 
   const renderTrendsTab = () => (
@@ -408,7 +403,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       case 'demand': return renderDemandTab();
       case 'positioning': return renderPositioningTab();
       case 'comps': return renderCompsTab();
-      case 'program': return renderProgramTab();
+      case 'program': return dealMode === 'existing' ? renderExistingProgramTab() : renderProgramTab();
       case 'repositioning': return renderRepositioningTab();
       case 'trends': return renderTrendsTab();
       default: return renderDiscoveryTab();
@@ -499,7 +494,7 @@ function ZoningContextBar({ hasZoningContext, zoningCode, activeScenario }: { ha
   );
 }
 
-function ZoningCompactPanel({ zoning, program, computed, onZoningChange }: { zoning: ZoningData; program: Program; computed: any; onZoningChange: (z: ZoningData) => void }) {
+function ZoningCompactPanel({ zoning, program, computed, onZoningChange }: { zoning: ZoningData; program: Program; computed: { totalSF: number; mixTotal: number; grossRevPA: number; wtdPSF: number }; onZoningChange: (z: ZoningData) => void }) {
   const mono = 'var(--bt-mono)';
   const unitUtil = zoning.maxUnits > 0 ? (program.totalUnits / zoning.maxUnits) * 100 : 0;
   const sfUtil = zoning.maxNetSF > 0 ? (computed.totalSF / zoning.maxNetSF) * 100 : 0;
@@ -849,6 +844,759 @@ function RepositioningPanel({ umComps, umGaps, umProgram, data, onProgramChange 
             ))}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+const PC = {
+  bg: '#0A0E17', surface: '#0F1319', card: '#131821', elevated: '#1a2130',
+  border: '#1E2538', borderSub: '#161c24', muted: '#2A3348',
+  text: '#E8ECF1', dim: '#6B7A8D', faint: '#4A566B', accent: '#c2c0b6',
+  studio: '#A78BFA', oneBR: '#00BCD4', twoBR: '#00D26A', threeBR: '#F5A623',
+  subject: '#FF8C42', green: '#00D26A', red: '#FF4757', yellow: '#F5A623', blue: '#00BCD4',
+  purple: '#A78BFA',
+};
+const pmono = "'JetBrains Mono','Fira Code','SF Mono',monospace";
+
+const AMENITIES_DEV = [
+  { tier: 'BASE', color: PC.green, items: [
+    { name: 'Package Lockers', cost: '$45K', lift: '+$18/u', roi: '2.1yr' },
+    { name: 'Fitness Center', cost: '$120K', lift: '+$25/u', roi: '1.7yr' },
+    { name: 'Dog Park/Wash', cost: '$35K', lift: '+$12/u', roi: '1.0yr' },
+  ]},
+  { tier: 'COMPETITIVE', color: PC.yellow, items: [
+    { name: 'Rooftop Lounge', cost: '$280K', lift: '+$45/u', roi: '2.2yr' },
+    { name: 'Coworking Space', cost: '$180K', lift: '+$35/u', roi: '1.8yr' },
+    { name: 'EV Charging (8)', cost: '$64K', lift: '+$15/u', roi: '1.4yr' },
+  ]},
+  { tier: 'PREMIUM', color: PC.purple, items: [
+    { name: 'Pool + Cabanas', cost: '$450K', lift: '+$65/u', roi: '2.5yr' },
+    { name: 'Sky Deck w/ Grills', cost: '$320K', lift: '+$50/u', roi: '2.3yr' },
+  ]},
+];
+
+const AMENITY_GAP_REDEV = [
+  { name: 'Package Lockers', has: false, comps: '85%', cost: '$45K', lift: '+$18/u', priority: 'HIGH' as const },
+  { name: 'EV Charging', has: false, comps: '62%', cost: '$64K', lift: '+$15/u', priority: 'MED' as const },
+  { name: 'Coworking Space', has: false, comps: '54%', cost: '$180K', lift: '+$35/u', priority: 'HIGH' as const },
+  { name: 'Fitness Center', has: true, comps: '95%', cost: '—', lift: '—', priority: '—' as const },
+  { name: 'Dog Park', has: true, comps: '78%', cost: '—', lift: '—', priority: '—' as const },
+  { name: 'Rooftop Lounge', has: false, comps: '42%', cost: '$280K', lift: '+$45/u', priority: 'MED' as const },
+];
+
+const EXISTING_AMENITIES = [
+  { key: 'pkg', name: 'Package Lockers', category: 'convenience' },
+  { key: 'fitness', name: 'Fitness Center', category: 'lifestyle' },
+  { key: 'dog', name: 'Dog Park/Wash', category: 'lifestyle' },
+  { key: 'pool', name: 'Pool', category: 'lifestyle' },
+  { key: 'cowork', name: 'Coworking Space', category: 'convenience' },
+  { key: 'ev', name: 'EV Charging', category: 'infrastructure' },
+  { key: 'rooftop', name: 'Rooftop Lounge', category: 'lifestyle' },
+  { key: 'concierge', name: 'Concierge/Valet', category: 'service' },
+];
+
+const EXISTING_SUBJECT = {
+  name: 'Subject Property', units: 320, cls: 'B+', built: 2016,
+  amenities: { pkg: false, fitness: true, dog: true, pool: true, cowork: false, ev: false, rooftop: false, concierge: false } as Record<string, boolean>,
+  avgRent: 1735,
+};
+
+const EXISTING_COMPS_AMENITIES = [
+  { id: 'sandpiper', name: 'Sandpiper Cove', cls: 'A', units: 248, built: 2021, dist: 0.8,
+    amenities: { pkg: true, fitness: true, dog: true, pool: true, cowork: true, ev: true, rooftop: true, concierge: false } as Record<string, boolean>,
+    avgRent: 1892 },
+  { id: 'avana', name: 'Avana Crossings', cls: 'A', units: 312, built: 2019, dist: 1.2,
+    amenities: { pkg: true, fitness: true, dog: false, pool: true, cowork: true, ev: true, rooftop: false, concierge: true } as Record<string, boolean>,
+    avgRent: 1830 },
+  { id: 'harbour', name: 'Harbour Pointe', cls: 'B+', units: 400, built: 2017, dist: 1.5,
+    amenities: { pkg: true, fitness: true, dog: true, pool: true, cowork: false, ev: false, rooftop: false, concierge: false } as Record<string, boolean>,
+    avgRent: 1720 },
+  { id: 'enclave', name: 'The Enclave PSL', cls: 'B', units: 180, built: 2014, dist: 2.1,
+    amenities: { pkg: false, fitness: true, dog: false, pool: true, cowork: false, ev: false, rooftop: false, concierge: false } as Record<string, boolean>,
+    avgRent: 1580 },
+  { id: 'riverview', name: 'Riverview Apts', cls: 'A-', units: 290, built: 2020, dist: 1.8,
+    amenities: { pkg: true, fitness: true, dog: true, pool: true, cowork: true, ev: true, rooftop: true, concierge: false } as Record<string, boolean>,
+    avgRent: 1870 },
+];
+
+const EXISTING_SUBMARKET = {
+  name: 'Port St. Lucie · West', properties: 47,
+  penetration: { pkg: 72, fitness: 91, dog: 64, pool: 78, cowork: 38, ev: 42, rooftop: 22, concierge: 14 } as Record<string, number>,
+};
+
+const EXISTING_LIFT: Record<string, { cost: number; liftPerUnit: number; roi: string; tier: string }> = {
+  pkg: { cost: 45000, liftPerUnit: 50, roi: '0.9yr', tier: 'BASE' },
+  fitness: { cost: 120000, liftPerUnit: 25, roi: '1.7yr', tier: 'BASE' },
+  dog: { cost: 35000, liftPerUnit: 12, roi: '1.0yr', tier: 'BASE' },
+  pool: { cost: 450000, liftPerUnit: 65, roi: '2.5yr', tier: 'PREMIUM' },
+  cowork: { cost: 180000, liftPerUnit: 35, roi: '1.8yr', tier: 'COMPETITIVE' },
+  ev: { cost: 64000, liftPerUnit: 15, roi: '1.4yr', tier: 'COMPETITIVE' },
+  rooftop: { cost: 280000, liftPerUnit: 45, roi: '2.2yr', tier: 'PREMIUM' },
+  concierge: { cost: 95000, liftPerUnit: 30, roi: '1.1yr', tier: 'COMPETITIVE' },
+};
+
+function PDeltaBadge({ value, suffix = "" }: { value: number; suffix?: string }) {
+  if (value === 0) return <span style={{ color: PC.dim, fontSize: 9, fontFamily: pmono }}>—</span>;
+  const pos = value > 0;
+  const color = pos ? PC.green : PC.red;
+  return (
+    <span style={{ color, fontSize: 9, fontFamily: pmono, letterSpacing: -0.3 }}>
+      {pos ? "▲" : "▼"} {Math.abs(value).toFixed(1)}{suffix}
+    </span>
+  );
+}
+
+function PMixBar({ proposed, market, color }: { proposed: number; market: number; color: string }) {
+  const maxVal = Math.max(proposed, market, 50);
+  const pW = (proposed / maxVal) * 100;
+  const mW = (market / maxVal) * 100;
+  return (
+    <div style={{ position: "relative", height: 18, width: "100%" }}>
+      <div style={{ position: "absolute", left: `${mW}%`, top: 0, bottom: 0, width: 1, background: PC.dim, zIndex: 2, opacity: 0.5 }} />
+      <div style={{ position: "absolute", left: `calc(${mW}% + 3px)`, top: 0, fontSize: 8, fontFamily: pmono, color: PC.faint, whiteSpace: "nowrap" as const }}>MKT {market.toFixed(0)}%</div>
+      <div style={{ position: "absolute", left: 0, top: 6, height: 6, width: `${pW}%`, background: color, borderRadius: 1, opacity: 0.8, transition: "width 0.3s ease" }} />
+    </div>
+  );
+}
+
+function PEnvelopeGauge({ used, total, label }: { used: number; total: number; label: string }) {
+  const pct = total > 0 ? (used / total) * 100 : 0;
+  const remaining = total - used;
+  const isOver = total > 0 && used > total;
+  const barColor = total === 0 ? PC.dim : isOver ? PC.red : pct > 90 ? PC.yellow : PC.green;
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
+        <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, textTransform: "uppercase" as const, letterSpacing: 0.8 }}>{label}</span>
+        <span style={{ fontSize: 9, fontFamily: pmono, color: isOver ? PC.red : PC.dim }}>
+          {remaining > 0 ? `${remaining.toLocaleString()} remaining` : `${Math.abs(remaining).toLocaleString()} over`}
+        </span>
+      </div>
+      <div style={{ height: 4, background: PC.bg, borderRadius: 1, position: "relative" }}>
+        <div style={{ height: "100%", width: `${Math.min(pct, 100)}%`, background: barColor, borderRadius: 1, transition: "width 0.3s ease" }} />
+        <div style={{ position: "absolute", right: 0, top: -2, bottom: -2, width: 1, background: PC.faint, opacity: 0.4 }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+        <span style={{ fontSize: 9, fontFamily: pmono, color: PC.text }}>{used.toLocaleString()}</span>
+        <span style={{ fontSize: 9, fontFamily: pmono, color: PC.faint }}>/ {total.toLocaleString()}</span>
+      </div>
+    </div>
+  );
+}
+
+function PKPICell({ label, value, sub, accent, last }: { label: string; value: string | number; sub?: string; accent?: string; last?: boolean }) {
+  return (
+    <div style={{ flex: 1, borderRight: last ? "none" : `1px solid ${PC.border}`, padding: "6px 12px" }}>
+      <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, textTransform: "uppercase" as const, letterSpacing: 0.8, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 15, fontFamily: pmono, color: accent || PC.text, fontWeight: 600, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, fontFamily: pmono, color: PC.dim, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function PenBar({ pct, color, width = 40 }: { pct: number; color: string; width?: number }) {
+  return (
+    <div style={{ width, height: 4, background: PC.muted, borderRadius: 1, overflow: 'hidden' }}>
+      <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: color, borderRadius: 1, opacity: 0.8 }} />
+    </div>
+  );
+}
+
+type ComputedProgram = { totalSF: number; mixTotal: number; grossRevPA: number; wtdPSF: number };
+
+function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChange, onZoningChange }: {
+  program: Program; computed: ComputedProgram; zoning: ZoningData; comps: CompData[]; gaps: GapItem[];
+  onProgramChange: (p: Program) => void; onZoningChange: (z: ZoningData) => void;
+}) {
+  const [optimizing, setOptimizing] = useState(false);
+
+  const totalUnits = program.totalUnits;
+  const maxUnits = zoning.maxUnits;
+  const totalSF = computed.totalSF;
+  const maxSF = zoning.maxNetSF;
+  const grossRev = UT_META.reduce((s: number, ut: any) => {
+    const u = program.units[ut.key as UnitKey];
+    return s + Math.round(totalUnits * u.mix / 100) * u.rent * 12;
+  }, 0);
+  const avgRent = grossRev / 12 / (totalUnits || 1);
+  const avgPSF = totalSF > 0 ? grossRev / 12 / totalSF : 0;
+
+  const unitRows = UT_META.map(ut => {
+    const u = program.units[ut.key as UnitKey];
+    const avg = compAvg(ut.key as UnitKey, comps);
+    const count = Math.round(totalUnits * u.mix / 100);
+    const annualRev = u.rent * count * 12;
+    const psfRent = u.sf > 0 ? u.rent / u.sf : 0;
+    const mixDelta = avg.mix > 0 ? u.mix - avg.mix : 0;
+    const rentDelta = avg.rent > 0 ? u.rent - avg.rent : 0;
+    const sfDelta = avg.sf > 0 ? u.sf - avg.sf : 0;
+    return { ...ut, u, avg, count, annualRev, psfRent, mixDelta, rentDelta, sfDelta };
+  });
+
+  function applyOptimalMix() {
+    const demandScores: Record<string, number> = {};
+    gaps.forEach(g => { demandScores[g.key] = g.demandScore; });
+    const optimal = computeOptimalProgram(totalUnits, comps, { zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF }, demandScores });
+    onProgramChange(optimal);
+  }
+
+  function resetProgram() {
+    const base = computeOptimalProgram(zoning.maxUnits > 0 ? Math.min(PROGRAM_SEED.totalUnits, zoning.maxUnits) : PROGRAM_SEED.totalUnits, comps, { zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF } });
+    onProgramChange(base);
+  }
+
+  return (
+    <div style={{ background: PC.bg, fontFamily: pmono, color: PC.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ display: "flex", gap: 20, padding: "8px 12px", background: PC.card, borderBottom: `1px solid ${PC.border}` }}>
+        <PEnvelopeGauge used={totalUnits} total={maxUnits} label="Unit envelope" />
+        <div style={{ width: 1, background: PC.border }} />
+        <PEnvelopeGauge used={totalSF} total={maxSF} label="SF envelope" />
+      </div>
+
+      <div style={{ display: "flex", borderBottom: `1px solid ${PC.border}`, background: PC.surface }}>
+        <PKPICell label="Total units" value={totalUnits} sub={`of ${maxUnits} max`} />
+        <PKPICell label="Net SF" value={totalSF.toLocaleString()} sub={`${Math.round(totalSF / (totalUnits || 1))} avg/unit`} />
+        <PKPICell label="Gross rev" value={`$${(grossRev / 1e6).toFixed(2)}M`} sub="annual" accent={PC.green} />
+        <PKPICell label="Avg rent" value={`$${avgRent.toFixed(0)}`} sub="/unit/mo" />
+        <PKPICell label="Avg $/SF" value={`$${avgPSF.toFixed(2)}`} sub="/mo" last />
+      </div>
+
+      <div style={{ padding: '6px 12px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: PC.surface }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ color: PC.blue, fontFamily: pmono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>M03</span>
+          <span style={{ color: PC.border }}>·</span>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>Unit Program</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button onClick={() => { setOptimizing(true); applyOptimalMix(); setTimeout(() => setOptimizing(false), 1500); }}
+            style={{ padding: "3px 8px", border: `1px solid ${PC.blue}33`, borderRadius: 2, cursor: "pointer", fontSize: 8, fontFamily: pmono, letterSpacing: 0.5, fontWeight: 700, background: optimizing ? `${PC.blue}15` : "transparent", color: PC.blue }}>
+            {optimizing ? "OPTIMIZING..." : "AI OPTIMIZE"}
+          </button>
+          <button onClick={resetProgram} style={{ padding: "3px 8px", border: `1px solid ${PC.border}`, borderRadius: 2, cursor: "pointer", background: "transparent", fontSize: 8, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>RESET</button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "72px 120px 1fr 1fr 70px 80px 24px", padding: "4px 12px", borderBottom: `1px solid ${PC.border}`, background: PC.surface }}>
+        {["Type", "Mix %", "Avg SF", "Rent", "$/SF", "Rev", ""].map((h, i) => (
+          <span key={i} style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, textTransform: "uppercase" as const, letterSpacing: 0.8 }}>{h}</span>
+        ))}
+      </div>
+
+      {unitRows.map((row, ri) => (
+        <div key={row.key} style={{ display: "grid", gridTemplateColumns: "72px 120px 1fr 1fr 70px 80px 24px", gap: 0, alignItems: "center", padding: "10px 12px", borderBottom: ri < unitRows.length - 1 ? `1px solid ${PC.borderSub}` : "none" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 3, height: 24, background: row.color, borderRadius: 1 }} />
+            <div>
+              <div style={{ fontSize: 11, fontFamily: pmono, color: PC.text, fontWeight: 600 }}>{row.label}</div>
+              <div style={{ fontSize: 9, fontFamily: pmono, color: PC.faint }}>{row.count} units</div>
+            </div>
+          </div>
+          <div style={{ paddingRight: 8 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 1 }}>
+              <span style={{ fontSize: 12, fontFamily: pmono, color: PC.text, fontWeight: 600 }}>{row.u.mix}%</span>
+              <PDeltaBadge value={row.mixDelta} suffix="pp" />
+            </div>
+            <PMixBar proposed={row.u.mix} market={row.avg.mix} color={row.color} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, background: PC.bg, border: `1px solid ${PC.border}`, borderRadius: 2, padding: "2px 6px" }}>
+              <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>SF</span>
+              <span style={{ fontSize: 11, fontFamily: pmono, color: PC.text, fontWeight: 600 }}>{row.u.sf.toLocaleString()}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: 0 }}>
+              <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>avg {row.avg.sf.toLocaleString()}</span>
+              <PDeltaBadge value={row.sfDelta} suffix=" sf" />
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 3, background: PC.bg, border: `1px solid ${PC.border}`, borderRadius: 2, padding: "2px 6px" }}>
+              <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>RENT</span>
+              <span style={{ fontSize: 11, fontFamily: pmono, color: PC.text, fontWeight: 600 }}>${row.u.rent.toLocaleString()}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column" as const, gap: 0 }}>
+              <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>avg ${row.avg.rent.toLocaleString()}</span>
+              <PDeltaBadge value={row.rentDelta} suffix="" />
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, display: "block", marginBottom: 1 }}>$/SF</span>
+            <span style={{ fontSize: 12, fontFamily: pmono, color: PC.accent, fontWeight: 600 }}>${row.psfRent.toFixed(2)}</span>
+          </div>
+          <div style={{ textAlign: "right" as const }}>
+            <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, display: "block", marginBottom: 1 }}>ANNUAL</span>
+            <span style={{ fontSize: 11, fontFamily: pmono, color: row.color, fontWeight: 600 }}>${(row.annualRev / 1e3).toFixed(0)}K</span>
+          </div>
+          <div style={{ paddingLeft: 4 }}>
+            <div style={{ height: 24, width: 4, background: PC.bg, borderRadius: 1, position: "relative" as const, display: "inline-block", verticalAlign: "middle" }}>
+              <div style={{ position: "absolute" as const, bottom: 0, width: "100%", borderRadius: 1, height: `${Math.min(100, (row.annualRev / 2800000) * 100)}%`, background: row.color, opacity: 0.7 }} />
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: "grid", gridTemplateColumns: "72px 120px 1fr 1fr 70px 80px 24px", padding: "8px 12px", borderTop: `2px solid ${PC.border}`, background: PC.card }}>
+        <div><span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.5 }}>TOTAL</span></div>
+        <div><span style={{ fontSize: 11, fontFamily: pmono, color: PC.text, fontWeight: 600 }}>100%</span></div>
+        <div><span style={{ fontSize: 11, fontFamily: pmono, color: PC.text }}>{Math.round(totalSF / (totalUnits || 1))} avg</span></div>
+        <div><span style={{ fontSize: 11, fontFamily: pmono, color: PC.text }}>${avgRent.toFixed(0)} avg</span></div>
+        <div><span style={{ fontSize: 11, fontFamily: pmono, color: PC.accent, fontWeight: 600 }}>${avgPSF.toFixed(2)}</span></div>
+        <div style={{ textAlign: "right" as const }}><span style={{ fontSize: 11, fontFamily: pmono, color: PC.green, fontWeight: 700 }}>${(grossRev / 1e6).toFixed(2)}M</span></div>
+        <div />
+      </div>
+
+      <div style={{ padding: "6px 12px", borderTop: `1px solid ${PC.border}` }}>
+        <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, textTransform: "uppercase" as const, letterSpacing: 0.8, marginBottom: 4 }}>Revenue composition</div>
+        <div style={{ display: "flex", height: 5, borderRadius: 1, overflow: "hidden", gap: 1 }}>
+          {unitRows.map(r => {
+            const pct = grossRev > 0 ? (r.annualRev / grossRev) * 100 : 0;
+            return <div key={r.key} style={{ width: `${pct}%`, background: r.color, opacity: 0.75, transition: "width 0.3s ease" }} />;
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+          {unitRows.map(r => {
+            const pct = grossRev > 0 ? (r.annualRev / grossRev) * 100 : 0;
+            return (
+              <div key={r.key} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <div style={{ width: 5, height: 5, background: r.color, borderRadius: 1, opacity: 0.75 }} />
+                <span style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>{r.label} {pct.toFixed(0)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 0, overflow: 'hidden', borderTop: `1px solid ${PC.border}` }}>
+        <div style={{ padding: '6px 12px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: PC.blue, fontFamily: pmono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>AMENITY</span>
+            <span style={{ color: PC.border }}>·</span>
+            <span style={{ fontSize: 11, fontWeight: 700 }}>Amenity Package Builder</span>
+            <span style={{ color: PC.faint, fontSize: 8 }}>new construction</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: PC.faint, fontSize: 8, fontFamily: pmono }}>TOTAL COST</span>
+            <span style={{ color: PC.yellow, fontFamily: pmono, fontSize: 10, fontWeight: 700 }}>$1.49M</span>
+            <span style={{ color: PC.faint, fontSize: 8, fontFamily: pmono }}>EST LIFT</span>
+            <span style={{ color: PC.green, fontFamily: pmono, fontSize: 10, fontWeight: 700 }}>+$265/u</span>
+          </div>
+        </div>
+        {AMENITIES_DEV.map((tier, ti) => (
+          <div key={tier.tier}>
+            <div style={{ padding: '3px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}`, borderTop: ti > 0 ? `1px solid ${PC.border}` : 'none' }}>
+              <span style={{ fontFamily: pmono, fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', color: tier.color }}>{tier.tier}</span>
+            </div>
+            {tier.items.map((item, ii) => (
+              <div key={ii} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 50px 24px', padding: '4px 12px', borderBottom: `1px solid ${PC.border}30`, alignItems: 'center' }}>
+                <span style={{ color: PC.text, fontSize: 9 }}>{item.name}</span>
+                <span style={{ color: PC.dim, fontFamily: pmono, fontSize: 8, textAlign: 'right' as const }}>{item.cost}</span>
+                <span style={{ color: PC.green, fontFamily: pmono, fontSize: 8, fontWeight: 700, textAlign: 'right' as const }}>{item.lift}</span>
+                <span style={{ color: PC.faint, fontFamily: pmono, fontSize: 7, textAlign: 'right' as const }}>{item.roi}</span>
+                <div style={{ textAlign: 'center' as const }}>
+                  <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 3px', borderRadius: 2, background: PC.green + '18', color: PC.green, border: `1px solid ${PC.green}40` }}>✓</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", borderTop: `1px solid ${PC.border}`, background: PC.card, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.5 }}>DEAL TYPE: DEVELOPMENT</span>
+          <span style={{ color: PC.faint, fontSize: 8 }}>·</span>
+          <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.5 }}>ZONING: {zoning.zoningCode}</span>
+          <span style={{ color: PC.faint, fontSize: 8 }}>·</span>
+          <span style={{ fontSize: 8, fontFamily: pmono, color: totalSF <= maxSF ? PC.green : PC.red, letterSpacing: 0.5 }}>
+            {totalSF <= maxSF ? "WITHIN ENVELOPE" : "EXCEEDS ENVELOPE"}
+          </span>
+        </div>
+        <button style={{ padding: "4px 12px", border: "none", borderRadius: 2, cursor: "pointer", fontSize: 9, fontFamily: pmono, background: PC.green, color: PC.bg, fontWeight: 700, letterSpacing: 0.5 }}>PUSH TO PROFORMA →</button>
+      </div>
+    </div>
+  );
+}
+
+function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramChange }: {
+  rationale: ProgramRationaleData | null; umComps: CompData[]; umGaps: GapItem[]; umProgram: Program; onProgramChange: (p: Program) => void;
+}) {
+  const conversions = umGaps.map((gap, i) => {
+    const ut = UT_META[i];
+    const avg = compAvg(ut.key as UnitKey, umComps);
+    const currentMix = umProgram.units[ut.key as UnitKey].mix;
+    const optimalMix = Math.max(5, Math.min(60, Math.round(
+      currentMix + (gap.gap > 3 ? gap.gap * 1.5 : gap.gap < -3 ? gap.gap * 0.8 : 0)
+    )));
+    const currentRent = umProgram.units[ut.key as UnitKey].rent;
+    const targetRent = avg.rent > 0 ? Math.round(avg.rent * 1.12) : currentRent;
+    const currentSf = umProgram.units[ut.key as UnitKey].sf;
+    const delta = optimalMix - currentMix;
+    const convCost = Math.abs(delta) > 2 ? `$${Math.round(Math.abs(delta) * 4.2)}K` : '$0';
+    return { abbr: ut.abbr, color: ut.color, key: ut.key, current: currentMix, target: optimalMix, delta, sf: currentSf, rent: currentRent, targetRent, convCost };
+  });
+
+  const applyRepositioning = () => {
+    const newUnits = { ...umProgram.units };
+    conversions.forEach(c => {
+      (newUnits as any)[c.key] = { ...(newUnits as any)[c.key], mix: c.target, rent: c.targetRent };
+    });
+    const mixSum = Object.values(newUnits).reduce((s: number, u: any) => s + u.mix, 0);
+    if (mixSum !== 100) {
+      const maxKey = conversions.reduce((a, b) => a.target > b.target ? a : b).key;
+      (newUnits as any)[maxKey].mix += 100 - mixSum;
+    }
+    onProgramChange({ ...umProgram, units: newUnits as any });
+  };
+
+  return (
+    <div style={{ background: PC.bg, fontFamily: pmono, color: PC.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {rationale && (
+        <div style={{ background: PC.card, border: `1px solid ${PC.yellow}30`, padding: '8px 12px', margin: '8px 12px 0' , borderRadius: 4 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+            <span style={{ color: PC.yellow, fontFamily: pmono, fontSize: 8, fontWeight: 700 }}>AI SYNTHESIS</span>
+            <span style={{ color: PC.border }}>·</span>
+            <span style={{ color: PC.text, fontSize: 10, fontWeight: 700 }}>Repositioning Rationale</span>
+          </div>
+          <p style={{ color: PC.dim, fontSize: 9, lineHeight: 1.5, margin: 0 }}>{rationale.recommendation}</p>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 4, padding: '6px 12px', margin: '8px 12px 0', background: PC.card, borderRadius: 4, border: `1px solid ${PC.border}` }}>
+        <span style={{ color: PC.dim, fontFamily: pmono, fontSize: 8, marginRight: 8, alignSelf: 'center' }}>MODE</span>
+        {[{ id: 'units', label: 'ADD UNITS', active: true }, { id: 'sf', label: 'ADD SF', active: false }, { id: 'both', label: 'BOTH', active: false }].map(m => (
+          <span key={m.id} style={{ padding: '3px 10px', fontSize: 8, fontWeight: 700, fontFamily: pmono, borderRadius: 3, background: m.active ? PC.yellow + '18' : 'transparent', color: m.active ? PC.yellow : PC.dim, border: `1px solid ${m.active ? PC.yellow + '50' : PC.border}`, cursor: 'pointer' }}>{m.label}</span>
+        ))}
+        <div style={{ flex: 1 }} />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ color: PC.dim, fontSize: 8, fontFamily: pmono }}>CONV. BUDGET</span>
+          <span style={{ color: PC.yellow, fontFamily: pmono, fontSize: 11, fontWeight: 700 }}>$1.2M</span>
+          <span style={{ color: PC.dim, fontSize: 8, fontFamily: pmono }}>EST PAYBACK</span>
+          <span style={{ color: PC.green, fontFamily: pmono, fontSize: 11, fontWeight: 700 }}>2.4yr</span>
+        </div>
+      </div>
+
+      <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4, overflow: 'hidden', margin: '8px 12px' }}>
+        <div style={{ padding: '6px 12px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: PC.blue, fontFamily: pmono, fontSize: 8, fontWeight: 700 }}>M03</span>
+            <span style={{ color: PC.border }}>·</span>
+            <span style={{ color: PC.text, fontSize: 11, fontWeight: 700 }}>Existing → Target Mix</span>
+            <span style={{ color: PC.dim, fontSize: 8 }}>deltas shown</span>
+          </div>
+          <button onClick={applyRepositioning} style={{ padding: '3px 10px', fontSize: 8, fontWeight: 700, color: PC.yellow, background: `${PC.yellow}12`, border: `1px solid ${PC.yellow}40`, borderRadius: 3, cursor: 'pointer', fontFamily: pmono }}>APPLY REPOSITIONING</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '50px 70px 70px 50px 80px 80px 70px', padding: '3px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
+          {['TYPE', 'CURRENT', 'TARGET', 'Δ MIX', 'RENT NOW', 'RENT TGT', 'CONV $'].map((h, i) => (
+            <div key={i} style={{ color: PC.dim, fontSize: 7, fontFamily: pmono, fontWeight: 700, textAlign: i > 0 ? 'right' as const : 'left' as const }}>{h}</div>
+          ))}
+        </div>
+        {conversions.map(u => (
+          <div key={u.abbr} style={{ display: 'grid', gridTemplateColumns: '50px 70px 70px 50px 80px 80px 70px', padding: '6px 12px', borderBottom: `1px solid ${PC.border}40`, alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 5, height: 5, background: u.color, borderRadius: 1 }} />
+              <span style={{ color: u.color, fontFamily: pmono, fontSize: 9, fontWeight: 700 }}>{u.abbr}</span>
+            </div>
+            <div style={{ textAlign: 'right' as const }}>
+              <span style={{ color: PC.dim, fontFamily: pmono, fontSize: 10 }}>{u.current}%</span>
+              <div style={{ width: '100%', height: 3, background: PC.muted, borderRadius: 1, overflow: 'hidden', marginTop: 1 }}>
+                <div style={{ width: `${u.current}%`, height: '100%', background: u.color + '40' }} />
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' as const }}>
+              <span style={{ color: PC.subject, fontFamily: pmono, fontSize: 10, fontWeight: 700 }}>{u.target}%</span>
+              <div style={{ width: '100%', height: 3, background: PC.muted, borderRadius: 1, overflow: 'hidden', marginTop: 1 }}>
+                <div style={{ width: `${u.target}%`, height: '100%', background: u.color }} />
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' as const }}>
+              <span style={{ color: u.delta > 0 ? PC.green : u.delta < 0 ? PC.red : PC.dim, fontFamily: pmono, fontSize: 10, fontWeight: 700 }}>
+                {u.delta > 0 ? '+' : ''}{u.delta}pp
+              </span>
+            </div>
+            <span style={{ textAlign: 'right' as const, color: PC.dim, fontFamily: pmono, fontSize: 10 }}>${u.rent.toLocaleString()}</span>
+            <span style={{ textAlign: 'right' as const, color: PC.green, fontFamily: pmono, fontSize: 10, fontWeight: 700 }}>${u.targetRent.toLocaleString()}</span>
+            <span style={{ textAlign: 'right' as const, color: u.convCost !== '$0' ? PC.yellow : PC.dim, fontFamily: pmono, fontSize: 9 }}>{u.convCost}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4, overflow: 'hidden', margin: '0 12px 8px' }}>
+        <div style={{ padding: '6px 12px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: PC.blue, fontFamily: pmono, fontSize: 8, fontWeight: 700 }}>AMENITY</span>
+            <span style={{ color: PC.border }}>·</span>
+            <span style={{ color: PC.text, fontSize: 11, fontWeight: 700 }}>Amenity Gap Analysis</span>
+            <span style={{ color: PC.dim, fontSize: 8 }}>← from F6 AmenityGapMatrix</span>
+          </div>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: PC.dim, fontSize: 8, fontFamily: pmono }}>UPGRADE COST</span>
+            <span style={{ color: PC.yellow, fontFamily: pmono, fontSize: 11, fontWeight: 700 }}>$569K</span>
+            <span style={{ color: PC.dim, fontSize: 8, fontFamily: pmono }}>LIFT</span>
+            <span style={{ color: PC.green, fontFamily: pmono, fontSize: 11, fontWeight: 700 }}>+$113/u</span>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 50px 50px 60px 60px 50px', padding: '3px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
+          {['AMENITY', 'HAS', 'COMPS', 'COST', 'LIFT', 'PRI'].map((h, i) => (
+            <div key={i} style={{ color: PC.dim, fontSize: 7, fontFamily: pmono, fontWeight: 700, textAlign: i > 0 ? 'center' as const : 'left' as const }}>{h}</div>
+          ))}
+        </div>
+        {AMENITY_GAP_REDEV.map((a, i) => (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 50px 50px 60px 60px 50px', padding: '4px 12px', borderBottom: `1px solid ${PC.border}30`, alignItems: 'center' }}>
+            <span style={{ color: PC.text, fontSize: 10 }}>{a.name}</span>
+            <div style={{ textAlign: 'center' as const }}>
+              <span style={{ fontSize: 8, fontWeight: 700, color: a.has ? PC.green : PC.red }}>{a.has ? '✓' : '✗'}</span>
+            </div>
+            <span style={{ textAlign: 'center' as const, color: PC.dim, fontFamily: pmono, fontSize: 9 }}>{a.comps}</span>
+            <span style={{ textAlign: 'center' as const, color: a.cost !== '—' ? PC.yellow : PC.dim, fontFamily: pmono, fontSize: 9 }}>{a.cost}</span>
+            <span style={{ textAlign: 'center' as const, color: a.lift !== '—' ? PC.green : PC.dim, fontFamily: pmono, fontSize: 9, fontWeight: 700 }}>{a.lift}</span>
+            <div style={{ textAlign: 'center' as const }}>
+              {a.priority !== '—' && (
+                <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: a.priority === 'HIGH' ? PC.red + '18' : PC.yellow + '18', color: a.priority === 'HIGH' ? PC.red : PC.yellow }}>{a.priority}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '6px 12px', borderTop: `1px solid ${PC.border}`, background: PC.card, flexShrink: 0 }}>
+        <button onClick={applyRepositioning} style={{ padding: "4px 12px", border: "none", borderRadius: 2, cursor: "pointer", fontSize: 9, fontFamily: pmono, background: PC.green, color: PC.bg, fontWeight: 700, letterSpacing: 0.5, float: 'right' as const }}>PUSH TO PROFORMA →</button>
+      </div>
+    </div>
+  );
+}
+
+function ProgramExistingPanel({ umComps: _umComps }: { umComps: CompData[] }) {
+  const [view, setView] = useState<'matrix' | 'impact'>('matrix');
+  const compCount = EXISTING_COMPS_AMENITIES.length;
+  const missingAmenities = EXISTING_AMENITIES.filter(a => !EXISTING_SUBJECT.amenities[a.key]);
+  const totalMissingCost = missingAmenities.reduce((s, a) => s + EXISTING_LIFT[a.key].cost, 0);
+  const totalLiftPerUnit = missingAmenities.reduce((s, a) => s + EXISTING_LIFT[a.key].liftPerUnit, 0);
+  const annualLift = totalLiftPerUnit * EXISTING_SUBJECT.units * 12;
+  const compPenetration = (key: string) => {
+    const has = EXISTING_COMPS_AMENITIES.filter(c => c.amenities[key]).length;
+    return Math.round((has / compCount) * 100);
+  };
+
+  return (
+    <div style={{ background: PC.bg, fontFamily: pmono, color: PC.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', borderBottom: `1px solid ${PC.border}`, background: PC.surface }}>
+        {[
+          { label: 'AMENITY GAPS', val: `${missingAmenities.length}`, sub: `of ${EXISTING_AMENITIES.length} tracked`, color: PC.red },
+          { label: 'CLOSE COST', val: `$${(totalMissingCost / 1000).toFixed(0)}K`, sub: 'all missing', color: PC.yellow },
+          { label: 'EST LIFT', val: `+$${totalLiftPerUnit}/u`, sub: '/mo if all closed', color: PC.green },
+          { label: 'ANNUAL IMPACT', val: `$${(annualLift / 1e6).toFixed(2)}M`, sub: `across ${EXISTING_SUBJECT.units}u`, color: PC.green },
+        ].map((kpi, i) => (
+          <div key={kpi.label} style={{ flex: 1, borderRight: i < 3 ? `1px solid ${PC.border}` : 'none', padding: '6px 12px' }}>
+            <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 3 }}>{kpi.label}</div>
+            <div style={{ fontSize: 14, fontFamily: pmono, color: kpi.color, fontWeight: 700, lineHeight: 1 }}>{kpi.val}</div>
+            <div style={{ fontSize: 8, fontFamily: pmono, color: PC.dim, marginTop: 2 }}>{kpi.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ padding: '6px 12px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: PC.surface }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ color: PC.blue, fontFamily: pmono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>AMENITY</span>
+          <span style={{ color: PC.border }}>·</span>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>Gap Analysis — Comp Parity + Submarket</span>
+        </div>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['matrix', 'impact'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)} style={{
+              padding: '2px 8px', border: `1px solid ${view === v ? PC.blue + '50' : PC.border}`,
+              borderRadius: 2, cursor: 'pointer', fontSize: 7, fontFamily: pmono, fontWeight: 700,
+              background: view === v ? PC.blue + '14' : 'transparent', color: view === v ? PC.blue : PC.faint,
+            }}>{v === 'matrix' ? 'COMP MATRIX' : 'IMPACT ANALYSIS'}</button>
+          ))}
+        </div>
+      </div>
+
+      {view === 'matrix' && (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <div style={{ minWidth: 700 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `140px 50px repeat(${compCount}, 1fr) 60px 60px`, padding: '4px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
+                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>AMENITY</span>
+                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.subject, fontWeight: 700, textAlign: 'center' as const }}>YOU</span>
+                {EXISTING_COMPS_AMENITIES.map(c => (
+                  <div key={c.id} style={{ textAlign: 'center' as const, overflow: 'hidden' }}>
+                    <div style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name.split(' ')[0]}</div>
+                    <div style={{ fontSize: 6, fontFamily: pmono, color: PC.faint }}>{c.cls} · {c.built}</div>
+                  </div>
+                ))}
+                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, textAlign: 'center' as const }}>COMP %</span>
+                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, textAlign: 'center' as const }}>SUBM %</span>
+              </div>
+
+              {EXISTING_AMENITIES.map((a, ri) => {
+                const subjectHas = EXISTING_SUBJECT.amenities[a.key];
+                const cp = compPenetration(a.key);
+                const sp = EXISTING_SUBMARKET.penetration[a.key];
+                const isMissing = !subjectHas;
+                const isHighGap = isMissing && cp >= 60;
+                return (
+                  <div key={a.key} style={{
+                    display: 'grid', gridTemplateColumns: `140px 50px repeat(${compCount}, 1fr) 60px 60px`,
+                    padding: '5px 12px', alignItems: 'center', borderBottom: `1px solid ${PC.border}30`,
+                    background: isHighGap ? PC.red + '06' : ri % 2 === 0 ? 'transparent' : PC.surface + '30',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {isMissing && isHighGap && <div style={{ width: 3, height: 14, background: PC.red, borderRadius: 1 }} />}
+                      {isMissing && !isHighGap && <div style={{ width: 3, height: 14, background: PC.yellow, borderRadius: 1 }} />}
+                      {!isMissing && <div style={{ width: 3, height: 14, background: PC.green, borderRadius: 1, opacity: 0.4 }} />}
+                      <span style={{ fontSize: 9, color: isMissing ? PC.text : PC.dim }}>{a.name}</span>
+                    </div>
+                    <div style={{ textAlign: 'center' as const }}>
+                      <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: subjectHas ? PC.green + '18' : PC.red + '18', color: subjectHas ? PC.green : PC.red, border: `1px solid ${subjectHas ? PC.green : PC.red}30` }}>{subjectHas ? '✓' : '✗'}</span>
+                    </div>
+                    {EXISTING_COMPS_AMENITIES.map(c => (
+                      <div key={c.id} style={{ textAlign: 'center' as const }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: c.amenities[a.key] ? PC.green : PC.faint, opacity: c.amenities[a.key] ? 0.8 : 0.4 }}>{c.amenities[a.key] ? '●' : '○'}</span>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1 }}>
+                      <span style={{ fontSize: 9, fontFamily: pmono, fontWeight: 700, color: cp >= 60 ? (isMissing ? PC.red : PC.dim) : PC.dim }}>{cp}%</span>
+                      <PenBar pct={cp} color={cp >= 60 && isMissing ? PC.red : PC.dim} width={36} />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1 }}>
+                      <span style={{ fontSize: 9, fontFamily: pmono, fontWeight: 700, color: sp >= 50 ? (isMissing ? PC.yellow : PC.dim) : PC.dim }}>{sp}%</span>
+                      <PenBar pct={sp} color={sp >= 50 && isMissing ? PC.yellow : PC.dim} width={36} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ padding: '6px 12px', borderTop: `1px solid ${PC.border}`, background: PC.card }}>
+            <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 4 }}>COMP RENT CONTEXT</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: PC.subject + '14', border: `1px solid ${PC.subject}30`, borderRadius: 2 }}>
+                <div style={{ width: 5, height: 5, background: PC.subject, borderRadius: 1 }} />
+                <span style={{ fontSize: 8, fontFamily: pmono, color: PC.subject, fontWeight: 700 }}>YOU ${EXISTING_SUBJECT.avgRent}/mo</span>
+              </div>
+              {EXISTING_COMPS_AMENITIES.map(c => {
+                const delta = c.avgRent - EXISTING_SUBJECT.avgRent;
+                return (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: PC.bg, border: `1px solid ${PC.border}`, borderRadius: 2 }}>
+                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>{c.name.split(' ')[0]}</span>
+                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.text, fontWeight: 700 }}>${c.avgRent}</span>
+                    <span style={{ fontSize: 7, fontFamily: pmono, color: delta > 0 ? PC.green : PC.red, fontWeight: 700 }}>{delta > 0 ? '+' : ''}{delta}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {view === 'impact' && (
+        <>
+          {missingAmenities.map(a => {
+            const lift = EXISTING_LIFT[a.key];
+            const cp = compPenetration(a.key);
+            const sp = EXISTING_SUBMARKET.penetration[a.key];
+            const annImpact = lift.liftPerUnit * EXISTING_SUBJECT.units * 12;
+            const compsWithIt = EXISTING_COMPS_AMENITIES.filter(c => c.amenities[a.key]);
+            const urgency = cp >= 70 ? 'CRITICAL' : cp >= 50 ? 'HIGH' : sp >= 40 ? 'MEDIUM' : 'LOW';
+            const urgencyColor = urgency === 'CRITICAL' ? PC.red : urgency === 'HIGH' ? PC.yellow : urgency === 'MEDIUM' ? PC.blue : PC.dim;
+            return (
+              <div key={a.key} style={{ borderBottom: `1px solid ${PC.border}`, padding: '8px 12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 3, height: 18, background: urgencyColor, borderRadius: 1 }} />
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>{a.name}</span>
+                    <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', borderRadius: 2, background: urgencyColor + '18', color: urgencyColor, border: `1px solid ${urgencyColor}30` }}>{urgency}</span>
+                    <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', borderRadius: 2, background: PC.muted, color: PC.dim }}>{lift.tier}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>COST</span>
+                    <span style={{ fontSize: 11, fontFamily: pmono, color: PC.yellow, fontWeight: 700 }}>${(lift.cost / 1000).toFixed(0)}K</span>
+                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>LIFT</span>
+                    <span style={{ fontSize: 11, fontFamily: pmono, color: PC.green, fontWeight: 700 }}>+${lift.liftPerUnit}/u</span>
+                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>ROI</span>
+                    <span style={{ fontSize: 11, fontFamily: pmono, color: PC.text, fontWeight: 700 }}>{lift.roi}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginLeft: 9 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 3 }}>COMP PARITY — {cp}% HAVE IT</div>
+                    <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
+                      {EXISTING_COMPS_AMENITIES.map(c => (
+                        <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 2, background: c.amenities[a.key] ? PC.green + '10' : PC.bg, border: `1px solid ${c.amenities[a.key] ? PC.green + '30' : PC.border}` }}>
+                          <span style={{ fontSize: 7, color: c.amenities[a.key] ? PC.green : PC.faint, fontWeight: 700 }}>{c.amenities[a.key] ? '✓' : '✗'}</span>
+                          <span style={{ fontSize: 7, fontFamily: pmono, color: c.amenities[a.key] ? PC.dim : PC.faint }}>{c.name.split(' ')[0]}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {compsWithIt.length > 0 && (
+                      <div style={{ fontSize: 8, color: PC.dim }}>
+                        Avg rent of comps with: <span style={{ color: PC.green, fontWeight: 700 }}>${Math.round(compsWithIt.reduce((s, c) => s + c.avgRent, 0) / compsWithIt.length)}/mo</span>
+                        {' '}vs without: <span style={{ color: PC.red, fontWeight: 700 }}>${EXISTING_COMPS_AMENITIES.filter(c => !c.amenities[a.key]).length > 0 ? Math.round(EXISTING_COMPS_AMENITIES.filter(c => !c.amenities[a.key]).reduce((s, c) => s + c.avgRent, 0) / EXISTING_COMPS_AMENITIES.filter(c => !c.amenities[a.key]).length) : '—'}/mo</span>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ width: 1, background: PC.border }} />
+                  <div style={{ minWidth: 140 }}>
+                    <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 3 }}>SUBMARKET — {sp}% PENETRATION</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <PenBar pct={sp} color={sp >= 50 ? PC.yellow : PC.dim} width={80} />
+                      <span style={{ fontSize: 9, fontFamily: pmono, color: sp >= 50 ? PC.yellow : PC.dim, fontWeight: 700 }}>{sp}%</span>
+                    </div>
+                    <span style={{ fontSize: 8, color: PC.dim }}>{EXISTING_SUBMARKET.properties} properties tracked</span>
+                  </div>
+                  <div style={{ width: 1, background: PC.border }} />
+                  <div style={{ minWidth: 100, textAlign: 'right' as const }}>
+                    <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 3 }}>ANNUAL IMPACT</div>
+                    <div style={{ fontSize: 13, fontFamily: pmono, color: PC.green, fontWeight: 700 }}>${(annImpact / 1000).toFixed(0)}K</div>
+                    <div style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>{EXISTING_SUBJECT.units}u × ${lift.liftPerUnit} × 12</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ padding: '6px 12px', background: PC.card, borderTop: `2px solid ${PC.border}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>TOTAL CLOSE COST</span>
+                <span style={{ fontSize: 12, fontFamily: pmono, color: PC.yellow, fontWeight: 700 }}>${(totalMissingCost / 1000).toFixed(0)}K</span>
+                <span style={{ color: PC.border }}>|</span>
+                <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>TOTAL LIFT</span>
+                <span style={{ fontSize: 12, fontFamily: pmono, color: PC.green, fontWeight: 700 }}>+${totalLiftPerUnit}/u/mo</span>
+                <span style={{ color: PC.border }}>|</span>
+                <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>ANNUAL</span>
+                <span style={{ fontSize: 12, fontFamily: pmono, color: PC.green, fontWeight: 700 }}>${(annualLift / 1e6).toFixed(2)}M</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      <div style={{ padding: '6px 12px', background: PC.card, borderTop: `1px solid ${PC.border}` }}>
+        <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 3 }}>LEGEND</div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+          {[
+            { color: PC.red, label: 'Missing — 60%+ comp penetration (table stakes)' },
+            { color: PC.yellow, label: 'Missing — 40-59% (competitive edge)' },
+            { color: PC.green, label: 'You have it' },
+          ].map(l => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 3, height: 10, background: l.color, borderRadius: 1 }} />
+              <span style={{ fontSize: 7, fontFamily: pmono, color: PC.dim }}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", borderTop: `1px solid ${PC.border}`, background: PC.card, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>EXISTING ASSET</span>
+          <span style={{ color: PC.faint, fontSize: 8 }}>·</span>
+          <span style={{ fontSize: 8, fontFamily: pmono, color: PC.faint }}>{EXISTING_SUBJECT.units}u · {EXISTING_SUBJECT.cls} · {EXISTING_SUBJECT.built}</span>
+          <span style={{ color: PC.faint, fontSize: 8 }}>·</span>
+          <span style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>Submarket: {EXISTING_SUBMARKET.name}</span>
+        </div>
+        <button style={{ padding: "4px 12px", border: "none", borderRadius: 2, cursor: "pointer", fontSize: 9, fontFamily: pmono, background: PC.green, color: PC.bg, fontWeight: 700, letterSpacing: 0.5 }}>PUSH TO PROFORMA →</button>
       </div>
     </div>
   );
