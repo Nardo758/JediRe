@@ -75,6 +75,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
   switch (mode) {
     case 'development':
       return [
+        { id: 'overview', label: 'OVERVIEW' },
         { id: 'discovery', label: 'DISCOVERY' },
         { id: 'demand', label: 'DEMAND' },
         { id: 'comps', label: 'COMPS' },
@@ -83,6 +84,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
       ];
     case 'redevelopment':
       return [
+        { id: 'overview', label: 'OVERVIEW' },
         { id: 'discovery', label: 'DISCOVERY' },
         { id: 'positioning', label: 'POSITIONING' },
         { id: 'comps', label: 'COMPS' },
@@ -91,6 +93,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
       ];
     case 'existing':
       return [
+        { id: 'overview', label: 'OVERVIEW' },
         { id: 'discovery', label: 'DISCOVERY' },
         { id: 'positioning', label: 'POSITIONING' },
         { id: 'comps', label: 'COMPS' },
