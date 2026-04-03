@@ -679,7 +679,7 @@ const DealDetailPage: React.FC = () => {
 
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
 
         {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
         <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} isDark={isDark} onToggleTheme={() => setTheme(isDark ? 'light' : 'dark')} />
