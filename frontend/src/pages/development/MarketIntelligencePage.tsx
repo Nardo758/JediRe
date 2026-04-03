@@ -338,10 +338,10 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       <DemographicsSection data={data.demographics} supply={data.supplyContext} />
       <NewsSection events={data.news} />
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, padding: '3px 10px', background: BT2.bg.header, flexShrink: 0 }}>
-        {cached && <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
-        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 9, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}30`, cursor: 'pointer', fontFamily: 'var(--bt-mono)' }}>
-          <RefreshCw size={10} />REFRESH DATA
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4, padding: '2px 10px', background: BT2.bg.header, flexShrink: 0 }}>
+        {cached && <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>CACHED</span>}
+        <button onClick={() => fetchData(true)} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '1px 6px', fontSize: 7, color: BT2.text.cyan, background: 'transparent', border: `1px solid ${BT2.text.cyan}25`, cursor: 'pointer', fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>
+          <RefreshCw size={8} />REFRESH
         </button>
       </div>
     </div>
@@ -447,7 +447,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
 function ZoneBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', color: '#9EA8B4', background: '#131920', border: '1px solid #1e2a3d' }}>
+    <span style={{ padding: '1px 4px', fontSize: 8, fontFamily: 'var(--bt-mono)', fontWeight: 600, color: BT2.text.secondary, background: BT2.bg.panelAlt, border: `1px solid ${BT2.border.subtle}` }}>
       {children}
     </span>
   );
@@ -456,40 +456,40 @@ function ZoneBadge({ children }: { children: React.ReactNode }) {
 function ZoningContextBar({ hasZoningContext, zoningCode, activeScenario }: { hasZoningContext: boolean; zoningCode: string | null; activeScenario: any }) {
   if (hasZoningContext) {
     return (
-      <div style={{ background: BT2.bg.header, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#8B5CF6', animation: 'pulse 2s infinite' }} />
-            <span style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>ZONING LINKED</span>
+      <div style={{ background: BT2.bg.header, padding: '3px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <div style={{ width: 4, height: 4, borderRadius: '50%', background: BT2.text.violet, animation: 'pulse 2s infinite' }} />
+            <span style={{ fontSize: 7, fontWeight: 700, color: BT2.text.violet, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>ZONING LINKED</span>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {zoningCode && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', fontWeight: 700, color: '#C4B5FD', background: '#1a1228', border: '1px solid #4C1D95' }}>
-                <Layers size={10} />{zoningCode}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '1px 4px', fontSize: 9, fontFamily: 'var(--bt-mono)', fontWeight: 700, color: BT2.text.purple, background: `${BT2.text.violet}12`, border: `1px solid ${BT2.text.violet}40` }}>
+                <Layers size={8} />{zoningCode}
               </span>
             )}
             {activeScenario?.maxUnits && <ZoneBadge>{activeScenario.maxUnits.toLocaleString()} units</ZoneBadge>}
-            {activeScenario?.maxGba && <ZoneBadge>{activeScenario.maxGba.toLocaleString()} SF GBA</ZoneBadge>}
+            {activeScenario?.maxGba && <ZoneBadge>{activeScenario.maxGba.toLocaleString()} SF</ZoneBadge>}
             {activeScenario?.appliedFar && <ZoneBadge>{activeScenario.appliedFar.toFixed(2)} FAR</ZoneBadge>}
             {activeScenario?.maxStories && <ZoneBadge>{activeScenario.maxStories} stories</ZoneBadge>}
             {activeScenario?.bindingConstraint && (
-              <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 11, fontFamily: 'var(--bt-mono)', color: BT2.text.amber, border: `1px solid ${BT2.text.amber}55` }}>
+              <span style={{ padding: '1px 4px', fontSize: 8, fontFamily: 'var(--bt-mono)', color: BT2.text.amber, border: `1px solid ${BT2.text.amber}40` }}>
                 Binding: {activeScenario.bindingConstraint}
               </span>
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#8B5CF6' }}>
-          <Link2 size={12} />
-          <span style={{ fontSize: 9, fontFamily: 'var(--bt-mono)' }}>from Property & Zoning</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, color: BT2.text.violet }}>
+          <Link2 size={9} />
+          <span style={{ fontSize: 7, fontFamily: 'var(--bt-mono)' }}>Property & Zoning</span>
         </div>
       </div>
     );
   }
   return (
-    <div style={{ background: BT2.bg.header, padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-      <div style={{ width: 6, height: 6, borderRadius: '50%', background: BT2.text.muted }} />
-      <span style={{ fontSize: 11, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Select a development path in Property & Zoning to contextualize market analysis</span>
+    <div style={{ background: BT2.bg.header, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+      <div style={{ width: 4, height: 4, borderRadius: '50%', background: BT2.text.muted }} />
+      <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Select a development path in Property & Zoning to contextualize market analysis</span>
     </div>
   );
 }
@@ -1746,49 +1746,46 @@ function buildImpactMatrix(data: MarketIntelData) {
 
 function NarrativeSection({ narrative, riskSignals }: { narrative: { headline: string; body: string; verdict: string; verdictColor: string }; riskSignals: Array<{ label: string; detail: string; severity: 'high' | 'medium' | 'low' }> }) {
   const severityColor = { high: BT2.text.red, medium: BT2.text.amber, low: BT2.met.occupancy };
-  const severityBg = { high: `${BT2.text.red}15`, medium: `${BT2.text.amber}12`, low: `${BT2.met.occupancy}10` };
 
   return (
-    <div style={{ background: BT2.bg.panel, padding: 0 }}>
-      <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <FileText size={13} color={BT2.text.cyan} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.cyan, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>MARKET NARRATIVE</span>
+    <div style={{ background: BT2.bg.panel }}>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <FileText size={10} color={BT2.text.cyan} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.cyan, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>MARKET NARRATIVE</span>
         <div style={{ flex: 1 }} />
         <span style={{
-          fontSize: 10, fontWeight: 800, letterSpacing: 1.5, fontFamily: 'var(--bt-mono)',
-          padding: '2px 10px', borderRadius: 3,
+          fontSize: 8, fontWeight: 800, letterSpacing: 1, fontFamily: 'var(--bt-mono)',
+          padding: '1px 6px',
           color: narrative.verdictColor, background: `${narrative.verdictColor}18`,
           border: `1px solid ${narrative.verdictColor}40`,
         }}>
           {narrative.verdict}
         </span>
       </div>
-
-      <div style={{ padding: '12px 16px' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.primary, marginBottom: 8, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>
+      <div style={{ padding: '5px 10px' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: BT2.text.primary, marginBottom: 3, fontFamily: 'var(--bt-mono)', lineHeight: 1.3 }}>
           {narrative.headline}
         </div>
-        <div style={{ fontSize: 11, color: BT2.text.secondary, lineHeight: 1.65, fontFamily: 'var(--bt-mono)' }}>
+        <div style={{ fontSize: 9, color: BT2.text.secondary, lineHeight: 1.55, fontFamily: 'var(--bt-mono)' }}>
           {narrative.body}
         </div>
       </div>
-
       {riskSignals.length > 0 && (
-        <div style={{ padding: '0 16px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ padding: '0 10px 4px', display: 'flex', gap: 4, flexWrap: 'wrap' }}>
           {riskSignals.map((sig, i) => (
             <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '4px 10px', borderRadius: 4,
-              background: severityBg[sig.severity],
-              border: `1px solid ${severityColor[sig.severity]}30`,
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '2px 6px',
+              background: `${severityColor[sig.severity]}10`,
+              border: `1px solid ${severityColor[sig.severity]}25`,
             }}>
-              {sig.severity === 'high' ? <AlertTriangle size={10} color={severityColor[sig.severity]} /> :
-               sig.severity === 'medium' ? <Shield size={10} color={severityColor[sig.severity]} /> :
-               <Zap size={10} color={severityColor[sig.severity]} />}
-              <span style={{ fontSize: 9, fontWeight: 700, color: severityColor[sig.severity], fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>
+              {sig.severity === 'high' ? <AlertTriangle size={8} color={severityColor[sig.severity]} /> :
+               sig.severity === 'medium' ? <Shield size={8} color={severityColor[sig.severity]} /> :
+               <Zap size={8} color={severityColor[sig.severity]} />}
+              <span style={{ fontSize: 8, fontWeight: 700, color: severityColor[sig.severity], fontFamily: 'var(--bt-mono)', letterSpacing: 0.3 }}>
                 {sig.label}
               </span>
-              <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{sig.detail}</span>
+              <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{sig.detail}</span>
             </div>
           ))}
         </div>
@@ -1800,27 +1797,27 @@ function NarrativeSection({ narrative, riskSignals }: { narrative: { headline: s
 function ImpactMatrixSection({ matrix }: { matrix: ReturnType<typeof buildImpactMatrix> }) {
   const signalDot = (signal: string) => {
     const c = signal === 'positive' ? BT2.met.occupancy : signal === 'negative' ? BT2.text.red : BT2.text.muted;
-    return <div style={{ width: 5, height: 5, borderRadius: '50%', background: c, flexShrink: 0 }} />;
+    return <div style={{ width: 4, height: 4, borderRadius: '50%', background: c, flexShrink: 0 }} />;
   };
 
   const Column = ({ title, icon: Icon, items, borderColor }: { title: string; icon: any; items: Array<{ metric: string; value: string; signal: string }>; borderColor: string }) => (
     <div style={{ background: BT2.bg.panel, display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}`, borderLeft: `3px solid ${borderColor}` }}>
-        <Icon size={12} color={borderColor} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: borderColor, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>{title}</span>
+      <div style={{ padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4, borderBottom: `1px solid ${BT2.border.subtle}`, borderLeft: `2px solid ${borderColor}` }}>
+        <Icon size={9} color={borderColor} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: borderColor, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>{title}</span>
       </div>
       <div style={{ flex: 1 }}>
         {items.map((item, i) => (
           <div key={i} style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '5px 12px',
+            padding: '3px 8px',
             borderBottom: i < items.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               {signalDot(item.signal)}
-              <span style={{ fontSize: 9, fontWeight: 600, color: BT2.text.muted, letterSpacing: 0.5, fontFamily: 'var(--bt-mono)' }}>{item.metric}</span>
+              <span style={{ fontSize: 8, fontWeight: 600, color: BT2.text.muted, letterSpacing: 0.3, fontFamily: 'var(--bt-mono)' }}>{item.metric}</span>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>{item.value}</span>
+            <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>{item.value}</span>
           </div>
         ))}
       </div>
@@ -1828,11 +1825,11 @@ function ImpactMatrixSection({ matrix }: { matrix: ReturnType<typeof buildImpact
   );
 
   return (
-    <div style={{ background: BT2.bg.panel, padding: 0 }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <BarChart3 size={13} color={BT2.text.amber} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.amber, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>MARKET IMPACT MATRIX</span>
-        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>KEY METRICS · ASSET / SUBMARKET / MSA</span>
+    <div style={{ background: BT2.bg.panel }}>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <BarChart3 size={10} color={BT2.text.amber} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.amber, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>MARKET IMPACT MATRIX</span>
+        <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>KEY METRICS · ASSET / SUBMARKET / MSA</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BT2.border.subtle }}>
         <Column title="ASSET IMPACT" icon={Target} items={matrix.asset} borderColor={BT2.text.cyan} />
@@ -1857,8 +1854,8 @@ function RentCompUnitMixTable({ unitMix }: { unitMix: UnitMixRow[] }) {
   if (!unitMix || unitMix.length === 0) return null;
 
   const mono = 'var(--bt-mono)';
-  const hdr: React.CSSProperties = { fontSize: 9, fontWeight: 700, color: BT2.text.muted, letterSpacing: 0.8, fontFamily: mono, padding: '6px 8px', textAlign: 'right', borderBottom: `1px solid ${BT2.border.subtle}`, whiteSpace: 'nowrap' };
-  const cell: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: BT2.text.primary, fontFamily: mono, padding: '5px 8px', textAlign: 'right', borderBottom: `1px solid ${BT2.border.subtle}` };
+  const hdr: React.CSSProperties = { fontSize: 7, fontWeight: 700, color: BT2.text.muted, letterSpacing: 0.6, fontFamily: mono, padding: '3px 6px', textAlign: 'right', borderBottom: `1px solid ${BT2.border.subtle}`, whiteSpace: 'nowrap' };
+  const cell: React.CSSProperties = { fontSize: 9, fontWeight: 600, color: BT2.text.primary, fontFamily: mono, padding: '3px 6px', textAlign: 'right', borderBottom: `1px solid ${BT2.border.subtle}` };
   const labelCell: React.CSSProperties = { ...cell, textAlign: 'left', fontWeight: 700, color: BT2.text.cyan };
 
   const totals = unitMix.reduce((acc, r) => ({
@@ -1874,22 +1871,21 @@ function RentCompUnitMixTable({ unitMix }: { unitMix: UnitMixRow[] }) {
 
   return (
     <div style={{ background: BT2.bg.panel }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <Home size={13} color={BT2.met.economic} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.met.economic, letterSpacing: 1, fontFamily: mono }}>UNIT MIX BREAKDOWN</span>
-        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: mono }}>BY BEDROOM TYPE · COMP AVERAGES</span>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Home size={9} color={BT2.met.economic} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.met.economic, letterSpacing: 0.8, fontFamily: mono }}>UNIT MIX BREAKDOWN</span>
+        <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: mono }}>BY BEDROOM TYPE · COMP AVERAGES</span>
       </div>
-
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: mono }}>
           <thead>
             <tr style={{ background: BT2.bg.header }}>
-              <th style={{ ...hdr, textAlign: 'left', minWidth: 90 }}>UNIT TYPE</th>
-              <th style={{ ...hdr, minWidth: 60 }}>MIX %</th>
-              <th style={{ ...hdr, minWidth: 75 }}>AVG RENT</th>
-              <th style={{ ...hdr, minWidth: 65 }}>AVG SF</th>
-              <th style={{ ...hdr, minWidth: 70 }}>RENT/SF</th>
-              <th style={{ ...hdr, minWidth: 55 }}>COMPS</th>
+              <th style={{ ...hdr, textAlign: 'left', minWidth: 80 }}>UNIT TYPE</th>
+              <th style={{ ...hdr, minWidth: 50 }}>MIX %</th>
+              <th style={{ ...hdr, minWidth: 65 }}>AVG RENT</th>
+              <th style={{ ...hdr, minWidth: 55 }}>AVG SF</th>
+              <th style={{ ...hdr, minWidth: 55 }}>RENT/SF</th>
+              <th style={{ ...hdr, minWidth: 45 }}>COMPS</th>
             </tr>
           </thead>
           <tbody>
@@ -1906,7 +1902,7 @@ function RentCompUnitMixTable({ unitMix }: { unitMix: UnitMixRow[] }) {
           </tbody>
           <tfoot>
             <tr style={{ background: `${BT2.text.amber}08`, borderTop: `2px solid ${BT2.text.amber}40` }}>
-              <td style={{ ...labelCell, color: BT2.text.amber, fontWeight: 800 }}>WEIGHTED AVG</td>
+              <td style={{ ...labelCell, color: BT2.text.amber, fontWeight: 800 }}>WTD AVG</td>
               <td style={{ ...cell, color: BT2.text.amber, fontWeight: 700 }}>{totals.mixPct > 0 ? `${totals.mixPct.toFixed(0)}%` : '—'}</td>
               <td style={{ ...cell, color: BT2.text.amber, fontWeight: 800 }}>{wAvgRent > 0 ? `$${wAvgRent.toLocaleString()}` : '—'}</td>
               <td style={{ ...cell, color: BT2.text.amber, fontWeight: 700 }}>{wAvgSf > 0 ? wAvgSf.toLocaleString() : '—'}</td>
@@ -1926,42 +1922,35 @@ function EconomySection({ data }: { data: any }) {
   const healthColor = data.healthScore >= 70 ? BT2.met.occupancy : data.healthScore >= 50 ? BT2.text.amber : BT2.text.red;
 
   const metrics = [
-    { label: 'Economic Health', value: data.healthScore?.toString() || 'N/A', unit: '/100', trend: data.healthTrend, icon: Activity, color: healthColor },
-    { label: 'Jobs Added (12mo)', value: data.metrics?.jobsAdded?.value || 'N/A', unit: '', trend: data.metrics?.jobsAdded?.trend, icon: Briefcase, color: BT2.met.occupancy },
-    { label: 'Wage Growth', value: data.metrics?.wageGrowth?.value || 'N/A', unit: '', trend: data.metrics?.wageGrowth?.trend, icon: DollarSign, color: BT2.met.occupancy },
-    { label: 'Net Migration', value: data.metrics?.netMigration?.value || 'N/A', unit: '', trend: data.metrics?.netMigration?.trend, icon: Users, color: BT2.text.purple },
-    { label: 'Affordability', value: data.metrics?.affordabilityRatio?.value || 'N/A', unit: '', trend: data.metrics?.affordabilityRatio?.detail, icon: Home, color: data.metrics?.affordabilityRatio?.status === 'green' ? BT2.met.occupancy : data.metrics?.affordabilityRatio?.status === 'red' ? BT2.text.red : BT2.text.amber },
+    { label: 'ECON HEALTH', value: data.healthScore?.toString() || 'N/A', unit: '/100', trend: data.healthTrend, color: healthColor },
+    { label: 'JOBS ADDED', value: data.metrics?.jobsAdded?.value || 'N/A', unit: '', trend: data.metrics?.jobsAdded?.trend, color: BT2.met.occupancy },
+    { label: 'WAGE GROWTH', value: data.metrics?.wageGrowth?.value || 'N/A', unit: '', trend: data.metrics?.wageGrowth?.trend, color: BT2.met.occupancy },
+    { label: 'NET MIGRATION', value: data.metrics?.netMigration?.value || 'N/A', unit: '', trend: data.metrics?.netMigration?.trend, color: BT2.text.purple },
+    { label: 'AFFORDABILITY', value: data.metrics?.affordabilityRatio?.value || 'N/A', unit: '', trend: data.metrics?.affordabilityRatio?.detail, color: data.metrics?.affordabilityRatio?.status === 'green' ? BT2.met.occupancy : data.metrics?.affordabilityRatio?.status === 'red' ? BT2.text.red : BT2.text.amber },
   ];
 
   return (
     <div style={{ background: BT2.bg.panel }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <Briefcase size={13} color={BT2.met.economic} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.met.economic, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>LOCAL ECONOMY</span>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Briefcase size={9} color={BT2.met.economic} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.met.economic, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>LOCAL ECONOMY</span>
       </div>
-
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, background: BT2.border.subtle }}>
-        {metrics.map((m, i) => {
-          const Icon = m.icon;
-          return (
-            <div key={i} style={{ background: BT2.bg.panel, padding: '10px 8px', textAlign: 'center' }}>
-              <Icon size={14} color={m.color} style={{ margin: '0 auto 4px' }} />
-              <div style={{ fontSize: 16, fontWeight: 700, color: m.color, fontFamily: 'var(--bt-mono)' }}>{m.value}{m.unit}</div>
-              <div style={{ fontSize: 9, color: BT2.text.muted, fontWeight: 600, letterSpacing: 0.8, marginTop: 2, fontFamily: 'var(--bt-mono)' }}>{m.label.toUpperCase()}</div>
-              {m.trend && <div style={{ fontSize: 9, color: BT2.text.muted, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--bt-mono)' }}>{m.trend}</div>}
-            </div>
-          );
-        })}
+        {metrics.map((m, i) => (
+          <div key={i} style={{ background: BT2.bg.panel, padding: '4px 6px', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: m.color, fontFamily: 'var(--bt-mono)', lineHeight: 1 }}>{m.value}{m.unit}</div>
+            <div style={{ fontSize: 7, color: BT2.text.muted, fontWeight: 700, letterSpacing: 0.6, marginTop: 2, fontFamily: 'var(--bt-mono)' }}>{m.label}</div>
+            {m.trend && <div style={{ fontSize: 7, color: BT2.text.muted, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--bt-mono)' }}>{m.trend}</div>}
+          </div>
+        ))}
       </div>
-
       {data.healthInsight && (
-        <div style={{ padding: '8px 16px', borderTop: `1px solid ${BT2.border.subtle}` }}>
-          <div style={{ padding: '6px 10px', borderRadius: 4, border: `1px solid ${healthColor}30`, background: `${healthColor}08`, fontSize: 11, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.5 }}>
+        <div style={{ padding: '3px 10px', borderTop: `1px solid ${BT2.border.subtle}` }}>
+          <div style={{ padding: '3px 8px', border: `1px solid ${healthColor}25`, background: `${healthColor}08`, fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.45 }}>
             {data.healthInsight}
           </div>
         </div>
       )}
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle }}>
         <EmployersPanel employers={data.employers} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
@@ -1969,7 +1958,6 @@ function EconomySection({ data }: { data: any }) {
           <IndustryPanel industries={data.industryComposition} />
         </div>
       </div>
-
       <WageRentPanel alignment={data.wageRentAlignment} />
     </div>
   );
@@ -1977,10 +1965,8 @@ function EconomySection({ data }: { data: any }) {
 
 function EmployersPanel({ employers }: { employers: any[] }) {
   if (!employers?.length) return (
-    <SectionPanel title="MAJOR EMPLOYERS" subtitle="No data available" borderColor={BT2.text.purple}>
-      <div style={{ padding: '12px 0', fontSize: 10, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
-        Upload an OM or enable news intelligence to populate.
-      </div>
+    <SectionPanel title="MAJOR EMPLOYERS" subtitle="No data" borderColor={BT2.text.purple}>
+      <div style={{ padding: '4px 8px', fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Upload OM or enable news intelligence.</div>
     </SectionPanel>
   );
 
@@ -1990,15 +1976,15 @@ function EmployersPanel({ employers }: { employers: any[] }) {
   return (
     <SectionPanel title="MAJOR EMPLOYERS" subtitle={`${employers.length} tracked`} borderColor={BT2.text.purple}>
       {employers.map((emp, i) => (
-        <div key={i} style={{ padding: '6px 0', borderBottom: i < employers.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>{emp.name}</span>
-              <span style={{ fontSize: 9, padding: '1px 4px', borderRadius: 2, background: '#1a1228', border: '1px solid #4C1D95', color: '#C4B5FD', fontFamily: 'var(--bt-mono)' }}>{emp.industry}</span>
+        <div key={i} style={{ padding: '3px 8px', borderBottom: i < employers.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>{emp.name}</span>
+              <span style={{ fontSize: 7, padding: '0px 3px', background: `${BT2.text.violet}12`, border: `1px solid ${BT2.text.violet}40`, color: BT2.text.purple, fontFamily: 'var(--bt-mono)' }}>{emp.industry}</span>
             </div>
-            <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{emp.sourceType}</span>
+            <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{emp.sourceType}</span>
           </div>
-          <div style={{ display: 'flex', gap: 12, fontSize: 10, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
+          <div style={{ display: 'flex', gap: 8, fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
             <span>{emp.employees}</span>
             {emp.distance && <span>{emp.distance}</span>}
             <span style={{ color: statusColors[emp.status] || BT2.text.muted }}>{statusIcons[emp.status] || '●'} {emp.statusText}</span>
@@ -2013,23 +1999,23 @@ function EmployersPanel({ employers }: { employers: any[] }) {
 function PipelinePanel({ pipeline }: { pipeline: any[] }) {
   if (!pipeline?.length) return (
     <SectionPanel title="DEV PIPELINE" subtitle="No data" borderColor={BT2.text.amber}>
-      <div style={{ padding: '8px 0', fontSize: 10, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>No pipeline data available.</div>
+      <div style={{ padding: '4px 8px', fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>No pipeline data available.</div>
     </SectionPanel>
   );
 
   return (
-    <SectionPanel title="DEV PIPELINE" subtitle={`${pipeline.length} projects`} borderColor={BT2.text.amber}>
+    <SectionPanel title="DEV PIPELINE" subtitle={`${pipeline.length} proj`} borderColor={BT2.text.amber}>
       {pipeline.map((proj, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: i < pipeline.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
-          <span style={{ fontSize: 14 }}>{proj.type === 'Infrastructure' ? '🚲' : proj.type === 'Corporate' ? '🏢' : proj.type === 'Residential' ? '🏠' : '🏗️'}</span>
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px', borderBottom: i < pipeline.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
+          <span style={{ fontSize: 10 }}>{proj.type === 'Infrastructure' ? '🚲' : proj.type === 'Corporate' ? '🏢' : proj.type === 'Residential' ? '🏠' : '🏗️'}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.project}</div>
-            <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.impact}</div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.project}</div>
+            <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{proj.impact}</div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: BT2.text.purple, fontFamily: 'var(--bt-mono)' }}>{proj.timeline}</div>
+            <div style={{ fontSize: 8, fontWeight: 600, color: BT2.text.purple, fontFamily: 'var(--bt-mono)' }}>{proj.timeline}</div>
             <span style={{
-              fontSize: 9, fontWeight: 600, padding: '1px 4px', borderRadius: 2, fontFamily: 'var(--bt-mono)',
+              fontSize: 7, fontWeight: 700, padding: '0px 3px', fontFamily: 'var(--bt-mono)',
               color: proj.confidence === 'HIGH' ? BT2.met.occupancy : proj.confidence === 'LOW' ? BT2.text.red : BT2.text.amber,
               background: proj.confidence === 'HIGH' ? `${BT2.met.occupancy}18` : proj.confidence === 'LOW' ? `${BT2.text.red}18` : `${BT2.text.amber}18`,
             }}>{proj.confidence}</span>
@@ -2049,13 +2035,13 @@ function IndustryPanel({ industries }: { industries: any[] }) {
   return (
     <SectionPanel title="INDUSTRY MIX" subtitle="Composition" borderColor={BT2.text.cyan}>
       {industries.map((ind, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
-          <span style={{ fontSize: 9, color: BT2.text.muted, width: 80, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--bt-mono)' }}>{ind.name}</span>
-          <div style={{ flex: 1, height: 10, background: BT2.bg.terminal, borderRadius: 2, overflow: 'hidden' }}>
-            <div style={{ height: '100%', borderRadius: 2, background: barColors[i % barColors.length], opacity: 0.65, width: `${ind.pct}%` }} />
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px' }}>
+          <span style={{ fontSize: 7, color: BT2.text.muted, width: 65, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--bt-mono)' }}>{ind.name}</span>
+          <div style={{ flex: 1, height: 7, background: BT2.bg.terminal, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: barColors[i % barColors.length], opacity: 0.65, width: `${ind.pct}%` }} />
           </div>
-          <span style={{ fontSize: 9, fontWeight: 600, color: BT2.text.secondary, width: 28, fontFamily: 'var(--bt-mono)' }}>{ind.pct}%</span>
-          <span style={{ fontSize: 9, fontWeight: 600, width: 32, fontFamily: 'var(--bt-mono)', color: trendColors[ind.trend] || BT2.text.muted }}>{ind.growth}</span>
+          <span style={{ fontSize: 8, fontWeight: 600, color: BT2.text.secondary, width: 24, fontFamily: 'var(--bt-mono)' }}>{ind.pct}%</span>
+          <span style={{ fontSize: 8, fontWeight: 600, width: 28, fontFamily: 'var(--bt-mono)', color: trendColors[ind.trend] || BT2.text.muted }}>{ind.growth}</span>
         </div>
       ))}
     </SectionPanel>
@@ -2074,22 +2060,22 @@ function WageRentPanel({ alignment }: { alignment: any }) {
 
   return (
     <div style={{ borderTop: `1px solid ${BT2.border.subtle}` }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <Activity size={12} color={BT2.text.amber} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.amber, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>WAGE-RENT-TRAFFIC ALIGNMENT</span>
-        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 2, background: `${BT2.text.purple}15`, color: BT2.text.purple, fontFamily: 'var(--bt-mono)' }}>CORRELATION ENGINE</span>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Activity size={9} color={BT2.text.amber} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.amber, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>WAGE-RENT-TRAFFIC ALIGNMENT</span>
+        <span style={{ fontSize: 7, padding: '0px 4px', background: `${BT2.text.purple}15`, color: BT2.text.purple, fontFamily: 'var(--bt-mono)' }}>CORRELATION ENGINE</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: BT2.border.subtle }}>
         {items.map((item, i) => (
-          <div key={i} style={{ background: BT2.bg.panel, padding: '10px 8px', textAlign: 'center' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: item.color, fontFamily: 'var(--bt-mono)' }}>{item.value || 'N/A'}</div>
-            <div style={{ fontSize: 9, color: BT2.text.muted, fontWeight: 600, marginTop: 2, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>{item.label}</div>
+          <div key={i} style={{ background: BT2.bg.panel, padding: '4px 6px', textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: item.color, fontFamily: 'var(--bt-mono)', lineHeight: 1 }}>{item.value || 'N/A'}</div>
+            <div style={{ fontSize: 7, color: BT2.text.muted, fontWeight: 700, marginTop: 2, fontFamily: 'var(--bt-mono)', letterSpacing: 0.4 }}>{item.label}</div>
           </div>
         ))}
       </div>
       {alignment.insight && (
-        <div style={{ padding: '8px 16px' }}>
-          <div style={{ padding: '6px 10px', borderRadius: 4, border: `1px solid ${BT2.text.purple}30`, background: `${BT2.text.purple}08`, fontSize: 11, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.5 }}>
+        <div style={{ padding: '3px 10px' }}>
+          <div style={{ padding: '3px 8px', border: `1px solid ${BT2.text.purple}25`, background: `${BT2.text.purple}08`, fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.45 }}>
             {alignment.insight}
           </div>
         </div>
@@ -2106,31 +2092,25 @@ function DemographicsSection({ data, supply }: { data: any; supply: any }) {
 
   return (
     <div style={{ background: BT2.bg.panel }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <Users size={13} color={BT2.text.purple} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.purple, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>DEMOGRAPHICS & DEMAND</span>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Users size={9} color={BT2.text.purple} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.purple, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>DEMOGRAPHICS & DEMAND</span>
       </div>
-
       {census && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}` }}>
           {[
-            { label: 'POPULATION', value: census.population?.toLocaleString(), icon: Users },
-            { label: 'MEDIAN INCOME', value: census.medianIncome ? `$${census.medianIncome.toLocaleString()}` : 'N/A', icon: DollarSign },
-            { label: 'HOUSING UNITS', value: census.totalHousingUnits?.toLocaleString(), icon: Home },
-            { label: 'MEDIAN RENT', value: census.medianRent ? `$${census.medianRent.toLocaleString()}` : 'N/A', icon: DollarSign },
-          ].map((item, i) => {
-            const Icon = item.icon;
-            return (
-              <div key={i} style={{ background: BT2.bg.panel, padding: '10px 8px', textAlign: 'center' }}>
-                <Icon size={12} color={BT2.text.purple} style={{ margin: '0 auto 3px' }} />
-                <div style={{ fontSize: 14, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>{item.value || 'N/A'}</div>
-                <div style={{ fontSize: 9, color: BT2.text.muted, fontWeight: 600, letterSpacing: 0.8, marginTop: 2, fontFamily: 'var(--bt-mono)' }}>{item.label}</div>
-              </div>
-            );
-          })}
+            { label: 'POPULATION', value: census.population?.toLocaleString() },
+            { label: 'MED INCOME', value: census.medianIncome ? `$${census.medianIncome.toLocaleString()}` : 'N/A' },
+            { label: 'HOUSING UNITS', value: census.totalHousingUnits?.toLocaleString() },
+            { label: 'MED RENT', value: census.medianRent ? `$${census.medianRent.toLocaleString()}` : 'N/A' },
+          ].map((item, i) => (
+            <div key={i} style={{ background: BT2.bg.panel, padding: '4px 6px', textAlign: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', lineHeight: 1 }}>{item.value || 'N/A'}</div>
+              <div style={{ fontSize: 7, color: BT2.text.muted, fontWeight: 700, letterSpacing: 0.6, marginTop: 2, fontFamily: 'var(--bt-mono)' }}>{item.label}</div>
+            </div>
+          ))}
         </div>
       )}
-
       {(data.submarket || data.msa) && (
         <div style={{ display: 'grid', gridTemplateColumns: data.submarket && data.msa ? '1fr 1fr' : '1fr', gap: 1, background: BT2.border.subtle }}>
           {data.submarket && (
@@ -2142,7 +2122,7 @@ function DemographicsSection({ data, supply }: { data: any; supply: any }) {
             </SectionPanel>
           )}
           {data.msa && (
-            <SectionPanel title={`MSA: ${data.msa.name}`} subtitle="Metro area" borderColor={BT2.text.purple}>
+            <SectionPanel title={`MSA: ${data.msa.name}`} subtitle="Metro" borderColor={BT2.text.purple}>
               <DataRow label="OCCUPANCY" value={fmtPct(smOcc(data.msa))} valueColor={BT2.met.occupancy} />
               <DataRow label="AVG RENT" value={fmt$(smRent(data.msa))} valueColor={BT2.text.cyan} />
               <DataRow label="PROPERTIES" value={data.msa.total_properties?.toString() || 'N/A'} valueColor={BT2.text.secondary} />
@@ -2151,27 +2131,25 @@ function DemographicsSection({ data, supply }: { data: any; supply: any }) {
           )}
         </div>
       )}
-
       {funnel && <DemandFunnelPanel funnel={funnel} />}
-
       {supply?.competingProperties && (
         <div style={{ borderTop: `1px solid ${BT2.border.subtle}` }}>
-          <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-            <Building2 size={12} color={BT2.text.amber} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.amber, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>COMPETITIVE SUPPLY</span>
-            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 2, background: `${BT2.text.amber}15`, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{supply.radiusMiles}mi radius</span>
+          <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+            <Building2 size={9} color={BT2.text.amber} />
+            <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.amber, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>COMPETITIVE SUPPLY</span>
+            <span style={{ fontSize: 7, padding: '0px 4px', background: `${BT2.text.amber}15`, color: BT2.text.amber, fontFamily: 'var(--bt-mono)' }}>{supply.radiusMiles}mi</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, background: BT2.border.subtle }}>
             {[
               { label: 'PROPERTIES', value: supply.competingProperties.count?.toString() },
               { label: 'AVG UNITS', value: supply.competingProperties.avgUnits?.toString() },
-              { label: 'AVG OCCUPANCY', value: supply.competingProperties.avgOccupancy ? `${supply.competingProperties.avgOccupancy}%` : 'N/A' },
+              { label: 'AVG OCC', value: supply.competingProperties.avgOccupancy ? `${supply.competingProperties.avgOccupancy}%` : 'N/A' },
               { label: 'AVG RENT', value: supply.competingProperties.avgRent ? `$${supply.competingProperties.avgRent.toLocaleString()}` : 'N/A' },
-              { label: 'PIPELINE UNITS', value: supply.competingProperties.totalPipelineUnits?.toLocaleString() },
+              { label: 'PIPELINE', value: supply.competingProperties.totalPipelineUnits?.toLocaleString() },
             ].map((item, i) => (
-              <div key={i} style={{ background: BT2.bg.panel, padding: '8px 6px', textAlign: 'center' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>{item.value || 'N/A'}</div>
-                <div style={{ fontSize: 8, color: BT2.text.muted, fontWeight: 600, letterSpacing: 0.8, marginTop: 2, fontFamily: 'var(--bt-mono)' }}>{item.label}</div>
+              <div key={i} style={{ background: BT2.bg.panel, padding: '4px 6px', textAlign: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', lineHeight: 1 }}>{item.value || 'N/A'}</div>
+                <div style={{ fontSize: 7, color: BT2.text.muted, fontWeight: 700, letterSpacing: 0.5, marginTop: 2, fontFamily: 'var(--bt-mono)' }}>{item.label}</div>
               </div>
             ))}
           </div>
@@ -2183,47 +2161,47 @@ function DemographicsSection({ data, supply }: { data: any; supply: any }) {
 
 function DemandFunnelPanel({ funnel }: { funnel: any }) {
   const steps = [
-    { label: 'Total Population', value: funnel.totalPopulation, pct: 100, color: BT2.text.muted },
+    { label: 'Total Pop', value: funnel.totalPopulation, pct: 100, color: BT2.text.muted },
     { label: 'Renters', value: funnel.renters, pct: funnel.renterPct, color: BT2.text.purple },
-    { label: 'Income Qualified', value: funnel.incomeQualified, pct: funnel.incomeQualifiedPct, color: BT2.text.cyan },
-    { label: 'Age Appropriate', value: funnel.ageAppropriate, pct: funnel.ageAppropriatePct, color: BT2.met.occupancy },
-    { label: 'Unit Type Match', value: funnel.unitTypeMatch, pct: funnel.unitTypeMatchPct, color: BT2.met.economic },
+    { label: 'Income Qual', value: funnel.incomeQualified, pct: funnel.incomeQualifiedPct, color: BT2.text.cyan },
+    { label: 'Age Match', value: funnel.ageAppropriate, pct: funnel.ageAppropriatePct, color: BT2.met.occupancy },
+    { label: 'Unit Match', value: funnel.unitTypeMatch, pct: funnel.unitTypeMatchPct, color: BT2.met.economic },
   ];
 
   return (
     <div style={{ borderTop: `1px solid ${BT2.border.subtle}` }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <Users size={12} color={BT2.text.cyan} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.cyan, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>RENTER DEMAND FUNNEL</span>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Users size={9} color={BT2.text.cyan} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.cyan, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>RENTER DEMAND FUNNEL</span>
       </div>
-      <div style={{ padding: '10px 16px' }}>
+      <div style={{ padding: '4px 10px' }}>
         {steps.map((step, i) => {
           const width = i === 0 ? 100 : steps.slice(1, i + 1).reduce((acc, s) => acc * (s.pct / 100), 100);
           return (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <span style={{ fontSize: 9, color: BT2.text.muted, width: 90, textAlign: 'right', fontFamily: 'var(--bt-mono)', fontWeight: 600 }}>{step.label}</span>
-              <div style={{ flex: 1, height: 18, background: BT2.bg.terminal, borderRadius: 3, overflow: 'hidden', position: 'relative' }}>
-                <div style={{ height: '100%', borderRadius: 3, background: step.color, opacity: 0.5, width: `${width}%`, transition: 'width 0.5s' }} />
-                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 7, color: BT2.text.muted, width: 60, textAlign: 'right', fontFamily: 'var(--bt-mono)', fontWeight: 600 }}>{step.label}</span>
+              <div style={{ flex: 1, height: 12, background: BT2.bg.terminal, overflow: 'hidden', position: 'relative' }}>
+                <div style={{ height: '100%', background: step.color, opacity: 0.5, width: `${width}%`, transition: 'width 0.5s' }} />
+                <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: BT2.text.primary, fontFamily: 'var(--bt-mono)' }}>
                   {step.value}
                 </span>
               </div>
-              {i > 0 && <span style={{ fontSize: 9, color: BT2.text.muted, width: 28, fontFamily: 'var(--bt-mono)' }}>{step.pct}%</span>}
+              {i > 0 && <span style={{ fontSize: 7, color: BT2.text.muted, width: 24, fontFamily: 'var(--bt-mono)' }}>{step.pct}%</span>}
             </div>
           );
         })}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-          <div style={{ textAlign: 'center', padding: '8px', borderRadius: 4, border: `1px solid ${BT2.met.occupancy}40`, background: `${BT2.met.occupancy}10` }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: BT2.met.occupancy, fontFamily: 'var(--bt-mono)' }}>{funnel.demandPool}</div>
-            <div style={{ fontSize: 9, color: BT2.met.occupancy, fontWeight: 600, fontFamily: 'var(--bt-mono)' }}>QUALIFIED DEMAND POOL</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginTop: 4 }}>
+          <div style={{ textAlign: 'center', padding: '4px', border: `1px solid ${BT2.met.occupancy}30`, background: `${BT2.met.occupancy}08` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BT2.met.occupancy, fontFamily: 'var(--bt-mono)', lineHeight: 1 }}>{funnel.demandPool}</div>
+            <div style={{ fontSize: 7, color: BT2.met.occupancy, fontWeight: 700, fontFamily: 'var(--bt-mono)', marginTop: 1 }}>DEMAND POOL</div>
           </div>
-          <div style={{ textAlign: 'center', padding: '8px', borderRadius: 4, border: `1px solid ${BT2.text.purple}40`, background: `${BT2.text.purple}10` }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: BT2.text.purple, fontFamily: 'var(--bt-mono)' }}>{funnel.captureRate}</div>
-            <div style={{ fontSize: 9, color: BT2.text.purple, fontWeight: 600, fontFamily: 'var(--bt-mono)' }}>CAPTURE RATE</div>
+          <div style={{ textAlign: 'center', padding: '4px', border: `1px solid ${BT2.text.purple}30`, background: `${BT2.text.purple}08` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: BT2.text.purple, fontFamily: 'var(--bt-mono)', lineHeight: 1 }}>{funnel.captureRate}</div>
+            <div style={{ fontSize: 7, color: BT2.text.purple, fontWeight: 700, fontFamily: 'var(--bt-mono)', marginTop: 1 }}>CAPTURE RATE</div>
           </div>
         </div>
         {funnel.captureInsight && (
-          <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 4, border: `1px solid ${BT2.text.purple}30`, background: `${BT2.text.purple}08`, fontSize: 11, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.5 }}>
+          <div style={{ marginTop: 4, padding: '3px 8px', border: `1px solid ${BT2.text.purple}25`, background: `${BT2.text.purple}08`, fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.45 }}>
             {funnel.captureInsight}
           </div>
         )}
@@ -2237,10 +2215,10 @@ function NewsSection({ events }: { events: any[] }) {
 
   if (!events?.length) return (
     <div style={{ background: BT2.bg.panel }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Newspaper size={13} color={BT2.text.muted} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.muted, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>NEWS FEED</span>
-        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>No events tracked</span>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Newspaper size={9} color={BT2.text.muted} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.muted, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>NEWS FEED</span>
+        <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>No events tracked</span>
       </div>
     </div>
   );
@@ -2258,61 +2236,59 @@ function NewsSection({ events }: { events: any[] }) {
 
   return (
     <div style={{ background: BT2.bg.panel }}>
-      <div style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT2.border.subtle}` }}>
-        <Newspaper size={13} color={BT2.text.amber} />
-        <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.amber, letterSpacing: 1, fontFamily: 'var(--bt-mono)' }}>NEWS FEED</span>
-        <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{events.length} events</span>
-        <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
+      <div style={{ padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6, borderBottom: `1px solid ${BT2.border.subtle}` }}>
+        <Newspaper size={9} color={BT2.text.amber} />
+        <span style={{ fontSize: 8, fontWeight: 700, color: BT2.text.amber, letterSpacing: 0.8, fontFamily: 'var(--bt-mono)' }}>NEWS FEED</span>
+        <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{events.length} events</span>
+        <div style={{ display: 'flex', gap: 4, marginLeft: 4 }}>
           {Object.entries(typeConfig).map(([type, cfg]) => {
             const count = events.filter(e => e.type === type).length;
             if (count === 0) return null;
             return (
-              <span key={type} style={{ fontSize: 9, fontWeight: 600, color: cfg.color, fontFamily: 'var(--bt-mono)' }}>
+              <span key={type} style={{ fontSize: 7, fontWeight: 600, color: cfg.color, fontFamily: 'var(--bt-mono)' }}>
                 {cfg.icon}{count}
               </span>
             );
           })}
         </div>
       </div>
-
       {shown.map((event, i) => {
         const cfg = typeConfig[event.type] || typeConfig.ECONOMIC;
         return (
-          <div key={i} style={{ padding: '8px 16px', borderBottom: `1px solid ${BT2.border.subtle}`, display: 'flex', gap: 10 }}>
+          <div key={i} style={{ padding: '3px 10px', borderBottom: `1px solid ${BT2.border.subtle}`, display: 'flex', gap: 8 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: cfg.color, fontFamily: 'var(--bt-mono)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 1 }}>
+                <span style={{ fontSize: 7, fontWeight: 700, color: cfg.color, fontFamily: 'var(--bt-mono)' }}>
                   {cfg.icon} {event.type}
                 </span>
-                <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{event.category}/{event.eventType?.replace(/_/g, ' ')}</span>
+                <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{event.category}/{event.eventType?.replace(/_/g, ' ')}</span>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', marginBottom: 2 }}>{event.headline}</div>
+              <div style={{ fontSize: 9, fontWeight: 600, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', marginBottom: 1 }}>{event.headline}</div>
               {event.extractedData && (
-                <div style={{ display: 'flex', gap: 10, fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
-                  {event.extractedData.company_name && <span>Company: {event.extractedData.company_name}</span>}
-                  {event.extractedData.employee_count && <span>Employees: {event.extractedData.employee_count.toLocaleString()}</span>}
+                <div style={{ display: 'flex', gap: 8, fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>
+                  {event.extractedData.company_name && <span>Co: {event.extractedData.company_name}</span>}
+                  {event.extractedData.employee_count && <span>Emp: {event.extractedData.employee_count.toLocaleString()}</span>}
                   {event.extractedData.unit_count && <span>Units: {event.extractedData.unit_count}</span>}
-                  {event.extractedData.total_investment && <span>Investment: ${(event.extractedData.total_investment / 1000000).toFixed(0)}M</span>}
+                  {event.extractedData.total_investment && <span>${(event.extractedData.total_investment / 1000000).toFixed(0)}M</span>}
                 </div>
               )}
             </div>
             <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{event.date ? new Date(event.date).toLocaleDateString() : ''}</div>
-              <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{event.city}, {event.state}</div>
-              {event.source && <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', marginTop: 1 }}>via {event.source}</div>}
+              <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{event.date ? new Date(event.date).toLocaleDateString() : ''}</div>
+              <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{event.city}, {event.state}</div>
+              {event.source && <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>via {event.source}</div>}
             </div>
           </div>
         );
       })}
-
       {events.length > 5 && (
-        <div style={{ padding: '6px 16px', textAlign: 'center' }}>
+        <div style={{ padding: '3px 10px', textAlign: 'center' }}>
           <button onClick={() => setExpanded(!expanded)} style={{
-            background: 'transparent', border: `1px solid ${BT2.border.subtle}`, borderRadius: 3,
-            padding: '3px 12px', fontSize: 9, color: BT2.text.cyan, cursor: 'pointer', fontFamily: 'var(--bt-mono)', fontWeight: 600,
-            display: 'inline-flex', alignItems: 'center', gap: 4,
+            background: 'transparent', border: `1px solid ${BT2.border.subtle}`,
+            padding: '2px 8px', fontSize: 7, color: BT2.text.cyan, cursor: 'pointer', fontFamily: 'var(--bt-mono)', fontWeight: 700,
+            display: 'inline-flex', alignItems: 'center', gap: 3,
           }}>
-            {expanded ? <><ChevronUp size={10} /> SHOW LESS</> : <><ChevronDown size={10} /> SHOW ALL {events.length} EVENTS</>}
+            {expanded ? <><ChevronUp size={8} /> LESS</> : <><ChevronDown size={8} /> ALL {events.length}</>}
           </button>
         </div>
       )}
@@ -2322,23 +2298,23 @@ function NewsSection({ events }: { events: any[] }) {
 
 function EmptySection({ message }: { message: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px' }}>
-      <span style={{ fontSize: 11, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{message}</span>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 10px' }}>
+      <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{message}</span>
     </div>
   );
 }
 
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 16px' }}>
-      <AlertTriangle size={28} color={BT2.text.red} style={{ marginBottom: 10 }} />
-      <span style={{ fontSize: 11, color: BT2.text.muted, marginBottom: 10, fontFamily: 'var(--bt-mono)' }}>{message}</span>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 10px' }}>
+      <AlertTriangle size={16} color={BT2.text.red} style={{ marginBottom: 6 }} />
+      <span style={{ fontSize: 8, color: BT2.text.muted, marginBottom: 6, fontFamily: 'var(--bt-mono)' }}>{message}</span>
       <button onClick={onRetry} style={{
-        display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px',
-        fontSize: 10, fontWeight: 600, color: BT2.text.cyan, background: 'transparent',
-        border: `1px solid ${BT2.text.cyan}40`, borderRadius: 3, cursor: 'pointer', fontFamily: 'var(--bt-mono)',
+        display: 'flex', alignItems: 'center', gap: 3, padding: '2px 8px',
+        fontSize: 8, fontWeight: 700, color: BT2.text.cyan, background: 'transparent',
+        border: `1px solid ${BT2.text.cyan}40`, cursor: 'pointer', fontFamily: 'var(--bt-mono)',
       }}>
-        <RefreshCw size={10} /> RETRY
+        <RefreshCw size={8} /> RETRY
       </button>
     </div>
   );
@@ -2347,20 +2323,20 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 function LoadingSkeleton() {
   return (
     <div style={{ background: BT2.bg.terminal }}>
-      <div style={{ background: BT2.bg.panel, borderLeft: `4px solid ${BT2.text.purple}`, borderRadius: '4px 4px 0 0', padding: '12px 16px' }}>
-        <div style={{ height: 16, width: 180, background: BT2.border.subtle, borderRadius: 3 }} />
-        <div style={{ height: 10, width: 260, background: BT2.bg.terminal, borderRadius: 3, marginTop: 6 }} />
+      <div style={{ background: BT2.bg.panel, borderLeft: `2px solid ${BT2.text.purple}`, padding: '6px 10px' }}>
+        <div style={{ height: 10, width: 140, background: BT2.border.subtle }} />
+        <div style={{ height: 8, width: 200, background: BT2.bg.terminal, marginTop: 4 }} />
       </div>
-      <div style={{ background: BT2.bg.panel, borderTop: `1px solid ${BT2.border.subtle}`, padding: 16 }}>
-        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-          {[1, 2, 3, 4].map(i => <div key={i} style={{ height: 28, width: 100, background: BT2.bg.terminal, borderRadius: 3 }} />)}
+      <div style={{ background: BT2.bg.panel, borderTop: `1px solid ${BT2.border.subtle}`, padding: 8 }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          {[1, 2, 3, 4].map(i => <div key={i} style={{ height: 18, width: 80, background: BT2.bg.terminal }} />)}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 16 }}>
-          {[1, 2, 3, 4, 5].map(i => <div key={i} style={{ height: 60, background: BT2.bg.terminal, borderRadius: 4 }} />)}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 8 }}>
+          {[1, 2, 3, 4, 5].map(i => <div key={i} style={{ height: 32, background: BT2.bg.terminal }} />)}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          <div style={{ height: 180, background: BT2.bg.terminal, borderRadius: 4 }} />
-          <div style={{ height: 180, background: BT2.bg.terminal, borderRadius: 4 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+          <div style={{ height: 100, background: BT2.bg.terminal }} />
+          <div style={{ height: 100, background: BT2.bg.terminal }} />
         </div>
       </div>
     </div>
