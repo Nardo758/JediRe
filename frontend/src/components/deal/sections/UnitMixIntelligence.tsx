@@ -706,12 +706,14 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 // ─────────────────────────────────────────────────────────
 //  TAB 2 — PROGRAM EDITOR
 // ─────────────────────────────────────────────────────────
-function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[]; gaps?: GapItem[] }) {
+function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps, onPushToProforma }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[]; gaps?: GapItem[]; onPushToProforma?: (program: Program) => Promise<{ success: boolean; modulesUpdated: string[]; errors: string[] }> }) {
   const mono = "var(--bt-mono)";
   const { totalSF, mixTotal, grossRevPA, wtdPSF } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
   const sfPct = zoning.maxNetSF > 0 ? (totalSF / zoning.maxNetSF) * 100 : 0;
   const sfOver = sfPct > 100;
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<{ success: boolean; modules: string[] } | null>(null);
 
   function setUnit(utKey: UnitKey, field: string, val: number) {
     onProgramChange({ ...program, units: { ...program.units, [utKey]: { ...program.units[utKey], [field]: val } } });
@@ -879,6 +881,57 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
           ? <Tag label={`OVER ${(totalSF-zoning.maxNetSF).toLocaleString()} SF`} color={C.red} />
           : <Tag label={`${(zoning.maxNetSF-totalSF).toLocaleString()} remaining`} color={C.green} size="xs" />}
       </div>
+
+      {onPushToProforma && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "6px 12px", borderTop: `1px solid ${C.border}`, background: C.card }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, letterSpacing: "0.06em" }}>
+              ZONING: <span style={{ color: C.blue }}>{zoning.zoningCode || "—"}</span>
+            </span>
+            <span style={{ color: C.faint, fontSize: 8 }}>·</span>
+            <span style={{ fontSize: 8, fontFamily: mono,
+              color: !sfOver && mixOk ? C.green : C.red, letterSpacing: "0.06em" }}>
+              {!sfOver && mixOk ? "WITHIN ENVELOPE" : sfOver ? "EXCEEDS SF ENVELOPE" : "MIX ≠ 100%"}
+            </span>
+            {pushResult && (
+              <>
+                <span style={{ color: C.faint, fontSize: 8 }}>·</span>
+                <span style={{ fontSize: 8, fontFamily: mono,
+                  color: pushResult.success ? C.green : C.red }}>
+                  {pushResult.success
+                    ? `PUSHED → ${pushResult.modules.join(", ")}`
+                    : "PUSH FAILED"}
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            disabled={pushing || sfOver || !mixOk}
+            onClick={async () => {
+              setPushing(true);
+              setPushResult(null);
+              try {
+                const res = await onPushToProforma(program);
+                setPushResult({ success: res.success, modules: res.modulesUpdated || [] });
+              } catch {
+                setPushResult({ success: false, modules: [] });
+              }
+              setPushing(false);
+            }}
+            style={{
+              padding: "4px 12px", border: "none", borderRadius: 2,
+              cursor: pushing || sfOver || !mixOk ? "not-allowed" : "pointer",
+              fontSize: 9, fontFamily: mono, fontWeight: 700, letterSpacing: "0.04em",
+              background: pushing ? C.yellow : sfOver || !mixOk ? C.muted : C.green,
+              color: pushing ? C.bg : sfOver || !mixOk ? C.dim : C.bg,
+              opacity: sfOver || !mixOk ? 0.5 : 1,
+              transition: "all 0.2s",
+            }}>
+            {pushing ? "PUSHING..." : "PUSH TO PROFORMA →"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1406,7 +1459,7 @@ export default function UnitMixIntelligence() {
   const {
     comps: apiComps, demandScores: apiDemandScores, trends: apiTrends,
     zoning: apiZoning, program: apiProgram, loading, error,
-    handleProgramChange: saveProgram,
+    handleProgramChange: saveProgram, pushToProforma,
   } = useUnitMixIntelligence(dealId, tradeAreaId);
 
   const hasApiComps = apiComps && apiComps.length > 0;
@@ -1542,7 +1595,11 @@ export default function UnitMixIntelligence() {
         {tab === "program" && (
           <>
             <ZoningPanel zoning={zoning} program={program} computed={computed} onZoningChange={setZoning} />
-            <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={handleProgramChange} comps={comps} />
+            <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={handleProgramChange} comps={comps}
+              onPushToProforma={async (p) => {
+                const result = await pushToProforma(p);
+                return result;
+              }} />
           </>
         )}
 

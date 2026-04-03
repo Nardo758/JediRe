@@ -242,6 +242,154 @@ export async function getProgram(pool: Pool, dealId: string) {
   };
 }
 
+export async function pushProgramToProforma(
+  pool: Pool,
+  dealId: string,
+  userId: string,
+  program: { totalUnits: number; units: Record<string, { mix: number; sf: number; rent: number }> },
+  amenityBudget?: { totalCost: number; estLiftPerUnit: number; items: { name: string; cost: number; lift: number; tier: string }[] },
+) {
+  const modulesUpdated: string[] = [];
+  const errors: string[] = [];
+
+  const savedProgram = await saveProgram(pool, dealId, userId, program);
+  modulesUpdated.push('deal_unit_programs');
+
+  const unitMixBreakdown = Object.entries(program.units).map(([unitType, u]) => ({
+    unitType,
+    count: Math.round(program.totalUnits * u.mix / 100),
+    avgSF: u.sf,
+    avgRent: u.rent,
+    percent: u.mix,
+  }));
+
+  try {
+    const modelResult = await pool.query(
+      'SELECT id, assumptions FROM financial_models WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [dealId]
+    );
+
+    if (modelResult.rows.length > 0) {
+      const model = modelResult.rows[0];
+      const assumptions = model.assumptions || {};
+
+      assumptions.unitMix = unitMixBreakdown.filter(item => item.count > 0);
+      assumptions.totalUnits = program.totalUnits;
+      assumptions.totalSF = savedProgram.totalNetSf;
+      assumptions.avgSF = program.totalUnits > 0 ? Math.round(savedProgram.totalNetSf / program.totalUnits) : 0;
+      assumptions.grossRevPA = savedProgram.grossRevPA;
+
+      assumptions.rentRoll = unitMixBreakdown
+        .filter(item => item.count > 0)
+        .map(item => ({
+          unitType: item.unitType,
+          count: item.count,
+          avgSF: item.avgSF,
+          monthlyRent: item.avgRent,
+          annualRev: item.count * item.avgRent * 12,
+          psfRent: item.avgSF > 0 ? +(item.avgRent / item.avgSF).toFixed(2) : 0,
+        }));
+
+      if (amenityBudget) {
+        assumptions.amenityPackage = {
+          totalCost: amenityBudget.totalCost,
+          estLiftPerUnit: amenityBudget.estLiftPerUnit,
+          items: amenityBudget.items,
+          appliedAt: new Date().toISOString(),
+        };
+      }
+
+      assumptions._programPushedAt = new Date().toISOString();
+      assumptions._programPushedBy = userId;
+
+      await pool.query(
+        `UPDATE financial_models
+         SET assumptions = $1, status = 'draft', updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(assumptions), model.id]
+      );
+      modulesUpdated.push('financial_model');
+    }
+  } catch (err: any) {
+    errors.push(`Financial model: ${err.message}`);
+  }
+
+  try {
+    await pool.query(
+      `UPDATE deals
+       SET module_outputs = jsonb_set(
+         jsonb_set(
+           COALESCE(module_outputs, '{}'::jsonb),
+           '{unitMix}',
+           $1::jsonb
+         ),
+         '{unitMixStatus}',
+         $2::jsonb
+       ),
+       target_units = $3,
+       updated_at = NOW()
+       WHERE id = $4`,
+      [
+        JSON.stringify({
+          program: unitMixBreakdown,
+          totalUnits: program.totalUnits,
+          totalSF: savedProgram.totalNetSf,
+          grossRevPA: savedProgram.grossRevPA,
+        }),
+        JSON.stringify({
+          applied: true,
+          source: 'program_push',
+          appliedAt: new Date().toISOString(),
+          pushedBy: userId,
+        }),
+        program.totalUnits,
+        dealId,
+      ]
+    );
+    modulesUpdated.push('deal_metadata');
+  } catch (err: any) {
+    errors.push(`Deal metadata: ${err.message}`);
+  }
+
+  try {
+    const designResult = await pool.query(
+      'SELECT id FROM building_designs_3d WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [dealId]
+    );
+    if (designResult.rows.length > 0) {
+      await pool.query(
+        `UPDATE building_designs_3d
+         SET metadata = jsonb_set(
+           COALESCE(metadata, '{}'::jsonb),
+           '{unitMix}',
+           $1::jsonb
+         ),
+         updated_at = NOW()
+         WHERE id = $2`,
+        [
+          JSON.stringify({
+            breakdown: unitMixBreakdown,
+            total: program.totalUnits,
+            totalSF: savedProgram.totalNetSf,
+            updatedAt: new Date().toISOString(),
+          }),
+          designResult.rows[0].id,
+        ]
+      );
+      modulesUpdated.push('3d_design');
+    }
+  } catch (err: any) {
+    errors.push(`3D design: ${err.message}`);
+  }
+
+  return {
+    success: errors.length === 0,
+    modulesUpdated,
+    errors,
+    program: savedProgram,
+  };
+}
+
 export async function getZoningForUnitMix(pool: Pool, dealId: string) {
   const query = `
     SELECT base_district_code, max_stories, max_lot_coverage_pct,

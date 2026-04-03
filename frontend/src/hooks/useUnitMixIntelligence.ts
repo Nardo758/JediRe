@@ -113,5 +113,18 @@ export function useUnitMixIntelligence(dealId: string | undefined, tradeAreaId: 
     }, 1500);
   }, [dealId]);
 
-  return { comps, demandScores, trends, zoning, program, loading, error, handleProgramChange };
+  const pushToProforma = useCallback(async (
+    programData: UnitProgram,
+    amenityBudget?: { totalCost: number; estLiftPerUnit: number; items: { name: string; cost: number; lift: number; tier: string }[] },
+  ): Promise<{ success: boolean; modulesUpdated: string[]; errors: string[] }> => {
+    if (!dealId) throw new Error('No deal ID');
+
+    const res = await axios.post(`/api/v1/unit-mix/${dealId}/push-to-proforma`, {
+      program: programData,
+      amenityBudget,
+    });
+    return res.data;
+  }, [dealId]);
+
+  return { comps, demandScores, trends, zoning, program, loading, error, handleProgramChange, pushToProforma };
 }
