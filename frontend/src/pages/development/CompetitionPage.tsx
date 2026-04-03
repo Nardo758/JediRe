@@ -18,10 +18,8 @@ import {
   ArrowDown,
   Eye,
   Sparkles,
-  BarChart3,
 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import DealCompAnalysisTab from '@/components/deal/sections/DealCompAnalysisTab';
 import { competitionService, CompetitorProperty, AdvantageMatrix, WaitlistProperty, DataSource, F40RankingsData } from '@/services/competition.service';
 
 interface CompetitionFilters {
@@ -108,9 +106,9 @@ export default function CompetitionPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [urlParams] = useSearchParams();
   const subtabParam = urlParams.get('subtab');
-  const validSubtabs = ['comp-analysis', 'map', 'comparison', 'advantage', 'aging', 'waitlist', 'f40'];
+  const validSubtabs = ['map', 'comparison', 'advantage', 'aging', 'waitlist', 'f40'];
   const initialTab = subtabParam && validSubtabs.includes(subtabParam) ? subtabParam : 'map';
-  const [activeTab, setActiveTab] = useState<'comp-analysis' | 'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist' | 'f40'>(initialTab as any);
+  const [activeTab, setActiveTab] = useState<'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist' | 'f40'>(initialTab as any);
 
   useEffect(() => {
     if (dealId) {
@@ -291,7 +289,6 @@ export default function CompetitionPage() {
 
           <div className="flex gap-1 mt-3 border-b border-stone-200 -mx-5 px-5">
             {[
-              { id: 'comp-analysis', label: 'Comp Analysis', icon: BarChart3 },
               { id: 'map', label: 'Competitive Set Map', icon: MapPin },
               { id: 'comparison', label: 'Unit Comparison', icon: Home },
               { id: 'f40', label: 'F40 Performance', icon: TrendingUp },
@@ -336,10 +333,6 @@ export default function CompetitionPage() {
           </div>
 
         {/* Tab Content */}
-        {activeTab === 'comp-analysis' && (
-          <DealCompAnalysisTab />
-        )}
-
         {activeTab === 'map' && (
           <CompetitiveSetMap
             competitors={competitors}

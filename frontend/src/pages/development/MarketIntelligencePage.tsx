@@ -23,6 +23,7 @@ import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { useDealStore } from '../../stores/dealStore';
 import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnalysisSection';
 import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
+import DealCompAnalysisTab from '../../components/deal/sections/DealCompAnalysisTab';
 
 interface MarketIntelData {
   economy: any;
@@ -74,23 +75,23 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
   switch (mode) {
     case 'development':
       return [
-        { id: 'overview', label: 'OVERVIEW' },
+        { id: 'discovery', label: 'DISCOVERY' },
         { id: 'demand', label: 'DEMAND' },
         { id: 'comps', label: 'COMPS' },
-        { id: 'program', label: 'PROGRAM' },
         { id: 'trends', label: 'TRENDS' },
+        { id: 'program', label: 'PROGRAM' },
       ];
     case 'redevelopment':
       return [
-        { id: 'overview', label: 'OVERVIEW' },
+        { id: 'discovery', label: 'DISCOVERY' },
         { id: 'positioning', label: 'POSITIONING' },
         { id: 'comps', label: 'COMPS' },
-        { id: 'repositioning', label: 'REPOSITIONING' },
         { id: 'trends', label: 'TRENDS' },
+        { id: 'repositioning', label: 'REPOSITIONING' },
       ];
     case 'existing':
       return [
-        { id: 'overview', label: 'OVERVIEW' },
+        { id: 'discovery', label: 'DISCOVERY' },
         { id: 'positioning', label: 'POSITIONING' },
         { id: 'comps', label: 'COMPS' },
         { id: 'trends', label: 'TRENDS' },
@@ -345,6 +346,12 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     </div>
   );
 
+  const renderDiscoveryTab = () => (
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
+      <DealCompAnalysisTab dealId={dealId} />
+    </div>
+  );
+
   const renderDemandTab = () => (
     <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       <DemandMatrix inventory={umInventory} trendData={umTrendData} />
@@ -396,6 +403,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
 
   const renderTabContent = () => {
     switch (activeTabId) {
+      case 'discovery': return renderDiscoveryTab();
       case 'overview': return renderOverviewTab();
       case 'demand': return renderDemandTab();
       case 'positioning': return renderPositioningTab();
@@ -403,7 +411,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       case 'program': return renderProgramTab();
       case 'repositioning': return renderRepositioningTab();
       case 'trends': return renderTrendsTab();
-      default: return renderOverviewTab();
+      default: return renderDiscoveryTab();
     }
   };
 
