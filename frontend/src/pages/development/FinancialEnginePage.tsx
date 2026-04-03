@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
+import { Brain, Send, ChevronUp, ChevronDown } from 'lucide-react';
 import {
   BT, BT_CSS,
   SubTabBar, Bd, BtTabWrapper,
@@ -53,6 +54,12 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [saveVersionName, setSaveVersionName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [opusInput, setOpusInput] = useState('');
+  const [opusSending, setOpusSending] = useState(false);
+  const [opusMessages, setOpusMessages] = useState<Array<{ role: 'user' | 'opus'; text: string; ts: number }>>([]);
+  const [opusExpanded, setOpusExpanded] = useState(false);
+  const opusInputRef = useRef<HTMLInputElement>(null);
+  const opusScrollRef = useRef<HTMLDivElement>(null);
 
   const kpi = useMemo(() => modelResults?.summary ?? null, [modelResults]);
 
