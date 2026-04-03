@@ -444,11 +444,16 @@ function ScatterTip({ active, payload }: any) {
 //  TAB 1A — DEMAND MATRIX (4 score cards)
 // ─────────────────────────────────────────────────────────
 function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; trendData: typeof TREND_DATA }) {
+  const mono = "var(--bt-mono)";
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
-        <SecLabel mod="M05 · M07" title="Demand by Unit Type"
-          sub="Vacancy · Days on Market · Concessions averaged across all trade area comps" />
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M07</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Demand by Unit Type</span>
+        </div>
+        <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>VAC · DOM · CONC AVERAGED ACROSS TRADE AREA</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.border }}>
         {inventory.map(u => {
@@ -457,76 +462,56 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
           const vacDelta = trend.length >= 12 ? trend[11].vac - trend[0].vac : 0;
           const rentDelta = trend.length >= 12 ? trend[11].rent - trend[0].rent : 0;
           return (
-            <div key={u.key} style={{ background: C.card, padding: "18px 16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                <div>
-                  <div style={{ color: u.color, fontFamily: "var(--bt-mono)", fontSize: 10,
-                    fontWeight: 700, letterSpacing: "0.1em", marginBottom: 2 }}>{u.label.toUpperCase()}</div>
-                  <div style={{ color: C.dim, fontSize: 10 }}>{u.sfRange} SF</div>
+            <div key={u.key} style={{ background: C.card, padding: "10px 12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ width: 6, height: 6, background: u.color, borderRadius: 1 }} />
+                  <span style={{ color: u.color, fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em" }}>{u.abbr}</span>
+                  <span style={{ color: C.dim, fontSize: 9 }}>{u.sfRange}</span>
                 </div>
-                <Tag label={dl.label} color={dl.color} />
+                <Tag label={dl.label} color={dl.color} size="xs" />
               </div>
 
-              {/* Score ring */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-                <div style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}>
-                  <svg width="48" height="48" viewBox="0 0 48 48">
-                    <circle cx="24" cy="24" r="18" fill="none" stroke={C.faint} strokeWidth="4" />
-                    <circle cx="24" cy="24" r="18" fill="none" stroke={dl.color} strokeWidth="4"
-                      strokeDasharray={`${u.demandScore * 1.131} 113.1`}
-                      strokeLinecap="round" transform="rotate(-90 24 24)" />
-                  </svg>
-                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center",
-                    justifyContent: "center", color: dl.color, fontFamily: "var(--bt-mono)",
-                    fontSize: 11, fontWeight: 700 }}>{u.demandScore}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                  <span style={{ color: dl.color, fontFamily: mono, fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{u.demandScore}</span>
+                  <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>/ 100</span>
                 </div>
-                <div style={{ color: C.faint, fontSize: 10, lineHeight: 1.5 }}>
-                  Demand Score<br />vac × DOM × conc
+                <div style={{ flex: 1, height: 4, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
+                  <div style={{ width: `${u.demandScore}%`, height: "100%", background: dl.color, borderRadius: 2 }} />
                 </div>
               </div>
 
-              {/* Metrics */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {[
-                  { label: "Vacancy",    val: u.avgVac.toFixed(1),  unit: "%",  sig: "vac",
-                    delta: vacDelta, dUnit: "pp" },
-                  { label: "DOM",        val: u.avgDOM.toFixed(0),   unit: "d",  sig: "dom" },
-                  { label: "Concessions",val: u.avgConc.toFixed(1), unit: "wk", sig: "conc" },
-                ].map(m => (
-                  <div key={m.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: C.dim, fontSize: 11 }}>{m.label}</span>
-                    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                      <span style={{ color: sigColor(parseFloat(m.val), m.sig),
-                        fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px", marginBottom: 6 }}>
+                {([
+                  { label: "VAC", val: u.avgVac.toFixed(1), unit: "%", sig: "vac" as SigKey, delta: vacDelta, dUnit: "pp" },
+                  { label: "DOM", val: u.avgDOM.toFixed(0), unit: "d", sig: "dom" as SigKey },
+                  { label: "CONC", val: u.avgConc.toFixed(1), unit: "wk", sig: "conc" as SigKey },
+                  { label: "RENT", val: `$${u.avgRent.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`, unit: "", sig: null },
+                ] as const).map((m, mi) => (
+                  <div key={mi} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
+                    <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>{m.label}</span>
+                    <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                      <span style={{ color: m.sig ? sigColor(parseFloat(m.val), m.sig) : C.text,
+                        fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
                         {m.val}{m.unit}
                       </span>
-                      {m.delta !== undefined && (
-                        <span style={{ color: m.delta > 0 ? C.red : C.green, fontFamily: "var(--bt-mono)", fontSize: 10 }}>
-                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}{m.dUnit}
+                      {m.delta !== undefined && m.delta !== 0 && (
+                        <span style={{ color: m.delta > 0 ? C.red : C.green, fontFamily: mono, fontSize: 8 }}>
+                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
+                        </span>
+                      )}
+                      {mi === 3 && rentDelta !== 0 && (
+                        <span style={{ color: rentDelta > 0 ? C.green : C.red, fontFamily: mono, fontSize: 8 }}>
+                          {rentDelta > 0 ? "+" : ""}${rentDelta}
                         </span>
                       )}
                     </div>
                   </div>
                 ))}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-                  paddingTop: 8, borderTop: `1px solid ${C.faint}` }}>
-                  <span style={{ color: C.dim, fontSize: 11 }}>Avg Rent</span>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <span style={{ color: C.text, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 700 }}>
-                      ${u.avgRent.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                    </span>
-                    <span style={{ color: rentDelta > 0 ? C.green : C.red, fontFamily: "var(--bt-mono)", fontSize: 10 }}>
-                      {rentDelta > 0 ? "+" : ""}${rentDelta}
-                    </span>
-                  </div>
-                </div>
               </div>
 
-              {/* 12-mo vacancy sparkline */}
-              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.faint}` }}>
-                <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 3 }}>
-                  12-MO VACANCY
-                </div>
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
                 <MiniLine data={trendData[u.key]} dataKey="vac" color={u.color} />
               </div>
             </div>
@@ -541,87 +526,76 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
 //  TAB 1B — GAP ANALYSIS
 // ─────────────────────────────────────────────────────────
 function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
+  const mono = "var(--bt-mono)";
   const chartData = gaps.map(g => ({
-    name: g.label, supply: +g.supplyShare.toFixed(1), demand: +g.demandShare.toFixed(1), color: g.color,
+    name: g.abbr, supply: +g.supplyShare.toFixed(1), demand: +g.demandShare.toFixed(1), color: g.color,
   }));
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
-        <SecLabel mod="DERIVED" title="Supply / Demand Gap"
-          sub="Demand share (vacancy × DOM proxy) vs inventory share. Positive = undersupplied." />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
-        {/* Bar chart */}
-        <div style={{ background: C.card, padding: "18px 20px" }}>
-          <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 12 }}>
-            SUPPLY % vs DEMAND % — TRADE AREA
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>DERIVED</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Supply / Demand Gap</span>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 8, height: 3, background: C.muted, borderRadius: 1 }} />
+            <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>SUPPLY</span>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={chartData} barCategoryGap="25%">
-              <XAxis dataKey="name" tick={{ fill: C.dim, fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.faint, fontSize: 10 }} axisLine={false} tickLine={false}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 8, height: 3, background: C.blue, borderRadius: 1 }} />
+            <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>DEMAND</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 1, background: C.border }}>
+        <div style={{ background: C.card, padding: "10px 14px" }}>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={chartData} barCategoryGap="20%">
+              <XAxis dataKey="name" tick={{ fill: C.dim, fontSize: 10, fontFamily: mono }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: C.faint, fontSize: 9 }} axisLine={false} tickLine={false} width={28}
                 tickFormatter={v => `${v}%`} />
               <Tooltip content={<ChartTip />} />
-              <Bar dataKey="supply" name="Supply %" radius={[3,3,0,0]}>
+              <Bar dataKey="supply" name="Supply %" radius={[2,2,0,0]}>
                 {chartData.map((e, i) => <Cell key={i} fill={e.color + "40"} />)}
               </Bar>
-              <Bar dataKey="demand" name="Demand %" radius={[3,3,0,0]}>
+              <Bar dataKey="demand" name="Demand %" radius={[2,2,0,0]}>
                 {chartData.map((e, i) => <Cell key={i} fill={e.color} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 8, height: 8, background: C.muted, borderRadius: 2 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>Supply %</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 8, height: 8, background: C.twoBR, borderRadius: 2 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>Demand %</span>
-            </div>
-          </div>
         </div>
 
-        {/* Gap table */}
-        <div style={{ background: "#0A0E17", padding: "18px 20px" }}>
-          <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 14 }}>
-            GAP — DEMAND MINUS SUPPLY
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ background: "#0A0E17", padding: "10px 14px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {gaps.map(g => {
               const dl = demandLabel(g.demandScore);
               return (
-                <div key={g.key}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-                      <div style={{ width: 8, height: 8, background: g.color, borderRadius: 2 }} />
-                      <span style={{ color: C.text, fontSize: 12, fontWeight: 600 }}>{g.label}</span>
-                      <Tag label={dl.label} color={dl.color} size="xs" />
-                    </div>
-                    <span style={{ color: C.dim, fontSize: 10, fontFamily: "var(--bt-mono)" }}>
-                      S: {g.supplyShare.toFixed(1)}% · D: <span style={{ color: g.color }}>{g.demandShare.toFixed(1)}%</span>
-                    </span>
-                  </div>
-                  <GapBar gap={g.gap} />
+                <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 6, height: 6, background: g.color, borderRadius: 1, flexShrink: 0 }} />
+                  <span style={{ color: C.text, fontSize: 11, fontWeight: 600, minWidth: 40 }}>{g.abbr}</span>
+                  <Tag label={dl.label} color={dl.color} size="xs" />
+                  <span style={{ color: C.dim, fontSize: 9, fontFamily: mono, minWidth: 90 }}>
+                    S:{g.supplyShare.toFixed(1)}% D:<span style={{ color: g.color }}>{g.demandShare.toFixed(1)}%</span>
+                  </span>
+                  <div style={{ flex: 1 }}><GapBar gap={g.gap} /></div>
                 </div>
               );
             })}
           </div>
-
-          {/* Interpretation */}
-          <div style={{ marginTop: 18, padding: 12, background: C.card, borderRadius: 8,
+          <div style={{ marginTop: 8, padding: "6px 8px", background: C.card, borderRadius: 3,
             border: `1px solid ${C.border}` }}>
-            <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 8 }}>INTERPRETATION</div>
             {gaps.filter(g => Math.abs(g.gap) > 3).sort((a, b) => b.gap - a.gap).map(g => (
-              <div key={g.key} style={{ display: "flex", gap: 7, marginBottom: 7, alignItems: "flex-start" }}>
-                <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: "var(--bt-mono)", fontSize: 11, flexShrink: 0 }}>
+              <div key={g.key} style={{ display: "flex", gap: 5, marginBottom: 3, alignItems: "flex-start" }}>
+                <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: mono, fontSize: 10, flexShrink: 0 }}>
                   {g.gap > 0 ? "▲" : "▼"}
                 </span>
-                <span style={{ color: C.dim, fontSize: 11, lineHeight: 1.5 }}>
-                  <span style={{ color: g.color, fontWeight: 700 }}>{g.label}</span>
+                <span style={{ color: C.dim, fontSize: 10, lineHeight: 1.4 }}>
+                  <span style={{ color: g.color, fontWeight: 700 }}>{g.abbr}</span>
                   {g.gap > 0
-                    ? ` undersupplied by ${g.gap.toFixed(1)}pp — fast lease velocity, low vacancy, minimal concessions.`
-                    : ` oversupplied by ${Math.abs(g.gap).toFixed(1)}pp — slow leasing, landlords conceding.`}
+                    ? ` undersupplied ${g.gap.toFixed(1)}pp — fast velocity, low vac`
+                    : ` oversupplied ${Math.abs(g.gap).toFixed(1)}pp — slow leasing`}
                 </span>
               </div>
             ))}
@@ -916,64 +890,64 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
 //  TAB 3A — INVENTORY SNAPSHOT
 // ─────────────────────────────────────────────────────────
 function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; comps: CompData[] }) {
+  const mono = "var(--bt-mono)";
   const total = inventory.reduce((s, u) => s + u.typeUnits, 0);
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <SecLabel mod="M05" title="Submarket Unit Inventory" sub="Total tracked units by type across trade area comps" />
-        <div style={{ textAlign: "right" }}>
-          <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)" }}>TOTAL TRACKED</div>
-          <div style={{ color: C.text, fontSize: 18, fontFamily: "var(--bt-mono)", fontWeight: 700 }}>{total.toLocaleString()} units</div>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Submarket Inventory</span>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {inventory.map(u => (
+            <div key={u.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ width: 5, height: 5, background: u.color, borderRadius: 1 }} />
+              <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>{u.abbr}</span>
+              <span style={{ color: C.text, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.typeUnits}u</span>
+            </div>
+          ))}
+          <span style={{ color: C.faint, fontSize: 9 }}>·</span>
+          <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{total.toLocaleString()}</span>
         </div>
       </div>
-      {/* Stacked bar */}
-      <div style={{ padding: "14px 20px 10px" }}>
-        <div style={{ display: "flex", height: 26, borderRadius: 6, overflow: "hidden", gap: 2, marginBottom: 10 }}>
+      <div style={{ padding: "8px 16px 6px" }}>
+        <div style={{ display: "flex", height: 18, borderRadius: 2, overflow: "hidden", gap: 1 }}>
           {inventory.map(u => (
             <div key={u.key} style={{ flex: u.supplyShare, background: u.color + "cc",
               display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: "var(--bt-mono)" }}>
-              {u.supplyShare > 8 ? `${u.supplyShare.toFixed(0)}%` : ""}
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {inventory.map(u => (
-            <div key={u.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 7, height: 7, background: u.color, borderRadius: 2 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>{u.label}</span>
-              <span style={{ color: C.text, fontFamily: "var(--bt-mono)", fontSize: 11, fontWeight: 700 }}>{u.typeUnits}u</span>
-              <span style={{ color: C.faint, fontSize: 10 }}>({u.supplyShare.toFixed(1)}%)</span>
+              color: "#fff", fontSize: 9, fontWeight: 700, fontFamily: mono }}>
+              {u.supplyShare > 10 ? `${u.supplyShare.toFixed(0)}%` : ""}
             </div>
           ))}
         </div>
       </div>
-      {/* Property table */}
       <div style={{ borderTop: `1px solid ${C.border}` }}>
-        <div style={{ display: "grid", gridTemplateColumns: "160px 48px repeat(5,1fr)", padding: "7px 20px",
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 40px repeat(4,70px) 50px", padding: "5px 16px",
           background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
-          {["Property","Cls","Studio","1 BR","2 BR","3 BR+","Units"].map((h, i) => (
-            <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)",
-              textAlign: i > 1 ? "right" : "left" }}>{h}</div>
+          {["PROPERTY","CLS",...UT_META.map(u => u.abbr),"UNITS"].map((h, i) => (
+            <div key={i} style={{ color: i >= 2 && i <= 5 ? UT_META[i-2]?.color : C.faint, fontSize: 9, fontFamily: mono,
+              fontWeight: 700, textAlign: i > 1 ? "right" : "left" }}>{h}</div>
           ))}
         </div>
-        {[...comps].map((c, i) => (
-          <div key={c.id} style={{ display: "grid", gridTemplateColumns: "160px 48px repeat(5,1fr)",
-            padding: "9px 20px", borderBottom: `1px solid ${C.border}`,
-            background: i % 2 === 0 ? "transparent" : "#1A1F2E18" }}>
-            <div style={{ color: C.text, fontSize: 12 }}>{c.name}</div>
-            <div style={{ color: C.dim, fontSize: 11 }}>{c.cls}</div>
+        {comps.map((c, i) => (
+          <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 40px repeat(4,70px) 50px",
+            padding: "6px 16px", borderBottom: `1px solid ${C.border}40`,
+            background: i % 2 === 0 ? "transparent" : "#1A1F2E10" }}>
+            <div style={{ color: C.text, fontSize: 11 }}>{c.name}</div>
+            <div style={{ color: C.dim, fontSize: 10 }}>{c.cls}</div>
             {UT_META.map(ut => {
               const pct = c.units[ut.key].mix;
               return (
                 <div key={ut.key} style={{ textAlign: "right" }}>
-                  <span style={{ color: pct > 0 ? ut.color : C.faint, fontFamily: "var(--bt-mono)",
-                    fontSize: 12, fontWeight: 600 }}>{pct > 0 ? `${pct}%` : "—"}</span>
+                  <span style={{ color: pct > 0 ? ut.color : C.faint, fontFamily: mono,
+                    fontSize: 11, fontWeight: 600 }}>{pct > 0 ? `${pct}%` : "—"}</span>
                 </div>
               );
             })}
-            <div style={{ textAlign: "right", color: C.dim, fontFamily: "var(--bt-mono)", fontSize: 11 }}>{c.total}</div>
+            <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 10 }}>{c.total}</div>
           </div>
         ))}
       </div>
@@ -985,69 +959,67 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
 //  TAB 3B — PROPERTY DRILL-DOWN
 // ─────────────────────────────────────────────────────────
 function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; comps: CompData[] }) {
-  const ut = UT_META.find(u => u.key === selectedType);
+  const mono = "var(--bt-mono)";
+  const ut = UT_META.find(u => u.key === selectedType)!;
   const rows = comps.filter(c => c.units[selectedType].mix > 0)
     .sort((a, b) => a.units[selectedType].vac - b.units[selectedType].vac);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M15" title={`Property Drill-Down — ${ut.label}`}
-          sub="Sorted by vacancy (lowest = tightest demand). HOT/WARM/SOFT signal." />
-        <div style={{ display: "flex", gap: 5 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M15</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Property Drill-Down</span>
+          <span style={{ color: C.dim, fontSize: 9 }}>sorted by vac (lowest first)</span>
+        </div>
+        <div style={{ display: "flex", gap: 3 }}>
           {UT_META.map(u => (
             <button key={u.key} onClick={() => onSelect(u.key)} style={{
               background: selectedType === u.key ? u.color + "20" : "transparent",
               border: `1px solid ${selectedType === u.key ? u.color : C.border}`,
-              borderRadius: 5, padding: "4px 10px",
+              borderRadius: 3, padding: "3px 8px",
               color: selectedType === u.key ? u.color : C.dim,
-              fontSize: 10, fontFamily: "var(--bt-mono)", fontWeight: 700, cursor: "pointer",
+              fontSize: 9, fontFamily: mono, fontWeight: 700, cursor: "pointer",
             }}>{u.abbr}</button>
           ))}
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 72px 90px 86px 90px 86px",
-        padding: "7px 20px", background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
-        {["Property","Cls","Mix %","Vacancy","DOM","Concessions","Avg Rent"].map((h, i) => (
-          <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)",
-            textAlign: i > 0 ? "right" : "left" }}>{h}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 56px 70px 60px 70px 70px",
+        padding: "5px 16px", background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
+        {["PROPERTY","CLS","MIX","VAC","DOM","CONC","RENT"].map((h, i) => (
+          <div key={i} style={{ color: C.faint, fontSize: 8, fontFamily: mono, fontWeight: 700,
+            letterSpacing: "0.06em", textAlign: i > 0 ? "right" : "left" }}>{h}</div>
         ))}
       </div>
 
       {rows.map((c, i) => {
         const u = c.units[selectedType];
-        const sig = u.vac <= SIG.vac.hot ? "🟢" : u.vac <= SIG.vac.warm ? "🟡" : "🔴";
+        const sigChar = u.vac <= SIG.vac.hot ? "●" : u.vac <= SIG.vac.warm ? "●" : "●";
+        const sigCol = u.vac <= SIG.vac.hot ? C.green : u.vac <= SIG.vac.warm ? C.yellow : C.red;
         return (
-          <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 56px 72px 90px 86px 90px 86px",
-            padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
-            background: i % 2 === 0 ? "transparent" : "#1A1F2E18", alignItems: "center" }}>
-            <div style={{ color: C.text, fontSize: 12 }}>{sig} {c.name}</div>
-            <div style={{ textAlign: "right", color: C.dim, fontSize: 11 }}>{c.cls}</div>
-            <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)",
-              fontSize: 12, fontWeight: 700 }}>{u.mix}%</div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.vac, "vac"), fontFamily: "var(--bt-mono)",
-                fontSize: 12, fontWeight: 700 }}>{u.vac}%</span>
+          <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 40px 56px 70px 60px 70px 70px",
+            padding: "6px 16px", borderBottom: `1px solid ${C.border}40`,
+            background: i % 2 === 0 ? "transparent" : "#1A1F2E10", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ color: sigCol, fontSize: 7 }}>{sigChar}</span>
+              <span style={{ color: C.text, fontSize: 11 }}>{c.name}</span>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.dom, "dom"), fontFamily: "var(--bt-mono)",
-                fontSize: 12, fontWeight: 700 }}>{u.dom}d</span>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.conc, "conc"), fontFamily: "var(--bt-mono)",
-                fontSize: 12, fontWeight: 700 }}>{u.conc}wk</span>
-            </div>
-            <div style={{ textAlign: "right", color: C.text, fontFamily: "var(--bt-mono)",
-              fontSize: 12, fontWeight: 700 }}>${u.rent.toLocaleString()}</div>
+            <div style={{ textAlign: "right", color: C.dim, fontSize: 10 }}>{c.cls}</div>
+            <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{u.mix}%</div>
+            <div style={{ textAlign: "right", color: sigColor(u.vac, "vac"), fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{u.vac}%</div>
+            <div style={{ textAlign: "right", color: sigColor(u.dom, "dom"), fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{u.dom}d</div>
+            <div style={{ textAlign: "right", color: sigColor(u.conc, "conc"), fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{u.conc}wk</div>
+            <div style={{ textAlign: "right", color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>${u.rent.toLocaleString()}</div>
           </div>
         );
       })}
-      <div style={{ padding: "9px 20px", background: "#0A0E17" }}>
-        <span style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)" }}>
-          🟢 HOT (vac ≤3%, DOM ≤10d) &nbsp; 🟡 WARM (vac ≤6%, DOM ≤20d) &nbsp; 🔴 SOFT (vac &gt;6%, DOM &gt;20d)
-        </span>
+      <div style={{ padding: "5px 16px", background: "#0A0E17", display: "flex", gap: 12 }}>
+        <span style={{ color: C.green, fontSize: 8, fontFamily: mono }}>● HOT vac≤3%</span>
+        <span style={{ color: C.yellow, fontSize: 8, fontFamily: mono }}>● WARM vac≤6%</span>
+        <span style={{ color: C.red, fontSize: 8, fontFamily: mono }}>● SOFT vac&gt;6%</span>
       </div>
     </div>
   );
@@ -1057,56 +1029,60 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
 //  TAB 4 — TREND DETAIL (12-month charts)
 // ─────────────────────────────────────────────────────────
 function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; trendData: typeof TREND_DATA }) {
-  const ut = UT_META.find(u => u.key === selectedType);
+  const mono = "var(--bt-mono)";
+  const ut = UT_META.find(u => u.key === selectedType)!;
   const data = trendData[selectedType];
   const metrics = [
-    { key: "vac",  label: "Vacancy %",            color: C.red,    fmt: (v: number) => `${v}%`  },
-    { key: "dom",  label: "Days on Market",        color: C.yellow, fmt: (v: number) => `${v}d`  },
-    { key: "rent", label: "Avg Rent",              color: C.green,  fmt: (v: number) => `$${v}`  },
-    { key: "conc", label: "Concessions (wks free)",color: C.studio, fmt: (v: number) => `${v}wk` },
+    { key: "vac",  label: "VACANCY",    color: C.red,    fmt: (v: number) => `${v}%`  },
+    { key: "dom",  label: "DOM",         color: C.yellow, fmt: (v: number) => `${v}d`  },
+    { key: "rent", label: "AVG RENT",    color: C.green,  fmt: (v: number) => `$${v.toLocaleString()}`  },
+    { key: "conc", label: "CONCESSIONS", color: C.studio, fmt: (v: number) => `${v}wk` },
   ];
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M05" title="12-Month Demand Trends"
-          sub="Submarket averages across trade area comps. Direction matters as much as current value." />
-        <div style={{ display: "flex", gap: 5 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>12-Month Trends</span>
+          <span style={{ color: C.dim, fontSize: 9 }}>submarket avg</span>
+        </div>
+        <div style={{ display: "flex", gap: 3 }}>
           {UT_META.map(u => (
             <button key={u.key} onClick={() => onSelect(u.key)} style={{
               background: selectedType === u.key ? u.color + "20" : "transparent",
               border: `1px solid ${selectedType === u.key ? u.color : C.border}`,
-              borderRadius: 6, padding: "4px 11px",
+              borderRadius: 3, padding: "3px 8px",
               color: selectedType === u.key ? u.color : C.dim,
-              fontSize: 11, fontFamily: "var(--bt-mono)", fontWeight: 700, cursor: "pointer",
-            }}>{u.label}</button>
+              fontSize: 9, fontFamily: mono, fontWeight: 700, cursor: "pointer",
+            }}>{u.abbr}</button>
           ))}
         </div>
       </div>
-      <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
         {metrics.map(m => {
           const first = data[0][m.key], last = data[data.length-1][m.key];
           const delta = last - first;
           const good = m.key === "rent" ? delta > 0 : delta < 0;
           return (
-            <div key={m.key} style={{ background: "#0A0E17", borderRadius: 8, padding: 14,
-              border: `1px solid ${C.border}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <span style={{ color: C.dim, fontSize: 11 }}>{m.label}</span>
-                <div style={{ textAlign: "right" }}>
-                  <span style={{ color: m.color, fontFamily: "var(--bt-mono)", fontSize: 14, fontWeight: 700 }}>
+            <div key={m.key} style={{ background: "#0A0E17", padding: "8px 12px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ color: C.dim, fontSize: 9, fontFamily: mono, letterSpacing: "0.06em" }}>{m.label}</span>
+                <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
+                  <span style={{ color: m.color, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
                     {m.fmt(last)}
                   </span>
-                  <span style={{ color: good ? C.green : C.red, fontFamily: "var(--bt-mono)",
-                    fontSize: 10, marginLeft: 8 }}>
+                  <span style={{ color: good ? C.green : C.red, fontFamily: mono, fontSize: 9 }}>
                     {delta > 0 ? "+" : ""}{m.key === "rent" ? `$${delta}` : m.key === "vac" ? `${delta}pp` : delta}
+                    {good ? " ▲" : " ▼"}
                   </span>
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={64}>
+              <ResponsiveContainer width="100%" height={52}>
                 <LineChart data={data}>
-                  <XAxis dataKey="mo" tick={{ fill: C.faint, fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="mo" tick={{ fill: C.faint, fontSize: 8 }} axisLine={false} tickLine={false} interval={2} />
                   <Tooltip content={<ChartTip />} />
                   <Line type="monotone" dataKey={m.key} name={m.label} stroke={m.color}
                     strokeWidth={1.5} dot={false} />
@@ -1124,80 +1100,80 @@ function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: Unit
 //  TAB 5A — MIX MATRIX
 // ─────────────────────────────────────────────────────────
 function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) {
+  const mono = "var(--bt-mono)";
+  const gridTpl = "1fr 36px repeat(4,80px)";
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
-        <SecLabel mod="M05 · M15" title="Mix Matrix — Program vs Comp Set"
-          sub="Your proposed allocation vs every comp. Comp Average anchored at bottom." />
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Mix Matrix</span>
+          <span style={{ color: C.dim, fontSize: 9 }}>program vs comp set</span>
+        </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-        padding: "7px 20px", background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "5px 16px",
+        background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
         {["PROPERTY","CLS",...UT_META.map(ut => ut.abbr)].map((h, i) => (
-          <div key={i} style={{ color: i > 1 ? UT_META[i-2].color : C.faint, fontSize: 9,
-            fontFamily: "var(--bt-mono)", fontWeight: 700, textAlign: i > 1 ? "right" : "left" }}>{h}</div>
+          <div key={i} style={{ color: i > 1 ? UT_META[i-2].color : C.faint, fontSize: 8,
+            fontFamily: mono, fontWeight: 700, letterSpacing: "0.06em", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
         ))}
       </div>
-      {/* Subject */}
-      <div style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-        padding: "10px 20px", background: "#FF8C4208",
-        borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.subject}` }}>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "7px 16px",
+        background: C.subject + "08", borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.subject}` }}>
         <div>
-          <div style={{ color: C.subject, fontSize: 12, fontWeight: 700 }}>★ Subject Property</div>
-          <div style={{ color: C.faint, fontSize: 10 }}>{program.totalUnits}u · Proposed</div>
+          <span style={{ color: C.subject, fontSize: 11, fontWeight: 700 }}>★ Subject</span>
+          <span style={{ color: C.faint, fontSize: 9, marginLeft: 6 }}>{program.totalUnits}u</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Tag label="A" color={C.green} size="xs" />
-        </div>
+        <div style={{ color: C.green, fontSize: 9, fontFamily: mono, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>A</div>
         {UT_META.map(ut => {
           const pct = program.units[ut.key].mix;
           const avg = compAvg(ut.key, comps);
           return (
-            <div key={ut.key} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-              <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                <span style={{ color: C.subject, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 800 }}>{pct}%</span>
+            <div key={ut.key} style={{ textAlign: "right" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, alignItems: "center" }}>
+                <span style={{ color: C.subject, fontFamily: mono, fontSize: 12, fontWeight: 800 }}>{pct}%</span>
                 {avg.mix > 0 && <Delt value={pct - avg.mix} unit="pp" />}
               </div>
-              <div style={{ width: 52, height: 3, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(100, pct * 2.1)}%`, height: "100%", background: C.subject, borderRadius: 2 }} />
+              <div style={{ width: "100%", height: 2, background: C.muted, borderRadius: 1, overflow: "hidden", marginTop: 2 }}>
+                <div style={{ width: `${Math.min(100, pct * 2)}%`, height: "100%", background: C.subject }} />
               </div>
             </div>
           );
         })}
       </div>
       {comps.map((c, ri) => (
-        <div key={c.id} style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-          padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
-          background: ri % 2 === 0 ? "transparent" : "#1A1F2E40",
+        <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "6px 16px",
+          borderBottom: `1px solid ${C.border}40`, background: ri % 2 === 0 ? "transparent" : "#1A1F2E10",
           borderLeft: "3px solid transparent" }}>
           <div>
-            <div style={{ color: C.text, fontSize: 12 }}>{c.name}</div>
-            <div style={{ color: C.faint, fontSize: 10 }}>{c.total}u · {c.built}</div>
+            <span style={{ color: C.text, fontSize: 11 }}>{c.name}</span>
+            <span style={{ color: C.faint, fontSize: 9, marginLeft: 6 }}>{c.total}u·{c.built}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Tag label={c.cls} color={c.cls==="A"?C.green:c.cls==="B+"?C.yellow:C.dim} size="xs" />
-          </div>
+          <div style={{ color: c.cls==="A"?C.green:c.cls==="B+"?C.yellow:C.dim, fontSize: 9, fontFamily: mono,
+            fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{c.cls}</div>
           {UT_META.map(ut => {
             const pct = c.units[ut.key].mix;
             return (
-              <div key={ut.key} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                <span style={{ color: pct===0?C.faint:C.text, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 600 }}>
+              <div key={ut.key} style={{ textAlign: "right" }}>
+                <span style={{ color: pct===0?C.faint:C.text, fontFamily: mono, fontSize: 11, fontWeight: 600 }}>
                   {pct > 0 ? `${pct}%` : "—"}
                 </span>
-                <div style={{ width: 52, height: 3, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min(100, pct * 2.1)}%`, height: "100%", background: ut.color + "70", borderRadius: 2 }} />
+                <div style={{ width: "100%", height: 2, background: C.muted, borderRadius: 1, overflow: "hidden", marginTop: 2 }}>
+                  <div style={{ width: `${Math.min(100, pct * 2)}%`, height: "100%", background: ut.color + "70" }} />
                 </div>
               </div>
             );
           })}
         </div>
       ))}
-      <div style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-        padding: "10px 20px", background: "#0A0E17", borderTop: `2px solid ${C.border}` }}>
-        <div style={{ color: C.dim, fontSize: 12, fontWeight: 700 }}>Comp Average</div>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "6px 16px",
+        background: "#0A0E17", borderTop: `2px solid ${C.border}` }}>
+        <div style={{ color: C.dim, fontSize: 11, fontWeight: 700 }}>Comp Average</div>
         <div />
         {UT_META.map(ut => (
           <div key={ut.key} style={{ textAlign: "right", color: ut.color,
-            fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
+            fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
             {compAvg(ut.key, comps).mix.toFixed(1)}%
           </div>
         ))}
@@ -1210,38 +1186,42 @@ function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) 
 //  TAB 5B — RENT × SF SCATTER
 // ─────────────────────────────────────────────────────────
 function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Program; filterUT: string; setFilterUT: (v: string) => void; comps: CompData[] }) {
+  const mono = "var(--bt-mono)";
   const all = buildScatter(program, comps);
   const pts = filterUT === "all" ? all : all.filter(p => p.utKey === filterUT);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M05 · M15" title="Rent vs Unit Size"
-          sub="Orange = your program (updates live). Dot above the cluster = premium extraction." />
-        <div style={{ display: "flex", gap: 5 }}>
-          {[{key:"all",label:"All",color:C.dim},...UT_META].map(ut => (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Rent vs Unit Size</span>
+        </div>
+        <div style={{ display: "flex", gap: 3 }}>
+          {[{key:"all",label:"All",abbr:"ALL",color:C.dim},...UT_META].map(ut => (
             <button key={ut.key} onClick={() => setFilterUT(ut.key)} style={{
               background: filterUT===ut.key ? (ut.color||C.dim)+"22" : "transparent",
               border: `1px solid ${filterUT===ut.key ? (ut.color||C.dim) : C.border}`,
-              borderRadius: 5, padding: "4px 10px",
+              borderRadius: 3, padding: "3px 8px",
               color: filterUT===ut.key ? (ut.color||C.text) : C.faint,
-              fontSize: 10, fontFamily: "var(--bt-mono)", fontWeight: 700, cursor: "pointer",
-            }}>{ut.label||"All"}</button>
+              fontSize: 9, fontFamily: mono, fontWeight: 700, cursor: "pointer",
+            }}>{ut.abbr||"ALL"}</button>
           ))}
         </div>
       </div>
-      <div style={{ padding: "16px 20px" }}>
-        <ResponsiveContainer width="100%" height={270}>
-          <ScatterChart margin={{ top: 8, right: 20, bottom: 22, left: 10 }}>
-            <CartesianGrid stroke={C.faint} strokeDasharray="3 3" strokeOpacity={0.3} />
+      <div style={{ padding: "8px 14px" }}>
+        <ResponsiveContainer width="100%" height={220}>
+          <ScatterChart margin={{ top: 6, right: 16, bottom: 18, left: 6 }}>
+            <CartesianGrid stroke={C.faint} strokeDasharray="3 3" strokeOpacity={0.2} />
             <XAxis type="number" dataKey="x" name="SF" domain={["dataMin - 60","dataMax + 60"]}
-              tick={{ fill: C.dim, fontSize: 10 }} tickLine={false} axisLine={{ stroke: C.muted }}
-              label={{ value: "Unit SF", position: "insideBottom", offset: -12, fill: C.faint, fontSize: 11 }} />
+              tick={{ fill: C.dim, fontSize: 9, fontFamily: mono }} tickLine={false} axisLine={{ stroke: C.muted }}
+              label={{ value: "SF", position: "insideBottom", offset: -10, fill: C.faint, fontSize: 9 }} />
             <YAxis type="number" dataKey="y" name="Rent" domain={[1000,"dataMax + 200"]}
-              tick={{ fill: C.dim, fontSize: 10 }} tickLine={false} axisLine={{ stroke: C.muted }}
+              tick={{ fill: C.dim, fontSize: 9, fontFamily: mono }} tickLine={false} axisLine={{ stroke: C.muted }}
               tickFormatter={v => `$${(v/1000).toFixed(1)}k`}
-              label={{ value: "Rent/mo", angle: -90, position: "insideLeft", offset: 15, fill: C.faint, fontSize: 11 }} />
+              label={{ value: "$/mo", angle: -90, position: "insideLeft", offset: 12, fill: C.faint, fontSize: 9 }} />
             <ZAxis range={[40,40]} />
             <Tooltip content={<ScatterTip />} />
             {UT_META.map(ut => {
@@ -1251,17 +1231,17 @@ function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Pro
             <Scatter data={pts.filter(p => p.isSubject)} shape={<ScatterDot />} />
           </ScatterChart>
         </ResponsiveContainer>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", gap: 12, paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
           {UT_META.map(ut => (
-            <div key={ut.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: ut.color, opacity: 0.7 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>{ut.label}</span>
+            <div key={ut.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: ut.color, opacity: 0.7 }} />
+              <span style={{ color: C.dim, fontSize: 9 }}>{ut.abbr}</span>
             </div>
           ))}
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.subject,
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.subject,
               border: "2px solid white", boxSizing: "border-box" }} />
-            <span style={{ color: C.subject, fontSize: 11, fontWeight: 700 }}>Your Program</span>
+            <span style={{ color: C.subject, fontSize: 9, fontWeight: 700 }}>Subject</span>
           </div>
         </div>
       </div>
@@ -1273,19 +1253,22 @@ function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Pro
 //  TAB 5C — COMP DETAIL TABLE
 // ─────────────────────────────────────────────────────────
 function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKey: UnitKey; setUtKey: (k: UnitKey) => void; comps: CompData[] }) {
+  const mono = "var(--bt-mono)";
   const ut  = UT_META.find(u => u.key === utKey) || UT_META[1];
   const su  = program.units[ut.key];
   const avg = compAvg(ut.key, comps);
-  const gridTpl = "1fr 56px 88px 94px 68px 72px 72px 68px 90px";
+  const gridTpl = "1fr 44px 70px 76px 56px 56px 50px 50px 72px";
 
-  function PosTags({ rent }: { rent: number }) {
-    if (!rent || !avg.rent) return <span style={{ color: C.faint }}>—</span>;
+  function PosTag({ rent }: { rent: number }) {
+    if (!rent || !avg.rent) return <span style={{ color: C.faint, fontSize: 9 }}>—</span>;
     const pct = (rent - avg.rent) / avg.rent * 100;
     const color = pct > 3 ? C.green : pct < -3 ? C.red : C.yellow;
     return (
       <div style={{ textAlign: "right" }}>
-        <Tag label={pct > 3 ? "PREMIUM" : pct < -3 ? "DISCOUNT" : "AT MKT"} color={color} size="xs" />
-        <div style={{ color, fontFamily: "var(--bt-mono)", fontSize: 10, marginTop: 2 }}>
+        <span style={{ color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
+          {pct > 3 ? "PREM" : pct < -3 ? "DISC" : "MKT"}
+        </span>
+        <div style={{ color, fontFamily: mono, fontSize: 9 }}>
           {pct > 0 ? "+" : ""}{pct.toFixed(1)}%
         </div>
       </div>
@@ -1293,131 +1276,112 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
   }
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M05 · M15 · M07" title={`Comp Detail — ${ut.label}`}
-          sub="Subject row = your live program. Deltas vs comp average shown in small text." />
-        <div style={{ display: "flex", gap: 5 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
+          <span style={{ color: C.border }}>·</span>
+          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Comp Detail</span>
+          <span style={{ color: C.dim, fontSize: 9 }}>subject = live program</span>
+        </div>
+        <div style={{ display: "flex", gap: 3 }}>
           {UT_META.map(u => (
             <button key={u.key} onClick={() => setUtKey(u.key)} style={{
               background: utKey===u.key ? u.color+"20" : "transparent",
               border: `1px solid ${utKey===u.key ? u.color : C.border}`,
-              borderRadius: 5, padding: "4px 10px", color: utKey===u.key ? u.color : C.faint,
-              fontSize: 10, fontFamily: "var(--bt-mono)", fontWeight: 700, cursor: "pointer",
+              borderRadius: 3, padding: "3px 8px", color: utKey===u.key ? u.color : C.faint,
+              fontSize: 9, fontFamily: mono, fontWeight: 700, cursor: "pointer",
             }}>{u.abbr}</button>
           ))}
         </div>
       </div>
 
-      {/* Headers */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10, padding: "7px 20px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "5px 16px",
         background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
-        {["Property","Mix","Unit SF","Rent/mo","Rent/SF","Vacancy","DOM","Conc","Position"].map((h, i) => (
-          <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)",
-            textAlign: i === 0 ? "left" : "right" }}>{h}</div>
+        {["PROPERTY","MIX","SF","RENT","$/SF","VAC","DOM","CONC","POS"].map((h, i) => (
+          <div key={i} style={{ color: C.faint, fontSize: 8, fontFamily: mono, fontWeight: 700,
+            letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</div>
         ))}
       </div>
 
-      {/* Subject */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10, padding: "11px 20px",
-        background: "#FF8C4208", borderBottom: `1px solid ${C.border}`,
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "7px 16px",
+        background: C.subject + "08", borderBottom: `1px solid ${C.border}`,
         borderLeft: `3px solid ${C.subject}`, alignItems: "center" }}>
         <div>
-          <div style={{ color: C.subject, fontSize: 12, fontWeight: 700 }}>★ Subject (Program)</div>
-          <div style={{ color: C.faint, fontSize: 10 }}>Proposed · 2025</div>
+          <span style={{ color: C.subject, fontSize: 11, fontWeight: 700 }}>★ Subject</span>
+          <span style={{ color: C.faint, fontSize: 9, marginLeft: 4 }}>Proposed</span>
         </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 700 }}>{su.mix}%</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{su.mix}%</div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ color: C.subject, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 700 }}>{su.sf.toLocaleString()}</div>
-          {avg.sf > 0 && <Delt value={su.sf - avg.sf} unit=" SF" />}
+          <div style={{ color: C.subject, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{su.sf.toLocaleString()}</div>
+          {avg.sf > 0 && <Delt value={su.sf - avg.sf} />}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ color: C.subject, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 700 }}>${su.rent.toLocaleString()}</div>
+          <div style={{ color: C.subject, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>${su.rent.toLocaleString()}</div>
           {avg.rent > 0 && <Delt value={su.rent - avg.rent} unit="$" />}
         </div>
-        <div style={{ textAlign: "right", color: C.subject, fontFamily: "var(--bt-mono)", fontSize: 12 }}>
+        <div style={{ textAlign: "right", color: C.subject, fontFamily: mono, fontSize: 10 }}>
           {su.sf ? `$${(su.rent/su.sf).toFixed(2)}` : "—"}
         </div>
-        <div style={{ textAlign: "right", color: C.faint, fontSize: 11 }}>—</div>
-        <div style={{ textAlign: "right", color: C.faint, fontSize: 11 }}>—</div>
-        <div style={{ textAlign: "right", color: C.faint, fontSize: 11 }}>—</div>
-        <PosTags rent={su.rent} />
+        <div style={{ textAlign: "right", color: C.faint, fontSize: 10 }}>—</div>
+        <div style={{ textAlign: "right", color: C.faint, fontSize: 10 }}>—</div>
+        <div style={{ textAlign: "right", color: C.faint, fontSize: 10 }}>—</div>
+        <PosTag rent={su.rent} />
       </div>
 
-      {/* Comp rows */}
       {comps.filter(c => c.units[ut.key].mix > 0 || c.units[ut.key].sf > 0).map((c, ri) => {
         const u = c.units[ut.key];
         const psf = u.sf ? +(u.rent/u.sf).toFixed(2) : null;
         return (
-          <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10,
-            padding: "11px 20px", borderBottom: `1px solid ${C.border}`,
-            background: ri%2===0 ? "transparent" : "#1A1F2E40",
+          <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6,
+            padding: "6px 16px", borderBottom: `1px solid ${C.border}40`,
+            background: ri%2===0 ? "transparent" : "#1A1F2E10",
             borderLeft: "3px solid transparent", alignItems: "center" }}>
             <div>
-              <div style={{ color: C.text, fontSize: 12 }}>{c.name}</div>
-              <div style={{ color: C.faint, fontSize: 10 }}>{c.built} · {c.cls}</div>
+              <span style={{ color: C.text, fontSize: 11 }}>{c.name}</span>
+              <span style={{ color: C.faint, fontSize: 9, marginLeft: 4 }}>{c.built}·{c.cls}</span>
             </div>
-            <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)",
-              fontSize: 12, fontWeight: 700 }}>{u.mix > 0 ? `${u.mix}%` : "—"}</div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.text, fontFamily: "var(--bt-mono)", fontSize: 12 }}>{u.sf > 0 ? u.sf.toLocaleString() : "—"}</div>
-              {u.sf > 0 && avg.sf > 0 && <Delt value={u.sf - avg.sf} unit=" SF" />}
+            <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              {u.mix > 0 ? `${u.mix}%` : "—"}
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.text, fontFamily: "var(--bt-mono)", fontSize: 13, fontWeight: 700 }}>
+              <div style={{ color: C.text, fontFamily: mono, fontSize: 11 }}>{u.sf > 0 ? u.sf.toLocaleString() : "—"}</div>
+              {u.sf > 0 && avg.sf > 0 && <Delt value={u.sf - avg.sf} />}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
                 {u.rent > 0 ? `$${u.rent.toLocaleString()}` : "—"}
               </div>
               {u.rent > 0 && avg.rent > 0 && <Delt value={u.rent - avg.rent} unit="$" />}
             </div>
-            <div style={{ textAlign: "right", color: C.dim, fontFamily: "var(--bt-mono)", fontSize: 12 }}>
+            <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 10 }}>
               {psf ? `$${psf}` : "—"}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.vac,"vac"), fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-                {u.vac > 0 ? `${u.vac}%` : "—"}
-              </span>
+            <div style={{ textAlign: "right", color: sigColor(u.vac,"vac"), fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              {u.vac > 0 ? `${u.vac}%` : "—"}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.dom,"dom"), fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-                {u.dom > 0 ? `${u.dom}d` : "—"}
-              </span>
+            <div style={{ textAlign: "right", color: sigColor(u.dom,"dom"), fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              {u.dom > 0 ? `${u.dom}d` : "—"}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.conc,"conc"), fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-                {u.conc > 0 ? `${u.conc}wk` : "—"}
-              </span>
+            <div style={{ textAlign: "right", color: sigColor(u.conc,"conc"), fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              {u.conc > 0 ? `${u.conc}wk` : "—"}
             </div>
-            <PosTags rent={u.rent} />
+            <PosTag rent={u.rent} />
           </div>
         );
       })}
 
-      {/* Avg row */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10, padding: "10px 20px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "6px 16px",
         background: "#0A0E17", borderTop: `2px solid ${C.border}`, alignItems: "center" }}>
-        <div style={{ color: C.dim, fontSize: 12, fontWeight: 700 }}>Comp Average</div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          {avg.mix.toFixed(1)}%
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          {avg.sf.toLocaleString()}
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          ${avg.rent.toLocaleString()}
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          {avg.sf ? `$${(avg.rent/avg.sf).toFixed(2)}` : "—"}
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          {avg.vac.toFixed(1)}%
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          {Math.round(avg.dom)}d
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 700 }}>
-          {avg.conc.toFixed(1)}wk
-        </div>
+        <div style={{ color: C.dim, fontSize: 11, fontWeight: 700 }}>Comp Avg</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{avg.mix.toFixed(1)}%</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{avg.sf.toLocaleString()}</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>${avg.rent.toLocaleString()}</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{avg.sf ? `$${(avg.rent/avg.sf).toFixed(2)}` : "—"}</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{avg.vac.toFixed(1)}%</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{Math.round(avg.dom)}d</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{avg.conc.toFixed(1)}wk</div>
         <div />
       </div>
     </div>
