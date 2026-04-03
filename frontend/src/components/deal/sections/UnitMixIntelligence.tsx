@@ -347,13 +347,13 @@ function Delt({ value, unit = "" }: { value: number | null | undefined; unit?: s
 
 function SecLabel({ mod, title, sub }: { mod: string; title: string; sub?: string }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2 }}>
-        <span style={{ color: C.blue, fontFamily: "var(--bt-mono)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>{mod}</span>
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
+        <span style={{ color: C.blue, fontFamily: "var(--bt-mono)", fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>{mod}</span>
         <span style={{ color: C.border }}>·</span>
-        <span style={{ color: C.text, fontSize: 13, fontWeight: 700 }}>{title}</span>
+        <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>{title}</span>
       </div>
-      {sub && <p style={{ color: C.dim, fontSize: 11, margin: 0 }}>{sub}</p>}
+      {sub && <p style={{ color: C.dim, fontSize: 10, margin: 0 }}>{sub}</p>}
     </div>
   );
 }
@@ -362,11 +362,11 @@ function NumInput({ value, onChange, min, max, step = 1, width = 60, suffix = ""
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 3,
       background: accent ? C.subject + "14" : C.faint,
-      border: `1px solid ${accent ? C.subject + "55" : C.border}`, borderRadius: 5, padding: "3px 8px" }}>
+      border: `1px solid ${accent ? C.subject + "55" : C.border}`, borderRadius: 4, padding: "3px 8px" }}>
       <input type="number" value={value} min={min} max={max} step={step}
         onChange={e => onChange(Number(e.target.value))}
         style={{ width, background: "none", border: "none", outline: "none",
-          color: accent ? C.subject : C.text, fontFamily: "var(--bt-mono)", fontSize: 13,
+          color: accent ? C.subject : C.text, fontFamily: "var(--bt-mono)", fontSize: 11,
           fontWeight: 700, textAlign: "right" }} />
       {suffix && <span style={{ color: C.dim, fontSize: 11 }}>{suffix}</span>}
     </div>
@@ -404,8 +404,8 @@ function MiniLine({ data, dataKey, color }: { data: any[]; dataKey: string; colo
 function ChartTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: "#0a1827", border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 12px" }}>
-      <div style={{ color: C.dim, fontSize: 10, fontFamily: "var(--bt-mono)", marginBottom: 4 }}>{label}</div>
+    <div style={{ background: "#0a1827", border: `1px solid ${C.border}`, borderRadius: 4, padding: "6px 10px" }}>
+      <div style={{ color: C.dim, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 3 }}>{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color || C.text, fontSize: 11, fontFamily: "var(--bt-mono)" }}>
           {p.name}: {p.value}
@@ -427,11 +427,11 @@ function ScatterTip({ active, payload }: any) {
   const d = payload[0]?.payload;
   if (!d) return null;
   return (
-    <div style={{ background: "#0a1827", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
-      <div style={{ color: d.color, fontFamily: "var(--bt-mono)", fontSize: 10, fontWeight: 700, marginBottom: 5 }}>
+    <div style={{ background: "#0a1827", border: `1px solid ${C.border}`, borderRadius: 4, padding: "6px 10px" }}>
+      <div style={{ color: d.color, fontFamily: "var(--bt-mono)", fontSize: 9, fontWeight: 700, marginBottom: 3 }}>
         {d.unitType} · {d.name}
       </div>
-      <div style={{ color: C.text, fontSize: 12 }}>
+      <div style={{ color: C.text, fontSize: 11 }}>
         {d.x.toLocaleString()} SF → <span style={{ color: C.green, fontWeight: 700 }}>${d.y.toLocaleString()}/mo</span>
       </div>
       <div style={{ color: C.dim, fontSize: 11 }}>${d.psf}/SF</div>
@@ -447,13 +447,13 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
   const mono = "var(--bt-mono)";
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M07</span>
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M07</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Demand by Unit Type</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Demand by Unit Type</span>
         </div>
-        <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>VAC · DOM · CONC AVERAGED ACROSS TRADE AREA</span>
+        <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>TRADE AREA AVG</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.border }}>
         {inventory.map(u => {
@@ -462,47 +462,44 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
           const vacDelta = trend.length >= 12 ? trend[11].vac - trend[0].vac : 0;
           const rentDelta = trend.length >= 12 ? trend[11].rent - trend[0].rent : 0;
           return (
-            <div key={u.key} style={{ background: C.card, padding: "10px 12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <div style={{ width: 6, height: 6, background: u.color, borderRadius: 1 }} />
-                  <span style={{ color: u.color, fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: "0.08em" }}>{u.abbr}</span>
-                  <span style={{ color: C.dim, fontSize: 9 }}>{u.sfRange}</span>
+            <div key={u.key} style={{ background: C.card, padding: "8px 10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <div style={{ width: 5, height: 5, background: u.color, borderRadius: 1 }} />
+                  <span style={{ color: u.color, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.06em" }}>{u.abbr}</span>
+                  <span style={{ color: C.dim, fontSize: 8 }}>{u.sfRange}</span>
                 </div>
                 <Tag label={dl.label} color={dl.color} size="xs" />
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                  <span style={{ color: dl.color, fontFamily: mono, fontSize: 20, fontWeight: 800, lineHeight: 1 }}>{u.demandScore}</span>
-                  <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>/ 100</span>
-                </div>
-                <div style={{ flex: 1, height: 4, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                <span style={{ color: dl.color, fontFamily: mono, fontSize: 13, fontWeight: 800, lineHeight: 1 }}>{u.demandScore}</span>
+                <div style={{ flex: 1, height: 3, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
                   <div style={{ width: `${u.demandScore}%`, height: "100%", background: dl.color, borderRadius: 2 }} />
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 8px", marginBottom: 6 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 6px", marginBottom: 4 }}>
                 {([
                   { label: "VAC", val: u.avgVac.toFixed(1), unit: "%", sig: "vac" as SigKey, delta: vacDelta, dUnit: "pp" },
                   { label: "DOM", val: u.avgDOM.toFixed(0), unit: "d", sig: "dom" as SigKey },
                   { label: "CONC", val: u.avgConc.toFixed(1), unit: "wk", sig: "conc" as SigKey },
                   { label: "RENT", val: `$${u.avgRent.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`, unit: "", sig: null },
                 ] as const).map((m, mi) => (
-                  <div key={mi} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
-                    <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>{m.label}</span>
-                    <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                  <div key={mi} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "1px 0" }}>
+                    <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>{m.label}</span>
+                    <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
                       <span style={{ color: m.sig ? sigColor(parseFloat(m.val), m.sig) : C.text,
-                        fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+                        fontFamily: mono, fontSize: 10, fontWeight: 700 }}>
                         {m.val}{m.unit}
                       </span>
                       {m.delta !== undefined && m.delta !== 0 && (
-                        <span style={{ color: m.delta > 0 ? C.red : C.green, fontFamily: mono, fontSize: 8 }}>
+                        <span style={{ color: m.delta > 0 ? C.red : C.green, fontFamily: mono, fontSize: 7 }}>
                           {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
                         </span>
                       )}
                       {mi === 3 && rentDelta !== 0 && (
-                        <span style={{ color: rentDelta > 0 ? C.green : C.red, fontFamily: mono, fontSize: 8 }}>
+                        <span style={{ color: rentDelta > 0 ? C.green : C.red, fontFamily: mono, fontSize: 7 }}>
                           {rentDelta > 0 ? "+" : ""}${rentDelta}
                         </span>
                       )}
@@ -511,7 +508,7 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
                 ))}
               </div>
 
-              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 4 }}>
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 3 }}>
                 <MiniLine data={trendData[u.key]} dataKey="vac" color={u.color} />
               </div>
             </div>
@@ -532,29 +529,29 @@ function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
   }));
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>DERIVED</span>
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>DERIVED</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Supply / Demand Gap</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Supply / Demand Gap</span>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
             <div style={{ width: 8, height: 3, background: C.muted, borderRadius: 1 }} />
-            <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>SUPPLY</span>
+            <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>SUPPLY</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
             <div style={{ width: 8, height: 3, background: C.blue, borderRadius: 1 }} />
-            <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>DEMAND</span>
+            <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>DEMAND</span>
           </div>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 1, background: C.border }}>
-        <div style={{ background: C.card, padding: "10px 14px" }}>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={chartData} barCategoryGap="20%">
-              <XAxis dataKey="name" tick={{ fill: C.dim, fontSize: 10, fontFamily: mono }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.faint, fontSize: 9 }} axisLine={false} tickLine={false} width={28}
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 1, background: C.border }}>
+        <div style={{ background: C.card, padding: "8px 10px" }}>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={chartData} barCategoryGap="18%">
+              <XAxis dataKey="name" tick={{ fill: C.dim, fontSize: 9, fontFamily: mono }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: C.faint, fontSize: 8 }} axisLine={false} tickLine={false} width={24}
                 tickFormatter={v => `${v}%`} />
               <Tooltip content={<ChartTip />} />
               <Bar dataKey="supply" name="Supply %" radius={[2,2,0,0]}>
@@ -567,16 +564,16 @@ function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
           </ResponsiveContainer>
         </div>
 
-        <div style={{ background: "#0A0E17", padding: "10px 14px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ background: "#0A0E17", padding: "8px 10px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {gaps.map(g => {
               const dl = demandLabel(g.demandScore);
               return (
-                <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 6, height: 6, background: g.color, borderRadius: 1, flexShrink: 0 }} />
-                  <span style={{ color: C.text, fontSize: 11, fontWeight: 600, minWidth: 40 }}>{g.abbr}</span>
+                <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 5, height: 5, background: g.color, borderRadius: 1, flexShrink: 0 }} />
+                  <span style={{ color: C.text, fontSize: 10, fontWeight: 600, minWidth: 36 }}>{g.abbr}</span>
                   <Tag label={dl.label} color={dl.color} size="xs" />
-                  <span style={{ color: C.dim, fontSize: 9, fontFamily: mono, minWidth: 90 }}>
+                  <span style={{ color: C.dim, fontSize: 8, fontFamily: mono, minWidth: 80 }}>
                     S:{g.supplyShare.toFixed(1)}% D:<span style={{ color: g.color }}>{g.demandShare.toFixed(1)}%</span>
                   </span>
                   <div style={{ flex: 1 }}><GapBar gap={g.gap} /></div>
@@ -584,14 +581,14 @@ function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
               );
             })}
           </div>
-          <div style={{ marginTop: 8, padding: "6px 8px", background: C.card, borderRadius: 3,
+          <div style={{ marginTop: 6, padding: "4px 8px", background: C.card, borderRadius: 3,
             border: `1px solid ${C.border}` }}>
             {gaps.filter(g => Math.abs(g.gap) > 3).sort((a, b) => b.gap - a.gap).map(g => (
-              <div key={g.key} style={{ display: "flex", gap: 5, marginBottom: 3, alignItems: "flex-start" }}>
-                <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: mono, fontSize: 10, flexShrink: 0 }}>
+              <div key={g.key} style={{ display: "flex", gap: 4, marginBottom: 2, alignItems: "flex-start" }}>
+                <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: mono, fontSize: 9, flexShrink: 0 }}>
                   {g.gap > 0 ? "▲" : "▼"}
                 </span>
-                <span style={{ color: C.dim, fontSize: 10, lineHeight: 1.4 }}>
+                <span style={{ color: C.dim, fontSize: 9, lineHeight: 1.4 }}>
                   <span style={{ color: g.color, fontWeight: 700 }}>{g.abbr}</span>
                   {g.gap > 0
                     ? ` undersupplied ${g.gap.toFixed(1)}pp — fast velocity, low vac`
@@ -628,13 +625,13 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 
   return (
     <div style={{ background: C.card, border: `1px solid ${sfOver || unitOver ? C.red + "60" : C.border}`,
-      borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`,
+      borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: "var(--bt-mono)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M02</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: "var(--bt-mono)", fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M02</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>Zoning Constraints</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Zoning Constraints</span>
           <Tag label={zoning.zoningCode} color={C.blue} size="xs" />
           <Tag label={`${zoning.confidence}% CONF`} color={C.green} size="xs" />
           {zoning.excludesParking && <Tag label="SF EXCL. PARKING" color={C.yellow} size="xs" />}
@@ -649,9 +646,9 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.border }}>
         {fields.map(f => (
-          <div key={f.key} style={{ background: C.card, padding: "14px 18px" }}>
-            <div style={{ color: C.dim, fontSize: 10, marginBottom: 10 }}>{f.label}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+          <div key={f.key} style={{ background: C.card, padding: "8px 12px" }}>
+            <div style={{ color: C.dim, fontSize: 9, marginBottom: 6 }}>{f.label}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 6 }}>
               <div>
                 <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 4 }}>ALLOWED</div>
                 <NumInput value={f.val} min={1} max={9999999} width={f.w} suffix={f.suffix}
@@ -661,7 +658,7 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
                 <div style={{ textAlign: "right" }}>
                   <div style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)", marginBottom: 4 }}>YOUR PROGRAM</div>
                   <div style={{ color: f.over ? C.red : C.text, fontFamily: "var(--bt-mono)",
-                    fontSize: 13, fontWeight: 700 }}>
+                    fontSize: 11, fontWeight: 700 }}>
                     {Math.round(f.your).toLocaleString()}
                     <span style={{ color: C.dim, fontSize: 10, marginLeft: 3 }}>{f.suffix}</span>
                   </div>
@@ -688,8 +685,8 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
       </div>
 
       {!sfOver && !unitOver && (
-        <div style={{ padding: "8px 20px", background: "#0A0E17",
-          display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ padding: "6px 12px", background: "#0A0E17",
+          display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ color: C.faint, fontSize: 9, fontFamily: "var(--bt-mono)" }}>REMAINING:</span>
           <span style={{ color: C.green, fontFamily: "var(--bt-mono)", fontSize: 11 }}>
             {(zoning.maxNetSF - computed.totalSF).toLocaleString()} SF unused
@@ -738,57 +735,57 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
   }
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
 
-      <div style={{ padding: "10px 16px", borderBottom: `1px solid ${C.border}`,
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M03</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M03</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>Unit Program</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Unit Program</span>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           {!mixOk && <Tag label={`MIX ${mixTotal}%`} color={C.red} />}
           <button onClick={applyOptimalMix} style={{ background: C.blue + "14", border: `1px solid ${C.blue}35`,
-            borderRadius: 5, padding: "3px 10px", color: C.blue, fontSize: 9, fontFamily: mono,
+            borderRadius: 4, padding: "3px 8px", color: C.blue, fontSize: 8, fontFamily: mono,
             fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em" }}>AI OPTIMIZE</button>
           <button onClick={resetProgram} style={{ background: "none",
-            border: `1px solid ${C.border}`, borderRadius: 5, padding: "3px 10px",
-            color: C.faint, fontSize: 9, fontFamily: mono, cursor: "pointer" }}>RESET</button>
+            border: `1px solid ${C.border}`, borderRadius: 4, padding: "3px 8px",
+            color: C.faint, fontSize: 8, fontFamily: mono, cursor: "pointer" }}>RESET</button>
         </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: C.border,
         borderBottom: `1px solid ${C.border}` }}>
-        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
-          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>TOTAL UNITS</div>
+        <div style={{ background: "#0A0E17", padding: "6px 12px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 3 }}>TOTAL UNITS</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
             <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="" width={44} accent
               onChange={v => onProgramChange({ ...program, totalUnits: v })} />
-            <span style={{ color: C.faint, fontSize: 10, fontFamily: mono }}>/ {zoning.maxUnits}</span>
+            <span style={{ color: C.faint, fontSize: 9, fontFamily: mono }}>/ {zoning.maxUnits}</span>
           </div>
         </div>
-        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
-          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>NET SF</div>
-          <div style={{ color: sfOver ? C.red : C.text, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+        <div style={{ background: "#0A0E17", padding: "6px 12px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 3 }}>NET SF</div>
+          <div style={{ color: sfOver ? C.red : C.text, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>
             {totalSF.toLocaleString()}
           </div>
         </div>
-        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
-          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>GROSS REV</div>
-          <div style={{ color: C.green, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+        <div style={{ background: "#0A0E17", padding: "6px 12px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 3 }}>GROSS REV</div>
+          <div style={{ color: C.green, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>
             ${(grossRevPA/1e6).toFixed(2)}M
           </div>
         </div>
-        <div style={{ background: "#0A0E17", padding: "8px 14px" }}>
-          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 4 }}>WTD $/SF</div>
-          <div style={{ color: C.yellow, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+        <div style={{ background: "#0A0E17", padding: "6px 12px" }}>
+          <div style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.08em", marginBottom: 3 }}>WTD $/SF</div>
+          <div style={{ color: C.yellow, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>
             ${wtdPSF.toFixed(2)}
           </div>
         </div>
       </div>
 
-      <div style={{ padding: "0 14px" }}>
+      <div style={{ padding: "0 12px" }}>
         {UT_META.map((ut, ri) => {
           const u = program.units[ut.key];
           const avg = compAvg(ut.key, comps);
@@ -802,7 +799,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
             <div key={ut.key} style={{ padding: "12px 0", borderBottom: ri < UT_META.length - 1 ? `1px solid ${C.border}40` : "none" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                 <div style={{ width: 8, height: 8, borderRadius: 2, background: ut.color, flexShrink: 0 }} />
-                <span style={{ color: ut.color, fontSize: 12, fontWeight: 700, fontFamily: mono, minWidth: 54 }}>{ut.label}</span>
+                <span style={{ color: ut.color, fontSize: 11, fontWeight: 700, fontFamily: mono, minWidth: 54 }}>{ut.label}</span>
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ flex: 1, height: 6, background: C.muted, borderRadius: 3, overflow: "hidden", maxWidth: 140 }}>
                     <div style={{ width: `${Math.min(u.mix, 100)}%`, height: "100%", background: ut.color + "aa",
@@ -813,16 +810,16 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.muted, borderRadius: 4, padding: "2px 8px" }}>
                   <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>×</span>
-                  <span style={{ color: C.text, fontSize: 13, fontWeight: 700, fontFamily: mono }}>{count}</span>
+                  <span style={{ color: C.text, fontSize: 11, fontWeight: 700, fontFamily: mono }}>{count}</span>
                 </div>
-                <div style={{ marginLeft: "auto", color: C.green, fontSize: 13, fontWeight: 700, fontFamily: mono }}>
+                <div style={{ marginLeft: "auto", color: C.green, fontSize: 11, fontWeight: 700, fontFamily: mono }}>
                   ${(annRev/1000).toFixed(0)}K
                   <span style={{ color: C.faint, fontSize: 9, marginLeft: 2 }}>/yr</span>
                 </div>
               </div>
 
               <div style={{ display: "flex", gap: 10, marginLeft: 18 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#0A0E17", borderRadius: 5, padding: "4px 10px", border: `1px solid ${C.border}40` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#0A0E17", borderRadius: 4, padding: "4px 8px", border: `1px solid ${C.border}40` }}>
                   <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>SF</span>
                   <NumInput value={u.sf} min={200} max={3000} step={5} suffix="" width={44} accent onChange={v => setUnit(ut.key,"sf",v)} />
                   {avg.sf > 0 && (
@@ -831,7 +828,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
                     </span>
                   )}
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#0A0E17", borderRadius: 5, padding: "4px 10px", border: `1px solid ${C.border}40` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#0A0E17", borderRadius: 4, padding: "4px 8px", border: `1px solid ${C.border}40` }}>
                   <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>RENT</span>
                   <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={44} accent onChange={v => setUnit(ut.key,"rent",v)} />
                   {avg.rent > 0 && (
@@ -842,7 +839,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "4px 10px" }}>
                   <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>$/SF</span>
-                  <span style={{ color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>${psf}</span>
+                  <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>${psf}</span>
                 </div>
               </div>
             </div>
@@ -850,24 +847,24 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
         })}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px",
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 12px",
         background: "#0A0E17", borderTop: `2px solid ${C.border}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: C.faint, fontSize: 9, fontFamily: mono, fontWeight: 700, letterSpacing: "0.08em" }}>TOTALS</span>
-          <span style={{ color: mixOk ? C.green : C.red, fontFamily: mono, fontSize: 13, fontWeight: 800 }}>{mixTotal}%</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, fontWeight: 700, letterSpacing: "0.08em" }}>TOTALS</span>
+          <span style={{ color: mixOk ? C.green : C.red, fontFamily: mono, fontSize: 11, fontWeight: 800 }}>{mixTotal}%</span>
           <span style={{ color: C.border }}>|</span>
-          <span style={{ color: C.text, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>{program.totalUnits} units</span>
+          <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{program.totalUnits} units</span>
           <span style={{ color: C.border }}>|</span>
           <span style={{ color: C.dim, fontFamily: mono, fontSize: 11 }}>
             {Math.round(totalSF/program.totalUnits).toLocaleString()} avg SF
           </span>
         </div>
-        <span style={{ color: C.green, fontFamily: mono, fontSize: 13, fontWeight: 700 }}>
+        <span style={{ color: C.green, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
           ${(grossRevPA/1e6).toFixed(2)}M/yr
         </span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px",
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px",
         background: "#0A0E17", borderTop: `1px solid ${C.border}` }}>
         <span style={{ color: C.faint, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>SF ENVELOPE</span>
         <div style={{ flex: 1, height: 4, background: C.muted, borderRadius: 2, overflow: "hidden", maxWidth: 200 }}>
@@ -894,12 +891,12 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
   const total = inventory.reduce((s, u) => s + u.typeUnits, 0);
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M05</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Submarket Inventory</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Submarket Inventory</span>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {inventory.map(u => (
@@ -913,8 +910,8 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
           <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{total.toLocaleString()}</span>
         </div>
       </div>
-      <div style={{ padding: "8px 16px 6px" }}>
-        <div style={{ display: "flex", height: 18, borderRadius: 2, overflow: "hidden", gap: 1 }}>
+      <div style={{ padding: "6px 12px 4px" }}>
+        <div style={{ display: "flex", height: 16, borderRadius: 2, overflow: "hidden", gap: 1 }}>
           {inventory.map(u => (
             <div key={u.key} style={{ flex: u.supplyShare, background: u.color + "cc",
               display: "flex", alignItems: "center", justifyContent: "center",
@@ -925,7 +922,7 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
         </div>
       </div>
       <div style={{ borderTop: `1px solid ${C.border}` }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 40px repeat(4,70px) 50px", padding: "5px 16px",
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 40px repeat(4,70px) 50px", padding: "5px 12px",
           background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
           {["PROPERTY","CLS",...UT_META.map(u => u.abbr),"UNITS"].map((h, i) => (
             <div key={i} style={{ color: i >= 2 && i <= 5 ? UT_META[i-2]?.color : C.faint, fontSize: 9, fontFamily: mono,
@@ -934,7 +931,7 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
         </div>
         {comps.map((c, i) => (
           <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 40px repeat(4,70px) 50px",
-            padding: "6px 16px", borderBottom: `1px solid ${C.border}40`,
+            padding: "5px 12px", borderBottom: `1px solid ${C.border}40`,
             background: i % 2 === 0 ? "transparent" : "#1A1F2E10" }}>
             <div style={{ color: C.text, fontSize: 11 }}>{c.name}</div>
             <div style={{ color: C.dim, fontSize: 10 }}>{c.cls}</div>
@@ -966,13 +963,13 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M15</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M15</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Property Drill-Down</span>
-          <span style={{ color: C.dim, fontSize: 9 }}>sorted by vac (lowest first)</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Property Drill-Down</span>
+          <span style={{ color: C.dim, fontSize: 8 }}>sorted by vac (lowest first)</span>
         </div>
         <div style={{ display: "flex", gap: 3 }}>
           {UT_META.map(u => (
@@ -988,7 +985,7 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 40px 56px 70px 60px 70px 70px",
-        padding: "5px 16px", background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
+        padding: "5px 12px", background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
         {["PROPERTY","CLS","MIX","VAC","DOM","CONC","RENT"].map((h, i) => (
           <div key={i} style={{ color: C.faint, fontSize: 8, fontFamily: mono, fontWeight: 700,
             letterSpacing: "0.06em", textAlign: i > 0 ? "right" : "left" }}>{h}</div>
@@ -1001,7 +998,7 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
         const sigCol = u.vac <= SIG.vac.hot ? C.green : u.vac <= SIG.vac.warm ? C.yellow : C.red;
         return (
           <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 40px 56px 70px 60px 70px 70px",
-            padding: "6px 16px", borderBottom: `1px solid ${C.border}40`,
+            padding: "5px 12px", borderBottom: `1px solid ${C.border}40`,
             background: i % 2 === 0 ? "transparent" : "#1A1F2E10", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ color: sigCol, fontSize: 7 }}>{sigChar}</span>
@@ -1016,7 +1013,7 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
           </div>
         );
       })}
-      <div style={{ padding: "5px 16px", background: "#0A0E17", display: "flex", gap: 12 }}>
+      <div style={{ padding: "5px 12px", background: "#0A0E17", display: "flex", gap: 10 }}>
         <span style={{ color: C.green, fontSize: 8, fontFamily: mono }}>● HOT vac≤3%</span>
         <span style={{ color: C.yellow, fontSize: 8, fontFamily: mono }}>● WARM vac≤6%</span>
         <span style={{ color: C.red, fontSize: 8, fontFamily: mono }}>● SOFT vac&gt;6%</span>
@@ -1041,13 +1038,13 @@ function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: Unit
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M05</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>12-Month Trends</span>
-          <span style={{ color: C.dim, fontSize: 9 }}>submarket avg</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>12-Month Trends</span>
+          <span style={{ color: C.dim, fontSize: 8 }}>submarket avg</span>
         </div>
         <div style={{ display: "flex", gap: 3 }}>
           {UT_META.map(u => (
@@ -1067,11 +1064,11 @@ function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: Unit
           const delta = last - first;
           const good = m.key === "rent" ? delta > 0 : delta < 0;
           return (
-            <div key={m.key} style={{ background: "#0A0E17", padding: "8px 12px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ color: C.dim, fontSize: 9, fontFamily: mono, letterSpacing: "0.06em" }}>{m.label}</span>
+            <div key={m.key} style={{ background: "#0A0E17", padding: "6px 10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                <span style={{ color: C.dim, fontSize: 8, fontFamily: mono, letterSpacing: "0.06em" }}>{m.label}</span>
                 <div style={{ display: "flex", gap: 6, alignItems: "baseline" }}>
-                  <span style={{ color: m.color, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>
+                  <span style={{ color: m.color, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>
                     {m.fmt(last)}
                   </span>
                   <span style={{ color: good ? C.green : C.red, fontFamily: mono, fontSize: 9 }}>
@@ -1104,22 +1101,22 @@ function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) 
   const gridTpl = "1fr 36px repeat(4,80px)";
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Mix Matrix</span>
-          <span style={{ color: C.dim, fontSize: 9 }}>program vs comp set</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Mix Matrix</span>
+          <span style={{ color: C.dim, fontSize: 8 }}>program vs comp set</span>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "5px 16px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "5px 12px",
         background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
         {["PROPERTY","CLS",...UT_META.map(ut => ut.abbr)].map((h, i) => (
           <div key={i} style={{ color: i > 1 ? UT_META[i-2].color : C.faint, fontSize: 8,
             fontFamily: mono, fontWeight: 700, letterSpacing: "0.06em", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "7px 16px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "5px 12px",
         background: C.subject + "08", borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.subject}` }}>
         <div>
           <span style={{ color: C.subject, fontSize: 11, fontWeight: 700 }}>★ Subject</span>
@@ -1143,7 +1140,7 @@ function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) 
         })}
       </div>
       {comps.map((c, ri) => (
-        <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "6px 16px",
+        <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "5px 12px",
           borderBottom: `1px solid ${C.border}40`, background: ri % 2 === 0 ? "transparent" : "#1A1F2E10",
           borderLeft: "3px solid transparent" }}>
           <div>
@@ -1167,7 +1164,7 @@ function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) 
           })}
         </div>
       ))}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "6px 16px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "5px 12px",
         background: "#0A0E17", borderTop: `2px solid ${C.border}` }}>
         <div style={{ color: C.dim, fontSize: 11, fontWeight: 700 }}>Comp Average</div>
         <div />
@@ -1192,12 +1189,12 @@ function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Pro
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Rent vs Unit Size</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Rent vs Unit Size</span>
         </div>
         <div style={{ display: "flex", gap: 3 }}>
           {[{key:"all",label:"All",abbr:"ALL",color:C.dim},...UT_META].map(ut => (
@@ -1211,8 +1208,8 @@ function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Pro
           ))}
         </div>
       </div>
-      <div style={{ padding: "8px 14px" }}>
-        <ResponsiveContainer width="100%" height={220}>
+      <div style={{ padding: "6px 12px" }}>
+        <ResponsiveContainer width="100%" height={200}>
           <ScatterChart margin={{ top: 6, right: 16, bottom: 18, left: 6 }}>
             <CartesianGrid stroke={C.faint} strokeDasharray="3 3" strokeOpacity={0.2} />
             <XAxis type="number" dataKey="x" name="SF" domain={["dataMin - 60","dataMax + 60"]}
@@ -1277,13 +1274,13 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <div style={{ padding: "8px 16px", borderBottom: `1px solid ${C.border}`,
+      <div style={{ padding: "6px 12px", borderBottom: `1px solid ${C.border}`,
         display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.1em" }}>M05 · M15</span>
           <span style={{ color: C.border }}>·</span>
-          <span style={{ color: C.text, fontSize: 12, fontWeight: 700 }}>Comp Detail</span>
-          <span style={{ color: C.dim, fontSize: 9 }}>subject = live program</span>
+          <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Comp Detail</span>
+          <span style={{ color: C.dim, fontSize: 8 }}>subject = live program</span>
         </div>
         <div style={{ display: "flex", gap: 3 }}>
           {UT_META.map(u => (
@@ -1297,7 +1294,7 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "5px 16px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "5px 12px",
         background: "#0A0E17", borderBottom: `1px solid ${C.border}` }}>
         {["PROPERTY","MIX","SF","RENT","$/SF","VAC","DOM","CONC","POS"].map((h, i) => (
           <div key={i} style={{ color: C.faint, fontSize: 8, fontFamily: mono, fontWeight: 700,
@@ -1305,7 +1302,7 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "7px 16px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "5px 12px",
         background: C.subject + "08", borderBottom: `1px solid ${C.border}`,
         borderLeft: `3px solid ${C.subject}`, alignItems: "center" }}>
         <div>
@@ -1335,7 +1332,7 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
         const psf = u.sf ? +(u.rent/u.sf).toFixed(2) : null;
         return (
           <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6,
-            padding: "6px 16px", borderBottom: `1px solid ${C.border}40`,
+            padding: "5px 12px", borderBottom: `1px solid ${C.border}40`,
             background: ri%2===0 ? "transparent" : "#1A1F2E10",
             borderLeft: "3px solid transparent", alignItems: "center" }}>
             <div>
@@ -1372,7 +1369,7 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
         );
       })}
 
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "6px 16px",
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 6, padding: "5px 12px",
         background: "#0A0E17", borderTop: `2px solid ${C.border}`, alignItems: "center" }}>
         <div style={{ color: C.dim, fontSize: 11, fontWeight: 700 }}>Comp Avg</div>
         <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{avg.mix.toFixed(1)}%</div>
@@ -1475,21 +1472,21 @@ export default function UnitMixIntelligence() {
 
       {/* HEADER */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "16px 24px 0", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        padding: "8px 12px 0", position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
           <div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-              <span style={{ color: C.blue, fontFamily: "var(--bt-mono)", fontSize: 9,
-                fontWeight: 700, letterSpacing: "0.12em" }}>M02 · M05 · M07 · M15</span>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
+              <span style={{ color: C.blue, fontFamily: "var(--bt-mono)", fontSize: 8,
+                fontWeight: 700, letterSpacing: "0.1em" }}>M02 · M05 · M07 · M15</span>
               <span style={{ color: C.border }}>|</span>
-              <span style={{ color: C.faint, fontFamily: "var(--bt-mono)", fontSize: 9 }}>
+              <span style={{ color: C.faint, fontFamily: "var(--bt-mono)", fontSize: 8 }}>
                 UNIT MIX INTELLIGENCE
               </span>
             </div>
-            <h1 style={{ color: "#f1f5f9", fontSize: 18, fontWeight: 800, margin: 0 }}>
+            <h1 style={{ color: C.text, fontSize: 15, fontWeight: 800, margin: 0 }}>
               Unit Mix & Pricing Intelligence
             </h1>
-            <p style={{ color: C.dim, fontSize: 11, margin: "2px 0 0" }}>
+            <p style={{ color: C.dim, fontSize: 10, margin: "2px 0 0" }}>
               Trade Area · {comps.length} comps ·{" "}
               {comps.reduce((s, c) => s + c.total, 0).toLocaleString()} tracked units ·
               Zoning: <span style={{ color: C.blue }}>{zoning.zoningCode}</span>
@@ -1497,18 +1494,18 @@ export default function UnitMixIntelligence() {
           </div>
 
           {/* Gap + demand pills */}
-          <div style={{ display: "flex", gap: 7 }}>
+          <div style={{ display: "flex", gap: 4 }}>
             {gaps.map(g => {
               const color = g.gap > 2 ? C.green : g.gap < -2 ? C.red : C.yellow;
               const dl = demandLabel(g.demandScore);
               return (
                 <div key={g.key} style={{ background: color+"10", border: `1px solid ${color}30`,
-                  borderRadius: 7, padding: "5px 10px", textAlign: "center" }}>
-                  <div style={{ color: g.color, fontFamily: "var(--bt-mono)", fontSize: 9, fontWeight: 700 }}>{g.abbr}</div>
-                  <div style={{ color, fontFamily: "var(--bt-mono)", fontSize: 12, fontWeight: 800 }}>
+                  borderRadius: 4, padding: "4px 8px", textAlign: "center" }}>
+                  <div style={{ color: g.color, fontFamily: "var(--bt-mono)", fontSize: 8, fontWeight: 700 }}>{g.abbr}</div>
+                  <div style={{ color, fontFamily: "var(--bt-mono)", fontSize: 11, fontWeight: 800 }}>
                     {g.gap > 0 ? "+" : ""}{g.gap.toFixed(1)}pp
                   </div>
-                  <div style={{ color: dl.color, fontSize: 9, fontFamily: "var(--bt-mono)" }}>
+                  <div style={{ color: dl.color, fontSize: 8, fontFamily: "var(--bt-mono)" }}>
                     {dl.label.slice(0,4)}
                   </div>
                 </div>
@@ -1522,9 +1519,10 @@ export default function UnitMixIntelligence() {
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: "none", border: "none",
               borderBottom: tab === t.id ? `2px solid ${C.blue}` : "2px solid transparent",
-              padding: "7px 16px", marginBottom: -1,
-              color: tab === t.id ? "#e2e8f0" : C.dim,
-              fontSize: 12, fontWeight: tab === t.id ? 700 : 400,
+              padding: "6px 14px", marginBottom: -1,
+              color: tab === t.id ? C.text : C.dim,
+              fontSize: 11, fontWeight: tab === t.id ? 700 : 400,
+              fontFamily: "var(--bt-mono)",
               cursor: "pointer", transition: "all 0.15s",
             }}>{t.label}</button>
           ))}
@@ -1532,7 +1530,7 @@ export default function UnitMixIntelligence() {
       </div>
 
       {/* BODY */}
-      <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
 
         {tab === "demand" && (
           <>

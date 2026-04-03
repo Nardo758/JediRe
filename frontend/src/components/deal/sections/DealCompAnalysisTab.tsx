@@ -68,7 +68,7 @@ function CompRow({
   comp: TieredCompProperty; rank: number;
   onToggleCompSet: (comp: TieredCompProperty) => void; toggling: boolean;
 }) {
-  const scoreColor = comp.match_score >= 70 ? '#00D26A' : comp.match_score >= 50 ? '#F5A623' : BT2.text.muted;
+  const scoreColor = comp.match_score >= 70 ? BT2.text.green : comp.match_score >= 50 ? BT2.text.amber : BT2.text.muted;
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -144,7 +144,7 @@ function TierSection({
       <button
         onClick={() => setExpanded(!expanded)}
         style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '7px 14px', background: `${config.color}08`, border: 'none', cursor: 'pointer' }}
+          padding: '6px 12px', background: `${config.color}08`, border: 'none', cursor: 'pointer' }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {expanded
@@ -339,15 +339,15 @@ const DealCompAnalysisTab: React.FC = () => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ padding: '10px 16px', background: BT2.bg.panel, borderLeft: `3px solid #A78BFA`, borderRadius: 4 }}>
+      <div style={{ padding: '8px 12px', background: BT2.bg.panel, borderLeft: `3px solid ${BT2.text.purple}`, borderRadius: 4 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 2 }}>
-              <span style={{ color: '#A78BFA', fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em' }}>F6 · COMP ANALYSIS</span>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 2 }}>
+              <span style={{ color: BT2.text.purple, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>F6 · COMP ANALYSIS</span>
               <span style={{ color: BT2.border.subtle }}>·</span>
-              <span style={{ color: BT2.text.primary, fontSize: 13, fontWeight: 700 }}>{dealInfo?.name || 'Deal'}</span>
+              <span style={{ color: BT2.text.primary, fontSize: 11, fontWeight: 700 }}>{dealInfo?.name || 'Deal'}</span>
             </div>
-            <span style={{ color: BT2.text.muted, fontSize: 9, fontFamily: mono }}>{totalComps} properties · {tierNames}</span>
+            <span style={{ color: BT2.text.muted, fontSize: 8, fontFamily: mono }}>{totalComps} properties · {tierNames}</span>
           </div>
           <button
             onClick={handleResetToDefaults}
@@ -364,10 +364,10 @@ const DealCompAnalysisTab: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ background: BT2.bg.panel, borderRadius: 4, border: `1px solid ${BT2.border.subtle}`, padding: '10px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <span style={{ color: '#00D26A', fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.08em' }}>YOUR COMP SET</span>
-          <span style={{ color: BT2.text.muted, fontSize: 9 }}>{summary.count} selected</span>
+      <div style={{ background: BT2.bg.panel, borderRadius: 4, border: `1px solid ${BT2.border.subtle}`, padding: '8px 12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <span style={{ color: '#00D26A', fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em' }}>YOUR COMP SET</span>
+          <span style={{ color: BT2.text.muted, fontSize: 8 }}>{summary.count} selected</span>
         </div>
         {summary.count > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
@@ -377,11 +377,11 @@ const DealCompAnalysisTab: React.FC = () => {
               { label: 'AVG DIST', value: summary.avgDistance != null ? `${summary.avgDistance}mi` : '—', color: BT2.text.primary },
               { label: 'AVG MATCH', value: summary.avgMatchScore ?? '—', color: BT2.text.primary },
             ] as const).map((kpi, i) => (
-              <div key={i} style={{ padding: '8px 10px', textAlign: 'center',
+              <div key={i} style={{ padding: '6px 8px', textAlign: 'center',
                 background: i === 0 ? '#00D26A0A' : BT2.bg.header,
                 border: `1px solid ${i === 0 ? '#00D26A30' : BT2.border.subtle}`, borderRadius: 3 }}>
-                <div style={{ color: BT2.text.muted, fontSize: 8, fontFamily: mono, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 3 }}>{kpi.label}</div>
-                <div style={{ color: kpi.color, fontSize: 16, fontWeight: 700, fontFamily: mono }}>{kpi.value}</div>
+                <div style={{ color: BT2.text.muted, fontSize: 7, fontFamily: mono, fontWeight: 700, letterSpacing: '0.06em', marginBottom: 2 }}>{kpi.label}</div>
+                <div style={{ color: kpi.color, fontSize: 12, fontWeight: 700, fontFamily: mono }}>{kpi.value}</div>
               </div>
             ))}
           </div>
