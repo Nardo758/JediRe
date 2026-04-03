@@ -315,6 +315,7 @@ export const AgentBar: React.FC = () => {
         background: T.bg.panel,
         borderTop: `1px solid ${T.border.medium}`,
         fontFamily: T.font.mono,
+        flexShrink: 0,
       }}>
         {/* Main row */}
         <div style={{
