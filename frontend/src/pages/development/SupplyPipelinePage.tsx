@@ -1,32 +1,12 @@
-/**
- * Supply Pipeline Page - Development Analysis Module
- * 
- * PURPOSE: Track future supply to time market entry and identify windows of opportunity
- * Focuses on "when to deliver" not just "what's coming"
- * 
- * KEY FEATURES:
- * 1. 10-Year Supply Wave Visualization (reused from Market Intelligence)
- * 2. Pipeline by Phase (Planned, Under Construction, Delivered)
- * 3. Developer Activity Tracking
- * 4. Absorption Impact Analysis
- * 5. Risk Scoring (oversupply detection)
- * 
- * DESIGN REFERENCE: /jedire/DEV_ANALYSIS_MODULES_DESIGN.md - Section 3
- */
-
 import { T as BT, mono as bMono, sans as bSans } from '../../components/deal/bloomberg-tokens';
-import { RiskDot, PanelHeader, SubTabBar, KpiTile, BT_CSS, BT as BT2, BtTabWrapper, SectionPanel, TableHeader, TableRow } from '../../components/deal/bloomberg-ui';
+import { RiskDot, PanelHeader, SubTabBar, KpiTile, BT_CSS, BT as BT2, BtTabWrapper, SectionPanel, TableHeader, TableRow, DataRow } from '../../components/deal/bloomberg-ui';
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, LineChart, Line,
 } from 'recharts';
 import { apiClient } from '@/services/api.client';
-
-// ============================================================================
-// TYPES
-// ============================================================================
 
 interface SupplyWaveData {
   year: number;
@@ -46,12 +26,7 @@ interface PipelineProject {
   expectedDelivery: string;
   submarket: string;
   distanceMiles: number;
-  unitMix: {
-    studio: number;
-    oneBed: number;
-    twoBed: number;
-    threeBed: number;
-  };
+  unitMix: { studio: number; oneBed: number; twoBed: number; threeBed: number };
   status: string;
   delayMonths?: number;
 }
@@ -75,7 +50,7 @@ interface DeveloperActivity {
 }
 
 interface AbsorptionAnalysis {
-  currentRate: number; // units per month
+  currentRate: number;
   historicalAvg: number;
   projectedRate: number;
   monthsToAbsorb: number;
@@ -85,7 +60,7 @@ interface AbsorptionAnalysis {
 }
 
 interface RiskScore {
-  overall: number; // 0-100
+  overall: number;
   level: 'low' | 'medium' | 'high' | 'critical';
   factors: {
     pipelineConcentration: number;
@@ -96,25 +71,39 @@ interface RiskScore {
   recommendations: string[];
 }
 
-// ============================================================================
-// MAIN COMPONENT
-// ============================================================================
+function riskColor(level: string): string {
+  switch (level) {
+    case 'low': return BT2.text.green;
+    case 'medium': return BT2.text.amber;
+    case 'high': return BT2.text.red;
+    case 'critical': return '#dc2626';
+    default: return BT2.text.muted;
+  }
+}
+
+function phaseColor(phase: string): string {
+  switch (phase) {
+    case 'planned': return BT2.text.cyan;
+    case 'under_construction': return BT2.text.amber;
+    case 'delivered': return BT2.text.green;
+    default: return BT2.text.muted;
+  }
+}
+
+function fmtN(num: number): string { return num.toLocaleString(); }
+
+const L: React.CSSProperties = { fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5, textTransform: 'uppercase' };
+const V13: React.CSSProperties = { fontSize: 13, fontWeight: 700, fontFamily: 'var(--bt-mono)' };
+const CELL: React.CSSProperties = { background: BT2.bg.panel, padding: '4px 8px' };
 
 const SupplyPipelinePage: React.FC = () => {
   const navigate = useNavigate();
   const { dealId } = useParams();
-  
-  // Deal context for city/market
-  const [dealCity, setDealCity] = useState<string>('');
-  const [dealState, setDealState] = useState<string>('');
-
-  // State
+  const [dealCity, setDealCity] = useState('');
+  const [dealState, setDealState] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'wave' | 'pipeline' | 'developers' | 'absorption' | 'risk'>('wave');
   const [timeHorizon, setTimeHorizon] = useState<'3yr' | '5yr' | '10yr'>('5yr');
-  const [submarketFilter, setSubmarketFilter] = useState<string>('all');
-  
-  // Data state
   const [supplyWave, setSupplyWave] = useState<SupplyWaveData[]>([]);
   const [pipelineProjects, setPipelineProjects] = useState<PipelineProject[]>([]);
   const [developerActivity, setDeveloperActivity] = useState<DeveloperActivity[]>([]);
@@ -122,34 +111,19 @@ const SupplyPipelinePage: React.FC = () => {
   const [riskScore, setRiskScore] = useState<RiskScore | null>(null);
   const [isLiveData, setIsLiveData] = useState(false);
 
-  // ============================================================================
-  // DATA FETCHING
-  // ============================================================================
-
-  // Fetch deal city/state for market context
   useEffect(() => {
     if (!dealId) return;
     apiClient.get(`/api/v1/deals/${dealId}`)
       .then(res => {
         const d = res.data?.data ?? res.data;
-        const city = d?.city ?? d?.market_city ?? '';
-        const state = d?.state ?? d?.market_state ?? '';
-        setDealCity(city);
-        setDealState(state);
+        setDealCity(d?.city ?? d?.market_city ?? '');
+        setDealState(d?.state ?? d?.market_state ?? '');
       })
       .catch(() => {});
   }, [dealId]);
 
-  useEffect(() => {
-    fetchSupplyData();
-  }, [dealId, timeHorizon]);
-
-  // Re-fetch when deal city is resolved
-  useEffect(() => {
-    if (dealCity) {
-      fetchSupplyData(dealCity);
-    }
-  }, [dealCity]);
+  useEffect(() => { fetchSupplyData(); }, [dealId, timeHorizon]);
+  useEffect(() => { if (dealCity) fetchSupplyData(dealCity); }, [dealCity]);
 
   const fetchSupplyData = async (cityOverride?: string) => {
     setLoading(true);
@@ -165,7 +139,6 @@ const SupplyPipelinePage: React.FC = () => {
 
       const submarkets = submarketRes.status === 'fulfilled' ? (submarketRes.value.data?.data || []) : [];
       const trends = trendsRes.status === 'fulfilled' ? (trendsRes.value.data?.data || []) : [];
-      const snapshots = snapshotRes.status === 'fulfilled' ? (snapshotRes.value.data?.data || []) : [];
 
       const hasLiveData = submarkets.length > 0 || trends.length > 0;
       setIsLiveData(hasLiveData);
@@ -176,34 +149,27 @@ const SupplyPipelinePage: React.FC = () => {
         );
         const horizonLimit = timeHorizon === '3yr' ? 12 : timeHorizon === '5yr' ? 20 : 40;
         const sliced = sortedTrends.slice(0, horizonLimit);
-        const waveData: SupplyWaveData[] = sliced.map((t: any, idx: number) => {
+        const waveData: SupplyWaveData[] = sliced.map((t: any) => {
           const d = new Date(t.snapshot_date);
           const year = d.getFullYear();
           const quarter = Math.ceil((d.getMonth() + 1) / 3);
           const totalSupply = Number(t.total_supply) || 0;
           const available = Number(t.available_units) || 0;
           const confirmed = Math.max(0, totalSupply - available);
-          const underConstruction = Math.floor(available * 0.6);
-          const planned = Math.floor(available * 0.4);
           return {
-            year,
-            quarter: `${year}Q${quarter}`,
-            confirmed,
-            underConstruction,
-            planned,
+            year, quarter: `${year}Q${quarter}`, confirmed,
+            underConstruction: Math.floor(available * 0.6),
+            planned: Math.floor(available * 0.4),
             total: totalSupply,
           };
         });
         setSupplyWave(waveData.length > 0 ? waveData : []);
-      } else {
-        setSupplyWave([]);
-      }
+      } else { setSupplyWave([]); }
 
       if (submarkets.length > 0) {
-        const phases: ('planned' | 'under_construction' | 'delivered')[] = ['planned', 'under_construction', 'delivered'];
         const projects: PipelineProject[] = submarkets.map((sm: any, idx: number) => {
           const vacancyRate = Number(sm.vacancy_rate) || 0;
-          const phase = vacancyRate > 10 ? 'planned' : vacancyRate > 5 ? 'under_construction' : 'delivered';
+          const phase: PipelineProject['phase'] = vacancyRate > 10 ? 'planned' : vacancyRate > 5 ? 'under_construction' : 'delivered';
           return {
             id: `sm-${idx}`,
             name: sm.submarket_name || sm.name || `Submarket ${idx + 1}`,
@@ -213,12 +179,7 @@ const SupplyPipelinePage: React.FC = () => {
             expectedDelivery: sm.snapshot_date ? new Date(sm.snapshot_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 'TBD',
             submarket: sm.submarket_name || sm.name || 'Unknown',
             distanceMiles: 0,
-            unitMix: {
-              studio: 10,
-              oneBed: 40,
-              twoBed: 35,
-              threeBed: 15,
-            },
+            unitMix: { studio: 10, oneBed: 40, twoBed: 35, threeBed: 15 },
             status: vacancyRate > 8 ? 'High Vacancy' : 'Stable',
             delayMonths: 0,
           };
@@ -234,12 +195,9 @@ const SupplyPipelinePage: React.FC = () => {
         });
         const totalPipelineUnits = Object.values(devMap).reduce((s, d) => s + d.units, 0) || 1;
         const devActivity: DeveloperActivity[] = Object.entries(devMap).map(([name, d]) => ({
-          developer: name,
-          activeProjects: d.count,
-          totalUnits: d.units,
+          developer: name, activeProjects: d.count, totalUnits: d.units,
           pipelineShare: (d.units / totalPipelineUnits) * 100,
-          avgDeliveryTime: 18,
-          delayRate: 0,
+          avgDeliveryTime: 18, delayRate: 0,
           marketShare: (d.units / totalPipelineUnits) * 100,
         })).sort((a, b) => b.totalUnits - a.totalUnits);
         setDeveloperActivity(devActivity.length > 0 ? devActivity : []);
@@ -256,13 +214,11 @@ const SupplyPipelinePage: React.FC = () => {
         const earliest = sortedTrends[0];
         const totalAvailable = Number(latest.available_units) || 0;
         const prevAvailable = Number(earliest.available_units) || 0;
-        const totalSupply = Number(latest.total_supply) || 1;
         const periods = sortedTrends.length || 1;
         const absorbedPerPeriod = Math.abs(prevAvailable - totalAvailable) / periods;
         const currentRate = Math.max(absorbedPerPeriod, 1);
         const monthsToAbsorb = totalAvailable / currentRate;
         const demandSupplyGap = prevAvailable - totalAvailable;
-        const avgDaysOnMarket = Number(latest.avg_days_on_market) || 30;
         const riskLevel: AbsorptionAnalysis['riskLevel'] =
           monthsToAbsorb > 36 ? 'critical' : monthsToAbsorb > 24 ? 'high' : monthsToAbsorb > 12 ? 'medium' : 'low';
 
@@ -279,9 +235,7 @@ const SupplyPipelinePage: React.FC = () => {
             return `${d.getFullYear()}Q${Math.ceil((d.getMonth() + 1) / 3)}`;
           })(),
         });
-      } else {
-        setAbsorption(null);
-      }
+      } else { setAbsorption(null); }
 
       if (submarkets.length > 0 || trends.length > 0) {
         const avgVacancy = submarkets.length > 0
@@ -291,7 +245,6 @@ const SupplyPipelinePage: React.FC = () => {
         const availableRatio = latestTrend
           ? (Number(latestTrend.available_units) || 0) / Math.max(Number(latestTrend.total_supply) || 1, 1)
           : 0.1;
-
         const pipelineConcentration = Math.min(avgVacancy * 8, 100);
         const absorptionRisk = Math.min(availableRatio * 200, 100);
         const timingRisk = Math.min(avgVacancy * 6, 100);
@@ -300,8 +253,7 @@ const SupplyPipelinePage: React.FC = () => {
         const level: RiskScore['level'] = overall > 70 ? 'critical' : overall > 50 ? 'high' : overall > 30 ? 'medium' : 'low';
 
         setRiskScore({
-          overall,
-          level,
+          overall, level,
           factors: { pipelineConcentration, absorptionRisk, timingRisk, unitMixCompetition },
           recommendations: [
             avgVacancy > 7 ? 'High vacancy detected — consider delaying delivery or adjusting pricing strategy' : 'Vacancy rates are healthy — favorable entry conditions',
@@ -310,55 +262,19 @@ const SupplyPipelinePage: React.FC = () => {
             'Track absorption velocity monthly to adjust lease-up projections',
           ],
         });
-      } else {
-        setRiskScore(null);
-      }
+      } else { setRiskScore(null); }
     } catch (error) {
       console.error('Error fetching supply data:', error);
-      setSupplyWave([]);
-      setPipelineProjects([]);
-      setDeveloperActivity([]);
-      setAbsorption(null);
-      setRiskScore(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ============================================================================
-  // RENDER HELPERS
-  // ============================================================================
-
-  const getRiskColor = (level: string): string => {
-    switch (level) {
-      case 'low': return '#10b981';
-      case 'medium': return '#f59e0b';
-      case 'high': return '#ef4444';
-      case 'critical': return '#dc2626';
-      default: return '#6b7280';
-    }
-  };
-
-  const getPhaseColor = (phase: string): string => {
-    switch (phase) {
-      case 'planned': return '#3b82f6';
-      case 'under_construction': return '#f59e0b';
-      case 'delivered': return '#10b981';
-      default: return '#6b7280';
-    }
-  };
-
-  const formatNumber = (num: number): string => {
-    return num.toLocaleString();
+      setSupplyWave([]); setPipelineProjects([]); setDeveloperActivity([]);
+      setAbsorption(null); setRiskScore(null);
+    } finally { setLoading(false); }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#131920] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-[#6B7585]">Loading supply pipeline data...</p>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal, alignItems: 'center', justifyContent: 'center' }}>
+        <style>{BT_CSS}</style>
+        <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 1 }}>LOADING SUPPLY PIPELINE DATA...</div>
       </div>
     );
   }
@@ -384,10 +300,10 @@ const SupplyPipelinePage: React.FC = () => {
         ]}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: BT2.font.mono }}>HORIZON:</span>
+            <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)' }}>HORIZON:</span>
             {(['3yr', '5yr', '10yr'] as const).map((horizon) => (
               <button key={horizon} onClick={() => setTimeHorizon(horizon)} style={{
-                fontSize: 9, padding: '1px 6px', fontFamily: BT2.font.mono,
+                fontSize: 9, padding: '1px 6px', fontFamily: 'var(--bt-mono)',
                 background: timeHorizon === horizon ? `${BT2.met.supply}20` : 'transparent',
                 border: timeHorizon === horizon ? `1px solid ${BT2.met.supply}60` : `1px solid ${BT2.border.medium}`,
                 color: timeHorizon === horizon ? BT2.met.supply : BT2.text.secondary,
@@ -397,11 +313,10 @@ const SupplyPipelinePage: React.FC = () => {
           </div>
         }
       />
-      {/* 4-tile KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
-        <KpiTile label="PIPELINE UNITS" value={formatNumber(pipelineTotal)} sub={`${pipelineProjects.length} projects`} color={BT2.met.supply} />
-        <KpiTile label="UNDER CONSTRUCTION" value={formatNumber(underConstrTotal)} sub="confirmed starts" color={BT2.text.amber} />
-        <KpiTile label="DELIVERIES/YR" value={annualDeliveries > 0 ? formatNumber(annualDeliveries) : '—'} sub="est. units/yr" color={BT2.text.cyan} />
+        <KpiTile label="PIPELINE UNITS" value={fmtN(pipelineTotal)} sub={`${pipelineProjects.length} projects`} color={BT2.met.supply} />
+        <KpiTile label="UNDER CONSTRUCTION" value={fmtN(underConstrTotal)} sub="confirmed starts" color={BT2.text.amber} />
+        <KpiTile label="DELIVERIES/YR" value={annualDeliveries > 0 ? fmtN(annualDeliveries) : '—'} sub="est. units/yr" color={BT2.text.cyan} />
         <KpiTile
           label="ABSORPTION MONTHS"
           value={absorption?.monthsToAbsorb ? `${absorption.monthsToAbsorb}mo` : '—'}
@@ -415,38 +330,29 @@ const SupplyPipelinePage: React.FC = () => {
         setActive={(i) => setActiveTab(S_TAB_IDS[i])}
         color={BT2.met.supply}
       />
-
-      <BtTabWrapper style={{ padding: '12px', gap: 0 }}>
+      <BtTabWrapper>
         {activeTab === 'wave' && (
-          <SectionPanel title="SUPPLY WAVE" borderColor={BT2.met.supply} subtitle="Delivery timeline by year · quarter">
-            <SupplyWaveSection
-              data={supplyWave}
-              riskScore={riskScore}
-              timeHorizon={timeHorizon}
-            />
+          <SectionPanel title="SUPPLY WAVE" borderColor={BT2.met.supply} subtitle="Delivery timeline by year / quarter">
+            <SupplyWaveSection data={supplyWave} riskScore={riskScore} timeHorizon={timeHorizon} />
           </SectionPanel>
         )}
         {activeTab === 'pipeline' && (
-          <SectionPanel title="PIPELINE BY PHASE" borderColor={BT2.met.supply} subtitle="Active projects · threat scoring">
-            <PipelinePhaseSection
-              projects={pipelineProjects}
-              submarketFilter={submarketFilter}
-              onSubmarketChange={setSubmarketFilter}
-            />
+          <SectionPanel title="PIPELINE BY PHASE" borderColor={BT2.met.supply} subtitle="Active projects / threat scoring">
+            <PipelinePhaseSection projects={pipelineProjects} />
           </SectionPanel>
         )}
         {activeTab === 'developers' && (
-          <SectionPanel title="DEVELOPER ACTIVITY" borderColor={BT2.met.supply} subtitle="Market concentration · delivery track record">
+          <SectionPanel title="DEVELOPER ACTIVITY" borderColor={BT2.met.supply} subtitle="Market concentration / delivery track record">
             <DeveloperActivitySection developers={developerActivity} />
           </SectionPanel>
         )}
         {activeTab === 'absorption' && (
-          <SectionPanel title="ABSORPTION IMPACT" borderColor={BT2.met.supply} subtitle="Supply vs demand · time-to-absorb">
+          <SectionPanel title="ABSORPTION IMPACT" borderColor={BT2.met.supply} subtitle="Supply vs demand / time-to-absorb">
             <AbsorptionImpactSection absorption={absorption} supplyWave={supplyWave} />
           </SectionPanel>
         )}
         {activeTab === 'risk' && (
-          <SectionPanel title="RISK SCORING" borderColor={BT2.met.supply} subtitle="Composite risk · mitigation guidance">
+          <SectionPanel title="RISK SCORING" borderColor={BT2.met.supply} subtitle="Composite risk / mitigation guidance">
             <RiskScoringSection riskScore={riskScore} />
           </SectionPanel>
         )}
@@ -455,467 +361,241 @@ const SupplyPipelinePage: React.FC = () => {
   );
 };
 
-// ============================================================================
-// SUB-COMPONENTS
-// ============================================================================
-
-// ---------------------------------------------------------------------------
-// 1. Supply Wave Section (10-Year Visualization)
-// ---------------------------------------------------------------------------
-
-interface SupplyWaveSectionProps {
-  data: SupplyWaveData[];
-  riskScore: RiskScore | null;
-  timeHorizon: '3yr' | '5yr' | '10yr';
-}
-
-const SupplyWaveSection: React.FC<SupplyWaveSectionProps> = ({ data, riskScore, timeHorizon }) => {
-  const maxSupply = Math.max(...data.map(d => d.total));
-  const peakQuarter = data.reduce((max, d) => d.total > max.total ? d : max, data[0]);
+const SupplyWaveSection: React.FC<{ data: SupplyWaveData[]; riskScore: RiskScore | null; timeHorizon: string }> = ({ data, riskScore, timeHorizon }) => {
+  const maxSupply = Math.max(...data.map(d => d.total), 1);
+  const peakQuarter = data.reduce((max, d) => d.total > max.total ? d : max, data[0] || { quarter: 'N/A', total: 0 });
+  const totalPipeline = data.reduce((sum, d) => sum + d.total, 0);
+  const totalUnderConstr = data.reduce((sum, d) => sum + d.underConstruction, 0);
 
   return (
-    <div className="space-y-6">
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Total Pipeline</div>
-          <div className="text-3xl font-bold text-[#E8E6E1]">
-            {formatNumber(data.reduce((sum, d) => sum + d.total, 0))}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">units over {timeHorizon}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT2.border.subtle }}>
+        <div style={CELL}>
+          <div style={L}>TOTAL PIPELINE</div>
+          <div style={{ ...V13, color: BT2.text.primary }}>{fmtN(totalPipeline)}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>units over {timeHorizon}</div>
         </div>
-        
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Peak Supply Quarter</div>
-          <div className="text-3xl font-bold text-orange-600">
-            {peakQuarter?.quarter || 'N/A'}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">
-            {formatNumber(peakQuarter?.total || 0)} units delivering
-          </div>
+        <div style={CELL}>
+          <div style={L}>PEAK SUPPLY QTR</div>
+          <div style={{ ...V13, color: BT2.text.amber }}>{peakQuarter?.quarter || 'N/A'}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{fmtN(peakQuarter?.total || 0)} units</div>
         </div>
-        
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Under Construction</div>
-          <div className="text-3xl font-bold text-yellow-400">
-            {formatNumber(data.reduce((sum, d) => sum + d.underConstruction, 0))}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">confirmed starts</div>
+        <div style={CELL}>
+          <div style={L}>UNDER CONSTRUCTION</div>
+          <div style={{ ...V13, color: BT2.text.amber }}>{fmtN(totalUnderConstr)}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>confirmed starts</div>
         </div>
-        
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Risk Level</div>
-          <div className="text-3xl font-bold" style={{ color: getRiskColor(riskScore?.level || 'low') }}>
-            {riskScore?.level.toUpperCase() || 'N/A'}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">
-            Score: {riskScore?.overall.toFixed(0) || 0}/100
-          </div>
+        <div style={CELL}>
+          <div style={L}>RISK LEVEL</div>
+          <div style={{ ...V13, color: riskColor(riskScore?.level || 'low') }}>{(riskScore?.level || 'N/A').toUpperCase()}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>score: {riskScore?.overall?.toFixed(0) || 0}/100</div>
         </div>
       </div>
 
-      {/* Supply Wave Chart */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-[#E8E6E1]">10-Year Supply Wave</h3>
-            <p className="text-sm text-[#6B7585] mt-1">
-              Quarterly delivery timeline by project phase
-            </p>
-          </div>
-          <div className="flex items-center space-x-4 text-sm">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-900/100 rounded"></div>
-              <span className="text-[#6B7585]">Delivered</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-orange-500 rounded"></div>
-              <span className="text-[#6B7585]">Under Construction</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-blue-900/100 rounded"></div>
-              <span className="text-[#6B7585]">Planned</span>
-            </div>
+      <div style={{ background: BT2.bg.panel, padding: '6px 8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div style={L}>SUPPLY WAVE — QUARTERLY DELIVERY BY PHASE</div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[{ l: 'DELIVERED', c: BT2.text.green }, { l: 'UNDER CONSTR', c: BT2.text.amber }, { l: 'PLANNED', c: BT2.text.cyan }].map(lg => (
+              <div key={lg.l} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <div style={{ width: 6, height: 6, background: lg.c }} />
+                <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{lg.l}</span>
+              </div>
+            ))}
           </div>
         </div>
-
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
-            <XAxis 
-              dataKey="quarter" 
-              tick={{ fontSize: 12 }}
-              angle={-45}
-              textAnchor="end"
-              height={80}
-            />
-            <YAxis 
-              tick={{ fontSize: 12 }}
-              label={{ value: 'Units', angle: -90, position: 'insideLeft' }}
-            />
-            <Tooltip 
-              contentStyle={{ 
-                backgroundColor: '#0d1f35', 
-                border: '1px solid #1e2a3d',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-              }}
-            />
-            <Legend />
-            <Bar dataKey="confirmed" stackId="a" fill="#10b981" name="Delivered" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="underConstruction" stackId="a" fill="#f59e0b" name="Under Construction" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="planned" stackId="a" fill="#3b82f6" name="Planned" radius={[4, 4, 0, 0]} />
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+            <CartesianGrid strokeDasharray="2 2" stroke={BT2.border.subtle} />
+            <XAxis dataKey="quarter" tick={{ fontSize: 7, fill: BT2.text.muted, fontFamily: 'var(--bt-mono)' }} angle={-45} textAnchor="end" height={40} />
+            <YAxis tick={{ fontSize: 7, fill: BT2.text.muted, fontFamily: 'var(--bt-mono)' }} width={35} />
+            <Tooltip contentStyle={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.medium}`, borderRadius: 0, fontSize: 9, fontFamily: 'var(--bt-mono)' }} />
+            <Bar dataKey="confirmed" stackId="a" fill={BT2.text.green} name="Delivered" />
+            <Bar dataKey="underConstruction" stackId="a" fill={BT2.text.amber} name="Under Construction" />
+            <Bar dataKey="planned" stackId="a" fill={BT2.text.cyan} name="Planned" />
           </BarChart>
         </ResponsiveContainer>
+      </div>
 
-        {/* AI Insight */}
-        <div className="mt-6 border border-blue-800 rounded-lg p-4">
-          <div className="flex items-start space-x-3">
-            <span className="text-2xl">💡</span>
-            <div className="flex-1">
-              <h4 className="font-semibold text-blue-200 mb-1">Optimal Delivery Window</h4>
-              <p className="text-sm text-blue-300">
-                Based on supply analysis, Q2-Q3 2026 shows a supply gap window. 
-                Consider timing your delivery to avoid the peak in {peakQuarter?.quarter || 'Q1 2027'}. 
-                Delays in competing projects may create additional opportunities.
-              </p>
-            </div>
-          </div>
+      <div style={{ background: BT2.bg.panel, padding: '4px 8px', borderLeft: `2px solid ${BT2.text.cyan}` }}>
+        <div style={{ fontSize: 7, color: BT2.text.cyan, fontFamily: 'var(--bt-mono)', fontWeight: 700, marginBottom: 2 }}>OPTIMAL DELIVERY WINDOW</div>
+        <div style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>
+          Based on supply analysis, Q2-Q3 2026 shows a supply gap window. Consider timing delivery to avoid peak in {peakQuarter?.quarter || 'Q1 2027'}. Delays in competing projects may create additional opportunities.
         </div>
       </div>
 
-      {/* Supply Gap Analysis */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Gap Opportunities</h3>
-        <div className="space-y-3">
+      {data.filter(d => d.total < maxSupply * 0.3).slice(0, 3).length > 0 && (
+        <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+          <div style={{ ...L, marginBottom: 3 }}>SUPPLY GAP OPPORTUNITIES</div>
           {data.filter(d => d.total < maxSupply * 0.3).slice(0, 3).map((gap, idx) => (
-            <div key={idx} className="flex items-center justify-between p-3 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
-              <div className="flex items-center space-x-3">
-                <span className="text-2xl">🎯</span>
-                <div>
-                  <div className="font-semibold text-[#E8E6E1]">{gap.quarter}</div>
-                  <div className="text-sm text-[#6B7585]">
-                    Only {formatNumber(gap.total)} units delivering
-                  </div>
-                </div>
+            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0', borderBottom: idx < 2 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
+              <div>
+                <span style={{ fontSize: 9, color: BT2.text.green, fontWeight: 700, fontFamily: 'var(--bt-mono)', marginRight: 6 }}>{gap.quarter}</span>
+                <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>only {fmtN(gap.total)} units delivering</span>
               </div>
-              <button className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors">
-                Target This Window
-              </button>
+              <span style={{ fontSize: 7, color: BT2.text.green, fontFamily: 'var(--bt-mono)', fontWeight: 700, padding: '1px 4px', border: `1px solid ${BT2.text.green}30` }}>TARGET WINDOW</span>
             </div>
           ))}
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
-// ---------------------------------------------------------------------------
-// 2. Pipeline Phase Section
-// ---------------------------------------------------------------------------
-
-interface PipelinePhaseSectionProps {
-  projects: PipelineProject[];
-  submarketFilter: string;
-  onSubmarketChange: (submarket: string) => void;
-}
-
-const PipelinePhaseSection: React.FC<PipelinePhaseSectionProps> = ({ 
-  projects, 
-  submarketFilter, 
-  onSubmarketChange 
-}) => {
+const PipelinePhaseSection: React.FC<{ projects: PipelineProject[] }> = ({ projects }) => {
   const phaseStats = {
     planned: projects.filter(p => p.phase === 'planned'),
     underConstruction: projects.filter(p => p.phase === 'under_construction'),
     delivered: projects.filter(p => p.phase === 'delivered'),
   };
-
   const [selectedPhase, setSelectedPhase] = useState<'all' | 'planned' | 'under_construction' | 'delivered'>('all');
+  const filteredProjects = selectedPhase === 'all' ? projects : projects.filter(p => p.phase === selectedPhase);
 
-  const filteredProjects = selectedPhase === 'all' 
-    ? projects 
-    : projects.filter(p => p.phase === selectedPhase);
+  const phaseBtn = (phase: 'planned' | 'under_construction' | 'delivered', label: string, items: PipelineProject[]) => {
+    const active = selectedPhase === phase;
+    const c = phaseColor(phase);
+    const units = items.reduce((s, p) => s + p.units, 0);
+    return (
+      <button key={phase} onClick={() => setSelectedPhase(phase)} style={{
+        background: active ? `${c}12` : BT2.bg.panel, border: active ? `1px solid ${c}60` : `1px solid ${BT2.border.subtle}`,
+        padding: '4px 8px', cursor: 'pointer', textAlign: 'left',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+          <span style={{ fontSize: 7, color: c, fontFamily: 'var(--bt-mono)', fontWeight: 700, letterSpacing: 0.5 }}>{label}</span>
+          <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{items.length} proj</span>
+        </div>
+        <div style={{ ...V13, color: BT2.text.primary }}>{fmtN(units)}</div>
+      </button>
+    );
+  };
 
   return (
-    <div className="space-y-6">
-      {/* Phase Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <button
-          onClick={() => setSelectedPhase('planned')}
-          className={`rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'planned' ? 'border-blue-500 shadow-lg' : 'border-[#1e2a3d] hover:border-blue-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">📋</span>
-            <span className="text-xs font-semibold text-blue-400 bg-blue-900/30 px-2 py-1 rounded">PLANNED</span>
-          </div>
-          <div className="text-3xl font-bold text-[#E8E6E1]">
-            {formatNumber(phaseStats.planned.reduce((sum, p) => sum + p.units, 0))}
-          </div>
-          <div className="text-sm text-[#6B7585] mt-1">
-            {phaseStats.planned.length} projects
-          </div>
-        </button>
-
-        <button
-          onClick={() => setSelectedPhase('under_construction')}
-          className={`rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'under_construction' ? 'border-orange-500 shadow-lg' : 'border-[#1e2a3d] hover:border-orange-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">🏗️</span>
-            <span className="text-xs font-semibold text-orange-600 bg-orange-900/20 px-2 py-1 rounded">UNDER CONSTRUCTION</span>
-          </div>
-          <div className="text-3xl font-bold text-[#E8E6E1]">
-            {formatNumber(phaseStats.underConstruction.reduce((sum, p) => sum + p.units, 0))}
-          </div>
-          <div className="text-sm text-[#6B7585] mt-1">
-            {phaseStats.underConstruction.length} projects
-          </div>
-        </button>
-
-        <button
-          onClick={() => setSelectedPhase('delivered')}
-          className={`rounded-lg border-2 p-6 text-left transition-all ${
-            selectedPhase === 'delivered' ? 'border-green-500 shadow-lg' : 'border-[#1e2a3d] hover:border-green-300'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-2xl">✅</span>
-            <span className="text-xs font-semibold text-green-400 bg-green-900/30 px-2 py-1 rounded">DELIVERED</span>
-          </div>
-          <div className="text-3xl font-bold text-[#E8E6E1]">
-            {formatNumber(phaseStats.delivered.reduce((sum, p) => sum + p.units, 0))}
-          </div>
-          <div className="text-sm text-[#6B7585] mt-1">
-            {phaseStats.delivered.length} projects (last 12mo)
-          </div>
-        </button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: BT2.border.subtle }}>
+        {phaseBtn('planned', 'PLANNED', phaseStats.planned)}
+        {phaseBtn('under_construction', 'UNDER CONSTRUCTION', phaseStats.underConstruction)}
+        {phaseBtn('delivered', 'DELIVERED', phaseStats.delivered)}
       </div>
 
-      {/* Project Table */}
-      <div className="rounded-lg overflow-hidden" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <div className="px-6 py-4 border-b border-[#1e2a3d] flex items-center justify-between">
+      <div style={{ background: BT2.bg.panel }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 8px', borderBottom: `1px solid ${BT2.border.subtle}` }}>
           <div>
-            <h3 className="text-lg font-semibold text-[#E8E6E1]">Pipeline Projects</h3>
-            <p className="text-sm text-[#6B7585] mt-1">
-              {filteredProjects.length} projects • {formatNumber(filteredProjects.reduce((sum, p) => sum + p.units, 0))} units
-            </p>
+            <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>PIPELINE PROJECTS</span>
+            <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', marginLeft: 8 }}>
+              {filteredProjects.length} projects / {fmtN(filteredProjects.reduce((s, p) => s + p.units, 0))} units
+            </span>
           </div>
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => setSelectedPhase('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                selectedPhase === 'all'
-                  ? 'bg-[#E8E6E1] text-[#0A0E17]'
-                  : 'bg-[#1e2a3d] text-[#9EA8B4] hover:bg-[#253347]'
-              }`}
-            >
-              Show All
-            </button>
-          </div>
+          {selectedPhase !== 'all' && (
+            <button onClick={() => setSelectedPhase('all')} style={{
+              fontSize: 7, padding: '1px 6px', fontFamily: 'var(--bt-mono)', fontWeight: 700,
+              background: 'transparent', border: `1px solid ${BT2.border.medium}`,
+              color: BT2.text.secondary, cursor: 'pointer',
+            }}>SHOW ALL</button>
+          )}
         </div>
-
-        <div>
-          <TableHeader cols={[
-            { label: 'PROJECT', flex: 2 },
-            { label: 'DEVELOPER', flex: 1.5 },
-            { label: 'UNITS' },
-            { label: 'PHASE' },
-            { label: 'DELIVERY' },
-            { label: 'SUBMARKET' },
-            { label: 'DISTANCE' },
-            { label: 'THREAT', color: BT2.met.supply },
+        <TableHeader cols={[
+          { label: 'PROJECT', flex: 2 }, { label: 'DEVELOPER', flex: 1.5 },
+          { label: 'UNITS' }, { label: 'PHASE' }, { label: 'DELIVERY' },
+          { label: 'SUBMARKET' }, { label: 'DISTANCE' }, { label: 'THREAT', color: BT2.met.supply },
+        ]} />
+        {filteredProjects.map((project, idx) => (
+          <TableRow key={project.id} index={idx} cells={[
+            {
+              value: (
+                <div>
+                  <div style={{ color: BT2.text.secondary, fontWeight: 600, fontSize: 8 }}>{project.name}</div>
+                  {project.delayMonths && project.delayMonths > 0 && (
+                    <div style={{ fontSize: 7, color: BT2.text.red, marginTop: 1 }}>DELAYED {project.delayMonths}MO</div>
+                  )}
+                </div>
+              ), flex: 2,
+            },
+            { value: project.developer, flex: 1.5 },
+            { value: fmtN(project.units), color: BT2.text.primary, weight: 600 },
+            {
+              value: (
+                <span style={{ fontSize: 7, padding: '1px 4px', background: `${phaseColor(project.phase)}15`, color: phaseColor(project.phase), fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>
+                  {project.phase.replace('_', ' ').toUpperCase()}
+                </span>
+              ),
+            },
+            { value: project.expectedDelivery },
+            { value: project.submarket },
+            { value: project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—' },
+            { value: <RiskDot level={projectThreatLevel(project)} /> },
           ]} />
-          {filteredProjects.map((project, idx) => (
-            <TableRow
-              key={project.id}
-              index={idx}
-              cells={[
-                {
-                  value: (
-                    <div>
-                      <div style={{ color: BT2.text.white, fontWeight: 600 }}>{project.name}</div>
-                      {project.delayMonths && project.delayMonths > 0 && (
-                        <div style={{ fontSize: 9, color: BT2.text.red, marginTop: 2 }}>
-                          ⚠ Delayed {project.delayMonths}mo
-                        </div>
-                      )}
-                    </div>
-                  ), flex: 2,
-                },
-                { value: project.developer, flex: 1.5 },
-                { value: formatNumber(project.units), color: BT2.text.white, weight: 600 },
-                {
-                  value: (
-                    <span style={{ fontSize: 9, padding: '1px 4px', background: `${getPhaseColor(project.phase)}20`, color: getPhaseColor(project.phase) }}>
-                      {project.phase.replace('_', ' ').toUpperCase()}
-                    </span>
-                  ),
-                },
-                { value: project.expectedDelivery },
-                { value: project.submarket },
-                { value: project.distanceMiles != null ? `${project.distanceMiles.toFixed(1)} mi` : '—' },
-                { value: <RiskDot level={projectThreatLevel(project)} /> },
-              ]}
-            />
-          ))}
-        </div>
+        ))}
       </div>
     </div>
   );
 };
 
-// ---------------------------------------------------------------------------
-// 3. Developer Activity Section
-// ---------------------------------------------------------------------------
-
-interface DeveloperActivitySectionProps {
-  developers: DeveloperActivity[];
-}
-
-const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ developers }) => {
+const DeveloperActivitySection: React.FC<{ developers: DeveloperActivity[] }> = ({ developers }) => {
   const topDevelopers = [...developers].sort((a, b) => b.totalUnits - a.totalUnits).slice(0, 5);
 
   return (
-    <div className="space-y-6">
-      {/* Top Developers Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: BT2.border.subtle }}>
         {topDevelopers.slice(0, 3).map((dev, idx) => (
-          <div key={idx} className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-3xl">{idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}</span>
-              <span className="text-xs font-semibold text-[#6B7585]">
-                {dev.pipelineShare.toFixed(1)}% of pipeline
-              </span>
+          <div key={idx} style={CELL}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+              <span style={{ fontSize: 7, color: BT2.text.cyan, fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>#{idx + 1}</span>
+              <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>{dev.pipelineShare.toFixed(1)}% share</span>
             </div>
-            <h4 className="font-bold text-[#E8E6E1] text-lg mb-2">{dev.developer}</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B7585]">Total Units:</span>
-                <span className="font-semibold text-[#E8E6E1]">{formatNumber(dev.totalUnits)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B7585]">Active Projects:</span>
-                <span className="font-semibold text-[#E8E6E1]">{dev.activeProjects}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B7585]">Avg Delivery:</span>
-                <span className="font-semibold text-[#E8E6E1]">{dev.avgDeliveryTime} months</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#6B7585]">Delay Rate:</span>
-                <span className={`font-semibold ${dev.delayRate > 30 ? 'text-red-400' : 'text-green-400'}`}>
-                  {dev.delayRate.toFixed(0)}%
-                </span>
-              </div>
-            </div>
+            <div style={{ fontSize: 9, color: BT2.text.secondary, fontWeight: 700, fontFamily: 'var(--bt-mono)', marginBottom: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dev.developer}</div>
+            <DataRow label="TOTAL UNITS" value={fmtN(dev.totalUnits)} valueColor={BT2.text.primary} />
+            <DataRow label="ACTIVE PROJECTS" value={String(dev.activeProjects)} valueColor={BT2.text.cyan} />
+            <DataRow label="AVG DELIVERY" value={`${dev.avgDeliveryTime} mo`} valueColor={BT2.text.muted} />
+            <DataRow label="DELAY RATE" value={`${dev.delayRate.toFixed(0)}%`} valueColor={dev.delayRate > 30 ? BT2.text.red : BT2.text.green} />
           </div>
         ))}
       </div>
 
-      {/* Developer Activity Table */}
-      <div className="rounded-lg overflow-hidden" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <div className="px-6 py-4 border-b border-[#1e2a3d]">
-          <h3 className="text-lg font-semibold text-[#E8E6E1]">Developer Activity Tracker</h3>
-          <p className="text-sm text-[#6B7585] mt-1">
-            Track major developers' pipeline and execution history
-          </p>
+      <div style={{ background: BT2.bg.panel }}>
+        <div style={{ padding: '3px 8px', borderBottom: `1px solid ${BT2.border.subtle}` }}>
+          <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>DEVELOPER ACTIVITY TRACKER</span>
         </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-[#131920]">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Developer</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Projects</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Total Units</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Pipeline %</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Market Share</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Avg Delivery</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Delay Rate</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold text-[#6B7585] uppercase">Reliability</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#1e2a3d]">
-              {developers.map((dev, idx) => {
-                const reliability = 100 - dev.delayRate;
-                const reliabilityColor = reliability >= 80 ? 'text-green-400' : reliability >= 60 ? 'text-yellow-400' : 'text-red-400';
-                
-                return (
-                  <tr key={idx} className="hover:bg-[#131920] transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-[#E8E6E1]">{dev.developer}</div>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
-                      {dev.activeProjects}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-semibold text-[#E8E6E1]">
-                      {formatNumber(dev.totalUnits)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-2">
-                        <div className="flex-1 bg-[#253347] rounded-full h-2 max-w-[100px]">
-                          <div 
-                            className="bg-blue-900/100 h-2 rounded-full"
-                            style={{ width: `${dev.pipelineShare}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-sm font-medium text-[#9EA8B4]">
-                          {dev.pipelineShare.toFixed(1)}%
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#6B7585]">
-                      {dev.marketShare.toFixed(1)}%
-                    </td>
-                    <td className="px-6 py-4 text-sm text-[#6B7585]">
-                      {dev.avgDeliveryTime} mo
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-sm font-semibold ${dev.delayRate > 30 ? 'text-red-400' : dev.delayRate > 15 ? 'text-yellow-400' : 'text-green-400'}`}>
-                        {dev.delayRate.toFixed(0)}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`text-sm font-bold ${reliabilityColor}`}>
-                        {reliability >= 80 ? '✅ High' : reliability >= 60 ? '⚠️ Medium' : '❌ Low'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <TableHeader cols={[
+          { label: 'DEVELOPER', flex: 2 }, { label: 'PROJECTS' }, { label: 'UNITS' },
+          { label: 'PIPELINE %' }, { label: 'MKT SHARE' }, { label: 'AVG DELIV' },
+          { label: 'DELAY RATE' }, { label: 'RELIABILITY' },
+        ]} />
+        {developers.map((dev, idx) => {
+          const reliability = 100 - dev.delayRate;
+          return (
+            <TableRow key={idx} index={idx} cells={[
+              { value: dev.developer, flex: 2, color: BT2.text.secondary, weight: 600 },
+              { value: String(dev.activeProjects), color: BT2.text.primary, weight: 600 },
+              { value: fmtN(dev.totalUnits), color: BT2.text.primary, weight: 600 },
+              { value: `${dev.pipelineShare.toFixed(1)}%`, color: BT2.text.cyan },
+              { value: `${dev.marketShare.toFixed(1)}%`, color: BT2.text.muted },
+              { value: `${dev.avgDeliveryTime} mo`, color: BT2.text.muted },
+              { value: `${dev.delayRate.toFixed(0)}%`, color: dev.delayRate > 30 ? BT2.text.red : dev.delayRate > 15 ? BT2.text.amber : BT2.text.green },
+              {
+                value: (
+                  <span style={{ fontSize: 7, fontWeight: 700, fontFamily: 'var(--bt-mono)', color: reliability >= 80 ? BT2.text.green : reliability >= 60 ? BT2.text.amber : BT2.text.red }}>
+                    {reliability >= 80 ? 'HIGH' : reliability >= 60 ? 'MED' : 'LOW'}
+                  </span>
+                ),
+              },
+            ]} />
+          );
+        })}
       </div>
 
-      {/* AI Insights */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🤖 Developer Intelligence</h3>
-        <div className="space-y-3">
-          <div className="flex items-start space-x-3 p-3 bg-yellow-50 rounded-lg">
-            <span className="text-xl">⚠️</span>
-            <div className="flex-1">
-              <div className="font-semibold text-yellow-900">High-Delay Developer Alert</div>
-              <div className="text-sm text-yellow-800 mt-1">
-                {topDevelopers.find(d => d.delayRate > 30)?.developer || 'Metro Development'} has a 35% delay rate. 
-                Their projects typically deliver 4-6 months late, creating market timing opportunities.
-              </div>
+      <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+        <div style={{ ...L, marginBottom: 3 }}>DEVELOPER INTELLIGENCE</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ padding: '3px 6px', borderLeft: `2px solid ${BT2.text.amber}`, background: `${BT2.text.amber}08` }}>
+            <div style={{ fontSize: 7, color: BT2.text.amber, fontWeight: 700, fontFamily: 'var(--bt-mono)', marginBottom: 1 }}>HIGH-DELAY DEVELOPER ALERT</div>
+            <div style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>
+              {topDevelopers.find(d => d.delayRate > 30)?.developer || 'Metro Development'} has a 35% delay rate. Their projects typically deliver 4-6 months late, creating market timing opportunities.
             </div>
           </div>
-          
-          <div className="flex items-start space-x-3 p-3 rounded-lg">
-            <span className="text-xl">💡</span>
-            <div className="flex-1">
-              <div className="font-semibold text-blue-200">Market Concentration</div>
-              <div className="text-sm text-blue-300 mt-1">
-                Top 3 developers control {topDevelopers.slice(0, 3).reduce((sum, d) => sum + d.pipelineShare, 0).toFixed(0)}% 
-                of pipeline. Monitor their delivery schedules closely for timing advantages.
-              </div>
+          <div style={{ padding: '3px 6px', borderLeft: `2px solid ${BT2.text.cyan}`, background: `${BT2.text.cyan}08` }}>
+            <div style={{ fontSize: 7, color: BT2.text.cyan, fontWeight: 700, fontFamily: 'var(--bt-mono)', marginBottom: 1 }}>MARKET CONCENTRATION</div>
+            <div style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>
+              Top 3 developers control {topDevelopers.slice(0, 3).reduce((sum, d) => sum + d.pipelineShare, 0).toFixed(0)}% of pipeline. Monitor their delivery schedules for timing advantages.
             </div>
           </div>
         </div>
@@ -924,146 +604,84 @@ const DeveloperActivitySection: React.FC<DeveloperActivitySectionProps> = ({ dev
   );
 };
 
-// ---------------------------------------------------------------------------
-// 4. Absorption Impact Section
-// ---------------------------------------------------------------------------
-
-interface AbsorptionImpactSectionProps {
-  absorption: AbsorptionAnalysis | null;
-  supplyWave: SupplyWaveData[];
-}
-
-const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absorption, supplyWave }) => {
+const AbsorptionImpactSection: React.FC<{ absorption: AbsorptionAnalysis | null; supplyWave: SupplyWaveData[] }> = ({ absorption, supplyWave }) => {
   if (!absorption) {
-    return <div className="text-center py-12 text-[#6B7585]">Loading absorption data...</div>;
+    return <div style={{ padding: 12, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', fontSize: 9 }}>AWAITING ABSORPTION DATA...</div>;
   }
 
-  // Calculate absorption scenarios
   const scenarios = [
-    { name: 'Conservative', rate: absorption.currentRate * 0.8, months: (absorption.monthsToAbsorb / 0.8) },
-    { name: 'Current Trend', rate: absorption.currentRate, months: absorption.monthsToAbsorb },
-    { name: 'Optimistic', rate: absorption.currentRate * 1.2, months: (absorption.monthsToAbsorb / 1.2) },
+    { name: 'CONSERVATIVE', rate: absorption.currentRate * 0.8, months: absorption.monthsToAbsorb / 0.8, color: BT2.text.red },
+    { name: 'CURRENT TREND', rate: absorption.currentRate, months: absorption.monthsToAbsorb, color: BT2.text.amber },
+    { name: 'OPTIMISTIC', rate: absorption.currentRate * 1.2, months: absorption.monthsToAbsorb / 1.2, color: BT2.text.green },
   ];
 
+  const riskMsg: Record<string, string> = {
+    low: 'Healthy absorption environment. Current demand exceeds incoming supply. Market can absorb new deliveries within 18 months.',
+    medium: 'Moderate absorption pressure. Monitor lease-up velocity closely and consider concession strategies if absorption slows.',
+    high: 'Elevated absorption risk. Supply surge expected to exceed demand. Plan for extended lease-up period (24+ months) and competitive concessions.',
+    critical: 'Critical oversupply condition. Substantial excess supply relative to demand. Consider delaying delivery or repositioning unit mix.',
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Current Absorption</div>
-          <div className="text-3xl font-bold text-[#E8E6E1]">
-            {absorption.currentRate.toFixed(0)}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">units/month</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT2.border.subtle }}>
+        <div style={CELL}>
+          <div style={L}>CURRENT ABSORPTION</div>
+          <div style={{ ...V13, color: BT2.text.primary }}>{absorption.currentRate.toFixed(0)}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>units/month</div>
         </div>
-        
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Historical Average</div>
-          <div className="text-3xl font-bold text-[#E8E6E1]">
-            {absorption.historicalAvg.toFixed(0)}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">units/month (3yr)</div>
+        <div style={CELL}>
+          <div style={L}>HISTORICAL AVG</div>
+          <div style={{ ...V13, color: BT2.text.primary }}>{absorption.historicalAvg.toFixed(0)}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>units/month (3yr)</div>
         </div>
-        
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Months to Absorb</div>
-          <div className="text-3xl font-bold text-orange-600">
-            {absorption.monthsToAbsorb.toFixed(1)}
-          </div>
-          <div className="text-xs text-[#6B7585] mt-1">at current rate</div>
+        <div style={CELL}>
+          <div style={L}>MONTHS TO ABSORB</div>
+          <div style={{ ...V13, color: BT2.text.amber }}>{absorption.monthsToAbsorb.toFixed(1)}</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>at current rate</div>
         </div>
-        
-        <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-          <div className="text-sm text-[#6B7585] mb-1">Demand-Supply Gap</div>
-          <div className={`text-3xl font-bold ${absorption.demandSupplyGap > 0 ? 'text-green-400' : 'text-red-400'}`}>
+        <div style={CELL}>
+          <div style={L}>DEMAND-SUPPLY GAP</div>
+          <div style={{ ...V13, color: absorption.demandSupplyGap > 0 ? BT2.text.green : BT2.text.red }}>
             {absorption.demandSupplyGap > 0 ? '+' : ''}{absorption.demandSupplyGap.toFixed(0)}
           </div>
-          <div className="text-xs text-[#6B7585] mt-1">units/quarter</div>
+          <div style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>units/quarter</div>
         </div>
       </div>
 
-      {/* Absorption Scenarios */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Scenarios</h3>
-        <div className="space-y-4">
-          {scenarios.map((scenario, idx) => (
-            <div key={idx} className="p-4 bg-[#131920] rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <div className="font-semibold text-[#E8E6E1]">{scenario.name}</div>
-                <div className="text-sm text-[#6B7585]">
-                  {scenario.rate.toFixed(0)} units/month
-                </div>
-              </div>
-              <div className="flex items-center space-x-3">
-                <div className="flex-1 bg-[#253347] rounded-full h-3 overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full ${
-                      idx === 0 ? 'bg-red-500' : idx === 1 ? 'bg-yellow-500' : 'bg-green-900/100'
-                    }`}
-                    style={{ width: `${Math.min((scenario.rate / (absorption.currentRate * 1.5)) * 100, 100)}%` }}
-                  ></div>
-                </div>
-                <div className="text-sm font-semibold text-[#E8E6E1] min-w-[80px]">
-                  {scenario.months.toFixed(1)} months
-                </div>
-              </div>
+      <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+        <div style={{ ...L, marginBottom: 4 }}>ABSORPTION SCENARIOS</div>
+        {scenarios.map((s, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', borderBottom: idx < 2 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
+            <span style={{ fontSize: 8, color: s.color, fontFamily: 'var(--bt-mono)', fontWeight: 700, width: 90, flexShrink: 0 }}>{s.name}</span>
+            <div style={{ flex: 1, height: 4, background: BT2.bg.header, overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: s.color, width: `${Math.min((s.rate / (absorption.currentRate * 1.5)) * 100, 100)}%` }} />
             </div>
-          ))}
+            <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', width: 65, textAlign: 'right', flexShrink: 0 }}>{s.rate.toFixed(0)} u/mo</span>
+            <span style={{ fontSize: 9, color: BT2.text.primary, fontFamily: 'var(--bt-mono)', fontWeight: 700, width: 50, textAlign: 'right', flexShrink: 0 }}>{s.months.toFixed(1)}mo</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: BT2.bg.panel, padding: '4px 8px', borderLeft: `2px solid ${riskColor(absorption.riskLevel)}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+          <span style={{ fontSize: 9, color: riskColor(absorption.riskLevel), fontWeight: 700, fontFamily: 'var(--bt-mono)' }}>{absorption.riskLevel.toUpperCase()} RISK</span>
+          <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>Peak supply in {absorption.peakSupplyQuarter}</span>
+        </div>
+        <div style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>
+          {riskMsg[absorption.riskLevel] || riskMsg.low}
         </div>
       </div>
 
-      {/* Risk Assessment */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Absorption Risk Assessment</h3>
-        <div 
-          className="p-6 rounded-lg border-l-4"
-          style={{ 
-            borderColor: getRiskColor(absorption.riskLevel),
-            backgroundColor: `${getRiskColor(absorption.riskLevel)}10`
-          }}
-        >
-          <div className="flex items-center space-x-3 mb-3">
-            <span className="text-3xl">
-              {absorption.riskLevel === 'low' ? '🟢' : absorption.riskLevel === 'medium' ? '🟡' : absorption.riskLevel === 'high' ? '🟠' : '🔴'}
-            </span>
-            <div>
-              <div className="text-xl font-bold" style={{ color: getRiskColor(absorption.riskLevel) }}>
-                {absorption.riskLevel.toUpperCase()} RISK
-              </div>
-              <div className="text-sm text-[#6B7585]">Peak supply in {absorption.peakSupplyQuarter}</div>
-            </div>
-          </div>
-          
-          <div className="text-sm text-[#9EA8B4] space-y-2">
-            {absorption.riskLevel === 'low' && (
-              <p>Healthy absorption environment. Current demand exceeds incoming supply. Market can absorb new deliveries within 18 months.</p>
-            )}
-            {absorption.riskLevel === 'medium' && (
-              <p>Moderate absorption pressure. Monitor lease-up velocity closely and consider concession strategies if absorption slows.</p>
-            )}
-            {absorption.riskLevel === 'high' && (
-              <p>Elevated absorption risk. Supply surge expected to exceed demand. Plan for extended lease-up period (24+ months) and competitive concessions.</p>
-            )}
-            {absorption.riskLevel === 'critical' && (
-              <p>Critical oversupply condition. Substantial excess supply relative to demand. Consider delaying delivery or repositioning unit mix to differentiate.</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Impact Timeline */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Supply Impact Timeline</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={supplyWave}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2a3d" />
-            <XAxis dataKey="quarter" tick={{ fontSize: 12 }} />
-            <YAxis yAxisId="left" tick={{ fontSize: 12 }} label={{ value: 'Units', angle: -90, position: 'insideLeft' }} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12 }} label={{ value: 'Absorption (mo)', angle: 90, position: 'insideRight' }} />
-            <Tooltip />
-            <Legend />
-            <Line yAxisId="left" type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} name="Total Supply" dot={{ r: 3 }} />
-            <Line yAxisId="right" type="monotone" dataKey="absorptionMonths" stroke="#ef4444" strokeWidth={2} name="Months to Absorb" dot={{ r: 3 }} />
+      <div style={{ background: BT2.bg.panel, padding: '6px 8px' }}>
+        <div style={{ ...L, marginBottom: 4 }}>SUPPLY IMPACT TIMELINE</div>
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={supplyWave} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+            <CartesianGrid strokeDasharray="2 2" stroke={BT2.border.subtle} />
+            <XAxis dataKey="quarter" tick={{ fontSize: 7, fill: BT2.text.muted, fontFamily: 'var(--bt-mono)' }} />
+            <YAxis yAxisId="left" tick={{ fontSize: 7, fill: BT2.text.muted, fontFamily: 'var(--bt-mono)' }} width={35} />
+            <Tooltip contentStyle={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.medium}`, borderRadius: 0, fontSize: 9, fontFamily: 'var(--bt-mono)' }} />
+            <Line yAxisId="left" type="monotone" dataKey="total" stroke={BT2.text.cyan} strokeWidth={1.5} name="Total Supply" dot={{ r: 2, fill: BT2.text.cyan }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
@@ -1071,158 +689,84 @@ const AbsorptionImpactSection: React.FC<AbsorptionImpactSectionProps> = ({ absor
   );
 };
 
-// ---------------------------------------------------------------------------
-// 5. Risk Scoring Section
-// ---------------------------------------------------------------------------
-
-interface RiskScoringSectionProps {
-  riskScore: RiskScore | null;
-}
-
-const RiskScoringSection: React.FC<RiskScoringSectionProps> = ({ riskScore }) => {
+const RiskScoringSection: React.FC<{ riskScore: RiskScore | null }> = ({ riskScore }) => {
   if (!riskScore) {
-    return <div className="text-center py-12 text-[#6B7585]">Loading risk assessment...</div>;
+    return <div style={{ padding: 12, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', fontSize: 9 }}>AWAITING RISK ASSESSMENT...</div>;
   }
 
   const riskFactors = [
-    { name: 'Pipeline Concentration', score: riskScore.factors.pipelineConcentration, description: 'Multiple projects delivering in same quarter' },
-    { name: 'Absorption Risk', score: riskScore.factors.absorptionRisk, description: 'Ability of market to absorb new supply' },
-    { name: 'Timing Risk', score: riskScore.factors.timingRisk, description: 'Delivery timing relative to peak supply' },
-    { name: 'Unit Mix Competition', score: riskScore.factors.unitMixCompetition, description: 'Overlap with competing unit types' },
+    { name: 'PIPELINE CONCENTRATION', score: riskScore.factors.pipelineConcentration, desc: 'Multiple projects delivering in same quarter' },
+    { name: 'ABSORPTION RISK', score: riskScore.factors.absorptionRisk, desc: 'Ability of market to absorb new supply' },
+    { name: 'TIMING RISK', score: riskScore.factors.timingRisk, desc: 'Delivery timing relative to peak supply' },
+    { name: 'UNIT MIX COMPETITION', score: riskScore.factors.unitMixCompetition, desc: 'Overlap with competing unit types' },
   ];
 
+  const factorColor = (score: number) => score > 70 ? BT2.text.red : score > 40 ? BT2.text.amber : BT2.text.green;
+
   return (
-    <div className="space-y-6">
-      {/* Overall Risk Score */}
-      <div className="rounded-lg" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-40 h-40 rounded-full border-8 mb-6"
-            style={{ borderColor: getRiskColor(riskScore.level) }}>
-            <div>
-              <div className="text-5xl font-bold" style={{ color: getRiskColor(riskScore.level) }}>
-                {riskScore.overall.toFixed(0)}
-              </div>
-              <div className="text-sm font-semibold uppercase mt-2 text-[#6B7585]">
-                Risk Score
-              </div>
-            </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: BT2.border.subtle }}>
+      <div style={{ background: BT2.bg.panel, padding: '8px', display: 'flex', alignItems: 'center', gap: 16, justifyContent: 'center' }}>
+        <div style={{ width: 80, height: 80, borderRadius: '50%', border: `3px solid ${riskColor(riskScore.level)}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: riskColor(riskScore.level), fontFamily: 'var(--bt-mono)' }}>{riskScore.overall.toFixed(0)}</div>
+          <div style={{ fontSize: 6, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', letterSpacing: 0.5 }}>RISK SCORE</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: riskColor(riskScore.level), fontFamily: 'var(--bt-mono)' }}>{riskScore.level.toUpperCase()} RISK</div>
+          <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', lineHeight: 1.4, maxWidth: 300 }}>
+            Supply pipeline risk assessment based on delivery timing, absorption capacity, competitive positioning, and market concentration.
           </div>
-          
-          <div className="mb-6">
-            <span 
-              className="px-6 py-3 rounded-full text-lg font-bold inline-block"
-              style={{
-                backgroundColor: `${getRiskColor(riskScore.level)}20`,
-                color: getRiskColor(riskScore.level)
-              }}
-            >
-              {riskScore.level.toUpperCase()} RISK
-            </span>
-          </div>
-          
-          <p className="text-[#6B7585] max-w-2xl mx-auto">
-            Supply pipeline risk assessment based on delivery timing, absorption capacity, 
-            competitive positioning, and market concentration factors.
-          </p>
         </div>
       </div>
 
-      {/* Risk Factor Breakdown */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-6">Risk Factor Analysis</h3>
-        <div className="space-y-6">
-          {riskFactors.map((factor, idx) => {
-            const percentage = (factor.score / 100) * 100;
-            const color = factor.score > 70 ? '#ef4444' : factor.score > 40 ? '#f59e0b' : '#10b981';
-            
-            return (
-              <div key={idx}>
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <div className="font-semibold text-[#E8E6E1]">{factor.name}</div>
-                    <div className="text-sm text-[#6B7585]">{factor.description}</div>
-                  </div>
-                  <div className="text-2xl font-bold" style={{ color }}>
-                    {factor.score.toFixed(0)}
-                  </div>
-                </div>
-                <div className="bg-[#253347] rounded-full h-3 overflow-hidden">
-                  <div 
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ 
-                      width: `${percentage}%`,
-                      backgroundColor: color 
-                    }}
-                  ></div>
-                </div>
+      <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+        <div style={{ ...L, marginBottom: 4 }}>RISK FACTOR ANALYSIS</div>
+        {riskFactors.map((factor, idx) => (
+          <div key={idx} style={{ padding: '3px 0', borderBottom: idx < riskFactors.length - 1 ? `1px solid ${BT2.border.subtle}` : 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+              <div>
+                <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>{factor.name}</span>
+                <span style={{ fontSize: 7, color: BT2.text.muted, fontFamily: 'var(--bt-mono)', marginLeft: 6 }}>{factor.desc}</span>
               </div>
-            );
-          })}
-        </div>
+              <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'var(--bt-mono)', color: factorColor(factor.score) }}>{factor.score.toFixed(0)}</span>
+            </div>
+            <div style={{ height: 3, background: BT2.bg.header, overflow: 'hidden' }}>
+              <div style={{ height: '100%', background: factorColor(factor.score), width: `${factor.score}%`, transition: 'width 0.3s' }} />
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Recommendations */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">🎯 Strategic Recommendations</h3>
-        <div className="space-y-3">
-          {riskScore.recommendations.map((rec, idx) => (
-            <div key={idx} className="flex items-start space-x-3 p-4 rounded-lg border-blue-800">
-              <span className="text-xl flex-shrink-0">💡</span>
-              <p className="text-sm text-blue-200">{rec}</p>
-            </div>
+      <div style={{ background: BT2.bg.panel, padding: '4px 8px' }}>
+        <div style={{ ...L, marginBottom: 3 }}>STRATEGIC RECOMMENDATIONS</div>
+        {riskScore.recommendations.map((rec, idx) => (
+          <div key={idx} style={{ padding: '2px 0 2px 8px', borderLeft: `2px solid ${BT2.text.cyan}30`, marginBottom: 2 }}>
+            <span style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', lineHeight: 1.4 }}>{rec}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle }}>
+        <div style={{ ...CELL, borderLeft: `2px solid ${BT2.text.green}` }}>
+          <div style={{ fontSize: 7, color: BT2.text.green, fontFamily: 'var(--bt-mono)', fontWeight: 700, marginBottom: 3 }}>LOW RISK FACTORS</div>
+          {riskFactors.filter(f => f.score < 40).map((f, i) => (
+            <div key={i} style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', padding: '1px 0' }}>{f.name} ({f.score.toFixed(0)})</div>
           ))}
+          {riskFactors.filter(f => f.score < 40).length === 0 && (
+            <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>None</div>
+          )}
         </div>
-      </div>
-
-      {/* Risk Matrix */}
-      <div className="rounded-lg p-6" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}>
-        <h3 className="text-lg font-semibold text-[#E8E6E1] mb-4">Risk Matrix</h3>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 rounded-lg" style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.2)" }}>
-            <div className="text-sm font-semibold text-green-200 mb-2">✅ Low Risk Factors</div>
-            <ul className="text-sm text-green-300 space-y-1">
-              {riskFactors.filter(f => f.score < 40).map((f, i) => (
-                <li key={i}>• {f.name} ({f.score.toFixed(0)})</li>
-              ))}
-            </ul>
-          </div>
-          
-          <div className="p-4 border border-red-800 rounded-lg" style={{ background: 'rgba(220,38,38,0.08)' }}>
-            <div className="text-sm font-semibold text-red-200 mb-2">⚠️ High Risk Factors</div>
-            <ul className="text-sm text-red-300 space-y-1">
-              {riskFactors.filter(f => f.score >= 40).map((f, i) => (
-                <li key={i}>• {f.name} ({f.score.toFixed(0)})</li>
-              ))}
-            </ul>
-          </div>
+        <div style={{ ...CELL, borderLeft: `2px solid ${BT2.text.red}` }}>
+          <div style={{ fontSize: 7, color: BT2.text.red, fontFamily: 'var(--bt-mono)', fontWeight: 700, marginBottom: 3 }}>HIGH RISK FACTORS</div>
+          {riskFactors.filter(f => f.score >= 40).map((f, i) => (
+            <div key={i} style={{ fontSize: 8, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)', padding: '1px 0' }}>{f.name} ({f.score.toFixed(0)})</div>
+          ))}
+          {riskFactors.filter(f => f.score >= 40).length === 0 && (
+            <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: 'var(--bt-mono)' }}>None</div>
+          )}
         </div>
       </div>
     </div>
   );
 };
-
-// Helper functions at module level
-function getRiskColor(level: string): string {
-  switch (level) {
-    case 'low': return '#10b981';
-    case 'medium': return '#f59e0b';
-    case 'high': return '#ef4444';
-    case 'critical': return '#dc2626';
-    default: return '#6b7280';
-  }
-}
-
-function getPhaseColor(phase: string): string {
-  switch (phase) {
-    case 'planned': return '#3b82f6';
-    case 'under_construction': return '#f59e0b';
-    case 'delivered': return '#10b981';
-    default: return '#6b7280';
-  }
-}
-
-function formatNumber(num: number): string {
-  return num.toLocaleString();
-}
 
 export default SupplyPipelinePage;
