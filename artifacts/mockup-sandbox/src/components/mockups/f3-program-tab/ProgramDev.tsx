@@ -1,11 +1,224 @@
+import { useState } from "react";
+
+const C = {
+  bg: '#0A0E17', surface: '#0F1319', card: '#131821', elevated: '#1a2130',
+  border: '#1E2538', borderSub: '#161c24', muted: '#2A3348',
+  text: '#E8ECF1', dim: '#6B7A8D', faint: '#4A566B', accent: '#c2c0b6',
+  studio: '#A78BFA', oneBR: '#00BCD4', twoBR: '#00D26A', threeBR: '#F5A623',
+  subject: '#FF8C42', green: '#00D26A', red: '#FF4757', yellow: '#F5A623', blue: '#00BCD4',
+  purple: '#A78BFA',
+};
+const mono = "'JetBrains Mono','Fira Code','SF Mono',monospace";
+
+const UNIT_TYPES = [
+  { key: "studio", label: "Studio", abbr: "STU", color: C.studio, marketMix: 5.3, marketRent: 1240, marketSF: 508, proposedMix: 5, proposedRent: 1302, proposedSF: 510, units: 13 },
+  { key: "1br", label: "1 BR", abbr: "1BR", color: C.oneBR, marketMix: 42, marketRent: 1642, marketSF: 748, proposedMix: 38, proposedRent: 1750, proposedSF: 785, units: 95 },
+  { key: "2br", label: "2 BR", abbr: "2BR", color: C.twoBR, marketMix: 44, marketRent: 1948, marketSF: 1055, proposedMix: 44, proposedRent: 2100, proposedSF: 1100, units: 110 },
+  { key: "3br", label: "3 BR+", abbr: "3BR", color: C.threeBR, marketMix: 8.7, marketRent: 2280, marketSF: 1298, proposedMix: 13, proposedRent: 2480, proposedSF: 1320, units: 33 },
+];
+
+const DEAL_TYPES = [
+  { key: "development", label: "Development", desc: "Ground-up" },
+  { key: "redevelopment", label: "Redevelopment", desc: "Add/convert" },
+  { key: "existing", label: "Existing", desc: "As-is" },
+];
+
+const AMENITIES = [
+  { tier: 'BASE', color: C.green, items: [
+    { name: 'Package Lockers', cost: '$45K', lift: '+$18/u', roi: '2.1yr' },
+    { name: 'Fitness Center', cost: '$120K', lift: '+$25/u', roi: '1.7yr' },
+    { name: 'Dog Park/Wash', cost: '$35K', lift: '+$12/u', roi: '1.0yr' },
+  ]},
+  { tier: 'COMPETITIVE', color: C.yellow, items: [
+    { name: 'Rooftop Lounge', cost: '$280K', lift: '+$45/u', roi: '2.2yr' },
+    { name: 'Coworking Space', cost: '$180K', lift: '+$35/u', roi: '1.8yr' },
+    { name: 'EV Charging (8)', cost: '$64K', lift: '+$15/u', roi: '1.4yr' },
+  ]},
+  { tier: 'PREMIUM', color: C.purple, items: [
+    { name: 'Pool + Cabanas', cost: '$450K', lift: '+$65/u', roi: '2.5yr' },
+    { name: 'Sky Deck w/ Grills', cost: '$320K', lift: '+$50/u', roi: '2.3yr' },
+  ]},
+];
+
+function DeltaBadge({ value, suffix = "" }: { value: number; suffix?: string }) {
+  if (value === 0) return <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>—</span>;
+  const pos = value > 0;
+  const color = pos ? C.green : C.red;
+  return (
+    <span style={{ color, fontSize: 9, fontFamily: mono, letterSpacing: -0.3 }}>
+      {pos ? "▲" : "▼"} {Math.abs(value).toFixed(1)}{suffix}
+    </span>
+  );
+}
+
+function MixBar({ proposed, market, color }: { proposed: number; market: number; color: string }) {
+  const maxVal = Math.max(proposed, market, 50);
+  const pW = (proposed / maxVal) * 100;
+  const mW = (market / maxVal) * 100;
+  return (
+    <div style={{ position: "relative", height: 18, width: "100%" }}>
+      <div style={{
+        position: "absolute", left: `${mW}%`, top: 0, bottom: 0, width: 1,
+        background: C.dim, zIndex: 2, opacity: 0.5,
+      }} />
+      <div style={{
+        position: "absolute", left: `calc(${mW}% + 3px)`, top: 0,
+        fontSize: 8, fontFamily: mono, color: C.faint, whiteSpace: "nowrap",
+      }}>
+        MKT {market.toFixed(0)}%
+      </div>
+      <div style={{
+        position: "absolute", left: 0, top: 6, height: 6,
+        width: `${pW}%`, background: color, borderRadius: 1, opacity: 0.8,
+        transition: "width 0.3s ease",
+      }} />
+    </div>
+  );
+}
+
+function EnvelopeGauge({ used, total, label }: { used: number; total: number; label: string }) {
+  const pct = (used / total) * 100;
+  const remaining = total - used;
+  const isOver = used > total;
+  const barColor = isOver ? C.red : pct > 90 ? C.yellow : C.green;
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
+        <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</span>
+        <span style={{ fontSize: 9, fontFamily: mono, color: isOver ? C.red : C.dim }}>
+          {remaining > 0 ? `${remaining.toLocaleString()} remaining` : `${Math.abs(remaining).toLocaleString()} over`}
+        </span>
+      </div>
+      <div style={{ height: 4, background: C.bg, borderRadius: 1, position: "relative" }}>
+        <div style={{
+          height: "100%", width: `${Math.min(pct, 100)}%`, background: barColor,
+          borderRadius: 1, transition: "width 0.3s ease",
+        }} />
+        <div style={{
+          position: "absolute", right: 0, top: -2, bottom: -2, width: 1,
+          background: C.faint, opacity: 0.4,
+        }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+        <span style={{ fontSize: 9, fontFamily: mono, color: C.text }}>{used.toLocaleString()}</span>
+        <span style={{ fontSize: 9, fontFamily: mono, color: C.faint }}>/ {total.toLocaleString()}</span>
+      </div>
+    </div>
+  );
+}
+
+function KPICell({ label, value, sub, accent, last }: { label: string; value: string | number; sub?: string; accent?: string; last?: boolean }) {
+  return (
+    <div style={{ flex: 1, borderRight: last ? "none" : `1px solid ${C.border}`, padding: "6px 12px" }}>
+      <div style={{ fontSize: 8, fontFamily: mono, color: C.faint, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 15, fontFamily: mono, color: accent || C.text, fontWeight: 600, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function UnitTypeRow({ unit, isLast }: { unit: typeof UNIT_TYPES[0]; isLast: boolean }) {
+  const annualRev = unit.proposedRent * unit.units * 12;
+  const psfRent = unit.proposedSF > 0 ? (unit.proposedRent / unit.proposedSF) : 0;
+  const mixDelta = unit.proposedMix - unit.marketMix;
+  const rentDelta = unit.proposedRent - unit.marketRent;
+  const sfDelta = unit.proposedSF - unit.marketSF;
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "72px 120px 1fr 1fr 70px 80px 24px",
+        gap: 0, alignItems: "center",
+        padding: "10px 12px",
+        borderBottom: isLast ? "none" : `1px solid ${C.borderSub}`,
+        background: hovered ? C.elevated : "transparent",
+        transition: "background 0.15s",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ width: 3, height: 24, background: unit.color, borderRadius: 1 }} />
+        <div>
+          <div style={{ fontSize: 11, fontFamily: mono, color: C.text, fontWeight: 600 }}>{unit.label}</div>
+          <div style={{ fontSize: 9, fontFamily: mono, color: C.faint }}>{unit.units} units</div>
+        </div>
+      </div>
+
+      <div style={{ paddingRight: 8 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 1 }}>
+          <span style={{ fontSize: 12, fontFamily: mono, color: C.text, fontWeight: 600 }}>{unit.proposedMix}%</span>
+          <DeltaBadge value={mixDelta} suffix="pp" />
+        </div>
+        <MixBar proposed={unit.proposedMix} market={unit.marketMix} color={unit.color} />
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 3,
+          background: C.bg, border: `1px solid ${C.border}`,
+          borderRadius: 2, padding: "2px 6px",
+        }}>
+          <span style={{ fontSize: 8, fontFamily: mono, color: C.faint }}>SF</span>
+          <span style={{ fontSize: 11, fontFamily: mono, color: C.text, fontWeight: 600 }}>{unit.proposedSF.toLocaleString()}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" as const, gap: 0 }}>
+          <span style={{ fontSize: 8, fontFamily: mono, color: C.faint }}>avg {unit.marketSF.toLocaleString()}</span>
+          <DeltaBadge value={sfDelta} suffix=" sf" />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 3,
+          background: C.bg, border: `1px solid ${C.border}`,
+          borderRadius: 2, padding: "2px 6px",
+        }}>
+          <span style={{ fontSize: 8, fontFamily: mono, color: C.faint }}>RENT</span>
+          <span style={{ fontSize: 11, fontFamily: mono, color: C.text, fontWeight: 600 }}>${unit.proposedRent.toLocaleString()}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column" as const, gap: 0 }}>
+          <span style={{ fontSize: 8, fontFamily: mono, color: C.faint }}>avg ${unit.marketRent.toLocaleString()}</span>
+          <DeltaBadge value={rentDelta} suffix="" />
+        </div>
+      </div>
+
+      <div>
+        <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, display: "block", marginBottom: 1 }}>$/SF</span>
+        <span style={{ fontSize: 12, fontFamily: mono, color: C.accent, fontWeight: 600 }}>${psfRent.toFixed(2)}</span>
+      </div>
+
+      <div style={{ textAlign: "right" as const }}>
+        <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, display: "block", marginBottom: 1 }}>ANNUAL</span>
+        <span style={{ fontSize: 11, fontFamily: mono, color: unit.color, fontWeight: 600 }}>${(annualRev / 1e3).toFixed(0)}K</span>
+      </div>
+
+      <div style={{ paddingLeft: 4 }}>
+        <div style={{ height: 24, width: 4, background: C.bg, borderRadius: 1, position: "relative" as const, display: "inline-block", verticalAlign: "middle" }}>
+          <div style={{
+            position: "absolute" as const, bottom: 0, width: "100%", borderRadius: 1,
+            height: `${(annualRev / 2800000) * 100}%`,
+            background: unit.color, opacity: 0.7,
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProgramDev() {
-  const C = {
-    bg: '#0A0E17', surface: '#0F1319', card: '#131821', border: '#1E2538',
-    muted: '#2A3348', text: '#E8ECF1', dim: '#6B7A8D',
-    studio: '#A78BFA', oneBR: '#00BCD4', twoBR: '#00D26A', threeBR: '#F5A623',
-    subject: '#FF8C42', green: '#00D26A', red: '#FF4757', yellow: '#F5A623', blue: '#00BCD4',
-  };
-  const mono = "'JetBrains Mono','Fira Code','SF Mono',monospace";
+  const [dealType, setDealType] = useState("development");
+  const [optimizing, setOptimizing] = useState(false);
+
+  const totalUnits = UNIT_TYPES.reduce((a, u) => a + u.units, 0);
+  const maxUnits = 280;
+  const totalSF = UNIT_TYPES.reduce((a, u) => a + (u.proposedSF * u.units), 0);
+  const maxSF = 310000;
+  const grossRev = UNIT_TYPES.reduce((a, u) => a + (u.proposedRent * u.units * 12), 0);
+  const avgPSF = grossRev / 12 / totalSF;
+  const avgRent = grossRev / 12 / totalUnits;
 
   const tabs = [
     { id: 'discovery', label: 'DISCOVERY' },
@@ -15,260 +228,216 @@ export function ProgramDev() {
     { id: 'program', label: 'PROGRAM', active: true },
   ];
 
-  const dealTypes = [
-    { id: 'dev', label: 'DEVELOPMENT', active: true, desc: 'New construction · unconstrained mix', color: C.green },
-    { id: 'redev', label: 'REDEVELOPMENT', active: false, desc: 'Existing asset · add/convert units', color: C.yellow },
-    { id: 'exist', label: 'EXISTING', active: false, desc: 'Rent lift · gap analysis only', color: C.blue },
-  ];
-
-  const unitRows = [
-    { abbr: 'STU', label: 'Studio', color: C.studio, mix: 5, sf: 510, rent: 1350, count: 13, annRev: '$199K', compMix: 3.2, compSf: 509, compRent: 1248, gap: -1.1 },
-    { abbr: '1BR', label: '1 BR', color: C.oneBR, mix: 38, sf: 785, rent: 1750, count: 95, annRev: '$1.90M', compMix: 42.0, compSf: 766, compRent: 1634, gap: -2.4 },
-    { abbr: '2BR', label: '2 BR', color: C.twoBR, mix: 44, sf: 1100, rent: 2100, count: 110, annRev: '$2.64M', compMix: 44.0, compSf: 1083, compRent: 1988, gap: 5.4 },
-    { abbr: '3BR', label: '3 BR+', color: C.threeBR, mix: 13, sf: 1320, rent: 2480, count: 33, annRev: '$935K', compMix: 10.8, compSf: 1298, compRent: 2280, gap: -1.9 },
-  ];
-
-  const zoning = { code: 'PUD-R / C-3', maxUnits: 280, maxSF: 310000, maxHeight: 5, lotCov: 65, conf: 94 };
-  const program = { totalUnits: 250, totalSF: 243650, grossRev: '$5.67M', wtdPsf: '$1.92' };
-  const sfPct = (program.totalSF / zoning.maxSF * 100).toFixed(1);
-  const unitPct = (program.totalUnits / zoning.maxUnits * 100).toFixed(1);
-
-  const amenities = [
-    { tier: 'BASE', items: [
-      { name: 'Package Lockers', cost: '$45K', lift: '+$18/u', roi: '2.1yr' },
-      { name: 'Fitness Center', cost: '$120K', lift: '+$25/u', roi: '1.7yr' },
-      { name: 'Dog Park/Wash', cost: '$35K', lift: '+$12/u', roi: '1.0yr' },
-    ]},
-    { tier: 'COMPETITIVE', items: [
-      { name: 'Rooftop Lounge', cost: '$280K', lift: '+$45/u', roi: '2.2yr' },
-      { name: 'Coworking Space', cost: '$180K', lift: '+$35/u', roi: '1.8yr' },
-      { name: 'EV Charging (8)', cost: '$64K', lift: '+$15/u', roi: '1.4yr' },
-    ]},
-    { tier: 'PREMIUM', items: [
-      { name: 'Pool + Cabanas', cost: '$450K', lift: '+$65/u', roi: '2.5yr' },
-      { name: 'Sky Deck w/ Grills', cost: '$320K', lift: '+$50/u', roi: '2.3yr' },
-    ]},
-  ];
-
   return (
-    <div style={{ height: '100vh', background: C.bg, fontFamily: "'Inter','Segoe UI',sans-serif", color: C.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ padding: '8px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <span style={{ color: C.blue, fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>F3</span>
+    <div style={{
+      height: '100vh', background: C.bg, fontFamily: mono,
+      color: C.text, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    }}>
+      <div style={{
+        padding: '6px 12px', borderBottom: `1px solid ${C.border}`,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>F3</span>
           <span style={{ color: C.border }}>|</span>
-          <span style={{ fontSize: 12, fontWeight: 700 }}>MARKET INTELLIGENCE</span>
-          <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>M03 · PROGRAM</span>
+          <span style={{ fontSize: 11, fontWeight: 700 }}>MARKET INTELLIGENCE</span>
+          <span style={{ color: C.faint, fontSize: 8, fontFamily: mono }}>M03 · PROGRAM</span>
         </div>
-        <span style={{ color: C.green, fontFamily: mono, fontSize: 8, padding: '2px 5px', background: '#00D26A15', borderRadius: 2 }}>DEVELOPMENT</span>
+        <span style={{ color: C.green, fontFamily: mono, fontSize: 7, padding: '2px 5px', background: C.green + '15', borderRadius: 2, fontWeight: 700 }}>DEVELOPMENT</span>
       </div>
 
-      <div style={{ display: 'flex', gap: 0, padding: '0 16px', borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 0, padding: '0 12px', borderBottom: `1px solid ${C.border}`, background: C.surface, flexShrink: 0 }}>
         {tabs.map(t => (
           <div key={t.id} style={{
-            padding: '7px 14px', fontSize: 9, fontFamily: mono, fontWeight: 700, letterSpacing: '0.08em',
+            padding: '6px 12px', fontSize: 8, fontFamily: mono, fontWeight: 700, letterSpacing: '0.08em',
             borderBottom: t.active ? `2px solid ${C.blue}` : '2px solid transparent',
-            color: t.active ? C.blue : C.dim,
-            background: t.active ? '#00BCD408' : 'transparent',
+            color: t.active ? C.text : C.dim,
           }}>{t.label}</div>
         ))}
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* AI Rationale */}
-        <div style={{ background: C.card, border: `1px solid ${C.blue}30`, borderRadius: 4, padding: '8px 12px' }}>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-            <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>AI SYNTHESIS</span>
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div style={{
+          display: "flex", gap: 20, padding: "8px 12px",
+          background: C.card, borderBottom: `1px solid ${C.border}`,
+        }}>
+          <EnvelopeGauge used={totalUnits} total={maxUnits} label="Unit envelope" />
+          <div style={{ width: 1, background: C.border }} />
+          <EnvelopeGauge used={totalSF} total={maxSF} label="SF envelope" />
+        </div>
+
+        <div style={{
+          display: "flex", borderBottom: `1px solid ${C.border}`, background: C.surface,
+        }}>
+          <KPICell label="Total units" value={totalUnits} sub={`of ${maxUnits} max`} />
+          <KPICell label="Net SF" value={totalSF.toLocaleString()} sub={`${Math.round(totalSF / totalUnits)} avg/unit`} />
+          <KPICell label="Gross rev" value={`$${(grossRev / 1e6).toFixed(2)}M`} sub="annual" accent={C.green} />
+          <KPICell label="Avg rent" value={`$${avgRent.toFixed(0)}`} sub="/unit/mo" />
+          <KPICell label="Avg $/SF" value={`$${avgPSF.toFixed(2)}`} sub="/mo" last />
+        </div>
+
+        <div style={{
+          padding: '6px 12px', borderBottom: `1px solid ${C.border}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: C.surface,
+        }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>M03</span>
             <span style={{ color: C.border }}>·</span>
-            <span style={{ color: C.text, fontSize: 10, fontWeight: 700 }}>Program Rationale</span>
+            <span style={{ fontSize: 11, fontWeight: 700 }}>Unit Program</span>
           </div>
-          <p style={{ color: C.dim, fontSize: 9, lineHeight: 1.5, margin: 0 }}>
-            2BR units show strongest demand signal (score 91, vac 2.5%, +5.4pp gap). Recommend overweighting 2BR at 44% vs comp avg 44%.
-            Studio demand is weak (score 42, vac 10.8%) — minimize to 5%. 1BR balanced at 38%. Zoning envelope supports 250u within 310K SF cap.
-            Rooftop amenity package drives estimated +$45/u lift based on 3 comparable new deliveries in trade area.
-          </p>
-        </div>
-
-        {/* Deal Type Selector */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          {dealTypes.map(dt => (
-            <div key={dt.id} style={{
-              flex: 1, padding: '8px 12px', borderRadius: 4, cursor: 'pointer',
-              background: dt.active ? dt.color + '10' : C.card,
-              border: `1px solid ${dt.active ? dt.color + '60' : C.border}`,
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{
+              display: "flex", background: C.bg, borderRadius: 2,
+              border: `1px solid ${C.border}`, overflow: "hidden",
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
-                <span style={{ color: dt.active ? dt.color : C.dim, fontFamily: mono, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em' }}>{dt.label}</span>
-                {dt.active && <div style={{ width: 6, height: 6, borderRadius: '50%', background: dt.color }} />}
-              </div>
-              <span style={{ color: C.dim, fontSize: 8 }}>{dt.desc}</span>
+              {DEAL_TYPES.map(dt => (
+                <button
+                  key={dt.key}
+                  onClick={() => setDealType(dt.key)}
+                  style={{
+                    padding: "3px 8px", border: "none", cursor: "pointer",
+                    fontSize: 8, fontFamily: mono, letterSpacing: 0.3,
+                    background: dealType === dt.key ? C.elevated : "transparent",
+                    color: dealType === dt.key ? C.text : C.faint,
+                    borderRight: `1px solid ${C.border}`,
+                  }}
+                >
+                  {dt.label}
+                </button>
+              ))}
             </div>
+            <div style={{ width: 1, height: 16, background: C.border }} />
+            <button
+              onClick={() => { setOptimizing(true); setTimeout(() => setOptimizing(false), 2000); }}
+              style={{
+                padding: "3px 8px", border: `1px solid ${C.blue}33`,
+                borderRadius: 2, cursor: "pointer",
+                fontSize: 8, fontFamily: mono, letterSpacing: 0.5, fontWeight: 700,
+                background: optimizing ? `${C.blue}15` : "transparent",
+                color: C.blue,
+              }}
+            >
+              {optimizing ? "OPTIMIZING..." : "AI OPTIMIZE"}
+            </button>
+            <button style={{
+              padding: "3px 8px", border: `1px solid ${C.border}`,
+              borderRadius: 2, cursor: "pointer", background: "transparent",
+              fontSize: 8, fontFamily: mono, color: C.faint, fontWeight: 700,
+            }}>
+              RESET
+            </button>
+          </div>
+        </div>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "72px 120px 1fr 1fr 70px 80px 24px",
+          padding: "4px 12px",
+          borderBottom: `1px solid ${C.border}`,
+          background: C.surface,
+        }}>
+          {["Type", "Mix %", "Avg SF", "Rent", "$/SF", "Rev", ""].map((h, i) => (
+            <span key={i} style={{
+              fontSize: 8, fontFamily: mono, color: C.faint,
+              textTransform: "uppercase" as const, letterSpacing: 0.8,
+            }}>{h}</span>
           ))}
         </div>
 
-        {/* Zoning Constraints */}
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ padding: '6px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>M02</span>
-              <span style={{ color: C.border }}>·</span>
-              <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Zoning Envelope</span>
-              <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: C.blue + '18', color: C.blue }}>{zoning.code}</span>
-              <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: C.green + '18', color: C.green }}>{zoning.conf}% CONF</span>
-            </div>
+        {UNIT_TYPES.map((unit, i) => (
+          <UnitTypeRow key={unit.key} unit={unit} isLast={i === UNIT_TYPES.length - 1} />
+        ))}
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "72px 120px 1fr 1fr 70px 80px 24px",
+          padding: "8px 12px",
+          borderTop: `2px solid ${C.border}`,
+          background: C.card,
+        }}>
+          <div>
+            <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, letterSpacing: 0.5 }}>TOTAL</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: C.border }}>
-            {[
-              { label: 'MAX UNITS', val: zoning.maxUnits, yours: program.totalUnits, pct: unitPct, suf: 'u' },
-              { label: 'MAX NET SF', val: zoning.maxSF.toLocaleString(), yours: program.totalSF.toLocaleString(), pct: sfPct, suf: 'SF' },
-              { label: 'MAX HEIGHT', val: `${zoning.maxHeight}`, yours: null, pct: null, suf: 'fl' },
-              { label: 'LOT COVERAGE', val: `${zoning.lotCov}`, yours: null, pct: null, suf: '%' },
-            ].map(f => (
-              <div key={f.label} style={{ background: C.card, padding: '8px 12px' }}>
-                <div style={{ color: C.dim, fontSize: 8, fontFamily: mono, marginBottom: 4 }}>{f.label}</div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-                    <span style={{ color: C.text, fontFamily: mono, fontSize: 14, fontWeight: 700 }}>{f.val}</span>
-                    <span style={{ color: C.dim, fontSize: 9 }}>{f.suf}</span>
-                  </div>
-                  {f.yours && <span style={{ color: C.dim, fontSize: 9, fontFamily: mono }}>→ {f.yours}</span>}
-                </div>
-                {f.pct && (
-                  <div style={{ marginTop: 4 }}>
-                    <div style={{ height: 3, background: C.muted, borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ width: `${Math.min(100, parseFloat(f.pct))}%`, height: '100%', background: parseFloat(f.pct) > 95 ? C.yellow : C.green, borderRadius: 2 }} />
-                    </div>
-                    <span style={{ color: parseFloat(f.pct) > 95 ? C.yellow : C.green, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{f.pct}%</span>
-                  </div>
-                )}
-              </div>
-            ))}
+          <div>
+            <span style={{ fontSize: 11, fontFamily: mono, color: C.text, fontWeight: 600 }}>100%</span>
           </div>
+          <div>
+            <span style={{ fontSize: 11, fontFamily: mono, color: C.text }}>{Math.round(totalSF / totalUnits)} avg</span>
+          </div>
+          <div>
+            <span style={{ fontSize: 11, fontFamily: mono, color: C.text }}>${avgRent.toFixed(0)} avg</span>
+          </div>
+          <div>
+            <span style={{ fontSize: 11, fontFamily: mono, color: C.accent, fontWeight: 600 }}>${avgPSF.toFixed(2)}</span>
+          </div>
+          <div style={{ textAlign: "right" as const }}>
+            <span style={{ fontSize: 11, fontFamily: mono, color: C.green, fontWeight: 700 }}>${(grossRev / 1e6).toFixed(2)}M</span>
+          </div>
+          <div />
         </div>
 
-        {/* Unit Program Editor */}
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' }}>
-          <div style={{ padding: '6px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>M03</span>
-              <span style={{ color: C.border }}>·</span>
-              <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Unit Program</span>
-              <span style={{ color: C.dim, fontSize: 8 }}>← fed from MixMatrix</span>
-            </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <span style={{ fontSize: 7, fontWeight: 700, padding: '2px 6px', borderRadius: 2, background: C.blue + '14', border: `1px solid ${C.blue}35`, color: C.blue, cursor: 'pointer' }}>AI OPTIMIZE</span>
-              <span style={{ fontSize: 7, fontWeight: 700, padding: '2px 6px', borderRadius: 2, border: `1px solid ${C.border}`, color: C.dim, cursor: 'pointer' }}>RESET</span>
-            </div>
+        <div style={{ padding: "6px 12px", borderTop: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 8, fontFamily: mono, color: C.faint, textTransform: "uppercase" as const, letterSpacing: 0.8, marginBottom: 4 }}>
+            Revenue composition
           </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, background: C.border, borderBottom: `1px solid ${C.border}` }}>
-            {[
-              { label: 'TOTAL UNITS', val: `${program.totalUnits}`, sub: `/ ${zoning.maxUnits}`, color: C.subject },
-              { label: 'NET SF', val: program.totalSF.toLocaleString(), color: C.text },
-              { label: 'GROSS REV', val: program.grossRev, color: C.green },
-              { label: 'WTD $/SF', val: program.wtdPsf, color: C.yellow },
-            ].map(kpi => (
-              <div key={kpi.label} style={{ background: C.bg, padding: '6px 10px' }}>
-                <div style={{ color: C.dim, fontSize: 7, fontFamily: mono, letterSpacing: '0.06em', marginBottom: 2 }}>{kpi.label}</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
-                  <span style={{ color: kpi.color, fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{kpi.val}</span>
-                  {kpi.sub && <span style={{ color: C.dim, fontFamily: mono, fontSize: 9 }}>{kpi.sub}</span>}
-                </div>
-              </div>
-            ))}
+          <div style={{ display: "flex", height: 5, borderRadius: 1, overflow: "hidden", gap: 1 }}>
+            {UNIT_TYPES.map(u => {
+              const rev = u.proposedRent * u.units * 12;
+              const pct = (rev / grossRev) * 100;
+              return (
+                <div key={u.key} style={{
+                  width: `${pct}%`, background: u.color, opacity: 0.75,
+                  transition: "width 0.3s ease",
+                }} />
+              );
+            })}
           </div>
-
-          {unitRows.map((u, ri) => (
-            <div key={u.abbr} style={{ padding: '8px 12px', borderBottom: ri < unitRows.length - 1 ? `1px solid ${C.border}40` : 'none' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <div style={{ width: 6, height: 6, borderRadius: 1, background: u.color }} />
-                <span style={{ color: u.color, fontFamily: mono, fontSize: 10, fontWeight: 700, minWidth: 40 }}>{u.label}</span>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 100, height: 5, background: C.muted, borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ width: `${u.mix}%`, height: '100%', background: u.color + 'aa', borderRadius: 2 }} />
-                  </div>
-                  <span style={{ color: C.subject, fontFamily: mono, fontSize: 11, fontWeight: 700, minWidth: 28 }}>{u.mix}%</span>
-                  {u.compMix > 0 && (
-                    <span style={{ color: (u.mix - u.compMix) > 0 ? C.green : (u.mix - u.compMix) < -2 ? C.red : C.dim, fontFamily: mono, fontSize: 8 }}>
-                      {(u.mix - u.compMix) > 0 ? '+' : ''}{(u.mix - u.compMix).toFixed(1)}pp
-                    </span>
-                  )}
-                </div>
-                <span style={{ color: C.dim, fontFamily: mono, fontSize: 9 }}>×{u.count}</span>
-                <span style={{ color: C.green, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{u.annRev}<span style={{ color: C.dim, fontSize: 8 }}>/yr</span></span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginLeft: 14 }}>
-                {[
-                  { label: 'SF', val: u.sf, comp: u.compSf, delta: u.sf - u.compSf },
-                  { label: 'RENT', val: `$${u.rent.toLocaleString()}`, comp: `$${u.compRent.toLocaleString()}`, delta: u.rent - u.compRent },
-                ].map(m => (
-                  <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 4, background: C.bg, borderRadius: 3, padding: '3px 8px', border: `1px solid ${C.border}40` }}>
-                    <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>{m.label}</span>
-                    <span style={{ color: C.subject, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{m.val}</span>
-                    <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>avg {m.comp}</span>
-                    <span style={{ color: m.delta > 0 ? C.green : m.delta < -20 ? C.red : C.dim, fontFamily: mono, fontSize: 8 }}>
-                      {m.delta > 0 ? '+' : ''}{m.delta}
-                    </span>
-                  </div>
-                ))}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '3px 8px' }}>
-                  <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>$/SF</span>
-                  <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>${(u.rent / u.sf).toFixed(2)}</span>
-                </div>
-                {u.gap > 3 && (
-                  <span style={{ fontSize: 7, fontWeight: 700, padding: '2px 5px', borderRadius: 2, background: C.green + '18', color: C.green }}>
-                    GAP +{u.gap.toFixed(1)}pp ▲
+          <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+            {UNIT_TYPES.map(u => {
+              const rev = u.proposedRent * u.units * 12;
+              const pct = (rev / grossRev) * 100;
+              return (
+                <div key={u.key} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <div style={{ width: 5, height: 5, background: u.color, borderRadius: 1, opacity: 0.75 }} />
+                  <span style={{ fontSize: 8, fontFamily: mono, color: C.dim }}>
+                    {u.label} {pct.toFixed(0)}%
                   </span>
-                )}
-              </div>
-            </div>
-          ))}
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 12px', background: C.bg, borderTop: `2px solid ${C.border}` }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span style={{ color: C.dim, fontSize: 8, fontFamily: mono, fontWeight: 700 }}>TOTALS</span>
-              <span style={{ color: C.green, fontFamily: mono, fontSize: 12, fontWeight: 800 }}>100%</span>
-              <span style={{ color: C.border }}>|</span>
-              <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{program.totalUnits} units</span>
-              <span style={{ color: C.border }}>|</span>
-              <span style={{ color: C.dim, fontFamily: mono, fontSize: 10 }}>{Math.round(program.totalSF / program.totalUnits).toLocaleString()} avg SF</span>
-            </div>
-            <span style={{ color: C.green, fontFamily: mono, fontSize: 12, fontWeight: 700 }}>{program.grossRev}/yr</span>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        {/* Amenity Package Builder */}
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 0, overflow: 'hidden', borderTop: `1px solid ${C.border}` }}>
           <div style={{ padding: '6px 12px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>AMENITY</span>
+              <span style={{ color: C.blue, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em' }}>AMENITY</span>
               <span style={{ color: C.border }}>·</span>
-              <span style={{ color: C.text, fontSize: 11, fontWeight: 700 }}>Amenity Package Builder</span>
-              <span style={{ color: C.dim, fontSize: 8 }}>new construction · build from scratch</span>
+              <span style={{ fontSize: 11, fontWeight: 700 }}>Amenity Package Builder</span>
+              <span style={{ color: C.faint, fontSize: 8 }}>new construction</span>
             </div>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>TOTAL COST</span>
-              <span style={{ color: C.yellow, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>$1.49M</span>
-              <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>EST LIFT</span>
-              <span style={{ color: C.green, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>+$265/u</span>
+              <span style={{ color: C.faint, fontSize: 8, fontFamily: mono }}>TOTAL COST</span>
+              <span style={{ color: C.yellow, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>$1.49M</span>
+              <span style={{ color: C.faint, fontSize: 8, fontFamily: mono }}>EST LIFT</span>
+              <span style={{ color: C.green, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>+$265/u</span>
             </div>
           </div>
-          {amenities.map((tier, ti) => (
+          {AMENITIES.map((tier, ti) => (
             <div key={tier.tier}>
-              <div style={{ padding: '4px 12px', background: C.bg, borderBottom: `1px solid ${C.border}`, borderTop: ti > 0 ? `1px solid ${C.border}` : 'none' }}>
-                <span style={{
-                  fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.06em',
-                  color: tier.tier === 'BASE' ? C.green : tier.tier === 'COMPETITIVE' ? C.yellow : C.studio,
-                }}>{tier.tier}</span>
+              <div style={{ padding: '3px 12px', background: C.bg, borderBottom: `1px solid ${C.border}`, borderTop: ti > 0 ? `1px solid ${C.border}` : 'none' }}>
+                <span style={{ fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', color: tier.color }}>{tier.tier}</span>
               </div>
               {tier.items.map((item, ii) => (
-                <div key={ii} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 60px 32px', padding: '5px 12px',
+                <div key={ii} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 60px 50px 24px', padding: '4px 12px',
                   borderBottom: `1px solid ${C.border}30`, alignItems: 'center' }}>
-                  <span style={{ color: C.text, fontSize: 10 }}>{item.name}</span>
-                  <span style={{ color: C.dim, fontFamily: mono, fontSize: 9, textAlign: 'right' }}>{item.cost}</span>
-                  <span style={{ color: C.green, fontFamily: mono, fontSize: 9, fontWeight: 700, textAlign: 'right' }}>{item.lift}</span>
-                  <span style={{ color: C.dim, fontFamily: mono, fontSize: 8, textAlign: 'right' }}>{item.roi}</span>
-                  <div style={{ textAlign: 'center' }}>
-                    <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: C.green + '18', color: C.green, border: `1px solid ${C.green}40` }}>✓</span>
+                  <span style={{ color: C.text, fontSize: 9 }}>{item.name}</span>
+                  <span style={{ color: C.dim, fontFamily: mono, fontSize: 8, textAlign: 'right' as const }}>{item.cost}</span>
+                  <span style={{ color: C.green, fontFamily: mono, fontSize: 8, fontWeight: 700, textAlign: 'right' as const }}>{item.lift}</span>
+                  <span style={{ color: C.faint, fontFamily: mono, fontSize: 7, textAlign: 'right' as const }}>{item.roi}</span>
+                  <div style={{ textAlign: 'center' as const }}>
+                    <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 3px', borderRadius: 2, background: C.green + '18', color: C.green, border: `1px solid ${C.green}40` }}>✓</span>
                   </div>
                 </div>
               ))}
@@ -277,19 +446,29 @@ export function ProgramDev() {
         </div>
       </div>
 
-      <div style={{ padding: '5px 16px', borderTop: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', flexShrink: 0 }}>
-        <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>FLOW</span>
-        {['DISCOVERY', 'DEMAND', 'COMPS', 'TRENDS', 'PROGRAM'].map((step, i) => (
-          <span key={step} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{
-              fontFamily: mono, fontSize: 7, fontWeight: 700, padding: '2px 5px', borderRadius: 2,
-              background: i === 4 ? C.blue + '20' : 'transparent',
-              color: i === 4 ? C.blue : C.dim,
-              border: i === 4 ? `1px solid ${C.blue}40` : `1px solid ${C.border}`,
-            }}>{step}</span>
-            {i < 4 && <span style={{ color: C.muted, fontSize: 9 }}>→</span>}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "6px 12px", borderTop: `1px solid ${C.border}`,
+        background: C.card, flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, letterSpacing: 0.5 }}>
+            DEAL TYPE: {DEAL_TYPES.find(d => d.key === dealType)?.label.toUpperCase()}
           </span>
-        ))}
+          <span style={{ color: C.faint, fontSize: 8 }}>·</span>
+          <span style={{ fontSize: 8, fontFamily: mono, color: C.faint, letterSpacing: 0.5 }}>ZONING: PUD-R / C-3</span>
+          <span style={{ color: C.faint, fontSize: 8 }}>·</span>
+          <span style={{ fontSize: 8, fontFamily: mono, color: totalSF <= maxSF ? C.green : C.red, letterSpacing: 0.5 }}>
+            {totalSF <= maxSF ? "WITHIN ENVELOPE" : "EXCEEDS ENVELOPE"}
+          </span>
+        </div>
+        <button style={{
+          padding: "4px 12px", border: "none", borderRadius: 2,
+          cursor: "pointer", fontSize: 9, fontFamily: mono,
+          background: C.green, color: C.bg, fontWeight: 700, letterSpacing: 0.5,
+        }}>
+          PUSH TO PROFORMA →
+        </button>
       </div>
     </div>
   );
