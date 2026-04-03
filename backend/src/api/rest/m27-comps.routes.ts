@@ -169,4 +169,18 @@ router.get('/deals/:dealId/comps/summary', requireAuth, async (req: Authenticate
   }
 });
 
+router.delete('/deals/:dealId/comps/:compId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId, compId } = req.params;
+    const result = await compSetService.deleteCompFromSet(dealId, compId);
+    res.json({ success: true, data: result.updatedSet });
+  } catch (error: any) {
+    console.error('Delete comp error:', error);
+    res.status(error.message.includes('not found') ? 404 : 500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 export default router;
