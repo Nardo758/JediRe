@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
-  PanelHeader, SubTabBar, SectionPanel, DataRow, Bd, KpiTile, BtTabWrapper,
+  SubTabBar, SectionPanel, DataRow, Bd, KpiTile, BtTabWrapper,
   AlertBanner, TableHeader,
 } from '../../components/deal/bloomberg-ui';
 import FinancialDashboard from '../../components/deal/sections/FinancialDashboard';
@@ -225,24 +225,39 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
       <style>{BT_CSS}</style>
 
-      <PanelHeader
-        title="FINANCIAL ENGINE"
-        subtitle="M08 · 3-LAYER MODEL + DASHBOARD + TAX + CAPITAL + EXIT"
-        borderColor={BT.met.financial}
-        metrics={[
-          { l: 'F_IRR',  c: BT.met.financial },
-          { l: 'F_EM',   c: BT.text.amber    },
-          { l: 'F_YOC',  c: BT.met.occupancy  },
-          { l: 'F_CAP',  c: BT.text.cyan      },
-        ]}
-        right={
-          kpiLoading
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '4px 10px',
+        background: BT.bg.header,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        borderTop: `2px solid ${BT.met.financial}`,
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8, fontFamily: MONO }}>FINANCIAL ENGINE</span>
+          <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>M08 · 3-LAYER MODEL + DASHBOARD + TAX + CAPITAL + EXIT</span>
+          {kpiLoading
             ? <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>LOADING...</span>
             : kpi
               ? <Bd c={BT.met.financial}>LIVE MODEL</Bd>
               : <Bd c={BT.text.secondary}>NO MODEL</Bd>
-        }
-      />
+          }
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {[
+            { label: 'IRR',   value: kpi ? fmtPct(kpi.irr) : '—',              color: BT.met.financial },
+            { label: 'EM',    value: kpi ? fmtX(kpi.equityMultiple) : '—',      color: BT.text.amber },
+            { label: 'CoC',   value: kpi ? fmtPct(kpi.cashOnCash) : '—',        color: BT.met.occupancy },
+            { label: 'NOI',   value: kpi ? fmt$(kpi.noi) : '—',                 color: BT.text.cyan },
+            { label: 'DSCR',  value: kpi ? `${kpi.dscr.toFixed(2)}×` : '—',     color: BT.text.green },
+          ].map(m => (
+            <div key={m.label} style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+              <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>{m.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: m.color, fontFamily: MONO }}>{m.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <SubTabBar
         tabs={TAB_LABELS}
@@ -256,23 +271,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         {/* ── Tab 0: Financial Dashboard ── */}
         {activeTab === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
-              <div style={{ flex: 1 }}>
-                <KpiTile label="IRR"          value={kpi ? fmtPct(kpi.irr)                 : '—'} color={BT.met.financial} sub="base case" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <KpiTile label="EQUITY MULT"  value={kpi ? fmtX(kpi.equityMultiple)         : '—'} color={BT.text.amber}    sub="base case" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <KpiTile label="CASH-ON-CASH" value={kpi ? fmtPct(kpi.cashOnCash)           : '—'} color={BT.met.occupancy}  sub="year 1" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <KpiTile label="NOI"          value={kpi ? fmt$(kpi.noi)                    : '—'} color={BT.text.cyan}      sub="year 1" />
-              </div>
-              <div style={{ flex: 1 }}>
-                <KpiTile label="DSCR"         value={kpi ? `${kpi.dscr.toFixed(2)}×`        : '—'} color={BT.text.green}     sub="base case" />
-              </div>
-            </div>
             <BtTabWrapper>
               <FinancialDashboard dealId={resolvedDealId} />
             </BtTabWrapper>
@@ -320,21 +318,6 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                   <div style={{ flex: 1, padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.amber,  textAlign: 'right' as const }}>—</div>
                 </div>
               ))}
-              {/* Returns row */}
-              <div style={{ display: 'flex', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
-                <div style={{ flex: 2, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.primary }}>
-                  RETURNS
-                </div>
-                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.met.financial, textAlign: 'right' as const }}>
-                  {kpi ? fmtPct(kpi.irr) : '—'} <span style={{ color: BT.text.muted, fontWeight: 400 }}>IRR</span>
-                </div>
-                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber, textAlign: 'right' as const }}>
-                  {kpi ? fmtX(kpi.equityMultiple) : '—'} <span style={{ color: BT.text.muted, fontWeight: 400 }}>EM</span>
-                </div>
-                <div style={{ flex: 1, padding: '5px 8px', fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.met.occupancy, textAlign: 'right' as const }}>
-                  {kpi ? fmtPct(kpi.cashOnCash) : '—'} <span style={{ color: BT.text.muted, fontWeight: 400 }}>CoC</span>
-                </div>
-              </div>
               {/* Sensitivity grid */}
               <div style={{ padding: '6px 10px 8px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 5, letterSpacing: 0.5 }}>
