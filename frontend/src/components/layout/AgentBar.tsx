@@ -17,7 +17,7 @@ import {
   X, Send, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings,
   Brain, Target, LineChart, Calculator, Megaphone, Hammer, Scale, Landmark,
   Handshake, Building, Home, Key, Wrench, TrendingUp, Leaf, ShieldCheck,
-  Receipt, Search, Users
+  Receipt, Search, Users,
 } from 'lucide-react';
 import { T } from '../../styles/terminal-tokens';
 import api from '../../lib/api';
@@ -294,10 +294,7 @@ export const AgentBar: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<AgentCode | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [showAnalysts, setShowAnalysts] = useState(false);
-  const [chatInput, setChatInput] = useState('');
-  const [chatSending, setChatSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const chatInputRef = useRef<HTMLInputElement>(null);
   const agents = useAgents();
   const navigate = useNavigate();
   const dealId = useDealContext();
@@ -312,28 +309,6 @@ export const AgentBar: React.FC = () => {
     }
   };
 
-  const handleChatSend = async () => {
-    if (!chatInput.trim() || chatSending) return;
-    const text = chatInput.trim();
-    setChatInput('');
-    setChatSending(true);
-    const target: AgentCode = selectedAgent || 'OPUS';
-    agentBus.send({ from: 'USER' as any, to: target, type: 'request', topic: 'chat', payload: { text, fromUser: true }, priority: 'normal' });
-    try {
-      const response = await api.post('/agents/chat', { agentCode: target, message: text, dealId });
-      if (response.data?.success) {
-        agentBus.send({ from: target, to: 'ORCHESTRATOR', type: 'response', topic: 'chat', payload: { text: response.data.data.message, fromUser: false }, priority: 'normal' });
-      }
-    } catch (error: any) {
-      agentBus.send({ from: target, to: 'ORCHESTRATOR', type: 'response', topic: 'chat', payload: { text: `Error: ${error.message}`, fromUser: false, isError: true }, priority: 'normal' });
-    } finally {
-      setChatSending(false);
-      if (!selectedAgent) setSelectedAgent('OPUS');
-    }
-  };
-
-  const activeAgentDef = selectedAgent ? getAgentByCode(selectedAgent) : null;
-
   return (
     <>
       <div style={{
@@ -342,75 +317,80 @@ export const AgentBar: React.FC = () => {
         fontFamily: T.font.mono,
         flexShrink: 0,
       }}>
-        {expanded && (
-          <div style={{
-            padding: '6px 12px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            borderBottom: `1px solid ${T.border.subtle}`,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ color: T.text.cyan, fontSize: 9, fontWeight: 700, letterSpacing: 1 }}>AGENTS</span>
-              <span style={{ fontSize: 9, padding: '1px 5px', background: `${T.text.green}20`, color: T.text.green, borderRadius: 3 }}>
-                {onlineCount}/{agents.length}
-              </span>
-            </div>
+        <div style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <button onClick={() => setExpanded(!expanded)} style={{ background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+            {expanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          </button>
 
-            <div style={{ width: 1, height: 14, background: T.border.subtle }} />
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              {coreAgents.map(agent => (
-                <AgentChip
-                  key={agent.code}
-                  agent={agent}
-                  isActive={selectedAgent === agent.code}
-                  onClick={() => setSelectedAgent(selectedAgent === agent.code ? null : agent.code)}
-                  compact
-                />
-              ))}
-            </div>
-
-            <div style={{ width: 1, height: 14, background: T.border.subtle }} />
-
-            <button
-              onClick={() => setShowAnalysts(!showAnalysts)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                padding: '3px 8px',
-                background: showAnalysts ? `${T.text.amber}15` : 'transparent',
-                border: `1px solid ${showAnalysts ? T.text.amber + '55' : T.border.subtle}`,
-                borderRadius: 4,
-                color: showAnalysts ? T.text.amber : T.text.muted,
-                cursor: 'pointer', fontSize: 9, fontWeight: 600,
-              }}
-            >
-              <Users size={10} />
-              16 ANALYSTS
-              {showAnalysts ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-            </button>
-
-            <div style={{ flex: 1 }} />
-
-            <button
-              onClick={() => navigate('/terminal/settings?tab=agents')}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 3,
-                padding: '3px 7px', background: 'transparent',
-                border: `1px solid ${T.border.subtle}`, borderRadius: 3,
-                color: T.text.muted, cursor: 'pointer', fontSize: 9,
-              }}
-            >
-              <Settings size={10} />
-              AI
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ color: T.text.cyan, fontSize: 9, fontWeight: 700, letterSpacing: 1 }}>AGENTS</span>
+            <span style={{ fontSize: 9, padding: '1px 5px', background: `${T.text.green}20`, color: T.text.green, borderRadius: 3 }}>
+              {onlineCount}/{agents.length}
+            </span>
           </div>
-        )}
+
+          {expanded && (
+            <>
+              <div style={{ width: 1, height: 14, background: T.border.subtle }} />
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {coreAgents.map(agent => (
+                  <AgentChip
+                    key={agent.code}
+                    agent={agent}
+                    isActive={selectedAgent === agent.code}
+                    onClick={() => setSelectedAgent(selectedAgent === agent.code ? null : agent.code)}
+                    compact
+                  />
+                ))}
+              </div>
+
+              <div style={{ width: 1, height: 14, background: T.border.subtle }} />
+
+              <button
+                onClick={() => setShowAnalysts(!showAnalysts)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  padding: '3px 8px',
+                  background: showAnalysts ? `${T.text.amber}15` : 'transparent',
+                  border: `1px solid ${showAnalysts ? T.text.amber + '55' : T.border.subtle}`,
+                  borderRadius: 4,
+                  color: showAnalysts ? T.text.amber : T.text.muted,
+                  cursor: 'pointer', fontSize: 9, fontWeight: 600,
+                }}
+              >
+                <Users size={10} />
+                16 ANALYSTS
+                {showAnalysts ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              </button>
+            </>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            onClick={() => navigate('/terminal/settings?tab=agents')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 3,
+              padding: '3px 7px', background: 'transparent',
+              border: `1px solid ${T.border.subtle}`, borderRadius: 3,
+              color: T.text.muted, cursor: 'pointer', fontSize: 9,
+            }}
+          >
+            <Settings size={10} />
+            AI
+          </button>
+        </div>
 
         {expanded && showAnalysts && (
           <div style={{
             padding: '5px 12px',
-            borderBottom: `1px solid ${T.border.subtle}`,
+            borderTop: `1px solid ${T.border.subtle}`,
             display: 'flex', alignItems: 'center', gap: 6,
           }}>
             <button onClick={() => scroll('left')} style={{ background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 2 }}>
@@ -430,70 +410,6 @@ export const AgentBar: React.FC = () => {
             </button>
           </div>
         )}
-
-        {/* ── OPUS CHAT INPUT BAR ── */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          padding: '6px 12px',
-        }}>
-          <button onClick={() => setExpanded(!expanded)} style={{
-            background: 'transparent', border: 'none', color: T.text.muted, cursor: 'pointer', padding: 2, flexShrink: 0,
-          }}>
-            {expanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-          </button>
-
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-          }}>
-            <Brain size={14} color={activeAgentDef?.color || '#8B5CF6'} />
-            <span style={{ fontSize: 10, fontWeight: 700, color: activeAgentDef?.color || '#8B5CF6', letterSpacing: 0.5 }}>
-              {activeAgentDef?.name || 'OPUS'}
-            </span>
-          </div>
-
-          <div style={{
-            flex: 1, display: 'flex', alignItems: 'center',
-            background: T.bg.input || '#0D1117',
-            border: `1px solid ${T.border.subtle}`,
-            borderRadius: 4, padding: '0 8px', height: 28,
-          }}>
-            <span style={{ color: T.text.amber, fontSize: 11, fontWeight: 700, marginRight: 6, flexShrink: 0 }}>{'>'}</span>
-            <input
-              ref={chatInputRef}
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleChatSend(); }}
-              placeholder={dealId ? 'Ask Opus about this deal...' : 'Ask Opus anything...'}
-              style={{
-                flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                fontFamily: T.font.mono, fontSize: 11, color: T.text.primary,
-                minWidth: 0,
-              }}
-            />
-            {chatSending && (
-              <span style={{ fontSize: 9, color: T.text.amber, marginRight: 6, animation: 'pulse 1.5s infinite' }}>THINKING...</span>
-            )}
-            <span style={{
-              width: 5, height: 12, background: T.text.amber,
-              animation: 'blink 1s infinite', display: 'inline-block', flexShrink: 0,
-            }} />
-          </div>
-
-          <button
-            onClick={handleChatSend}
-            disabled={chatSending || !chatInput.trim()}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, flexShrink: 0,
-              background: chatInput.trim() ? T.text.amber : 'transparent',
-              color: chatInput.trim() ? '#0A0E17' : T.text.muted,
-              border: chatInput.trim() ? 'none' : `1px solid ${T.border.subtle}`,
-              borderRadius: 4, cursor: chatInput.trim() ? 'pointer' : 'default',
-            }}
-          >
-            <Send size={12} />
-          </button>
-        </div>
       </div>
 
       {selectedAgent && (
@@ -506,8 +422,6 @@ export const AgentBar: React.FC = () => {
 
       <style>{`
         div::-webkit-scrollbar { display: none; }
-        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
-        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
       `}</style>
     </>
   );
