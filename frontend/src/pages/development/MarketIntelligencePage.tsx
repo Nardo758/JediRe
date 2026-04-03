@@ -346,7 +346,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderDemandTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       <DemandMatrix inventory={umInventory} trendData={umTrendData} />
       <GapAnalysis gaps={umGaps} />
       <InventorySnapshot inventory={umInventory} comps={umComps} />
@@ -362,7 +362,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderCompsTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       <MixMatrix program={umProgram} comps={umComps} />
       <RentSFScatter program={umProgram} filterUT={umFilterUT} setFilterUT={setUmFilterUT} comps={umComps} />
       <CompTable program={umProgram} utKey={umTableUT} setUtKey={setUmTableUT} comps={umComps} />
@@ -370,7 +370,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderProgramTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
       <ZoningPanel zoning={umZoning} program={umProgram} computed={umComputed} onZoningChange={setUmZoning} />
       <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} />
@@ -378,7 +378,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderRepositioningTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       {programRationale && <ProgramRationale rationale={programRationale} dealMode={dealMode} />}
       <RepositioningPanel umComps={umComps} umGaps={umGaps} umProgram={umProgram} data={data} onProgramChange={handleProgramChange} />
       <ProgramEditor program={umProgram} computed={umComputed} zoning={umZoning} onProgramChange={handleProgramChange} comps={umComps} />
@@ -386,7 +386,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
   );
 
   const renderTrendsTab = () => (
-    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: UMC.bg }}>
+    <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14, background: BT2.bg.terminal }}>
       <TrendDetail selectedType={umTrendType} onSelect={setUmTrendType} trendData={umTrendData} />
       <PropertyDrillDown selectedType={umDrillType} onSelect={setUmDrillType} comps={umComps} />
     </div>
