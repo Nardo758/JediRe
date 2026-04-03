@@ -166,6 +166,74 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     setAssumptions(prev => prev ? { ...prev, ...partial } : null);
   }, []);
 
+  useEffect(() => {
+    if (opusScrollRef.current) {
+      opusScrollRef.current.scrollTop = opusScrollRef.current.scrollHeight;
+    }
+  }, [opusMessages]);
+
+  const handleOpusSend = useCallback(async () => {
+    if (!opusInput.trim() || opusSending) return;
+    const text = opusInput.trim();
+    setOpusInput('');
+    setOpusMessages(prev => [...prev, { role: 'user', text, ts: Date.now() }]);
+    setOpusSending(true);
+    setOpusExpanded(true);
+
+    const context = {
+      dealId: resolvedDealId,
+      dealType: resolvedDealType,
+      hasModel: !!modelResults,
+      kpi: kpi ? { irr: kpi.irr, em: kpi.equityMultiple, coc: kpi.cashOnCash, noi: kpi.noi, dscr: kpi.dscr } : null,
+      assumptions: assumptions ? {
+        purchasePrice: assumptions.purchasePrice,
+        units: assumptions.units,
+        exitCapRate: assumptions.exitCapRate,
+        holdPeriod: assumptions.holdPeriod,
+        loanType: assumptions.loanType,
+        ltv: assumptions.ltv,
+        interestRate: assumptions.interestRate,
+      } : null,
+    };
+
+    try {
+      const res = await apiClient.post('/api/v1/agents/chat', {
+        agentCode: 'OPUS',
+        message: text,
+        dealId: resolvedDealId,
+        context: { module: 'financial-engine', ...context },
+      });
+      const reply = (res as any)?.data?.data?.message || (res as any)?.data?.message || 'Model updated.';
+      setOpusMessages(prev => [...prev, { role: 'opus', text: reply, ts: Date.now() }]);
+
+      const actions = (res as any)?.data?.data?.actions || [];
+      for (const action of actions) {
+        if (action.type === 'update_assumptions' && action.payload) {
+          setAssumptions(prev => prev ? { ...prev, ...action.payload } : null);
+        }
+        if (action.type === 'build_model') {
+          handleBuildModel();
+        }
+        if (action.type === 'switch_tab' && typeof action.payload?.tab === 'number') {
+          setActiveTab(action.payload.tab);
+        }
+      }
+    } catch (err: any) {
+      setOpusMessages(prev => [...prev, { role: 'opus', text: `Error: ${err?.message || 'Failed to reach Opus'}`, ts: Date.now() }]);
+    } finally {
+      setOpusSending(false);
+    }
+  }, [opusInput, opusSending, resolvedDealId, resolvedDealType, modelResults, kpi, assumptions, handleBuildModel]);
+
+  const OPUS_QUICK_PROMPTS = [
+    'Build the model',
+    'What IRR do I need to hit 2.0x?',
+    'Run sensitivity on cap rate',
+    'Increase rent growth to 4%',
+    'Show debt structure',
+    'Compare to market comps',
+  ];
+
   const tabProps = useMemo(() => ({
     dealId: resolvedDealId,
     deal: propDeal,
@@ -308,35 +376,159 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         color={BT.met.financial}
       />
 
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {activeTab === 0 && (
-          <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 1 && (
-          <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 2 && (
-          <BtTabWrapper><ProjectionsTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 3 && (
-          <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 4 && (
-          <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 5 && (
-          <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 6 && (
-          <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 7 && (
-          <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>
-        )}
-        {activeTab === 8 && (
-          <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>
-        )}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
+        {/* ── OPUS CHAT PANEL (LEFT) ── */}
+        <div style={{
+          width: opusExpanded ? 320 : 42,
+          flexShrink: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          background: BT.bg.panel,
+          borderRight: `1px solid ${BT.border.medium}`,
+          transition: 'width 0.2s ease',
+          overflow: 'hidden',
+        }}>
+          {/* Panel header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: opusExpanded ? '8px 10px' : '8px 0',
+            justifyContent: opusExpanded ? 'flex-start' : 'center',
+            borderBottom: `1px solid ${BT.border.subtle}`,
+            flexShrink: 0, cursor: 'pointer',
+          }} onClick={() => setOpusExpanded(!opusExpanded)}>
+            <Brain size={16} color="#8B5CF6" />
+            {opusExpanded && (
+              <>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#8B5CF6', letterSpacing: 0.8, fontFamily: MONO }}>OPUS</span>
+                <Bd c="#8B5CF6">ENGINE CTRL</Bd>
+                <div style={{ flex: 1 }} />
+                <ChevronDown size={12} color={BT.text.muted} style={{ transform: opusExpanded ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+              </>
+            )}
+          </div>
+
+          {opusExpanded && (
+            <>
+              {/* Context badge */}
+              <div style={{
+                padding: '6px 10px', borderBottom: `1px solid ${BT.border.subtle}`,
+                display: 'flex', flexWrap: 'wrap', gap: 4, flexShrink: 0,
+              }}>
+                <Bd c={BT.met.financial}>{resolvedDealType.toUpperCase()}</Bd>
+                {kpi ? <Bd c={BT.text.green}>MODEL LIVE</Bd> : <Bd c={BT.text.muted}>NO MODEL</Bd>}
+                {kpi?.irr != null && <Bd c={BT.met.financial}>IRR {fmtPct(kpi.irr)}</Bd>}
+                {kpi?.dscr != null && <Bd c={BT.text.cyan}>DSCR {Number(kpi.dscr).toFixed(2)}×</Bd>}
+              </div>
+
+              {/* Quick prompts */}
+              {opusMessages.length === 0 && (
+                <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}`, flexShrink: 0 }}>
+                  <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 6, fontFamily: MONO, letterSpacing: 0.5 }}>QUICK COMMANDS</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    {OPUS_QUICK_PROMPTS.map((p, i) => (
+                      <button key={i} onClick={() => { setOpusInput(p); opusInputRef.current?.focus(); }} style={{
+                        textAlign: 'left', background: BT.bg.panelAlt || '#0D1117', border: `1px solid ${BT.border.subtle}`,
+                        color: BT.text.secondary, fontFamily: MONO, fontSize: 9, padding: '4px 8px',
+                        cursor: 'pointer', borderRadius: 3, lineHeight: 1.3,
+                      }}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Chat messages */}
+              <div ref={opusScrollRef} style={{
+                flex: 1, overflowY: 'auto', padding: '8px 0',
+                display: 'flex', flexDirection: 'column', gap: 6,
+              }}>
+                {opusMessages.length === 0 && (
+                  <div style={{ padding: '20px 10px', textAlign: 'center' }}>
+                    <Brain size={24} color="#8B5CF640" style={{ margin: '0 auto 8px' }} />
+                    <div style={{ fontSize: 10, color: BT.text.muted, fontFamily: MONO, lineHeight: 1.5 }}>
+                      Opus controls the Financial Engine.<br />
+                      Ask questions, adjust assumptions,<br />
+                      or run analysis commands.
+                    </div>
+                  </div>
+                )}
+                {opusMessages.map((msg, i) => (
+                  <div key={i} style={{
+                    padding: '6px 10px',
+                    borderLeft: msg.role === 'opus' ? '2px solid #8B5CF6' : '2px solid ' + BT.text.amber,
+                    marginLeft: msg.role === 'user' ? 20 : 0,
+                    marginRight: msg.role === 'opus' ? 10 : 0,
+                  }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: msg.role === 'opus' ? '#8B5CF6' : BT.text.amber, fontFamily: MONO, marginBottom: 2 }}>
+                      {msg.role === 'opus' ? 'OPUS' : 'YOU'}
+                    </div>
+                    <div style={{ fontSize: 10, color: BT.text.primary, fontFamily: MONO, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      {msg.text}
+                    </div>
+                  </div>
+                ))}
+                {opusSending && (
+                  <div style={{ padding: '6px 10px', borderLeft: '2px solid #8B5CF6' }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', fontFamily: MONO }}>OPUS</div>
+                    <div style={{ fontSize: 10, color: BT.text.muted, fontFamily: MONO, animation: 'pulse 1.5s infinite' }}>Analyzing...</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Chat input */}
+              <div style={{
+                padding: '8px 10px', borderTop: `1px solid ${BT.border.medium}`,
+                display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                background: BT.bg.header,
+              }}>
+                <span style={{ color: '#8B5CF6', fontSize: 12, fontWeight: 700, flexShrink: 0 }}>{'>'}</span>
+                <input
+                  ref={opusInputRef}
+                  value={opusInput}
+                  onChange={e => setOpusInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleOpusSend(); }}
+                  placeholder="Ask Opus..."
+                  style={{
+                    flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                    fontFamily: MONO, fontSize: 10, color: BT.text.primary, minWidth: 0,
+                  }}
+                />
+                <button
+                  onClick={handleOpusSend}
+                  disabled={opusSending || !opusInput.trim()}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: 24, height: 24, flexShrink: 0,
+                    background: opusInput.trim() ? '#8B5CF6' : 'transparent',
+                    color: opusInput.trim() ? '#fff' : BT.text.muted,
+                    border: opusInput.trim() ? 'none' : `1px solid ${BT.border.subtle}`,
+                    borderRadius: 3, cursor: opusInput.trim() ? 'pointer' : 'default',
+                  }}
+                >
+                  <Send size={11} />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── TAB CONTENT (RIGHT) ── */}
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 1 && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 2 && <BtTabWrapper><ProjectionsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 3 && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 4 && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5 && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 6 && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
+        </div>
       </div>
+
+      <style>{`
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+      `}</style>
     </div>
   );
 }
