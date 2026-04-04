@@ -338,8 +338,8 @@ function SignalMatrixTab({ city, state: st }: { city: string; state: string }) {
   );
 }
 
-function DriversTab({ dealId }: { dealId: string }) {
-  const { results, loading, error } = useDriverAnalysis(dealId);
+function DriversTab({ propertyId }: { propertyId: string }) {
+  const { results, loading, error } = useDriverAnalysis(propertyId);
 
   if (loading) {
     return (
@@ -502,7 +502,7 @@ function LeadLagTab() {
         </div>
       </div>
 
-      <SectionPanel title="LEAD-LAG RELATIONSHIPS" subtitle={`${source === 'api' ? 'empirical discovery' : 'metrics catalog'} chains`} borderColor={BT.text.purple}>
+      <SectionPanel title="LEAD-LAG RELATIONSHIPS" subtitle={`${source === 'merged' ? 'empirical + catalog' : 'metrics catalog'} chains`} borderColor={BT.text.purple}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr 55px 55px 65px 55px',
@@ -550,7 +550,7 @@ function LeadLagTab() {
       </SectionPanel>
 
       <div style={{ padding: '6px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-        {source === 'api' ? 'Sourced from lead-lag discovery API' : 'Sourced from JEDI RE Metrics Catalog (fallback)'} | {loading ? 'Loading...' : `${data.length} relationships`}
+        {source === 'merged' ? 'Empirical + Catalog (merged)' : 'Sourced from JEDI RE Metrics Catalog'} | {loading ? 'Loading...' : `${data.length} relationships`}
       </div>
     </div>
   );
@@ -564,6 +564,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
 
   const city = useDealStore(s => s.identity.city) || 'Atlanta';
   const stateName = useDealStore(s => s.identity.state) || 'GA';
+  const propertyId = useDealStore(s => s.identity.id) || resolvedDealId;
 
   const orderedCols = STRATEGY_COLS.map(col => ({
     col,
@@ -712,7 +713,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
         )}
 
         {activeTab === 2 && (
-          <DriversTab dealId={resolvedDealId} />
+          <DriversTab propertyId={propertyId} />
         )}
 
         {activeTab === 3 && (
