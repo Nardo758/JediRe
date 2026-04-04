@@ -386,7 +386,7 @@ function DriversTab({ propertyId }: { propertyId: string }) {
   return (
     <div style={{ padding: 1 }}>
       <div style={{
-        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
         gap: 1, background: BT.border.subtle, marginBottom: 1,
       }}>
         <div style={{ background: BT.bg.panel, padding: '6px 10px' }}>
@@ -406,6 +406,10 @@ function DriversTab({ propertyId }: { propertyId: string }) {
         <div style={{ background: BT.bg.panel, padding: '6px 10px' }}>
           <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>SIG (p&lt;.05)</div>
           <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.green }}>{sigCount}/{sorted.length}</div>
+        </div>
+        <div style={{ background: BT.bg.panel, padding: '6px 10px' }}>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>TESTED</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.secondary }}>{sorted.length}</div>
         </div>
       </div>
 
