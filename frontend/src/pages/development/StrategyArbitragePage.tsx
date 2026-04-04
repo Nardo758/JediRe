@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   BT, BT_CSS,
@@ -8,7 +8,11 @@ import { useStrategyArbitrage } from '../../hooks/useStrategyArbitrageM08';
 import { useDealStore } from '../../stores/dealStore';
 import type { M08StrategyScore } from '../../stores/dealStore';
 import { CustomScreenTab } from '../../components/deal/sections/CustomScreenTab';
-import { apiClient } from '../../services/api.client';
+import { useCorrelationReport } from '../../hooks/useCorrelationReport';
+import type { CorrelationResult } from '../../hooks/useCorrelationReport';
+import { useDriverAnalysis } from '../../hooks/useDriverAnalysis';
+import type { DriverResult } from '../../hooks/useDriverAnalysis';
+import { useLeadLagRelationships } from '../../hooks/useLeadLagRelationships';
 
 interface StrategyArbitragePageProps {
   dealId: string;
@@ -141,69 +145,6 @@ function StrategyCol({ score, isWinner, col }: StrategyColProps) {
   );
 }
 
-interface CorrelationResult {
-  id: string;
-  name: string;
-  tier: number;
-  category: string;
-  xValue: number | null;
-  yValue: number | null;
-  correlation: number | null;
-  signal: string | null;
-  confidence: 'high' | 'medium' | 'low' | 'insufficient';
-  leadTime: string;
-  actionable: string | null;
-  dataSources: string[];
-  missingData: string[];
-}
-
-interface CorrelationReport {
-  market: string;
-  state: string;
-  computedAt: string;
-  snapshotDate: string | null;
-  metricsComputed: number;
-  metricsSkipped: number;
-  correlations: CorrelationResult[];
-  summary: {
-    bullishSignals: number;
-    bearishSignals: number;
-    neutralSignals: number;
-    insufficientData: number;
-    rentRunway: string | null;
-    affordabilityCeiling: string | null;
-    supplyPressure: string | null;
-    topOpportunity: string | null;
-  };
-}
-
-interface DriverResult {
-  driverMetricId: string;
-  driverMetricName: string;
-  driverCategory: string;
-  driverGeographyType: string;
-  driverGeographyId: string;
-  outcomeMetricId: string;
-  optimalLagWeeks: number;
-  pearsonR: number;
-  pValue: number;
-  rSquared: number;
-  slope: number;
-  intercept: number;
-  sampleSize: number;
-  direction: string;
-}
-
-interface LeadLagEntry {
-  sourceId: string;
-  sourceName: string;
-  sourceCategory: string;
-  targetId: string;
-  targetName: string;
-  lagMonths: number;
-  typicalR: number;
-}
-
 const TIER_NAMES: Record<number, string> = {
   1: 'MONEY CORRELATIONS',
   2: 'SUPPLY-DEMAND EQUILIBRIUM',
@@ -218,13 +159,14 @@ const TIER_COLORS: Record<number, string> = {
   4: BT.text.orange,
 };
 
-function signalColor(signal: string | null): string {
-  if (signal === 'bullish') return BT.text.green;
-  if (signal === 'bearish') return BT.text.red;
-  return BT.text.muted;
+function signalDot(signal: string | null): { color: string; label: string } {
+  if (signal === 'bullish') return { color: BT.text.green, label: 'BULL' };
+  if (signal === 'bearish') return { color: BT.text.red, label: 'BEAR' };
+  if (signal === 'neutral') return { color: BT.text.secondary, label: 'NEUT' };
+  return { color: BT.text.muted, label: '---' };
 }
 
-function confidenceBadge(conf: string): string {
+function confidenceBadgeColor(conf: string): string {
   if (conf === 'high') return BT.text.green;
   if (conf === 'medium') return BT.text.amber;
   if (conf === 'low') return BT.text.orange;
@@ -232,30 +174,7 @@ function confidenceBadge(conf: string): string {
 }
 
 function SignalMatrixTab({ city, state: st }: { city: string; state: string }) {
-  const [report, setReport] = useState<CorrelationReport | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!city) { setLoading(false); return; }
-    setLoading(true);
-    setError('');
-    apiClient.get(`/api/v1/correlations/report`, { params: { city, state: st } })
-      .then(res => {
-        const raw = res.data?.data ?? res.data;
-        if (res.data?.success === false) {
-          setError(res.data?.error || 'Failed');
-          return;
-        }
-        if (raw && Array.isArray(raw.correlations) && raw.summary) {
-          setReport(raw);
-        } else {
-          setError('Invalid correlation report format');
-        }
-      })
-      .catch(err => setError(err.response?.data?.error || 'Failed to fetch correlation report'))
-      .finally(() => setLoading(false));
-  }, [city, st]);
+  const { report, loading, error } = useCorrelationReport(city, st);
 
   if (loading) {
     return (
@@ -284,12 +203,12 @@ function SignalMatrixTab({ city, state: st }: { city: string; state: string }) {
   const tiers = [1, 2, 3, 4];
   const grouped: Record<number, CorrelationResult[]> = {};
   tiers.forEach(t => { grouped[t] = []; });
-  report.correlations.forEach(c => {
+  (report.correlations ?? []).forEach(c => {
     const t = c.tier >= 1 && c.tier <= 4 ? c.tier : 4;
     grouped[t].push(c);
   });
 
-  const sum = report.summary;
+  const sum = report.summary ?? { bullishSignals: 0, bearishSignals: 0, neutralSignals: 0, insufficientData: 0, rentRunway: null, affordabilityCeiling: null, supplyPressure: null, topOpportunity: null };
 
   return (
     <div style={{ padding: 1 }}>
@@ -359,36 +278,54 @@ function SignalMatrixTab({ city, state: st }: { city: string; state: string }) {
           >
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <div style={{
-                display: 'grid', gridTemplateColumns: '60px 1fr 60px 55px 50px 55px',
+                display: 'grid', gridTemplateColumns: '56px 1fr 16px 42px 50px 50px 50px',
                 gap: 0, padding: '3px 8px',
                 background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
               }}>
-                {['ID', 'NAME', 'SIGNAL', 'CONF', 'R', 'LEAD'].map(h => (
+                {['ID', 'NAME', '', 'SIGNAL', 'CONF', 'R', 'LEAD'].map(h => (
                   <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, fontWeight: 600 }}>{h}</span>
                 ))}
               </div>
-              {rows.map(c => (
-                <div
-                  key={c.id}
-                  style={{
-                    display: 'grid', gridTemplateColumns: '60px 1fr 60px 55px 50px 55px',
-                    gap: 0, padding: '3px 8px',
-                    borderBottom: `1px solid ${BT.border.subtle}`,
-                  }}
-                  title={c.actionable ?? ''}
-                >
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: TIER_COLORS[tier], fontWeight: 700 }}>{c.id}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: signalColor(c.signal), textTransform: 'uppercase' }}>
-                    {c.signal ?? '—'}
-                  </span>
-                  <Bd c={confidenceBadge(c.confidence)}>{c.confidence.toUpperCase().slice(0, 3)}</Bd>
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: c.correlation != null ? (c.correlation >= 0 ? BT.text.green : BT.text.red) : BT.text.muted }}>
-                    {c.correlation != null ? c.correlation.toFixed(2) : '—'}
-                  </span>
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{c.leadTime || '—'}</span>
-                </div>
-              ))}
+              {rows.map(c => {
+                const sig = signalDot(c.signal);
+                return (
+                  <div key={c.id}>
+                    <div
+                      style={{
+                        display: 'grid', gridTemplateColumns: '56px 1fr 16px 42px 50px 50px 50px',
+                        gap: 0, padding: '3px 8px',
+                        borderBottom: c.actionable ? 'none' : `1px solid ${BT.border.subtle}`,
+                      }}
+                    >
+                      <span style={{ fontFamily: MONO, fontSize: 9, color: TIER_COLORS[tier], fontWeight: 700 }}>{c.id}</span>
+                      <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                      <span style={{
+                        width: 7, height: 7, borderRadius: '50%', background: sig.color,
+                        display: 'inline-block', marginTop: 2,
+                        boxShadow: c.signal === 'bullish' ? `0 0 4px ${BT.text.green}66` : c.signal === 'bearish' ? `0 0 4px ${BT.text.red}66` : 'none',
+                      }} />
+                      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: sig.color }}>
+                        {sig.label}
+                      </span>
+                      <Bd c={confidenceBadgeColor(c.confidence)}>{(c.confidence ?? 'N/A').toUpperCase().slice(0, 3)}</Bd>
+                      <span style={{ fontFamily: MONO, fontSize: 9, color: c.correlation != null ? (c.correlation >= 0 ? BT.text.green : BT.text.red) : BT.text.muted }}>
+                        {c.correlation != null ? c.correlation.toFixed(2) : '—'}
+                      </span>
+                      <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{c.leadTime || '—'}</span>
+                    </div>
+                    {c.actionable && (
+                      <div style={{
+                        padding: '2px 8px 4px 64px',
+                        borderBottom: `1px solid ${BT.border.subtle}`,
+                      }}>
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic' }}>
+                          {c.actionable}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </SectionPanel>
         );
@@ -402,23 +339,7 @@ function SignalMatrixTab({ city, state: st }: { city: string; state: string }) {
 }
 
 function DriversTab({ dealId }: { dealId: string }) {
-  const [results, setResults] = useState<DriverResult[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!dealId) { setLoading(false); return; }
-    setLoading(true);
-    setError('');
-    apiClient.get(`/api/v1/driver-analysis/results/${dealId}`, { params: { sortBy: 'pearsonR', sortDir: 'desc', limit: 50 } })
-      .then(res => {
-        setResults(res.data?.data ?? []);
-      })
-      .catch(err => {
-        setError(err.response?.data?.error || 'No driver analysis data');
-      })
-      .finally(() => setLoading(false));
-  }, [dealId]);
+  const { results, loading, error } = useDriverAnalysis(dealId);
 
   if (loading) {
     return (
@@ -450,9 +371,17 @@ function DriversTab({ dealId }: { dealId: string }) {
   }
 
   const sorted = [...results].sort((a, b) => Math.abs(b.pearsonR) - Math.abs(a.pearsonR));
-  const topR = sorted[0] ? Math.abs(sorted[0].pearsonR) : 0;
+  const topDriver = sorted[0];
+  const topR = topDriver ? Math.abs(topDriver.pearsonR) : 0;
   const avgR2 = sorted.length > 0 ? sorted.reduce((s, r) => s + r.rSquared, 0) / sorted.length : 0;
   const sigCount = sorted.filter(r => r.pValue < 0.05).length;
+
+  const outcomeGroups: Record<string, DriverResult[]> = {};
+  for (const d of sorted) {
+    const key = d.outcomeMetricId || 'UNKNOWN';
+    if (!outcomeGroups[key]) outcomeGroups[key] = [];
+    outcomeGroups[key].push(d);
+  }
 
   return (
     <div style={{ padding: 1 }}>
@@ -461,8 +390,10 @@ function DriversTab({ dealId }: { dealId: string }) {
         gap: 1, background: BT.border.subtle, marginBottom: 1,
       }}>
         <div style={{ background: BT.bg.panel, padding: '6px 10px' }}>
-          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>DRIVERS</div>
-          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.cyan }}>{sorted.length}</div>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>TOP DRIVER</div>
+          <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.cyan, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {topDriver?.driverMetricName || topDriver?.driverMetricId || '—'}
+          </div>
         </div>
         <div style={{ background: BT.bg.panel, padding: '6px 10px' }}>
           <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>TOP |R|</div>
@@ -474,162 +405,74 @@ function DriversTab({ dealId }: { dealId: string }) {
         </div>
         <div style={{ background: BT.bg.panel, padding: '6px 10px' }}>
           <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>SIG (p&lt;.05)</div>
-          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.green }}>{sigCount}</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.green }}>{sigCount}/{sorted.length}</div>
         </div>
       </div>
 
-      <SectionPanel title="DRIVER REGRESSION RESULTS" subtitle={`${sorted.length} drivers, sorted by |R|`} borderColor={BT.text.cyan}>
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 60px 60px 55px 60px 50px',
-            gap: 0, padding: '3px 8px',
-            background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
-          }}>
-            {['DRIVER', 'OUTCOME', 'R', 'R-SQ', 'p-VAL', 'LAG WK', 'DIR'].map(h => (
-              <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, fontWeight: 600 }}>{h}</span>
-            ))}
+      {Object.entries(outcomeGroups).map(([outcome, drivers]) => (
+        <SectionPanel
+          key={outcome}
+          title={outcome.replace(/_/g, ' ')}
+          subtitle={`${drivers.length} drivers`}
+          borderColor={BT.text.cyan}
+          style={{ marginBottom: 1 }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <div style={{
+              display: 'grid', gridTemplateColumns: '1fr 60px 60px 55px 55px 45px 45px',
+              gap: 0, padding: '3px 8px',
+              background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
+            }}>
+              {['DRIVER', 'R', 'R-SQ', 'p-VAL', 'LAG WK', 'N', 'DIR'].map(h => (
+                <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, fontWeight: 600 }}>{h}</span>
+              ))}
+            </div>
+            {drivers.map((d, i) => {
+              const dirColor = d.direction === 'positive' ? BT.text.green : d.direction === 'negative' ? BT.text.red : BT.text.secondary;
+              const rColor = Math.abs(d.pearsonR) >= 0.5 ? BT.text.green : Math.abs(d.pearsonR) >= 0.3 ? BT.text.amber : BT.text.muted;
+              return (
+                <div
+                  key={`${d.driverMetricId}-${i}`}
+                  style={{
+                    display: 'grid', gridTemplateColumns: '1fr 60px 60px 55px 55px 45px 45px',
+                    gap: 0, padding: '3px 8px',
+                    borderBottom: `1px solid ${BT.border.subtle}`,
+                    background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
+                  }}
+                >
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.driverMetricName || d.driverMetricId}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: rColor }}>
+                    {d.pearsonR.toFixed(3)}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+                    {d.rSquared.toFixed(3)}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: d.pValue < 0.05 ? BT.text.green : BT.text.muted }}>
+                    {d.pValue < 0.001 ? '<.001' : d.pValue.toFixed(3)}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
+                    {d.optimalLagWeeks}w
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+                    {d.sampleSize ?? '—'}
+                  </span>
+                  <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: dirColor, textTransform: 'uppercase' }}>
+                    {d.direction === 'positive' ? '+' : d.direction === 'negative' ? '-' : '~'}
+                  </span>
+                </div>
+              );
+            })}
           </div>
-          {sorted.map((d, i) => {
-            const dirColor = d.direction === 'positive' ? BT.text.green : d.direction === 'negative' ? BT.text.red : BT.text.secondary;
-            const rColor = Math.abs(d.pearsonR) >= 0.5 ? BT.text.green : Math.abs(d.pearsonR) >= 0.3 ? BT.text.amber : BT.text.muted;
-            return (
-              <div
-                key={`${d.driverMetricId}-${d.outcomeMetricId}-${i}`}
-                style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr 60px 60px 55px 60px 50px',
-                  gap: 0, padding: '3px 8px',
-                  borderBottom: `1px solid ${BT.border.subtle}`,
-                  background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-                }}
-              >
-                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {d.driverMetricName || d.driverMetricId}
-                </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {d.outcomeMetricId}
-                </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: rColor }}>
-                  {d.pearsonR.toFixed(3)}
-                </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
-                  {d.rSquared.toFixed(3)}
-                </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, color: d.pValue < 0.05 ? BT.text.green : BT.text.muted }}>
-                  {d.pValue < 0.001 ? '<.001' : d.pValue.toFixed(3)}
-                </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
-                  {d.optimalLagWeeks}w
-                </span>
-                <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: dirColor, textTransform: 'uppercase' }}>
-                  {d.direction === 'positive' ? '+' : d.direction === 'negative' ? '-' : '~'}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </SectionPanel>
+        </SectionPanel>
+      ))}
     </div>
   );
 }
 
-interface LeadLagApiResult {
-  metricAId: string;
-  metricBId: string;
-  optimalLagMonths: number;
-  rAtOptimalLag: number;
-  rAtZeroLag: number;
-  improvementAbs: number;
-  improvementPct: number;
-  geographyType: string;
-  sampleSize: number;
-}
-
-const CATALOG_FALLBACK: LeadLagEntry[] = (() => {
-  const catalog: Array<{
-    id: string; name: string; category: string;
-    leadsMetrics?: Array<{ metricId: string; lagMonths: number; typicalR: number }>;
-  }> = [
-    { id: 'C_SURGE_INDEX', name: 'Traffic Surge Index', category: 'traffic_composite',
-      leadsMetrics: [
-        { metricId: 'F_RENT_GROWTH', lagMonths: 6, typicalR: 0.58 },
-        { metricId: 'M_VACANCY', lagMonths: 9, typicalR: -0.50 },
-      ] },
-    { id: 'S_PIPELINE_UNITS', name: 'Pipeline Units', category: 'supply',
-      leadsMetrics: [
-        { metricId: 'M_VACANCY', lagMonths: 12, typicalR: 0.48 },
-      ] },
-    { id: 'E_EMPLOYMENT_GROWTH', name: 'Employment Growth', category: 'demand',
-      leadsMetrics: [
-        { metricId: 'L_JOBS_PER_UNIT', lagMonths: 0, typicalR: 0.85 },
-      ] },
-    { id: 'DEM_POP_GROWTH', name: 'Population Growth', category: 'demographic',
-      leadsMetrics: [
-        { metricId: 'F_RENT_GROWTH', lagMonths: 12, typicalR: 0.55 },
-      ] },
-    { id: 'C_TRAFFIC_GROWTH_INDEX', name: 'Traffic Growth Index', category: 'traffic_composite',
-      leadsMetrics: [
-        { metricId: 'F_RENT_GROWTH', lagMonths: 6, typicalR: 0.62 },
-        { metricId: 'M_VACANCY', lagMonths: 9, typicalR: -0.54 },
-        { metricId: 'M_ABSORPTION', lagMonths: 3, typicalR: 0.47 },
-      ] },
-    { id: 'D_SEARCH_MOMENTUM', name: 'Search Momentum', category: 'traffic_digital',
-      leadsMetrics: [
-        { metricId: 'C_TRAFFIC_GROWTH_INDEX', lagMonths: 3, typicalR: 0.58 },
-        { metricId: 'F_RENT_GROWTH', lagMonths: 9, typicalR: 0.52 },
-        { metricId: 'M_VACANCY', lagMonths: 12, typicalR: -0.45 },
-      ] },
-    { id: 'MACRO_OIL_PRICE', name: 'Oil Price', category: 'macro',
-      leadsMetrics: [
-        { metricId: 'F_CAP_RATE', lagMonths: 6, typicalR: 0.35 },
-        { metricId: 'E_EMPLOYMENT_GROWTH', lagMonths: 3, typicalR: 0.42 },
-      ] },
-    { id: 'MACRO_CPI', name: 'CPI Inflation', category: 'macro',
-      leadsMetrics: [
-        { metricId: 'F_RENT_GROWTH', lagMonths: 0, typicalR: 0.65 },
-        { metricId: 'F_CAP_RATE', lagMonths: 6, typicalR: 0.48 },
-      ] },
-  ];
-  const entries: LeadLagEntry[] = [];
-  for (const m of catalog) {
-    if (m.leadsMetrics) {
-      for (const lead of m.leadsMetrics) {
-        entries.push({
-          sourceId: m.id, sourceName: m.name, sourceCategory: m.category,
-          targetId: lead.metricId, targetName: lead.metricId.replace(/_/g, ' '),
-          lagMonths: lead.lagMonths, typicalR: lead.typicalR,
-        });
-      }
-    }
-  }
-  return entries.sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR));
-})();
-
 function LeadLagTab() {
-  const [data, setData] = useState<LeadLagEntry[]>(CATALOG_FALLBACK);
-  const [loading, setLoading] = useState(true);
-  const [source, setSource] = useState<'api' | 'catalog'>('catalog');
-
-  useEffect(() => {
-    apiClient.get('/api/v1/lead-lag/results', { params: { limit: 100 } })
-      .then(res => {
-        const results: LeadLagApiResult[] = Array.isArray(res.data?.data) ? res.data.data : [];
-        if (results.length > 0) {
-          const mapped: LeadLagEntry[] = results.map(r => ({
-            sourceId: r.metricAId,
-            sourceName: r.metricAId.replace(/_/g, ' '),
-            sourceCategory: r.geographyType,
-            targetId: r.metricBId,
-            targetName: r.metricBId.replace(/_/g, ' '),
-            lagMonths: r.optimalLagMonths,
-            typicalR: r.rAtOptimalLag,
-          })).sort((a, b) => Math.abs(b.typicalR) - Math.abs(a.typicalR));
-          setData(mapped);
-          setSource('api');
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, loading, source } = useLeadLagRelationships();
 
   const uniqueSources = new Set(data.map(d => d.sourceId)).size;
   const uniqueTargets = new Set(data.map(d => d.targetId)).size;
@@ -659,14 +502,14 @@ function LeadLagTab() {
         </div>
       </div>
 
-      <SectionPanel title="LEAD-LAG RELATIONSHIPS" subtitle="metrics catalog empirical chains" borderColor={BT.text.purple}>
+      <SectionPanel title="LEAD-LAG RELATIONSHIPS" subtitle={`${source === 'api' ? 'empirical discovery' : 'metrics catalog'} chains`} borderColor={BT.text.purple}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 65px 55px 70px',
+            display: 'grid', gridTemplateColumns: '1fr 1fr 55px 55px 65px 55px',
             gap: 0, padding: '3px 8px',
             background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
           }}>
-            {['LEADER (SOURCE)', 'LAGGER (TARGET)', 'LAG', 'R', 'CATEGORY'].map(h => (
+            {['LEADER (SOURCE)', 'LAGGER (TARGET)', 'LAG', 'R', 'CONF', 'N'].map(h => (
               <span key={h} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, fontWeight: 600 }}>{h}</span>
             ))}
           </div>
@@ -676,7 +519,7 @@ function LeadLagTab() {
               <div
                 key={`${d.sourceId}-${d.targetId}-${i}`}
                 style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr 65px 55px 70px',
+                  display: 'grid', gridTemplateColumns: '1fr 1fr 55px 55px 65px 55px',
                   gap: 0, padding: '3px 8px',
                   borderBottom: `1px solid ${BT.border.subtle}`,
                   background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
@@ -694,7 +537,12 @@ function LeadLagTab() {
                 <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: rColor }}>
                   {d.typicalR.toFixed(2)}
                 </span>
-                <Bd c={BT.text.muted}>{d.sourceCategory.replace(/_/g, ' ').toUpperCase().slice(0, 10)}</Bd>
+                <Bd c={d.confidence === 'empirical' ? BT.text.green : BT.text.muted}>
+                  {d.confidence === 'empirical' ? 'EMPRCL' : 'CATLOG'}
+                </Bd>
+                <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+                  {d.sampleSize ?? '—'}
+                </span>
               </div>
             );
           })}
