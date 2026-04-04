@@ -1,11 +1,9 @@
-/**
- * Custom Screen Tab - Strategy Scoring for Individual Deal
- * Displays user's saved strategies with pass/fail indicators and scores
- */
-
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../../../services/api.client';
 import { useNavigate } from 'react-router-dom';
+import { BT, Bd } from '../bloomberg-ui';
+
+const MONO = BT.font.mono;
 
 interface CustomStrategyScore {
   strategyId: string;
@@ -39,7 +37,6 @@ export const CustomScreenTab: React.FC<CustomScreenTabProps> = ({ dealId }) => {
         setIsLoading(true);
         setIsError(false);
 
-        // Call POST /api/v1/strategies/score-deal/:dealId
         const response = await apiClient.post(`/api/v1/strategies/score-deal/${dealId}`);
 
         if (response.data.success && response.data.data) {
@@ -64,10 +61,9 @@ export const CustomScreenTab: React.FC<CustomScreenTabProps> = ({ dealId }) => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-gray-500">Evaluating strategies...</span>
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <div style={{ fontFamily: MONO, fontSize: 11, color: BT.text.secondary }}>
+          Evaluating strategies...
         </div>
       </div>
     );
@@ -75,111 +71,126 @@ export const CustomScreenTab: React.FC<CustomScreenTabProps> = ({ dealId }) => {
 
   if (isError) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <div className="flex items-start gap-3">
-          <div className="text-red-600 text-lg">⚠️</div>
-          <div className="flex-1">
-            <h4 className="font-semibold text-red-900 mb-1">Failed to Load Strategies</h4>
-            <p className="text-sm text-red-800">{errorMessage}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-2 text-sm font-medium text-red-600 hover:text-red-700 underline"
-            >
-              Retry
-            </button>
-          </div>
+      <div style={{
+        background: `${BT.text.red}10`, border: `1px solid ${BT.text.red}33`,
+        padding: '8px 12px',
+      }}>
+        <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.red, marginBottom: 4 }}>
+          FAILED TO LOAD STRATEGIES
         </div>
+        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{errorMessage}</div>
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            marginTop: 6, fontFamily: MONO, fontSize: 9, fontWeight: 600,
+            color: BT.text.red, background: 'transparent', border: `1px solid ${BT.text.red}44`,
+            padding: '2px 8px', cursor: 'pointer',
+          }}
+        >
+          RETRY
+        </button>
       </div>
     );
   }
 
   if (customStrategies.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="text-4xl mb-3">📭</div>
-        <h4 className="text-lg font-semibold text-gray-900 mb-2">No Custom Strategies Yet</h4>
-        <p className="text-sm text-gray-600 mb-4 max-w-sm">
+      <div style={{ padding: 24, textAlign: 'center' }}>
+        <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.primary, marginBottom: 6 }}>
+          NO CUSTOM STRATEGIES
+        </div>
+        <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, marginBottom: 12 }}>
           Create your first custom strategy to evaluate this deal against your specific criteria.
-        </p>
+        </div>
         <button
           onClick={() => navigate('/strategies')}
-          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+          style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700,
+            color: BT.bg.terminal, background: BT.text.cyan,
+            border: 'none', padding: '4px 14px', cursor: 'pointer',
+            letterSpacing: 0.5,
+          }}
         >
-          + Create Strategy
+          + CREATE STRATEGY
         </button>
       </div>
     );
   }
 
-  // Separate matched and unmatched strategies
   const matchedStrategies = customStrategies.filter(s => s.matched);
   const unmatchedStrategies = customStrategies.filter(s => !s.matched);
 
   return (
-    <div className="space-y-4">
-      {/* Matched Strategies */}
+    <div>
       {matchedStrategies.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <span className="text-emerald-600">✓</span>
-            Matched Strategies ({matchedStrategies.length})
-          </h4>
-          <div className="space-y-2">
-            {matchedStrategies.map((strategy) => (
-              <StrategyCard
-                key={strategy.strategyId}
-                strategy={strategy}
-                isExpanded={expandedStrategy === strategy.strategyId}
-                onToggleExpand={() =>
-                  setExpandedStrategy(
-                    expandedStrategy === strategy.strategyId ? null : strategy.strategyId
-                  )
-                }
-              />
-            ))}
+        <div style={{ marginBottom: 2 }}>
+          <div style={{
+            padding: '4px 10px', background: BT.bg.header,
+            borderBottom: `1px solid ${BT.border.subtle}`,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: BT.text.green }} />
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5 }}>
+              MATCHED ({matchedStrategies.length})
+            </span>
           </div>
+          {matchedStrategies.map((strategy) => (
+            <StrategyCard
+              key={strategy.strategyId}
+              strategy={strategy}
+              isExpanded={expandedStrategy === strategy.strategyId}
+              onToggleExpand={() =>
+                setExpandedStrategy(
+                  expandedStrategy === strategy.strategyId ? null : strategy.strategyId
+                )
+              }
+            />
+          ))}
         </div>
       )}
 
-      {/* Unmatched Strategies */}
       {unmatchedStrategies.length > 0 && (
-        <div>
-          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-            <span className="text-gray-400">✗</span>
-            Didn't Match ({unmatchedStrategies.length})
-          </h4>
-          <div className="space-y-2">
-            {unmatchedStrategies.map((strategy) => (
-              <StrategyCard
-                key={strategy.strategyId}
-                strategy={strategy}
-                isExpanded={expandedStrategy === strategy.strategyId}
-                onToggleExpand={() =>
-                  setExpandedStrategy(
-                    expandedStrategy === strategy.strategyId ? null : strategy.strategyId
-                  )
-                }
-              />
-            ))}
+        <div style={{ marginBottom: 2 }}>
+          <div style={{
+            padding: '4px 10px', background: BT.bg.header,
+            borderBottom: `1px solid ${BT.border.subtle}`,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{ width: 5, height: 5, borderRadius: '50%', background: BT.text.muted }} />
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 0.5 }}>
+              DIDN'T MATCH ({unmatchedStrategies.length})
+            </span>
           </div>
+          {unmatchedStrategies.map((strategy) => (
+            <StrategyCard
+              key={strategy.strategyId}
+              strategy={strategy}
+              isExpanded={expandedStrategy === strategy.strategyId}
+              onToggleExpand={() =>
+                setExpandedStrategy(
+                  expandedStrategy === strategy.strategyId ? null : strategy.strategyId
+                )
+              }
+            />
+          ))}
         </div>
       )}
 
-      {/* Create Strategy CTA */}
       <button
         onClick={() => navigate('/strategies')}
-        className="w-full mt-4 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-gray-400 hover:text-gray-700 transition text-sm font-medium flex items-center justify-center gap-2"
+        style={{
+          width: '100%', marginTop: 4, padding: '6px 0',
+          border: `1px dashed ${BT.border.medium}`,
+          background: 'transparent', fontFamily: MONO,
+          fontSize: 9, fontWeight: 600, color: BT.text.secondary,
+          cursor: 'pointer', letterSpacing: 0.5,
+        }}
       >
-        <span>+</span>
-        <span>Create New Strategy</span>
+        + CREATE NEW STRATEGY
       </button>
     </div>
   );
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STRATEGY CARD COMPONENT
-// ═══════════════════════════════════════════════════════════════════════════
 
 interface StrategyCardProps {
   strategy: CustomStrategyScore;
@@ -188,100 +199,88 @@ interface StrategyCardProps {
 }
 
 const StrategyCard: React.FC<StrategyCardProps> = ({ strategy, isExpanded, onToggleExpand }) => {
-  const getScoreColor = (score: number): string => {
-    if (score >= 80) return 'text-emerald-600';
-    if (score >= 60) return 'text-blue-600';
-    if (score >= 40) return 'text-amber-600';
-    return 'text-red-600';
-  };
-
-  const getScoreBgColor = (score: number): string => {
-    if (score >= 80) return 'bg-emerald-50';
-    if (score >= 60) return 'bg-blue-50';
-    if (score >= 40) return 'bg-amber-50';
-    return 'bg-red-50';
-  };
+  function scoreColor(score: number): string {
+    if (score >= 80) return BT.text.green;
+    if (score >= 60) return BT.text.cyan;
+    if (score >= 40) return BT.text.amber;
+    return BT.text.red;
+  }
 
   return (
-    <div
-      className={`border rounded-lg transition-all cursor-pointer ${
-        isExpanded
-          ? 'border-blue-300 bg-blue-50'
-          : 'border-gray-200 bg-white hover:border-gray-300'
-      }`}
-    >
-      {/* Header */}
+    <div style={{
+      borderBottom: `1px solid ${BT.border.subtle}`,
+      background: isExpanded ? BT.bg.panelAlt : BT.bg.panel,
+    }}>
       <div
         onClick={onToggleExpand}
-        className="px-4 py-3 flex items-center justify-between"
+        style={{
+          padding: '5px 10px', display: 'flex', alignItems: 'center',
+          justifyContent: 'space-between', cursor: 'pointer',
+        }}
       >
-        <div className="flex items-center gap-3 flex-1">
-          {/* Pass/Fail Icon */}
-          <div className="text-lg">
-            {strategy.matched ? (
-              <span title="Strategy matched">✓</span>
-            ) : (
-              <span className="text-gray-300" title="Strategy didn't match">
-                ✗
-              </span>
-            )}
-          </div>
-
-          {/* Strategy Name */}
-          <div className="flex-1 min-w-0">
-            <h5 className="font-semibold text-gray-900 text-sm truncate">
-              {strategy.strategyName}
-            </h5>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+          <span style={{
+            fontFamily: MONO, fontSize: 10, fontWeight: 700,
+            color: strategy.matched ? BT.text.green : BT.text.muted,
+          }}>
+            {strategy.matched ? 'PASS' : 'FAIL'}
+          </span>
+          <span style={{
+            fontFamily: MONO, fontSize: 10, color: BT.text.primary,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {strategy.strategyName}
+          </span>
         </div>
 
-        {/* Score */}
-        {strategy.matched && (
-          <div className={`${getScoreBgColor(strategy.score)} ${getScoreColor(strategy.score)} px-3 py-1 rounded font-semibold text-sm`}>
-            {strategy.score.toFixed(1)}
-          </div>
-        )}
-
-        {/* Expand Icon */}
-        <div className="ml-2 text-gray-400 flex-shrink-0">
-          {isExpanded ? '▲' : '▼'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          {strategy.matched && (
+            <Bd c={scoreColor(strategy.score)}>{strategy.score.toFixed(1)}</Bd>
+          )}
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+            {isExpanded ? '\u25B2' : '\u25BC'}
+          </span>
         </div>
       </div>
 
-      {/* Expanded Details */}
       {isExpanded && strategy.conditionResults.length > 0 && (
-        <div className="border-t border-gray-200 px-4 py-3 bg-gray-50">
-          <h6 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wider">
-            Condition Results
-          </h6>
-          <div className="space-y-1.5">
-            {strategy.conditionResults.map((condition) => (
-              <div
-                key={condition.conditionId}
-                className="flex items-center gap-2 text-xs text-gray-600"
-              >
-                <span className="flex-shrink-0 w-4 text-center">
-                  {condition.passed ? (
-                    <span className="text-emerald-600 font-bold">✓</span>
-                  ) : (
-                    <span className="text-red-500 font-bold">✗</span>
-                  )}
-                </span>
-                <span className="flex-1">
-                  <span className="font-mono text-gray-500">{condition.metricId}</span>
-                  {' = '}
-                  <span className="font-semibold text-gray-700">
-                    {condition.actualValue.toFixed(2)}
-                  </span>
-                </span>
-                {condition.passed && (
-                  <span className={`text-right font-semibold ${getScoreColor(condition.score)}`}>
-                    +{condition.score.toFixed(0)}
-                  </span>
-                )}
-              </div>
-            ))}
+        <div style={{
+          borderTop: `1px solid ${BT.border.subtle}`,
+          padding: '4px 10px', background: BT.bg.header,
+        }}>
+          <div style={{
+            fontFamily: MONO, fontSize: 8, fontWeight: 600,
+            color: BT.text.muted, letterSpacing: 0.8, marginBottom: 4,
+          }}>
+            CONDITION RESULTS
           </div>
+          {strategy.conditionResults.map((condition) => (
+            <div
+              key={condition.conditionId}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '2px 0', fontFamily: MONO, fontSize: 9,
+              }}
+            >
+              <span style={{
+                width: 12, textAlign: 'center', fontWeight: 700, flexShrink: 0,
+                color: condition.passed ? BT.text.green : BT.text.red,
+              }}>
+                {condition.passed ? 'P' : 'F'}
+              </span>
+              <span style={{ color: BT.text.muted, flex: 1 }}>
+                {condition.metricId}
+              </span>
+              <span style={{ color: BT.text.primary, fontWeight: 600 }}>
+                {condition.actualValue.toFixed(2)}
+              </span>
+              {condition.passed && (
+                <span style={{ color: scoreColor(condition.score), fontWeight: 700, width: 30, textAlign: 'right' }}>
+                  +{condition.score.toFixed(0)}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
