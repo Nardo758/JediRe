@@ -1,0 +1,50 @@
+I can provide you with the exact files and locations:
+
+1. Test File Timing Out:
+
+File: playwright/tests/complete-expert-steps.spec.ts
+Line 67: await page.waitForTimeout(2000);
+Full test file: Created earlier to debug expert setup steps
+
+2. forms.ts File with waitForNavigation() Calls:
+
+File: playwright/utils/forms.ts
+Lines with waitForNavigation():
+
+• Line 43: await page.waitForNavigation().catch(() => null); (in fillExpertProfile)
+• Line 110: await page.waitForNavigation().catch(() => null); (in fillProviderProfile)
+• Line 155: await page.waitForNavigation().catch(() => null); (in createBooking)
+• Line 186: await page.waitForNavigation().catch(() => null); (in submitReview)
+• Line 196: await page.waitForNavigation().catch(() => null); (in applyForExpert)
+• Line 236: await page.waitForNavigation().catch(() => null); (in approveExpertApplication)
+• Line 251: await page.waitForNavigation().catch(() => null); (in rejectExpertApplication)
+• Line 281: await page.waitForNavigation().catch(() => null); (in updateSystemSettings)
+
+3. Other Files That Might Need Updates:
+
+auth.ts - Already updated (removed waitForLoadState('networkidle'))
+navigation.ts - Already updated (changed to waitUntil: 'load')
+
+Key Issues to Fix:
+
+1. forms.ts line 43: Profile save button click → waitForNavigation() hangs
+  • Should use waitForURL() or remove since navigation might not happen
+  • Button selector: 'button:has-text("Save")' might need test ID
+2. Test timeout: complete-expert-steps.spec.ts line 67
+  • page.waitForTimeout(2000) after profile save
+  • Page might be closing/navigating during wait
+3. Other waitForNavigation() calls in forms.ts
+  • All should be replaced with waitForURL() or removed with .catch(() => null)
+
+Files Location in Repository:
+
+trav-replit/
+├── playwright/
+│   ├── tests/
+│   │   └── complete-expert-steps.spec.ts  # Test file
+│   └── utils/
+│       ├── forms.ts                       # Forms helper
+│       ├── auth.ts                        # Auth helper (already fixed)
+│       └── navigation.ts                  # Navigation helper (already fixed)
+
+You can access these files directly in your Replit environment. The forms.ts file has the most remaining waitForNavigation() calls that need to be updated to use waitForURL() or proper navigation detection.
