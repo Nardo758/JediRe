@@ -433,6 +433,74 @@ function MetricBox({label,value,sub,change,dir,color,T}:{label:string;value:stri
 
 interface WinState { x:number; y:number; w:number; h:number; minimized:boolean; maximized:boolean; zIndex:number }
 
+function DealDetailOverlay({deal, asset, onClose, T}:{deal?:LiveDeal|null; asset?:any; onClose:()=>void; T:ThemeType}) {
+  const name = deal?.name || asset?.property_name || asset?.name || "Deal";
+  const addr = deal?.addr || asset?.address || asset?.submarket || "—";
+  const market = deal?.market || asset?.market || "—";
+  const score = deal?.score ?? asset?.pcsScore ?? 0;
+  const strat = deal?.strat || asset?.strategy || "—";
+  const irr = deal?.irr || (asset?.irr != null ? `${Number(asset.irr).toFixed(1)}%` : "—");
+  const em = deal?.em || (asset?.equity_multiple != null ? `${Number(asset.equity_multiple).toFixed(2)}x` : "—");
+  const price = deal?.price || "—";
+  const ppu = deal?.ppu || "—";
+  const stage = deal?.stage || asset?.stage || "—";
+  const risk = deal?.risk || "—";
+  const days = deal?.days ?? 0;
+  const units = deal?.units ?? asset?.units ?? 0;
+  const trend = deal?.trend || asset?.monthlyPcs || [50,55,60,65,70];
+  const occ = asset?.actual_occupancy;
+  const noi = asset?.actual_noi;
+  const rows: [string,string,string?][] = [
+    ["PROPERTY", name],
+    ["ADDRESS", addr],
+    ["MARKET", market],
+    ["STRATEGY", strat],
+    ["IRR", irr],
+    ["EQUITY MULT", em],
+    ["PRICE", price],
+    ["$/UNIT", ppu],
+    ["UNITS", String(units)],
+    ["STAGE", stage],
+    ["RISK", risk],
+    ["DAYS", days > 0 ? `${days}d` : "—"],
+  ];
+  if (occ != null) rows.push(["OCCUPANCY", `${Number(occ).toFixed(1)}%`]);
+  if (noi != null) rows.push(["NOI", `$${(Number(noi)/1000).toFixed(0)}K`]);
+  return (
+    <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.7)"}} onClick={onClose}>
+      <div style={{background:T.bg.panel,border:`1px solid ${T.border.medium}`,width:520,maxHeight:"80vh",overflow:"auto",boxShadow:"0 8px 32px rgba(0,0,0,0.6)"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:T.bg.header,borderBottom:`2px solid ${T.text.amber}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:12,fontWeight:800,color:T.text.amber,letterSpacing:1,fontFamily:T.font.display}}>DEAL CAPSULE</span>
+            <span style={{fontSize:10,color:T.text.secondary}}>IN-TERMINAL VIEW</span>
+          </div>
+          <button onClick={onClose} style={{fontFamily:T.font.mono,fontSize:11,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"3px 10px",cursor:"pointer"}}>✕ ESC</button>
+        </div>
+        <div style={{padding:"14px 18px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+            <span style={{fontSize:28,fontWeight:800,color:score>=80?T.text.green:score>=65?T.text.amber:score>0?T.text.red:T.text.muted,fontFamily:T.font.mono}}>{score>0?score:"—"}</span>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:T.text.primary}}>{name}</div>
+              <div style={{fontSize:11,color:T.text.secondary}}>{addr}</div>
+            </div>
+          </div>
+          <div style={{marginBottom:16}}><Spark data={trend} color={score>=80?T.text.green:T.text.amber} w={200} h={28}/></div>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <tbody>
+              {rows.map(([k,v],i)=>(
+                <tr key={k} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+                  <td style={{padding:"5px 8px",fontSize:10,fontWeight:600,color:T.text.muted,letterSpacing:0.5,fontFamily:T.font.mono,width:120}}>{k}</td>
+                  <td style={{padding:"5px 8px",fontSize:11,fontWeight:600,color:T.text.primary,fontFamily:T.font.mono}}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LIVE CLOCK (isolated component — avoids re-rendering the whole terminal every second) ───
 function LiveClock() {
   const [t, setT] = useState(new Date());
@@ -485,6 +553,7 @@ export default function TerminalPage() {
   const [mapOpen, setMapOpen] = useState(false);
   const [mapSelDeal, setMapSelDeal] = useState<string|null>(null);
   const [selDealId, setSelDealId] = useState<string|null>(null);
+  const [detailDealId, setDetailDealId] = useState<string|null>(null);
 
   // Floating window dashboard system
   const DASH_STORAGE_KEY = "jedi-dash-windows";
@@ -1009,7 +1078,7 @@ export default function TerminalPage() {
         {sorted.map((d,i)=>(
           <div key={d.id}
             onClick={()=>setSelDealId(selDealId===d.id?null:d.id)}
-            onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)}
+            onDoubleClick={()=>setDetailDealId(d.id)}
             style={{display:"grid",gridTemplateColumns:gc,background:selDealId===d.id?T.bg.active:i%2===0?T.bg.panel:T.bg.panelAlt,borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",borderLeft:selDealId===d.id?`2px solid ${T.text.amber}`:"2px solid transparent",animation:flashes[d.id]?"flash 0.7s ease-out":"none"}}
           >
             <div style={{padding:4,fontSize:10,color:T.text.muted,borderRight:`1px solid ${T.border.subtle}`}}>{i+1}</div>
@@ -1037,7 +1106,7 @@ export default function TerminalPage() {
         {selDealId&&(()=>{const d=sorted.find(x=>x.id===selDealId);return d?(
           <div style={{position:"sticky",bottom:0,background:T.bg.header,borderTop:`1px solid ${T.border.medium}`,padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:11,fontWeight:700,color:T.text.amber}}>{d.name}</span>
-            <button onClick={()=>navigate(`/deals/${d.id}/detail`)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
+            <button onClick={()=>setDetailDealId(d.id)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"5px 14px",cursor:"pointer",letterSpacing:0.4}}>OPEN DEAL CAPSULE →</button>
             <button onClick={()=>setSelDealId(null)} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,background:T.bg.input,border:`1px solid ${T.border.subtle}`,padding:"4px 8px",cursor:"pointer"}}>ESC</button>
           </div>
         ):null;})()}
@@ -1163,7 +1232,7 @@ export default function TerminalPage() {
   const WidgetMyDeals = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveDeals.slice(0,5).map((d,i)=>(
-        <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
+        <div key={i} onDoubleClick={()=>setDetailDealId(d.id)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div>
               <div style={{display:"flex",gap:6,marginBottom:4}}><StageBd stage={d.stage} T={T}/></div>
@@ -1231,7 +1300,7 @@ export default function TerminalPage() {
   const WidgetLeaderboard = () => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {[...liveDeals].filter(d=>d.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map((d,i)=>(
-        <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+        <div key={d.id} onDoubleClick={()=>setDetailDealId(d.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
           <span style={{fontSize:12,fontWeight:800,color:T.text.muted,minWidth:24}}>#{i+1}</span>
           <div style={{flex:1}}>
             <div style={{fontSize:10,fontWeight:600,color:T.text.primary}}>{d.name}</div>
@@ -1836,7 +1905,7 @@ export default function TerminalPage() {
                           const gap = asset.rank - (asset.targetRank || asset.rank);
                           const isPriority = i === 0 || gap === Math.max(...portfolioRankings.map(a => a.rank - (a.targetRank||a.rank)));
                           return (
-                            <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.dealId}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:isPriority?`${T.text.amber}11`:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                            <tr key={asset.id||i} onClick={() => setDetailDealId(asset.dealId||asset.id)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:isPriority?`${T.text.amber}11`:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
                               <TD><span style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.name}</span></TD>
                               <TD><span style={{fontSize:10,color:T.text.secondary}}>{asset.submarket}</span></TD>
                               <TD><span style={{fontSize:14,fontWeight:800,color:asset.pcsScore>=70?T.text.green:asset.pcsScore>=50?T.text.amber:T.text.red,fontFamily:T.font.mono}}>{asset.pcsScore}</span></TD>
@@ -1846,7 +1915,7 @@ export default function TerminalPage() {
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.secondary}}>#{asset.targetRank||"—"}</span></TD>
                               <TD>{gap===0?<span style={{fontSize:10,color:T.text.green,fontWeight:700}}>ON TARGET</span>:<span style={{fontSize:10,color:T.text.amber,fontWeight:700}}>{gap} pos</span>}</TD>
                               <TD><span style={{fontSize:10,fontWeight:700,padding:"2px 6px",background:asset.trajectory==="improving"?T.text.green+"22":asset.trajectory==="declining"?T.text.red+"22":T.text.amber+"22",color:asset.trajectory==="improving"?T.text.green:asset.trajectory==="declining"?T.text.red:T.text.amber}}>{(asset.trajectory||"stable").toUpperCase()}</span></TD>
-                              <TD><button onClick={e=>{e.stopPropagation();navigate(`/deals/${asset.dealId}/detail`);}} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW →</button></TD>
+                              <TD><button onClick={e=>{e.stopPropagation();setDetailDealId(asset.dealId||asset.id);}} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}44`,padding:"2px 8px",cursor:"pointer"}}>VIEW →</button></TD>
                             </tr>
                           );
                         })}
@@ -1875,7 +1944,7 @@ export default function TerminalPage() {
                           const fmtPct = (v:any) => v!=null ? `${Number(v).toFixed(1)}%` : "—";
                           const varColor = (v:number|null) => v==null?T.text.muted:v>0?T.text.green:v<0?T.text.red:T.text.muted;
                           return (
-                            <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
+                            <tr key={asset.id||i} onClick={() => setDetailDealId(asset.deal_id||asset.id)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
                               <TD>
                                 <div style={{fontSize:10,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"—"}</div>
                                 <div style={{fontSize:10,color:noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.muted,marginTop:1}}>{noiVar>5?"▲ OUTPERFORMING":noiVar<-10?"▼ UNDERPERFORMING":"● ON TRACK"}</div>
@@ -2053,8 +2122,8 @@ export default function TerminalPage() {
                             <div style={{fontSize:11,fontWeight:700,color:T.text.primary,fontFamily:T.font.mono}}>{asset.property_name||"Asset"}</div>
                             <div style={{fontSize:10,color:T.text.muted}}>{asset.address||asset.submarket||"—"}</div>
                           </div>
-                          <button onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail?tab=documents`)} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.amber,background:"transparent",border:`1px solid ${T.text.amber}44`,padding:"4px 12px",cursor:"pointer"}}>
-                            VIEW DOCUMENTS →
+                          <button onClick={() => setDetailDealId(asset.deal_id||asset.id)} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.amber,background:"transparent",border:`1px solid ${T.text.amber}44`,padding:"4px 12px",cursor:"pointer"}}>
+                            VIEW DETAILS →
                           </button>
                         </div>
                       ))}
@@ -2710,6 +2779,12 @@ export default function TerminalPage() {
           ))}
         </div>
       )}
+
+      {detailDealId && (() => {
+        const deal = liveDeals.find(d => d.id === detailDealId) || null;
+        const asset = !deal ? (portfolioAssets.find(a => a.deal_id === detailDealId || a.id === detailDealId) || portfolioRankings.find(a => a.dealId === detailDealId || a.id === detailDealId)) : null;
+        return <DealDetailOverlay deal={deal} asset={asset} onClose={() => setDetailDealId(null)} T={T} />;
+      })()}
 
       {/* ═══ STATUS BAR — 20px ═══ */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 10px",height:20,background:T.bg.topBar,borderTop:`1px solid ${T.border.subtle}`,flexShrink:0}}>

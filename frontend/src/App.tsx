@@ -149,6 +149,7 @@ function AppContent() {
         } />
 
         {/* ═══ Redirects — legacy routes → terminal ═══ */}
+        <Route path="/pipeline" element={<Navigate to="/terminal/pipeline" replace />} />
         <Route path="/dashboard" element={<Navigate to="/terminal/dashboard" replace />} />
         <Route path="/dashboard/contents" element={<Navigate to="/terminal/dashboard" replace />} />
         <Route path="/dashboard/email" element={<Navigate to="/terminal/dashboard" replace />} />
