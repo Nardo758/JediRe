@@ -14,6 +14,7 @@ import type { MetricRecommendation } from "../../hooks/useCorrelations";
 import { useGridTemplates, GridTemplate } from "../../hooks/useGridTemplates";
 import { ColumnConfigPopover, ColumnConfig, DEFAULT_COLUMN_CONFIG } from "../../components/terminal/ColumnConfigPopover";
 import api from "../../services/api";
+import { DemandTab } from "../../components/terminal/tabs/DemandTab";
 
 /**
  * F4 Markets View - Refactored
@@ -219,7 +220,7 @@ const dataCell: React.CSSProperties = {
 // Types
 // ============================================================================
 
-type ActiveTab = "dashboard" | "browse" | "submarkets" | "properties" | "compare";
+type ActiveTab = "dashboard" | "browse" | "submarkets" | "properties" | "demand" | "compare";
 type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
 type SortKey = "rank" | "msa" | "jedi" | "d30" | "rentNum" | "vacNum" | "absorbNum" | "pipelineNum" | "capNum" | "cycle";
 type CycleFilter = "all" | "EXPANSION" | "LATE EXP" | "PEAK" | "CONTRACTION";
@@ -339,7 +340,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const propCols = useColumnPreferences("f4_properties");
   const compCols = useColumnPreferences("f4_compare");
 
-  const colPrefsMap: Record<ActiveTab, ReturnType<typeof useColumnPreferences>> = {
+  const colPrefsMap: Record<string, ReturnType<typeof useColumnPreferences>> = {
     dashboard: dashCols,
     browse: browseCols,
     submarkets: subCols,
@@ -347,7 +348,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     compare: compCols,
   };
 
-  const viewIdMap: Record<ActiveTab, ViewId> = {
+  const viewIdMap: Record<string, ViewId> = {
     dashboard: "f4_dashboard",
     browse: "f4_browse",
     submarkets: "f4_submarkets",
@@ -355,9 +356,11 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     compare: "f4_compare",
   };
 
+  const safeTab = activeTab === "demand" ? "dashboard" : activeTab;
+
   const [pickerOpen, setPickerOpen] = useState<ActiveTab | null>(null);
 
-  const gridTemplates = useGridTemplates(viewIdMap[activeTab]);
+  const gridTemplates = useGridTemplates(viewIdMap[safeTab]);
   const [templateDropdownOpen, setTemplateDropdownOpen] = useState(false);
   const [saveTemplateName, setSaveTemplateName] = useState("");
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -365,12 +368,12 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const [configPopoverCol, setConfigPopoverCol] = useState<string | null>(null);
   const [catalogMetricsMap, setCatalogMetricsMap] = useState<Map<string, CatalogMetric>>(new Map());
 
-  const activeColumnConfig = colPrefsMap[activeTab].columnConfig;
+  const activeColumnConfig = colPrefsMap[safeTab]?.columnConfig;
   useEffect(() => {
     if (activeColumnConfig && Object.keys(activeColumnConfig).length > 0) {
       setColumnConfigs(prev => ({ ...prev, ...activeColumnConfig }));
     }
-  }, [activeTab, activeColumnConfig]);
+  }, [safeTab, activeColumnConfig]);
 
   const getColumnConfig = useCallback((colId: string): ColumnConfig => {
     return columnConfigs[colId] || DEFAULT_COLUMN_CONFIG;
@@ -379,7 +382,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const setColumnConfig = useCallback((colId: string, config: ColumnConfig) => {
     setColumnConfigs(prev => {
       const next = { ...prev, [colId]: config };
-      colPrefsMap[activeTab].saveColumnConfig(next);
+      colPrefsMap[safeTab]?.saveColumnConfig(next);
       return next;
     });
   }, [activeTab]);
@@ -769,7 +772,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const handleSaveTemplate = async () => {
     if (!saveTemplateName.trim()) return;
-    await gridTemplates.saveTemplate(saveTemplateName.trim(), colPrefsMap[activeTab].columns, columnConfigs);
+    await gridTemplates.saveTemplate(saveTemplateName.trim(), colPrefsMap[safeTab]?.columns || [], columnConfigs);
     setSaveTemplateName("");
     setShowSaveDialog(false);
   };
@@ -797,7 +800,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       if (Object.keys(templateConfig).length > 0) {
         setColumnConfigs(templateConfig);
       }
-      colPrefsMap[activeTab].saveColumns(template.columns, templateConfig);
+      colPrefsMap[safeTab]?.saveColumns(template.columns, templateConfig);
       gridTemplates.setActiveTemplate(template.id);
     }
     setTemplateDropdownOpen(false);
@@ -1054,7 +1057,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const renderSuggestedMetrics = () => {
     if (metricRecs.length === 0 && !recsLoading) return null;
-    const activeColPrefs = colPrefsMap[activeTab];
+    const activeColPrefs = colPrefsMap[safeTab];
     const activeCols = new Set(activeColPrefs.columns);
     const activeMetricIds = new Set(
       activeColPrefs.columns
@@ -1531,12 +1534,15 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const renderCompare = () => <PeerComparisonPage embedded onViewDetail={() => {}} />;
 
+  const renderDemand = () => <DemandTab msaName={drillMsaName || undefined} msaCode={drillMsaId || undefined} />;
+
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard": return renderDashboard();
       case "browse": return renderBrowse();
       case "submarkets": return renderSubmarkets();
       case "properties": return renderProperties();
+      case "demand": return renderDemand();
       case "compare": return renderCompare();
       default: return null;
     }
@@ -1551,6 +1557,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     { id: "browse", label: "BROWSE" },
     { id: "submarkets", label: "SUBMARKETS" },
     { id: "properties", label: "PROPERTIES" },
+    { id: "demand", label: "DEMAND" },
     { id: "compare", label: "COMPARE" },
   ];
 
@@ -1593,11 +1600,9 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
         </button>
       </div>
 
-      {/* Metrics Legend */}
-      {renderMetricsLegend()}
+      {activeTab !== "demand" && renderMetricsLegend()}
 
-      {/* Suggested Metrics (shared across all tabs) */}
-      {renderSuggestedMetrics()}
+      {activeTab !== "demand" && renderSuggestedMetrics()}
 
       {/* Tab Content */}
       {renderTabContent()}
@@ -1646,7 +1651,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
                       LOAD
                     </button>
                     <button
-                      onClick={() => gridTemplates.updateTemplate(t.id, { columns: colPrefsMap[activeTab].columns, columnConfig: columnConfigs })}
+                      onClick={() => gridTemplates.updateTemplate(t.id, { columns: colPrefsMap[safeTab]?.columns || [], columnConfig: columnConfigs })}
                       style={{ ...mono, fontSize: 8, color: C.amber, background: C.amber + "15", border: `1px solid ${C.amber}33`, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}
                     >
                       UPDATE
