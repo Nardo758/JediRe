@@ -532,6 +532,23 @@ const DealDetailPage: React.FC = () => {
     }
   };
 
+  const FALLBACK_DEALS: Record<string, Record<string, unknown>> = {
+    d1:{id:"d1",property_name:"Harbour Oaks 240",name:"Harbour Oaks 240",address:"4200 W Gandy Blvd, Tampa FL",market:"Tampa, FL",project_type:"development",asset_type:"Multifamily",unit_count:240,pipeline_stage:"DD",ask_price:62400000,jedi_adjusted_irr:18.4,ai_opportunity_score:82,best_strategy:"build_to_sell"},
+    d2:{id:"d2",property_name:"Nocatee Town Center MF",name:"Nocatee Town Center MF",address:"200 Nocatee Village Dr, Ponte Vedra FL",market:"Jacksonville, FL",project_type:"development",asset_type:"Multifamily",unit_count:312,pipeline_stage:"LOI",ask_price:78000000,jedi_adjusted_irr:14.2,ai_opportunity_score:76,best_strategy:"core_plus"},
+    d3:{id:"d3",property_name:"Midtown Union Residences",name:"Midtown Union Residences",address:"1100 Spring St NW, Atlanta GA",market:"Atlanta, GA",project_type:"redevelopment",asset_type:"Multifamily",unit_count:180,pipeline_stage:"LOI",ask_price:41400000,jedi_adjusted_irr:16.1,ai_opportunity_score:71,best_strategy:"value_add"},
+    d4:{id:"d4",property_name:"SunBridge Phase III",name:"SunBridge Phase III",address:"4100 Old Salt Rd, St. Cloud FL",market:"Orlando, FL",project_type:"development",asset_type:"Multifamily",unit_count:196,pipeline_stage:"Prospect",ask_price:43100000,jedi_adjusted_irr:19.8,ai_opportunity_score:68,best_strategy:"build_to_sell"},
+    d5:{id:"d5",property_name:"West Midtown Lofts",name:"West Midtown Lofts",address:"1450 Howell Mill Rd NW, Atlanta GA",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:88,pipeline_stage:"Prospect",ask_price:22000000,jedi_adjusted_irr:12.6,ai_opportunity_score:64,best_strategy:"str"},
+    d6:{id:"d6",property_name:"Riverside Commons",name:"Riverside Commons",address:"800 Riverside Ave, Jacksonville FL",market:"Jacksonville, FL",project_type:"development",asset_type:"Multifamily",unit_count:156,pipeline_stage:"Lead",ask_price:35900000,jedi_adjusted_irr:11.3,ai_opportunity_score:58,best_strategy:"core_plus"},
+    d7:{id:"d7",property_name:"Buckhead Station MF",name:"Buckhead Station MF",address:"3100 Peachtree Rd NE, Atlanta GA",market:"Atlanta, GA",project_type:"redevelopment",asset_type:"Multifamily",unit_count:220,pipeline_stage:"Lead",ask_price:59400000,jedi_adjusted_irr:13.7,ai_opportunity_score:54,best_strategy:"value_add"},
+    d8:{id:"d8",property_name:"Channelside Residences",name:"Channelside Residences",address:"615 Channelside Dr, Tampa FL",market:"Tampa, FL",project_type:"development",asset_type:"Multifamily",unit_count:340,pipeline_stage:"DD",ask_price:88400000,jedi_adjusted_irr:21.2,ai_opportunity_score:88,best_strategy:"build_to_sell"},
+    p1:{id:"p1",property_name:"The Edison at Avondale",name:"The Edison at Avondale",address:"2100 Park St, Jacksonville FL",market:"Jacksonville, FL",project_type:"existing",asset_type:"Multifamily",unit_count:184,pipeline_stage:"Owned",noi:2850000,actual_occupancy:94.2,jedi_adjusted_irr:15.2},
+    p2:{id:"p2",property_name:"Bayshore Grand",name:"Bayshore Grand",address:"3300 Bayshore Blvd, Tampa FL",market:"Tampa, FL",project_type:"existing",asset_type:"Multifamily",unit_count:268,pipeline_stage:"Owned",noi:4120000,actual_occupancy:91.8,jedi_adjusted_irr:12.8},
+    p3:{id:"p3",property_name:"Nocatee Preserve",name:"Nocatee Preserve",address:"500 Preserve Trail, Ponte Vedra FL",market:"Jacksonville, FL",project_type:"existing",asset_type:"Multifamily",unit_count:312,pipeline_stage:"Owned",noi:5180000,actual_occupancy:96.1,jedi_adjusted_irr:17.4},
+    p4:{id:"p4",property_name:"Midtown Crossing",name:"Midtown Crossing",address:"1000 Juniper St NE, Atlanta GA",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:156,pipeline_stage:"Owned",noi:2340000,actual_occupancy:88.5,jedi_adjusted_irr:11.1},
+    p5:{id:"p5",property_name:"Citrus Park Commons",name:"Citrus Park Commons",address:"7800 Gunn Hwy, Tampa FL",market:"Tampa, FL",project_type:"existing",asset_type:"Multifamily",unit_count:220,pipeline_stage:"Owned",noi:3250000,actual_occupancy:95.4,jedi_adjusted_irr:14.6},
+    p6:{id:"p6",property_name:"Buckhead Terrace",name:"Buckhead Terrace",address:"3200 Lenox Rd NE, Atlanta GA",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:198,pipeline_stage:"Owned",noi:3800000,actual_occupancy:93.7,jedi_adjusted_irr:13.9},
+  };
+
   const loadDeal = async (id: string) => {
     try {
       setLoading(true);
@@ -541,6 +558,10 @@ const DealDetailPage: React.FC = () => {
       fetchDealContext(id);
     } catch (error) {
       console.error('Error loading deal:', error);
+      const fallback = FALLBACK_DEALS[id];
+      if (fallback) {
+        setDeal(fallback);
+      }
     } finally {
       setLoading(false);
     }
@@ -644,11 +665,11 @@ const DealDetailPage: React.FC = () => {
         <h2 className="text-xl font-semibold" style={{ color: BT.text.primary }}>Deal not found</h2>
         <p className="text-sm" style={{ color: BT.text.secondary }}>This deal may have been deleted or you don't have access.</p>
         <button
-          onClick={() => navigate('/deals')}
+          onClick={() => navigate('/terminal/pipeline')}
           className="px-4 py-2 transition-colors text-sm font-medium"
           style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
         >
-          Back to Deal Capsules
+          Back to Pipeline
         </button>
       </div>
     );
