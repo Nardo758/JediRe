@@ -548,6 +548,7 @@ const DealDetailPage: React.FC = () => {
     "8205a985-cd17-4339-a6a4-efb57ce78b08":{id:"8205a985-cd17-4339-a6a4-efb57ce78b08",property_name:"Westside Lofts",name:"Westside Lofts",address:"750 Huff Rd NW, Atlanta GA 30318",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:156,pipeline_stage:"Owned",noi:2680000,actual_occupancy:95.0,jedi_adjusted_irr:14.3},
     "fb46a388-f3b8-44bd-ad12-7ed3250079a2":{id:"fb46a388-f3b8-44bd-ad12-7ed3250079a2",property_name:"College Park Workforce Housing",name:"College Park Workforce Housing",address:"3400 Camp Creek Pkwy, College Park GA 30349",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:240,pipeline_stage:"Owned",noi:3200000,actual_occupancy:90.8,jedi_adjusted_irr:10.9},
     "451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7":{id:"451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7",property_name:"Sandy Springs Office Park",name:"Sandy Springs Office Park",address:"5555 Roswell Rd, Sandy Springs GA 30342",market:"Atlanta, GA",project_type:"existing",asset_type:"Office",unit_count:68,pipeline_stage:"Owned",noi:2100000,actual_occupancy:87.3,jedi_adjusted_irr:11.0},
+    "1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d":{id:"1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d",property_name:"Buckhead Mixed-Use Development",name:"Buckhead Mixed-Use Development",address:"Buckhead, Atlanta GA",market:"Atlanta, GA",project_type:"existing",asset_type:"Mixed Use",unit_count:175,pipeline_stage:"Owned",noi:3450000,actual_occupancy:90.1,jedi_adjusted_irr:12.0},
   };
 
   const loadDeal = async (id: string) => {

@@ -110,6 +110,7 @@ const STATIC_PORTFOLIO: PortfolioAsset[] = [
   {id:"8205a985-cd17-4339-a6a4-efb57ce78b08",property_name:"Westside Lofts",address:"750 Huff Rd NW, Atlanta GA 30318",submarket:"Atlanta · Westside",asset_type:"Multifamily",units:156,actual_noi:2680000,proforma_noi:2550000,noi_variance:5.1,actual_occupancy:95.0,proforma_occupancy:93.5,occupancy_variance:1.5,actual_avg_rent:1740,irr:14.3},
   {id:"fb46a388-f3b8-44bd-ad12-7ed3250079a2",property_name:"College Park Workforce Housing",address:"3400 Camp Creek Pkwy, College Park GA 30349",submarket:"Atlanta · College Park",asset_type:"Multifamily",units:240,actual_noi:3200000,proforma_noi:3400000,noi_variance:-5.9,actual_occupancy:90.8,proforma_occupancy:94.0,occupancy_variance:-3.2,actual_avg_rent:1280,irr:10.9},
   {id:"451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7",property_name:"Sandy Springs Office Park",address:"5555 Roswell Rd, Sandy Springs GA 30342",submarket:"Atlanta · Sandy Springs",asset_type:"Office",units:68,actual_noi:2100000,proforma_noi:2200000,noi_variance:-4.5,actual_occupancy:87.3,proforma_occupancy:91.0,occupancy_variance:-3.7,actual_avg_rent:3200,irr:11.0},
+  {id:"1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d",property_name:"Buckhead Mixed-Use Development",address:"Buckhead, Atlanta GA",submarket:"Atlanta · Buckhead",asset_type:"Mixed Use",units:175,actual_noi:3450000,proforma_noi:3600000,noi_variance:-4.2,actual_occupancy:90.1,proforma_occupancy:93.0,occupancy_variance:-2.9,actual_avg_rent:2050,irr:12.0},
 ];
 
 const STATIC_PORTFOLIO_RANKINGS: RankedPortfolioAsset[] = [
@@ -121,6 +122,7 @@ const STATIC_PORTFOLIO_RANKINGS: RankedPortfolioAsset[] = [
   {id:"7235a6f9-c7dc-400e-a982-b89e335dccdf",dealId:"7235a6f9-c7dc-400e-a982-b89e335dccdf",name:"Midtown Tower",submarket:"Atlanta · Midtown",pcsScore:67,rank:10,totalInSubmarket:28,movement:-1,trajectory:"STABLE"},
   {id:"fb46a388-f3b8-44bd-ad12-7ed3250079a2",dealId:"fb46a388-f3b8-44bd-ad12-7ed3250079a2",name:"College Park Workforce Housing",submarket:"Atlanta · College Park",pcsScore:62,rank:12,totalInSubmarket:16,movement:-3,trajectory:"DECLINING"},
   {id:"451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7",dealId:"451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7",name:"Sandy Springs Office Park",submarket:"Atlanta · Sandy Springs",pcsScore:58,rank:15,totalInSubmarket:24,movement:-1,trajectory:"DECLINING"},
+  {id:"1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d",dealId:"1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d",name:"Buckhead Mixed-Use Development",submarket:"Atlanta · Buckhead",pcsScore:55,rank:18,totalInSubmarket:31,movement:-2,trajectory:"DECLINING"},
 ];
 
 interface PortfolioAsset {
