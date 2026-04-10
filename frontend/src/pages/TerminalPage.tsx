@@ -90,7 +90,47 @@ const STATIC_TASKS = [
   {id:"T05",title:"Pull 12-month rent rolls",deal:"Pipeline",pri:"med",due:"Mar 25",status:"TODO",owner:"R.Patel"},
 ];
 
+const STATIC_DEALS: LiveDeal[] = [
+  {id:"d1",name:"Harbour Oaks 240",addr:"4200 W Gandy Blvd, Tampa FL",market:"Tampa, FL",score:82,delta:"+3",strat:"BTS",irr:"18.4%",em:"2.1x",units:240,price:"$62.4M",ppu:"$260K",stage:"DD",days:14,risk:"LOW",trend:[72,74,78,80,82]},
+  {id:"d2",name:"Nocatee Town Center MF",addr:"200 Nocatee Village Dr, Ponte Vedra FL",market:"Jacksonville, FL",score:76,delta:"+1",strat:"CORE+",irr:"14.2%",em:"1.8x",units:312,price:"$78.0M",ppu:"$250K",stage:"LOI",days:8,risk:"LOW",trend:[68,70,72,74,76]},
+  {id:"d3",name:"Midtown Union Residences",addr:"1100 Spring St NW, Atlanta GA",market:"Atlanta, GA",score:71,delta:"-2",strat:"VAL-AD",irr:"16.1%",em:"1.9x",units:180,price:"$41.4M",ppu:"$230K",stage:"LOI",days:22,risk:"MED",trend:[75,74,73,72,71]},
+  {id:"d4",name:"SunBridge Phase III",addr:"4100 Old Salt Rd, St. Cloud FL",market:"Orlando, FL",score:68,delta:"+5",strat:"BTS",irr:"19.8%",em:"2.3x",units:196,price:"$43.1M",ppu:"$220K",stage:"PROSPECT",days:5,risk:"MED",trend:[55,58,62,65,68]},
+  {id:"d5",name:"West Midtown Lofts",addr:"1450 Howell Mill Rd NW, Atlanta GA",market:"Atlanta, GA",score:64,delta:"0",strat:"STR",irr:"12.6%",em:"1.6x",units:88,price:"$22.0M",ppu:"$250K",stage:"PROSPECT",days:31,risk:"MED",trend:[62,63,63,64,64]},
+  {id:"d6",name:"Riverside Commons",addr:"800 Riverside Ave, Jacksonville FL",market:"Jacksonville, FL",score:58,delta:"+2",strat:"CORE+",irr:"11.3%",em:"1.5x",units:156,price:"$35.9M",ppu:"$230K",stage:"LEAD",days:3,risk:"HIGH",trend:[50,52,54,56,58]},
+  {id:"d7",name:"Buckhead Station MF",addr:"3100 Peachtree Rd NE, Atlanta GA",market:"Atlanta, GA",score:54,delta:"-1",strat:"VAL-AD",irr:"13.7%",em:"1.7x",units:220,price:"$59.4M",ppu:"$270K",stage:"LEAD",days:12,risk:"HIGH",trend:[58,57,56,55,54]},
+  {id:"d8",name:"Channelside Residences",addr:"615 Channelside Dr, Tampa FL",market:"Tampa, FL",score:88,delta:"+4",strat:"BTS",irr:"21.2%",em:"2.5x",units:340,price:"$88.4M",ppu:"$260K",stage:"DD",days:19,risk:"LOW",trend:[78,81,84,86,88]},
+];
 
+const STATIC_PORTFOLIO: PortfolioAsset[] = [
+  {id:"p1",property_name:"The Edison at Avondale",address:"2100 Park St, Jacksonville FL",submarket:"Jacksonville · Riverside",asset_type:"Multifamily",units:184,actual_noi:2850000,proforma_noi:2720000,noi_variance:4.8,actual_occupancy:94.2,proforma_occupancy:93.0,occupancy_variance:1.2,actual_avg_rent:1485,irr:15.2},
+  {id:"p2",property_name:"Bayshore Grand",address:"3300 Bayshore Blvd, Tampa FL",submarket:"Tampa · S Tampa",asset_type:"Multifamily",units:268,actual_noi:4120000,proforma_noi:4400000,noi_variance:-6.4,actual_occupancy:91.8,proforma_occupancy:95.0,occupancy_variance:-3.2,actual_avg_rent:1825,irr:12.8},
+  {id:"p3",property_name:"Nocatee Preserve",address:"500 Preserve Trail, Ponte Vedra FL",submarket:"Jacksonville · Nocatee",asset_type:"Multifamily",units:312,actual_noi:5180000,proforma_noi:4900000,noi_variance:5.7,actual_occupancy:96.1,proforma_occupancy:94.0,occupancy_variance:2.1,actual_avg_rent:1690,irr:17.4},
+  {id:"p4",property_name:"Midtown Crossing",address:"1000 Juniper St NE, Atlanta GA",submarket:"Atlanta · Midtown",asset_type:"Multifamily",units:156,actual_noi:2340000,proforma_noi:2500000,noi_variance:-6.4,actual_occupancy:88.5,proforma_occupancy:93.0,occupancy_variance:-4.5,actual_avg_rent:1920,irr:11.1},
+  {id:"p5",property_name:"Citrus Park Commons",address:"7800 Gunn Hwy, Tampa FL",submarket:"Tampa · NW Tampa",asset_type:"Multifamily",units:220,actual_noi:3250000,proforma_noi:3100000,noi_variance:4.8,actual_occupancy:95.4,proforma_occupancy:94.0,occupancy_variance:1.4,actual_avg_rent:1540,irr:14.6},
+  {id:"p6",property_name:"Buckhead Terrace",address:"3200 Lenox Rd NE, Atlanta GA",submarket:"Atlanta · Buckhead",asset_type:"Multifamily",units:198,actual_noi:3800000,proforma_noi:3650000,noi_variance:4.1,actual_occupancy:93.7,proforma_occupancy:92.5,occupancy_variance:1.2,actual_avg_rent:2100,irr:13.9},
+];
+
+const STATIC_PORTFOLIO_RANKINGS: RankedPortfolioAsset[] = [
+  {id:"p3",dealId:"p3",name:"Nocatee Preserve",submarket:"Jacksonville · Nocatee",pcsScore:92,rank:1,totalInSubmarket:14,movement:2,trajectory:"RISING"},
+  {id:"p1",dealId:"p1",name:"The Edison at Avondale",submarket:"Jacksonville · Riverside",pcsScore:85,rank:3,totalInSubmarket:22,movement:1,trajectory:"STABLE"},
+  {id:"p5",dealId:"p5",name:"Citrus Park Commons",submarket:"Tampa · NW Tampa",pcsScore:81,rank:2,totalInSubmarket:18,movement:0,trajectory:"STABLE"},
+  {id:"p6",dealId:"p6",name:"Buckhead Terrace",submarket:"Atlanta · Buckhead",pcsScore:78,rank:5,totalInSubmarket:31,movement:-1,trajectory:"STABLE"},
+  {id:"p2",dealId:"p2",name:"Bayshore Grand",submarket:"Tampa · S Tampa",pcsScore:72,rank:8,totalInSubmarket:26,movement:-3,trajectory:"DECLINING"},
+  {id:"p4",dealId:"p4",name:"Midtown Crossing",submarket:"Atlanta · Midtown",pcsScore:65,rank:12,totalInSubmarket:28,movement:-2,trajectory:"DECLINING"},
+];
+
+interface PortfolioAsset {
+  id: string; deal_id?: string; property_name?: string; address?: string;
+  submarket?: string; asset_type?: string; units?: number;
+  actual_noi?: number; proforma_noi?: number; noi_variance?: number;
+  actual_occupancy?: number; proforma_occupancy?: number; occupancy_variance?: number;
+  actual_avg_rent?: number; irr?: number;
+}
+interface RankedPortfolioAsset {
+  id: string; dealId?: string; name: string; submarket?: string;
+  pcsScore: number; rank: number; totalInSubmarket?: number;
+  movement?: number; trajectory?: string;
+}
 
 const PORTFOLIO_NAV = [
   {key:"F1",label:"DASHBOARD"},
@@ -475,19 +515,7 @@ export default function TerminalPage() {
   interface CorpHealthLive { employers:CorpEmployer[]; schi:number|null; reHealth:number|null; divergence:number|null; herfindahl:number|null; alerts:CorpAlert[]; sectors:Record<string,number>; portfolioSubmarkets:DivSubmarket[]; topEmployers:CorpEmployer[]; sectorRotation:{sectors:SectorRotEntry[];markets:string[]}|null; loaded:boolean; loading:boolean }
   const [corpHealthLive, setCorpHealthLive] = useState<CorpHealthLive>({employers:[],schi:null,reHealth:null,divergence:null,herfindahl:null,alerts:[],sectors:{},portfolioSubmarkets:[],topEmployers:[],sectorRotation:null,loaded:false,loading:false});
 
-  // F3 Portfolio typed interfaces
-  interface PortfolioAsset {
-    id: string; deal_id?: string; property_name?: string; address?: string;
-    submarket?: string; asset_type?: string; units?: number;
-    actual_noi?: number; proforma_noi?: number; noi_variance?: number;
-    actual_occupancy?: number; proforma_occupancy?: number; occupancy_variance?: number;
-    actual_avg_rent?: number; irr?: number;
-  }
-  interface RankedPortfolioAsset {
-    id: string; dealId?: string; name: string; submarket?: string;
-    pcsScore: number; rank: number; totalInSubmarket?: number;
-    movement?: number; trajectory?: string;
-  }
+  // F3 Portfolio typed interfaces (declared at module level for static fallback data)
   interface PortfolioComp {
     id?: string; comp_name?: string; comp_property_address?: string;
     avg_rent?: number; occupancy?: number; distance_miles?: number; match_score?: number;
@@ -555,7 +583,7 @@ export default function TerminalPage() {
   const [newMapType, setNewMapType] = useState("warmaps");
 
   // Live data state
-  const [liveDeals, setLiveDeals] = useState<LiveDeal[]>([]);
+  const [liveDeals, setLiveDeals] = useState<LiveDeal[]>(STATIC_DEALS);
   const [dealsLoading, setDealsLoading] = useState(true);
   const [liveAlerts, setLiveAlerts] = useState(STATIC_ALERTS);
   const [liveTasks, setLiveTasks] = useState(STATIC_TASKS);
@@ -655,9 +683,10 @@ export default function TerminalPage() {
     apiClient.get("/api/v1/deals", { params:{ limit:100 } })
       .then(res => {
         const raw: ApiDeal[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.deals || []);
-        setLiveDeals(raw.map(mapApiDealToLive));
+        const mapped = raw.map(mapApiDealToLive);
+        setLiveDeals(mapped.length > 0 ? mapped : STATIC_DEALS);
       })
-      .catch(() => setLiveDeals([]))
+      .catch(() => setLiveDeals(STATIC_DEALS))
       .finally(() => setDealsLoading(false));
   },[]);
 
@@ -743,19 +772,27 @@ export default function TerminalPage() {
       apiClient.get("/api/v1/rankings/owned/atlanta").catch(() => ({ data: {} })),
     ]).then(([assetsRes, rankRes]) => {
       const rawAssets: PortfolioAsset[] = assetsRes.data?.assets || assetsRes.data?.data || [];
-      setPortfolioAssets(rawAssets.map(a => ({
-        ...a,
-        actual_occupancy:    a.actual_occupancy    != null ? Number(a.actual_occupancy)    : undefined,
-        proforma_occupancy:  a.proforma_occupancy  != null ? Number(a.proforma_occupancy)  : undefined,
-        actual_noi:          a.actual_noi          != null ? Number(a.actual_noi)          : undefined,
-        proforma_noi:        a.proforma_noi        != null ? Number(a.proforma_noi)        : undefined,
-        noi_variance:        a.noi_variance        != null ? Number(a.noi_variance)        : undefined,
-        occupancy_variance:  a.occupancy_variance  != null ? Number(a.occupancy_variance)  : undefined,
-        actual_avg_rent:     a.actual_avg_rent     != null ? Number(a.actual_avg_rent)     : undefined,
-        irr:                 a.irr                 != null ? Number(a.irr)                 : undefined,
-      })));
+      if (rawAssets.length > 0) {
+        setPortfolioAssets(rawAssets.map(a => ({
+          ...a,
+          actual_occupancy:    a.actual_occupancy    != null ? Number(a.actual_occupancy)    : undefined,
+          proforma_occupancy:  a.proforma_occupancy  != null ? Number(a.proforma_occupancy)  : undefined,
+          actual_noi:          a.actual_noi          != null ? Number(a.actual_noi)          : undefined,
+          proforma_noi:        a.proforma_noi        != null ? Number(a.proforma_noi)        : undefined,
+          noi_variance:        a.noi_variance        != null ? Number(a.noi_variance)        : undefined,
+          occupancy_variance:  a.occupancy_variance  != null ? Number(a.occupancy_variance)  : undefined,
+          actual_avg_rent:     a.actual_avg_rent     != null ? Number(a.actual_avg_rent)     : undefined,
+          irr:                 a.irr                 != null ? Number(a.irr)                 : undefined,
+        })));
+      } else {
+        setPortfolioAssets(STATIC_PORTFOLIO);
+      }
       const rankData = rankRes.data?.data || rankRes.data;
-      if (rankData?.rankedAssets?.length > 0) setPortfolioRankings(rankData.rankedAssets);
+      if (rankData?.rankedAssets?.length > 0) {
+        setPortfolioRankings(rankData.rankedAssets);
+      } else {
+        setPortfolioRankings(STATIC_PORTFOLIO_RANKINGS);
+      }
       setPortfolioLoaded(true);
     }).finally(() => setPortfolioLoading(false));
   }, [fkey, portfolioLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
