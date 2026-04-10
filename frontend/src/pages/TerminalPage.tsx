@@ -1702,12 +1702,12 @@ export default function TerminalPage() {
           `"${a.submarket||""}"`,
           a.asset_type||"",
           a.units||"",
-          a.actual_occupancy!=null?a.actual_occupancy.toFixed(1):"",
+          a.actual_occupancy!=null?Number(a.actual_occupancy).toFixed(1):"",
           a.actual_noi||"",
           a.proforma_noi||"",
-          a.noi_variance!=null?a.noi_variance.toFixed(1):"",
-          a.irr!=null?a.irr.toFixed(1):"",
-          a.equity_multiple!=null?a.equity_multiple.toFixed(2):"",
+          a.noi_variance!=null?Number(a.noi_variance).toFixed(1):"",
+          a.irr!=null?Number(a.irr).toFixed(1):"",
+          (a as any).equity_multiple!=null?Number((a as any).equity_multiple).toFixed(2):"",
         ].join(","))
       ].join("\n");
       const blob = new Blob([csvRows], {type:"text/csv"});
@@ -1871,8 +1871,8 @@ export default function TerminalPage() {
                           const occ = asset.actual_occupancy ?? 0;
                           const noiVar = asset.noi_variance ?? 0;
                           const occVar = asset.occupancy_variance ?? 0;
-                          const fmtK = (v:any) => v!=null ? `$${(v/1000).toFixed(0)}K` : "—";
-                          const fmtPct = (v:any) => v!=null ? `${v.toFixed(1)}%` : "—";
+                          const fmtK = (v:any) => v!=null ? `$${(Number(v)/1000).toFixed(0)}K` : "—";
+                          const fmtPct = (v:any) => v!=null ? `${Number(v).toFixed(1)}%` : "—";
                           const varColor = (v:number|null) => v==null?T.text.muted:v>0?T.text.green:v<0?T.text.red:T.text.muted;
                           return (
                             <tr key={asset.id||i} onClick={() => navigate(`/deals/${asset.deal_id||asset.id}/detail`)} style={{borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
@@ -1885,13 +1885,13 @@ export default function TerminalPage() {
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.primary}}>{asset.units||"—"}</span></TD>
                               <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:occ>=90?T.text.green:occ>=80?T.text.amber:T.text.red}}>{fmtPct(asset.actual_occupancy)}</span></TD>
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.muted}}>{fmtPct(asset.proforma_occupancy)}</span></TD>
-                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:varColor(occVar)}}>{occVar!=null?`${occVar>0?"+":""}${occVar.toFixed(1)}%`:"—"}</span></TD>
+                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:varColor(occVar)}}>{occVar!=null?`${occVar>0?"+":""}${Number(occVar).toFixed(1)}%`:"—"}</span></TD>
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.primary}}>{fmtK(asset.actual_noi)}</span></TD>
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.muted}}>{fmtK(asset.proforma_noi)}</span></TD>
-                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:varColor(noiVar)}}>{noiVar!=null?`${noiVar>0?"+":""}${noiVar.toFixed(1)}%`:"—"}</span></TD>
+                              <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:varColor(noiVar)}}>{noiVar!=null?`${noiVar>0?"+":""}${Number(noiVar).toFixed(1)}%`:"—"}</span></TD>
                               <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.purple}}>{fmtPct(asset.irr)}</span></TD>
-                              <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.cyan}}>{fmtPct(asset.coc_return)}</span></TD>
-                              <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.primary}}>{asset.equity_multiple!=null?`${asset.equity_multiple.toFixed(2)}x`:"—"}</span></TD>
+                              <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.cyan}}>{fmtPct((asset as any).coc_return)}</span></TD>
+                              <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.primary}}>{(asset as any).equity_multiple!=null?`${Number((asset as any).equity_multiple).toFixed(2)}x`:"—"}</span></TD>
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.green}}>{fmtK(asset.total_distributions)}</span></TD>
                               <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.muted}}>{fmtK(asset.actual_capex)}</span></TD>
                               <TD>
@@ -1921,12 +1921,12 @@ export default function TerminalPage() {
                       const status = noiVar>5?"OUTPERFORMING":noiVar<-10?"UNDERPERFORMING":"ON TRACK";
                       const statusC = noiVar>5?T.text.green:noiVar<-10?T.text.red:T.text.amber;
                       const metrics: PerfMetric[] = [
-                        {l:"NOI ACTUAL",   v: asset.actual_noi   ? `$${((asset.actual_noi)/1000).toFixed(0)}K`    : "—"},
-                        {l:"NOI PROFORMA", v: asset.proforma_noi ? `$${((asset.proforma_noi)/1000).toFixed(0)}K`  : "—"},
-                        {l:"NOI VAR",      v: asset.noi_variance  != null ? `${noiVar>0?"+":""}${noiVar.toFixed(1)}%` : "—", c: noiVar>0?T.text.green:noiVar<0?T.text.red:T.text.muted},
-                        {l:"OCC ACTUAL",   v: asset.actual_occupancy   != null ? `${(asset.actual_occupancy).toFixed(1)}%`   : "—"},
-                        {l:"OCC PROFORMA", v: asset.proforma_occupancy != null ? `${(asset.proforma_occupancy).toFixed(1)}%` : "—"},
-                        {l:"OCC VAR",      v: asset.occupancy_variance  != null ? `${occVar>0?"+":""}${occVar.toFixed(1)}%`  : "—", c: occVar>0?T.text.green:occVar<0?T.text.red:T.text.muted},
+                        {l:"NOI ACTUAL",   v: asset.actual_noi   ? `$${(Number(asset.actual_noi)/1000).toFixed(0)}K`    : "—"},
+                        {l:"NOI PROFORMA", v: asset.proforma_noi ? `$${(Number(asset.proforma_noi)/1000).toFixed(0)}K`  : "—"},
+                        {l:"NOI VAR",      v: asset.noi_variance  != null ? `${noiVar>0?"+":""}${Number(noiVar).toFixed(1)}%` : "—", c: noiVar>0?T.text.green:noiVar<0?T.text.red:T.text.muted},
+                        {l:"OCC ACTUAL",   v: asset.actual_occupancy   != null ? `${Number(asset.actual_occupancy).toFixed(1)}%`   : "—"},
+                        {l:"OCC PROFORMA", v: asset.proforma_occupancy != null ? `${Number(asset.proforma_occupancy).toFixed(1)}%` : "—"},
+                        {l:"OCC VAR",      v: asset.occupancy_variance  != null ? `${occVar>0?"+":""}${Number(occVar).toFixed(1)}%`  : "—", c: occVar>0?T.text.green:occVar<0?T.text.red:T.text.muted},
                       ];
                       return (
                         <div key={asset.id||i} style={{background:T.bg.panel,border:`1px solid ${T.border.subtle}`,padding:"10px 12px"}}>
@@ -1994,8 +1994,8 @@ export default function TerminalPage() {
                                     <div style={{fontSize:10,color:T.text.muted}}>{asset.asset_type||""} · {asset.units||"—"} units</div>
                                   </div>
                                 </div></TD>
-                                <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent!=null?`$${(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
-                                <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy!=null?`${(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
+                                <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.primary}}>{asset.actual_avg_rent!=null?`$${Number(asset.actual_avg_rent).toFixed(0)}`:"—"}</span></TD>
+                                <TD><span style={{fontSize:10,fontFamily:T.font.mono,color:T.text.green}}>{asset.actual_occupancy!=null?`${Number(asset.actual_occupancy).toFixed(1)}%`:"—"}</span></TD>
                                 <TD><span style={{fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:T.text.cyan}}>{comps.length||"—"}</span></TD>
                                 <TD onClick={e=>e.stopPropagation()}>
                                   <div style={{display:"flex",gap:4}}>
@@ -2023,7 +2023,7 @@ export default function TerminalPage() {
                                   <td style={{padding:"5px 10px 5px 32px",fontSize:10,color:T.text.secondary}}>{comp.comp_name||comp.comp_property_address||"—"}</td>
                                   <td style={{padding:"5px 10px",fontSize:10,fontFamily:T.font.mono,color:T.text.muted}}>{comp.avg_rent!=null?`$${comp.avg_rent}`:"—"}</td>
                                   <td style={{padding:"5px 10px",fontSize:10,fontFamily:T.font.mono,color:T.text.muted}}>{comp.occupancy!=null?`${comp.occupancy}%`:"—"}</td>
-                                  <td style={{padding:"5px 10px",fontSize:10,color:T.text.muted}}>{comp.distance_miles!=null?`${comp.distance_miles.toFixed(1)}mi`:"—"} · {comp.units||"—"} units · {comp.year_built||"—"}</td>
+                                  <td style={{padding:"5px 10px",fontSize:10,color:T.text.muted}}>{comp.distance_miles!=null?`${Number(comp.distance_miles).toFixed(1)}mi`:"—"} · {(comp as any).units||"—"} units · {(comp as any).year_built||"—"}</td>
                                   <td style={{padding:"5px 10px",fontSize:10,fontWeight:700,fontFamily:T.font.mono,color:(comp.match_score??0)>=80?T.text.green:(comp.match_score??0)>=60?T.text.amber:T.text.muted}}>{comp.match_score!=null?`${comp.match_score}% match`:"—"}</td>
                                 </tr>
                               ))}
