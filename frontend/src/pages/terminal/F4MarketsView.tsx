@@ -259,15 +259,15 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const { properties: liveProperties, loading: propLoading, refresh: refreshProperties } = usePropertyMetrics();
 
   const ALL_MARKETS_RESOLVED = useMemo(() => {
-    return liveMarkets.length > 0 ? liveMarkets as TrackedMarket[] : [];
+    return liveMarkets.length > 0 ? liveMarkets as TrackedMarket[] : ALL_MARKETS;
   }, [liveMarkets]);
 
   const SUBMARKET_RESOLVED = useMemo(() => {
-    return liveSubmarkets.length > 0 ? liveSubmarkets : [];
+    return liveSubmarkets.length > 0 ? liveSubmarkets : SUBMARKET_INDEX;
   }, [liveSubmarkets]);
 
   const PROPERTY_RESOLVED = useMemo(() => {
-    return liveProperties.length > 0 ? liveProperties : [];
+    return liveProperties.length > 0 ? liveProperties : PROPERTY_INDEX;
   }, [liveProperties]);
 
   const isLive = liveMarkets.length > 0;

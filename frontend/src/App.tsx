@@ -4,8 +4,6 @@ import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
 import { PageLoadingFallback } from './components/fallbacks/PageLoadingFallback';
-import { PropertiesPage } from './pages/PropertiesPage';
-import { DealsPage } from './pages/DealsPage';
 import { CreateDealPage } from './pages/CreateDealPage';
 import { NewsPage } from './pages/NewsPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
@@ -128,8 +126,8 @@ function AppContent() {
 
         {/* ═══ Standalone pages — unique content, no layout chrome ═══ */}
         <Route path="/news" element={<NewsPage />} />
-        <Route path="/deals" element={<DealsPage />} />
-        <Route path="/properties" element={<PropertiesPage />} />
+        <Route path="/deals" element={<Navigate to="/terminal/pipeline" replace />} />
+        <Route path="/properties" element={<Navigate to="/terminal/portfolio" replace />} />
         <Route path="/properties/:id" element={<PropertyDetailsPage />} />
         <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
         <Route path="/capsules" element={<DealCapsulesPage />} />
