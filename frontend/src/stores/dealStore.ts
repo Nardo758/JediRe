@@ -1130,7 +1130,10 @@ export const useDealStore = create<DealStore>()(
                 capexPerUnit: state.financial.assumptions.capexPerUnit.value,
                 managementFee: state.financial.assumptions.managementFee.value,
               },
-              unitMix: state.resolvedUnitMix,
+              unitMix: state.resolvedUnitMix.map(r => ({
+                units: r.count,
+                marketRent: r.marketRent?.value ?? r.targetRent.value,
+              })),
             }),
           }
         );
@@ -1152,11 +1155,41 @@ export const useDealStore = create<DealStore>()(
             }
           : currentState.financial;
 
+        const mergedScores = result.scores
+          ? {
+              ...currentState.scores,
+              overall: result.scores.overall ?? currentState.scores.overall,
+              demand: result.scores.demand ?? currentState.scores.demand,
+              supply: result.scores.supply ?? currentState.scores.supply,
+              momentum: result.scores.momentum ?? currentState.scores.momentum,
+              position: result.scores.position ?? currentState.scores.position,
+              risk: result.scores.risk ?? currentState.scores.risk,
+              confidence: result.scores.confidence ?? currentState.scores.confidence,
+              verdict: result.scores.verdict ?? currentState.scores.verdict,
+            }
+          : currentState.scores;
+
+        const mergedStrategy = result.strategy
+          ? {
+              ...currentState.strategy,
+              verdict: result.strategy.recommended ?? currentState.strategy.verdict,
+            }
+          : currentState.strategy;
+
+        const mergedRisk = result.risk
+          ? {
+              ...currentState.risk,
+              overall: typeof result.risk.level === 'string'
+                ? (result.risk.level === 'high' ? 80 : result.risk.level === 'elevated' ? 60 : 40)
+                : currentState.risk.overall,
+            }
+          : currentState.risk;
+
         useDealStore.setState({
           financial: mergedFinancial,
-          strategy: result.strategy ?? currentState.strategy,
-          scores: result.scores ?? currentState.scores,
-          risk: result.risk ?? currentState.risk,
+          strategy: mergedStrategy,
+          scores: mergedScores,
+          risk: mergedRisk,
           assumptionCascadeStatus: 'idle',
           hydrationStatus: {
             ...currentState.hydrationStatus,
@@ -1566,46 +1599,6 @@ export const SENSITIVITY_COEFFICIENTS: Record<string, { label: string; rank: num
   'financial.assumptions.capexPerUnit': { label: 'CapEx / Unit', rank: 5, unit: '$', formatMultiplier: 1 },
   'financial.assumptions.managementFee': { label: 'Mgmt Fee', rank: 6, unit: '%', formatMultiplier: 100 },
   'financial.assumptions.expenseGrowth': { label: 'Expense Growth', rank: 7, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.loanToValue': { label: 'Loan to Value', rank: 8, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.interestRate': { label: 'Interest Rate', rank: 9, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.amortization': { label: 'Amortization', rank: 10, unit: 'yrs', formatMultiplier: 1 },
-  'financial.assumptions.loanTerm': { label: 'Loan Term', rank: 11, unit: 'yrs', formatMultiplier: 1 },
-  'financial.assumptions.closingCosts': { label: 'Closing Costs', rank: 12, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.dispositionCosts': { label: 'Disposition Costs', rank: 13, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.taxRate': { label: 'Tax Rate', rank: 14, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.capitalReserves': { label: 'Capital Reserves', rank: 15, unit: '$/unit', formatMultiplier: 1 },
-  'financial.assumptions.replacementReserves': { label: 'Replacement Reserves', rank: 16, unit: '$/unit', formatMultiplier: 1 },
-  'financial.assumptions.insurancePerUnit': { label: 'Insurance / Unit', rank: 17, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.realEstateTaxGrowth': { label: 'RE Tax Growth', rank: 18, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.insuranceGrowth': { label: 'Insurance Growth', rank: 19, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.generalInflation': { label: 'General Inflation', rank: 20, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.tenantImprovements': { label: 'Tenant Improvements', rank: 21, unit: '$/sf', formatMultiplier: 1 },
-  'financial.assumptions.leasingCommissions': { label: 'Leasing Commissions', rank: 22, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.downtime': { label: 'Downtime', rank: 23, unit: 'days', formatMultiplier: 1 },
-  'financial.assumptions.freeRent': { label: 'Free Rent', rank: 24, unit: 'mo', formatMultiplier: 1 },
-  'financial.assumptions.concessions': { label: 'Concessions', rank: 25, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.badDebt': { label: 'Bad Debt', rank: 26, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.creditLoss': { label: 'Credit Loss', rank: 27, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.otherIncome': { label: 'Other Income', rank: 28, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.parkingIncome': { label: 'Parking Income', rank: 29, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.laundryIncome': { label: 'Laundry Income', rank: 30, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.petRent': { label: 'Pet Rent', rank: 31, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.storageIncome': { label: 'Storage Income', rank: 32, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.utilityReimbursement': { label: 'Utility Reimbursement', rank: 33, unit: '$', formatMultiplier: 1 },
-  'financial.assumptions.contractedRentEscalation': { label: 'Rent Escalation', rank: 34, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.markToMarket': { label: 'Mark to Market', rank: 35, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.renewalProbability': { label: 'Renewal Probability', rank: 36, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.developmentFee': { label: 'Development Fee', rank: 37, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.architecturalFee': { label: 'Arch. Fee', rank: 38, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.constructionContingency': { label: 'Construction Contingency', rank: 39, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.softCostContingency': { label: 'Soft Cost Contingency', rank: 40, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.constructionDuration': { label: 'Construction Duration', rank: 41, unit: 'mo', formatMultiplier: 1 },
-  'financial.assumptions.leaseUpDuration': { label: 'Lease-Up Duration', rank: 42, unit: 'mo', formatMultiplier: 1 },
-  'financial.assumptions.stabilizationVacancy': { label: 'Stabilization Vacancy', rank: 43, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.yieldOnCost': { label: 'Yield on Cost', rank: 44, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.discountRate': { label: 'Discount Rate', rank: 45, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.terminalCapRate': { label: 'Terminal Cap Rate', rank: 46, unit: '%', formatMultiplier: 100 },
-  'financial.assumptions.goingInCapRate': { label: 'Going-In Cap Rate', rank: 47, unit: '%', formatMultiplier: 100 },
 };
 
 export const SENSITIVITY_PATHS = Object.keys(SENSITIVITY_COEFFICIENTS).sort(

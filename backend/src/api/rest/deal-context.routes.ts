@@ -357,13 +357,13 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
 
     const scores = {
       overall: overallJedi,
-      components: {
-        irr: irrScore,
-        equityMultiple: emScore,
-        cashOnCash: cocScore,
-        riskAdjustment: riskAdj + capRateAdj,
-        base: 20,
-      },
+      demand: Math.min(100, irrScore + emScore),
+      supply: Math.min(100, 50 + capRateAdj * 5),
+      momentum: Math.min(100, cocScore * 3),
+      position: Math.min(100, 40 + riskAdj * 3),
+      risk: Math.max(0, 100 - (vacancy * 200) - (exitCapRate > 0.08 ? 20 : 0)),
+      confidence: 0.75,
+      verdict: overallJedi >= 70 ? 'Strong Buy' : overallJedi >= 50 ? 'Buy' : overallJedi >= 30 ? 'Neutral' : 'Caution',
       recomputedAt: now,
     };
 

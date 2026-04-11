@@ -47,10 +47,8 @@ function formatFieldValue(value: number, path: string): string {
   const meta = SENSITIVITY_COEFFICIENTS[path];
   if (!meta) return String(value);
   if (meta.unit === '%') return `${(value * meta.formatMultiplier).toFixed(2)}%`;
-  if (meta.unit === '$' || meta.unit === '$/unit' || meta.unit === '$/sf') return `$${Math.round(value).toLocaleString()}`;
+  if (meta.unit === '$') return `$${Math.round(value).toLocaleString()}`;
   if (meta.unit === 'yrs') return `${value} yrs`;
-  if (meta.unit === 'mo') return `${value} mo`;
-  if (meta.unit === 'days') return `${value} days`;
   return String(value);
 }
 
