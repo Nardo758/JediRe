@@ -1157,6 +1157,7 @@ router.post('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedR
         signingVelocity: snapshot.signingVelocity,
         seasonalityCurve: snapshot.seasonalityCurve,
         expirationWaterfall: snapshot.expirationWaterfall,
+        velocityVariance: snapshot.velocityVariance,
         leaseTermDistribution: snapshot.leaseTermDistribution,
         tradeOutAnalytics: snapshot.tradeOutAnalytics,
         mtmExposure: snapshot.mtmExposure,

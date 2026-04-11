@@ -178,9 +178,15 @@ export async function computeTrafficSnapshot(dealId: string): Promise<TrafficSna
     !r.unit_number?.startsWith('funnel_')
   );
 
-  const sourceTypes = new Set<string>();
-  currentLeases.forEach((r: any) => { if (r.source_type) sourceTypes.add(r.source_type); });
-  const sourceDocumentTypes = Array.from(sourceTypes);
+  const sourceDocTypes = new Set<string>();
+  for (const r of currentLeases) {
+    if (r.lease_type === 'current' || r.lease_type === 'vacant') sourceDocTypes.add('RENT_ROLL');
+    if (r.lease_type === 'new' || r.lease_type === 'new_lease' || r.lease_type === 'renewal' || r.lease_type === 'renew') sourceDocTypes.add('T30_LTO');
+  }
+  if (funnelRows.length > 0 || allLeases.some((r: any) => r.unit_number?.startsWith('box_score_'))) {
+    sourceDocTypes.add('BOX_SCORE');
+  }
+  const sourceDocumentTypes = Array.from(sourceDocTypes);
 
   const signingVelocity = computeSigningVelocity(currentLeases);
   const seasonalityCurve = computeSeasonalityCurve(currentLeases);
