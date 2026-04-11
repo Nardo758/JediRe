@@ -67,10 +67,24 @@ export interface DebtItem {
   sourceType?: string;
 }
 
+export interface TrafficSnapshotSummary {
+  snapshotDate: string;
+  avgSigningsPerMonth: number;
+  occupancyPct: number;
+  mtmExposurePct: number;
+  lossToLeasePct: number;
+  renewalCliffMonths: string[];
+  dataCompleteness: number;
+  signingVelocity3mo: number;
+  conversionPct: number | null;
+}
+
 export interface DealFinancialContext {
   dealId: string;
   propertyId: string | null;
   hasFinancialData: boolean;
+
+  trafficSnapshot: TrafficSnapshotSummary | null;
 
   assumptions: {
     totalUnits?: number;
@@ -148,6 +162,7 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
     balanceSheetRes,
     capexRes,
     debtRes,
+    trafficRes,
   ] = await Promise.all([
     pool.query(
       `SELECT * FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
@@ -201,6 +216,15 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
        ORDER BY current_balance DESC`,
       [dealId]
     ).catch(() => ({ rows: [] })),
+
+    pool.query(
+      `SELECT snapshot_date, summary, signing_velocity, conversion_funnel
+       FROM deal_traffic_snapshots
+       WHERE deal_id = $1
+       ORDER BY snapshot_date DESC
+       LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] })),
   ]);
 
   const assumptions = assumptionsRes.rows[0] || {};
@@ -209,6 +233,7 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
   const bsRaw = balanceSheetRes.rows[0] || null;
   const capexRows = capexRes.rows;
   const debtRows = debtRes.rows;
+  const trafficRaw = trafficRes.rows[0] || null;
 
   const t12Actuals = actuals.slice(0, 12);
   const trailingTwelveNOI = t12Actuals.length > 0
@@ -273,12 +298,31 @@ export async function getDealFinancialContext(dealId: string): Promise<DealFinan
 
   const hasFinancialData = actuals.length > 0 || leaseRows.length > 0 ||
     bsRaw !== null || capexRows.length > 0 || debtRows.length > 0 ||
-    Object.keys(assumptions).length > 0;
+    Object.keys(assumptions).length > 0 || trafficRaw !== null;
+
+  let trafficSnapshot: TrafficSnapshotSummary | null = null;
+  if (trafficRaw) {
+    const tSummary = trafficRaw.summary || {};
+    const tVelocity = trafficRaw.signing_velocity || {};
+    const tFunnel = trafficRaw.conversion_funnel || null;
+    trafficSnapshot = {
+      snapshotDate: trafficRaw.snapshot_date,
+      avgSigningsPerMonth: tSummary.avgSigningsPerMonth || 0,
+      occupancyPct: tSummary.occupancyPct || 0,
+      mtmExposurePct: tSummary.mtmExposurePct || 0,
+      lossToLeasePct: tSummary.lossToLeasePct || 0,
+      renewalCliffMonths: tSummary.renewalCliffMonths || [],
+      dataCompleteness: tSummary.dataCompleteness || 0,
+      signingVelocity3mo: tVelocity.trailing3mo?.avgPerMonth || 0,
+      conversionPct: tFunnel?.overallConversionPct || null,
+    };
+  }
 
   return {
     dealId,
     propertyId,
     hasFinancialData,
+    trafficSnapshot,
     assumptions: {
       totalUnits: Number(assumptions.total_units) || undefined,
       rentPerUnit: Number(assumptions.avg_rent_per_unit) || undefined,
@@ -423,6 +467,20 @@ export function formatFinancialContextForPrompt(ctx: DealFinancialContext): stri
     }
   }
 
+  if (ctx.trafficSnapshot) {
+    const ts = ctx.trafficSnapshot;
+    prompt += `\nLEASING TRAFFIC ANALYTICS (as of ${ts.snapshotDate}):\n`;
+    prompt += `- Avg Signings/Month: ${ts.avgSigningsPerMonth}\n`;
+    prompt += `- 3-Month Velocity: ${ts.signingVelocity3mo} signings/mo\n`;
+    prompt += `- MTM Exposure: ${ts.mtmExposurePct}%\n`;
+    prompt += `- Loss to Lease: ${ts.lossToLeasePct}%\n`;
+    if (ts.conversionPct != null) prompt += `- Conversion Rate: ${ts.conversionPct}%\n`;
+    if (ts.renewalCliffMonths.length > 0) {
+      prompt += `- Renewal Cliff Months: ${ts.renewalCliffMonths.join(', ')}\n`;
+    }
+    prompt += `- Data Completeness: ${ts.dataCompleteness}%\n`;
+  }
+
   if (ctx.leases.totalUnitsLeased > 0 || ctx.leases.totalUnitsVacant > 0) {
     const totalUnits = ctx.leases.totalUnitsLeased + ctx.leases.totalUnitsVacant;
     const occRate = totalUnits > 0 ? (ctx.leases.totalUnitsLeased / totalUnits * 100).toFixed(1) : 'N/A';
@@ -470,6 +528,7 @@ export function formatFinancialContextForPrompt(ctx: DealFinancialContext): stri
   if (ctx.dataSources.hasUploadedCapex) sources.push('CapEx Report (uploaded)');
   if (ctx.dataSources.hasUploadedDebt) sources.push('Debt Schedule (uploaded)');
   if (ctx.dataSources.hasManualAssumptions) sources.push('Assumptions (manual entry)');
+  if (ctx.trafficSnapshot) sources.push('Traffic Analytics (computed)');
 
   if (sources.length > 0) {
     prompt += `\nDATA PROVENANCE:\n- Sources: ${sources.join(', ')}\n`;

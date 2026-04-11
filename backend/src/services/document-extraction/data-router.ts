@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData } from './types';
+import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
 
 interface RouteContext {
   dealId: string;
@@ -100,6 +101,15 @@ export async function routeExtractionResult(
       break;
   }
 
+  if (result.documentType === 'RENT_ROLL' || result.documentType === 'BOX_SCORE' || result.documentType === 'T30_LTO') {
+    try {
+      await computeAndPersistTrafficSnapshot(ctx.dealId);
+      alerts.push(`Traffic analytics snapshot computed from ${result.documentType} data`);
+    } catch (err) {
+      alerts.push(`Traffic snapshot computation failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }
+
   let libraryUpdated = false;
   try {
     await upsertDataLibraryAsset(pool, ctx.dealId, result);
@@ -176,8 +186,9 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
 
 async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   await pool.query(
-    `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction' AND source_ref = $2`,
-    [dealId, sourceRef]
+    `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction'
+     AND lease_type IN ('current', 'vacant')`,
+    [dealId]
   );
 
   let count = 0;
@@ -369,8 +380,9 @@ async function routeConcessionBurnoff(pool: Pool, data: ConcessionBurnoffData, d
 
 async function routeLTO(pool: Pool, data: LTOData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   await pool.query(
-    `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction' AND source_ref = $2`,
-    [dealId, sourceRef]
+    `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction'
+     AND lease_type IN ('new', 'new_lease', 'renewal', 'renew')`,
+    [dealId]
   );
 
   let count = 0;

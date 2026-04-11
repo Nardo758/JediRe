@@ -8,6 +8,7 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
+import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
 
 const router = Router();
 const pool = getPool();
@@ -1131,6 +1132,92 @@ router.post('/:dealId/extract-document', requireAuth, documentUpload.single('fil
   } catch (error: any) {
     console.error('Error extracting document:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to extract document' });
+  }
+});
+
+router.post('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const snapshot = await computeAndPersistTrafficSnapshot(dealId);
+
+    res.json({
+      success: true,
+      data: {
+        snapshotDate: snapshot.snapshotDate,
+        summary: snapshot.summary,
+        signingVelocity: snapshot.signingVelocity,
+        seasonalityCurve: snapshot.seasonalityCurve,
+        expirationWaterfall: snapshot.expirationWaterfall,
+        leaseTermDistribution: snapshot.leaseTermDistribution,
+        tradeOutAnalytics: snapshot.tradeOutAnalytics,
+        mtmExposure: snapshot.mtmExposure,
+        conversionFunnel: snapshot.conversionFunnel,
+        sourceDocumentTypes: snapshot.sourceDocumentTypes,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error computing traffic snapshot:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to compute traffic snapshot' });
+  }
+});
+
+router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const result = await pool.query(
+      `SELECT snapshot_date, signing_velocity, seasonality_curve, expiration_waterfall,
+              velocity_variance, lease_term_distribution, trade_out_analytics,
+              mtm_exposure, conversion_funnel, summary, source_document_types, created_at
+       FROM deal_traffic_snapshots
+       WHERE deal_id = $1
+       ORDER BY snapshot_date DESC
+       LIMIT 1`,
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: true, data: null });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        snapshotDate: row.snapshot_date,
+        summary: row.summary,
+        signingVelocity: row.signing_velocity,
+        seasonalityCurve: row.seasonality_curve,
+        expirationWaterfall: row.expiration_waterfall,
+        velocityVariance: row.velocity_variance,
+        leaseTermDistribution: row.lease_term_distribution,
+        tradeOutAnalytics: row.trade_out_analytics,
+        mtmExposure: row.mtm_exposure,
+        conversionFunnel: row.conversion_funnel,
+        sourceDocumentTypes: row.source_document_types,
+        createdAt: row.created_at,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching traffic snapshot:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to fetch traffic snapshot' });
   }
 });
 
