@@ -6,6 +6,7 @@ export interface SigningVelocity {
   trailing6mo: { newLeases: number; renewals: number; totalSignings: number; avgPerMonth: number };
   trailing12mo: { newLeases: number; renewals: number; totalSignings: number; avgPerMonth: number };
   confidence: number;
+  survivorBiasDecay: number;
   dataMonths: number;
 }
 
@@ -20,8 +21,12 @@ export interface SeasonalityBucket {
 export interface ExpirationWaterfallBucket {
   month: string;
   expiringUnits: number;
+  expiringSqft: number;
+  expiringDollarExposure: number;
   mtmUnits: number;
   cumulativeExposure: number;
+  cumulativeSqftExposure: number;
+  cumulativeDollarExposure: number;
   renewalCliffFlag: boolean;
 }
 
@@ -41,6 +46,18 @@ export interface LeaseTermBucket {
   avgRent: number;
 }
 
+export interface FloorPlanTradeOut {
+  floorPlan: string;
+  count: number;
+  avgEffectiveRent: number;
+  avgMarketRent: number;
+  avgConcession: number;
+  concessionAdjustedRent: number;
+  lossToLease: number;
+  lossToLeasePct: number;
+  marketPremiumPct: number;
+}
+
 export interface TradeOutMetrics {
   newLeases: {
     count: number;
@@ -58,6 +75,7 @@ export interface TradeOutMetrics {
     avgIncreaseDollar: number;
     avgIncreasePct: number;
   };
+  byFloorPlan: FloorPlanTradeOut[];
   overallLossToLease: number;
   overallLossToLeasePct: number;
 }
@@ -66,9 +84,12 @@ export interface MtmExposure {
   mtmUnitCount: number;
   mtmPctOfTotal: number;
   avgMtmRent: number;
+  mtmDollarExposure: number;
   preLeasedCount: number;
   preLeasedAvgDaysOut: number;
+  preLeasedVelocityRatio: number;
   totalUnits: number;
+  vacantPlusNoticeUnits: number;
 }
 
 export interface ConversionFunnel {
@@ -115,6 +136,8 @@ export interface TrafficSnapshot {
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+const RENEWAL_CLIFF_THRESHOLD = 0.08;
+
 export async function computeTrafficSnapshot(dealId: string): Promise<TrafficSnapshot> {
   const pool = getPool();
 
@@ -131,8 +154,9 @@ export async function computeTrafficSnapshot(dealId: string): Promise<TrafficSna
   );
 
   const boxScoreFunnelRows = await pool.query(
-    `SELECT lease_status FROM deal_lease_transactions
-     WHERE deal_id = $1 AND lease_type = 'conversion_funnel'`,
+    `SELECT lease_status, source_ref FROM deal_lease_transactions
+     WHERE deal_id = $1 AND lease_type = 'conversion_funnel'
+     ORDER BY created_at DESC`,
     [dealId]
   );
 
@@ -212,15 +236,20 @@ export async function computeTrafficSnapshot(dealId: string): Promise<TrafficSna
 
 function computeSigningVelocity(leases: any[]): SigningVelocity {
   const now = new Date();
-  const cutoffs = [3, 6, 12].map(months => {
+  const windows = [3, 6, 12];
+  const cutoffs = windows.map(months => {
     const d = new Date(now);
     d.setMonth(d.getMonth() - months);
     return d;
   });
 
-  const signedLeases = leases.filter((r: any) => r.lease_start);
+  const signedLeases = leases.filter((r: any) => r.move_in_date || r.lease_start);
+
   const buckets = cutoffs.map(cutoff => {
-    const inRange = signedLeases.filter((r: any) => new Date(r.lease_start) >= cutoff);
+    const inRange = signedLeases.filter((r: any) => {
+      const anchorDate = r.move_in_date ? new Date(r.move_in_date) : new Date(r.lease_start);
+      return anchorDate >= cutoff;
+    });
     const newL = inRange.filter((r: any) =>
       r.lease_type === 'new' || r.lease_type === 'new_lease' || r.lease_type === 'current'
     ).length;
@@ -231,15 +260,39 @@ function computeSigningVelocity(leases: any[]): SigningVelocity {
   });
 
   const dataMonths = getDataSpanMonths(signedLeases);
-  const confidence = Math.min(1, dataMonths / 12);
+
+  const baseConfidence = Math.min(1, dataMonths / 12);
+  const survivorBiasDecay = computeSurvivorBiasDecay(signedLeases, now);
+  const confidence = round2(baseConfidence * survivorBiasDecay);
 
   return {
     trailing3mo: { ...buckets[0], avgPerMonth: round2(buckets[0].totalSignings / 3) },
     trailing6mo: { ...buckets[1], avgPerMonth: round2(buckets[1].totalSignings / 6) },
     trailing12mo: { ...buckets[2], avgPerMonth: round2(buckets[2].totalSignings / 12) },
     confidence,
+    survivorBiasDecay,
     dataMonths,
   };
+}
+
+function computeSurvivorBiasDecay(leases: any[], now: Date): number {
+  if (leases.length === 0) return 0;
+
+  const inPlaceLeases = leases.filter((r: any) =>
+    (r.lease_status === 'occupied' || r.lease_status === 'active' || r.lease_status === 'current') &&
+    r.move_in_date
+  );
+  if (inPlaceLeases.length === 0) return 0.7;
+
+  let totalDecay = 0;
+  for (const lease of inPlaceLeases) {
+    const moveIn = new Date(lease.move_in_date);
+    const monthsSinceMoveIn = (now.getTime() - moveIn.getTime()) / (30.44 * 24 * 60 * 60 * 1000);
+    const decay = Math.exp(-0.05 * Math.max(0, monthsSinceMoveIn));
+    totalDecay += decay;
+  }
+
+  return round2(totalDecay / inPlaceLeases.length);
 }
 
 function computeSeasonalityCurve(leases: any[]): SeasonalityBucket[] {
@@ -247,8 +300,9 @@ function computeSeasonalityCurve(leases: any[]): SeasonalityBucket[] {
   const expirationCounts = new Array(12).fill(0);
 
   for (const lease of leases) {
-    if (lease.lease_start) {
-      const m = new Date(lease.lease_start).getMonth();
+    const anchorDate = lease.move_in_date || lease.lease_start;
+    if (anchorDate) {
+      const m = new Date(anchorDate).getMonth();
       monthCounts[m]++;
     }
     if (lease.lease_end) {
@@ -283,6 +337,8 @@ function computeExpirationWaterfall(leases: any[]): ExpirationWaterfallBucket[] 
   });
 
   let cumulativeExposure = 0;
+  let cumulativeSqftExposure = 0;
+  let cumulativeDollarExposure = 0;
   const totalOccupied = occupiedLeases.length || 1;
 
   for (let i = 0; i < 24; i++) {
@@ -290,24 +346,40 @@ function computeExpirationWaterfall(leases: any[]): ExpirationWaterfallBucket[] 
     targetDate.setMonth(targetDate.getMonth() + i);
     const monthStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
 
-    const expiringThisMonth = occupiedLeases.filter((r: any) => {
+    const expiringInMonth = occupiedLeases.filter((r: any) => {
       if (!r.lease_end) return false;
       const end = new Date(r.lease_end);
       return end.getFullYear() === targetDate.getFullYear() &&
              end.getMonth() === targetDate.getMonth();
-    }).length;
+    });
+
+    const expiringUnits = expiringInMonth.length;
+    const expiringSqft = expiringInMonth.reduce((s: number, r: any) =>
+      s + (Number(r.sqft) || 0), 0);
+    const expiringDollars = expiringInMonth.reduce((s: number, r: any) =>
+      s + (Number(r.effective_rent || r.new_rent || r.market_rent) || 0), 0);
 
     const mtmThisMonth = i === 0 ? mtmLeases.length : 0;
-    cumulativeExposure += expiringThisMonth + mtmThisMonth;
+    const mtmSqft = i === 0 ? mtmLeases.reduce((s: number, r: any) =>
+      s + (Number(r.sqft) || 0), 0) : 0;
+    const mtmDollars = i === 0 ? mtmLeases.reduce((s: number, r: any) =>
+      s + (Number(r.effective_rent || r.new_rent) || 0), 0) : 0;
 
-    const exposurePct = cumulativeExposure / totalOccupied;
-    const renewalCliffFlag = expiringThisMonth >= totalOccupied * 0.08;
+    cumulativeExposure += expiringUnits + mtmThisMonth;
+    cumulativeSqftExposure += expiringSqft + mtmSqft;
+    cumulativeDollarExposure += expiringDollars + mtmDollars;
+
+    const renewalCliffFlag = expiringUnits >= totalOccupied * RENEWAL_CLIFF_THRESHOLD;
 
     buckets.push({
       month: monthStr,
-      expiringUnits: expiringThisMonth,
+      expiringUnits,
+      expiringSqft,
+      expiringDollarExposure: round2(expiringDollars),
       mtmUnits: mtmThisMonth,
       cumulativeExposure,
+      cumulativeSqftExposure,
+      cumulativeDollarExposure: round2(cumulativeDollarExposure),
       renewalCliffFlag,
     });
   }
@@ -316,7 +388,7 @@ function computeExpirationWaterfall(leases: any[]): ExpirationWaterfallBucket[] 
 }
 
 function computeVelocityVariance(leases: any[], seasonality: SeasonalityBucket[]): VelocityVariance[] {
-  const signedLeases = leases.filter((r: any) => r.lease_start);
+  const signedLeases = leases.filter((r: any) => r.move_in_date || r.lease_start);
   if (signedLeases.length === 0) return [];
 
   const now = new Date();
@@ -330,9 +402,9 @@ function computeVelocityVariance(leases: any[], seasonality: SeasonalityBucket[]
     const monthStr = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
 
     const actualInMonth = signedLeases.filter((r: any) => {
-      const start = new Date(r.lease_start);
-      return start.getFullYear() === targetDate.getFullYear() &&
-             start.getMonth() === targetDate.getMonth();
+      const anchor = r.move_in_date ? new Date(r.move_in_date) : new Date(r.lease_start);
+      return anchor.getFullYear() === targetDate.getFullYear() &&
+             anchor.getMonth() === targetDate.getMonth();
     }).length;
 
     const seasonalBucket = seasonality[targetDate.getMonth()];
@@ -422,6 +494,8 @@ function computeTradeOutAnalytics(leases: any[]): TradeOutMetrics {
   const renewalAvgRent = avg(renewals.map((r: any) => Number(r.effective_rent)));
   const renewalAvgPrior = avg(renewals.filter((r: any) => r.prior_rent).map((r: any) => Number(r.prior_rent)));
 
+  const byFloorPlan = computeFloorPlanTradeOut(leases);
+
   return {
     newLeases: {
       count: newLeases.length,
@@ -439,9 +513,62 @@ function computeTradeOutAnalytics(leases: any[]): TradeOutMetrics {
       avgIncreaseDollar: round2(renewalAvgRent - renewalAvgPrior),
       avgIncreasePct: renewalAvgPrior > 0 ? round2((renewalAvgRent - renewalAvgPrior) / renewalAvgPrior * 100) : 0,
     },
+    byFloorPlan,
     overallLossToLease: round2(totalLtl),
     overallLossToLeasePct: totalMarket > 0 ? round2(totalLtl / totalMarket * 100) : 0,
   };
+}
+
+function computeFloorPlanTradeOut(leases: any[]): FloorPlanTradeOut[] {
+  const fpMap: Record<string, {
+    count: number;
+    totalEffRent: number;
+    totalMarketRent: number;
+    totalConcession: number;
+    withMarket: number;
+    withConcession: number;
+  }> = {};
+
+  for (const lease of leases) {
+    const fp = lease.unit_type || 'Unknown';
+    if (!lease.effective_rent && !lease.new_rent) continue;
+
+    if (!fpMap[fp]) fpMap[fp] = { count: 0, totalEffRent: 0, totalMarketRent: 0, totalConcession: 0, withMarket: 0, withConcession: 0 };
+    const entry = fpMap[fp];
+    entry.count++;
+    const eff = Number(lease.effective_rent || lease.new_rent || 0);
+    entry.totalEffRent += eff;
+
+    if (lease.market_rent && Number(lease.market_rent) > 0) {
+      entry.totalMarketRent += Number(lease.market_rent);
+      entry.withMarket++;
+    }
+    if (lease.concession_amount && Number(lease.concession_amount) > 0) {
+      entry.totalConcession += Number(lease.concession_amount);
+      entry.withConcession++;
+    }
+  }
+
+  return Object.entries(fpMap).map(([fp, d]) => {
+    const avgEff = round2(d.totalEffRent / d.count);
+    const avgMarket = d.withMarket > 0 ? round2(d.totalMarketRent / d.withMarket) : 0;
+    const avgConc = d.withConcession > 0 ? round2(d.totalConcession / d.withConcession) : 0;
+    const ltl = avgMarket > 0 ? round2(avgMarket - avgEff) : 0;
+    const ltlPct = avgMarket > 0 ? round2(ltl / avgMarket * 100) : 0;
+    const premiumPct = avgMarket > 0 ? round2((avgEff - avgMarket) / avgMarket * 100) : 0;
+
+    return {
+      floorPlan: fp,
+      count: d.count,
+      avgEffectiveRent: avgEff,
+      avgMarketRent: avgMarket,
+      avgConcession: avgConc,
+      concessionAdjustedRent: round2(avgEff - avgConc),
+      lossToLease: ltl,
+      lossToLeasePct: ltlPct,
+      marketPremiumPct: premiumPct,
+    };
+  }).sort((a, b) => b.count - a.count);
 }
 
 function computeMtmExposure(leases: any[]): MtmExposure {
@@ -450,10 +577,21 @@ function computeMtmExposure(leases: any[]): MtmExposure {
     r.lease_status === 'occupied' || r.lease_status === 'active' || r.lease_status === 'current'
   );
 
+  const vacantLeases = leases.filter((r: any) =>
+    r.lease_status === 'vacant' || r.lease_status === 'available'
+  );
+
+  const noticeLeases = leases.filter((r: any) =>
+    r.lease_status === 'notice' || r.lease_status === 'on_notice'
+  );
+
   const mtmLeases = occupiedLeases.filter((r: any) => {
     if (!r.lease_end) return true;
     return new Date(r.lease_end) < now;
   });
+
+  const mtmDollarExposure = mtmLeases.reduce((s: number, r: any) =>
+    s + (Number(r.effective_rent || r.new_rent) || 0), 0);
 
   const preLeasedLeases = leases.filter((r: any) => {
     if (!r.lease_start) return false;
@@ -469,28 +607,38 @@ function computeMtmExposure(leases: any[]): MtmExposure {
       }, 0) / preLeasedLeases.length
     : 0;
 
-  const totalUnits = occupiedLeases.length + leases.filter((r: any) =>
-    r.lease_status === 'vacant' || r.lease_status === 'available'
-  ).length;
+  const totalUnits = occupiedLeases.length + vacantLeases.length;
+  const vacantPlusNoticeUnits = vacantLeases.length + noticeLeases.length;
+  const preLeasedVelocityRatio = vacantPlusNoticeUnits > 0
+    ? round2(preLeasedLeases.length / vacantPlusNoticeUnits)
+    : 0;
 
   return {
     mtmUnitCount: mtmLeases.length,
     mtmPctOfTotal: totalUnits > 0 ? round2(mtmLeases.length / totalUnits * 100) : 0,
     avgMtmRent: avg(mtmLeases.map((r: any) => Number(r.effective_rent || r.new_rent || 0))),
+    mtmDollarExposure: round2(mtmDollarExposure),
     preLeasedCount: preLeasedLeases.length,
     preLeasedAvgDaysOut: Math.round(avgDaysOut),
+    preLeasedVelocityRatio,
     totalUnits,
+    vacantPlusNoticeUnits,
   };
 }
 
 function computeConversionFunnel(funnelRows: any[]): ConversionFunnel | null {
   if (funnelRows.length === 0) return null;
 
+  const latestSourceRef = funnelRows[0]?.source_ref;
+  const latestRows = latestSourceRef
+    ? funnelRows.filter((r: any) => r.source_ref === latestSourceRef)
+    : funnelRows;
+
   const channels: ConversionFunnel['channels'] = [];
   let totalFirstContacts = 0;
   let totalLeased = 0;
 
-  for (const row of funnelRows) {
+  for (const row of latestRows) {
     try {
       const data = typeof row.lease_status === 'string' ? JSON.parse(row.lease_status) : row.lease_status;
       if (!data || !data.channel) continue;
@@ -588,14 +736,25 @@ export async function updateCapsuleTrafficModule(dealId: string, snapshot: Traff
     seasonality_curve: snapshot.seasonalityCurve,
     expiration_waterfall_summary: {
       next3moExposure: snapshot.expirationWaterfall.slice(0, 3).reduce((s, b) => s + b.expiringUnits, 0),
+      next3moSqftExposure: snapshot.expirationWaterfall.slice(0, 3).reduce((s, b) => s + b.expiringSqft, 0),
+      next3moDollarExposure: snapshot.expirationWaterfall.slice(0, 3).reduce((s, b) => s + b.expiringDollarExposure, 0),
       next6moExposure: snapshot.expirationWaterfall.slice(0, 6).reduce((s, b) => s + b.expiringUnits, 0),
+      next6moSqftExposure: snapshot.expirationWaterfall.slice(0, 6).reduce((s, b) => s + b.expiringSqft, 0),
+      next6moDollarExposure: snapshot.expirationWaterfall.slice(0, 6).reduce((s, b) => s + b.expiringDollarExposure, 0),
       renewalCliffMonths: snapshot.summary.renewalCliffMonths,
       mtmUnits: snapshot.mtmExposure.mtmUnitCount,
+      mtmDollarExposure: snapshot.mtmExposure.mtmDollarExposure,
     },
     trade_out: {
       newLeaseAvgRent: snapshot.tradeOutAnalytics.newLeases.avgRent,
       renewalAvgIncrease: snapshot.tradeOutAnalytics.renewals.avgIncreasePct,
       lossToLeasePct: snapshot.tradeOutAnalytics.overallLossToLeasePct,
+      floorPlanCount: snapshot.tradeOutAnalytics.byFloorPlan.length,
+    },
+    mtm_exposure: {
+      unitCount: snapshot.mtmExposure.mtmUnitCount,
+      dollarExposure: snapshot.mtmExposure.mtmDollarExposure,
+      preLeasedVelocityRatio: snapshot.mtmExposure.preLeasedVelocityRatio,
     },
     conversion_funnel: snapshot.conversionFunnel ? {
       overallConversionPct: snapshot.conversionFunnel.overallConversionPct,
@@ -656,8 +815,9 @@ function getDataSpanMonths(leases: any[]): number {
   let min = Infinity;
   let max = -Infinity;
   for (const r of leases) {
-    if (!r.lease_start) continue;
-    const t = new Date(r.lease_start).getTime();
+    const dateStr = r.move_in_date || r.lease_start;
+    if (!dateStr) continue;
+    const t = new Date(dateStr).getTime();
     if (t < min) min = t;
     if (t > max) max = t;
   }

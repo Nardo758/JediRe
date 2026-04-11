@@ -286,6 +286,12 @@ async function routeBoxScore(pool: Pool, data: BoxScoreData, dealId: string, sou
     alerts.push(`⚠ Box Score occupancy ${(data.summary.occupancyPct * 100).toFixed(1)}% is below 85% threshold`);
   }
 
+  await pool.query(
+    `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction'
+     AND (unit_number LIKE 'box_score_%' OR unit_number LIKE 'funnel_%')`,
+    [dealId]
+  );
+
   const activityEvents: Array<{ lease_type: string; count: number }> = [
     { lease_type: 'move_in', count: data.activity.moveIns },
     { lease_type: 'move_out', count: data.activity.moveOuts },
