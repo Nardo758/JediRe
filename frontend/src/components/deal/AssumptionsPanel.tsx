@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { BT } from './bloomberg-ui';
-import { useAssumptions, SENSITIVITY_COEFFICIENTS, SENSITIVITY_PATHS } from '../../stores/dealStore';
+import { useAssumptions, SENSITIVITY_COEFFICIENTS, SENSITIVITY_PATHS, ASSUMPTION_PLATFORM_DEFAULTS } from '../../stores/dealStore';
 import type { LayeredValue, AlertLevel } from '../../stores/dealContext.types';
 
 const MONO = BT.font.mono;
@@ -47,8 +47,10 @@ function formatFieldValue(value: number, path: string): string {
   const meta = SENSITIVITY_COEFFICIENTS[path];
   if (!meta) return String(value);
   if (meta.unit === '%') return `${(value * meta.formatMultiplier).toFixed(2)}%`;
-  if (meta.unit === '$') return `$${Math.round(value).toLocaleString()}`;
+  if (meta.unit === '$' || meta.unit === '$/unit' || meta.unit === '$/sf') return `$${Math.round(value).toLocaleString()}`;
   if (meta.unit === 'yrs') return `${value} yrs`;
+  if (meta.unit === 'mo') return `${value} mo`;
+  if (meta.unit === 'days') return `${value} days`;
   return String(value);
 }
 
@@ -76,8 +78,9 @@ function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
   if (!meta) return null;
 
   const hasNonUserFallback = !!(lv.layers?.platform || lv.layers?.broker);
-  const hasUserLayer = !!lv.layers?.user && hasNonUserFallback;
-  const platformValue = lv.layers?.platform?.value ?? lv.layers?.broker?.value;
+  const hasPlatformDefault = ASSUMPTION_PLATFORM_DEFAULTS[path] !== undefined;
+  const canRevert = !!lv.layers?.user && (hasNonUserFallback || hasPlatformDefault);
+  const platformValue = lv.layers?.platform?.value ?? lv.layers?.broker?.value ?? ASSUMPTION_PLATFORM_DEFAULTS[path];
   const displayValue = formatFieldValue(lv.value, path);
 
   const handleStartEdit = () => {
@@ -105,7 +108,7 @@ function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}`,
-      background: hasUserLayer ? `${BT.text.amber}06` : 'transparent',
+      background: canRevert ? `${BT.text.amber}06` : 'transparent',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
         <AlertDot level={lv.alertLevel} />
@@ -116,7 +119,7 @@ function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {hasUserLayer && platformValue !== undefined && (
+        {canRevert && platformValue !== undefined && (
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, textDecoration: 'line-through' }}>
             {formatFieldValue(platformValue, path)}
           </span>
@@ -141,9 +144,9 @@ function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
             onClick={handleStartEdit}
             style={{
               fontFamily: MONO, fontSize: 10,
-              color: hasUserLayer ? BT.text.amber : BT.text.cyan,
+              color: canRevert ? BT.text.amber : BT.text.cyan,
               fontWeight: 600, cursor: 'pointer',
-              borderBottom: `1px dashed ${hasUserLayer ? BT.text.amber : BT.text.cyan}40`,
+              borderBottom: `1px dashed ${canRevert ? BT.text.amber : BT.text.cyan}40`,
               padding: '0 2px',
             }}
             title="Click to edit"
@@ -152,7 +155,7 @@ function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
           </span>
         )}
 
-        {hasUserLayer && (
+        {canRevert && (
           <button
             onClick={() => onRevert(path)}
             style={{
@@ -214,6 +217,7 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
   const {
     assumptions, zoning, scores, cascadeStatus,
     updateAssumption, revertAssumption, revertAllAssumptions,
+    toggleVarianceAssumed,
   } = useAssumptions();
 
   const [showAll, setShowAll] = useState(false);
@@ -221,19 +225,17 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
 
   const visiblePaths = showAll ? SENSITIVITY_PATHS : SENSITIVITY_PATHS.slice(0, TOP_N);
 
-  const hasAnyUserOverride = SENSITIVITY_PATHS.some(p => {
-    const parts = p.split('.');
-    let current: any = { financial: { assumptions } };
-    for (const part of parts) current = current?.[part];
-    return current?.layers?.user && (current?.layers?.platform || current?.layers?.broker);
-  });
-
   const getLV = useCallback((path: string): LayeredValue<number> | null => {
     const parts = path.split('.');
     let current: any = { financial: { assumptions } };
     for (const part of parts) current = current?.[part];
     return current ?? null;
   }, [assumptions]);
+
+  const hasAnyUserOverride = SENSITIVITY_PATHS.some(p => {
+    const lv = getLV(p);
+    return lv?.layers?.user && (lv?.layers?.platform || lv?.layers?.broker || ASSUMPTION_PLATFORM_DEFAULTS[p] !== undefined);
+  });
 
   const handleUpdate = useCallback((path: string, value: number) => {
     const currentScore = scores.overall;
@@ -297,17 +299,29 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
         </div>
       </div>
 
-      {zoning.varianceAssumed && (
-        <div style={{
-          padding: '4px 8px', background: `${BT.text.amber}12`,
-          borderBottom: `1px solid ${BT.text.amber}30`,
-          display: 'flex', alignItems: 'center', gap: 6,
-        }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>
-            ⚠ VARIANCE ASSUMED — Zoning overrides active. Entitlement risk applies.
+      <div style={{
+        padding: '4px 8px',
+        background: zoning.varianceAssumed ? `${BT.text.amber}12` : 'transparent',
+        borderBottom: `1px solid ${zoning.varianceAssumed ? BT.text.amber : BT.border.subtle}30`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: zoning.varianceAssumed ? BT.text.amber : BT.text.muted }}>
+            {zoning.varianceAssumed
+              ? 'VARIANCE ASSUMED — Zoning overrides active. Entitlement risk applies.'
+              : 'ZONING VARIANCE — Enable to override zoning fields'}
           </span>
         </div>
-      )}
+        <button
+          onClick={() => toggleVarianceAssumed(!zoning.varianceAssumed)}
+          style={{
+            fontFamily: MONO, fontSize: 8, padding: '1px 6px', borderRadius: 2, cursor: 'pointer',
+            color: zoning.varianceAssumed ? BT.text.amber : BT.text.muted,
+            background: zoning.varianceAssumed ? `${BT.text.amber}18` : BT.bg.header,
+            border: `1px solid ${zoning.varianceAssumed ? BT.text.amber : BT.border.medium}40`,
+          }}
+        >{zoning.varianceAssumed ? 'DISABLE' : 'ENABLE'}</button>
+      </div>
 
       {visiblePaths.map(path => {
         const lv = getLV(path);

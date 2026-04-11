@@ -199,6 +199,7 @@ interface DealStoreActions {
   updateAssumption: (path: string, value: number) => void;
   revertAssumption: (path: string) => void;
   revertAllAssumptions: () => void;
+  toggleVarianceAssumed: (enabled: boolean) => void;
   _triggerAssumptionCascade: () => void;
   assumptionCascadeStatus: 'idle' | 'pending' | 'computing' | 'error';
 
@@ -930,9 +931,9 @@ export const useDealStore = create<DealStore>()(
 
       current[key] = updated;
 
-      const isZoningField = path.startsWith('zoning.');
-      if (isZoningField) {
-        newState.zoning = { ...newState.zoning, varianceAssumed: true };
+      const isZoningField = path.startsWith('zoning.') && path !== 'zoning.varianceAssumed';
+      if (isZoningField && !state.zoning?.varianceAssumed) {
+        return;
       }
 
       newState.editLog = [...(state.editLog || []), entry];
@@ -942,7 +943,9 @@ export const useDealStore = create<DealStore>()(
 
       set(newState);
 
-      get()._triggerAssumptionCascade();
+      window.dispatchEvent(new CustomEvent('assumption:changed', {
+        detail: { path, value, oldValue: existing?.value, timestamp: now },
+      }));
     },
 
     revertAssumption: (path: string) => {
@@ -965,11 +968,16 @@ export const useDealStore = create<DealStore>()(
 
       const platformVal = remainingLayers.platform;
       const brokerVal = remainingLayers.broker;
-      const fallback = platformVal ?? brokerVal;
+      let fallback = platformVal ?? brokerVal;
+      let resolvedFrom: 'broker' | 'platform' = platformVal ? 'platform' : 'broker';
 
-      if (!fallback) return;
-
-      const resolvedFrom: 'broker' | 'platform' = platformVal ? 'platform' : 'broker';
+      if (!fallback) {
+        const platformDefault = ASSUMPTION_PLATFORM_DEFAULTS[path];
+        if (platformDefault === undefined) return;
+        fallback = { value: platformDefault, updatedAt: now, confidence: 0.8 };
+        resolvedFrom = 'platform';
+        remainingLayers.platform = fallback;
+      }
       const fieldMeta = getFieldMeta(path);
 
       const reverted: LayeredValue<number> = {
@@ -1013,19 +1021,32 @@ export const useDealStore = create<DealStore>()(
       }
 
       set(newState);
-      get()._triggerAssumptionCascade();
+
+      window.dispatchEvent(new CustomEvent('assumption:changed', {
+        detail: { path, value: fallback.value, oldValue: existing.value, timestamp: now, action: 'revert' },
+      }));
     },
 
     revertAllAssumptions: () => {
       const state = get();
       const now = new Date().toISOString();
 
-      const revertLV = <T>(lv: LayeredValue<T>): LayeredValue<T> => {
+      const revertLV = <T>(lv: LayeredValue<T>, fieldPath?: string): LayeredValue<T> => {
         if (!lv.layers?.user) return lv;
         const { user: _removed, ...remaining } = lv.layers;
-        const fallback = remaining.platform ?? remaining.broker;
+        let fallback = remaining.platform ?? remaining.broker;
+        let resolvedFrom: 'broker' | 'platform' = remaining.platform ? 'platform' : 'broker';
+
+        if (!fallback && fieldPath) {
+          const platformDefault = ASSUMPTION_PLATFORM_DEFAULTS[fieldPath];
+          if (platformDefault !== undefined) {
+            fallback = { value: platformDefault as unknown as T extends number ? number : never, updatedAt: now, confidence: 0.8 } as any;
+            resolvedFrom = 'platform';
+            remaining.platform = fallback;
+          }
+        }
         if (!fallback) return lv;
-        const resolvedFrom: 'broker' | 'platform' = remaining.platform ? 'platform' : 'broker';
+
         const reverted: LayeredValue<T> = {
           value: fallback.value,
           source: resolvedFrom,
@@ -1040,15 +1061,19 @@ export const useDealStore = create<DealStore>()(
         return reverted;
       };
 
-      const newAssumptions = {
-        rentGrowth: revertLV(state.financial.assumptions.rentGrowth),
-        expenseGrowth: revertLV(state.financial.assumptions.expenseGrowth),
-        vacancy: revertLV(state.financial.assumptions.vacancy),
-        exitCapRate: revertLV(state.financial.assumptions.exitCapRate),
-        holdPeriod: revertLV(state.financial.assumptions.holdPeriod),
-        capexPerUnit: revertLV(state.financial.assumptions.capexPerUnit),
-        managementFee: revertLV(state.financial.assumptions.managementFee),
-      };
+      const revertField = (fieldName: string) =>
+        revertLV(
+          (state.financial.assumptions as any)[fieldName],
+          `financial.assumptions.${fieldName}`
+        );
+
+      const newAssumptions = { ...state.financial.assumptions };
+      for (const key of Object.keys(state.financial.assumptions)) {
+        const lv = (state.financial.assumptions as any)[key];
+        if (lv && typeof lv === 'object' && 'layers' in lv) {
+          (newAssumptions as any)[key] = revertField(key);
+        }
+      }
 
       set({
         financial: { ...state.financial, assumptions: newAssumptions },
@@ -1064,7 +1089,24 @@ export const useDealStore = create<DealStore>()(
         }],
       });
 
-      get()._triggerAssumptionCascade();
+      window.dispatchEvent(new CustomEvent('assumption:changed', {
+        detail: { path: 'financial.assumptions.*', action: 'revert_all', timestamp: now },
+      }));
+    },
+
+    toggleVarianceAssumed: (enabled: boolean) => {
+      const state = get();
+      set({
+        zoning: { ...state.zoning, varianceAssumed: enabled },
+      });
+      if (!enabled) {
+        const zoningKeys = ['designation', 'maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'setbacks', 'parkingRatio', 'guestParkingRatio'];
+        for (const k of zoningKeys) {
+          if ((state.zoning as any)[k]?.layers?.user) {
+            get().revertAssumption(`zoning.${k}`);
+          }
+        }
+      }
     },
 
     _triggerAssumptionCascade: debounce(async () => {
@@ -1300,6 +1342,16 @@ export const useDealStore = create<DealStore>()(
 );
 
 // ---------------------------------------------------------------------------
+// Assumption cascade listener — subscribes to assumption:changed events
+// ---------------------------------------------------------------------------
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('assumption:changed', () => {
+    useDealStore.getState()._triggerAssumptionCascade();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Debounce utility
 // ---------------------------------------------------------------------------
 
@@ -1449,6 +1501,56 @@ export const useStrategyAvailability = () => {
   );
 };
 
+export const ASSUMPTION_PLATFORM_DEFAULTS: Record<string, number> = {
+  'financial.assumptions.exitCapRate': 0.06,
+  'financial.assumptions.rentGrowth': 0.03,
+  'financial.assumptions.vacancy': 0.05,
+  'financial.assumptions.holdPeriod': 5,
+  'financial.assumptions.capexPerUnit': 3000,
+  'financial.assumptions.managementFee': 0.04,
+  'financial.assumptions.expenseGrowth': 0.025,
+  'financial.assumptions.loanToValue': 0.65,
+  'financial.assumptions.interestRate': 0.055,
+  'financial.assumptions.amortization': 30,
+  'financial.assumptions.loanTerm': 10,
+  'financial.assumptions.closingCosts': 0.02,
+  'financial.assumptions.dispositionCosts': 0.02,
+  'financial.assumptions.taxRate': 0.25,
+  'financial.assumptions.capitalReserves': 250,
+  'financial.assumptions.replacementReserves': 300,
+  'financial.assumptions.insurancePerUnit': 800,
+  'financial.assumptions.realEstateTaxGrowth': 0.02,
+  'financial.assumptions.insuranceGrowth': 0.03,
+  'financial.assumptions.generalInflation': 0.025,
+  'financial.assumptions.tenantImprovements': 15,
+  'financial.assumptions.leasingCommissions': 0.04,
+  'financial.assumptions.downtime': 30,
+  'financial.assumptions.freeRent': 0,
+  'financial.assumptions.concessions': 0,
+  'financial.assumptions.badDebt': 0.01,
+  'financial.assumptions.creditLoss': 0.015,
+  'financial.assumptions.otherIncome': 0,
+  'financial.assumptions.parkingIncome': 0,
+  'financial.assumptions.laundryIncome': 0,
+  'financial.assumptions.petRent': 0,
+  'financial.assumptions.storageIncome': 0,
+  'financial.assumptions.utilityReimbursement': 0,
+  'financial.assumptions.contractedRentEscalation': 0.03,
+  'financial.assumptions.markToMarket': 0,
+  'financial.assumptions.renewalProbability': 0.65,
+  'financial.assumptions.developmentFee': 0.04,
+  'financial.assumptions.architecturalFee': 0.03,
+  'financial.assumptions.constructionContingency': 0.10,
+  'financial.assumptions.softCostContingency': 0.05,
+  'financial.assumptions.constructionDuration': 18,
+  'financial.assumptions.leaseUpDuration': 12,
+  'financial.assumptions.stabilizationVacancy': 0.05,
+  'financial.assumptions.yieldOnCost': 0.065,
+  'financial.assumptions.discountRate': 0.08,
+  'financial.assumptions.terminalCapRate': 0.065,
+  'financial.assumptions.goingInCapRate': 0.055,
+};
+
 export const SENSITIVITY_COEFFICIENTS: Record<string, { label: string; rank: number; unit: string; formatMultiplier: number }> = {
   'financial.assumptions.exitCapRate': { label: 'Exit Cap Rate', rank: 1, unit: '%', formatMultiplier: 100 },
   'financial.assumptions.rentGrowth': { label: 'Rent Growth', rank: 2, unit: '%', formatMultiplier: 100 },
@@ -1457,6 +1559,46 @@ export const SENSITIVITY_COEFFICIENTS: Record<string, { label: string; rank: num
   'financial.assumptions.capexPerUnit': { label: 'CapEx / Unit', rank: 5, unit: '$', formatMultiplier: 1 },
   'financial.assumptions.managementFee': { label: 'Mgmt Fee', rank: 6, unit: '%', formatMultiplier: 100 },
   'financial.assumptions.expenseGrowth': { label: 'Expense Growth', rank: 7, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.loanToValue': { label: 'Loan to Value', rank: 8, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.interestRate': { label: 'Interest Rate', rank: 9, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.amortization': { label: 'Amortization', rank: 10, unit: 'yrs', formatMultiplier: 1 },
+  'financial.assumptions.loanTerm': { label: 'Loan Term', rank: 11, unit: 'yrs', formatMultiplier: 1 },
+  'financial.assumptions.closingCosts': { label: 'Closing Costs', rank: 12, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.dispositionCosts': { label: 'Disposition Costs', rank: 13, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.taxRate': { label: 'Tax Rate', rank: 14, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.capitalReserves': { label: 'Capital Reserves', rank: 15, unit: '$/unit', formatMultiplier: 1 },
+  'financial.assumptions.replacementReserves': { label: 'Replacement Reserves', rank: 16, unit: '$/unit', formatMultiplier: 1 },
+  'financial.assumptions.insurancePerUnit': { label: 'Insurance / Unit', rank: 17, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.realEstateTaxGrowth': { label: 'RE Tax Growth', rank: 18, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.insuranceGrowth': { label: 'Insurance Growth', rank: 19, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.generalInflation': { label: 'General Inflation', rank: 20, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.tenantImprovements': { label: 'Tenant Improvements', rank: 21, unit: '$/sf', formatMultiplier: 1 },
+  'financial.assumptions.leasingCommissions': { label: 'Leasing Commissions', rank: 22, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.downtime': { label: 'Downtime', rank: 23, unit: 'days', formatMultiplier: 1 },
+  'financial.assumptions.freeRent': { label: 'Free Rent', rank: 24, unit: 'mo', formatMultiplier: 1 },
+  'financial.assumptions.concessions': { label: 'Concessions', rank: 25, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.badDebt': { label: 'Bad Debt', rank: 26, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.creditLoss': { label: 'Credit Loss', rank: 27, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.otherIncome': { label: 'Other Income', rank: 28, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.parkingIncome': { label: 'Parking Income', rank: 29, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.laundryIncome': { label: 'Laundry Income', rank: 30, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.petRent': { label: 'Pet Rent', rank: 31, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.storageIncome': { label: 'Storage Income', rank: 32, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.utilityReimbursement': { label: 'Utility Reimbursement', rank: 33, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.contractedRentEscalation': { label: 'Rent Escalation', rank: 34, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.markToMarket': { label: 'Mark to Market', rank: 35, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.renewalProbability': { label: 'Renewal Probability', rank: 36, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.developmentFee': { label: 'Development Fee', rank: 37, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.architecturalFee': { label: 'Arch. Fee', rank: 38, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.constructionContingency': { label: 'Construction Contingency', rank: 39, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.softCostContingency': { label: 'Soft Cost Contingency', rank: 40, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.constructionDuration': { label: 'Construction Duration', rank: 41, unit: 'mo', formatMultiplier: 1 },
+  'financial.assumptions.leaseUpDuration': { label: 'Lease-Up Duration', rank: 42, unit: 'mo', formatMultiplier: 1 },
+  'financial.assumptions.stabilizationVacancy': { label: 'Stabilization Vacancy', rank: 43, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.yieldOnCost': { label: 'Yield on Cost', rank: 44, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.discountRate': { label: 'Discount Rate', rank: 45, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.terminalCapRate': { label: 'Terminal Cap Rate', rank: 46, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.goingInCapRate': { label: 'Going-In Cap Rate', rank: 47, unit: '%', formatMultiplier: 100 },
 };
 
 export const SENSITIVITY_PATHS = Object.keys(SENSITIVITY_COEFFICIENTS).sort(
@@ -1474,4 +1616,5 @@ export const useAssumptions = () =>
     updateAssumption: s.updateAssumption,
     revertAssumption: s.revertAssumption,
     revertAllAssumptions: s.revertAllAssumptions,
+    toggleVarianceAssumed: s.toggleVarianceAssumed,
   }));
