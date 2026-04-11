@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import multer from 'multer';
+import { randomUUID } from 'crypto';
+import path from 'path';
+import fs from 'fs';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
@@ -6,6 +10,22 @@ import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 
 const router = Router();
 const pool = getPool();
+
+const uploadsDir = path.join(process.cwd(), 'uploads', 'deal-documents');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const documentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -955,6 +975,30 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
       success: false,
       error: error.message || 'Failed to trigger analysis'
     });
+  }
+});
+
+router.post('/upload-document', requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const docId = randomUUID();
+    const fileMeta = {
+      id: docId,
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: req.user!.userId,
+    };
+
+    res.json({ success: true, data: fileMeta });
+  } catch (error: any) {
+    console.error('Error uploading deal document:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to upload document' });
   }
 });
 
