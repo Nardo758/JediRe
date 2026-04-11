@@ -11,6 +11,8 @@ import {
   Spark, Bd, MetricTag, SectionPanel, DataRow, PanelHeader,
   BT_CSS, AlertBanner, BT as BTV,
 } from '../bloomberg-ui';
+import { AlertCounter, IdentityGateBanner } from '../AlertCounter';
+import { OverviewRouter } from '../OverviewRouter';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -422,6 +424,8 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     }}>
       <style>{BT_CSS}</style>
 
+      <IdentityGateBanner />
+      <AlertCounter />
 
       {/* ── Row 1: JEDI Score | 5 Signals | Deal Details ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 228px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
@@ -638,7 +642,12 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
         </div>
       </div>
 
-      {/* ── Row 5: Key Financials | Deal Team | Recent Activity ── */}
+      {/* ── Row 5: Deal-Type Overview Router ── */}
+      <div style={{ borderBottom: `1px solid ${BTV.border.subtle}`, flexShrink: 0 }}>
+        <OverviewRouter />
+      </div>
+
+      {/* ── Row 6: Key Financials | Deal Team | Recent Activity ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>
 
         {/* KEY FINANCIALS */}
