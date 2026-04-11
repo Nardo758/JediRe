@@ -239,15 +239,17 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
 
   const handleUpdate = useCallback((path: string, value: number) => {
     const currentScore = scores.overall;
-    const exitCapLV = getLV('financial.assumptions.exitCapRate');
-    const rentGrowthLV = getLV('financial.assumptions.rentGrowth');
-
-    let estimatedDelta = 0;
-    if (path === 'financial.assumptions.exitCapRate' && exitCapLV) {
-      estimatedDelta = Math.abs(value - exitCapLV.value) * 300;
-    } else if (path === 'financial.assumptions.rentGrowth' && rentGrowthLV) {
-      estimatedDelta = Math.abs(value - rentGrowthLV.value) * 200;
+    const currentLV = getLV(path);
+    if (!currentLV) {
+      updateAssumption(path, value);
+      return;
     }
+
+    const meta = SENSITIVITY_COEFFICIENTS[path];
+    const rank = meta?.rank ?? 99;
+    const sensitivityWeight = rank <= 3 ? 300 : rank <= 7 ? 150 : 50;
+    const rawDelta = Math.abs(value - currentLV.value);
+    const estimatedDelta = rawDelta * sensitivityWeight;
 
     if (estimatedDelta > 10 && currentScore > 0) {
       setPendingEdit({ path, value });

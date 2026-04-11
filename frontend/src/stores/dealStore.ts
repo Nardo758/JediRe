@@ -1031,23 +1031,21 @@ export const useDealStore = create<DealStore>()(
       const state = get();
       const now = new Date().toISOString();
 
-      const revertLV = <T>(lv: LayeredValue<T>, fieldPath?: string): LayeredValue<T> => {
+      const revertNumericLV = (lv: LayeredValue<number>, fieldPath: string): LayeredValue<number> => {
         if (!lv.layers?.user) return lv;
         const { user: _removed, ...remaining } = lv.layers;
         let fallback = remaining.platform ?? remaining.broker;
         let resolvedFrom: 'broker' | 'platform' = remaining.platform ? 'platform' : 'broker';
 
-        if (!fallback && fieldPath) {
+        if (!fallback) {
           const platformDefault = ASSUMPTION_PLATFORM_DEFAULTS[fieldPath];
-          if (platformDefault !== undefined) {
-            fallback = { value: platformDefault as unknown as T extends number ? number : never, updatedAt: now, confidence: 0.8 } as any;
-            resolvedFrom = 'platform';
-            remaining.platform = fallback;
-          }
+          if (platformDefault === undefined) return lv;
+          fallback = { value: platformDefault, updatedAt: now, confidence: 0.8 };
+          resolvedFrom = 'platform';
+          remaining.platform = fallback;
         }
-        if (!fallback) return lv;
 
-        const reverted: LayeredValue<T> = {
+        const reverted: LayeredValue<number> = {
           value: fallback.value,
           source: resolvedFrom,
           resolvedFrom,
@@ -1055,23 +1053,22 @@ export const useDealStore = create<DealStore>()(
           confidence: fallback.confidence,
           alertLevel: 'none',
           userReviewed: true,
-          layers: remaining as LayeredValue<T>['layers'],
+          layers: remaining,
         };
         reverted.alertLevel = computeAlertLevel(reverted);
         return reverted;
       };
 
-      const revertField = (fieldName: string) =>
-        revertLV(
-          (state.financial.assumptions as any)[fieldName],
-          `financial.assumptions.${fieldName}`
-        );
-
+      type AssumptionKey = keyof typeof state.financial.assumptions;
+      const assumptionKeys: AssumptionKey[] = [
+        'rentGrowth', 'expenseGrowth', 'vacancy', 'exitCapRate',
+        'holdPeriod', 'capexPerUnit', 'managementFee',
+      ];
       const newAssumptions = { ...state.financial.assumptions };
-      for (const key of Object.keys(state.financial.assumptions)) {
-        const lv = (state.financial.assumptions as any)[key];
+      for (const key of assumptionKeys) {
+        const lv = state.financial.assumptions[key];
         if (lv && typeof lv === 'object' && 'layers' in lv) {
-          (newAssumptions as any)[key] = revertField(key);
+          newAssumptions[key] = revertNumericLV(lv, `financial.assumptions.${key}`);
         }
       }
 
@@ -1144,19 +1141,29 @@ export const useDealStore = create<DealStore>()(
         }
 
         const result = await response.json();
+        const currentState = useDealStore.getState();
+        const now = new Date().toISOString();
+
+        const mergedFinancial = result.financial
+          ? {
+              ...currentState.financial,
+              returns: result.financial.returns ?? currentState.financial.returns,
+              recomputedAt: result.financial.recomputedAt,
+            }
+          : currentState.financial;
 
         useDealStore.setState({
-          financial: result.financial ?? state.financial,
-          strategy: result.strategy ?? state.strategy,
-          scores: result.scores ?? state.scores,
-          risk: result.risk ?? state.risk,
+          financial: mergedFinancial,
+          strategy: result.strategy ?? currentState.strategy,
+          scores: result.scores ?? currentState.scores,
+          risk: result.risk ?? currentState.risk,
           assumptionCascadeStatus: 'idle',
           hydrationStatus: {
-            ...state.hydrationStatus,
-            financial: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
-            strategy: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
-            scores: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
-            risk: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
+            ...currentState.hydrationStatus,
+            financial: { hydrated: true, lastFetchedAt: now, source: 'live' },
+            strategy: { hydrated: true, lastFetchedAt: now, source: 'live' },
+            scores: { hydrated: true, lastFetchedAt: now, source: 'live' },
+            risk: { hydrated: true, lastFetchedAt: now, source: 'live' },
           },
         });
       } catch (error) {

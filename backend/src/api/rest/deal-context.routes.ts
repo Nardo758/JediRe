@@ -235,27 +235,156 @@ router.patch('/:dealId/context', async (req: Request, res: Response) => {
 router.post('/:dealId/recompute', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { trigger, pathId, unitMix, constructionCost, timeline, zoningCompliance } = req.body;
+    const { trigger, assumptions, unitMix } = req.body;
 
-    logger.info(`[Recompute] Triggered for deal ${dealId}`, { trigger, pathId });
+    logger.info(`[Recompute] Triggered for deal ${dealId}`, { trigger });
 
-    // TODO: Implement actual recomputation logic
-    // For now, return placeholder response
-    // In full implementation, this would:
-    // 1. Call ProForma service with new unit mix + costs
-    // 2. Call Strategy service with new parameters
-    // 3. Call JEDI Score recalculation
-    // 4. Call Risk reassessment
-    // 5. Return updated sections
+    if (!assumptions) {
+      return res.status(400).json({ success: false, error: 'assumptions required' });
+    }
 
-    const result = {
-      financial: null, // ProForma service would populate
-      strategy: null,  // Strategy service would populate
-      scores: null,    // JEDI Score service would populate
-      risk: null,      // Risk service would populate
+    const {
+      rentGrowth = 0.03,
+      expenseGrowth = 0.025,
+      vacancy = 0.05,
+      exitCapRate = 0.06,
+      holdPeriod = 5,
+      capexPerUnit = 3000,
+      managementFee = 0.04,
+    } = assumptions;
+
+    const totalUnits = unitMix?.length
+      ? unitMix.reduce((s: number, r: any) => s + (r.units ?? 0), 0)
+      : 200;
+    const avgMarketRent = unitMix?.length
+      ? unitMix.reduce((s: number, r: any) => s + (r.marketRent ?? 1500) * (r.units ?? 0), 0) / Math.max(1, totalUnits)
+      : 1500;
+
+    const grossPotentialRent = avgMarketRent * totalUnits * 12;
+    const effectiveGrossIncome = grossPotentialRent * (1 - vacancy);
+    const totalExpenses = effectiveGrossIncome * (managementFee + 0.25);
+    const totalCapex = capexPerUnit * totalUnits;
+    const yearOneNOI = effectiveGrossIncome - totalExpenses - (totalCapex / holdPeriod);
+
+    const holdQuarters = holdPeriod * 4;
+    let noiMult = 1;
+    for (let q = 0; q < holdQuarters; q++) {
+      noiMult *= 1 + rentGrowth / 4;
+    }
+    const expenseMult = Math.pow(1 + expenseGrowth, holdPeriod);
+
+    const exitNOI = grossPotentialRent * noiMult * (1 - vacancy)
+      - (totalExpenses * expenseMult)
+      - (totalCapex / holdPeriod);
+    const grossSaleValue = exitNOI / Math.max(exitCapRate, 0.01);
+    const sellingCosts = grossSaleValue * 0.02;
+
+    const acquisitionPrice = yearOneNOI / Math.max(exitCapRate + 0.005, 0.01);
+    const equityInvested = acquisitionPrice * 0.35;
+    const loanBalance = acquisitionPrice * 0.65;
+    const annualDebtService = loanBalance * 0.065;
+
+    let totalCashFlow = 0;
+    for (let y = 0; y < holdPeriod; y++) {
+      const yearNOI = yearOneNOI * Math.pow(1 + rentGrowth, y);
+      const yearExpenseAdj = totalExpenses * Math.pow(1 + expenseGrowth, y) - totalExpenses;
+      totalCashFlow += yearNOI - yearExpenseAdj - annualDebtService;
+    }
+
+    const netProceeds = grossSaleValue - sellingCosts - loanBalance;
+    const totalReturn = totalCashFlow + netProceeds;
+    const equityMultiple = equityInvested > 0 ? totalReturn / equityInvested : 0;
+    const irr = holdPeriod > 0 && equityInvested > 0
+      ? (Math.pow(Math.max(0.01, totalReturn / equityInvested), 1 / holdPeriod) - 1) * 100
+      : 0;
+    const cashOnCash = equityInvested > 0 ? ((yearOneNOI - annualDebtService) / equityInvested) * 100 : 0;
+
+    const clampedIRR = Math.max(0, Math.min(50, irr));
+    const clampedEM = Math.max(0, Math.min(10, equityMultiple));
+    const clampedCoC = Math.max(-10, Math.min(30, cashOnCash));
+
+    const irrScore = Math.min(35, clampedIRR * 2);
+    const emScore = Math.min(25, clampedEM * 10);
+    const cocScore = Math.min(15, clampedCoC * 1.5);
+    const riskAdj = vacancy > 0.08 ? -5 : vacancy < 0.03 ? 3 : 0;
+    const capRateAdj = exitCapRate > 0.08 ? -3 : exitCapRate < 0.045 ? 5 : 0;
+    const overallJedi = Math.max(0, Math.min(100,
+      irrScore + emScore + cocScore + 20 + riskAdj + capRateAdj
+    ));
+
+    const now = new Date().toISOString();
+
+    const financial = {
+      assumptions: {
+        rentGrowth: { value: rentGrowth },
+        expenseGrowth: { value: expenseGrowth },
+        vacancy: { value: vacancy },
+        exitCapRate: { value: exitCapRate },
+        holdPeriod: { value: holdPeriod },
+        capexPerUnit: { value: capexPerUnit },
+        managementFee: { value: managementFee },
+      },
+      returns: {
+        irr: { value: clampedIRR, updatedAt: now },
+        equityMultiple: { value: clampedEM, updatedAt: now },
+        cashOnCash: { value: clampedCoC, updatedAt: now },
+        exitNOI: { value: exitNOI, updatedAt: now },
+        grossSaleValue: { value: grossSaleValue, updatedAt: now },
+        netProceeds: { value: netProceeds, updatedAt: now },
+        totalReturn: { value: totalReturn, updatedAt: now },
+        totalCashFlow: { value: totalCashFlow, updatedAt: now },
+        yearOneNOI: { value: yearOneNOI, updatedAt: now },
+      },
+      recomputedAt: now,
     };
 
-    res.json(result);
+    const strategyBucket =
+      clampedIRR >= 18 ? 'value-add-aggressive'
+      : clampedIRR >= 12 ? 'value-add'
+      : clampedIRR >= 8 ? 'core-plus'
+      : 'core';
+
+    const strategy = {
+      recommended: strategyBucket,
+      evaluation: {
+        core: { fit: strategyBucket === 'core' ? 0.9 : 0.3, irr: clampedIRR, em: clampedEM },
+        'core-plus': { fit: strategyBucket === 'core-plus' ? 0.85 : 0.4, irr: clampedIRR, em: clampedEM },
+        'value-add': { fit: strategyBucket === 'value-add' ? 0.8 : 0.35, irr: clampedIRR, em: clampedEM },
+        'value-add-aggressive': { fit: strategyBucket === 'value-add-aggressive' ? 0.75 : 0.2, irr: clampedIRR, em: clampedEM },
+      },
+      recomputedAt: now,
+    };
+
+    const scores = {
+      overall: overallJedi,
+      components: {
+        irr: irrScore,
+        equityMultiple: emScore,
+        cashOnCash: cocScore,
+        riskAdjustment: riskAdj + capRateAdj,
+        base: 20,
+      },
+      recomputedAt: now,
+    };
+
+    const riskLevel = vacancy > 0.10 ? 'high'
+      : exitCapRate > 0.09 ? 'elevated'
+      : clampedIRR < 6 ? 'elevated'
+      : 'moderate';
+
+    const risk = {
+      level: riskLevel,
+      factors: {
+        vacancyRisk: vacancy > 0.08 ? 'high' : vacancy > 0.05 ? 'moderate' : 'low',
+        capRateRisk: exitCapRate > 0.08 ? 'elevated' : 'stable',
+        returnRisk: clampedIRR < 8 ? 'below-threshold' : 'acceptable',
+      },
+      recomputedAt: now,
+    };
+
+    logger.info(`[Recompute] Complete for deal ${dealId}: IRR=${clampedIRR.toFixed(1)}%, EM=${clampedEM.toFixed(2)}x, JEDI=${overallJedi.toFixed(0)}`);
+
+    res.json({ financial, strategy, scores, risk });
   } catch (error: any) {
     logger.error('Error in recompute:', error);
     res.status(500).json({ success: false, error: 'Recompute failed' });
