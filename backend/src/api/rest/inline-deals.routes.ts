@@ -1000,7 +1000,30 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
       return res.status(400).json({ success: false, error: 'No file uploaded' });
     }
 
-    const docId = randomUUID();
+    const dealId = req.body?.dealId || req.query?.dealId;
+    let verifiedDealId: string | null = null;
+
+    if (dealId) {
+      const ownerResult = await pool.query(
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+        [dealId, req.user!.userId]
+      );
+      if (ownerResult.rows.length > 0) {
+        verifiedDealId = dealId as string;
+      } else {
+        return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
+      }
+    }
+
+    const insertResult = await pool.query(
+      `INSERT INTO deal_document_files (deal_id, filename, original_filename, file_path, uploaded_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id`,
+      [verifiedDealId, path.basename(req.file.path), req.file.originalname, req.file.path, req.user!.userId]
+    );
+
+    const docId = insertResult.rows[0].id;
+
     const fileMeta = {
       id: docId,
       name: req.file.originalname,
@@ -1011,25 +1034,8 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
       uploadedBy: req.user!.userId,
     };
 
-    const dealId = req.body?.dealId || req.query?.dealId;
-
-    if (dealId) {
-      const ownerResult = await pool.query(
-        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
-        [dealId, req.user!.userId]
-      );
-      if (ownerResult.rows.length === 0) {
-        return res.json({ success: true, data: fileMeta });
-      }
-
-      await pool.query(
-        `INSERT INTO deal_document_files (deal_id, filename, original_filename, file_path, uploaded_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT DO NOTHING`,
-        [dealId, path.basename(req.file.path), req.file.originalname, req.file.path, req.user!.userId]
-      );
-
-      processDocument(req.file.path, req.file.originalname, dealId as string, req.user!.userId)
+    if (verifiedDealId) {
+      processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId)
         .then(async (result) => {
           console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''})`);
           if (result.alerts.length > 0) {
@@ -1040,12 +1046,12 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
               `UPDATE deal_document_files SET
                  document_type = $2, extraction_status = $3,
                  extraction_result = $4, updated_at = NOW()
-               WHERE deal_id = $1 AND filename = $5`,
-              [dealId, result.documentType, result.success ? 'completed' : 'failed',
+               WHERE id = $5`,
+              [verifiedDealId, result.documentType, result.success ? 'completed' : 'failed',
                JSON.stringify({ success: result.success, error: result.error, rowsInserted: result.rowsInserted, alerts: result.alerts }),
-               path.basename(req.file!.path)]
+               docId]
             );
-          } catch (e) { /* best-effort status update */ }
+          } catch (e) { console.error('[ExtractionPipeline] Status update error:', e); }
         })
         .catch(err => {
           console.error(`[ExtractionPipeline] Error processing ${req.file!.originalname}:`, err);
