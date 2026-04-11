@@ -86,6 +86,7 @@ export interface MtmExposure {
   mtmPctOfTotal: number;
   avgMtmRent: number;
   mtmDollarExposure: number;
+  mtmRevenuePct: number;
   preLeasedCount: number;
   preLeasedAvgDaysOut: number;
   preLeasedVelocityRatio: number;
@@ -263,7 +264,7 @@ function computeSigningVelocity(leases: any[]): SigningVelocity {
   const buckets = cutoffs.map(cutoff => {
     const inRange = signedLeases.filter((r: any) => {
       const anchorDate = r.move_in_date ? new Date(r.move_in_date) : new Date(r.lease_start);
-      return anchorDate >= cutoff;
+      return anchorDate >= cutoff && anchorDate <= now;
     });
     const newL = inRange.filter((r: any) =>
       r.lease_type === 'new' || r.lease_type === 'new_lease' || r.lease_type === 'current'
@@ -444,7 +445,11 @@ function computeVelocityVariance(leases: any[], seasonality: SeasonalityBucket[]
 }
 
 function computeLeaseTermDistribution(leases: any[]): LeaseTermBucket[] {
-  const leasesWithDates = leases.filter((r: any) => r.lease_start && r.lease_end);
+  const inPlaceLeases = leases.filter((r: any) =>
+    r.lease_start && r.lease_end &&
+    (r.lease_status === 'occupied' || r.lease_status === 'active' || r.lease_status === 'current')
+  );
+  const leasesWithDates = inPlaceLeases;
   if (leasesWithDates.length === 0) return [];
 
   const termCounts: Record<number, { count: number; totalRent: number }> = {};
@@ -612,6 +617,11 @@ function computeMtmExposure(leases: any[]): MtmExposure {
   const mtmDollarExposure = mtmLeases.reduce((s: number, r: any) =>
     s + (Number(r.effective_rent || r.new_rent) || 0), 0);
 
+  const totalOccupiedRevenue = occupiedLeases.reduce((s: number, r: any) =>
+    s + (Number(r.effective_rent || r.new_rent) || 0), 0);
+  const mtmRevenuePct = totalOccupiedRevenue > 0
+    ? round2(mtmDollarExposure / totalOccupiedRevenue * 100) : 0;
+
   const preLeasedLeases = leases.filter((r: any) => {
     if (!r.lease_start) return false;
     const start = new Date(r.lease_start);
@@ -637,6 +647,7 @@ function computeMtmExposure(leases: any[]): MtmExposure {
     mtmPctOfTotal: totalUnits > 0 ? round2(mtmLeases.length / totalUnits * 100) : 0,
     avgMtmRent: avg(mtmLeases.map((r: any) => Number(r.effective_rent || r.new_rent || 0))),
     mtmDollarExposure: round2(mtmDollarExposure),
+    mtmRevenuePct,
     preLeasedCount: preLeasedLeases.length,
     preLeasedAvgDaysOut: Math.round(avgDaysOut),
     preLeasedVelocityRatio,

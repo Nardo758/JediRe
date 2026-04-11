@@ -101,6 +101,14 @@ export async function routeExtractionResult(
       break;
   }
 
+  let libraryUpdated = false;
+  try {
+    await upsertDataLibraryAsset(pool, ctx.dealId, result);
+    libraryUpdated = true;
+  } catch (err) {
+    alerts.push(`Data Library update failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
+
   if (result.documentType === 'RENT_ROLL' || result.documentType === 'BOX_SCORE' || result.documentType === 'T30_LTO') {
     try {
       await computeAndPersistTrafficSnapshot(ctx.dealId);
@@ -108,14 +116,6 @@ export async function routeExtractionResult(
     } catch (err) {
       alerts.push(`Traffic snapshot computation failed: ${err instanceof Error ? err.message : 'unknown'}`);
     }
-  }
-
-  let libraryUpdated = false;
-  try {
-    await upsertDataLibraryAsset(pool, ctx.dealId, result);
-    libraryUpdated = true;
-  } catch (err) {
-    alerts.push(`Data Library update failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
   let capsuleUpdated = false;
