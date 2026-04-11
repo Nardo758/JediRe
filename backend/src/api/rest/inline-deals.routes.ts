@@ -171,7 +171,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       name, boundary, projectType, project_type, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
       deal_category, development_type, address, description,
-      property_type_key
+      property_type_key, documentFileIds
     } = req.body;
 
     let resolvedProjectType = projectType || project_type;
@@ -232,6 +232,21 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
 
     autoDiscoverComps(row.id).catch(err => {
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
+    });
+
+    setImmediate(async () => {
+      try {
+        if (Array.isArray(documentFileIds) && documentFileIds.length > 0) {
+          await pool.query(
+            `UPDATE deal_document_files SET deal_id = $1, updated_at = NOW()
+             WHERE id = ANY($2) AND uploaded_by = $3`,
+            [row.id, documentFileIds, req.user!.userId]
+          );
+        }
+        await processDealDocuments(row.id, req.user!.userId);
+      } catch (err) {
+        console.error(`[ExtractionPipeline] Deal creation trigger failed for ${row.id}:`, err instanceof Error ? err.message : err);
+      }
     });
 
     // M27 AUTO-TRIGGER: Generate comp set when deal is created with location
