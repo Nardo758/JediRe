@@ -86,7 +86,7 @@ export function computeAlertLevel<T>(
 
   if (lv.confidence <= 0.7) return 'warn';
   if (!lv.userReviewed) return 'info';
-  return 'none';
+  return 'info';
 }
 
 const EXISTING_ALIASES = new Set([

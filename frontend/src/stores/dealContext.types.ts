@@ -564,10 +564,18 @@ export interface InputFieldMeta {
 }
 
 export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
+  { path: 'identity.id', label: 'Deal ID', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.name', label: 'Deal Name', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.address', label: 'Address', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.city', label: 'City', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.state', label: 'State', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.zip', label: 'ZIP Code', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.county', label: 'County', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.coordinates', label: 'Coordinates', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.mode', label: 'Deal Type', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.stage', label: 'Deal Stage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.createdAt', label: 'Created At', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.updatedAt', label: 'Updated At', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
 
   { path: 'financial.assumptions.rentGrowth', label: 'Rent Growth', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
   { path: 'financial.assumptions.expenseGrowth', label: 'Expense Growth', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'cost' },
