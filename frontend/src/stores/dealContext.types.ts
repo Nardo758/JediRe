@@ -81,7 +81,7 @@ export function computeAlertLevel<T>(
     if (divergence > 0.15) return 'warn';
   }
 
-  if (lv.confidence < 0.7) return 'warn';
+  if (lv.confidence <= 0.7) return 'warn';
 
   if (!lv.userReviewed) return 'info';
 
@@ -588,7 +588,9 @@ export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
   { path: 'existingProperty.occupancy', label: 'Occupancy', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'market' },
   { path: 'existingProperty.currentNOI', label: 'Current NOI', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'cost' },
   { path: 'existingProperty.yearBuilt', label: 'Year Built', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing'], category: 'identity' },
-  { path: 'existingProperty.avgRentPerUnit', label: 'Avg Rent per Unit', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'market' },
+  { path: 'existingProperty.totalSF', label: 'Total Square Footage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing'], category: 'identity' },
+  { path: 'existingProperty.propertyClass', label: 'Property Class', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing'], category: 'identity' },
+  { path: 'existingProperty.lastRenovated', label: 'Last Renovated', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing'], category: 'identity' },
 
   { path: 'market.submarketName', label: 'Submarket', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
   { path: 'market.avgRent', label: 'Market Avg Rent', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },

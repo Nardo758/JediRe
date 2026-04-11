@@ -84,19 +84,45 @@ export function computeAlertLevel<T>(
     if (divergence > 0.15) return 'warn';
   }
 
-  if (lv.confidence < 0.7) return 'warn';
+  if (lv.confidence <= 0.7) return 'warn';
   if (!lv.userReviewed) return 'info';
   return 'none';
 }
+
+const EXISTING_ALIASES = new Set([
+  'existing', 'acquisition', 'existing_acquisition', 'stabilized',
+  'value-add', 'value_add',
+  'multifamily', 'multi-family', 'multi_family',
+  'office', 'retail', 'industrial', 'flex',
+  'mixed_use', 'mixed-use', 'mixeduse',
+  'hotel', 'hospitality', 'self_storage', 'self-storage',
+  'senior_housing', 'senior-housing', 'student_housing',
+  'single_family', 'single-family', 'sfr',
+  'build_to_rent', 'build-to-rent',
+]);
+
+const DEVELOPMENT_ALIASES = new Set([
+  'development', 'ground_up', 'ground-up',
+  'new_construction', 'new construction',
+  'new_development', 'new-development',
+  'land', 'vacant',
+]);
+
+const REDEVELOPMENT_ALIASES = new Set([
+  'redevelopment', 'redev', 'rehab', 'repositioning',
+  'adaptive_reuse', 'adaptive-reuse',
+  'gut_rehab', 'gut-rehab',
+  'tear-down', 'teardown', 'tear_down',
+  'conversion', 'partial_demo', 'partial-demo',
+]);
 
 export function resolveProjectType(raw: string | null | undefined): ProjectType {
   if (!raw) return 'existing';
   const n = raw.toLowerCase().trim();
   if (!n) return 'existing';
-  const dev = ['development', 'ground_up', 'ground-up', 'new_construction', 'new construction', 'new_development', 'new-development', 'land', 'vacant'];
-  const redev = ['redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'adaptive-reuse', 'gut_rehab', 'gut-rehab', 'tear-down', 'teardown', 'tear_down', 'conversion', 'partial_demo', 'partial-demo'];
-  if (dev.includes(n)) return 'development';
-  if (redev.includes(n)) return 'redevelopment';
+  if (EXISTING_ALIASES.has(n)) return 'existing';
+  if (DEVELOPMENT_ALIASES.has(n)) return 'development';
+  if (REDEVELOPMENT_ALIASES.has(n)) return 'redevelopment';
   return 'existing';
 }
 
@@ -447,12 +473,17 @@ interface DealCapsuleCapital {
 }
 
 interface DealCapsuleExistingProperty {
-  askingPrice: LayeredValue<number>;
+  yearBuilt: LayeredValue<number>;
   totalUnits: LayeredValue<number>;
+  totalSF: LayeredValue<number>;
   occupancy: LayeredValue<number>;
   currentNOI: LayeredValue<number>;
-  yearBuilt: number;
-  avgRentPerUnit: LayeredValue<number>;
+  askingPrice: LayeredValue<number>;
+  pricePerUnit: number;
+  goingInCapRate: number;
+  lastRenovated: LayeredValue<number | null>;
+  propertyClass: LayeredValue<'A' | 'B+' | 'B' | 'B-' | 'C' | 'D'>;
+  amenities: string[];
 }
 
 interface DealCapsuleBase {

@@ -57,14 +57,34 @@ describe('computeAlertLevel', () => {
     expect(computeAlertLevel(lv)).toBe('warn');
   });
 
-  it('returns info for moderate confidence but not yet reviewed', () => {
+  it('returns info for confidence above 0.7 but not yet reviewed', () => {
     const lv = makeLV({ value: 100, confidence: 0.75, userReviewed: false });
     expect(computeAlertLevel(lv)).toBe('info');
   });
 
-  it('returns warn for low confidence (< 0.7)', () => {
+  it('returns warn for confidence below 0.7', () => {
     const lv = makeLV({ value: 100, confidence: 0.55, userReviewed: false });
     expect(computeAlertLevel(lv)).toBe('warn');
+  });
+
+  it('returns warn for confidence exactly at 0.7 boundary', () => {
+    const lv = makeLV({ value: 100, confidence: 0.7, userReviewed: false });
+    expect(computeAlertLevel(lv)).toBe('warn');
+  });
+
+  it('returns warn for confidence exactly at 0.4 boundary on high-sensitivity', () => {
+    const lv = makeLV({ value: 100, confidence: 0.4 });
+    expect(computeAlertLevel(lv, { highSensitivity: true })).toBe('warn');
+  });
+
+  it('returns block for confidence just below 0.4 on high-sensitivity', () => {
+    const lv = makeLV({ value: 100, confidence: 0.39 });
+    expect(computeAlertLevel(lv, { highSensitivity: true })).toBe('block');
+  });
+
+  it('returns none for confidence exactly at 0.9 when reviewed', () => {
+    const lv = makeLV({ value: 100, confidence: 0.9, userReviewed: true });
+    expect(computeAlertLevel(lv)).toBe('none');
   });
 
   it('returns none for reviewed values above 0.7 threshold', () => {
