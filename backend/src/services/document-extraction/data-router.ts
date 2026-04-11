@@ -25,6 +25,33 @@ async function getPropertyIdForDeal(pool: Pool, dealId: string): Promise<string 
   return result.rows[0]?.property_id || null;
 }
 
+async function ensurePropertyForDeal(pool: Pool, dealId: string): Promise<string | null> {
+  const existing = await getPropertyIdForDeal(pool, dealId);
+  if (existing) return existing;
+
+  const dealResult = await pool.query(
+    `SELECT name, address, target_units FROM deals WHERE id = $1`,
+    [dealId]
+  );
+  if (dealResult.rows.length === 0) return null;
+  const deal = dealResult.rows[0];
+
+  const propResult = await pool.query(
+    `INSERT INTO properties (name, address_line1, units, created_at, updated_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+     RETURNING id`,
+    [deal.name || 'Untitled Property', deal.address || null, deal.target_units || null]
+  );
+  const propertyId = propResult.rows[0].id;
+
+  await pool.query(
+    `UPDATE deals SET property_id = $2, updated_at = NOW() WHERE id = $1`,
+    [dealId, propertyId]
+  );
+
+  return propertyId;
+}
+
 export async function routeExtractionResult(
   result: ExtractionResult,
   ctx: RouteContext
@@ -42,13 +69,15 @@ export async function routeExtractionResult(
   const sourceDate = new Date().toISOString().split('T')[0];
 
   switch (result.documentType) {
-    case 'T12':
-      if (!propertyId) {
-        alerts.push('T12 data stored in deal capsule only — no linked property for deal_monthly_actuals insert. Link a property to enable full routing.');
+    case 'T12': {
+      const t12PropertyId = propertyId || await ensurePropertyForDeal(pool, ctx.dealId);
+      if (!t12PropertyId) {
+        alerts.push('T12 data stored in deal capsule only — could not resolve or create property for deal_monthly_actuals insert.');
       } else {
-        rowsInserted = await routeT12(pool, result.data as T12Data, propertyId, ctx.dealId, sourceRef, sourceDate);
+        rowsInserted = await routeT12(pool, result.data as T12Data, t12PropertyId, ctx.dealId, sourceRef, sourceDate);
       }
       break;
+    }
     case 'RENT_ROLL':
       rowsInserted = await routeRentRoll(pool, result.data as RentRollData, ctx.dealId, sourceRef, sourceDate);
       break;
@@ -322,8 +351,7 @@ async function routeConcessionBurnoff(pool: Pool, data: ConcessionBurnoffData, d
     if (rec.unitNumber && rec.currentConcession > 0) {
       const updateRes = await pool.query(
         `UPDATE deal_lease_transactions SET
-           concession_amount = $3,
-           updated_at = NOW()
+           concession_amount = $3
          WHERE deal_id = $1 AND unit_number = $2
            AND concession_amount IS NULL`,
         [dealId, rec.unitNumber, rec.currentConcession]
@@ -384,8 +412,8 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
     [dealId, taxRate, sourceRef, sourceDate]
   );
 
-  const propertyId = await getPropertyIdForDeal(pool, dealId);
-  if (propertyId && data.totalAnnualTax) {
+  const taxPropertyId = await ensurePropertyForDeal(pool, dealId);
+  if (taxPropertyId && data.totalAnnualTax) {
     const monthlyTax = data.totalAnnualTax / 12;
     const taxYear = data.taxYear || new Date().getFullYear();
     for (let m = 1; m <= 12; m++) {
@@ -397,7 +425,7 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
            property_tax = EXCLUDED.property_tax,
            source_document_type = 'TAX_BILL',
            updated_at = NOW()`,
-        [propertyId, reportMonth, monthlyTax, reportMonth]
+        [taxPropertyId, reportMonth, monthlyTax, reportMonth]
       );
     }
   }
