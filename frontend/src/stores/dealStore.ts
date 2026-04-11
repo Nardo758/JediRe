@@ -539,8 +539,14 @@ export const useDealStore = create<DealStore>()(
         const resolvedType = resolveProjectType(rawType);
         console.log('[dealStore] projectType resolved to:', resolvedType);
 
+        const normalizedIdentity = {
+          ...data.identity,
+          mode: resolvedType,
+        };
+
         set({
           ...data,
+          identity: normalizedIdentity,
           resolvedUnitMix,
           totalUnits,
           projectType: resolvedType,

@@ -126,9 +126,12 @@ export function resolveProjectType(raw: string | null | undefined): ProjectType 
   return 'existing';
 }
 
-// ── Core DealContext Interface (Research Agent output) ──────────
+// ── Research Agent Context (legacy name: DealContext) ────────────
+// NOTE: This is the Research Agent's assembled output package — NOT the
+// frontend Deal Capsule union. For frontend-aligned deal types, use
+// DealCapsuleContext (ExistingDealCapsule | DevelopmentDealCapsule | RedevelopmentDealCapsule).
 
-export interface DealContext {
+export interface ResearchAgentContext {
   // ── Identity ──
   requestId: string;
   address: string;
@@ -381,7 +384,7 @@ export interface ChatSession {
     dealId: string;
     address: string;
     askingPrice: number;
-    dealContext?: DealContext;
+    dealContext?: ResearchAgentContext;
     agentResults?: {
       zoning?: ZoningResult;
       supply?: SupplyResult;
@@ -528,6 +531,9 @@ export function isDevelopmentCapsule(ctx: DealCapsuleContext): ctx is Developmen
 export function isRedevelopmentCapsule(ctx: DealCapsuleContext): ctx is RedevelopmentDealCapsule {
   return ctx.projectType === 'redevelopment';
 }
+
+/** @deprecated Use ResearchAgentContext instead. Kept for backward compatibility. */
+export type DealContext = ResearchAgentContext;
 
 // ── AI Service Types ────────────────────────────────────────────
 
