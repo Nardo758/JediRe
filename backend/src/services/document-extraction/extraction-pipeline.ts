@@ -37,7 +37,7 @@ export async function processDocument(
 
   try {
     const buffer = fs.readFileSync(filePath);
-    const classification = classifyDocument(buffer, filename);
+    const classification = await classifyDocument(buffer, filename);
 
     if (classification.documentType === 'UNKNOWN') {
       return { documentType: 'UNKNOWN', success: false, error: 'Could not classify document type', alerts };
@@ -70,7 +70,6 @@ export async function processDocument(
 
     const routeResult = await routeExtractionResult(extractionResult, {
       dealId,
-      propertyId: dealId,
       filename,
       uploadedBy,
     });

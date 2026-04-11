@@ -95,7 +95,7 @@ function classifyByHeaders(headers: string[], sampleRows: any[]): { type: Docume
   return { type: 'UNKNOWN', confidence: 0, hints: ['No matching patterns found'] };
 }
 
-export function classifyDocument(buffer: Buffer, filename: string): ClassificationResult {
+export async function classifyDocument(buffer: Buffer, filename: string): Promise<ClassificationResult> {
   const filenameResult = classifyByFilename(filename);
 
   if (isPdf(filename)) {
@@ -106,14 +106,21 @@ export function classifyDocument(buffer: Buffer, filename: string): Classificati
         hints: ['PDF filename match'],
       };
     }
-    const textContent = buffer.toString('utf-8', 0, Math.min(buffer.length, 4096)).toLowerCase();
+    let textContent = '';
+    try {
+      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse');
+      const pdfResult = await pdfParse(buffer);
+      textContent = (pdfResult.text || '').toLowerCase();
+    } catch {
+      textContent = buffer.toString('utf-8', 0, Math.min(buffer.length, 4096)).toLowerCase();
+    }
     const taxIndicators = ['parcel', 'assessed value', 'millage', 'property tax', 'tax year', 'tax bill', 'levy', 'appraised'];
     const taxMatches = taxIndicators.filter(ind => textContent.includes(ind)).length;
     if (taxMatches >= 2) {
       return {
         documentType: 'TAX_BILL',
         confidence: 0.6 + taxMatches * 0.05,
-        hints: [`PDF text contains ${taxMatches} tax indicators`],
+        hints: [`PDF parsed text contains ${taxMatches} tax indicators`],
       };
     }
     return {

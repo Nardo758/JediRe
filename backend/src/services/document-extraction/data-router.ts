@@ -4,7 +4,6 @@ import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesD
 
 interface RouteContext {
   dealId: string;
-  propertyId: string;
   filename: string;
   uploadedBy: string;
 }
