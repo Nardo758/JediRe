@@ -85,7 +85,7 @@ export function computeAlertLevel<T>(
 
   if (!lv.userReviewed) return 'info';
 
-  return 'none';
+  return 'info';
 }
 
 /** Helper: create a simple layered value (used during hydration) */

@@ -87,9 +87,19 @@ describe('computeAlertLevel', () => {
     expect(computeAlertLevel(lv)).toBe('none');
   });
 
-  it('returns none for reviewed values above 0.7 threshold', () => {
-    const lv = makeLV({ value: 100, confidence: 0.75, userReviewed: true });
+  it('returns none for confidence above 0.9 when reviewed', () => {
+    const lv = makeLV({ value: 100, confidence: 0.95, userReviewed: true });
     expect(computeAlertLevel(lv)).toBe('none');
+  });
+
+  it('returns info for reviewed values above 0.7 but below 0.9', () => {
+    const lv = makeLV({ value: 100, confidence: 0.75, userReviewed: true });
+    expect(computeAlertLevel(lv)).toBe('info');
+  });
+
+  it('returns info for confidence at 0.85 even when reviewed', () => {
+    const lv = makeLV({ value: 100, confidence: 0.85, userReviewed: true });
+    expect(computeAlertLevel(lv)).toBe('info');
   });
 });
 
