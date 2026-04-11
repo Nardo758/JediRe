@@ -2,9 +2,10 @@ import React, { useState, useCallback } from 'react';
 import { BT, DataRow, SectionPanel, Bd } from './bloomberg-ui';
 import { AlertPip } from './AlertPip';
 import { useDealStore, useDealType } from '../../stores/dealStore';
-import type { LayeredValue, UnitMixRow } from '../../stores/dealContext.types';
+import type { LayeredValue, UnitMixRow, DealIdentity } from '../../stores/dealContext.types';
 
 const MONO = BT.font.mono;
+const CAPITAL_INTENT_OPTIONS = ['core', 'core-plus', 'value-add', 'opportunistic', 'development'] as const;
 
 function fmtDollar(v: number): string {
   if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
@@ -100,6 +101,81 @@ function EditableCell({ value, onCommit, format, color }: {
     >
       {format ? format(value) : value}
     </span>
+  );
+}
+
+function IdentityField({ label, fieldPath, value, onChange, options }: {
+  label: string;
+  fieldPath: string;
+  value: string;
+  onChange: (v: string) => void;
+  options?: readonly string[];
+}) {
+  const isEmpty = !value || value === '';
+  return (
+    <div
+      data-field-path={fieldPath}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '3px 8px',
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        background: isEmpty ? `${BT.text.red}06` : 'transparent',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <AlertPip level={isEmpty ? 'block' : 'none'} />
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{label}</span>
+      </div>
+      {options ? (
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber,
+            background: BT.bg.input, border: `1px solid ${BT.border.medium}`,
+            padding: '1px 4px', outline: 'none',
+          }}
+        >
+          <option value="">—</option>
+          {options.map(o => <option key={o} value={o}>{o.toUpperCase()}</option>)}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Required"
+          style={{
+            fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber,
+            background: BT.bg.input, border: `1px solid ${BT.border.medium}`,
+            padding: '1px 4px', outline: 'none', width: 140, textAlign: 'right',
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function IdentityInputSection() {
+  const identity = useDealStore(s => s.identity);
+
+  const updateField = useCallback((field: keyof DealIdentity, value: string) => {
+    const current = useDealStore.getState().identity;
+    useDealStore.setState({ identity: { ...current, [field]: value } });
+  }, []);
+
+  return (
+    <SectionPanel title="DEAL IDENTITY" subtitle="Required Fields" borderColor={BT.text.red}>
+      <IdentityField label="DEAL NAME" fieldPath="identity.name" value={identity.name} onChange={v => updateField('name', v)} />
+      <IdentityField label="ADDRESS" fieldPath="identity.address" value={identity.address} onChange={v => updateField('address', v)} />
+      <IdentityField label="CITY" fieldPath="identity.city" value={identity.city} onChange={v => updateField('city', v)} />
+      <IdentityField label="STATE" fieldPath="identity.state" value={identity.state} onChange={v => updateField('state', v)} />
+      <IdentityField label="DEAL TYPE" fieldPath="identity.mode" value={identity.mode} onChange={v => updateField('mode', v)}
+        options={['existing', 'development', 'redevelopment']} />
+      <IdentityField label="SPONSOR" fieldPath="identity.sponsor" value={identity.sponsor} onChange={v => updateField('sponsor', v)} />
+      <IdentityField label="CAPITAL INTENT" fieldPath="identity.capitalIntent" value={identity.capitalIntent}
+        onChange={v => updateField('capitalIntent', v)} options={CAPITAL_INTENT_OPTIONS} />
+    </SectionPanel>
   );
 }
 
@@ -248,6 +324,7 @@ export function ExistingOverview() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <IdentityInputSection />
       <UnitMixTable rows={resolvedUnitMix} readOnly={true} title="UNIT MIX — BROKER STATED" />
       <GapAnalysisPanel />
       <SectionPanel title="ASSUMPTIONS" subtitle="Override Only" borderColor={BT.met.financial}>
@@ -268,6 +345,7 @@ export function DevelopmentOverview() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <IdentityInputSection />
       {selectedPath && (
         <SectionPanel title="SELECTED PATH" borderColor={BT.text.green}>
           <DataRow label="BUILDING TYPE" value={selectedPath.buildingType.toUpperCase()} valueColor={BT.text.green} />
@@ -308,6 +386,7 @@ export function RedevelopmentOverview() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <IdentityInputSection />
       <div style={{ display: 'flex', gap: 1 }}>
         <div style={{ flex: 1 }}>
           <SectionPanel title="AS-IS" borderColor={BT.text.amber}>
