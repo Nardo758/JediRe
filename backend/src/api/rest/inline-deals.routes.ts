@@ -171,7 +171,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       name, boundary, projectType, project_type, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
       deal_category, development_type, address, description,
-      property_type_key, documentFileIds
+      property_type_key, documentFileIds, uploaded_documents
     } = req.body;
 
     let resolvedProjectType = projectType || project_type;
@@ -234,13 +234,16 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
 
+    const docIds = Array.isArray(documentFileIds) ? documentFileIds
+      : Array.isArray(uploaded_documents) ? uploaded_documents
+      : [];
     setImmediate(async () => {
       try {
-        if (Array.isArray(documentFileIds) && documentFileIds.length > 0) {
+        if (docIds.length > 0) {
           await pool.query(
             `UPDATE deal_document_files SET deal_id = $1, updated_at = NOW()
-             WHERE id = ANY($2) AND uploaded_by = $3`,
-            [row.id, documentFileIds, req.user!.userId]
+             WHERE id = ANY($2::uuid[]) AND uploaded_by = $3 AND deal_id IS NULL`,
+            [row.id, docIds, req.user!.userId]
           );
         }
         await processDealDocuments(row.id, req.user!.userId);

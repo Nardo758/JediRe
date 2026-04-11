@@ -409,7 +409,7 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
 }
 
 async function routeOtherIncome(pool: Pool, data: OtherIncomeData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
-  let otherIncomePerUnit: number | null = data.summary.perUnitTotal || null;
+  let otherIncomePerUnit: number | null = data.summary.perUnitTotal ? data.summary.perUnitTotal / 12 : null;
   if (!otherIncomePerUnit && data.summary.totalAnnual > 0) {
     const unitsResult = await pool.query(
       `SELECT COALESCE(da.total_units, d.target_units) as unit_count
