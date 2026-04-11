@@ -234,10 +234,6 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
 
-    processDealDocuments(row.id, req.user!.userId).catch(err => {
-      console.error(`[ExtractionPipeline] Deal creation trigger failed for ${row.id}:`, err.message);
-    });
-
     // M27 AUTO-TRIGGER: Generate comp set when deal is created with location
     // Fire async (don't block response)
     if (boundary && (boundary.type === 'Point' || boundary.type === 'Polygon')) {

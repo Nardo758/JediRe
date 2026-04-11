@@ -24,3 +24,4 @@ CREATE INDEX IF NOT EXISTS idx_receivables_unit ON deal_receivables_aging(unit_n
 
 ALTER TABLE data_library_assets ADD COLUMN IF NOT EXISTS source_deal_id UUID;
 ALTER TABLE data_library_assets ADD COLUMN IF NOT EXISTS extraction_data JSONB DEFAULT '{}';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_data_library_assets_source_deal_id ON data_library_assets(source_deal_id) WHERE source_deal_id IS NOT NULL;

@@ -14,9 +14,8 @@ function parseNum(val: any): number | null {
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
   try {
-    const pdfParseModule = await import('pdf-parse');
-    const pdfParse = pdfParseModule.default || pdfParseModule;
-    const result = await (pdfParse as any)(buffer);
+    const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse');
+    const result = await pdfParse(buffer);
     return result.text || '';
   } catch {
     return buffer.toString('utf-8');

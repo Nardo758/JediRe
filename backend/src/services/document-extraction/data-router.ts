@@ -1,3 +1,4 @@
+import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData } from './types';
 
@@ -15,7 +16,7 @@ interface RouteResult {
   alerts: string[];
 }
 
-async function getPropertyIdForDeal(pool: any, dealId: string): Promise<string | null> {
+async function getPropertyIdForDeal(pool: Pool, dealId: string): Promise<string | null> {
   const result = await pool.query(
     `SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL
      LIMIT 1`,
@@ -90,7 +91,7 @@ export async function routeExtractionResult(
   return { rowsInserted, capsuleUpdated, libraryUpdated, alerts };
 }
 
-async function routeT12(pool: any, data: T12Data, propertyId: string, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   let count = 0;
   for (const month of data.months) {
     await pool.query(
@@ -143,7 +144,7 @@ async function routeT12(pool: any, data: T12Data, propertyId: string, dealId: st
   return count;
 }
 
-async function routeRentRoll(pool: any, data: RentRollData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeRentRoll(pool: Pool, data: RentRollData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   await pool.query(
     `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction' AND source_ref = $2`,
     [dealId, sourceRef]
@@ -179,7 +180,7 @@ async function routeRentRoll(pool: any, data: RentRollData, dealId: string, sour
   return count;
 }
 
-async function routeAgedReceivables(pool: any, data: AgedReceivablesData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeAgedReceivables(pool: Pool, data: AgedReceivablesData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   await pool.query(
     `DELETE FROM deal_receivables_aging WHERE deal_id = $1 AND source_type = 'extraction' AND source_ref = $2`,
     [dealId, sourceRef]
@@ -206,7 +207,7 @@ async function routeAgedReceivables(pool: any, data: AgedReceivablesData, dealId
   return count;
 }
 
-async function routeBoxScore(pool: any, data: BoxScoreData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
+async function routeBoxScore(pool: Pool, data: BoxScoreData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
   const vacancyPct = data.summary.occupancyPct != null ? (1 - data.summary.occupancyPct) * 100 : null;
   const totalUnits = data.summary.totalUnits || null;
 
@@ -245,10 +246,45 @@ async function routeBoxScore(pool: any, data: BoxScoreData, dealId: string, sour
     alerts.push(`⚠ Box Score occupancy ${(data.summary.occupancyPct * 100).toFixed(1)}% is below 85% threshold`);
   }
 
-  return 1;
+  const activityEvents: Array<{ lease_type: string; count: number }> = [
+    { lease_type: 'move_in', count: data.activity.moveIns },
+    { lease_type: 'move_out', count: data.activity.moveOuts },
+    { lease_type: 'renewal', count: data.activity.renewals },
+    { lease_type: 'transfer', count: data.activity.transfers },
+    { lease_type: 'mtm_conversion', count: data.activity.mtmConversions },
+    { lease_type: 'eviction', count: data.activity.evictions },
+    { lease_type: 'skip', count: data.activity.skips },
+  ];
+  for (const evt of activityEvents) {
+    if (evt.count > 0) {
+      await pool.query(
+        `INSERT INTO deal_lease_transactions (
+          deal_id, unit_number, lease_type, lease_status,
+          source_type, source_ref, source_date
+        ) VALUES ($1, $2, $3, $4, 'extraction', $5, $6)`,
+        [dealId, `box_score_${evt.lease_type}`, evt.lease_type, `count:${evt.count}`, sourceRef, sourceDate]
+      );
+    }
+  }
+
+  for (const conv of data.conversions) {
+    if (conv.leased > 0 || conv.firstContacts > 0) {
+      await pool.query(
+        `INSERT INTO deal_lease_transactions (
+          deal_id, unit_number, lease_type, lease_status,
+          source_type, source_ref, source_date
+        ) VALUES ($1, $2, 'conversion_funnel', $3, 'extraction', $4, $5)`,
+        [dealId, `funnel_${conv.channel}`,
+         JSON.stringify({ channel: conv.channel, firstContacts: conv.firstContacts, shows: conv.shows, applied: conv.applied, approved: conv.approved, leased: conv.leased, conversionRate: conv.conversionRate }),
+         sourceRef, sourceDate]
+      );
+    }
+  }
+
+  return 1 + activityEvents.filter(e => e.count > 0).length + data.conversions.filter(c => c.leased > 0 || c.firstContacts > 0).length;
 }
 
-async function routeConcessionBurnoff(pool: any, data: ConcessionBurnoffData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
+async function routeConcessionBurnoff(pool: Pool, data: ConcessionBurnoffData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
   const concessionsPct = data.summary.avgConcessionDepth ? data.summary.avgConcessionDepth * 100 : null;
 
   await pool.query(
@@ -283,10 +319,28 @@ async function routeConcessionBurnoff(pool: any, data: ConcessionBurnoffData, de
     alerts.push(`⚠ Average concession depth ${(data.summary.avgConcessionDepth * 100).toFixed(1)}% exceeds 5% threshold`);
   }
 
+  let enriched = 0;
+  for (const rec of data.records) {
+    if (rec.unitNumber && rec.currentConcession > 0) {
+      const updateRes = await pool.query(
+        `UPDATE deal_lease_transactions SET
+           concession_amount = $3,
+           updated_at = NOW()
+         WHERE deal_id = $1 AND unit_number = $2
+           AND concession_amount IS NULL`,
+        [dealId, rec.unitNumber, rec.currentConcession]
+      );
+      if (updateRes.rowCount > 0) enriched++;
+    }
+  }
+  if (enriched > 0) {
+    alerts.push(`Enriched ${enriched} lease transaction records with concession data`);
+  }
+
   return data.records.length;
 }
 
-async function routeLTO(pool: any, data: LTOData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeLTO(pool: Pool, data: LTOData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   await pool.query(
     `DELETE FROM deal_lease_transactions WHERE deal_id = $1 AND source_type = 'extraction' AND source_ref = $2`,
     [dealId, sourceRef]
@@ -315,7 +369,7 @@ async function routeLTO(pool: any, data: LTOData, dealId: string, sourceRef: str
   return count;
 }
 
-async function routeTaxBill(pool: any, data: TaxBillData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   const taxRate = (data.assessedValue && data.assessedValue > 0 && data.totalAnnualTax)
     ? data.totalAnnualTax / data.assessedValue
     : null;
@@ -333,10 +387,28 @@ async function routeTaxBill(pool: any, data: TaxBillData, dealId: string, source
     [dealId, taxRate, sourceRef, sourceDate]
   );
 
+  const propertyId = await getPropertyIdForDeal(pool, dealId);
+  if (propertyId && data.totalAnnualTax) {
+    const monthlyTax = data.totalAnnualTax / 12;
+    const taxYear = data.taxYear || new Date().getFullYear();
+    for (let m = 1; m <= 12; m++) {
+      const reportMonth = `${taxYear}-${String(m).padStart(2, '0')}-01`;
+      await pool.query(
+        `INSERT INTO deal_monthly_actuals (property_id, report_month, property_tax, data_source, source_document_type, source_period_label)
+         VALUES ($1, $2, $3, 'extraction', 'TAX_BILL', $4)
+         ON CONFLICT (property_id, report_month, is_budget, is_proforma) DO UPDATE SET
+           property_tax = EXCLUDED.property_tax,
+           source_document_type = 'TAX_BILL',
+           updated_at = NOW()`,
+        [propertyId, reportMonth, monthlyTax, sourceRef]
+      );
+    }
+  }
+
   return 1;
 }
 
-async function routeOtherIncome(pool: any, data: OtherIncomeData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeOtherIncome(pool: Pool, data: OtherIncomeData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
   let otherIncomePerUnit: number | null = data.summary.perUnitTotal || null;
   if (!otherIncomePerUnit && data.summary.totalAnnual > 0) {
     const unitsResult = await pool.query(
@@ -382,7 +454,7 @@ async function routeOtherIncome(pool: any, data: OtherIncomeData, dealId: string
   return data.categories.length;
 }
 
-async function upsertDataLibraryAsset(pool: any, dealId: string, result: ExtractionResult): Promise<void> {
+async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: ExtractionResult): Promise<void> {
   const extractionData: Record<string, any> = {
     document_type: result.documentType,
     extracted_at: new Date().toISOString(),
@@ -420,7 +492,9 @@ async function upsertDataLibraryAsset(pool: any, dealId: string, result: Extract
           property_name, city, state, unit_count, year_built,
           source_deal_id, extraction_data, data_quality_score, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, 50, NOW(), NOW())
-        ON CONFLICT DO NOTHING`,
+        ON CONFLICT (source_deal_id) WHERE source_deal_id IS NOT NULL DO UPDATE SET
+          extraction_data = COALESCE(data_library_assets.extraction_data, '{}'::jsonb) || EXCLUDED.extraction_data,
+          updated_at = NOW()`,
         [
           deal.property_name || deal.deal_name || 'Untitled',
           deal.city, deal.state_code, deal.units, deal.year_built,
@@ -431,7 +505,7 @@ async function upsertDataLibraryAsset(pool: any, dealId: string, result: Extract
   }
 }
 
-async function updateDealCapsule(pool: any, dealId: string, result: ExtractionResult, alerts: string[]): Promise<void> {
+async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionResult, alerts: string[]): Promise<void> {
   const capsulePayload: Record<string, any> = {};
   const now = new Date().toISOString();
 
