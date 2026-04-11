@@ -37,6 +37,7 @@ import {
   getDealTypeConfig,
   type DealType,
 } from '@/shared/config/deal-type-visibility';
+import { resolveProjectType } from '@/shared/utils/project-type';
 import {
   getStrategyAvailability,
   getStrategyStrength,
@@ -313,6 +314,7 @@ const INITIAL_CONTEXT: DealContext = {
   selectedDevelopmentPathId: null,
   developmentEnvelope: null,
   existingProperty: null,
+  redevelopment: null,
   resolvedUnitMix: [],
   unitMixOverrides: {},
   totalUnits: 0,
@@ -374,6 +376,7 @@ const INITIAL_CONTEXT: DealContext = {
   },
   hydrationStatus: EMPTY_HYDRATION,
   stageHistory: [],
+  editLog: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -393,6 +396,8 @@ function recomputeResolvedMix(state: DealContext): {
   if (state.identity.mode === 'development') {
     const path = getSelectedPath(state);
     baseProgram = path?.unitMixProgram ?? [];
+  } else if (state.identity.mode === 'redevelopment') {
+    baseProgram = state.existingProperty?.unitMixProgram ?? [];
   } else {
     baseProgram = state.existingProperty?.unitMixProgram ?? [];
   }
@@ -527,8 +532,8 @@ export const useDealStore = create<DealStore>()(
         // Recompute resolved unit mix from the fetched data
         const { resolvedUnitMix, totalUnits } = recomputeResolvedMix(data);
 
-        // Explicit projectType hydration: resolve from multiple possible sources
-        const resolvedType = data.projectType ?? data.project_type ?? data.identity?.mode ?? 'existing';
+        const rawType = data.projectType ?? data.project_type ?? data.identity?.mode ?? 'existing';
+        const resolvedType = resolveProjectType(rawType);
         console.log('[dealStore] projectType resolved to:', resolvedType);
 
         set({
@@ -536,6 +541,8 @@ export const useDealStore = create<DealStore>()(
           resolvedUnitMix,
           totalUnits,
           projectType: resolvedType,
+          editLog: data.editLog ?? [],
+          redevelopment: data.redevelopment ?? null,
         });
       } catch (error) {
         console.error('[dealStore] Failed to fetch deal context:', error);
@@ -861,7 +868,6 @@ export const useDealStore = create<DealStore>()(
       const parts = path.split('.');
       const newState = { ...state };
 
-      // Navigate to the parent and update the target field
       let current: any = newState;
       for (let i = 0; i < parts.length - 1; i++) {
         current[parts[i]] = { ...current[parts[i]] };
@@ -871,14 +877,29 @@ export const useDealStore = create<DealStore>()(
       const key = parts[parts.length - 1];
       const existing = current[key] as LayeredValue<T>;
 
+      const resolvedFrom: 'broker' | 'platform' | 'user' =
+        (source === 'agent' || source === 'computed') ? 'platform' : source as any;
+
+      const entry: import('./dealContext.types').EditLogEntry = {
+        path,
+        oldValue: existing?.value,
+        newValue: value,
+        timestamp: new Date().toISOString(),
+        actor: source === 'user' ? 'user' : source === 'agent' ? 'agent' : 'platform',
+      };
+      newState.editLog = [...(state.editLog || []), entry];
+
       current[key] = {
         value,
         source,
+        resolvedFrom,
         updatedAt: new Date().toISOString(),
         confidence,
+        alertLevel: 'none' as const,
+        userReviewed: source === 'user',
         layers: {
           ...existing?.layers,
-          [source]: { value, updatedAt: new Date().toISOString(), confidence },
+          [resolvedFrom]: { value, updatedAt: new Date().toISOString(), confidence },
         },
       };
 

@@ -23,21 +23,69 @@
 
 export type DataSource = 'broker' | 'platform' | 'user' | 'agent' | 'computed';
 
+export type AlertLevel = 'none' | 'info' | 'warn' | 'block';
+
+export type InputClass = 'identity' | 'override' | 'scope';
+
 export interface LayeredValue<T> {
   /** The resolved value (what modules should render) */
   value: T;
   /** Who set this value */
   source: DataSource;
+  /** Which layer the resolved value came from */
+  resolvedFrom: 'broker' | 'platform' | 'user';
   /** ISO timestamp of last update */
   updatedAt: string;
   /** 0-1 confidence score (1 = verified, 0.5 = estimated, 0 = unknown) */
   confidence: number;
+  /** Computed alert level for this field */
+  alertLevel: AlertLevel;
+  /** Whether the user has viewed/reviewed this value at least once */
+  userReviewed: boolean;
   /** Preserved original layers for collision display */
   layers?: {
-    broker?: { value: T; updatedAt: string; confidence: number };
-    platform?: { value: T; updatedAt: string; confidence: number };
+    broker?: { value: T; updatedAt: string; confidence: number; source?: string };
+    platform?: { value: T; updatedAt: string; confidence: number; source?: string };
     user?: { value: T; updatedAt: string; confidence: number };
   };
+}
+
+/**
+ * Compute alert level for a LayeredValue field.
+ *
+ * Rules:
+ * - `block`: Identity input missing, OR confidence < 0.4 on a high-sensitivity field
+ * - `warn`: Confidence 0.4–0.7, OR broker/platform divergence > 15%
+ * - `info`: Confidence > 0.7 but user has never reviewed
+ * - `none`: User has explicitly edited, OR confidence > 0.9 and user has viewed
+ */
+export function computeAlertLevel<T>(
+  lv: LayeredValue<T>,
+  opts?: { isIdentity?: boolean; highSensitivity?: boolean }
+): AlertLevel {
+  const isIdentity = opts?.isIdentity ?? false;
+  const highSensitivity = opts?.highSensitivity ?? false;
+
+  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
+
+  if (isIdentity && (lv.value === null || lv.value === undefined || lv.value === '')) return 'block';
+  if (highSensitivity && lv.confidence < 0.4) return 'block';
+
+  if (lv.confidence >= 0.9 && lv.userReviewed) return 'none';
+
+  const broker = lv.layers?.broker;
+  const platform = lv.layers?.platform;
+  if (broker && platform && typeof broker.value === 'number' && typeof platform.value === 'number') {
+    const denom = platform.value || 1;
+    const divergence = Math.abs((broker.value - platform.value) / denom);
+    if (divergence > 0.15) return 'warn';
+  }
+
+  if (lv.confidence < 0.7) return 'warn';
+
+  if (!lv.userReviewed) return 'info';
+
+  return 'none';
 }
 
 /** Helper: create a simple layered value (used during hydration) */
@@ -46,14 +94,22 @@ export function layered<T>(
   source: DataSource = 'broker',
   confidence: number = 0.5
 ): LayeredValue<T> {
-  return { value, source, updatedAt: new Date().toISOString(), confidence };
+  return {
+    value,
+    source,
+    resolvedFrom: (source === 'agent' || source === 'computed') ? 'platform' : source as 'broker' | 'platform' | 'user',
+    updatedAt: new Date().toISOString(),
+    confidence,
+    alertLevel: 'none',
+    userReviewed: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Deal identity & classification
 // ---------------------------------------------------------------------------
 
-export type DealMode = 'existing' | 'development';
+export type DealMode = 'existing' | 'development' | 'redevelopment';
 export type DealStage =
   | 'lead'
   | 'screening'
@@ -451,6 +507,98 @@ export interface RiskContext {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Edit Log — audit trail for every assumption change
+// ---------------------------------------------------------------------------
+
+export interface EditLogEntry {
+  path: string;
+  oldValue: unknown;
+  newValue: unknown;
+  timestamp: string;
+  actor: 'user' | 'agent' | 'platform';
+  actorId?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Redevelopment Context — delta layer for redev deals
+// ---------------------------------------------------------------------------
+
+export interface RedevelopmentDelta {
+  id: string;
+  type: 'unit_reconfig' | 'amenity_add' | 'envelope_mod' | 'demo' | 'systems_upgrade';
+  description: string;
+  costEstimate: number;
+  timelineMonths: number;
+  impactOnUnits: number;
+  impactOnRent: number;
+}
+
+export interface RedevelopmentContext {
+  deltas: RedevelopmentDelta[];
+  demoScope: 'none' | 'partial' | 'full';
+  existingNOI: LayeredValue<number>;
+  projectedNOI: LayeredValue<number>;
+  nonConformingReview: boolean;
+  varianceRequired: boolean;
+  varianceNotes: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Input Field Metadata — registry mapping field paths to their taxonomy
+// ---------------------------------------------------------------------------
+
+export interface InputFieldMeta {
+  path: string;
+  label: string;
+  inputClass: InputClass;
+  highSensitivity: boolean;
+  appliesTo: Array<'existing' | 'development' | 'redevelopment'>;
+  category: 'identity' | 'market' | 'cost' | 'capital' | 'exit' | 'site' | 'zoning';
+}
+
+export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
+  { path: 'identity.name', label: 'Deal Name', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.address', label: 'Address', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.mode', label: 'Deal Type', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.stage', label: 'Deal Stage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+
+  { path: 'financial.assumptions.rentGrowth', label: 'Rent Growth', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'financial.assumptions.expenseGrowth', label: 'Expense Growth', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'cost' },
+  { path: 'financial.assumptions.vacancy', label: 'Vacancy Rate', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'financial.assumptions.exitCapRate', label: 'Exit Cap Rate', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'exit' },
+  { path: 'financial.assumptions.holdPeriod', label: 'Hold Period', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'exit' },
+  { path: 'financial.assumptions.capexPerUnit', label: 'CapEx per Unit', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'redevelopment'], category: 'cost' },
+  { path: 'financial.assumptions.managementFee', label: 'Management Fee', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'cost' },
+
+  { path: 'site.acreage', label: 'Site Acreage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'site' },
+  { path: 'zoning.maxDensity', label: 'Max Density', inputClass: 'scope', highSensitivity: true, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+  { path: 'zoning.maxHeight', label: 'Max Height', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+  { path: 'zoning.maxFAR', label: 'Max FAR', inputClass: 'scope', highSensitivity: true, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+  { path: 'zoning.parkingRatio', label: 'Parking Ratio', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+
+  { path: 'existingProperty.askingPrice', label: 'Asking Price', inputClass: 'identity', highSensitivity: true, appliesTo: ['existing'], category: 'cost' },
+  { path: 'existingProperty.totalUnits', label: 'Total Units', inputClass: 'identity', highSensitivity: true, appliesTo: ['existing'], category: 'identity' },
+  { path: 'existingProperty.occupancy', label: 'Occupancy', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'market' },
+  { path: 'existingProperty.currentNOI', label: 'Current NOI', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'cost' },
+];
+
+export function getFieldMeta(path: string): InputFieldMeta | undefined {
+  return INPUT_FIELD_REGISTRY.find(f => f.path === path);
+}
+
+export function getFieldsForDealType(dealType: 'existing' | 'development' | 'redevelopment'): InputFieldMeta[] {
+  return INPUT_FIELD_REGISTRY.filter(f => f.appliesTo.includes(dealType));
+}
+
+export function getIdentityFields(dealType: 'existing' | 'development' | 'redevelopment'): InputFieldMeta[] {
+  return INPUT_FIELD_REGISTRY.filter(f => f.inputClass === 'identity' && f.appliesTo.includes(dealType));
+}
+
+export function getHighSensitivityFields(dealType: 'existing' | 'development' | 'redevelopment'): InputFieldMeta[] {
+  return INPUT_FIELD_REGISTRY.filter(f => f.highSensitivity && f.appliesTo.includes(dealType));
+}
+
 // ============================================================================
 // THE DEAL CONTEXT — the single object in dealStore
 // ============================================================================
@@ -459,7 +607,7 @@ export interface DealContext {
   /** Deal identity — always present */
   identity: DealIdentity;
 
-  /** Project type for deal-type-driven visibility and configuration */
+  /** Project type — discriminated union key for deal-type-driven visibility */
   projectType: 'existing' | 'development' | 'redevelopment';
 
   /** Product type for strategy and financial model adaptation */
@@ -528,6 +676,11 @@ export interface DealContext {
   /** Existing property data (existing mode only) */
   existingProperty: ExistingPropertyContext | null;
 
+  // ─── MODE-SPECIFIC: REDEVELOPMENT ──────────────────────────
+
+  /** Redevelopment context — delta layer for redev deals */
+  redevelopment: RedevelopmentContext | null;
+
   // ─── RESOLVED STATE (computed from mode + selection) ──────
 
   /**
@@ -581,6 +734,9 @@ export interface DealContext {
     enteredAt: string;
     exitedAt: string | null;
   }>;
+
+  /** Audit trail — every assumption edit is recorded */
+  editLog: EditLogEntry[];
 }
 
 // ============================================================================

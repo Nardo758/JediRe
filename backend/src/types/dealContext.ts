@@ -4,7 +4,103 @@
  * Single source of truth consumed by Zoning, Supply, and Cashflow agents.
  */
 
-// ── Core DealContext Interface ──────────────────────────────────
+// ── Shared Layer Types (aligned with frontend dealContext.types.ts) ──
+
+export type DataSourceLayer = 'broker' | 'platform' | 'user' | 'agent' | 'computed';
+export type AlertLevel = 'none' | 'info' | 'warn' | 'block';
+export type InputClass = 'identity' | 'override' | 'scope';
+export type ProjectType = 'existing' | 'development' | 'redevelopment';
+
+export interface LayeredValue<T> {
+  value: T;
+  source: DataSourceLayer;
+  resolvedFrom: 'broker' | 'platform' | 'user';
+  updatedAt: string;
+  confidence: number;
+  alertLevel: AlertLevel;
+  userReviewed: boolean;
+  layers?: {
+    broker?: { value: T; updatedAt: string; confidence: number; source?: string };
+    platform?: { value: T; updatedAt: string; confidence: number; source?: string };
+    user?: { value: T; updatedAt: string; confidence: number };
+  };
+}
+
+export interface EditLogEntry {
+  path: string;
+  oldValue: unknown;
+  newValue: unknown;
+  timestamp: string;
+  actor: 'user' | 'agent' | 'platform';
+  actorId?: string;
+}
+
+export interface RedevelopmentDelta {
+  id: string;
+  type: 'unit_reconfig' | 'amenity_add' | 'envelope_mod' | 'demo' | 'systems_upgrade';
+  description: string;
+  costEstimate: number;
+  timelineMonths: number;
+  impactOnUnits: number;
+  impactOnRent: number;
+}
+
+export interface RedevelopmentContext {
+  deltas: RedevelopmentDelta[];
+  demoScope: 'none' | 'partial' | 'full';
+  existingNOI: LayeredValue<number>;
+  projectedNOI: LayeredValue<number>;
+  nonConformingReview: boolean;
+  varianceRequired: boolean;
+  varianceNotes: string | null;
+}
+
+export interface InputFieldMeta {
+  path: string;
+  label: string;
+  inputClass: InputClass;
+  highSensitivity: boolean;
+  appliesTo: ProjectType[];
+  category: 'identity' | 'market' | 'cost' | 'capital' | 'exit' | 'site' | 'zoning';
+}
+
+export function computeAlertLevel<T>(
+  lv: LayeredValue<T>,
+  opts?: { isIdentity?: boolean; highSensitivity?: boolean }
+): AlertLevel {
+  const isIdentity = opts?.isIdentity ?? false;
+  const highSensitivity = opts?.highSensitivity ?? false;
+
+  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
+  if (isIdentity && (lv.value === null || lv.value === undefined || lv.value === '')) return 'block';
+  if (highSensitivity && lv.confidence < 0.4) return 'block';
+  if (lv.confidence >= 0.9 && lv.userReviewed) return 'none';
+
+  const broker = lv.layers?.broker;
+  const platform = lv.layers?.platform;
+  if (broker && platform && typeof broker.value === 'number' && typeof platform.value === 'number') {
+    const denom = (platform.value as number) || 1;
+    const divergence = Math.abs(((broker.value as number) - (platform.value as number)) / denom);
+    if (divergence > 0.15) return 'warn';
+  }
+
+  if (lv.confidence < 0.7) return 'warn';
+  if (!lv.userReviewed) return 'info';
+  return 'none';
+}
+
+export function resolveProjectType(raw: string | null | undefined): ProjectType {
+  if (!raw) return 'existing';
+  const n = raw.toLowerCase().trim();
+  if (!n) return 'existing';
+  const dev = ['development', 'ground_up', 'ground-up', 'new_construction', 'new construction', 'new_development', 'new-development', 'land', 'vacant'];
+  const redev = ['redevelopment', 'redev', 'rehab', 'repositioning', 'adaptive_reuse', 'adaptive-reuse', 'gut_rehab', 'gut-rehab', 'tear-down', 'teardown', 'tear_down', 'conversion', 'partial_demo', 'partial-demo'];
+  if (dev.includes(n)) return 'development';
+  if (redev.includes(n)) return 'redevelopment';
+  return 'existing';
+}
+
+// ── Core DealContext Interface (Research Agent output) ──────────
 
 export interface DealContext {
   // ── Identity ──
