@@ -15,9 +15,14 @@ function makeLV<T>(overrides: Partial<LayeredValue<T>> & { value: T }): LayeredV
 }
 
 describe('computeAlertLevel', () => {
-  it('returns none for user-sourced values', () => {
+  it('returns none for user-sourced values with non-empty value', () => {
     const lv = makeLV({ value: 100, source: 'user', resolvedFrom: 'user', confidence: 0.1 });
     expect(computeAlertLevel(lv)).toBe('none');
+  });
+
+  it('returns block for user-sourced identity fields that are empty', () => {
+    const lv = makeLV({ value: '', source: 'user', resolvedFrom: 'user', confidence: 1.0 });
+    expect(computeAlertLevel(lv, { isIdentity: true })).toBe('block');
   });
 
   it('returns block for missing identity fields', () => {
@@ -26,7 +31,7 @@ describe('computeAlertLevel', () => {
   });
 
   it('returns block for null identity fields', () => {
-    const lv = makeLV({ value: null as any, confidence: 0.9 });
+    const lv = makeLV<string | null>({ value: null, confidence: 0.9 });
     expect(computeAlertLevel(lv, { isIdentity: true })).toBe('block');
   });
 

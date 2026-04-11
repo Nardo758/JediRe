@@ -71,9 +71,9 @@ export function computeAlertLevel<T>(
   const isIdentity = opts?.isIdentity ?? false;
   const highSensitivity = opts?.highSensitivity ?? false;
 
-  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
   if (isIdentity && (lv.value === null || lv.value === undefined || lv.value === '')) return 'block';
   if (highSensitivity && lv.confidence < 0.4) return 'block';
+  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
   if (lv.confidence >= 0.9 && lv.userReviewed) return 'none';
 
   const broker = lv.layers?.broker;
@@ -373,30 +373,102 @@ export interface ChatSession {
 
 // ── Deal Capsule Context (aligned with frontend DealContext union) ───────
 
-interface DealCapsuleBase {
-  identity: {
+interface DealCapsuleIdentity {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  county: string;
+  mode: 'existing' | 'development' | 'redevelopment';
+  stage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DealCapsuleSite {
+  acreage: LayeredValue<number>;
+  buildableAcreage: LayeredValue<number>;
+}
+
+interface DealCapsuleZoning {
+  maxDensity: LayeredValue<number>;
+  maxHeight: LayeredValue<number>;
+  maxFAR: LayeredValue<number>;
+  parkingRatio: LayeredValue<number>;
+}
+
+interface DealCapsuleMarket {
+  submarketName: string;
+  population: LayeredValue<number>;
+  medianIncome: LayeredValue<number>;
+  employmentGrowth: LayeredValue<number>;
+}
+
+interface DealCapsuleFinancial {
+  assumptions: {
+    rentGrowth: LayeredValue<number>;
+    expenseGrowth: LayeredValue<number>;
+    vacancy: LayeredValue<number>;
+    exitCapRate: LayeredValue<number>;
+    holdPeriod: LayeredValue<number>;
+    capexPerUnit: LayeredValue<number>;
+    managementFee: LayeredValue<number>;
+  };
+}
+
+interface DealCapsuleCapital {
+  totalCapital: LayeredValue<number>;
+  debt: Array<{
     id: string;
     name: string;
-    address: string;
-    city: string;
-    state: string;
-    zip: string;
-    county: string;
-    mode: 'existing' | 'development' | 'redevelopment';
-    stage: string;
+    amount: number;
+    ltv: number;
+    rate: LayeredValue<number>;
+    termYears: number;
+    amortizationYears: number;
+    ioPeriodMonths: number;
+    lender?: string;
+  }>;
+  equity: Array<{
+    id: string;
+    name: string;
+    amount: number;
+    preferredReturn: number;
+    promoteSplits: Array<{ above: number; gpShare: number; lpShare: number }>;
+  }>;
+  metrics?: {
+    totalLTV: number;
+    blendedRate: number;
+    dscr: number;
+    debtYield: number;
   };
+}
+
+interface DealCapsuleExistingProperty {
+  askingPrice: LayeredValue<number>;
+  totalUnits: LayeredValue<number>;
+  occupancy: LayeredValue<number>;
+  currentNOI: LayeredValue<number>;
+  yearBuilt: number;
+  avgRentPerUnit: LayeredValue<number>;
+}
+
+interface DealCapsuleBase {
+  identity: DealCapsuleIdentity;
   productType: string;
-  site: Record<string, unknown>;
-  zoning: Record<string, unknown>;
-  market: Record<string, unknown>;
-  financial: Record<string, unknown>;
-  capital: Record<string, unknown>;
+  site: DealCapsuleSite;
+  zoning: DealCapsuleZoning;
+  market: DealCapsuleMarket;
+  financial: DealCapsuleFinancial;
+  capital: DealCapsuleCapital;
   editLog: EditLogEntry[];
 }
 
 export interface ExistingDealCapsule extends DealCapsuleBase {
   projectType: 'existing';
-  existingProperty: Record<string, unknown> | null;
+  existingProperty: DealCapsuleExistingProperty | null;
   redevelopment: null;
 }
 
@@ -408,7 +480,7 @@ export interface DevelopmentDealCapsule extends DealCapsuleBase {
 
 export interface RedevelopmentDealCapsule extends DealCapsuleBase {
   projectType: 'redevelopment';
-  existingProperty: Record<string, unknown> | null;
+  existingProperty: DealCapsuleExistingProperty | null;
   redevelopment: RedevelopmentContext | null;
 }
 

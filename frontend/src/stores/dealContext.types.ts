@@ -66,10 +66,10 @@ export function computeAlertLevel<T>(
   const isIdentity = opts?.isIdentity ?? false;
   const highSensitivity = opts?.highSensitivity ?? false;
 
-  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
-
   if (isIdentity && (lv.value === null || lv.value === undefined || lv.value === '')) return 'block';
   if (highSensitivity && lv.confidence < 0.4) return 'block';
+
+  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
 
   if (lv.confidence >= 0.9 && lv.userReviewed) return 'none';
 
@@ -590,14 +590,16 @@ export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
   { path: 'existingProperty.yearBuilt', label: 'Year Built', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing'], category: 'identity' },
   { path: 'existingProperty.avgRentPerUnit', label: 'Avg Rent per Unit', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'market' },
 
-  { path: 'market.submarket', label: 'Submarket', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
-  { path: 'market.population', label: 'Population', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
-  { path: 'market.medianIncome', label: 'Median Income', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
-  { path: 'market.employmentGrowth', label: 'Employment Growth', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.submarketName', label: 'Submarket', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.avgRent', label: 'Market Avg Rent', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.avgOccupancy', label: 'Market Avg Occupancy', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.rentGrowthYoY', label: 'Rent Growth YoY', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.absorptionRate', label: 'Absorption Rate', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.medianHHI', label: 'Median Household Income', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.popGrowthPct', label: 'Population Growth %', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.employmentGrowthPct', label: 'Employment Growth %', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
 
-  { path: 'capital.targetLeverage', label: 'Target Leverage', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
-  { path: 'capital.interestRate', label: 'Interest Rate', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
-  { path: 'capital.loanTerm', label: 'Loan Term', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
+  { path: 'capital.totalCapital', label: 'Total Capital', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
 
   { path: 'redevelopment.demoScope', label: 'Demo Scope', inputClass: 'scope', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },
   { path: 'redevelopment.existingNOI', label: 'Existing NOI (Redev)', inputClass: 'override', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },
