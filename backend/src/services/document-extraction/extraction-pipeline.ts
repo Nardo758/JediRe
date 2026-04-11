@@ -11,6 +11,7 @@ import { parseTaxBill } from './parsers/tax-bill-parser';
 import { parseOtherIncome } from './parsers/other-income-parser';
 import { routeExtractionResult } from './data-router';
 import { DocumentType, ExtractionResult, PipelineResult } from './types';
+import { getPool } from '../../database/connection';
 
 function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) => ExtractionResult) | null {
   switch (docType) {
@@ -89,41 +90,57 @@ export async function processDealDocuments(
   dealId: string,
   uploadedBy: string
 ): Promise<PipelineResult> {
-  const uploadsDir = path.resolve(process.cwd(), 'uploads', 'deal-documents');
+  const pool = getPool();
   const results: PipelineResult['results'] = [];
   const allAlerts: string[] = [];
 
-  if (!fs.existsSync(uploadsDir)) {
+  const docFiles = await pool.query(
+    `SELECT id, filename, original_filename, file_path FROM deal_document_files
+     WHERE deal_id = $1 ORDER BY created_at`,
+    [dealId]
+  );
+
+  if (docFiles.rows.length === 0) {
     return {
       dealId,
       documentsProcessed: 0,
       results: [],
       capsuleUpdated: false,
       libraryUpdated: false,
-      alerts: ['No uploads directory found'],
+      alerts: ['No documents found for this deal'],
     };
   }
 
-  const files = fs.readdirSync(uploadsDir);
-  if (files.length === 0) {
-    return {
-      dealId,
-      documentsProcessed: 0,
-      results: [],
-      capsuleUpdated: false,
-      libraryUpdated: false,
-      alerts: ['No documents found in uploads directory'],
-    };
-  }
+  for (const doc of docFiles.rows) {
+    const filePath = doc.file_path;
 
-  for (const file of files) {
-    const filePath = path.join(uploadsDir, file);
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) continue;
+    if (!fs.existsSync(filePath)) {
+      results.push({
+        filename: doc.original_filename,
+        documentType: 'UNKNOWN',
+        success: false,
+        error: 'File not found on disk',
+      });
+      continue;
+    }
 
-    const result = await processDocument(filePath, file, dealId, uploadedBy);
+    const result = await processDocument(filePath, doc.original_filename, dealId, uploadedBy);
+
+    await pool.query(
+      `UPDATE deal_document_files SET
+         document_type = $2, extraction_status = $3,
+         extraction_result = $4, updated_at = NOW()
+       WHERE id = $1`,
+      [doc.id, result.documentType, result.success ? 'completed' : 'failed', JSON.stringify({
+        success: result.success,
+        error: result.error,
+        rowsInserted: result.rowsInserted,
+        alerts: result.alerts,
+      })]
+    );
+
     results.push({
-      filename: file,
+      filename: doc.original_filename,
       documentType: result.documentType,
       success: result.success,
       error: result.error,

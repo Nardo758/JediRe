@@ -76,7 +76,15 @@ export async function routeExtractionResult(
     alerts.push(`Data Library update failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
-  return { rowsInserted, capsuleUpdated: true, libraryUpdated, alerts };
+  let capsuleUpdated = false;
+  try {
+    await updateDealCapsule(pool, ctx.dealId, result, alerts);
+    capsuleUpdated = true;
+  } catch (err) {
+    alerts.push(`Capsule update failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
+
+  return { rowsInserted, capsuleUpdated, libraryUpdated, alerts };
 }
 
 async function routeT12(pool: any, data: T12Data, propertyId: string, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
@@ -387,5 +395,154 @@ async function upsertDataLibraryAsset(pool: any, dealId: string, result: Extract
         ]
       );
     }
+  }
+}
+
+async function updateDealCapsule(pool: any, dealId: string, result: ExtractionResult, alerts: string[]): Promise<void> {
+  const capsulePayload: Record<string, any> = {};
+  const now = new Date().toISOString();
+
+  switch (result.documentType) {
+    case 'T12': {
+      const t12 = result.data as T12Data;
+      capsulePayload.extraction_t12 = {
+        source: 'platform',
+        updatedAt: now,
+        t12Revenue: t12.summary.t12Revenue,
+        t12OpEx: t12.summary.t12OpEx,
+        t12NOI: t12.summary.t12NOI,
+        expenseRatio: t12.summary.expenseRatio,
+        periodStart: t12.summary.periodStart,
+        periodEnd: t12.summary.periodEnd,
+      };
+
+      const brokerCheck = await pool.query(
+        `SELECT deal_data->'financials'->'noi' as broker_noi,
+                deal_data->'financials'->'revenue' as broker_revenue
+         FROM deals WHERE id = $1`,
+        [dealId]
+      );
+      if (brokerCheck.rows.length > 0) {
+        const row = brokerCheck.rows[0];
+        const brokerNoi = parseFloat(row.broker_noi) || null;
+        const brokerRevenue = parseFloat(row.broker_revenue) || null;
+
+        if (brokerNoi && t12.summary.t12NOI > 0) {
+          const noiVariance = Math.abs(t12.summary.t12NOI - brokerNoi) / brokerNoi;
+          if (noiVariance > 0.15) {
+            alerts.push(`⚠ T12 NOI ($${Math.round(t12.summary.t12NOI).toLocaleString()}) diverges ${(noiVariance * 100).toFixed(1)}% from broker-stated NOI ($${Math.round(brokerNoi).toLocaleString()})`);
+            capsulePayload.extraction_variance_noi = {
+              t12Actual: t12.summary.t12NOI,
+              brokerStated: brokerNoi,
+              variancePct: noiVariance,
+              flaggedAt: now,
+            };
+          }
+        }
+
+        if (brokerRevenue && t12.summary.t12Revenue > 0) {
+          const revenueVariance = Math.abs(t12.summary.t12Revenue - brokerRevenue) / brokerRevenue;
+          if (revenueVariance > 0.15) {
+            alerts.push(`⚠ T12 Revenue ($${Math.round(t12.summary.t12Revenue).toLocaleString()}) diverges ${(revenueVariance * 100).toFixed(1)}% from broker-stated Revenue ($${Math.round(brokerRevenue).toLocaleString()})`);
+          }
+        }
+      }
+      break;
+    }
+    case 'RENT_ROLL': {
+      const rr = result.data as RentRollData;
+      capsulePayload.extraction_rent_roll = {
+        source: 'platform',
+        updatedAt: now,
+        totalUnits: rr.summary.totalUnits,
+        occupancyRate: rr.summary.occupancyRate,
+        avgMarketRent: rr.summary.avgMarketRent,
+        avgEffectiveRent: rr.summary.avgEffectiveRent,
+        lossToLeasePct: rr.summary.lossToLeasePct,
+        floorPlanCount: Object.keys(rr.summary.floorPlanMix).length,
+      };
+      break;
+    }
+    case 'AGED_RECEIVABLES': {
+      const ar = result.data as AgedReceivablesData;
+      capsulePayload.extraction_aged_receivables = {
+        source: 'platform',
+        updatedAt: now,
+        totalAR: ar.summary.totalAR,
+        seriousDelinquencyRate: ar.summary.seriousDelinquencyRate,
+        unitsDelinquent: ar.summary.unitsDelinquent,
+      };
+      if (ar.summary.seriousDelinquencyRate > 0.10) {
+        alerts.push(`⚠ Serious delinquency rate ${(ar.summary.seriousDelinquencyRate * 100).toFixed(1)}% exceeds 10% threshold`);
+      }
+      break;
+    }
+    case 'BOX_SCORE': {
+      const bs = result.data as BoxScoreData;
+      capsulePayload.extraction_box_score = {
+        source: 'platform',
+        updatedAt: now,
+        occupancyPct: bs.summary.occupancyPct,
+        leasedPct: bs.summary.leasedPct,
+        netAbsorption: bs.summary.netAbsorption,
+        overallConversionRate: bs.summary.overallConversionRate,
+      };
+      break;
+    }
+    case 'CONCESSION_BURNOFF': {
+      const cb = result.data as ConcessionBurnoffData;
+      capsulePayload.extraction_concession_burnoff = {
+        source: 'platform',
+        updatedAt: now,
+        totalActiveConcessions: cb.summary.totalActiveConcessions,
+        totalRemainingLiability: cb.summary.totalRemainingLiability,
+        avgConcessionDepth: cb.summary.avgConcessionDepth,
+      };
+      break;
+    }
+    case 'T30_LTO': {
+      const lto = result.data as LTOData;
+      capsulePayload.extraction_lto = {
+        source: 'platform',
+        updatedAt: now,
+        totalTransactions: lto.summary.totalTransactions,
+        newLeases: lto.summary.newLeases,
+        renewals: lto.summary.renewals,
+        avgTradeOutGainPct: lto.summary.avgTradeOutGainPct,
+      };
+      break;
+    }
+    case 'TAX_BILL': {
+      const tax = result.data as TaxBillData;
+      capsulePayload.extraction_tax_bill = {
+        source: 'platform',
+        updatedAt: now,
+        totalAnnualTax: tax.totalAnnualTax,
+        assessedValue: tax.assessedValue,
+        taxYear: tax.taxYear,
+        appealStatus: tax.appealStatus,
+      };
+      break;
+    }
+    case 'OTHER_INCOME': {
+      const oi = result.data as OtherIncomeData;
+      capsulePayload.extraction_other_income = {
+        source: 'platform',
+        updatedAt: now,
+        totalAnnual: oi.summary.totalAnnual,
+        categoryCount: oi.summary.categoryCount,
+      };
+      break;
+    }
+  }
+
+  if (Object.keys(capsulePayload).length > 0) {
+    await pool.query(
+      `UPDATE deals SET
+         deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [dealId, JSON.stringify(capsulePayload)]
+    );
   }
 }

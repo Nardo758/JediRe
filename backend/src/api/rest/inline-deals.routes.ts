@@ -999,6 +999,21 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
     const dealId = req.body?.dealId || req.query?.dealId;
 
     if (dealId) {
+      const ownerResult = await pool.query(
+        'SELECT id FROM deals WHERE id = $1 AND (created_by = $2 OR $2 IS NULL)',
+        [dealId, req.user!.userId]
+      );
+      if (ownerResult.rows.length === 0) {
+        return res.json({ success: true, data: fileMeta });
+      }
+
+      await pool.query(
+        `INSERT INTO deal_document_files (deal_id, filename, original_filename, file_path, uploaded_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT DO NOTHING`,
+        [dealId, path.basename(req.file.path), req.file.originalname, req.file.path, req.user!.userId]
+      );
+
       processDocument(req.file.path, req.file.originalname, dealId as string, req.user!.userId)
         .then(result => {
           console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''})`);
