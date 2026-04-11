@@ -7,6 +7,7 @@ import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
+import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
 
 const router = Router();
 const pool = getPool();
@@ -995,10 +996,91 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
       uploadedBy: req.user!.userId,
     };
 
+    const dealId = req.body?.dealId || req.query?.dealId;
+
+    if (dealId) {
+      processDocument(req.file.path, req.file.originalname, dealId as string, req.user!.userId)
+        .then(result => {
+          console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''})`);
+          if (result.alerts.length > 0) {
+            console.log(`[ExtractionPipeline] Alerts: ${result.alerts.join('; ')}`);
+          }
+        })
+        .catch(err => {
+          console.error(`[ExtractionPipeline] Error processing ${req.file!.originalname}:`, err);
+        });
+    }
+
     res.json({ success: true, data: fileMeta });
   } catch (error: any) {
     console.error('Error uploading deal document:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to upload document' });
+  }
+});
+
+router.post('/:dealId/reprocess-documents', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND (created_by = $2 OR $2 IS NULL)',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const result = await processDealDocuments(dealId, req.user!.userId);
+
+    res.json({
+      success: true,
+      data: {
+        dealId: result.dealId,
+        documentsProcessed: result.documentsProcessed,
+        results: result.results,
+        capsuleUpdated: result.capsuleUpdated,
+        libraryUpdated: result.libraryUpdated,
+        alerts: result.alerts,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error reprocessing deal documents:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to reprocess documents' });
+  }
+});
+
+router.post('/:dealId/extract-document', requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND (created_by = $2 OR $2 IS NULL)',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const result = await processDocument(req.file.path, req.file.originalname, dealId, req.user!.userId);
+
+    res.json({
+      success: true,
+      data: {
+        filename: req.file.originalname,
+        documentType: result.documentType,
+        extractionSuccess: result.success,
+        rowsInserted: result.rowsInserted,
+        alerts: result.alerts,
+        error: result.error,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error extracting document:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to extract document' });
   }
 });
 
