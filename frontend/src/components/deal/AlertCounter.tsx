@@ -30,7 +30,9 @@ function isLayeredValue(v: unknown): v is LayeredValue<unknown> {
   return v !== null && typeof v === 'object' && 'value' in v && 'alertLevel' in v;
 }
 
-export function useAlertScan(): { alerts: AlertItem[]; blockCount: number; warnCount: number; infoCount: number; total: number } {
+const REQUIRED_IDENTITY_PATHS = ['identity.name', 'identity.address', 'identity.city', 'identity.state', 'identity.mode', 'identity.sponsor', 'identity.capitalIntent'];
+
+export function useAlertScan(): { alerts: AlertItem[]; blockCount: number; warnCount: number; infoCount: number; total: number; hasBlockingAlerts: boolean } {
   const state = useDealStore();
   const dealType = useDealType();
 
@@ -42,6 +44,11 @@ export function useAlertScan(): { alerts: AlertItem[]; blockCount: number; warnC
       const val = getNestedValue(state as unknown as Record<string, unknown>, field.path);
       if (isLayeredValue(val) && val.alertLevel !== 'none') {
         alerts.push({ field, level: val.alertLevel as AlertLevel });
+      } else if (field.inputClass === 'identity' && REQUIRED_IDENTITY_PATHS.includes(field.path)) {
+        const isEmpty = val === null || val === undefined || val === '' || val === 0;
+        if (isEmpty) {
+          alerts.push({ field, level: 'block' });
+        }
       }
     }
 
@@ -49,7 +56,7 @@ export function useAlertScan(): { alerts: AlertItem[]; blockCount: number; warnC
     const warnCount = alerts.filter(a => a.level === 'warn').length;
     const infoCount = alerts.filter(a => a.level === 'info').length;
 
-    return { alerts, blockCount, warnCount, infoCount, total: alerts.length };
+    return { alerts, blockCount, warnCount, infoCount, total: alerts.length, hasBlockingAlerts: blockCount > 0 };
   }, [state, dealType]);
 }
 
@@ -58,7 +65,7 @@ export function useIdentityGate(): { complete: boolean; missing: string[] } {
   const dealType = useDealType();
 
   return useMemo(() => {
-    const requiredIdentity = ['identity.name', 'identity.address', 'identity.city', 'identity.state', 'identity.mode'];
+    const requiredIdentity = ['identity.name', 'identity.address', 'identity.city', 'identity.state', 'identity.mode', 'identity.sponsor', 'identity.capitalIntent'];
     const missing: string[] = [];
     for (const path of requiredIdentity) {
       const val = getNestedValue(state as unknown as Record<string, unknown>, path);

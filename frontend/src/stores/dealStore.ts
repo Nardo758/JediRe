@@ -256,6 +256,7 @@ interface DealStoreActions {
   // ─── FIELD REVIEW & IDENTITY GATE ────────────────────────
   markFieldReviewed: (path: string) => void;
   isIdentityComplete: () => boolean;
+  hasBlockingAlerts: () => boolean;
 
   // ─── COMPUTED SELECTORS ───────────────────────────────────
   /** Get the currently selected development path object */
@@ -296,6 +297,8 @@ const INITIAL_CONTEXT: DealContext = {
     coordinates: { lat: 0, lng: 0 },
     mode: 'existing',
     stage: 'lead',
+    sponsor: '',
+    capitalIntent: '',
     createdAt: '',
     updatedAt: '',
   },
@@ -1442,11 +1445,32 @@ export const useDealStore = create<DealStore>()(
 
     isIdentityComplete: () => {
       const { identity } = get();
-      const requiredFields: (keyof typeof identity)[] = ['name', 'address', 'city', 'state', 'mode'];
+      const requiredFields: (keyof typeof identity)[] = ['name', 'address', 'city', 'state', 'mode', 'sponsor', 'capitalIntent'];
       return requiredFields.every(f => {
         const val = identity[f];
         return val !== null && val !== undefined && val !== '' && val !== 0;
       });
+    },
+
+    hasBlockingAlerts: () => {
+      const state = get();
+      if (!state.isIdentityComplete()) return true;
+
+      const dealType = state.identity.mode === 'development' ? 'development'
+        : state.identity.mode === 'redevelopment' ? 'redevelopment' : 'existing';
+      const fields = INPUT_FIELD_REGISTRY.filter(f => f.appliesTo.includes(dealType));
+      for (const field of fields) {
+        const segments = field.path.split('.');
+        let cur: unknown = state;
+        for (const seg of segments) {
+          if (cur === null || cur === undefined || typeof cur !== 'object') { cur = undefined; break; }
+          cur = (cur as Record<string, unknown>)[seg];
+        }
+        if (cur && typeof cur === 'object' && 'alertLevel' in cur && (cur as { alertLevel: string }).alertLevel === 'block') {
+          return true;
+        }
+      }
+      return false;
     },
 
     // ─── COMPUTED SELECTORS ─────────────────────────────────

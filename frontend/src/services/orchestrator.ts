@@ -514,9 +514,13 @@ class OrchestratorService {
   // Request analysis from specific agent (gated by identity completeness)
   async requestAnalysis(agentCode: AgentCode, dealId: string, analysisType: string): Promise<unknown> {
     const { useDealStore } = await import('../stores/dealStore');
-    const identityComplete = useDealStore.getState().isIdentityComplete();
+    const state = useDealStore.getState();
+    const identityComplete = state.isIdentityComplete();
     if (!identityComplete) {
-      throw new Error('IDENTITY_GATE: Deal identity is incomplete. Complete required fields (name, address, city, state, mode) before running agent analysis.');
+      throw new Error('IDENTITY_GATE: Deal identity is incomplete. Complete required fields (name, address, city, state, deal type, sponsor, capital intent) before running agent analysis.');
+    }
+    if (state.hasBlockingAlerts()) {
+      throw new Error('BLOCK_GATE: Blocking alerts must be resolved before running agent analysis. Check the alert counter for required inputs.');
     }
 
     const response = await agentBus.request(

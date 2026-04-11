@@ -144,6 +144,10 @@ export interface DealIdentity {
   /** Existing acquisition vs ground-up development */
   mode: DealMode;
   stage: DealStage;
+  /** Lead sponsor / operating partner */
+  sponsor: string;
+  /** Capital intent: core / value-add / opportunistic / development */
+  capitalIntent: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -580,6 +584,8 @@ export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
   { path: 'identity.coordinates', label: 'Coordinates', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.mode', label: 'Deal Type', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.stage', label: 'Deal Stage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.sponsor', label: 'Sponsor', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
+  { path: 'identity.capitalIntent', label: 'Capital Intent', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.createdAt', label: 'Created At', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
   { path: 'identity.updatedAt', label: 'Updated At', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'identity' },
 

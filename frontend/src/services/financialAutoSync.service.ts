@@ -123,12 +123,19 @@ export class FinancialAutoSyncService {
     const { id: designId, dealId } = design;
 
     try {
+      try {
+        const { useDealStore } = require('../stores/dealStore');
+        if (useDealStore.getState().hasBlockingAlerts()) {
+          console.warn('[FinancialAutoSync] ProForma generation blocked: unresolved blocking alerts');
+          return;
+        }
+      } catch { /* store not available in test context */ }
+
       const assumptions = this.assumptions.get(designId);
       if (!assumptions) {
         throw new Error(`No assumptions found for design ${designId}`);
       }
 
-      // Generate new pro forma
       const newProForma = generateProForma(design, assumptions, dealId);
 
       // Detect changes
