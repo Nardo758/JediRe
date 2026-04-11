@@ -6,6 +6,15 @@ import type { LayeredValue, AlertLevel } from '../../stores/dealContext.types';
 const MONO = BT.font.mono;
 const TOP_N = 5;
 
+const ZONING_FIELDS: { path: string; label: string; unit: string; formatMultiplier: number }[] = [
+  { path: 'zoning.maxDensity', label: 'Max Density', unit: 'u/ac', formatMultiplier: 1 },
+  { path: 'zoning.maxHeight', label: 'Max Height', unit: 'ft', formatMultiplier: 1 },
+  { path: 'zoning.maxFAR', label: 'Max FAR', unit: 'x', formatMultiplier: 1 },
+  { path: 'zoning.maxLotCoverage', label: 'Lot Coverage', unit: '%', formatMultiplier: 100 },
+  { path: 'zoning.parkingRatio', label: 'Parking Ratio', unit: '/unit', formatMultiplier: 1 },
+  { path: 'zoning.guestParkingRatio', label: 'Guest Parking', unit: '/unit', formatMultiplier: 1 },
+];
+
 const ALERT_COLORS: Record<AlertLevel, string> = {
   none: BT.text.muted,
   info: BT.text.cyan,
@@ -44,11 +53,15 @@ function AlertDot({ level }: { level: AlertLevel }) {
 }
 
 function formatFieldValue(value: number, path: string): string {
-  const meta = SENSITIVITY_COEFFICIENTS[path];
+  const meta = SENSITIVITY_COEFFICIENTS[path] ?? ZONING_FIELDS.find(z => z.path === path);
   if (!meta) return String(value);
   if (meta.unit === '%') return `${(value * meta.formatMultiplier).toFixed(2)}%`;
   if (meta.unit === '$') return `$${Math.round(value).toLocaleString()}`;
   if (meta.unit === 'yrs') return `${value} yrs`;
+  if (meta.unit === 'ft') return `${value} ft`;
+  if (meta.unit === 'u/ac') return `${value} u/ac`;
+  if (meta.unit === 'x') return `${value.toFixed(2)}x`;
+  if (meta.unit === '/unit') return `${value.toFixed(2)}/unit`;
   return String(value);
 }
 
@@ -56,7 +69,7 @@ function parseFieldInput(raw: string, path: string): number | null {
   const cleaned = raw.replace(/[%$,\s]/g, '');
   const n = parseFloat(cleaned);
   if (isNaN(n)) return null;
-  const meta = SENSITIVITY_COEFFICIENTS[path];
+  const meta = SENSITIVITY_COEFFICIENTS[path] ?? ZONING_FIELDS.find(z => z.path === path);
   if (!meta) return n;
   if (meta.formatMultiplier > 1) return n / meta.formatMultiplier;
   return n;
@@ -69,10 +82,19 @@ interface EditableFieldProps {
   onRevert: (path: string) => void;
 }
 
+const ZONING_FIELD_META: Record<string, { label: string; rank: number; unit: string; formatMultiplier: number }> = {};
+for (const zf of ZONING_FIELDS) {
+  ZONING_FIELD_META[zf.path] = { label: zf.label, rank: 100, unit: zf.unit, formatMultiplier: zf.formatMultiplier };
+}
+
+function getFieldDisplayMeta(path: string) {
+  return SENSITIVITY_COEFFICIENTS[path] ?? ZONING_FIELD_META[path] ?? null;
+}
+
 function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
-  const meta = SENSITIVITY_COEFFICIENTS[path];
+  const meta = getFieldDisplayMeta(path);
   if (!meta) return null;
 
   const hasNonUserFallback = !!(lv.layers?.platform || lv.layers?.broker);
@@ -322,6 +344,33 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
           }}
         >{zoning.varianceAssumed ? 'DISABLE' : 'ENABLE'}</button>
       </div>
+
+      {zoning.varianceAssumed && (
+        <>
+          <div style={{
+            padding: '3px 8px', background: `${BT.text.amber}08`,
+            borderBottom: `1px solid ${BT.text.amber}20`,
+          }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, letterSpacing: 0.5 }}>
+              HARD-GATE ZONING OVERRIDES
+            </span>
+          </div>
+          {ZONING_FIELDS.map(zf => {
+            const zoningKey = zf.path.split('.')[1];
+            const lv = (zoning as Record<string, unknown>)[zoningKey] as LayeredValue<number> | undefined;
+            if (!lv || typeof lv !== 'object' || !('value' in lv)) return null;
+            return (
+              <EditableField
+                key={zf.path}
+                path={zf.path}
+                lv={lv}
+                onUpdate={handleUpdate}
+                onRevert={revertAssumption}
+              />
+            );
+          })}
+        </>
+      )}
 
       {visiblePaths.map(path => {
         const lv = getLV(path);

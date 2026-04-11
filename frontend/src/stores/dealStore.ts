@@ -1173,6 +1173,9 @@ export const useDealStore = create<DealStore>()(
           ? {
               ...currentState.strategy,
               verdict: result.strategy.recommended ?? currentState.strategy.verdict,
+              scores: result.strategy.scores ?? currentState.strategy.scores,
+              arbitrageGap: result.strategy.arbitrageGap ?? currentState.strategy.arbitrageGap,
+              arbitrageAlert: result.strategy.arbitrageAlert ?? currentState.strategy.arbitrageAlert,
             }
           : currentState.strategy;
 

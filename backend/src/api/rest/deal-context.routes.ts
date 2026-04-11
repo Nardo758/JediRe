@@ -344,14 +344,41 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
       : clampedIRR >= 8 ? 'core-plus'
       : 'core';
 
+    const makeStrategyScore = (
+      id: string, name: string, type: string,
+      fit: number, gateResult: 'PASS' | 'FAIL'
+    ) => ({
+      strategy_id: id,
+      strategy_name: name,
+      strategy_type: type,
+      overall_score: fit * 100,
+      sub_scores: { returns: clampedIRR, risk: 100 - vacancy * 200, leverage: clampedEM * 20 },
+      gate_result: gateResult,
+      gate_failures: gateResult === 'FAIL' ? [`IRR below ${type} threshold`] : [],
+      soft_penalty: 0,
+      confidence: 0.75,
+      is_system_template: true,
+      roi_estimate: { irr: clampedIRR, em: clampedEM, coc: clampedCoC },
+    });
+
     const strategy = {
       recommended: strategyBucket,
-      evaluation: {
-        core: { fit: strategyBucket === 'core' ? 0.9 : 0.3, irr: clampedIRR, em: clampedEM },
-        'core-plus': { fit: strategyBucket === 'core-plus' ? 0.85 : 0.4, irr: clampedIRR, em: clampedEM },
-        'value-add': { fit: strategyBucket === 'value-add' ? 0.8 : 0.35, irr: clampedIRR, em: clampedEM },
-        'value-add-aggressive': { fit: strategyBucket === 'value-add-aggressive' ? 0.75 : 0.2, irr: clampedIRR, em: clampedEM },
-      },
+      scores: [
+        makeStrategyScore('core', 'Core', 'rental',
+          strategyBucket === 'core' ? 0.9 : 0.3,
+          clampedIRR >= 4 ? 'PASS' : 'FAIL'),
+        makeStrategyScore('core-plus', 'Core Plus', 'rental',
+          strategyBucket === 'core-plus' ? 0.85 : 0.4,
+          clampedIRR >= 6 ? 'PASS' : 'FAIL'),
+        makeStrategyScore('value-add', 'Value Add', 'rental',
+          strategyBucket === 'value-add' ? 0.8 : 0.35,
+          clampedIRR >= 10 ? 'PASS' : 'FAIL'),
+        makeStrategyScore('va-aggressive', 'Value Add Aggressive', 'rental',
+          strategyBucket === 'value-add-aggressive' ? 0.75 : 0.2,
+          clampedIRR >= 15 ? 'PASS' : 'FAIL'),
+      ],
+      arbitrageGap: clampedIRR - (exitCapRate * 100),
+      arbitrageAlert: clampedIRR - (exitCapRate * 100) > 5,
       recomputedAt: now,
     };
 
