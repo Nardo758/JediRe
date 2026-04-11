@@ -94,15 +94,21 @@ export function layered<T>(
   source: DataSource = 'broker',
   confidence: number = 0.5
 ): LayeredValue<T> {
-  return {
+  const resolvedFrom: 'broker' | 'platform' | 'user' =
+    source === 'user' ? 'user'
+    : source === 'broker' ? 'broker'
+    : 'platform';
+  const lv: LayeredValue<T> = {
     value,
     source,
-    resolvedFrom: (source === 'agent' || source === 'computed') ? 'platform' : source as 'broker' | 'platform' | 'user',
+    resolvedFrom,
     updatedAt: new Date().toISOString(),
     confidence,
     alertLevel: 'none',
-    userReviewed: false,
+    userReviewed: source === 'user',
   };
+  lv.alertLevel = computeAlertLevel(lv);
+  return lv;
 }
 
 // ---------------------------------------------------------------------------
