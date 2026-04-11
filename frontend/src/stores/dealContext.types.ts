@@ -578,10 +578,17 @@ export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
   { path: 'financial.assumptions.managementFee', label: 'Management Fee', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'cost' },
 
   { path: 'site.acreage', label: 'Site Acreage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'site' },
+  { path: 'site.buildableAcreage', label: 'Buildable Acreage', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'site' },
+  { path: 'site.floodZone', label: 'Flood Zone', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'site' },
+
+  { path: 'zoning.designation', label: 'Zoning Designation', inputClass: 'scope', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'zoning' },
   { path: 'zoning.maxDensity', label: 'Max Density', inputClass: 'scope', highSensitivity: true, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
   { path: 'zoning.maxHeight', label: 'Max Height', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
   { path: 'zoning.maxFAR', label: 'Max FAR', inputClass: 'scope', highSensitivity: true, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+  { path: 'zoning.maxLotCoverage', label: 'Max Lot Coverage', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+  { path: 'zoning.setbacks', label: 'Setbacks', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
   { path: 'zoning.parkingRatio', label: 'Parking Ratio', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
+  { path: 'zoning.guestParkingRatio', label: 'Guest Parking Ratio', inputClass: 'scope', highSensitivity: false, appliesTo: ['development', 'redevelopment'], category: 'zoning' },
 
   { path: 'existingProperty.askingPrice', label: 'Asking Price', inputClass: 'identity', highSensitivity: true, appliesTo: ['existing'], category: 'cost' },
   { path: 'existingProperty.totalUnits', label: 'Total Units', inputClass: 'identity', highSensitivity: true, appliesTo: ['existing'], category: 'identity' },
@@ -601,7 +608,11 @@ export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
   { path: 'market.popGrowthPct', label: 'Population Growth %', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
   { path: 'market.employmentGrowthPct', label: 'Employment Growth %', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
 
+  { path: 'supply.pipelineUnits', label: 'Pipeline Units', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+
   { path: 'capital.totalCapital', label: 'Total Capital', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
+
+  { path: 'strategy.selectedStrategy', label: 'Selected Strategy', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
 
   { path: 'redevelopment.demoScope', label: 'Demo Scope', inputClass: 'scope', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },
   { path: 'redevelopment.existingNOI', label: 'Existing NOI (Redev)', inputClass: 'override', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },

@@ -419,20 +419,39 @@ interface DealCapsuleIdentity {
 interface DealCapsuleSite {
   acreage: LayeredValue<number>;
   buildableAcreage: LayeredValue<number>;
+  floodZone: LayeredValue<string | null>;
+  coordinates?: { lat: number; lng: number };
+  parcelId?: string;
+  county?: string;
+  topography?: string;
+  utilities?: string[];
+  environmentalFlags?: string[];
 }
 
 interface DealCapsuleZoning {
+  designation: LayeredValue<string>;
   maxDensity: LayeredValue<number>;
   maxHeight: LayeredValue<number>;
   maxFAR: LayeredValue<number>;
+  maxLotCoverage: LayeredValue<number>;
+  setbacks: LayeredValue<{
+    front: number;
+    side: number;
+    rear: number;
+  }>;
   parkingRatio: LayeredValue<number>;
+  guestParkingRatio: LayeredValue<number>;
 }
 
 interface DealCapsuleMarket {
   submarketName: string;
-  population: LayeredValue<number>;
-  medianIncome: LayeredValue<number>;
-  employmentGrowth: LayeredValue<number>;
+  avgRent: LayeredValue<number>;
+  avgOccupancy: LayeredValue<number>;
+  rentGrowthYoY: LayeredValue<number>;
+  absorptionRate: LayeredValue<number>;
+  medianHHI: LayeredValue<number>;
+  popGrowthPct: LayeredValue<number>;
+  employmentGrowthPct: LayeredValue<number>;
 }
 
 interface DealCapsuleFinancial {
