@@ -242,10 +242,13 @@ export interface LTOData {
 export interface TaxBillData {
   parcelId: string | null;
   assessedValue: number | null;
+  assessedLand: number | null;
+  assessedImprovement: number | null;
   assessedValueAppeal: number | null;
   fairMarketValue: number | null;
   totalAnnualTax: number;
   millageRate: number | null;
+  taxingAuthority: string | null;
   ownerName: string | null;
   ownerAddress: string | null;
   appealStatus: string | null;

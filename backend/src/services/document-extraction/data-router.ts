@@ -93,7 +93,7 @@ export async function routeExtractionResult(
       rowsInserted = await routeLTO(pool, result.data as LTOData, ctx.dealId, sourceRef, sourceDate);
       break;
     case 'TAX_BILL':
-      rowsInserted = await routeTaxBill(pool, result.data as TaxBillData, ctx.dealId, sourceRef, sourceDate);
+      rowsInserted = await routeTaxBill(pool, result.data as TaxBillData, ctx.dealId, sourceRef, sourceDate, alerts);
       break;
     case 'OTHER_INCOME':
       rowsInserted = await routeOtherIncome(pool, result.data as OtherIncomeData, ctx.dealId, sourceRef, sourceDate);
@@ -110,7 +110,7 @@ export async function routeExtractionResult(
 
   let capsuleUpdated = false;
   try {
-    await updateDealCapsule(pool, ctx.dealId, result, alerts);
+    await updateDealCapsule(pool, ctx.dealId, result, alerts, ctx);
     capsuleUpdated = true;
   } catch (err) {
     alerts.push(`Capsule update failed: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -129,8 +129,8 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
         net_rental_income, other_income, utility_reimbursement, late_fees, misc_income,
         effective_gross_income, payroll, repairs_maintenance, turnover_costs, marketing,
         admin_general, management_fee, utilities, contract_services, property_tax, insurance,
-        total_opex, noi, data_source, source_document_type, source_period_label
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+        total_opex, noi, data_source, source_document_type, source_period_label, source_ref, source_date
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
       ON CONFLICT (property_id, report_month, is_budget, is_proforma) DO UPDATE SET
         gross_potential_rent = EXCLUDED.gross_potential_rent,
         loss_to_lease = EXCLUDED.loss_to_lease,
@@ -157,6 +157,8 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
         noi = EXCLUDED.noi,
         data_source = EXCLUDED.data_source,
         source_document_type = EXCLUDED.source_document_type,
+        source_ref = EXCLUDED.source_ref,
+        source_date = EXCLUDED.source_date,
         updated_at = NOW()`,
       [
         propertyId, month.reportMonth, month.totalUnits, month.occupiedUnits,
@@ -164,7 +166,7 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
         month.netRentalIncome, month.otherIncome, month.utilityReimbursement, month.lateFees, month.miscIncome,
         month.effectiveGrossIncome, month.payroll, month.repairsMaintenance, month.turnoverCosts, month.marketing,
         month.adminGeneral, month.managementFee, month.utilities, month.contractServices, month.propertyTax, month.insurance,
-        month.totalOpex, month.noi, 'extraction', 'T12', month.reportMonth,
+        month.totalOpex, month.noi, 'extraction', 'T12', month.reportMonth, sourceRef, sourceDate,
       ]
     );
     count++;
@@ -394,7 +396,7 @@ async function routeLTO(pool: Pool, data: LTOData, dealId: string, sourceRef: st
   return count;
 }
 
-async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
   const taxRate = (data.assessedValue && data.assessedValue > 0 && data.totalAnnualTax)
     ? data.totalAnnualTax / data.assessedValue
     : null;
@@ -412,20 +414,69 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
   );
 
   const taxPropertyId = await ensurePropertyForDeal(pool, dealId);
-  if (taxPropertyId && data.totalAnnualTax) {
-    const monthlyTax = data.totalAnnualTax / 12;
-    const taxYear = data.taxYear || new Date().getFullYear();
-    for (let m = 1; m <= 12; m++) {
-      const reportMonth = `${taxYear}-${String(m).padStart(2, '0')}-01`;
-      await pool.query(
-        `INSERT INTO deal_monthly_actuals (property_id, report_month, property_tax, data_source, source_document_type, source_period_label)
-         VALUES ($1, $2, $3, 'extraction', 'TAX_BILL', $4)
-         ON CONFLICT (property_id, report_month, is_budget, is_proforma) DO UPDATE SET
-           property_tax = EXCLUDED.property_tax,
-           source_document_type = 'TAX_BILL',
-           updated_at = NOW()`,
-        [taxPropertyId, reportMonth, monthlyTax, reportMonth]
-      );
+  if (taxPropertyId) {
+    await pool.query(
+      `UPDATE properties SET
+        parcel_id = COALESCE($2, parcel_id),
+        assessed_value = COALESCE($3, assessed_value),
+        assessed_land = COALESCE($4, assessed_land),
+        assessed_improvements = COALESCE($5, assessed_improvements),
+        appraised_value = COALESCE($6, appraised_value),
+        annual_taxes = COALESCE($7, annual_taxes),
+        millage_rate = COALESCE($8, millage_rate),
+        tax_district = COALESCE($9, tax_district),
+        updated_at = NOW()
+      WHERE id = $1`,
+      [
+        taxPropertyId,
+        data.parcelId || null,
+        data.assessedValue || null,
+        data.assessedLand || null,
+        data.assessedImprovement || null,
+        data.fairMarketValue || null,
+        data.totalAnnualTax || null,
+        data.millageRate || null,
+        data.taxingAuthority || null,
+      ]
+    );
+
+    if (data.totalAnnualTax) {
+      const monthlyTax = data.totalAnnualTax / 12;
+      const taxYear = data.taxYear || new Date().getFullYear();
+      for (let m = 1; m <= 12; m++) {
+        const reportMonth = `${taxYear}-${String(m).padStart(2, '0')}-01`;
+        await pool.query(
+          `INSERT INTO deal_monthly_actuals (property_id, report_month, property_tax, data_source, source_document_type, source_period_label, source_ref, source_date)
+           VALUES ($1, $2, $3, 'extraction', 'TAX_BILL', $4, $5, $6)
+           ON CONFLICT (property_id, report_month, is_budget, is_proforma) DO UPDATE SET
+             property_tax = EXCLUDED.property_tax,
+             source_document_type = 'TAX_BILL',
+             source_ref = EXCLUDED.source_ref,
+             source_date = EXCLUDED.source_date,
+             updated_at = NOW()`,
+          [taxPropertyId, reportMonth, monthlyTax, reportMonth, sourceRef, sourceDate]
+        );
+      }
+    }
+
+    const dealPriceResult = await pool.query(
+      `SELECT p.acquisition_price FROM deals d JOIN properties p ON d.property_id = p.id
+       WHERE d.id = $1 AND p.acquisition_price IS NOT NULL`,
+      [dealId]
+    );
+    const acquisitionPrice = parseFloat(dealPriceResult.rows[0]?.acquisition_price) || 0;
+    if (acquisitionPrice > 0 && data.assessedValue && data.assessedValue > 0) {
+      const reassessmentGap = Math.abs(acquisitionPrice - data.assessedValue) / data.assessedValue;
+      if (reassessmentGap > 0.25) {
+        const alertMsg = `Reassessment risk: acquisition price ($${Math.round(acquisitionPrice).toLocaleString()}) is ${(reassessmentGap * 100).toFixed(0)}% above assessed value ($${Math.round(data.assessedValue).toLocaleString()})`;
+        alerts.push(alertMsg);
+        await persistAlert(pool, dealId, 'reassessment_risk', 'warning', alertMsg, {
+          acquisitionPrice,
+          assessedValue: data.assessedValue,
+          reassessmentGapPct: reassessmentGap,
+          taxYear: data.taxYear,
+        }, 'TAX_BILL', sourceRef);
+      }
     }
   }
 
@@ -530,7 +581,7 @@ async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: Extrac
   }
 }
 
-async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionResult, alerts: string[]): Promise<void> {
+async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionResult, alerts: string[], ctx: RouteContext): Promise<void> {
   const capsulePayload: Record<string, any> = {};
   const now = new Date().toISOString();
 
@@ -716,13 +767,19 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       if (t12OtherIncome > 0 && oi.summary.totalAnnual > 0) {
         const oiVariance = Math.abs(oi.summary.totalAnnual - t12OtherIncome) / t12OtherIncome;
         if (oiVariance > 0.15) {
-          alerts.push(`⚠ Broker Other Income Schedule ($${Math.round(oi.summary.totalAnnual).toLocaleString()}/yr) diverges ${(oiVariance * 100).toFixed(1)}% from T12 trailing other income ($${Math.round(t12OtherIncome).toLocaleString()}/yr)`);
+          const varMsg = `Broker Other Income Schedule ($${Math.round(oi.summary.totalAnnual).toLocaleString()}/yr) diverges ${(oiVariance * 100).toFixed(1)}% from T12 trailing other income ($${Math.round(t12OtherIncome).toLocaleString()}/yr)`;
+          alerts.push(varMsg);
           capsulePayload.broker_claims.other_income_variance = {
             brokerProjected: oi.summary.totalAnnual,
             t12Actual: t12OtherIncome,
             variancePct: oiVariance,
             flaggedAt: now,
           };
+          await persistAlert(pool, dealId, 'other_income_variance', 'warning', varMsg, {
+            brokerProjected: oi.summary.totalAnnual,
+            t12Actual: t12OtherIncome,
+            variancePct: oiVariance,
+          }, 'OTHER_INCOME', ctx.filename);
         }
       }
       break;
@@ -744,6 +801,23 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       [dealId, JSON.stringify(merged)]
     );
   }
+}
+
+async function persistAlert(
+  pool: Pool,
+  dealId: string,
+  alertType: string,
+  severity: string,
+  title: string,
+  detail: Record<string, any>,
+  sourceDocumentType: string,
+  sourceRef: string
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO platform_intel (deal_id, alert_type, severity, title, detail, source_document_type, source_ref, created_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())`,
+    [dealId, alertType, severity, title, JSON.stringify(detail), sourceDocumentType, sourceRef]
+  );
 }
 
 function deepMergeJsonb(target: Record<string, any>, source: Record<string, any>): Record<string, any> {

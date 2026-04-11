@@ -28,10 +28,13 @@ function parseFromText(text: string): TaxBillData {
   const data: TaxBillData = {
     parcelId: null,
     assessedValue: null,
+    assessedLand: null,
+    assessedImprovement: null,
     assessedValueAppeal: null,
     fairMarketValue: null,
     totalAnnualTax: 0,
     millageRate: null,
+    taxingAuthority: null,
     ownerName: null,
     ownerAddress: null,
     appealStatus: null,
@@ -47,6 +50,15 @@ function parseFromText(text: string): TaxBillData {
 
     const assessedMatch = line.match(/assessed[\s]*value[\s:]*\$?([\d,]+\.?\d*)/i);
     if (assessedMatch && !data.assessedValue) data.assessedValue = parseNum(assessedMatch[1]);
+
+    const landMatch = line.match(/(?:assessed[\s]*)?land[\s]*(?:value)?[\s:]*\$?([\d,]+\.?\d*)/i);
+    if (landMatch && lower.includes('land') && !data.assessedLand) data.assessedLand = parseNum(landMatch[1]);
+
+    const improvMatch = line.match(/improvement[\s]*(?:value)?[\s:]*\$?([\d,]+\.?\d*)/i);
+    if (improvMatch && !data.assessedImprovement) data.assessedImprovement = parseNum(improvMatch[1]);
+
+    const authMatch = line.match(/taxing[\s]*(?:authority|district|jurisdiction)[\s:]+(.+)/i);
+    if (authMatch && !data.taxingAuthority) data.taxingAuthority = authMatch[1].trim();
 
     const fmvMatch = line.match(/fair[\s]*market[\s]*value[\s:]*\$?([\d,]+\.?\d*)/i);
     if (fmvMatch) data.fairMarketValue = parseNum(fmvMatch[1]);
