@@ -36,7 +36,7 @@ export class FinancialAutoSyncService {
   private assumptions: Map<string, FinancialAssumptions> = new Map();
 
   private isBlockGated(): boolean {
-    if (!_dealStoreRef) return false;
+    if (!_dealStoreRef) return true;
     return _dealStoreRef.getState().hasBlockingAlerts();
   }
 

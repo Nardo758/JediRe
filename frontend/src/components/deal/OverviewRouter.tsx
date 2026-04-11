@@ -217,8 +217,13 @@ function UnitMixTable({ rows, readOnly, title }: {
         </thead>
         <tbody>
           {rows.map(row => (
-            <tr key={row.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <td style={{ padding: '3px 8px', color: BT.text.primary }}>{row.label}</td>
+            <tr key={row.id} data-field-path={`unitMix.${row.id}`} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <td style={{ padding: '3px 8px', color: BT.text.primary }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <AlertPip level={row.targetRent.alertLevel} />
+                  {row.label}
+                </div>
+              </td>
               <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.amber, fontWeight: 700 }}>
                 {readOnly ? row.count : (
                   <EditableCell value={row.count} color={BT.text.amber}
@@ -232,21 +237,24 @@ function UnitMixTable({ rows, readOnly, title }: {
                     onCommit={v => overrideUnitMix(row.id, { avgSF: Math.round(v) })} />
                 )}
               </td>
-              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.met.financial }}>
-                {readOnly ? `$${row.targetRent.value.toLocaleString()}` : (
-                  <EditableCell value={row.targetRent.value} color={BT.met.financial}
-                    format={v => `$${v.toLocaleString()}`}
-                    onCommit={v => {
-                      const rentOverride: LayeredValue<number> = {
-                        ...row.targetRent,
-                        value: v,
-                        resolvedFrom: 'user',
-                        alertLevel: 'none',
-                        userReviewed: true,
-                      };
-                      overrideUnitMix(row.id, { targetRent: rentOverride });
-                    }} />
-                )}
+              <td data-field-path={`unitMix.${row.id}.targetRent`} style={{ padding: '3px 8px', textAlign: 'right', color: BT.met.financial }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+                  {row.marketRent && row.marketRent.alertLevel !== 'none' && <AlertPip level={row.marketRent.alertLevel} />}
+                  {readOnly ? `$${row.targetRent.value.toLocaleString()}` : (
+                    <EditableCell value={row.targetRent.value} color={BT.met.financial}
+                      format={v => `$${v.toLocaleString()}`}
+                      onCommit={v => {
+                        const rentOverride: LayeredValue<number> = {
+                          ...row.targetRent,
+                          value: v,
+                          resolvedFrom: 'user',
+                          alertLevel: 'none',
+                          userReviewed: true,
+                        };
+                        overrideUnitMix(row.id, { targetRent: rentOverride });
+                      }} />
+                  )}
+                </div>
               </td>
               <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.cyan }}>{(row.mixPct * 100).toFixed(1)}%</td>
             </tr>
