@@ -15,14 +15,13 @@ interface RouteResult {
   alerts: string[];
 }
 
-async function getPropertyIdForDeal(pool: any, dealId: string): Promise<string> {
+async function getPropertyIdForDeal(pool: any, dealId: string): Promise<string | null> {
   const result = await pool.query(
-    `SELECT property_id FROM deals WHERE id = $1
-     UNION SELECT id FROM properties WHERE id = $1
+    `SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL
      LIMIT 1`,
     [dealId]
   );
-  return result.rows[0]?.property_id || dealId;
+  return result.rows[0]?.property_id || null;
 }
 
 export async function routeExtractionResult(
@@ -43,7 +42,11 @@ export async function routeExtractionResult(
 
   switch (result.documentType) {
     case 'T12':
-      rowsInserted = await routeT12(pool, result.data as T12Data, propertyId, ctx.dealId, sourceRef, sourceDate);
+      if (!propertyId) {
+        alerts.push('T12 data stored in deal capsule only — no linked property for deal_monthly_actuals insert. Link a property to enable full routing.');
+      } else {
+        rowsInserted = await routeT12(pool, result.data as T12Data, propertyId, ctx.dealId, sourceRef, sourceDate);
+      }
       break;
     case 'RENT_ROLL':
       rowsInserted = await routeRentRoll(pool, result.data as RentRollData, ctx.dealId, sourceRef, sourceDate);
@@ -204,29 +207,38 @@ async function routeAgedReceivables(pool: any, data: AgedReceivablesData, dealId
 }
 
 async function routeBoxScore(pool: any, data: BoxScoreData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
-  const payload = {
-    type: 'box_score',
-    availability: data.availability,
-    activity: data.activity,
-    conversions: data.conversions,
-    summary: data.summary,
-    source_ref: sourceRef,
-    source_date: sourceDate,
-  };
+  const vacancyPct = data.summary.occupancyPct != null ? (1 - data.summary.occupancyPct) * 100 : null;
+  const totalUnits = data.summary.totalUnits || null;
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, source_type, source_ref, source_date, created_at)
-     VALUES ($1, 'extraction', $2, $3, NOW())
-     ON CONFLICT DO NOTHING`,
-    [dealId, sourceRef, sourceDate]
+    `INSERT INTO deal_assumptions (deal_id, vacancy_pct, total_units, source_type, source_ref, source_date, assumptions_source, created_at)
+     VALUES ($1, $2, $3, 'extraction', $4, $5, 'extraction', NOW())
+     ON CONFLICT (deal_id) DO UPDATE SET
+       vacancy_pct = COALESCE(EXCLUDED.vacancy_pct, deal_assumptions.vacancy_pct),
+       total_units = COALESCE(EXCLUDED.total_units, deal_assumptions.total_units),
+       source_type = 'extraction',
+       source_ref = EXCLUDED.source_ref,
+       source_date = EXCLUDED.source_date,
+       assumptions_source = 'extraction',
+       updated_at = NOW()`,
+    [dealId, vacancyPct, totalUnits, sourceRef, sourceDate]
   );
 
   await pool.query(
-    `UPDATE deal_assumptions SET
-       notes = COALESCE(notes, '') || E'\n[BoxScore] ' || $2::text,
+    `UPDATE deals SET
+       deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
        updated_at = NOW()
-     WHERE deal_id = $1`,
-    [dealId, JSON.stringify(payload)]
+     WHERE id = $1`,
+    [dealId, JSON.stringify({
+      extraction_box_score_detail: {
+        availability: data.availability,
+        activity: data.activity,
+        conversions: data.conversions,
+        summary: data.summary,
+        source_ref: sourceRef,
+        source_date: sourceDate,
+      }
+    })]
   );
 
   if (data.summary.occupancyPct < 0.85) {
@@ -237,27 +249,34 @@ async function routeBoxScore(pool: any, data: BoxScoreData, dealId: string, sour
 }
 
 async function routeConcessionBurnoff(pool: any, data: ConcessionBurnoffData, dealId: string, sourceRef: string, sourceDate: string, alerts: string[]): Promise<number> {
-  const payload = {
-    type: 'concession_burnoff',
-    records: data.records,
-    summary: data.summary,
-    source_ref: sourceRef,
-    source_date: sourceDate,
-  };
+  const concessionsPct = data.summary.avgConcessionDepth ? data.summary.avgConcessionDepth * 100 : null;
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, source_type, source_ref, source_date, created_at)
-     VALUES ($1, 'extraction', $2, $3, NOW())
-     ON CONFLICT DO NOTHING`,
-    [dealId, sourceRef, sourceDate]
+    `INSERT INTO deal_assumptions (deal_id, concessions_pct, source_type, source_ref, source_date, assumptions_source, created_at)
+     VALUES ($1, $2, 'extraction', $3, $4, 'extraction', NOW())
+     ON CONFLICT (deal_id) DO UPDATE SET
+       concessions_pct = COALESCE(EXCLUDED.concessions_pct, deal_assumptions.concessions_pct),
+       source_type = 'extraction',
+       source_ref = EXCLUDED.source_ref,
+       source_date = EXCLUDED.source_date,
+       assumptions_source = 'extraction',
+       updated_at = NOW()`,
+    [dealId, concessionsPct, sourceRef, sourceDate]
   );
 
   await pool.query(
-    `UPDATE deal_assumptions SET
-       notes = COALESCE(notes, '') || E'\n[ConcessionBurnoff] ' || $2::text,
+    `UPDATE deals SET
+       deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
        updated_at = NOW()
-     WHERE deal_id = $1`,
-    [dealId, JSON.stringify(payload)]
+     WHERE id = $1`,
+    [dealId, JSON.stringify({
+      extraction_concession_detail: {
+        records: data.records,
+        summary: data.summary,
+        source_ref: sourceRef,
+        source_date: sourceDate,
+      }
+    })]
   );
 
   if (data.summary.avgConcessionDepth > 0.05) {
@@ -297,53 +316,67 @@ async function routeLTO(pool: any, data: LTOData, dealId: string, sourceRef: str
 }
 
 async function routeTaxBill(pool: any, data: TaxBillData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
-  const payload = {
-    type: 'tax_bill',
-    ...data,
-    source_ref: sourceRef,
-    source_date: sourceDate,
-  };
+  const taxRate = (data.assessedValue && data.assessedValue > 0 && data.totalAnnualTax)
+    ? data.totalAnnualTax / data.assessedValue
+    : null;
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, source_type, source_ref, source_date, created_at)
-     VALUES ($1, 'extraction', $2, $3, NOW())
-     ON CONFLICT DO NOTHING`,
-    [dealId, sourceRef, sourceDate]
-  );
-
-  await pool.query(
-    `UPDATE deal_assumptions SET
-       notes = COALESCE(notes, '') || E'\n[TaxBill] ' || $2::text,
-       updated_at = NOW()
-     WHERE deal_id = $1`,
-    [dealId, JSON.stringify(payload)]
+    `INSERT INTO deal_assumptions (deal_id, property_tax_rate, source_type, source_ref, source_date, assumptions_source, created_at)
+     VALUES ($1, $2, 'extraction', $3, $4, 'extraction', NOW())
+     ON CONFLICT (deal_id) DO UPDATE SET
+       property_tax_rate = COALESCE(EXCLUDED.property_tax_rate, deal_assumptions.property_tax_rate),
+       source_type = 'extraction',
+       source_ref = EXCLUDED.source_ref,
+       source_date = EXCLUDED.source_date,
+       assumptions_source = 'extraction',
+       updated_at = NOW()`,
+    [dealId, taxRate, sourceRef, sourceDate]
   );
 
   return 1;
 }
 
 async function routeOtherIncome(pool: any, data: OtherIncomeData, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
-  const payload = {
-    type: 'other_income_schedule',
-    categories: data.categories,
-    summary: data.summary,
-    source_ref: sourceRef,
-    source_date: sourceDate,
-  };
+  let otherIncomePerUnit: number | null = data.summary.perUnitTotal || null;
+  if (!otherIncomePerUnit && data.summary.totalAnnual > 0) {
+    const unitsResult = await pool.query(
+      `SELECT COALESCE(da.total_units, d.target_units) as unit_count
+       FROM deals d LEFT JOIN deal_assumptions da ON da.deal_id = d.id
+       WHERE d.id = $1 LIMIT 1`,
+      [dealId]
+    );
+    const units = parseInt(unitsResult.rows[0]?.unit_count) || 0;
+    if (units > 0) {
+      otherIncomePerUnit = data.summary.totalAnnual / units / 12;
+    }
+  }
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, source_type, source_ref, source_date, created_at)
-     VALUES ($1, 'extraction', $2, $3, NOW())
-     ON CONFLICT DO NOTHING`,
-    [dealId, sourceRef, sourceDate]
+    `INSERT INTO deal_assumptions (deal_id, other_income_per_unit, source_type, source_ref, source_date, assumptions_source, created_at)
+     VALUES ($1, $2, 'extraction', $3, $4, 'extraction', NOW())
+     ON CONFLICT (deal_id) DO UPDATE SET
+       other_income_per_unit = COALESCE(EXCLUDED.other_income_per_unit, deal_assumptions.other_income_per_unit),
+       source_type = 'extraction',
+       source_ref = EXCLUDED.source_ref,
+       source_date = EXCLUDED.source_date,
+       assumptions_source = 'extraction',
+       updated_at = NOW()`,
+    [dealId, otherIncomePerUnit, sourceRef, sourceDate]
   );
 
   await pool.query(
-    `UPDATE deal_assumptions SET
-       notes = COALESCE(notes, '') || E'\n[OtherIncome] ' || $2::text,
+    `UPDATE deals SET
+       deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
        updated_at = NOW()
-     WHERE deal_id = $1`,
-    [dealId, JSON.stringify(payload)]
+     WHERE id = $1`,
+    [dealId, JSON.stringify({
+      extraction_other_income_detail: {
+        categories: data.categories,
+        summary: data.summary,
+        source_ref: sourceRef,
+        source_date: sourceDate,
+      }
+    })]
   );
 
   return data.categories.length;

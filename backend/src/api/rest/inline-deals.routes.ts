@@ -1004,7 +1004,7 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
 
     if (dealId) {
       const ownerResult = await pool.query(
-        'SELECT id FROM deals WHERE id = $1 AND (created_by = $2 OR $2 IS NULL)',
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
         [dealId, req.user!.userId]
       );
       if (ownerResult.rows.length === 0) {
@@ -1053,7 +1053,7 @@ router.post('/:dealId/reprocess-documents', requireAuth, async (req: Authenticat
     const { dealId } = req.params;
 
     const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND (created_by = $2 OR $2 IS NULL)',
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
       [dealId, req.user!.userId]
     );
     if (ownerCheck.rows.length === 0) {
@@ -1088,7 +1088,7 @@ router.post('/:dealId/extract-document', requireAuth, documentUpload.single('fil
     const { dealId } = req.params;
 
     const ownerCheck = await pool.query(
-      'SELECT id FROM deals WHERE id = $1 AND (created_by = $2 OR $2 IS NULL)',
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
       [dealId, req.user!.userId]
     );
     if (ownerCheck.rows.length === 0) {
