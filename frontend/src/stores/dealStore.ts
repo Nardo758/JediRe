@@ -253,6 +253,10 @@ interface DealStoreActions {
   /** Advance deal to next stage */
   setStage: (stage: DealStage) => void;
 
+  // ─── FIELD REVIEW & IDENTITY GATE ────────────────────────
+  markFieldReviewed: (path: string) => void;
+  isIdentityComplete: () => boolean;
+
   // ─── COMPUTED SELECTORS ───────────────────────────────────
   /** Get the currently selected development path object */
   getSelectedPath: () => DevelopmentPath | null;
@@ -1403,6 +1407,45 @@ export const useDealStore = create<DealStore>()(
       set({
         identity: { ...state.identity, stage, updatedAt: now },
         stageHistory,
+      });
+    },
+
+    // ─── FIELD REVIEW & IDENTITY GATE ─────────────────────
+
+    markFieldReviewed: (path: string) => {
+      const segments = path.split('.');
+      const state = get();
+      let parent: Record<string, unknown> = state as unknown as Record<string, unknown>;
+      for (let i = 0; i < segments.length - 1; i++) {
+        const next = parent[segments[i]];
+        if (!next || typeof next !== 'object') return;
+        parent = next as Record<string, unknown>;
+      }
+      const leaf = parent[segments[segments.length - 1]];
+      if (leaf && typeof leaf === 'object' && 'alertLevel' in leaf && 'userReviewed' in leaf) {
+        const lv = leaf as { alertLevel: string; userReviewed: boolean; value: unknown };
+        if (!lv.userReviewed && lv.alertLevel === 'info') {
+          const updated = { ...lv, userReviewed: true, alertLevel: 'none' };
+          const patch: Record<string, unknown> = {};
+          let cursor = patch;
+          for (let i = 0; i < segments.length - 1; i++) {
+            const seg = segments[i];
+            const orig = (i === 0 ? state : Object.values(patch)[0]) as Record<string, unknown>;
+            cursor[seg] = { ...(orig[seg] as Record<string, unknown> || {}) };
+            cursor = cursor[seg] as Record<string, unknown>;
+          }
+          cursor[segments[segments.length - 1]] = updated;
+          set(patch as Partial<DealStore>);
+        }
+      }
+    },
+
+    isIdentityComplete: () => {
+      const { identity } = get();
+      const requiredFields: (keyof typeof identity)[] = ['name', 'address', 'city', 'state', 'mode'];
+      return requiredFields.every(f => {
+        const val = identity[f];
+        return val !== null && val !== undefined && val !== '' && val !== 0;
       });
     },
 

@@ -13,6 +13,7 @@ import {
 } from '../bloomberg-ui';
 import { AlertCounter, IdentityGateBanner } from '../AlertCounter';
 import { OverviewRouter } from '../OverviewRouter';
+import { useDealStore } from '../../../stores/dealStore';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -425,7 +426,10 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
       <style>{BT_CSS}</style>
 
       <IdentityGateBanner />
-      <AlertCounter />
+      <AlertCounter onClickField={(path) => {
+        const markFieldReviewed = useDealStore.getState().markFieldReviewed;
+        markFieldReviewed(path);
+      }} />
 
       {/* ── Row 1: JEDI Score | 5 Signals | Deal Details ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 228px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>

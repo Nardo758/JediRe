@@ -511,8 +511,14 @@ class OrchestratorService {
     });
   }
 
-  // Request analysis from specific agent
+  // Request analysis from specific agent (gated by identity completeness)
   async requestAnalysis(agentCode: AgentCode, dealId: string, analysisType: string): Promise<unknown> {
+    const { useDealStore } = await import('../stores/dealStore');
+    const identityComplete = useDealStore.getState().isIdentityComplete();
+    if (!identityComplete) {
+      throw new Error('IDENTITY_GATE: Deal identity is incomplete. Complete required fields (name, address, city, state, mode) before running agent analysis.');
+    }
+
     const response = await agentBus.request(
       'ORCHESTRATOR',
       agentCode,

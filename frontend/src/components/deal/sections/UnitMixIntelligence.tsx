@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { useUnitMixIntelligence } from "../../../hooks/useUnitMixIntelligence";
 import { useTradeAreaStore } from "../../../stores/tradeAreaStore";
-import { useDealStore } from "../../../stores/dealStore";
+import { useDealStore, useDealType } from "../../../stores/dealStore";
 
 type UnitKey = "studio" | "oneBR" | "twoBR" | "threeBR";
 type SigKey = "vac" | "dom" | "conc";
@@ -1330,6 +1330,7 @@ export default function UnitMixIntelligence() {
   const { activeTradeArea } = useTradeAreaStore();
   const tradeAreaId = activeTradeArea?.id;
   const developmentEnvelope = useDealStore(s => s.developmentEnvelope);
+  const dealType = useDealType();
 
   const {
     comps: apiComps, demandScores: apiDemandScores, trends: apiTrends,
@@ -1386,9 +1387,11 @@ export default function UnitMixIntelligence() {
   const inventory  = computeInventory(comps);
   const gaps       = computeGaps(inventory);
 
+  const dealTypeLabel = dealType === 'development' ? 'GROUND-UP' : dealType === 'redevelopment' ? 'REDEV' : 'EXISTING';
+  const programLabel = dealType === 'existing' ? '✏ Review Mix' : dealType === 'redevelopment' ? '✏ Reconfig Mix' : '✏ Program';
   const tabs = [
     { id: "demand",    label: "Demand"    },
-    { id: "program",   label: "✏ Program" },
+    { id: "program",   label: programLabel },
     { id: "inventory", label: "Inventory" },
     { id: "trends",    label: "Trends"    },
     { id: "comps",     label: "Comps"     },
@@ -1405,7 +1408,7 @@ export default function UnitMixIntelligence() {
             <div style={{ display: "flex", gap: 5, alignItems: "center", marginBottom: 1 }}>
               <span style={{ color: C.blue, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: "0.08em" }}>M02 · M05 · M07 · M15</span>
               <span style={{ color: C.border }}>|</span>
-              <span style={{ color: C.faint, fontFamily: mono, fontSize: 7 }}>UNIT MIX INTELLIGENCE</span>
+              <span style={{ color: C.faint, fontFamily: mono, fontSize: 7 }}>UNIT MIX INTELLIGENCE · {dealTypeLabel}</span>
             </div>
             <h1 style={{ color: C.text, fontSize: 13, fontWeight: 800, margin: 0 }}>
               Unit Mix & Pricing Intelligence

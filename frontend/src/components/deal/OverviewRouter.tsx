@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { BT, DataRow, SectionPanel, Bd } from './bloomberg-ui';
 import { AlertPip } from './AlertPip';
 import { useDealStore, useDealType } from '../../stores/dealStore';
@@ -47,11 +47,55 @@ function LVRow({ label, lv, format }: {
   );
 }
 
+function EditableCell({ value, onCommit, format, color }: {
+  value: number;
+  onCommit: (v: number) => void;
+  format?: (v: number) => string;
+  color: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+
+  const commit = useCallback(() => {
+    const parsed = parseFloat(draft);
+    if (!isNaN(parsed) && parsed !== value) onCommit(parsed);
+    setEditing(false);
+  }, [draft, value, onCommit]);
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+        style={{
+          width: 50, fontFamily: MONO, fontSize: 9, fontWeight: 700,
+          color, background: BT.bg.input, border: `1px solid ${BT.border.medium}`,
+          textAlign: 'right', padding: '1px 4px', outline: 'none',
+        }}
+      />
+    );
+  }
+
+  return (
+    <span
+      onClick={() => { setDraft(String(value)); setEditing(true); }}
+      style={{ cursor: 'pointer', borderBottom: `1px dashed ${BT.border.bright}` }}
+    >
+      {format ? format(value) : value}
+    </span>
+  );
+}
+
 function UnitMixTable({ rows, readOnly, title }: {
   rows: UnitMixRow[];
   readOnly: boolean;
   title?: string;
 }) {
+  const overrideUnitMix = useDealStore(s => s.overrideUnitMix);
+
   if (rows.length === 0) {
     return (
       <SectionPanel title={title ?? 'UNIT MIX'} borderColor={BT.text.cyan}>
@@ -81,9 +125,26 @@ function UnitMixTable({ rows, readOnly, title }: {
           {rows.map(row => (
             <tr key={row.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <td style={{ padding: '3px 8px', color: BT.text.primary }}>{row.label}</td>
-              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.amber, fontWeight: 700 }}>{row.count}</td>
-              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.secondary }}>{row.avgSF.toLocaleString()}</td>
-              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.met.financial }}>${row.targetRent.value.toLocaleString()}</td>
+              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.amber, fontWeight: 700 }}>
+                {readOnly ? row.count : (
+                  <EditableCell value={row.count} color={BT.text.amber}
+                    onCommit={v => overrideUnitMix(row.id, { count: Math.round(v) })} />
+                )}
+              </td>
+              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.secondary }}>
+                {readOnly ? row.avgSF.toLocaleString() : (
+                  <EditableCell value={row.avgSF} color={BT.text.secondary}
+                    format={v => v.toLocaleString()}
+                    onCommit={v => overrideUnitMix(row.id, { avgSF: Math.round(v) })} />
+                )}
+              </td>
+              <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.met.financial }}>
+                {readOnly ? `$${row.targetRent.value.toLocaleString()}` : (
+                  <EditableCell value={row.targetRent.value} color={BT.met.financial}
+                    format={v => `$${v.toLocaleString()}`}
+                    onCommit={v => overrideUnitMix(row.id, { targetRent: v as unknown as UnitMixRow['targetRent'] })} />
+                )}
+              </td>
               <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.cyan }}>{(row.mixPct * 100).toFixed(1)}%</td>
             </tr>
           ))}
