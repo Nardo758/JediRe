@@ -7,7 +7,7 @@ import { parseAgedReceivables } from './parsers/aged-receivables-parser';
 import { parseBoxScore } from './parsers/box-score-parser';
 import { parseConcessionBurnoff } from './parsers/concession-burnoff-parser';
 import { parseLTO } from './parsers/lto-parser';
-import { parseTaxBill } from './parsers/tax-bill-parser';
+import { parseTaxBill, parseTaxBillAsync } from './parsers/tax-bill-parser';
 import { parseOtherIncome } from './parsers/other-income-parser';
 import { routeExtractionResult } from './data-router';
 import { DocumentType, ExtractionResult, PipelineResult } from './types';
@@ -47,12 +47,17 @@ export async function processDocument(
       alerts.push(`Low classification confidence (${(classification.confidence * 100).toFixed(0)}%) for ${classification.documentType}`);
     }
 
-    const parser = getParser(classification.documentType);
-    if (!parser) {
-      return { documentType: classification.documentType, success: false, error: `No parser available for ${classification.documentType}`, alerts };
-    }
+    let extractionResult: ExtractionResult;
 
-    const extractionResult = parser(buffer, filename);
+    if (classification.documentType === 'TAX_BILL' && /\.pdf$/i.test(filename)) {
+      extractionResult = await parseTaxBillAsync(buffer, filename);
+    } else {
+      const parser = getParser(classification.documentType);
+      if (!parser) {
+        return { documentType: classification.documentType, success: false, error: `No parser available for ${classification.documentType}`, alerts };
+      }
+      extractionResult = parser(buffer, filename);
+    }
 
     if (!extractionResult.success) {
       return {

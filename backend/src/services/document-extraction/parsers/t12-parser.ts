@@ -115,6 +115,15 @@ function detectMonthColumns(headers: string[]): Array<{ header: string; month: s
   return results;
 }
 
+type T12MonthKey = keyof Omit<T12Month, 'reportMonth'>;
+
+function setMonthField(month: T12Month, field: string, value: number | null): void {
+  if (value == null) return;
+  if (field in month && field !== 'reportMonth') {
+    (month as unknown as Record<string, number | null>)[field] = value;
+  }
+}
+
 function categorizeRow(row: Record<string, any>, headers: string[]): string | null {
   const firstCol = String(row[headers[0]] || '').trim();
 
@@ -165,7 +174,7 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult {
           const val = parseNum(row[mc.header]);
           if (val == null) continue;
           const m = months.get(mc.month)!;
-          (m as any)[category] = val;
+          setMonthField(m, category, val);
         }
       }
     } else {
@@ -185,7 +194,7 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult {
             if (header === dateCol) continue;
             const category = HEADER_CATEGORY_MAP[header.toLowerCase().trim()];
             if (category) {
-              (m as any)[category] = parseNum(val);
+              setMonthField(m, category, parseNum(val));
             }
           }
         }

@@ -234,6 +234,10 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
     });
 
+    processDealDocuments(row.id, req.user!.userId).catch(err => {
+      console.error(`[ExtractionPipeline] Deal creation trigger failed for ${row.id}:`, err.message);
+    });
+
     // M27 AUTO-TRIGGER: Generate comp set when deal is created with location
     // Fire async (don't block response)
     if (boundary && (boundary.type === 'Point' || boundary.type === 'Polygon')) {
@@ -1015,11 +1019,22 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
       );
 
       processDocument(req.file.path, req.file.originalname, dealId as string, req.user!.userId)
-        .then(result => {
+        .then(async (result) => {
           console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''})`);
           if (result.alerts.length > 0) {
             console.log(`[ExtractionPipeline] Alerts: ${result.alerts.join('; ')}`);
           }
+          try {
+            await pool.query(
+              `UPDATE deal_document_files SET
+                 document_type = $2, extraction_status = $3,
+                 extraction_result = $4, updated_at = NOW()
+               WHERE deal_id = $1 AND filename = $5`,
+              [dealId, result.documentType, result.success ? 'completed' : 'failed',
+               JSON.stringify({ success: result.success, error: result.error, rowsInserted: result.rowsInserted, alerts: result.alerts }),
+               path.basename(req.file!.path)]
+            );
+          } catch (e) { /* best-effort status update */ }
         })
         .catch(err => {
           console.error(`[ExtractionPipeline] Error processing ${req.file!.originalname}:`, err);

@@ -532,6 +532,28 @@ async function updateDealCapsule(pool: any, dealId: string, result: ExtractionRe
         totalAnnual: oi.summary.totalAnnual,
         categoryCount: oi.summary.categoryCount,
       };
+
+      const t12Check = await pool.query(
+        `SELECT SUM(COALESCE(other_income, 0) + COALESCE(utility_reimbursement, 0) + COALESCE(late_fees, 0) + COALESCE(misc_income, 0)) as t12_other_income
+         FROM deal_monthly_actuals
+         WHERE property_id IN (SELECT property_id FROM deals WHERE id = $1 UNION SELECT $1)
+           AND report_month >= (CURRENT_DATE - INTERVAL '12 months')::date`,
+        [dealId]
+      );
+      const t12OtherIncome = parseFloat(t12Check.rows[0]?.t12_other_income) || 0;
+
+      if (t12OtherIncome > 0 && oi.summary.totalAnnual > 0) {
+        const oiVariance = Math.abs(oi.summary.totalAnnual - t12OtherIncome) / t12OtherIncome;
+        if (oiVariance > 0.15) {
+          alerts.push(`⚠ Broker Other Income Schedule ($${Math.round(oi.summary.totalAnnual).toLocaleString()}/yr) diverges ${(oiVariance * 100).toFixed(1)}% from T12 trailing other income ($${Math.round(t12OtherIncome).toLocaleString()}/yr)`);
+          capsulePayload.extraction_variance_other_income = {
+            brokerProjected: oi.summary.totalAnnual,
+            t12Actual: t12OtherIncome,
+            variancePct: oiVariance,
+            flaggedAt: now,
+          };
+        }
+      }
       break;
     }
   }
