@@ -36,6 +36,7 @@ export interface VelocityVariance {
   actualSignings: number;
   variance: number;
   variancePct: number;
+  confidence: number;
 }
 
 export interface LeaseTermBucket {
@@ -130,13 +131,20 @@ export interface TrafficSnapshot {
     renewalCliffMonths: string[];
     lossToLeasePct: number;
     dataCompleteness: number;
+    metricConfidence: {
+      signingVelocity: number;
+      seasonality: number;
+      expirationWaterfall: number;
+      tradeOut: number;
+      mtmExposure: number;
+    };
   };
   sourceDocumentTypes: string[];
 }
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-const RENEWAL_CLIFF_THRESHOLD = 0.08;
+const RENEWAL_CLIFF_THRESHOLD = Number(process.env.RENEWAL_CLIFF_THRESHOLD) || 0.15;
 
 export async function computeTrafficSnapshot(dealId: string): Promise<TrafficSnapshot> {
   const pool = getPool();
@@ -229,6 +237,13 @@ export async function computeTrafficSnapshot(dealId: string): Promise<TrafficSna
       renewalCliffMonths,
       lossToLeasePct: tradeOutAnalytics.overallLossToLeasePct,
       dataCompleteness: Math.round(dataCompleteness * 100),
+      metricConfidence: {
+        signingVelocity: signingVelocity.confidence,
+        seasonality: round2(Math.min(1, signingVelocity.dataMonths / 24)),
+        expirationWaterfall: totalUnits > 0 ? round2(occupiedUnits / totalUnits) : 0,
+        tradeOut: round2(Math.min(1, (tradeOutAnalytics.newLeases.count + tradeOutAnalytics.renewals.count) / Math.max(1, totalUnits) * 2)),
+        mtmExposure: totalUnits > 0 ? 1 : 0,
+      },
     },
     sourceDocumentTypes,
   };
@@ -393,8 +408,8 @@ function computeVelocityVariance(leases: any[], seasonality: SeasonalityBucket[]
 
   const now = new Date();
   const results: VelocityVariance[] = [];
-  const totalSignings = signedLeases.length;
-  const avgPerMonth = totalSignings / 12;
+  const dataSpanMonths = Math.max(1, getDataSpanMonths(signedLeases));
+  const avgPerMonth = signedLeases.length / dataSpanMonths;
 
   for (let i = 11; i >= 0; i--) {
     const targetDate = new Date(now);
@@ -412,12 +427,16 @@ function computeVelocityVariance(leases: any[], seasonality: SeasonalityBucket[]
     const variance = actualInMonth - expected;
     const variancePct = expected > 0 ? round2(variance / expected * 100) : 0;
 
+    const monthsAgo = i;
+    const monthConfidence = round2(Math.min(1, dataSpanMonths / 12) * Math.exp(-0.03 * monthsAgo));
+
     results.push({
       month: monthStr,
       expectedSignings: expected,
       actualSignings: actualInMonth,
       variance: round2(variance),
       variancePct,
+      confidence: monthConfidence,
     });
   }
 
