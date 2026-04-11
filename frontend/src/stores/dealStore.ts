@@ -1418,28 +1418,28 @@ export const useDealStore = create<DealStore>()(
     markFieldReviewed: (path: string) => {
       const segments = path.split('.');
       const state = get();
-      let parent: Record<string, unknown> = state as unknown as Record<string, unknown>;
-      for (let i = 0; i < segments.length - 1; i++) {
-        const next = parent[segments[i]];
-        if (!next || typeof next !== 'object') return;
-        parent = next as Record<string, unknown>;
+
+      let cur: unknown = state;
+      for (const seg of segments) {
+        if (!cur || typeof cur !== 'object') return;
+        cur = (cur as Record<string, unknown>)[seg];
       }
-      const leaf = parent[segments[segments.length - 1]];
-      if (leaf && typeof leaf === 'object' && 'alertLevel' in leaf && 'userReviewed' in leaf) {
-        const lv = leaf as { alertLevel: string; userReviewed: boolean; value: unknown };
-        if (!lv.userReviewed && lv.alertLevel === 'info') {
-          const updated = { ...lv, userReviewed: true, alertLevel: 'none' };
-          const patch: Record<string, unknown> = {};
-          let cursor = patch;
-          for (let i = 0; i < segments.length - 1; i++) {
-            const seg = segments[i];
-            const orig = (i === 0 ? state : Object.values(patch)[0]) as Record<string, unknown>;
-            cursor[seg] = { ...(orig[seg] as Record<string, unknown> || {}) };
-            cursor = cursor[seg] as Record<string, unknown>;
-          }
-          cursor[segments[segments.length - 1]] = updated;
-          set(patch as Partial<DealStore>);
-        }
+      if (!cur || typeof cur !== 'object' || !('alertLevel' in cur) || !('userReviewed' in cur)) return;
+      const lv = cur as { alertLevel: string; userReviewed: boolean };
+      if (lv.userReviewed || lv.alertLevel !== 'info') return;
+
+      const updated = { ...cur, userReviewed: true, alertLevel: 'none' };
+      if (segments.length === 1) {
+        set({ [segments[0]]: updated } as Partial<DealStore>);
+      } else if (segments.length === 2) {
+        const topKey = segments[0];
+        const topObj = (state as Record<string, unknown>)[topKey];
+        set({ [topKey]: { ...(topObj as Record<string, unknown>), [segments[1]]: updated } } as Partial<DealStore>);
+      } else if (segments.length === 3) {
+        const [s0, s1, s2] = segments;
+        const top = (state as Record<string, unknown>)[s0] as Record<string, unknown>;
+        const mid = top[s1] as Record<string, unknown>;
+        set({ [s0]: { ...top, [s1]: { ...mid, [s2]: updated } } } as Partial<DealStore>);
       }
     },
 
@@ -1456,8 +1456,7 @@ export const useDealStore = create<DealStore>()(
       const state = get();
       if (!state.isIdentityComplete()) return true;
 
-      const dealType = state.identity.mode === 'development' ? 'development'
-        : state.identity.mode === 'redevelopment' ? 'redevelopment' : 'existing';
+      const dealType = getDealType({ projectType: state.projectType });
       const fields = INPUT_FIELD_REGISTRY.filter(f => f.appliesTo.includes(dealType));
       for (const field of fields) {
         const segments = field.path.split('.');

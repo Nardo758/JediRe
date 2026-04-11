@@ -161,7 +161,11 @@ function IdentityInputSection() {
 
   const updateField = useCallback((field: keyof DealIdentity, value: string) => {
     const current = useDealStore.getState().identity;
-    useDealStore.setState({ identity: { ...current, [field]: value } });
+    const update: Record<string, unknown> = { identity: { ...current, [field]: value } };
+    if (field === 'mode') {
+      update.projectType = value || 'existing';
+    }
+    useDealStore.setState(update);
   }, []);
 
   return (
