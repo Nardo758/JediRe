@@ -12,21 +12,35 @@ function fmtDollar(v: number): string {
   return `$${v.toFixed(0)}`;
 }
 
-function LVRow({ label, lv, format }: {
+function LVRow({ label, lv, format, fieldPath }: {
   label: string;
   lv: LayeredValue<number> | null | undefined;
   format?: (v: number) => string;
+  fieldPath?: string;
 }) {
   if (!lv) return null;
+  const markFieldReviewed = useDealStore(s => s.markFieldReviewed);
   const fmt = format ?? ((v: number) => v.toFixed(1));
+
+  const handleView = useCallback(() => {
+    if (fieldPath && lv.alertLevel === 'info' && !lv.userReviewed) {
+      markFieldReviewed(fieldPath);
+    }
+  }, [fieldPath, lv.alertLevel, lv.userReviewed, markFieldReviewed]);
+
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '3px 8px',
-      borderBottom: `1px solid ${BT.border.subtle}`,
-    }}>
+    <div
+      data-field-path={fieldPath}
+      onClick={handleView}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '3px 8px',
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        cursor: lv.alertLevel === 'info' ? 'pointer' : 'default',
+      }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <AlertPip level={lv.alertLevel} />
+        <AlertPip level={lv.alertLevel} onDismiss={lv.alertLevel === 'info' ? handleView : undefined} />
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{label}</span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -142,7 +156,16 @@ function UnitMixTable({ rows, readOnly, title }: {
                 {readOnly ? `$${row.targetRent.value.toLocaleString()}` : (
                   <EditableCell value={row.targetRent.value} color={BT.met.financial}
                     format={v => `$${v.toLocaleString()}`}
-                    onCommit={v => overrideUnitMix(row.id, { targetRent: v as unknown as UnitMixRow['targetRent'] })} />
+                    onCommit={v => {
+                      const rentOverride: LayeredValue<number> = {
+                        ...row.targetRent,
+                        value: v,
+                        resolvedFrom: 'user',
+                        alertLevel: 'none',
+                        userReviewed: true,
+                      };
+                      overrideUnitMix(row.id, { targetRent: rentOverride });
+                    }} />
                 )}
               </td>
               <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.cyan }}>{(row.mixPct * 100).toFixed(1)}%</td>
@@ -194,11 +217,11 @@ function ZoningConstraintsSummary() {
   const zoning = useDealStore(s => s.zoning);
   return (
     <SectionPanel title="ZONING HARD GATES" subtitle="M02 Constraints" borderColor={BT.text.red}>
-      <LVRow label="MAX DENSITY" lv={zoning.maxDensity} format={v => `${v.toFixed(0)} u/ac`} />
-      <LVRow label="MAX HEIGHT" lv={zoning.maxHeight} format={v => `${v.toFixed(0)} ft`} />
-      <LVRow label="MAX FAR" lv={zoning.maxFAR} format={v => `${v.toFixed(2)}×`} />
-      <LVRow label="LOT COVERAGE" lv={zoning.maxLotCoverage} format={v => `${(v * 100).toFixed(0)}%`} />
-      <LVRow label="PARKING RATIO" lv={zoning.parkingRatio} format={v => `${v.toFixed(2)}/unit`} />
+      <LVRow label="MAX DENSITY" lv={zoning.maxDensity} fieldPath="zoning.maxDensity" format={v => `${v.toFixed(0)} u/ac`} />
+      <LVRow label="MAX HEIGHT" lv={zoning.maxHeight} fieldPath="zoning.maxHeight" format={v => `${v.toFixed(0)} ft`} />
+      <LVRow label="MAX FAR" lv={zoning.maxFAR} fieldPath="zoning.maxFAR" format={v => `${v.toFixed(2)}×`} />
+      <LVRow label="LOT COVERAGE" lv={zoning.maxLotCoverage} fieldPath="zoning.maxLotCoverage" format={v => `${(v * 100).toFixed(0)}%`} />
+      <LVRow label="PARKING RATIO" lv={zoning.parkingRatio} fieldPath="zoning.parkingRatio" format={v => `${v.toFixed(2)}/unit`} />
     </SectionPanel>
   );
 }
@@ -228,11 +251,11 @@ export function ExistingOverview() {
       <UnitMixTable rows={resolvedUnitMix} readOnly={true} title="UNIT MIX — BROKER STATED" />
       <GapAnalysisPanel />
       <SectionPanel title="ASSUMPTIONS" subtitle="Override Only" borderColor={BT.met.financial}>
-        <LVRow label="RENT GROWTH" lv={financial.assumptions.rentGrowth} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="VACANCY" lv={financial.assumptions.vacancy} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="EXIT CAP" lv={financial.assumptions.exitCapRate} format={v => `${(v * 100).toFixed(2)}%`} />
-        <LVRow label="CAPEX/UNIT" lv={financial.assumptions.capexPerUnit} format={v => fmtDollar(v)} />
-        <LVRow label="HOLD PERIOD" lv={financial.assumptions.holdPeriod} format={v => `${v} yrs`} />
+        <LVRow label="RENT GROWTH" lv={financial.assumptions.rentGrowth} fieldPath="financial.assumptions.rentGrowth" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="VACANCY" lv={financial.assumptions.vacancy} fieldPath="financial.assumptions.vacancy" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="EXIT CAP" lv={financial.assumptions.exitCapRate} fieldPath="financial.assumptions.exitCapRate" format={v => `${(v * 100).toFixed(2)}%`} />
+        <LVRow label="CAPEX/UNIT" lv={financial.assumptions.capexPerUnit} fieldPath="financial.assumptions.capexPerUnit" format={v => fmtDollar(v)} />
+        <LVRow label="HOLD PERIOD" lv={financial.assumptions.holdPeriod} fieldPath="financial.assumptions.holdPeriod" format={v => `${v} yrs`} />
       </SectionPanel>
     </div>
   );
@@ -262,11 +285,11 @@ export function DevelopmentOverview() {
       <ParkingConstraint />
 
       <SectionPanel title="DEVELOPMENT ASSUMPTIONS" borderColor={BT.met.financial}>
-        <LVRow label="RENT GROWTH" lv={financial.assumptions.rentGrowth} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="VACANCY" lv={financial.assumptions.vacancy} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="EXIT CAP" lv={financial.assumptions.exitCapRate} format={v => `${(v * 100).toFixed(2)}%`} />
-        <LVRow label="MGMT FEE" lv={financial.assumptions.managementFee} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="HOLD PERIOD" lv={financial.assumptions.holdPeriod} format={v => `${v} yrs`} />
+        <LVRow label="RENT GROWTH" lv={financial.assumptions.rentGrowth} fieldPath="financial.assumptions.rentGrowth" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="VACANCY" lv={financial.assumptions.vacancy} fieldPath="financial.assumptions.vacancy" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="EXIT CAP" lv={financial.assumptions.exitCapRate} fieldPath="financial.assumptions.exitCapRate" format={v => `${(v * 100).toFixed(2)}%`} />
+        <LVRow label="MGMT FEE" lv={financial.assumptions.managementFee} fieldPath="financial.assumptions.managementFee" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="HOLD PERIOD" lv={financial.assumptions.holdPeriod} fieldPath="financial.assumptions.holdPeriod" format={v => `${v} yrs`} />
       </SectionPanel>
     </div>
   );
@@ -330,10 +353,10 @@ export function RedevelopmentOverview() {
       )}
 
       <SectionPanel title="ASSUMPTIONS" borderColor={BT.met.financial}>
-        <LVRow label="RENT GROWTH" lv={financial.assumptions.rentGrowth} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="VACANCY" lv={financial.assumptions.vacancy} format={v => `${(v * 100).toFixed(1)}%`} />
-        <LVRow label="EXIT CAP" lv={financial.assumptions.exitCapRate} format={v => `${(v * 100).toFixed(2)}%`} />
-        <LVRow label="CAPEX/UNIT" lv={financial.assumptions.capexPerUnit} format={v => fmtDollar(v)} />
+        <LVRow label="RENT GROWTH" lv={financial.assumptions.rentGrowth} fieldPath="financial.assumptions.rentGrowth" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="VACANCY" lv={financial.assumptions.vacancy} fieldPath="financial.assumptions.vacancy" format={v => `${(v * 100).toFixed(1)}%`} />
+        <LVRow label="EXIT CAP" lv={financial.assumptions.exitCapRate} fieldPath="financial.assumptions.exitCapRate" format={v => `${(v * 100).toFixed(2)}%`} />
+        <LVRow label="CAPEX/UNIT" lv={financial.assumptions.capexPerUnit} fieldPath="financial.assumptions.capexPerUnit" format={v => fmtDollar(v)} />
       </SectionPanel>
     </div>
   );

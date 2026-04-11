@@ -680,7 +680,7 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
   );
 }
 
-function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps, onPushToProforma }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[]; gaps?: GapItem[]; onPushToProforma?: (program: Program) => Promise<{ success: boolean; modulesUpdated: string[]; errors: string[] }> }) {
+function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps, onPushToProforma, readOnly }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[]; gaps?: GapItem[]; onPushToProforma?: (program: Program) => Promise<{ success: boolean; modulesUpdated: string[]; errors: string[] }>; readOnly?: boolean }) {
   const { totalSF, mixTotal, grossRevPA, wtdPSF } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
   const sfPct = zoning.maxNetSF > 0 ? (totalSF / zoning.maxNetSF) * 100 : 0;
@@ -711,16 +711,20 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
-      <SectionHeader mod="M03" title="Unit Program" right={
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {!mixOk && <Tag label={`MIX ${mixTotal}%`} color={C.red} />}
-          <button onClick={applyOptimalMix} style={{ background: C.blue + "14", border: `1px solid ${C.blue}35`,
-            borderRadius: 3, padding: "2px 6px", color: C.blue, fontSize: 7, fontFamily: mono,
-            fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em" }}>AI OPTIMIZE</button>
-          <button onClick={resetProgram} style={{ background: "none",
-            border: `1px solid ${C.border}`, borderRadius: 3, padding: "2px 6px",
-            color: C.faint, fontSize: 7, fontFamily: mono, cursor: "pointer" }}>RESET</button>
-        </div>
+      <SectionHeader mod="M03" title={readOnly ? "Unit Program (Read-Only)" : "Unit Program"} right={
+        readOnly ? (
+          <Tag label="EXISTING — VIEW ONLY" color={C.faint} />
+        ) : (
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {!mixOk && <Tag label={`MIX ${mixTotal}%`} color={C.red} />}
+            <button onClick={applyOptimalMix} style={{ background: C.blue + "14", border: `1px solid ${C.blue}35`,
+              borderRadius: 3, padding: "2px 6px", color: C.blue, fontSize: 7, fontFamily: mono,
+              fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em" }}>AI OPTIMIZE</button>
+            <button onClick={resetProgram} style={{ background: "none",
+              border: `1px solid ${C.border}`, borderRadius: 3, padding: "2px 6px",
+              color: C.faint, fontSize: 7, fontFamily: mono, cursor: "pointer" }}>RESET</button>
+          </div>
+        )
       } />
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: C.border,
@@ -728,8 +732,12 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
         {[
           { label: "TOTAL UNITS", content: (
             <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-              <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="" width={36} accent
-                onChange={v => onProgramChange({ ...program, totalUnits: v })} />
+              {readOnly ? (
+                <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{program.totalUnits}</span>
+              ) : (
+                <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="" width={36} accent
+                  onChange={v => onProgramChange({ ...program, totalUnits: v })} />
+              )}
               <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>/ {zoning.maxUnits}</span>
             </div>
           )},
@@ -776,7 +784,11 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
                     <div style={{ width: `${Math.min(u.mix, 100)}%`, height: "100%", background: ut.color + "aa",
                       borderRadius: 2, transition: "width 0.3s" }} />
                   </div>
-                  <NumInput value={u.mix} min={0} max={100} suffix="%" width={28} accent onChange={v => setUnit(ut.key,"mix",v)} />
+                  {readOnly ? (
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{u.mix}%</span>
+                  ) : (
+                    <NumInput value={u.mix} min={0} max={100} suffix="%" width={28} accent onChange={v => setUnit(ut.key,"mix",v)} />
+                  )}
                   {avg.mix > 0 && <Delt value={u.mix - avg.mix} unit="pp" />}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 3, background: C.muted, borderRadius: 3, padding: "1px 6px" }}>
@@ -792,7 +804,11 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
               <div style={{ display: "flex", gap: 8, marginLeft: 14 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.bg, borderRadius: 3, padding: "2px 6px", border: `1px solid ${C.border}40` }}>
                   <span style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.04em" }}>SF</span>
-                  <NumInput value={u.sf} min={200} max={3000} step={5} suffix="" width={36} accent onChange={v => setUnit(ut.key,"sf",v)} />
+                  {readOnly ? (
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{u.sf}</span>
+                  ) : (
+                    <NumInput value={u.sf} min={200} max={3000} step={5} suffix="" width={36} accent onChange={v => setUnit(ut.key,"sf",v)} />
+                  )}
                   {avg.sf > 0 && (
                     <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>
                       avg {avg.sf} {sfDelta !== null && <Delt value={sfDelta} unit="" />}
@@ -801,7 +817,11 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.bg, borderRadius: 3, padding: "2px 6px", border: `1px solid ${C.border}40` }}>
                   <span style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.04em" }}>RENT</span>
-                  <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={36} accent onChange={v => setUnit(ut.key,"rent",v)} />
+                  {readOnly ? (
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>${u.rent}</span>
+                  ) : (
+                    <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={36} accent onChange={v => setUnit(ut.key,"rent",v)} />
+                  )}
                   {avg.rent > 0 && (
                     <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>
                       avg ${avg.rent} {rentDelta !== null && <Delt value={rentDelta} unit="$" />}
@@ -851,7 +871,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
           : <Tag label={`${(zoning.maxNetSF-totalSF).toLocaleString()} remaining`} color={C.green} size="xs" />}
       </div>
 
-      {onPushToProforma && (
+      {onPushToProforma && !readOnly && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
           padding: "4px 8px", borderTop: `1px solid ${C.border}`, background: C.card }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -1468,6 +1488,7 @@ export default function UnitMixIntelligence() {
           <>
             <ZoningPanel zoning={zoning} program={program} computed={computed} onZoningChange={setZoning} />
             <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={handleProgramChange} comps={comps}
+              readOnly={dealType === 'existing'}
               onPushToProforma={async (p) => {
                 const result = await pushToProforma(p);
                 return result;

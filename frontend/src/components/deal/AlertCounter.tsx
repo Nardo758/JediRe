@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { BT } from './bloomberg-ui';
 import { AlertPip } from './AlertPip';
 import { useDealStore, useDealType } from '../../stores/dealStore';
@@ -71,13 +71,39 @@ export function useIdentityGate(): { complete: boolean; missing: string[] } {
   }, [state, dealType]);
 }
 
+function scrollToField(path: string) {
+  const el = document.querySelector(`[data-field-path="${path}"]`);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    (el as HTMLElement).style.outline = `2px solid ${BT.text.amber}`;
+    setTimeout(() => { (el as HTMLElement).style.outline = ''; }, 2000);
+  }
+}
+
 interface AlertCounterProps {
   onClickField?: (path: string) => void;
 }
 
 export function AlertCounter({ onClickField }: AlertCounterProps) {
   const { alerts, blockCount, warnCount, infoCount, total } = useAlertScan();
+  const markFieldReviewed = useDealStore(s => s.markFieldReviewed);
   const [expanded, setExpanded] = useState(false);
+
+  const handleFieldClick = useCallback((item: AlertItem) => {
+    scrollToField(item.field.path);
+    if (item.level === 'info') {
+      markFieldReviewed(item.field.path);
+    }
+    onClickField?.(item.field.path);
+  }, [onClickField, markFieldReviewed]);
+
+  const handleJumpToFirstBlock = useCallback(() => {
+    const firstBlock = alerts.find(a => a.level === 'block');
+    if (firstBlock) {
+      scrollToField(firstBlock.field.path);
+      if (!expanded) setExpanded(true);
+    }
+  }, [alerts, expanded]);
 
   if (total === 0) {
     return (
@@ -122,12 +148,16 @@ export function AlertCounter({ onClickField }: AlertCounterProps) {
             {total} INPUT{total !== 1 ? 'S' : ''} NEED ATTENTION
           </span>
           {blockCount > 0 && (
-            <span style={{
-              fontFamily: MONO, fontSize: 8, color: BT.text.red,
-              background: `${BT.text.red}18`, padding: '0 4px',
-              border: `1px solid ${BT.text.red}33`,
-            }}>
-              {blockCount} BLOCKING
+            <span
+              onClick={(e) => { e.stopPropagation(); handleJumpToFirstBlock(); }}
+              style={{
+                fontFamily: MONO, fontSize: 8, color: BT.text.red,
+                background: `${BT.text.red}18`, padding: '0 4px',
+                border: `1px solid ${BT.text.red}33`,
+                cursor: 'pointer',
+              }}
+            >
+              {blockCount} BLOCKING ↗
             </span>
           )}
         </div>
@@ -151,14 +181,14 @@ export function AlertCounter({ onClickField }: AlertCounterProps) {
             .map((item) => (
               <div
                 key={item.field.path}
-                onClick={() => onClickField?.(item.field.path)}
+                onClick={() => handleFieldClick(item)}
                 style={{
                   padding: '3px 8px 3px 16px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   borderBottom: `1px solid ${BT.border.subtle}`,
-                  cursor: onClickField ? 'pointer' : 'default',
+                  cursor: 'pointer',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
