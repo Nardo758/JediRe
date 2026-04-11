@@ -371,6 +371,61 @@ export interface ChatSession {
   expiresAt: string;
 }
 
+// ── Deal Capsule Context (aligned with frontend DealContext union) ───────
+
+interface DealCapsuleBase {
+  identity: {
+    id: string;
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    zip: string;
+    county: string;
+    mode: 'existing' | 'development' | 'redevelopment';
+    stage: string;
+  };
+  productType: string;
+  site: Record<string, unknown>;
+  zoning: Record<string, unknown>;
+  market: Record<string, unknown>;
+  financial: Record<string, unknown>;
+  capital: Record<string, unknown>;
+  editLog: EditLogEntry[];
+}
+
+export interface ExistingDealCapsule extends DealCapsuleBase {
+  projectType: 'existing';
+  existingProperty: Record<string, unknown> | null;
+  redevelopment: null;
+}
+
+export interface DevelopmentDealCapsule extends DealCapsuleBase {
+  projectType: 'development';
+  existingProperty: null;
+  redevelopment: null;
+}
+
+export interface RedevelopmentDealCapsule extends DealCapsuleBase {
+  projectType: 'redevelopment';
+  existingProperty: Record<string, unknown> | null;
+  redevelopment: RedevelopmentContext | null;
+}
+
+export type DealCapsuleContext = ExistingDealCapsule | DevelopmentDealCapsule | RedevelopmentDealCapsule;
+
+export function isExistingCapsule(ctx: DealCapsuleContext): ctx is ExistingDealCapsule {
+  return ctx.projectType === 'existing';
+}
+
+export function isDevelopmentCapsule(ctx: DealCapsuleContext): ctx is DevelopmentDealCapsule {
+  return ctx.projectType === 'development';
+}
+
+export function isRedevelopmentCapsule(ctx: DealCapsuleContext): ctx is RedevelopmentDealCapsule {
+  return ctx.projectType === 'redevelopment';
+}
+
 // ── AI Service Types ────────────────────────────────────────────
 
 export interface AICallContext {

@@ -581,6 +581,22 @@ export const INPUT_FIELD_REGISTRY: InputFieldMeta[] = [
   { path: 'existingProperty.totalUnits', label: 'Total Units', inputClass: 'identity', highSensitivity: true, appliesTo: ['existing'], category: 'identity' },
   { path: 'existingProperty.occupancy', label: 'Occupancy', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'market' },
   { path: 'existingProperty.currentNOI', label: 'Current NOI', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'cost' },
+  { path: 'existingProperty.yearBuilt', label: 'Year Built', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing'], category: 'identity' },
+  { path: 'existingProperty.avgRentPerUnit', label: 'Avg Rent per Unit', inputClass: 'override', highSensitivity: true, appliesTo: ['existing'], category: 'market' },
+
+  { path: 'market.submarket', label: 'Submarket', inputClass: 'identity', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.population', label: 'Population', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.medianIncome', label: 'Median Income', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+  { path: 'market.employmentGrowth', label: 'Employment Growth', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'market' },
+
+  { path: 'capital.targetLeverage', label: 'Target Leverage', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
+  { path: 'capital.interestRate', label: 'Interest Rate', inputClass: 'override', highSensitivity: true, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
+  { path: 'capital.loanTerm', label: 'Loan Term', inputClass: 'override', highSensitivity: false, appliesTo: ['existing', 'development', 'redevelopment'], category: 'capital' },
+
+  { path: 'redevelopment.demoScope', label: 'Demo Scope', inputClass: 'scope', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },
+  { path: 'redevelopment.existingNOI', label: 'Existing NOI (Redev)', inputClass: 'override', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },
+  { path: 'redevelopment.projectedNOI', label: 'Projected NOI (Redev)', inputClass: 'override', highSensitivity: true, appliesTo: ['redevelopment'], category: 'cost' },
+  { path: 'redevelopment.varianceRequired', label: 'Variance Required', inputClass: 'scope', highSensitivity: true, appliesTo: ['redevelopment'], category: 'zoning' },
 ];
 
 export function getFieldMeta(path: string): InputFieldMeta | undefined {
@@ -600,116 +616,33 @@ export function getHighSensitivityFields(dealType: 'existing' | 'development' | 
 }
 
 // ============================================================================
-// THE DEAL CONTEXT — the single object in dealStore
+// THE DEAL CONTEXT — discriminated union on projectType
 // ============================================================================
 
-export interface DealContext {
-  /** Deal identity — always present */
+type ProductType = 'mf_garden' | 'mf_wrap' | 'mf_midrise' | 'mf_highrise' | 'mf_townhome' | 'office' | 'retail' | 'industrial' | 'hospitality' | 'mixed_use';
+
+type DevelopmentEnvelope = {
+  max_units: number;
+  max_gfa: number;
+  max_stories: number;
+  units_per_floor: number;
+  binding_constraint: string;
+  selected_path: string;
+  parking: { type: string; spaces: number; cost_per_space: number };
+  buildable_area_sf: number;
+  impact_fee_credit_units: number;
+};
+
+interface DealContextBase {
   identity: DealIdentity;
-
-  /** Project type — discriminated union key for deal-type-driven visibility */
-  projectType: 'existing' | 'development' | 'redevelopment';
-
-  /** Product type for strategy and financial model adaptation */
-  productType: 'mf_garden' | 'mf_wrap' | 'mf_midrise' | 'mf_highrise' | 'mf_townhome' | 'office' | 'retail' | 'industrial' | 'hospitality' | 'mixed_use';
-
-  /** Site information — always present */
+  productType: ProductType;
   site: SiteContext;
-
-  /** Zoning constraints — always present, drives dev capacity */
   zoning: ZoningContext;
-
-  /**
-   * Zoning Agent typed output — written by the Zoning Agent when analysis
-   * completes. All downstream modules (DevelopmentCapacity, ProForma, 3D,
-   * Strategy, Risk) should read from here rather than from raw agent results.
-   *
-   * Import the ZoningOutput type from types/zoning.types.ts.
-   * Null until the Zoning Agent has run for this deal.
-   */
   zoningOutput: import('../types/zoning.types').ZoningOutput | null;
 
-  // ─── MODE-SPECIFIC: DEVELOPMENT ───────────────────────────
-
-  /**
-   * DEVELOPMENT PATH SYSTEM (development mode only)
-   *
-   * This is THE KEYSTONE for development deals.
-   *
-   * Flow:
-   *   1. M03 (or AI agent) generates multiple DevelopmentPaths
-   *   2. Each path includes its own unitMixProgram, costs, timeline
-   *   3. User selects one via selectedDevelopmentPathId
-   *   4. dealStore.selectDevelopmentPath(pathId) triggers cascade:
-   *      - resolvedUnitMix updates to selected path's program
-   *      - financial.assumptions adjust (construction costs, timeline)
-   *      - strategy scores recompute (BTS feasibility changes per path)
-   *      - JEDI score updates
-   *   5. ALL modules re-render from the same resolved state
-   *
-   * If no path is selected, the first path is used as default.
-   * For existing deals, developmentPaths is empty and
-   * resolvedUnitMix comes from existingProperty.unitMixProgram.
-   */
-  developmentPaths: DevelopmentPath[];
-  selectedDevelopmentPathId: string | null;
-
-  /**
-   * Development Envelope — the zoning constraints from the selected development path.
-   * Written by DevelopmentCapacityTab when user selects a path.
-   * Read by UnitMixRouter to show utilization constraints and by ProForma for cost calculations.
-   */
-  developmentEnvelope: {
-    max_units: number;
-    max_gfa: number;
-    max_stories: number;
-    units_per_floor: number;
-    binding_constraint: string;
-    selected_path: string;
-    parking: { type: string; spaces: number; cost_per_space: number };
-    buildable_area_sf: number;
-    impact_fee_credit_units: number;
-  } | null;
-
-  // ─── MODE-SPECIFIC: EXISTING ──────────────────────────────
-
-  /** Existing property data (existing mode only) */
-  existingProperty: ExistingPropertyContext | null;
-
-  // ─── MODE-SPECIFIC: REDEVELOPMENT ──────────────────────────
-
-  /** Redevelopment context — delta layer for redev deals */
-  redevelopment: RedevelopmentContext | null;
-
-  // ─── RESOLVED STATE (computed from mode + selection) ──────
-
-  /**
-   * THE RESOLVED UNIT MIX
-   *
-   * This is what every module reads. It's computed, not stored directly.
-   *
-   * Resolution logic:
-   *   - Development mode: selectedPath.unitMixProgram
-   *     (with user overrides from M-PIE applied on top)
-   *   - Existing mode: existingProperty.unitMixProgram
-   *     (with user overrides from M-PIE applied on top)
-   *
-   * User overrides are tracked separately in unitMixOverrides.
-   * The resolved mix merges base + overrides.
-   */
   resolvedUnitMix: UnitMixRow[];
-
-  /**
-   * User-level overrides to the unit mix (from M-PIE edits).
-   * Keyed by UnitMixRow.id → partial override fields.
-   * Applied on top of the base program from path or existing property.
-   */
   unitMixOverrides: Record<string, Partial<Pick<UnitMixRow, 'count' | 'avgSF' | 'targetRent'>>>;
-
-  /** Total unit count (computed from resolvedUnitMix) */
   totalUnits: number;
-
-  // ─── INTELLIGENCE LAYERS ──────────────────────────────────
 
   market: MarketContext;
   supply: SupplyContext;
@@ -719,24 +652,58 @@ export interface DealContext {
   scores: JEDIScoreContext;
   risk: RiskContext;
 
-  // ─── METADATA ─────────────────────────────────────────────
-
-  /** Data freshness tracker — which modules have been hydrated */
   hydrationStatus: Record<string, {
     hydrated: boolean;
     lastFetchedAt: string | null;
     source: 'cache' | 'live' | 'mock';
   }>;
-
-  /** Pipeline stage timestamps */
   stageHistory: Array<{
     stage: DealStage;
     enteredAt: string;
     exitedAt: string | null;
   }>;
-
-  /** Audit trail — every assumption edit is recorded */
   editLog: EditLogEntry[];
+}
+
+export interface ExistingDealContext extends DealContextBase {
+  projectType: 'existing';
+  existingProperty: ExistingPropertyContext | null;
+  developmentPaths: DevelopmentPath[];
+  selectedDevelopmentPathId: string | null;
+  developmentEnvelope: DevelopmentEnvelope | null;
+  redevelopment: null;
+}
+
+export interface DevelopmentDealContext extends DealContextBase {
+  projectType: 'development';
+  developmentPaths: DevelopmentPath[];
+  selectedDevelopmentPathId: string | null;
+  developmentEnvelope: DevelopmentEnvelope | null;
+  existingProperty: null;
+  redevelopment: null;
+}
+
+export interface RedevelopmentDealContext extends DealContextBase {
+  projectType: 'redevelopment';
+  existingProperty: ExistingPropertyContext | null;
+  redevelopment: RedevelopmentContext | null;
+  developmentPaths: DevelopmentPath[];
+  selectedDevelopmentPathId: string | null;
+  developmentEnvelope: DevelopmentEnvelope | null;
+}
+
+export type DealContext = ExistingDealContext | DevelopmentDealContext | RedevelopmentDealContext;
+
+export function isExistingDeal(ctx: DealContext): ctx is ExistingDealContext {
+  return ctx.projectType === 'existing';
+}
+
+export function isDevelopmentDeal(ctx: DealContext): ctx is DevelopmentDealContext {
+  return ctx.projectType === 'development';
+}
+
+export function isRedevelopmentDeal(ctx: DealContext): ctx is RedevelopmentDealContext {
+  return ctx.projectType === 'redevelopment';
 }
 
 // ============================================================================

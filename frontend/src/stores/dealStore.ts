@@ -28,9 +28,12 @@ import {
   LayeredValue,
   DataSource,
   StrategyType,
+  EditLogEntry,
   getSelectedPath,
   resolveUnitMix,
   layered,
+  computeAlertLevel,
+  getFieldMeta,
 } from './dealContext.types';
 import {
   getDealType,
@@ -878,30 +881,43 @@ export const useDealStore = create<DealStore>()(
       const existing = current[key] as LayeredValue<T>;
 
       const resolvedFrom: 'broker' | 'platform' | 'user' =
-        (source === 'agent' || source === 'computed') ? 'platform' : source as any;
+        source === 'user' ? 'user'
+        : source === 'broker' ? 'broker'
+        : 'platform';
 
-      const entry: import('./dealContext.types').EditLogEntry = {
+      const now = new Date().toISOString();
+
+      const entry: EditLogEntry = {
         path,
         oldValue: existing?.value,
         newValue: value,
-        timestamp: new Date().toISOString(),
+        timestamp: now,
         actor: source === 'user' ? 'user' : source === 'agent' ? 'agent' : 'platform',
       };
       newState.editLog = [...(state.editLog || []), entry];
 
-      current[key] = {
+      const fieldMeta = getFieldMeta(path);
+      const userReviewed = source === 'user' || (existing?.userReviewed ?? false);
+
+      const updated: LayeredValue<T> = {
         value,
         source,
         resolvedFrom,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
         confidence,
-        alertLevel: 'none' as const,
-        userReviewed: source === 'user',
+        alertLevel: 'none',
+        userReviewed,
         layers: {
           ...existing?.layers,
-          [resolvedFrom]: { value, updatedAt: new Date().toISOString(), confidence },
+          [resolvedFrom]: { value, updatedAt: now, confidence },
         },
       };
+      updated.alertLevel = computeAlertLevel(updated, {
+        isIdentity: fieldMeta?.inputClass === 'identity',
+        highSensitivity: fieldMeta?.highSensitivity ?? false,
+      });
+
+      current[key] = updated;
 
       set(newState);
     },
