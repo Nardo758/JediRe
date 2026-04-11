@@ -98,10 +98,27 @@ export function classifyDocument(buffer: Buffer, filename: string): Classificati
   const filenameResult = classifyByFilename(filename);
 
   if (isPdf(filename)) {
+    if (filenameResult) {
+      return {
+        documentType: filenameResult.type,
+        confidence: filenameResult.confidence,
+        hints: ['PDF filename match'],
+      };
+    }
+    const textContent = buffer.toString('utf-8', 0, Math.min(buffer.length, 4096)).toLowerCase();
+    const taxIndicators = ['parcel', 'assessed value', 'millage', 'property tax', 'tax year', 'tax bill', 'levy', 'appraised'];
+    const taxMatches = taxIndicators.filter(ind => textContent.includes(ind)).length;
+    if (taxMatches >= 2) {
+      return {
+        documentType: 'TAX_BILL',
+        confidence: 0.6 + taxMatches * 0.05,
+        hints: [`PDF text contains ${taxMatches} tax indicators`],
+      };
+    }
     return {
-      documentType: filenameResult?.type || 'TAX_BILL',
-      confidence: filenameResult ? filenameResult.confidence : 0.5,
-      hints: filenameResult ? ['Filename match'] : ['PDF file — defaulting to TAX_BILL'],
+      documentType: 'UNKNOWN',
+      confidence: 0,
+      hints: ['PDF file — no matching filename or content patterns'],
     };
   }
 

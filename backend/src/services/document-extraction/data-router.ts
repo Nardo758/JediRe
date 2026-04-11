@@ -556,29 +556,67 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
     }
     case 'RENT_ROLL': {
       const rr = result.data as RentRollData;
+      let totalSqft = 0;
+      let occupiedSqft = 0;
+      let preLeasedCount = 0;
+      for (const unit of rr.units) {
+        if (unit.sqft && unit.sqft > 0) {
+          totalSqft += unit.sqft;
+          if (unit.status !== 'vacant') {
+            occupiedSqft += unit.sqft;
+          }
+        }
+        if (unit.isFutureResident) {
+          preLeasedCount++;
+        }
+      }
+      const occupancyBySqft = totalSqft > 0 ? occupiedSqft / totalSqft : null;
+
       capsulePayload.extraction_rent_roll = {
         source: 'platform',
         updatedAt: now,
         totalUnits: rr.summary.totalUnits,
         occupancyRate: rr.summary.occupancyRate,
+        occupancyBySqft,
         avgMarketRent: rr.summary.avgMarketRent,
         avgEffectiveRent: rr.summary.avgEffectiveRent,
         lossToLeasePct: rr.summary.lossToLeasePct,
         floorPlanCount: Object.keys(rr.summary.floorPlanMix).length,
+        preLeasedUnits: preLeasedCount,
+        futureResidents: rr.summary.futureResidents,
       };
       break;
     }
     case 'AGED_RECEIVABLES': {
       const ar = result.data as AgedReceivablesData;
+
+      let netExposurePctOfRevenue: number | null = null;
+      const revenueCheck = await pool.query(
+        `SELECT AVG(effective_gross_income) as avg_monthly_revenue
+         FROM deal_monthly_actuals
+         WHERE property_id IN (SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL)
+           AND report_month >= (CURRENT_DATE - INTERVAL '3 months')::date
+           AND effective_gross_income > 0`,
+        [dealId]
+      );
+      const avgMonthlyRevenue = parseFloat(revenueCheck.rows[0]?.avg_monthly_revenue) || 0;
+      if (avgMonthlyRevenue > 0 && ar.summary.totalAR > 0) {
+        netExposurePctOfRevenue = ar.summary.totalAR / avgMonthlyRevenue;
+      }
+
       capsulePayload.extraction_aged_receivables = {
         source: 'platform',
         updatedAt: now,
         totalAR: ar.summary.totalAR,
         seriousDelinquencyRate: ar.summary.seriousDelinquencyRate,
         unitsDelinquent: ar.summary.unitsDelinquent,
+        netExposurePctOfRevenue,
       };
       if (ar.summary.seriousDelinquencyRate > 0.10) {
         alerts.push(`⚠ Serious delinquency rate ${(ar.summary.seriousDelinquencyRate * 100).toFixed(1)}% exceeds 10% threshold`);
+      }
+      if (netExposurePctOfRevenue && netExposurePctOfRevenue > 0.05) {
+        alerts.push(`⚠ Net AR exposure ${(netExposurePctOfRevenue * 100).toFixed(1)}% of monthly revenue exceeds 5% threshold`);
       }
       break;
     }
