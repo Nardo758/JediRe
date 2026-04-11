@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
+import { AssumptionsPanel } from '../../../components/deal/AssumptionsPanel';
 import type { FinancialEngineTabProps, InputSource, UnitMixRow, CapexLineItem, WaterfallHurdle } from './types';
 import { fmt$, fmtPct } from './types';
 
@@ -47,11 +48,11 @@ function InputField({ label, value, source, linked, editable = true }: {
   );
 }
 
-type SectionKey = 'dealInfo' | 'acquisition' | 'unitMix' | 'revenue' | 'expenses' | 'capex' | 'financing' | 'disposition' | 'waterfall' | 'development' | 'renovation';
+type SectionKey = 'keystone' | 'dealInfo' | 'acquisition' | 'unitMix' | 'revenue' | 'expenses' | 'capex' | 'financing' | 'disposition' | 'waterfall' | 'development' | 'renovation';
 
 export function AssumptionsTab({ dealId, deal, dealType, assumptions, onAssumptionsChange }: FinancialEngineTabProps) {
   const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(
-    new Set(['dealInfo', 'acquisition', 'unitMix', 'revenue', 'expenses', 'capex', 'financing', 'disposition', 'waterfall'])
+    new Set(['keystone', 'dealInfo', 'acquisition', 'unitMix', 'revenue', 'expenses', 'capex', 'financing', 'disposition', 'waterfall'])
   );
 
   const a = assumptions;
@@ -95,8 +96,14 @@ export function AssumptionsTab({ dealId, deal, dealType, assumptions, onAssumpti
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>■ BLUE = hardcoded input</span>
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial }}>■ GREEN = linked from sheet</span>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>■ AMBER = user override</span>
         </div>
       </div>
+
+      <SectionHeader sKey="keystone" label="KEYSTONE ASSUMPTIONS" color={BT.text.amber} badge="EDITABLE" />
+      {expandedSections.has('keystone') && (
+        <AssumptionsPanel />
+      )}
 
       <SectionHeader sKey="dealInfo" label="DEAL INFO" color={BT.text.secondary} badge="CAPSULE" />
       {expandedSections.has('dealInfo') && (

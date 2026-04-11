@@ -15,6 +15,7 @@ import { StrategyBuilderPage } from "./StrategyBuilderPage";
 import { BottomPanel } from "../components/layout/BottomPanel";
 import { AgentBar } from "../components/layout/AgentBar";
 import TerminalMapView from "../components/map/TerminalMapView";
+import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -2230,24 +2231,34 @@ export default function TerminalPage() {
       );
     }
     return (
-      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",display:"flex",flexDirection:"column"}}>
         <PanelHeader T={T} title="STRATEGIES" subtitle="Strategy library | Builder | Saved profiles" borderColor={T.text.purple} right={<button onClick={()=>setShowStrategyBuilder(true)} style={{fontFamily:T.font.mono,fontSize:10,color:T.text.purple,background:"transparent",border:`1px solid ${T.text.purple}44`,padding:"2px 8px",cursor:"pointer"}}>OPEN BUILDER →</button>}/>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
-          {[
-            {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
-            {s:"RENTAL",score:69,desc:"Long-term hold for NOI and appreciation. Best in high-barrier markets with rent growth >2.5% YoY.",best:"Miami, Orlando",c:T.text.cyan},
-            {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
-            {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
-          ].map((row,i)=>(
-            <div key={i} onClick={()=>setShowStrategyBuilder(true)} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
-                <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
-              </div>
-              <div style={{fontSize:10,color:T.text.secondary,lineHeight:1.5,marginBottom:6}}>{row.desc}</div>
-              <div style={{fontSize:10,color:T.text.muted}}>Best markets: <span style={{color:T.text.amber,fontWeight:600}}>{row.best}</span></div>
+        <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+          <div style={{flex:1,overflow:"auto"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:1,background:T.border.subtle,margin:10}}>
+              {[
+                {s:"BUILD-TO-SELL",score:84,desc:"Ground-up construction, sell at CO. Optimal for thin supply + strong demand. Typical IRR 22–28%, 24mo hold.",best:"Jacksonville, Tampa",c:T.text.green},
+                {s:"RENTAL",score:69,desc:"Long-term hold for NOI and appreciation. Best in high-barrier markets with rent growth >2.5% YoY.",best:"Miami, Orlando",c:T.text.cyan},
+                {s:"FLIP",score:58,desc:"Value-add and resell within 12 months. Requires distress or mismanagement at acquisition. IRR 18–24%.",best:"Orlando (Colonial Town)",c:T.text.amber},
+                {s:"SHORT-TERM RENTAL",score:45,desc:"Hospitality-grade operation. High revenue but regulatory and operational risk. FL STR reform pending.",best:"Beach markets (caution)",c:T.text.orange},
+              ].map((row,i)=>(
+                <div key={i} onClick={()=>setShowStrategyBuilder(true)} style={{background:T.bg.panel,padding:12,borderTop:`2px solid ${row.c}`,cursor:"pointer"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                    <div style={{fontSize:10,fontWeight:700,color:T.text.white,letterSpacing:0.5}}>{row.s}</div>
+                    <div style={{fontSize:22,fontWeight:800,color:row.c}}>{row.score}</div>
+                  </div>
+                  <div style={{fontSize:10,color:T.text.secondary,lineHeight:1.5,marginBottom:6}}>{row.desc}</div>
+                  <div style={{fontSize:10,color:T.text.muted}}>Best markets: <span style={{color:T.text.amber,fontWeight:600}}>{row.best}</span></div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+          <div style={{width:280,borderLeft:`1px solid ${T.border.medium}`,overflow:"auto",flexShrink:0}}>
+            <div style={{padding:"4px 8px",background:T.bg.header,borderBottom:`1px solid ${T.border.medium}`}}>
+              <span style={{fontFamily:T.font.mono,fontSize:9,color:T.text.amber,letterSpacing:0.5}}>ASSUMPTIONS · EDIT</span>
+            </div>
+            <AssumptionsPanel compact />
+          </div>
         </div>
       </div>
     );

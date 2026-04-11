@@ -98,14 +98,18 @@ export function layered<T>(
     source === 'user' ? 'user'
     : source === 'broker' ? 'broker'
     : 'platform';
+  const now = new Date().toISOString();
   const lv: LayeredValue<T> = {
     value,
     source,
     resolvedFrom,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
     confidence,
     alertLevel: 'none',
     userReviewed: source === 'user',
+    layers: {
+      [resolvedFrom]: { value, updatedAt: now, confidence },
+    },
   };
   lv.alertLevel = computeAlertLevel(lv);
   return lv;
@@ -167,6 +171,8 @@ export interface ZoningContext {
   verified: boolean;
   /** Overlay districts, special area plans, etc. */
   overlays: string[];
+  /** True when user overrides zoning fields — flags that a variance is assumed */
+  varianceAssumed: boolean;
 }
 
 // ---------------------------------------------------------------------------

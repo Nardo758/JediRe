@@ -195,12 +195,14 @@ interface DealStoreActions {
   /** Replace the entire unit mix program for existing deals */
   setExistingUnitMix: (program: UnitMixRow[]) => void;
 
+  // ─── ASSUMPTION EDITING (Task #153 Keystone Cascade) ──────
+  updateAssumption: (path: string, value: number) => void;
+  revertAssumption: (path: string) => void;
+  revertAllAssumptions: () => void;
+  _triggerAssumptionCascade: () => void;
+  assumptionCascadeStatus: 'idle' | 'pending' | 'computing' | 'error';
+
   // ─── GENERIC LAYERED VALUE UPDATES ────────────────────────
-  /**
-   * Update any layered value in the context.
-   * Path is dot-notation: "financial.assumptions.rentGrowth"
-   * Preserves existing layers and adds the new one.
-   */
   updateLayeredValue: <T>(
     path: string,
     value: T,
@@ -312,6 +314,7 @@ const INITIAL_CONTEXT: DealContext = {
     sourceUrl: null,
     verified: false,
     overlays: [],
+    varianceAssumed: false,
   },
   developmentPaths: [],
   selectedDevelopmentPathId: null,
@@ -865,6 +868,261 @@ export const useDealStore = create<DealStore>()(
       set({ resolvedUnitMix, totalUnits });
     },
 
+    // ─── ASSUMPTION EDITING (Task #153) ────────────────────
+
+    assumptionCascadeStatus: 'idle' as 'idle' | 'pending' | 'computing' | 'error',
+
+    updateAssumption: (path: string, value: number) => {
+      const state = get();
+      const parts = path.split('.');
+      const newState = { ...state };
+      const now = new Date().toISOString();
+
+      let current: any = newState;
+      for (let i = 0; i < parts.length - 1; i++) {
+        current[parts[i]] = { ...current[parts[i]] };
+        current = current[parts[i]];
+      }
+
+      const key = parts[parts.length - 1];
+      const existing = current[key] as LayeredValue<number> | undefined;
+
+      const entry: EditLogEntry = {
+        path,
+        oldValue: existing?.value,
+        newValue: value,
+        timestamp: now,
+        actor: 'user',
+      };
+
+      const fieldMeta = getFieldMeta(path);
+
+      let baseLayers = existing?.layers ?? {};
+      if (existing && !baseLayers.broker && !baseLayers.platform && !baseLayers.user) {
+        const fallbackFrom: 'broker' | 'platform' =
+          existing.resolvedFrom === 'broker' ? 'broker' : 'platform';
+        baseLayers = {
+          [fallbackFrom]: {
+            value: existing.value,
+            updatedAt: existing.updatedAt,
+            confidence: existing.confidence,
+          },
+        };
+      }
+
+      const updated: LayeredValue<number> = {
+        value,
+        source: 'user',
+        resolvedFrom: 'user',
+        updatedAt: now,
+        confidence: 1.0,
+        alertLevel: 'none',
+        userReviewed: true,
+        layers: {
+          ...baseLayers,
+          user: { value, updatedAt: now, confidence: 1.0 },
+        },
+      };
+      updated.alertLevel = computeAlertLevel(updated, {
+        isIdentity: fieldMeta?.inputClass === 'identity',
+        highSensitivity: fieldMeta?.highSensitivity ?? false,
+      });
+
+      current[key] = updated;
+
+      const isZoningField = path.startsWith('zoning.');
+      if (isZoningField) {
+        newState.zoning = { ...newState.zoning, varianceAssumed: true };
+      }
+
+      newState.editLog = [...(state.editLog || []), entry];
+      newState.hydrationStatus = markDownstreamStale(state.hydrationStatus, [
+        'financial', 'strategy', 'scores', 'risk',
+      ]);
+
+      set(newState);
+
+      get()._triggerAssumptionCascade();
+    },
+
+    revertAssumption: (path: string) => {
+      const state = get();
+      const parts = path.split('.');
+      const newState = { ...state };
+      const now = new Date().toISOString();
+
+      let current: any = newState;
+      for (let i = 0; i < parts.length - 1; i++) {
+        current[parts[i]] = { ...current[parts[i]] };
+        current = current[parts[i]];
+      }
+
+      const key = parts[parts.length - 1];
+      const existing = current[key] as LayeredValue<number> | undefined;
+      if (!existing?.layers) return;
+
+      const { user: _removed, ...remainingLayers } = existing.layers;
+
+      const platformVal = remainingLayers.platform;
+      const brokerVal = remainingLayers.broker;
+      const fallback = platformVal ?? brokerVal;
+
+      if (!fallback) return;
+
+      const resolvedFrom: 'broker' | 'platform' = platformVal ? 'platform' : 'broker';
+      const fieldMeta = getFieldMeta(path);
+
+      const reverted: LayeredValue<number> = {
+        value: fallback.value,
+        source: resolvedFrom,
+        resolvedFrom,
+        updatedAt: now,
+        confidence: fallback.confidence,
+        alertLevel: 'none',
+        userReviewed: true,
+        layers: remainingLayers as LayeredValue<number>['layers'],
+      };
+      reverted.alertLevel = computeAlertLevel(reverted, {
+        isIdentity: fieldMeta?.inputClass === 'identity',
+        highSensitivity: fieldMeta?.highSensitivity ?? false,
+      });
+
+      current[key] = reverted;
+
+      const entry: EditLogEntry = {
+        path,
+        oldValue: existing.value,
+        newValue: fallback.value,
+        timestamp: now,
+        actor: 'user',
+      };
+      newState.editLog = [...(state.editLog || []), entry];
+      newState.hydrationStatus = markDownstreamStale(state.hydrationStatus, [
+        'financial', 'strategy', 'scores', 'risk',
+      ]);
+
+      const isZoningField = path.startsWith('zoning.');
+      if (isZoningField) {
+        const zoningKeys = ['designation', 'maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'setbacks', 'parkingRatio', 'guestParkingRatio'];
+        const hasAnyUserZoning = zoningKeys
+          .filter(k => k !== key)
+          .some(k => (newState.zoning as any)[k]?.layers?.user);
+        if (!hasAnyUserZoning) {
+          newState.zoning = { ...newState.zoning, varianceAssumed: false };
+        }
+      }
+
+      set(newState);
+      get()._triggerAssumptionCascade();
+    },
+
+    revertAllAssumptions: () => {
+      const state = get();
+      const now = new Date().toISOString();
+
+      const revertLV = <T>(lv: LayeredValue<T>): LayeredValue<T> => {
+        if (!lv.layers?.user) return lv;
+        const { user: _removed, ...remaining } = lv.layers;
+        const fallback = remaining.platform ?? remaining.broker;
+        if (!fallback) return lv;
+        const resolvedFrom: 'broker' | 'platform' = remaining.platform ? 'platform' : 'broker';
+        const reverted: LayeredValue<T> = {
+          value: fallback.value,
+          source: resolvedFrom,
+          resolvedFrom,
+          updatedAt: now,
+          confidence: fallback.confidence,
+          alertLevel: 'none',
+          userReviewed: true,
+          layers: remaining as LayeredValue<T>['layers'],
+        };
+        reverted.alertLevel = computeAlertLevel(reverted);
+        return reverted;
+      };
+
+      const newAssumptions = {
+        rentGrowth: revertLV(state.financial.assumptions.rentGrowth),
+        expenseGrowth: revertLV(state.financial.assumptions.expenseGrowth),
+        vacancy: revertLV(state.financial.assumptions.vacancy),
+        exitCapRate: revertLV(state.financial.assumptions.exitCapRate),
+        holdPeriod: revertLV(state.financial.assumptions.holdPeriod),
+        capexPerUnit: revertLV(state.financial.assumptions.capexPerUnit),
+        managementFee: revertLV(state.financial.assumptions.managementFee),
+      };
+
+      set({
+        financial: { ...state.financial, assumptions: newAssumptions },
+        hydrationStatus: markDownstreamStale(state.hydrationStatus, [
+          'financial', 'strategy', 'scores', 'risk',
+        ]),
+        editLog: [...(state.editLog || []), {
+          path: 'financial.assumptions.*',
+          oldValue: 'all',
+          newValue: 'reverted',
+          timestamp: now,
+          actor: 'user' as const,
+        }],
+      });
+
+      get()._triggerAssumptionCascade();
+    },
+
+    _triggerAssumptionCascade: debounce(async () => {
+      const state = useDealStore.getState();
+      const dealId = state.identity.id;
+      if (!dealId) return;
+
+      useDealStore.setState({ assumptionCascadeStatus: 'computing' });
+
+      try {
+        const response = await fetch(
+          `/api/v1/deals/${dealId}/recompute`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              trigger: 'assumption_change',
+              assumptions: {
+                rentGrowth: state.financial.assumptions.rentGrowth.value,
+                expenseGrowth: state.financial.assumptions.expenseGrowth.value,
+                vacancy: state.financial.assumptions.vacancy.value,
+                exitCapRate: state.financial.assumptions.exitCapRate.value,
+                holdPeriod: state.financial.assumptions.holdPeriod.value,
+                capexPerUnit: state.financial.assumptions.capexPerUnit.value,
+                managementFee: state.financial.assumptions.managementFee.value,
+              },
+              unitMix: state.resolvedUnitMix,
+            }),
+          }
+        );
+
+        if (!response.ok) {
+          useDealStore.setState({ assumptionCascadeStatus: 'error' });
+          return;
+        }
+
+        const result = await response.json();
+
+        useDealStore.setState({
+          financial: result.financial ?? state.financial,
+          strategy: result.strategy ?? state.strategy,
+          scores: result.scores ?? state.scores,
+          risk: result.risk ?? state.risk,
+          assumptionCascadeStatus: 'idle',
+          hydrationStatus: {
+            ...state.hydrationStatus,
+            financial: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
+            strategy: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
+            scores: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
+            risk: { hydrated: true, lastFetchedAt: new Date().toISOString(), source: 'live' },
+          },
+        });
+      } catch (error) {
+        console.error('[dealStore] Assumption cascade recompute failed:', error);
+        useDealStore.setState({ assumptionCascadeStatus: 'error' });
+      }
+    }, 600),
+
     // ─── GENERIC LAYERED VALUE UPDATE ───────────────────────
 
     updateLayeredValue: <T>(
@@ -1190,3 +1448,30 @@ export const useStrategyAvailability = () => {
     [dealType, productType]
   );
 };
+
+export const SENSITIVITY_COEFFICIENTS: Record<string, { label: string; rank: number; unit: string; formatMultiplier: number }> = {
+  'financial.assumptions.exitCapRate': { label: 'Exit Cap Rate', rank: 1, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.rentGrowth': { label: 'Rent Growth', rank: 2, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.vacancy': { label: 'Vacancy', rank: 3, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.holdPeriod': { label: 'Hold Period', rank: 4, unit: 'yrs', formatMultiplier: 1 },
+  'financial.assumptions.capexPerUnit': { label: 'CapEx / Unit', rank: 5, unit: '$', formatMultiplier: 1 },
+  'financial.assumptions.managementFee': { label: 'Mgmt Fee', rank: 6, unit: '%', formatMultiplier: 100 },
+  'financial.assumptions.expenseGrowth': { label: 'Expense Growth', rank: 7, unit: '%', formatMultiplier: 100 },
+};
+
+export const SENSITIVITY_PATHS = Object.keys(SENSITIVITY_COEFFICIENTS).sort(
+  (a, b) => SENSITIVITY_COEFFICIENTS[a].rank - SENSITIVITY_COEFFICIENTS[b].rank
+);
+
+/** M09 Assumptions — reads/writes assumption LayeredValues */
+export const useAssumptions = () =>
+  useDealStore((s) => ({
+    assumptions: s.financial.assumptions,
+    zoning: s.zoning,
+    scores: s.scores,
+    cascadeStatus: s.assumptionCascadeStatus,
+    editLog: s.editLog,
+    updateAssumption: s.updateAssumption,
+    revertAssumption: s.revertAssumption,
+    revertAllAssumptions: s.revertAllAssumptions,
+  }));
