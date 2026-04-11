@@ -1,0 +1,68 @@
+Document structure
+The file is one sheet with four logical sections stacked vertically:
+
+Header metadata (rows 0–3): property name, "As Of" date (3/10/2026), reporting month (03/2026)
+Unit-level detail (rows 6–2033): Current / Notice / Vacant residents
+Future Residents / Applicants (rows 2034–2055): signed leases not yet moved in
+Summary blocks (rows 2059–2087): occupancy rollup + charge code totals
+
+Per-unit fields (the main table)
+Each unit occupies a parent row plus N child rows (one per charge code), terminated by a Total line. Extractable fields per unit:
+
+Unit number (e.g., 141)
+Unit type code (e.g., pt_1A, pt_SA, pt_2J, pt_3A) — maps to floor plan
+Unit square footage
+Resident ID (anonymized token like t3014178, or VACANT)
+Market rent (asking rent for that unit)
+Resident deposit (security deposit held)
+Other deposit
+Move-in date
+Lease expiration date
+Move-out date (populated for Notice units)
+Account balance (delinquency / credit)
+Charge schedule — itemized lines per unit: rent, parking, pestctrl, trash, storage, liabins, petrent, utilreb, mtmfee, renew, empdisc, patrol, otconc, termfee, misc
+Total monthly charges (sum of charge lines = actual leased rent + ancillary)
+
+Derivable per-unit metrics
+From the raw fields you can compute:
+
+Loss-to-lease per unit = market rent − in-place rent line
+Ancillary income per unit = total charges − rent line
+Concession burden per unit (negative charge codes: otconc, empdisc, patrol, renew)
+Lease term length = expiration − move-in
+Remaining lease term = expiration − as-of date
+Tenure = as-of − move-in
+Status flag: Current / Notice (move-out populated) / Vacant / Future
+Rent PSF = rent ÷ sqft
+MTM exposure (units with mtmfee charge code)
+
+Future Residents block (signed, not moved in) — your "leases being signed"
+7 records. Each carries: unit #, unit type, sqft, applicant ID, market rent, future move-in date, future lease expiration. From this you get:
+
+Pre-leased pipeline (7 units / 6,689 sf / $17,577 market rent)
+Forward move-in calendar (range: 3/14/2026 → 6/19/2026)
+Implied lease terms on new signings
+
+Roll-forward / aggregate fields (from the summary block)
+
+Total square footage: 279,017
+Total market rent: $713,161
+Total lease charges (in-place GPR + ancillary − concessions): $635,629.40
+Security deposits held: $200,505.50
+Total balance (AR): $36,693.33
+Unit count: 291 (263 occupied, 27 vacant, 1 non-revenue)
+Occupancy: 90.37% by unit, 89.39% by sqft
+Pre-leased: 7 units / 6,689 sf / $17,577
+
+Charge code totals (portfolio-level income mix)
+rent $621,854 · parking $8,940 · trash $6,575 · storage $2,945 · mtmfee $1,400 · termfee $1,394 · pestctrl $789 · utilreb $669 · petrent $510 · liabins $120 · misc $100 — offset by concessions: otconc −$5,164 · empdisc −$2,001 · patrol −$1,601 · renew −$900.
+Higher-order analytics you can build from this single file
+
+Lease expiration waterfall by month (group lease expiration → count + $ exposure per month) — feeds rollover risk and renewal strategy
+Unit mix table (group by unit type → count, avg sqft, avg market, avg in-place, loss-to-lease)
+Trade-out analysis — by joining future residents to vacating units of same type, new-lease rent vs prior-lease rent
+Concession-adjusted effective rent per floor plan
+Delinquency aging proxy from balance field (though true aging needs a separate report)
+Vacancy duration (requires prior month's roll to compute days vacant)
+MTM exposure ($ and unit count on month-to-month)
+Pre-leased velocity (signed leases ÷ vacant + notice units)
