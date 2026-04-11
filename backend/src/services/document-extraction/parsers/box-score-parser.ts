@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { BoxScoreData, BoxScoreAvailability, BoxScoreActivity, BoxScoreConversion, ExtractionResult } from '../types';
+import { findHeaderRow, parseSheetFromRow, findSectionStartRow } from './workbook-utils';
 
 function parseNum(val: any): number {
   if (val == null || val === '') return 0;
@@ -41,10 +42,12 @@ export function parseBoxScore(buffer: Buffer, filename: string): ExtractionResul
 
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+
+      const BS_HEADER_PATTERNS = [/occupied|vacant/i, /floor.*plan|type|model|unit/i, /total|units|occ/i, /move.*in|move.*out|renewal|notice/i, /conversion|closing|ratio/i];
+      const headerRow = findHeaderRow(sheet, BS_HEADER_PATTERNS, 20, 2);
+      const { headers, rows } = parseSheetFromRow(sheet, headerRow);
       if (rows.length === 0) continue;
 
-      const headers = Object.keys(rows[0]);
       const headerStr = headers.join(' ').toLowerCase();
 
       if (headerStr.includes('occupied') && headerStr.includes('vacant')) {
@@ -150,6 +153,24 @@ export function parseBoxScore(buffer: Buffer, filename: string): ExtractionResul
         overallConversionRate: totalContacts > 0 ? totalLeased / totalContacts : 0,
       },
     };
+
+    if (availability.length === 0 && conversions.length === 0 && activity.moveIns === 0 && activity.moveOuts === 0) {
+      return {
+        documentType: 'BOX_SCORE', success: false,
+        error: 'No availability, activity, or conversion data extracted — likely header detection failure',
+        data: null, summary: {}, warnings,
+      };
+    }
+
+    if (totalUnits === 0 && totalOcc === 0 && totalVac === 0 &&
+        activity.moveIns === 0 && activity.moveOuts === 0 && activity.renewals === 0 &&
+        totalContacts === 0 && totalLeased === 0) {
+      return {
+        documentType: 'BOX_SCORE', success: false,
+        error: 'All box score values are zero — likely header detection failure',
+        data: null, summary: {}, warnings,
+      };
+    }
 
     return { documentType: 'BOX_SCORE', success: true, data, summary: data.summary, warnings };
   } catch (err) {

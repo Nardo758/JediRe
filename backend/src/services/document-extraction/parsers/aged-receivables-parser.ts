@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { AgedReceivablesData, AgingRecord, ExtractionResult } from '../types';
+import { smartParseSheet } from './workbook-utils';
 
 function parseNum(val: any): number {
   if (val == null || val === '') return 0;
@@ -22,6 +23,8 @@ const BUCKET_90_PLUS = [/90[\s+]*\+/i, /over[\s]*90/i, /90[\s-]*plus/i, /91\+/i,
 const PREPAID_PATTERNS = [/prepaid/i, /credit/i, /prepay/i];
 const TOTAL_PATTERNS = [/total/i, /balance/i, /amount[\s_-]*due/i];
 
+const HEADER_DETECTION_PATTERNS = [/unit|apt/i, /tenant|resident|name/i, /0-30|current/i, /31-60/i, /61-90/i, /90\+|over.*90/i, /total|balance/i];
+
 function findCol(headers: string[], patterns: RegExp[]): string | null {
   for (const h of headers) {
     for (const p of patterns) {
@@ -37,13 +40,11 @@ export function parseAgedReceivables(buffer: Buffer, filename: string): Extracti
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+    const { headers, rows } = smartParseSheet(sheet, HEADER_DETECTION_PATTERNS, 2);
 
     if (rows.length === 0) {
-      return { documentType: 'AGED_RECEIVABLES', success: false, error: 'No data rows', data: null, summary: {}, warnings };
+      return { documentType: 'AGED_RECEIVABLES', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
     }
-
-    const headers = Object.keys(rows[0]);
     const unitCol = findCol(headers, UNIT_PATTERNS);
     const tenantCol = findCol(headers, TENANT_PATTERNS);
     const b030Col = findCol(headers, BUCKET_0_30);
@@ -108,6 +109,24 @@ export function parseAgedReceivables(buffer: Buffer, filename: string): Extracti
         totalUnits: records.length,
       },
     };
+
+    if (records.length === 0) {
+      return {
+        documentType: 'AGED_RECEIVABLES',
+        success: false,
+        error: 'No aging records extracted — columns found but no valid unit/tenant rows',
+        data: null, summary: {}, warnings,
+      };
+    }
+
+    if (totalAR === 0 && total_0_30 === 0 && total_31_60 === 0 && total_61_90 === 0 && total_90_plus === 0 && totalPrepaid === 0) {
+      return {
+        documentType: 'AGED_RECEIVABLES',
+        success: false,
+        error: 'All aging bucket values are zero — likely header detection failure',
+        data: null, summary: {}, warnings,
+      };
+    }
 
     return {
       documentType: 'AGED_RECEIVABLES',

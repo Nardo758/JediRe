@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { RentRollData, RentRollUnit, ExtractionResult } from '../types';
+import { smartParseSheet, parseNum, parseDate } from './workbook-utils';
 
 const UNIT_COL_PATTERNS = [/^unit/i, /^apt/i, /^space/i, /^#/];
 const STATUS_COL_PATTERNS = [/status/i, /resident/i, /tenant/i, /occupant/i, /name/i];
@@ -13,43 +14,13 @@ const LEASE_END_PATTERNS = [/lease[\s_-]*(to|end|expir)/i, /expir/i, /end[\s_-]*
 const DEPOSIT_PATTERNS = [/deposit/i, /security/i];
 const BALANCE_PATTERNS = [/balance/i, /owing/i, /owed/i];
 
+const HEADER_DETECTION_PATTERNS = [/unit/i, /resident|tenant|name/i, /rent/i, /sqft|sq.*ft|sf/i, /lease/i, /move/i, /status/i, /type|plan|model/i];
+
 function findCol(headers: string[], patterns: RegExp[]): string | null {
   for (const h of headers) {
     for (const p of patterns) {
       if (p.test(h)) return h;
     }
-  }
-  return null;
-}
-
-function parseNum(val: any): number | null {
-  if (val == null || val === '') return null;
-  if (typeof val === 'number') return isNaN(val) ? null : val;
-  let s = String(val).trim().replace(/[$,%\s]/g, '');
-  if (!s || s === '-' || s === '—') return null;
-  let neg = false;
-  if (s.startsWith('(') && s.endsWith(')')) { neg = true; s = s.slice(1, -1); }
-  else if (s.startsWith('-')) { neg = true; s = s.slice(1); }
-  const n = parseFloat(s);
-  return isNaN(n) ? null : (neg ? -n : n);
-}
-
-function parseDate(val: any): string | null {
-  if (val == null || val === '') return null;
-  if (val instanceof Date && !isNaN(val.getTime())) {
-    return val.toISOString().split('T')[0];
-  }
-  const s = String(val).trim();
-  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
-  const usMatch = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  if (usMatch) {
-    const yr = usMatch[3].length === 2 ? `20${usMatch[3]}` : usMatch[3];
-    return `${yr}-${usMatch[1].padStart(2, '0')}-${usMatch[2].padStart(2, '0')}`;
-  }
-  if (typeof val === 'number') {
-    const d = new Date((val - 25569) * 86400 * 1000);
-    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   }
   return null;
 }
@@ -69,13 +40,11 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const allRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+    const { headers, rows: allRows } = smartParseSheet(sheet, HEADER_DETECTION_PATTERNS, 3);
 
     if (allRows.length === 0) {
-      return { documentType: 'RENT_ROLL', success: false, error: 'No data rows', data: null, summary: {}, warnings };
+      return { documentType: 'RENT_ROLL', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
     }
-
-    const headers = Object.keys(allRows[0]);
     const unitCol = findCol(headers, UNIT_COL_PATTERNS);
     const statusCol = findCol(headers, STATUS_COL_PATTERNS);
     const typeCol = findCol(headers, TYPE_COL_PATTERNS);
@@ -181,6 +150,22 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
         floorPlanMix,
       },
     };
+
+    if (units.length === 0) {
+      return {
+        documentType: 'RENT_ROLL', success: false,
+        error: 'No unit records extracted — unit column found but no valid data rows',
+        data: null, summary: {}, warnings,
+      };
+    }
+
+    if (totalMarketRent === 0 && totalLeaseCharges === 0 && units.every(u => u.sqft == null && u.marketRent == null && u.leaseRent == null)) {
+      return {
+        documentType: 'RENT_ROLL', success: false,
+        error: 'All rent/sqft values are null or zero — likely header detection failure',
+        data: null, summary: {}, warnings,
+      };
+    }
 
     return {
       documentType: 'RENT_ROLL',

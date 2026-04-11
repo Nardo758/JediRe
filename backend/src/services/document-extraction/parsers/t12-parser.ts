@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { T12Data, T12Month, ExtractionResult } from '../types';
+import { findHeaderRow, parseSheetFromRow } from './workbook-utils';
 
 const GL_CATEGORY_MAP: Record<string, string> = {
   '40': 'grossPotentialRent',
@@ -146,13 +147,15 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult {
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+
+    const T12_HEADER_PATTERNS = [/jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i, /gross|rent|revenue|income|expense|noi/i];
+    const headerRow = findHeaderRow(sheet, T12_HEADER_PATTERNS, 20, 1);
+    const { headers, rows } = parseSheetFromRow(sheet, headerRow);
 
     if (rows.length === 0) {
-      return { documentType: 'T12', success: false, error: 'No data rows found', data: null, summary: {}, warnings };
+      return { documentType: 'T12', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
     }
 
-    const headers = Object.keys(rows[0]);
     const monthCols = detectMonthColumns(headers);
 
     if (monthCols.length === 0) {
@@ -224,6 +227,17 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult {
 
     if (monthArr.length < 12) {
       warnings.push(`Only ${monthArr.length} months detected (expected 12)`);
+    }
+
+    if (monthArr.length === 0 || (t12Revenue === 0 && t12OpEx === 0 && t12NOI === 0)) {
+      return {
+        documentType: 'T12',
+        success: false,
+        error: monthArr.length === 0 ? 'No monthly periods extracted' : 'All financial values are zero — likely header detection failure',
+        data: null,
+        summary: {},
+        warnings,
+      };
     }
 
     return {

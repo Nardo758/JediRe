@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { DocumentType, ClassificationResult } from './types';
+import { findHeaderRow, parseSheetFromRow } from './parsers/workbook-utils';
 
 const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /aged[\s_-]*receiv/i, type: 'AGED_RECEIVABLES' },
@@ -137,13 +138,25 @@ export function classifyDocument(buffer: Buffer, filename: string): Classificati
     }
 
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null, range: 0 });
+
+    const ALL_DOC_HEADER_PATTERNS = [
+      /unit|apt|resident|tenant/i,
+      /rent|sqft|lease|move/i,
+      /0-30|31-60|61-90|90\+|aging|delinqu/i,
+      /occupied|vacant|notice|renewal/i,
+      /concession|burn.*off|recurring/i,
+      /trade.*out|prior.*rent|new.*rent|effective/i,
+      /per.*unit|annual|monthly|income|category/i,
+      /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i,
+      /gross|noi|revenue|expense|vacancy/i,
+    ];
+    const headerRow = findHeaderRow(sheet, ALL_DOC_HEADER_PATTERNS, 20, 1);
+    const { headers, rows } = parseSheetFromRow(sheet, headerRow);
 
     if (rows.length === 0) {
       return { documentType: filenameResult?.type || 'UNKNOWN', confidence: filenameResult?.confidence || 0, hints: ['No data rows'] };
     }
 
-    const headers = Object.keys(rows[0]);
     const sampleRows = rows.slice(0, 20);
     const headerResult = classifyByHeaders(headers, sampleRows);
 

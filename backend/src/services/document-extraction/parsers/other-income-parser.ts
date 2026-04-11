@@ -1,17 +1,8 @@
 import * as XLSX from 'xlsx';
 import { OtherIncomeData, OtherIncomeCategory, ExtractionResult } from '../types';
+import { smartParseSheet, parseNum } from './workbook-utils';
 
-function parseNum(val: any): number | null {
-  if (val == null || val === '') return null;
-  if (typeof val === 'number') return isNaN(val) ? null : val;
-  let s = String(val).trim().replace(/[$,%\s]/g, '');
-  if (!s || s === '-' || s === '—') return null;
-  let neg = false;
-  if (s.startsWith('(') && s.endsWith(')')) { neg = true; s = s.slice(1, -1); }
-  else if (s.startsWith('-')) { neg = true; s = s.slice(1); }
-  const n = parseFloat(s);
-  return isNaN(n) ? null : (neg ? -n : n);
-}
+const OI_HEADER_PATTERNS = [/category|income|source|item|description|line/i, /annual|monthly|amount|total|per.*unit|rate/i, /unit|qty|quantity|count/i];
 
 function findCol(headers: string[], patterns: RegExp[]): string | null {
   for (const h of headers) {
@@ -28,13 +19,11 @@ export function parseOtherIncome(buffer: Buffer, filename: string): ExtractionRe
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+    const { headers, rows } = smartParseSheet(sheet, OI_HEADER_PATTERNS, 2);
 
     if (rows.length === 0) {
-      return { documentType: 'OTHER_INCOME', success: false, error: 'No data rows', data: null, summary: {}, warnings };
+      return { documentType: 'OTHER_INCOME', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
     }
-
-    const headers = Object.keys(rows[0]);
     const categoryCol = findCol(headers, [/category/i, /income[\s_-]*type/i, /source/i, /item/i, /description/i, /line[\s_-]*item/i]) || headers[0];
     const descCol = findCol(headers, [/description/i, /detail/i, /note/i]);
     const unitCountCol = findCol(headers, [/unit[\s_-]*count/i, /units/i, /quantity/i, /qty/i, /count/i]);
@@ -85,6 +74,14 @@ export function parseOtherIncome(buffer: Buffer, filename: string): ExtractionRe
         perUnitTotal: totalUnits && totalUnits > 0 ? totalAnnual / totalUnits : null,
       },
     };
+
+    if (categories.length === 0 || (totalAnnual === 0 && totalMonthly === 0)) {
+      return {
+        documentType: 'OTHER_INCOME', success: false,
+        error: categories.length === 0 ? 'No income categories extracted' : 'All income values are zero — likely header detection failure',
+        data: null, summary: {}, warnings,
+      };
+    }
 
     return { documentType: 'OTHER_INCOME', success: true, data, summary: data.summary, warnings };
   } catch (err) {

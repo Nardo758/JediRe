@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { ConcessionBurnoffData, ConcessionRecord, ExtractionResult } from '../types';
+import { smartParseSheet, parseDate as sharedParseDate } from './workbook-utils';
 
 function parseNum(val: any): number {
   if (val == null || val === '') return 0;
@@ -13,23 +14,7 @@ function parseNum(val: any): number {
   return isNaN(n) ? 0 : (neg ? -n : n);
 }
 
-function parseDate(val: any): string | null {
-  if (val == null || val === '') return null;
-  if (val instanceof Date && !isNaN(val.getTime())) return val.toISOString().split('T')[0];
-  const s = String(val).trim();
-  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
-  const usMatch = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/);
-  if (usMatch) {
-    const yr = usMatch[3].length === 2 ? `20${usMatch[3]}` : usMatch[3];
-    return `${yr}-${usMatch[1].padStart(2, '0')}-${usMatch[2].padStart(2, '0')}`;
-  }
-  if (typeof val === 'number') {
-    const d = new Date((val - 25569) * 86400 * 1000);
-    if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-  }
-  return null;
-}
+const parseDate = sharedParseDate;
 
 function findCol(headers: string[], patterns: RegExp[]): string | null {
   for (const h of headers) {
@@ -40,19 +25,19 @@ function findCol(headers: string[], patterns: RegExp[]): string | null {
   return null;
 }
 
+const CONCESSION_HEADER_PATTERNS = [/unit|apt/i, /concession|recurring/i, /tenant|resident|name/i, /amount|remaining|balance/i, /end|expir|burn/i];
+
 export function parseConcessionBurnoff(buffer: Buffer, filename: string): ExtractionResult {
   const warnings: string[] = [];
 
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null });
+    const { headers, rows } = smartParseSheet(sheet, CONCESSION_HEADER_PATTERNS, 2);
 
     if (rows.length === 0) {
-      return { documentType: 'CONCESSION_BURNOFF', success: false, error: 'No data rows', data: null, summary: {}, warnings };
+      return { documentType: 'CONCESSION_BURNOFF', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
     }
-
-    const headers = Object.keys(rows[0]);
     const unitCol = findCol(headers, [/^unit/i, /^apt/i, /^space/i]);
     const tenantCol = findCol(headers, [/tenant/i, /resident/i, /name/i]);
     const typeCol = findCol(headers, [/type/i, /plan/i, /model/i]);
@@ -144,6 +129,22 @@ export function parseConcessionBurnoff(buffer: Buffer, filename: string): Extrac
         byFloorPlan,
       },
     };
+
+    if (records.length === 0) {
+      return {
+        documentType: 'CONCESSION_BURNOFF', success: false,
+        error: 'No concession records extracted — columns found but no valid unit rows',
+        data: null, summary: {}, warnings,
+      };
+    }
+
+    if (totalLiability === 0 && totalRemaining === 0 && records.every(r => r.currentConcession === 0 && r.totalRecurring === 0)) {
+      return {
+        documentType: 'CONCESSION_BURNOFF', success: false,
+        error: 'All concession values are zero — likely header detection failure',
+        data: null, summary: {}, warnings,
+      };
+    }
 
     return { documentType: 'CONCESSION_BURNOFF', success: true, data, summary: data.summary, warnings };
   } catch (err) {
