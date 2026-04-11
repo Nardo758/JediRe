@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { BT } from './bloomberg-ui';
 import { useAssumptions, SENSITIVITY_COEFFICIENTS, SENSITIVITY_PATHS, ASSUMPTION_PLATFORM_DEFAULTS } from '../../stores/dealStore';
 import type { LayeredValue, AlertLevel } from '../../stores/dealContext.types';
+import { INPUT_FIELD_REGISTRY } from '../../stores/dealContext.types';
 
 const MONO = BT.font.mono;
 const TOP_N = 5;
@@ -240,17 +241,30 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
     toggleVarianceAssumed,
   } = useAssumptions();
 
-  const [showAll, setShowAll] = useState(false);
+  const [disclosureLevel, setDisclosureLevel] = useState<'top5' | 'sensitivity' | 'all'>('top5');
   const [pendingEdit, setPendingEdit] = useState<{ path: string; value: number } | null>(null);
 
-  const visiblePaths = showAll ? SENSITIVITY_PATHS : SENSITIVITY_PATHS.slice(0, TOP_N);
+  const ALL_OVERRIDE_PATHS = INPUT_FIELD_REGISTRY
+    .filter(f => f.inputClass === 'override' || f.inputClass === 'scope')
+    .map(f => f.path);
+  const visiblePaths = disclosureLevel === 'all'
+    ? ALL_OVERRIDE_PATHS
+    : disclosureLevel === 'sensitivity'
+      ? SENSITIVITY_PATHS
+      : SENSITIVITY_PATHS.slice(0, TOP_N);
 
   const getLV = useCallback((path: string): LayeredValue<number> | null => {
     const parts = path.split('.');
-    let current: any = { financial: { assumptions } };
-    for (const part of parts) current = current?.[part];
-    return current ?? null;
-  }, [assumptions]);
+    let current: Record<string, unknown> = { financial: { assumptions }, zoning } as Record<string, unknown>;
+    for (const part of parts) {
+      if (current === null || current === undefined) return null;
+      current = (current as Record<string, unknown>)[part] as Record<string, unknown>;
+    }
+    if (current && typeof current === 'object' && 'value' in current && 'layers' in current) {
+      return current as unknown as LayeredValue<number>;
+    }
+    return null;
+  }, [assumptions, zoning]);
 
   const hasAnyUserOverride = SENSITIVITY_PATHS.some(p => {
     const lv = getLV(p);
@@ -386,19 +400,25 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
         );
       })}
 
-      {SENSITIVITY_PATHS.length > TOP_N && (
-        <div
-          onClick={() => setShowAll(!showAll)}
-          style={{
-            padding: '4px 8px', cursor: 'pointer', textAlign: 'center',
-            borderBottom: `1px solid ${BT.border.subtle}`,
-          }}
-        >
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, letterSpacing: 0.5 }}>
-            {showAll ? '▴ SHOW TOP 5' : `▾ SHOW ALL ${SENSITIVITY_PATHS.length} ASSUMPTIONS`}
-          </span>
-        </div>
-      )}
+      <div
+        onClick={() => {
+          setDisclosureLevel(prev =>
+            prev === 'top5' ? 'sensitivity' : prev === 'sensitivity' ? 'all' : 'top5'
+          );
+        }}
+        style={{
+          padding: '4px 8px', cursor: 'pointer', textAlign: 'center',
+          borderBottom: `1px solid ${BT.border.subtle}`,
+        }}
+      >
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, letterSpacing: 0.5 }}>
+          {disclosureLevel === 'top5'
+            ? `▾ SHOW ALL ${SENSITIVITY_PATHS.length} SENSITIVITY FIELDS`
+            : disclosureLevel === 'sensitivity'
+              ? `▾ SHOW ALL ${ALL_OVERRIDE_PATHS.length} ASSUMPTIONS`
+              : '▴ SHOW TOP 5 ONLY'}
+        </span>
+      </div>
 
       <div style={{
         padding: '3px 8px', display: 'flex', gap: 8,

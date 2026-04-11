@@ -34,6 +34,7 @@ import {
   layered,
   computeAlertLevel,
   getFieldMeta,
+  INPUT_FIELD_REGISTRY,
 } from './dealContext.types';
 import {
   getDealType,
@@ -1012,9 +1013,10 @@ export const useDealStore = create<DealStore>()(
       const isZoningField = path.startsWith('zoning.');
       if (isZoningField) {
         const zoningKeys = ['designation', 'maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'setbacks', 'parkingRatio', 'guestParkingRatio'];
-        const hasAnyUserZoning = zoningKeys
+        type ZoningLVKey = 'designation' | 'maxDensity' | 'maxHeight' | 'maxFAR' | 'maxLotCoverage' | 'setbacks' | 'parkingRatio' | 'guestParkingRatio';
+        const hasAnyUserZoning = (zoningKeys as ZoningLVKey[])
           .filter(k => k !== key)
-          .some(k => (newState.zoning as any)[k]?.layers?.user);
+          .some(k => newState.zoning[k]?.layers?.user);
         if (!hasAnyUserZoning) {
           newState.zoning = { ...newState.zoning, varianceAssumed: false };
         }
@@ -1031,7 +1033,7 @@ export const useDealStore = create<DealStore>()(
       const state = get();
       const now = new Date().toISOString();
 
-      const revertNumericLV = (lv: LayeredValue<number>, fieldPath: string): LayeredValue<number> => {
+      const revertLV = <T>(lv: LayeredValue<T>, fieldPath: string): LayeredValue<T> => {
         if (!lv.layers?.user) return lv;
         const { user: _removed, ...remaining } = lv.layers;
         let fallback = remaining.platform ?? remaining.broker;
@@ -1040,12 +1042,12 @@ export const useDealStore = create<DealStore>()(
         if (!fallback) {
           const platformDefault = ASSUMPTION_PLATFORM_DEFAULTS[fieldPath];
           if (platformDefault === undefined) return lv;
-          fallback = { value: platformDefault, updatedAt: now, confidence: 0.8 };
+          fallback = { value: platformDefault as T, updatedAt: now, confidence: 0.8 };
           resolvedFrom = 'platform';
           remaining.platform = fallback;
         }
 
-        const reverted: LayeredValue<number> = {
+        const reverted: LayeredValue<T> = {
           value: fallback.value,
           source: resolvedFrom,
           resolvedFrom,
@@ -1055,38 +1057,58 @@ export const useDealStore = create<DealStore>()(
           userReviewed: true,
           layers: remaining,
         };
-        reverted.alertLevel = computeAlertLevel(reverted);
+        reverted.alertLevel = computeAlertLevel(reverted as LayeredValue<unknown>);
         return reverted;
       };
 
-      type AssumptionKey = keyof typeof state.financial.assumptions;
-      const assumptionKeys: AssumptionKey[] = [
-        'rentGrowth', 'expenseGrowth', 'vacancy', 'exitCapRate',
-        'holdPeriod', 'capexPerUnit', 'managementFee',
-      ];
-      const newAssumptions = { ...state.financial.assumptions };
-      for (const key of assumptionKeys) {
-        const lv = state.financial.assumptions[key];
-        if (lv && typeof lv === 'object' && 'layers' in lv) {
-          newAssumptions[key] = revertNumericLV(lv, `financial.assumptions.${key}`);
+      const isLayeredValue = (v: unknown): v is LayeredValue<unknown> =>
+        v !== null && typeof v === 'object' && 'layers' in v && 'value' in v;
+
+      const getNestedValue = (obj: Record<string, unknown>, segments: string[]): unknown => {
+        let cur: unknown = obj;
+        for (const seg of segments) {
+          if (cur === null || typeof cur !== 'object') return undefined;
+          cur = (cur as Record<string, unknown>)[seg];
         }
+        return cur;
+      };
+
+      const setNestedValue = (obj: Record<string, unknown>, segments: string[], val: unknown): void => {
+        let cur: Record<string, unknown> = obj;
+        for (let i = 0; i < segments.length - 1; i++) {
+          const existing = cur[segments[i]];
+          if (existing === null || typeof existing !== 'object') return;
+          cur[segments[i]] = { ...(existing as Record<string, unknown>) };
+          cur = cur[segments[i]] as Record<string, unknown>;
+        }
+        cur[segments[segments.length - 1]] = val;
+      };
+
+      const patch: Record<string, unknown> = {};
+      const topLevelSections = new Set<string>();
+
+      for (const field of INPUT_FIELD_REGISTRY) {
+        const segments = field.path.split('.');
+        const topKey = segments[0];
+        const lv = getNestedValue(state as unknown as Record<string, unknown>, segments);
+        if (!isLayeredValue(lv) || !lv.layers?.user) continue;
+
+        if (!patch[topKey]) {
+          patch[topKey] = JSON.parse(JSON.stringify(
+            (state as unknown as Record<string, unknown>)[topKey]
+          ));
+          topLevelSections.add(topKey);
+        }
+        const reverted = revertLV(lv, field.path);
+        setNestedValue(patch as Record<string, unknown>, segments, reverted);
       }
 
-      const zoningNumericKeys = ['maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'parkingRatio', 'guestParkingRatio'];
-      const newZoning = { ...state.zoning, varianceAssumed: false };
-      for (const k of zoningNumericKeys) {
-        const lv = (state.zoning as Record<string, unknown>)[k];
-        if (lv && typeof lv === 'object' && 'layers' in lv) {
-          const typedLV = lv as LayeredValue<number>;
-          if (typedLV.layers?.user) {
-            (newZoning as Record<string, unknown>)[k] = revertNumericLV(typedLV, `zoning.${k}`);
-          }
-        }
+      if (patch.zoning && typeof patch.zoning === 'object') {
+        (patch.zoning as Record<string, unknown>).varianceAssumed = false;
       }
 
       set({
-        financial: { ...state.financial, assumptions: newAssumptions },
-        zoning: newZoning,
+        ...patch,
         hydrationStatus: markDownstreamStale(state.hydrationStatus, [
           'financial', 'strategy', 'scores', 'risk',
         ]),
@@ -1110,9 +1132,10 @@ export const useDealStore = create<DealStore>()(
         zoning: { ...state.zoning, varianceAssumed: enabled },
       });
       if (!enabled) {
-        const zoningKeys = ['designation', 'maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'setbacks', 'parkingRatio', 'guestParkingRatio'];
+        type ZoningLVKey = 'designation' | 'maxDensity' | 'maxHeight' | 'maxFAR' | 'maxLotCoverage' | 'setbacks' | 'parkingRatio' | 'guestParkingRatio';
+        const zoningKeys: ZoningLVKey[] = ['designation', 'maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'setbacks', 'parkingRatio', 'guestParkingRatio'];
         for (const k of zoningKeys) {
-          if ((state.zoning as any)[k]?.layers?.user) {
+          if (state.zoning[k]?.layers?.user) {
             get().revertAssumption(`zoning.${k}`);
           }
         }

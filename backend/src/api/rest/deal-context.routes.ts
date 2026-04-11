@@ -257,11 +257,13 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
       managementFee = 0.04,
     } = assumptions ?? {};
 
-    const totalUnits = unitMix?.length
-      ? unitMix.reduce((s: number, r: any) => s + (r.units ?? 0), 0)
+    interface UnitMixEntry { units?: number; marketRent?: number }
+    const typedMix: UnitMixEntry[] = unitMix ?? [];
+    const totalUnits = typedMix.length
+      ? typedMix.reduce((s, r) => s + (r.units ?? 0), 0)
       : 200;
-    const avgMarketRent = unitMix?.length
-      ? unitMix.reduce((s: number, r: any) => s + (r.marketRent ?? 1500) * (r.units ?? 0), 0) / Math.max(1, totalUnits)
+    const avgMarketRent = typedMix.length
+      ? typedMix.reduce((s, r) => s + (r.marketRent ?? 1500) * (r.units ?? 0), 0) / Math.max(1, totalUnits)
       : 1500;
 
     const financial = computeFinancialReturns({
