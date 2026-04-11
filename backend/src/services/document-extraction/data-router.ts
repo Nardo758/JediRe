@@ -136,7 +136,7 @@ async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: s
         month.netRentalIncome, month.otherIncome, month.utilityReimbursement, month.lateFees, month.miscIncome,
         month.effectiveGrossIncome, month.payroll, month.repairsMaintenance, month.turnoverCosts, month.marketing,
         month.adminGeneral, month.managementFee, month.utilities, month.contractServices, month.propertyTax, month.insurance,
-        month.totalOpex, month.noi, 'extraction', 'T12', sourceRef,
+        month.totalOpex, month.noi, 'extraction', 'T12', month.reportMonth,
       ]
     );
     count++;
@@ -212,15 +212,14 @@ async function routeBoxScore(pool: Pool, data: BoxScoreData, dealId: string, sou
   const totalUnits = data.summary.totalUnits || null;
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, vacancy_pct, total_units, source_type, source_ref, source_date, assumptions_source, created_at)
-     VALUES ($1, $2, $3, 'extraction', $4, $5, 'extraction', NOW())
+    `INSERT INTO deal_assumptions (deal_id, vacancy_pct, total_units, source_type, source_ref, source_date, created_at)
+     VALUES ($1, $2, $3, 'extraction', $4, $5, NOW())
      ON CONFLICT (deal_id) DO UPDATE SET
        vacancy_pct = COALESCE(EXCLUDED.vacancy_pct, deal_assumptions.vacancy_pct),
        total_units = COALESCE(EXCLUDED.total_units, deal_assumptions.total_units),
        source_type = 'extraction',
        source_ref = EXCLUDED.source_ref,
        source_date = EXCLUDED.source_date,
-       assumptions_source = 'extraction',
        updated_at = NOW()`,
     [dealId, vacancyPct, totalUnits, sourceRef, sourceDate]
   );
@@ -288,14 +287,13 @@ async function routeConcessionBurnoff(pool: Pool, data: ConcessionBurnoffData, d
   const concessionsPct = data.summary.avgConcessionDepth ? data.summary.avgConcessionDepth * 100 : null;
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, concessions_pct, source_type, source_ref, source_date, assumptions_source, created_at)
-     VALUES ($1, $2, 'extraction', $3, $4, 'extraction', NOW())
+    `INSERT INTO deal_assumptions (deal_id, concessions_pct, source_type, source_ref, source_date, created_at)
+     VALUES ($1, $2, 'extraction', $3, $4, NOW())
      ON CONFLICT (deal_id) DO UPDATE SET
        concessions_pct = COALESCE(EXCLUDED.concessions_pct, deal_assumptions.concessions_pct),
        source_type = 'extraction',
        source_ref = EXCLUDED.source_ref,
        source_date = EXCLUDED.source_date,
-       assumptions_source = 'extraction',
        updated_at = NOW()`,
     [dealId, concessionsPct, sourceRef, sourceDate]
   );
@@ -375,14 +373,13 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
     : null;
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, property_tax_rate, source_type, source_ref, source_date, assumptions_source, created_at)
-     VALUES ($1, $2, 'extraction', $3, $4, 'extraction', NOW())
+    `INSERT INTO deal_assumptions (deal_id, property_tax_rate, source_type, source_ref, source_date, created_at)
+     VALUES ($1, $2, 'extraction', $3, $4, NOW())
      ON CONFLICT (deal_id) DO UPDATE SET
        property_tax_rate = COALESCE(EXCLUDED.property_tax_rate, deal_assumptions.property_tax_rate),
        source_type = 'extraction',
        source_ref = EXCLUDED.source_ref,
        source_date = EXCLUDED.source_date,
-       assumptions_source = 'extraction',
        updated_at = NOW()`,
     [dealId, taxRate, sourceRef, sourceDate]
   );
@@ -400,7 +397,7 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
            property_tax = EXCLUDED.property_tax,
            source_document_type = 'TAX_BILL',
            updated_at = NOW()`,
-        [propertyId, reportMonth, monthlyTax, sourceRef]
+        [propertyId, reportMonth, monthlyTax, reportMonth]
       );
     }
   }
@@ -424,14 +421,13 @@ async function routeOtherIncome(pool: Pool, data: OtherIncomeData, dealId: strin
   }
 
   await pool.query(
-    `INSERT INTO deal_assumptions (deal_id, other_income_per_unit, source_type, source_ref, source_date, assumptions_source, created_at)
-     VALUES ($1, $2, 'extraction', $3, $4, 'extraction', NOW())
+    `INSERT INTO deal_assumptions (deal_id, other_income_per_unit, source_type, source_ref, source_date, created_at)
+     VALUES ($1, $2, 'extraction', $3, $4, NOW())
      ON CONFLICT (deal_id) DO UPDATE SET
        other_income_per_unit = COALESCE(EXCLUDED.other_income_per_unit, deal_assumptions.other_income_per_unit),
        source_type = 'extraction',
        source_ref = EXCLUDED.source_ref,
        source_date = EXCLUDED.source_date,
-       assumptions_source = 'extraction',
        updated_at = NOW()`,
     [dealId, otherIncomePerUnit, sourceRef, sourceDate]
   );
@@ -442,11 +438,13 @@ async function routeOtherIncome(pool: Pool, data: OtherIncomeData, dealId: strin
        updated_at = NOW()
      WHERE id = $1`,
     [dealId, JSON.stringify({
-      extraction_other_income_detail: {
-        categories: data.categories,
-        summary: data.summary,
-        source_ref: sourceRef,
-        source_date: sourceDate,
+      broker_claims: {
+        other_income: {
+          categories: data.categories,
+          summary: data.summary,
+          source_ref: sourceRef,
+          source_date: sourceDate,
+        }
       }
     })]
   );
@@ -633,7 +631,8 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
     }
     case 'OTHER_INCOME': {
       const oi = result.data as OtherIncomeData;
-      capsulePayload.extraction_other_income = {
+      if (!capsulePayload.broker_claims) capsulePayload.broker_claims = {};
+      capsulePayload.broker_claims.other_income = {
         source: 'platform',
         updatedAt: now,
         totalAnnual: oi.summary.totalAnnual,
@@ -643,7 +642,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       const t12Check = await pool.query(
         `SELECT SUM(COALESCE(other_income, 0) + COALESCE(utility_reimbursement, 0) + COALESCE(late_fees, 0) + COALESCE(misc_income, 0)) as t12_other_income
          FROM deal_monthly_actuals
-         WHERE property_id IN (SELECT property_id FROM deals WHERE id = $1 UNION SELECT $1)
+         WHERE property_id IN (SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL)
            AND report_month >= (CURRENT_DATE - INTERVAL '12 months')::date`,
         [dealId]
       );
@@ -653,7 +652,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
         const oiVariance = Math.abs(oi.summary.totalAnnual - t12OtherIncome) / t12OtherIncome;
         if (oiVariance > 0.15) {
           alerts.push(`⚠ Broker Other Income Schedule ($${Math.round(oi.summary.totalAnnual).toLocaleString()}/yr) diverges ${(oiVariance * 100).toFixed(1)}% from T12 trailing other income ($${Math.round(t12OtherIncome).toLocaleString()}/yr)`);
-          capsulePayload.extraction_variance_other_income = {
+          capsulePayload.broker_claims.other_income_variance = {
             brokerProjected: oi.summary.totalAnnual,
             t12Actual: t12OtherIncome,
             variancePct: oiVariance,

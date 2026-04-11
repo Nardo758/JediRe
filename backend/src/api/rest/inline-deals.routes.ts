@@ -1047,10 +1047,10 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
           try {
             await pool.query(
               `UPDATE deal_document_files SET
-                 document_type = $2, extraction_status = $3,
-                 extraction_result = $4, updated_at = NOW()
-               WHERE id = $5`,
-              [verifiedDealId, result.documentType, result.success ? 'completed' : 'failed',
+                 document_type = $1, extraction_status = $2,
+                 extraction_result = $3, updated_at = NOW()
+               WHERE id = $4`,
+              [result.documentType, result.success ? 'completed' : 'failed',
                JSON.stringify({ success: result.success, error: result.error, rowsInserted: result.rowsInserted, alerts: result.alerts }),
                docId]
             );
