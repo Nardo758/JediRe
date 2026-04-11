@@ -239,8 +239,9 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
 
     logger.info(`[Recompute] Triggered for deal ${dealId}`, { trigger });
 
-    if (!assumptions) {
-      return res.status(400).json({ success: false, error: 'assumptions required' });
+    if (trigger === 'development_path_change' && !assumptions) {
+      const result = { financial: null, strategy: null, scores: null, risk: null };
+      return res.json(result);
     }
 
     const {
@@ -251,7 +252,7 @@ router.post('/:dealId/recompute', async (req: Request, res: Response) => {
       holdPeriod = 5,
       capexPerUnit = 3000,
       managementFee = 0.04,
-    } = assumptions;
+    } = assumptions ?? {};
 
     const totalUnits = unitMix?.length
       ? unitMix.reduce((s: number, r: any) => s + (r.units ?? 0), 0)

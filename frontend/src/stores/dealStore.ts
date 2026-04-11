@@ -1072,13 +1072,26 @@ export const useDealStore = create<DealStore>()(
         }
       }
 
+      const zoningNumericKeys = ['maxDensity', 'maxHeight', 'maxFAR', 'maxLotCoverage', 'parkingRatio', 'guestParkingRatio'];
+      const newZoning = { ...state.zoning, varianceAssumed: false };
+      for (const k of zoningNumericKeys) {
+        const lv = (state.zoning as Record<string, unknown>)[k];
+        if (lv && typeof lv === 'object' && 'layers' in lv) {
+          const typedLV = lv as LayeredValue<number>;
+          if (typedLV.layers?.user) {
+            (newZoning as Record<string, unknown>)[k] = revertNumericLV(typedLV, `zoning.${k}`);
+          }
+        }
+      }
+
       set({
         financial: { ...state.financial, assumptions: newAssumptions },
+        zoning: newZoning,
         hydrationStatus: markDownstreamStale(state.hydrationStatus, [
           'financial', 'strategy', 'scores', 'risk',
         ]),
         editLog: [...(state.editLog || []), {
-          path: 'financial.assumptions.*',
+          path: '*',
           oldValue: 'all',
           newValue: 'reverted',
           timestamp: now,
@@ -1087,7 +1100,7 @@ export const useDealStore = create<DealStore>()(
       });
 
       window.dispatchEvent(new CustomEvent('assumption:changed', {
-        detail: { path: 'financial.assumptions.*', action: 'revert_all', timestamp: now },
+        detail: { path: '*', action: 'revert_all', timestamp: now },
       }));
     },
 
