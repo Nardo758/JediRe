@@ -731,12 +731,37 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
   }
 
   if (Object.keys(capsulePayload).length > 0) {
+    const existingResult = await pool.query(
+      `SELECT COALESCE(deal_data, '{}'::jsonb) as deal_data FROM deals WHERE id = $1`,
+      [dealId]
+    );
+    const existingData = existingResult.rows[0]?.deal_data || {};
+    const merged = deepMergeJsonb(existingData, capsulePayload);
     await pool.query(
       `UPDATE deals SET
-         deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
+         deal_data = $2::jsonb,
          updated_at = NOW()
        WHERE id = $1`,
-      [dealId, JSON.stringify(capsulePayload)]
+      [dealId, JSON.stringify(merged)]
     );
   }
+}
+
+function deepMergeJsonb(target: Record<string, any>, source: Record<string, any>): Record<string, any> {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (
+      result[key] &&
+      typeof result[key] === 'object' &&
+      !Array.isArray(result[key]) &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key]) &&
+      source[key] !== null
+    ) {
+      result[key] = deepMergeJsonb(result[key], source[key]);
+    } else {
+      result[key] = source[key];
+    }
+  }
+  return result;
 }
