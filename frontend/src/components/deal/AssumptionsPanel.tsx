@@ -266,7 +266,7 @@ export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
     return null;
   }, [assumptions, zoning]);
 
-  const hasAnyUserOverride = SENSITIVITY_PATHS.some(p => {
+  const hasAnyUserOverride = ALL_OVERRIDE_PATHS.some(p => {
     const lv = getLV(p);
     return lv?.layers?.user && (lv?.layers?.platform || lv?.layers?.broker || ASSUMPTION_PLATFORM_DEFAULTS[p] !== undefined);
   });
