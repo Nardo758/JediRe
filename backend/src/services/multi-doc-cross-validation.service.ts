@@ -35,16 +35,57 @@ const VARIANCE_THRESHOLDS = {
   concession_critical_pct_pts: 0.06,
 };
 
+interface T12XVal {
+  gpr?: number;
+  vacancy_loss?: number;
+  concessions?: number | { total?: number };
+  opex?: { real_estate_tax?: number };
+  document_id?: string;
+}
+
+interface RRXVal {
+  gpr_monthly?: number;
+  occupancy_by_unit_pct?: number;
+  outstanding_balance_total?: number;
+  other_income_monthly?: { concessions_other?: number };
+  document_id?: string;
+}
+
+interface TaxXVal {
+  annual_tax_current?: number;
+  annual_tax_unappealed?: number;
+  appeal_status?: string;
+  owner_lp?: string;
+  document_id?: string;
+}
+
+interface ARXVal {
+  totalAR?: number;
+  total_ar?: number;
+  document_id?: string;
+}
+
+interface DealCapsule {
+  extraction_t12?: T12XVal;
+  extraction_rent_roll?: RRXVal;
+  extraction_tax_bill?: TaxXVal;
+  extraction_aged_receivables?: ARXVal;
+  [key: string]: unknown;
+}
+
+interface XValDealRow {
+  legal_owner?: string;
+}
+
 interface DocSnapshot {
   document_id: string;
   document_type: string;
   filename: string;
   uploaded_at: string;
-  capsule: any;
+  capsule: Record<string, unknown>;
 }
 
 async function loadAllDocSnapshots(pool: Pool, dealId: string): Promise<DocSnapshot[]> {
-  // Read all completed extractions for this deal
   const result = await pool.query(
     `SELECT id, document_type, original_filename, updated_at, extraction_result
      FROM deal_document_files
@@ -57,18 +98,18 @@ async function loadAllDocSnapshots(pool: Pool, dealId: string): Promise<DocSnaps
     document_type: r.document_type,
     filename: r.original_filename,
     uploaded_at: r.updated_at,
-    capsule: typeof r.extraction_result === 'string' ? JSON.parse(r.extraction_result) : r.extraction_result,
+    capsule: typeof r.extraction_result === 'string' ? JSON.parse(r.extraction_result) : (r.extraction_result ?? {}),
   }));
 }
 
-async function loadCapsule(pool: Pool, dealId: string): Promise<any> {
+async function loadCapsule(pool: Pool, dealId: string): Promise<DealCapsule> {
   const result = await pool.query(`SELECT deal_data FROM deals WHERE id = $1`, [dealId]);
-  return result.rows[0]?.deal_data ?? {};
+  return (result.rows[0]?.deal_data ?? {}) as DealCapsule;
 }
 
 // ─── Individual cross-checks ─────────────────────────────────────────────────
 
-function checkPropertyTax(capsule: any): CrossDocVariance | null {
+function checkPropertyTax(capsule: DealCapsule): CrossDocVariance | null {
   const t12 = capsule.extraction_t12;
   const tax = capsule.extraction_tax_bill;
   if (!t12 || !tax) return null;
@@ -105,7 +146,7 @@ function checkPropertyTax(capsule: any): CrossDocVariance | null {
   };
 }
 
-function checkGPR(capsule: any): CrossDocVariance | null {
+function checkGPR(capsule: DealCapsule): CrossDocVariance | null {
   const t12 = capsule.extraction_t12;
   const rr = capsule.extraction_rent_roll;
   if (!t12 || !rr) return null;
@@ -132,11 +173,12 @@ function checkGPR(capsule: any): CrossDocVariance | null {
   };
 }
 
-function checkOccupancy(capsule: any): CrossDocVariance | null {
+function checkOccupancy(capsule: DealCapsule): CrossDocVariance | null {
   const t12 = capsule.extraction_t12;
   const rr = capsule.extraction_rent_roll;
   if (!t12 || !rr) return null;
-  const t12VacancyPct = t12.gpr > 0 ? Math.abs(t12.vacancy_loss ?? 0) / t12.gpr : null;
+  const occGpr = t12.gpr ?? 0;
+  const t12VacancyPct = occGpr > 0 ? Math.abs(t12.vacancy_loss ?? 0) / occGpr : null;
   const rrVacancyPct = rr.occupancy_by_unit_pct != null ? 1 - rr.occupancy_by_unit_pct : null;
   if (t12VacancyPct == null || rrVacancyPct == null) return null;
 
@@ -158,7 +200,7 @@ function checkOccupancy(capsule: any): CrossDocVariance | null {
   };
 }
 
-function checkAR(capsule: any): CrossDocVariance | null {
+function checkAR(capsule: DealCapsule): CrossDocVariance | null {
   const ar = capsule.extraction_aged_receivables;
   const rr = capsule.extraction_rent_roll;
   if (!ar || !rr) return null;
@@ -185,15 +227,17 @@ function checkAR(capsule: any): CrossDocVariance | null {
   };
 }
 
-function checkConcessions(capsule: any): CrossDocVariance | null {
+function checkConcessions(capsule: DealCapsule): CrossDocVariance | null {
   const t12 = capsule.extraction_t12;
   const rr = capsule.extraction_rent_roll;
   if (!t12 || !rr) return null;
-  const t12ConcPct = t12.gpr > 0
-    ? Math.abs((typeof t12.concessions === 'object' ? t12.concessions.total : t12.concessions) ?? 0) / t12.gpr
+  const t12Gpr = t12.gpr ?? 0;
+  const t12ConcPct = t12Gpr > 0
+    ? Math.abs((typeof t12.concessions === 'object' ? (t12.concessions?.total ?? 0) : (t12.concessions ?? 0))) / t12Gpr
     : null;
-  const rrConcPct = rr.gpr_monthly > 0
-    ? Math.abs(rr.other_income_monthly?.concessions_other ?? 0) / rr.gpr_monthly
+  const rrGprM = rr.gpr_monthly ?? 0;
+  const rrConcPct = rrGprM > 0
+    ? Math.abs(rr.other_income_monthly?.concessions_other ?? 0) / rrGprM
     : null;
   if (t12ConcPct == null || rrConcPct == null) return null;
 
@@ -215,7 +259,7 @@ function checkConcessions(capsule: any): CrossDocVariance | null {
   };
 }
 
-function checkOwnerIdentity(capsule: any, dealRow: any): CrossDocVariance | null {
+function checkOwnerIdentity(capsule: DealCapsule, dealRow: XValDealRow | null): CrossDocVariance | null {
   const tax = capsule.extraction_tax_bill;
   if (!tax || !tax.owner_lp || !dealRow?.legal_owner) return null;
   const taxOwner = String(tax.owner_lp).trim().toUpperCase();
@@ -273,7 +317,7 @@ export async function runCrossValidation(pool: Pool, dealId: string): Promise<{
   variances: CrossDocVariance[];
 }> {
   const capsule = await loadCapsule(pool, dealId);
-  const dealRow = (await pool.query(`SELECT legal_owner FROM deals WHERE id = $1`, [dealId])).rows[0];
+  const dealRow: XValDealRow | undefined = (await pool.query(`SELECT legal_owner FROM deals WHERE id = $1`, [dealId])).rows[0];
 
   const checks = [
     checkPropertyTax(capsule),
@@ -281,7 +325,7 @@ export async function runCrossValidation(pool: Pool, dealId: string): Promise<{
     checkOccupancy(capsule),
     checkAR(capsule),
     checkConcessions(capsule),
-    checkOwnerIdentity(capsule, dealRow),
+    checkOwnerIdentity(capsule, dealRow ?? null),
   ];
 
   const variances = checks.filter((c): c is CrossDocVariance => c !== null);

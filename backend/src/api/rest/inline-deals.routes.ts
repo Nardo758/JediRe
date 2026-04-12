@@ -264,7 +264,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
             const year1 = seedResult.rows[0]?.year1;
             if (year1 && buildAssumptionsFromYear1Seed) {
               const assumptions = buildAssumptionsFromYear1Seed(year1, row);
-              await financialModelEngine.buildModel(row.id, assumptions);
+              await financialModelEngine.buildModel(row.id, assumptions as unknown as Parameters<typeof financialModelEngine.buildModel>[1]);
               console.log(`[FinancialModel] Auto-built from seeded assumptions for deal ${row.id}`);
             }
           } catch (modelErr) {
