@@ -1,171 +1,526 @@
 import * as XLSX from 'xlsx';
 import { RentRollData, RentRollUnit, ExtractionResult } from '../types';
-import { smartParseSheet, parseNum, parseDate } from './workbook-utils';
+import { findHeaderRow, parseSheetFromRow, parseNum, parseDate } from './workbook-utils';
+import type { RentRollLayout } from '../types';
 
-const UNIT_COL_PATTERNS = [/^unit/i, /^apt/i, /^space/i, /^#/];
-const STATUS_COL_PATTERNS = [/status/i, /resident/i, /tenant/i, /occupant/i, /name/i];
-const TYPE_COL_PATTERNS = [/unit[\s_-]*type/i, /type/i, /plan/i, /floor[\s_-]*plan/i, /model/i];
-const SQFT_COL_PATTERNS = [/sq[\s_-]*ft/i, /sqft/i, /square/i, /size/i, /sf$/i];
-const MARKET_RENT_PATTERNS = [/market[\s_-]*rent/i, /asking/i, /mkt[\s_-]*rent/i];
-const LEASE_RENT_PATTERNS = [/lease[\s_-]*(rent|charge)/i, /monthly[\s_-]*rent/i, /current[\s_-]*rent/i, /rent$/i, /charge[\s_-]*total/i];
-const MOVE_IN_PATTERNS = [/move[\s_-]*in/i, /movein/i];
-const LEASE_START_PATTERNS = [/lease[\s_-]*(from|start|begin)/i, /start[\s_-]*date/i];
-const LEASE_END_PATTERNS = [/lease[\s_-]*(to|end|expir)/i, /expir/i, /end[\s_-]*date/i];
-const DEPOSIT_PATTERNS = [/deposit/i, /security/i];
-const BALANCE_PATTERNS = [/balance/i, /owing/i, /owed/i];
+// ============================================================================
+// Rent Roll Parser v2 — Yardi RRwLC + generic-flat dual-mode
+//
+// Yardi "Rent Roll with Lease Charges" layout signature:
+//   - Two-row header (col headers in row N, sub-labels in row N+1)
+//   - Per-unit primary row: unit_no | unit_type | sqft | resident | market_rent | <blank charge> | 0 | dep | dep | mi | exp | mo | bal
+//   - Followed by N "charge code" sub-rows: blank | blank | blank | blank | blank | <code> | amount | blank...
+//   - Followed by a "Total" sub-row with the unit's lease charge sum
+//   - Section breaks: "Current/Notice/Vacant Residents", "Future Residents/Applicants"
+//
+// Generic flat layout: one row per unit, named columns for each field.
+// ============================================================================
 
-const HEADER_DETECTION_PATTERNS = [/unit/i, /resident|tenant|name/i, /rent/i, /sqft|sq.*ft|sf/i, /lease/i, /move/i, /status/i, /type|plan|model/i];
+const KNOWN_CHARGE_CODES = new Set([
+  'rent', 'parking', 'trash', 'pestctrl', 'storage', 'utilreb', 'petrent',
+  'mtmfee', 'cable', 'water', 'sewer', 'electric', 'gas', 'internet',
+  'amenity', 'garage', 'liabins', 'misc', 'renew', 'empdisc', 'patrol',
+  'otconc', 'termfee', 'concierge', 'pet', 'admin', 'app',
+]);
 
-function findCol(headers: string[], patterns: RegExp[]): string | null {
-  for (const h of headers) {
-    for (const p of patterns) {
-      if (p.test(h)) return h;
+// Income-category mapping for charge codes (lands in capsule.other_income_monthly)
+const CHARGE_CODE_CATEGORY: Record<string, 'rent' | 'parking' | 'pet_rent' | 'storage' | 'rubs' | 'fees' | 'insurance_admin' | 'concessions' | 'other'> = {
+  rent: 'rent',
+  parking: 'parking', garage: 'parking',
+  petrent: 'pet_rent', pet: 'pet_rent',
+  storage: 'storage',
+  pestctrl: 'rubs', trash: 'rubs', utilreb: 'rubs',
+  water: 'rubs', sewer: 'rubs', electric: 'rubs', gas: 'rubs', cable: 'rubs', internet: 'rubs',
+  mtmfee: 'fees', termfee: 'fees', misc: 'fees', admin: 'fees', app: 'fees',
+  liabins: 'insurance_admin',
+  empdisc: 'concessions', otconc: 'concessions', renew: 'concessions', patrol: 'concessions',
+  amenity: 'fees', concierge: 'fees',
+};
+
+const FUTURE_RESIDENT_MARKERS = ['future', 'pre-leased', 'pre leased', 'applicant', 'approved'];
+
+interface YardiUnit {
+  unitNumber: string;
+  unitType: string;
+  sqft: number | null;
+  resident: string | null;
+  marketRent: number | null;
+  securityDeposit: number | null;
+  otherDeposit: number | null;
+  moveInDate: Date | null;
+  leaseExpiration: Date | null;
+  moveOutDate: Date | null;
+  balance: number | null;
+  charges: Record<string, number>;
+  totalCharges: number;
+  isVacant: boolean;
+  isFuture: boolean;
+  isNonRevenue: boolean;       // employee/courtesy/model
+}
+
+/**
+ * Detect rent-roll layout based on header structure and row patterns.
+ */
+function detectLayout(sheet: XLSX.WorkSheet): { layout: RentRollLayout; headerRow: number; secondHeaderRow?: number } {
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+  const maxScan = Math.min(range.e.r, 25);
+
+  // Look for the Yardi RRwLC signature: a row with "Charge" + "Code" fragments
+  // (header row N has "Charge" in one col; row N+1 has "Code" in same col)
+  for (let r = 0; r <= maxScan; r++) {
+    const rowVals: string[] = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      rowVals.push(cell?.v != null ? String(cell.v).trim() : '');
+    }
+    const hasCharge = rowVals.some(v => /^charge$/i.test(v));
+    const hasUnit = rowVals.some(v => /^unit$/i.test(v));
+    const hasMarket = rowVals.some(v => /^market$/i.test(v));
+
+    if (hasCharge && hasUnit && hasMarket) {
+      // Verify the row N+1 has matching sub-labels ("Code", "Rent", "Sq Ft", etc.)
+      const subRowVals: string[] = [];
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: r + 1, c })];
+        subRowVals.push(cell?.v != null ? String(cell.v).trim() : '');
+      }
+      const hasCode = subRowVals.some(v => /^code$/i.test(v));
+      const hasRent = subRowVals.some(v => /^rent$/i.test(v));
+
+      if (hasCode && hasRent) {
+        return { layout: 'yardi_rrwlc', headerRow: r, secondHeaderRow: r + 1 };
+      }
     }
   }
-  return null;
+
+  // Generic flat: standard headers on a single row
+  const headerPatterns = [/unit/i, /resident|tenant|name/i, /rent/i, /sqft|sq.*ft|sf/i, /lease/i];
+  const headerRow = findHeaderRow(sheet, headerPatterns, 25, 3);
+  return { layout: 'generic_flat', headerRow };
 }
 
-const KNOWN_CHARGE_CODES = ['rent', 'parking', 'trash', 'pestctrl', 'storage', 'utilreb', 'petrent', 'mtmfee', 'cable', 'water', 'sewer', 'electric', 'gas', 'internet', 'amenity', 'garage'];
+/**
+ * Parse Yardi RRwLC (stacked charge-code) layout.
+ */
+function parseYardiRRwLC(
+  sheet: XLSX.WorkSheet,
+  headerRow: number
+): { units: YardiUnit[]; warnings: string[]; asOfDate: string | null; sourceSystemId: string | null } {
+  const warnings: string[] = [];
+  const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
 
-function detectChargeColumns(headers: string[]): string[] {
-  return headers.filter(h => {
-    const lower = h.toLowerCase().trim();
-    return KNOWN_CHARGE_CODES.some(c => lower.includes(c)) || lower.includes('charge');
-  });
+  // Extract metadata from rows 0 to headerRow
+  let asOfDate: string | null = null;
+  let sourceSystemId: string | null = null;
+  for (let r = 0; r < headerRow; r++) {
+    const cell = sheet[XLSX.utils.encode_cell({ r, c: 0 })];
+    const txt = cell?.v != null ? String(cell.v).trim() : '';
+    const asOfMatch = txt.match(/As\s+Of\s*=?\s*(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})/i);
+    if (asOfMatch) asOfDate = parseDate(asOfMatch[1]);
+    const propIdMatch = txt.match(/\(([a-z0-9]{4,15})\)\s*$/i);
+    if (propIdMatch) sourceSystemId = propIdMatch[1];
+  }
+
+  // Column indices (Yardi RRwLC standard layout):
+  // 0=Unit, 1=Unit Type, 2=Sq Ft, 3=Resident, 4=Market Rent,
+  // 5=Charge Code, 6=Amount, 7=Resident Deposit, 8=Other Deposit,
+  // 9=Move In, 10=Lease Expiration, 11=Move Out, 12=Balance
+  const COL = {
+    UNIT: 0, TYPE: 1, SQFT: 2, RESIDENT: 3, MARKET: 4,
+    CHARGE: 5, AMOUNT: 6, SEC_DEP: 7, OTHER_DEP: 8,
+    MOVE_IN: 9, LEASE_EXP: 10, MOVE_OUT: 11, BALANCE: 12,
+  };
+
+  const dataStartRow = headerRow + 2;  // skip both header rows
+
+  let inFutureSection = false;
+  const units: YardiUnit[] = [];
+  let currentUnit: YardiUnit | null = null;
+
+  for (let r = dataStartRow; r <= range.e.r; r++) {
+    const getVal = (c: number) => {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+      return cell?.v;
+    };
+
+    const unitVal = getVal(COL.UNIT);
+    const unitStr = unitVal != null ? String(unitVal).trim() : '';
+
+    // Section break detection
+    if (unitStr) {
+      if (/future\s+residents?/i.test(unitStr) || /applicants?/i.test(unitStr)) {
+        inFutureSection = true;
+        continue;
+      }
+      if (/current.*notice.*vacant/i.test(unitStr)) {
+        inFutureSection = false;
+        continue;
+      }
+      if (/^summary\s+groups?/i.test(unitStr)) break;          // end of unit data
+      if (/^summary\s+of\s+charges/i.test(unitStr)) break;     // end of unit data
+      if (/^totals?:?$/i.test(unitStr)) break;
+    }
+
+    // New unit row: has a unit number in col A AND a unit type in col B
+    if (unitStr && /^[\dA-Z]+[\dA-Z\-]*$/i.test(unitStr) && getVal(COL.TYPE) != null) {
+      // Save previous unit
+      if (currentUnit) units.push(currentUnit);
+
+      const resident = getVal(COL.RESIDENT);
+      const residentStr = resident != null ? String(resident).trim() : '';
+      const isVacant = /^vacant$/i.test(residentStr);
+      const moveIn = parseDate(getVal(COL.MOVE_IN));
+      const leaseExp = parseDate(getVal(COL.LEASE_EXP));
+      const moveOut = parseDate(getVal(COL.MOVE_OUT));
+
+      currentUnit = {
+        unitNumber: unitStr,
+        unitType: String(getVal(COL.TYPE) ?? '').trim(),
+        sqft: parseNum(getVal(COL.SQFT)),
+        resident: isVacant ? null : residentStr || null,
+        marketRent: parseNum(getVal(COL.MARKET)),
+        securityDeposit: parseNum(getVal(COL.SEC_DEP)),
+        otherDeposit: parseNum(getVal(COL.OTHER_DEP)),
+        moveInDate: moveIn ? new Date(moveIn) : null,
+        leaseExpiration: leaseExp ? new Date(leaseExp) : null,
+        moveOutDate: moveOut ? new Date(moveOut) : null,
+        balance: parseNum(getVal(COL.BALANCE)),
+        charges: {},
+        totalCharges: 0,
+        isVacant,
+        isFuture: inFutureSection,
+        isNonRevenue: false,
+      };
+
+      // Yardi space-saving convention: the FIRST charge for a unit may be carried
+      // on the same row as the primary unit summary (cols F & G).
+      const primaryChargeCode = getVal(COL.CHARGE);
+      const primaryChargeAmt = parseNum(getVal(COL.AMOUNT));
+      if (primaryChargeCode != null && primaryChargeAmt != null) {
+        const codeStr = String(primaryChargeCode).trim().toLowerCase();
+        if (codeStr && !/^total$/i.test(codeStr)) {
+          // SUM: a unit may have multiple of the same charge code (e.g., 2 parking spaces)
+          currentUnit.charges[codeStr] = (currentUnit.charges[codeStr] ?? 0) + primaryChargeAmt;
+        }
+      }
+      continue;
+    }
+
+    // Sub-row for current unit: charge code in col F, amount in col G
+    if (currentUnit && !unitStr) {
+      const chargeCode = getVal(COL.CHARGE);
+      const chargeAmount = parseNum(getVal(COL.AMOUNT));
+      if (chargeCode != null && chargeAmount != null) {
+        const codeStr = String(chargeCode).trim().toLowerCase();
+        if (/^total$/i.test(codeStr)) {
+          // Yardi unit-total row — captures sum of charges
+          currentUnit.totalCharges = chargeAmount;
+        } else if (codeStr) {
+          // SUM: a unit may have multiple of the same charge code
+          currentUnit.charges[codeStr] = (currentUnit.charges[codeStr] ?? 0) + chargeAmount;
+        }
+      }
+      continue;
+    }
+
+    // Otherwise: blank row or unrecognized — skip
+  }
+
+  // Save final unit
+  if (currentUnit) units.push(currentUnit);
+
+  // Identify non-revenue units (employees/courtesy/model)
+  // Heuristic: resident name starts with 'employee', 'courtesy', 'model'
+  for (const u of units) {
+    if (u.resident && /^(employee|courtesy|model|staff)/i.test(u.resident)) {
+      u.isNonRevenue = true;
+    }
+  }
+
+  if (units.length === 0) {
+    warnings.push('No unit records detected in Yardi RRwLC layout');
+  }
+
+  return { units, warnings, asOfDate, sourceSystemId };
 }
 
-export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResult {
+/**
+ * Bedroom inference from unit type code.
+ * Common conventions:
+ *   - "pt_SA", "STU1", "S1A", "EFF" → Studio
+ *   - "pt_1A", "1BR1", "1B1" → 1BR
+ *   - "pt_2J", "2BR2", "2B2" → 2BR
+ *   - "3BR", "pt_3A" → 3BR
+ */
+function inferBedrooms(unitType: string): string {
+  const t = unitType.toLowerCase();
+  if (/\b(studio|stu|eff|^s\d|_s\d|_sa)\b/.test(t)) return 'Studio';
+  if (/(^|_|\b)1[a-z]?(\d|$|_)/.test(t) || /1br/.test(t)) return '1BR';
+  if (/(^|_|\b)2[a-z]?(\d|$|_)/.test(t) || /2br/.test(t)) return '2BR';
+  if (/(^|_|\b)3[a-z]?(\d|$|_)/.test(t) || /3br/.test(t)) return '3BR';
+  if (/(^|_|\b)4[a-z]?(\d|$|_)/.test(t) || /4br/.test(t)) return '4BR+';
+  return 'Unknown';
+}
+
+export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResult & { layout?: RentRollLayout; capsuleExtras?: any } {
   const warnings: string[] = [];
 
   try {
     const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const { headers, rows: allRows } = smartParseSheet(sheet, HEADER_DETECTION_PATTERNS, 3);
+    const { layout, headerRow, secondHeaderRow } = detectLayout(sheet);
 
-    if (allRows.length === 0) {
-      return { documentType: 'RENT_ROLL', success: false, error: 'No data rows found (checked up to 20 title rows)', data: null, summary: {}, warnings };
-    }
-    const unitCol = findCol(headers, UNIT_COL_PATTERNS);
-    const statusCol = findCol(headers, STATUS_COL_PATTERNS);
-    const typeCol = findCol(headers, TYPE_COL_PATTERNS);
-    const sqftCol = findCol(headers, SQFT_COL_PATTERNS);
-    const marketRentCol = findCol(headers, MARKET_RENT_PATTERNS);
-    const leaseRentCol = findCol(headers, LEASE_RENT_PATTERNS);
-    const moveInCol = findCol(headers, MOVE_IN_PATTERNS);
-    const leaseStartCol = findCol(headers, LEASE_START_PATTERNS);
-    const leaseEndCol = findCol(headers, LEASE_END_PATTERNS);
-    const depositCol = findCol(headers, DEPOSIT_PATTERNS);
-    const balanceCol = findCol(headers, BALANCE_PATTERNS);
-    const chargeCols = detectChargeColumns(headers);
+    let units: YardiUnit[] = [];
+    let asOfDate: string | null = null;
+    let sourceSystemId: string | null = null;
 
-    if (!unitCol) {
-      return { documentType: 'RENT_ROLL', success: false, error: 'Could not identify unit number column', data: null, summary: {}, warnings };
-    }
+    if (layout === 'yardi_rrwlc') {
+      const result = parseYardiRRwLC(sheet, headerRow);
+      units = result.units;
+      asOfDate = result.asOfDate;
+      sourceSystemId = result.sourceSystemId;
+      warnings.push(...result.warnings);
+    } else {
+      // Fallback to generic single-row layout (legacy parser logic)
+      // For brevity: invoke the existing single-row code path
+      const { headers, rows } = parseSheetFromRow(sheet, headerRow);
+      const unitColIdx = headers.findIndex(h => /^unit/i.test(h) || /^apt/i.test(h));
+      const typeColIdx = headers.findIndex(h => /unit[\s_-]*type|type|plan|floor[\s_-]*plan/i.test(h));
+      const sqftColIdx = headers.findIndex(h => /sq[\s_-]*ft|sqft|square|size|sf$/i.test(h));
+      const marketColIdx = headers.findIndex(h => /market[\s_-]*rent|asking|mkt[\s_-]*rent/i.test(h));
+      const rentColIdx = headers.findIndex(h => /lease[\s_-]*(rent|charge)|monthly[\s_-]*rent|current[\s_-]*rent|rent$|charge[\s_-]*total/i.test(h));
+      const statusColIdx = headers.findIndex(h => /status|resident|tenant|occupant/i.test(h));
 
-    const futureResidentMarkers = ['future', 'pre-leased', 'applicant', 'approved'];
-    const units: RentRollUnit[] = [];
-
-    for (const row of allRows) {
-      const unitNum = String(row[unitCol] || '').trim();
-      if (!unitNum || /^(total|subtotal|summary|grand|page|report)/i.test(unitNum)) continue;
-
-      const statusVal = statusCol ? String(row[statusCol] || '').trim() : '';
-      const isFuture = futureResidentMarkers.some(m => statusVal.toLowerCase().includes(m));
-      const isVacant = /vacant|vac\b|empty|available|unoccupied/i.test(statusVal) && !isFuture;
-
-      const charges: Record<string, number> = {};
-      let totalCharges = 0;
-      for (const cc of chargeCols) {
-        const v = parseNum(row[cc]);
-        if (v != null && v > 0) {
-          charges[cc] = v;
-          totalCharges += v;
-        }
+      if (unitColIdx === -1) {
+        return {
+          documentType: 'RENT_ROLL', success: false,
+          error: 'Could not identify unit number column (generic-flat layout)',
+          data: null, summary: {}, warnings,
+          layout,
+        };
       }
 
-      const leaseRent = parseNum(row[leaseRentCol || '']);
-      const effectiveRent = leaseRent || (totalCharges > 0 ? totalCharges : null);
+      for (const row of rows) {
+        const unitNum = String(row[headers[unitColIdx]] ?? '').trim();
+        if (!unitNum || /^(total|subtotal|summary|grand|page|report)/i.test(unitNum)) continue;
 
-      units.push({
-        unitNumber: unitNum,
-        unitType: typeCol ? String(row[typeCol] || '').trim() : '',
-        sqft: sqftCol ? parseNum(row[sqftCol]) : null,
-        status: isVacant ? 'vacant' : (isFuture ? 'future' : 'occupied'),
-        tenantName: statusCol && !isVacant ? statusVal : null,
-        marketRent: marketRentCol ? parseNum(row[marketRentCol]) : null,
-        leaseRent,
-        effectiveRent,
-        charges,
-        totalCharges,
-        deposit: depositCol ? parseNum(row[depositCol]) : null,
-        balance: balanceCol ? parseNum(row[balanceCol]) : null,
-        moveInDate: moveInCol ? parseDate(row[moveInCol]) : null,
-        leaseStart: leaseStartCol ? parseDate(row[leaseStartCol]) : null,
-        leaseEnd: leaseEndCol ? parseDate(row[leaseEndCol]) : null,
-        moveOutDate: null,
-        isFutureResident: isFuture,
-      });
+        const statusVal = statusColIdx >= 0 ? String(row[headers[statusColIdx]] ?? '').trim() : '';
+        const isVacant = /vacant|vac\b|empty|available|unoccupied/i.test(statusVal);
+        const isFuture = FUTURE_RESIDENT_MARKERS.some(m => statusVal.toLowerCase().includes(m));
+
+        const inPlaceRent = rentColIdx >= 0 ? parseNum(row[headers[rentColIdx]]) : null;
+        units.push({
+          unitNumber: unitNum,
+          unitType: typeColIdx >= 0 ? String(row[headers[typeColIdx]] ?? '').trim() : '',
+          sqft: sqftColIdx >= 0 ? parseNum(row[headers[sqftColIdx]]) : null,
+          resident: isVacant ? null : statusVal || null,
+          marketRent: marketColIdx >= 0 ? parseNum(row[headers[marketColIdx]]) : null,
+          securityDeposit: null, otherDeposit: null,
+          moveInDate: null, leaseExpiration: null, moveOutDate: null,
+          balance: null,
+          charges: inPlaceRent != null ? { rent: inPlaceRent } : {},
+          totalCharges: inPlaceRent ?? 0,
+          isVacant, isFuture,
+          isNonRevenue: false,
+        });
+      }
     }
-
-    const currentUnits = units.filter(u => !u.isFutureResident);
-    const occupiedUnits = currentUnits.filter(u => u.status === 'occupied');
-    const vacantUnits = currentUnits.filter(u => u.status === 'vacant');
-
-    const totalMarketRent = currentUnits.reduce((s, u) => s + (u.marketRent || 0), 0);
-    const totalLeaseCharges = occupiedUnits.reduce((s, u) => s + (u.effectiveRent || 0), 0);
-    const lossToLease = totalMarketRent - totalLeaseCharges;
-
-    const fpMix: Record<string, { count: number; totalRent: number; totalSqft: number }> = {};
-    for (const u of currentUnits) {
-      const fp = u.unitType || 'unknown';
-      if (!fpMix[fp]) fpMix[fp] = { count: 0, totalRent: 0, totalSqft: 0 };
-      fpMix[fp].count++;
-      fpMix[fp].totalRent += u.effectiveRent || u.marketRent || 0;
-      fpMix[fp].totalSqft += u.sqft || 0;
-    }
-
-    const floorPlanMix: Record<string, { count: number; avgRent: number; avgSqft: number }> = {};
-    for (const [fp, data] of Object.entries(fpMix)) {
-      floorPlanMix[fp] = {
-        count: data.count,
-        avgRent: data.count > 0 ? Math.round(data.totalRent / data.count) : 0,
-        avgSqft: data.count > 0 ? Math.round(data.totalSqft / data.count) : 0,
-      };
-    }
-
-    const data: RentRollData = {
-      units,
-      summary: {
-        totalUnits: currentUnits.length,
-        occupiedUnits: occupiedUnits.length,
-        vacantUnits: vacantUnits.length,
-        occupancyRate: currentUnits.length > 0 ? occupiedUnits.length / currentUnits.length : 0,
-        totalMarketRent,
-        totalLeaseCharges,
-        lossToLease,
-        lossToLeasePct: totalMarketRent > 0 ? lossToLease / totalMarketRent : 0,
-        avgMarketRent: currentUnits.length > 0 ? totalMarketRent / currentUnits.length : 0,
-        avgEffectiveRent: occupiedUnits.length > 0 ? totalLeaseCharges / occupiedUnits.length : 0,
-        futureResidents: units.filter(u => u.isFutureResident).length,
-        floorPlanMix,
-      },
-    };
 
     if (units.length === 0) {
       return {
         documentType: 'RENT_ROLL', success: false,
-        error: 'No unit records extracted — unit column found but no valid data rows',
+        error: `No units extracted (layout=${layout})`,
         data: null, summary: {}, warnings,
+        layout,
       };
     }
 
-    if (totalMarketRent === 0 && totalLeaseCharges === 0 && units.every(u => u.sqft == null && u.marketRent == null && u.leaseRent == null)) {
-      return {
-        documentType: 'RENT_ROLL', success: false,
-        error: 'All rent/sqft values are null or zero — likely header detection failure',
-        data: null, summary: {}, warnings,
-      };
+    // ─── Aggregations ───
+    const currentUnits = units.filter(u => !u.isFuture);
+    const occupiedUnits = currentUnits.filter(u => !u.isVacant && !u.isNonRevenue);
+    const vacantUnits = currentUnits.filter(u => u.isVacant);
+    const nonRevenueUnits = currentUnits.filter(u => u.isNonRevenue);
+    const futureUnits = units.filter(u => u.isFuture);
+
+    const totalSqft = currentUnits.reduce((s, u) => s + (u.sqft ?? 0), 0);
+    const occupiedSqft = occupiedUnits.reduce((s, u) => s + (u.sqft ?? 0), 0);
+    const totalMarketRent = currentUnits.reduce((s, u) => s + (u.marketRent ?? 0), 0);
+    const totalLeaseCharges = occupiedUnits.reduce((s, u) => s + u.totalCharges, 0);
+    const totalInPlaceRent = occupiedUnits.reduce((s, u) => s + (u.charges['rent'] ?? 0), 0);
+
+    // Standard LTL definition: (market_rent_all_units - sum of in-place rents) / market_rent_all_units
+    // Vacant units contribute $0 to in-place rent. This matches Yardi/RealPage convention.
+    // Includes both pure LTL (rent below market on occupied units) and vacancy effect.
+    // To isolate "pure LTL on occupied only", use: (occupiedMarketRent - totalInPlaceRent) / occupiedMarketRent
+    const occupiedMarketRent = occupiedUnits.reduce((s, u) => s + (u.marketRent ?? 0), 0);
+    const lossToLease = occupiedMarketRent - totalInPlaceRent;
+    const lossToLeasePct = occupiedMarketRent > 0 ? lossToLease / occupiedMarketRent : 0;
+
+    // Charge code aggregation: across all current units (occupied + vacant + non-revenue).
+    // Vacant units typically have no charges; non-revenue units (employee/courtesy/model)
+    // often have parking/storage/utility charges even though they pay $0 rent.
+    // Matches Yardi "Current/Notice Residents Only" summary convention.
+    const chargeCodeAgg: Record<string, number> = {};
+    for (const u of currentUnits) {
+      for (const [code, amt] of Object.entries(u.charges)) {
+        chargeCodeAgg[code] = (chargeCodeAgg[code] ?? 0) + amt;
+      }
     }
+
+    // Group charges by income category
+    const otherIncomeMonthly = {
+      parking: 0, pet_rent: 0, storage: 0, rubs: 0,
+      fees: 0, insurance_admin: 0, concessions_other: 0, other: 0,
+    };
+    for (const [code, amt] of Object.entries(chargeCodeAgg)) {
+      if (code === 'rent') continue;
+      const cat = CHARGE_CODE_CATEGORY[code];
+      if (cat === 'concessions') otherIncomeMonthly.concessions_other += amt;
+      else if (cat && cat !== 'rent') (otherIncomeMonthly as any)[cat] += amt;
+      else otherIncomeMonthly.other += amt;
+    }
+
+    // Floor plan mix
+    const floorPlanMix: Record<string, {
+      count: number; avg_sqft: number; total_sqft: number;
+      avg_market_rent: number; avg_effective_rent: number; occupancy_pct: number;
+    }> = {};
+    for (const u of currentUnits) {
+      const fp = u.unitType || 'unknown';
+      if (!floorPlanMix[fp]) {
+        floorPlanMix[fp] = { count: 0, avg_sqft: 0, total_sqft: 0, avg_market_rent: 0, avg_effective_rent: 0, occupancy_pct: 0 };
+      }
+      floorPlanMix[fp].count++;
+      floorPlanMix[fp].total_sqft += u.sqft ?? 0;
+    }
+    for (const fp of Object.keys(floorPlanMix)) {
+      const fpUnits = currentUnits.filter(u => (u.unitType || 'unknown') === fp);
+      const fpOccupied = fpUnits.filter(u => !u.isVacant && !u.isNonRevenue);
+      const fpMarketSum = fpUnits.reduce((s, u) => s + (u.marketRent ?? 0), 0);
+      const fpRentSum = fpOccupied.reduce((s, u) => s + (u.charges['rent'] ?? 0), 0);
+      floorPlanMix[fp].avg_sqft = floorPlanMix[fp].count > 0
+        ? Math.round(floorPlanMix[fp].total_sqft / floorPlanMix[fp].count) : 0;
+      floorPlanMix[fp].avg_market_rent = floorPlanMix[fp].count > 0
+        ? Math.round(fpMarketSum / floorPlanMix[fp].count) : 0;
+      floorPlanMix[fp].avg_effective_rent = fpOccupied.length > 0
+        ? Math.round(fpRentSum / fpOccupied.length) : 0;
+      floorPlanMix[fp].occupancy_pct = floorPlanMix[fp].count > 0
+        ? fpOccupied.length / floorPlanMix[fp].count : 0;
+    }
+
+    // Bedroom rollup
+    const bedroomMix: Record<string, { count: number; pct: number; avg_rent: number }> = {};
+    for (const u of currentUnits) {
+      const br = inferBedrooms(u.unitType);
+      if (!bedroomMix[br]) bedroomMix[br] = { count: 0, pct: 0, avg_rent: 0 };
+      bedroomMix[br].count++;
+    }
+    for (const br of Object.keys(bedroomMix)) {
+      const brUnits = currentUnits.filter(u => inferBedrooms(u.unitType) === br);
+      const brOccupied = brUnits.filter(u => !u.isVacant && !u.isNonRevenue);
+      const rentSum = brOccupied.reduce((s, u) => s + (u.charges['rent'] ?? 0), 0);
+      bedroomMix[br].pct = brUnits.length / currentUnits.length;
+      bedroomMix[br].avg_rent = brOccupied.length > 0 ? Math.round(rentSum / brOccupied.length) : 0;
+    }
+
+    // Lease expiration roll
+    const today = new Date();
+    const monthsBetween = (a: Date, b: Date) =>
+      (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+    const expirationCurve = { months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0 };
+    for (const u of occupiedUnits) {
+      if (!u.leaseExpiration) { expirationCurve.mtm++; continue; }
+      const m = monthsBetween(today, u.leaseExpiration);
+      if (m < 0) expirationCurve.mtm++;
+      else if (m <= 3) expirationCurve.months_0_3++;
+      else if (m <= 6) expirationCurve.months_3_6++;
+      else if (m <= 12) expirationCurve.months_6_12++;
+      else expirationCurve.months_12_plus++;
+    }
+
+    // Risk metrics
+    const outstandingBalanceTotal = currentUnits.reduce((s, u) => s + Math.max(u.balance ?? 0, 0), 0);
+    const securityDepositsHeld = currentUnits.reduce((s, u) => s + (u.securityDeposit ?? 0), 0);
+    const preLeaseRatio = vacantUnits.length > 0 ? futureUnits.length / vacantUnits.length : 0;
+
+    const occByUnit = currentUnits.length > 0 ? occupiedUnits.length / currentUnits.length : 0;
+    const occBySqft = totalSqft > 0 ? occupiedSqft / totalSqft : 0;
+
+    // Build unit records in legacy schema for backward compat
+    const rrUnits: RentRollUnit[] = units.map(u => ({
+      unitNumber: u.unitNumber,
+      unitType: u.unitType,
+      sqft: u.sqft,
+      status: u.isVacant ? 'vacant' : (u.isFuture ? 'future' : 'occupied'),
+      tenantName: u.resident,
+      marketRent: u.marketRent,
+      leaseRent: u.charges['rent'] ?? null,
+      effectiveRent: u.totalCharges > 0 ? u.totalCharges : (u.charges['rent'] ?? null),
+      charges: u.charges,
+      totalCharges: u.totalCharges,
+      deposit: u.securityDeposit,
+      balance: u.balance,
+      moveInDate: u.moveInDate ? u.moveInDate.toISOString().split('T')[0] : null,
+      leaseStart: u.moveInDate ? u.moveInDate.toISOString().split('T')[0] : null,
+      leaseEnd: u.leaseExpiration ? u.leaseExpiration.toISOString().split('T')[0] : null,
+      moveOutDate: u.moveOutDate ? u.moveOutDate.toISOString().split('T')[0] : null,
+      isFutureResident: u.isFuture,
+    }));
+
+    const data: RentRollData = {
+      units: rrUnits,
+      summary: {
+        totalUnits: currentUnits.length,
+        occupiedUnits: occupiedUnits.length,
+        vacantUnits: vacantUnits.length,
+        occupancyRate: occByUnit,
+        totalMarketRent,
+        totalLeaseCharges,
+        lossToLease,
+        lossToLeasePct,
+        avgMarketRent: currentUnits.length > 0 ? totalMarketRent / currentUnits.length : 0,
+        avgEffectiveRent: occupiedUnits.length > 0 ? totalLeaseCharges / occupiedUnits.length : 0,
+        futureResidents: futureUnits.length,
+        floorPlanMix: Object.fromEntries(
+          Object.entries(floorPlanMix).map(([k, v]) => [k, {
+            count: v.count, avgRent: v.avg_effective_rent, avgSqft: v.avg_sqft,
+          }])
+        ),
+      },
+    };
+
+    // Capsule extras — these get merged into ExtractionRentRollCapsule
+    const capsuleExtras = {
+      layout,
+      as_of_date: asOfDate,
+      source_system_id: sourceSystemId,
+      total_units: currentUnits.length,
+      occupied_units: occupiedUnits.length,
+      vacant_units: vacantUnits.length,
+      non_revenue_units: nonRevenueUnits.length,
+      future_residents: futureUnits.length,
+      gpr_monthly: totalMarketRent,
+      in_place_rent_monthly: totalInPlaceRent,
+      loss_to_lease_monthly: lossToLease,
+      loss_to_lease_pct: lossToLeasePct,
+      total_billings_monthly: totalLeaseCharges,
+      egi_in_place_annualized: totalLeaseCharges * 12,
+      avg_market_rent: data.summary.avgMarketRent,
+      avg_effective_rent: data.summary.avgEffectiveRent,
+      avg_unit_sqft: currentUnits.length > 0 ? totalSqft / currentUnits.length : 0,
+      total_rentable_sqft: totalSqft,
+      occupancy_by_unit_pct: occByUnit,
+      occupancy_by_sqft_pct: occBySqft,
+      charge_codes: chargeCodeAgg,
+      other_income_monthly: otherIncomeMonthly,
+      floor_plan_mix: floorPlanMix,
+      bedroom_mix: bedroomMix,
+      outstanding_balance_total: outstandingBalanceTotal,
+      outstanding_balance_ratio: totalLeaseCharges > 0 ? outstandingBalanceTotal / totalLeaseCharges : 0,
+      security_deposits_held: securityDepositsHeld,
+      pre_lease_ratio: preLeaseRatio,
+      expiration_curve: expirationCurve,
+    };
 
     return {
       documentType: 'RENT_ROLL',
@@ -173,6 +528,8 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       data,
       summary: data.summary,
       warnings,
+      layout,
+      capsuleExtras,
     };
   } catch (err) {
     return {

@@ -22,6 +22,7 @@ export interface ExtractionResult {
   data: any;
   summary: Record<string, any>;
   warnings: string[];
+  documentId?: string;
 }
 
 export interface T12Data {
@@ -274,6 +275,216 @@ export interface OtherIncomeData {
     categoryCount: number;
     perUnitTotal: number | null;
   };
+}
+
+export type ChartFormat =
+  | 'yardi_accrual'
+  | 'yardi_cash'
+  | 'realpage'
+  | 'appfolio'
+  | 'entrata'
+  | 'mri'
+  | 'generic_columnar'
+  | 'unknown';
+
+export type RentRollLayout =
+  | 'yardi_rrwlc'
+  | 'yardi_rr'
+  | 'realpage_unit_grid'
+  | 'appfolio_unit_grid'
+  | 'generic_flat'
+  | 'unknown';
+
+export interface LayeredValue<T = number> {
+  platform: T | null;
+  t12?: T | null;
+  rent_roll?: T | null;
+  tax_bill?: T | null;
+  box_score?: T | null;
+  aged_ar?: T | null;
+  om?: T | null;
+  override: T | null;
+  resolved: T | null;
+  resolution:
+    | 'platform'
+    | 't12'
+    | 'rent_roll'
+    | 'tax_bill'
+    | 'box_score'
+    | 'aged_ar'
+    | 'om'
+    | 'override'
+    | 'platform_fallback';
+  warning?: string;
+  scenarios?: Record<string, T>;
+  updated_at: string;
+  updated_by?: string;
+}
+
+export interface ProFormaYear1Seed {
+  gpr: LayeredValue<number>;
+  loss_to_lease_pct: LayeredValue<number>;
+  vacancy_pct: LayeredValue<number>;
+  concessions_pct: LayeredValue<number>;
+  bad_debt_pct: LayeredValue<number>;
+  non_revenue_units_pct: LayeredValue<number>;
+  net_rental_income: LayeredValue<number>;
+  other_income_per_unit: LayeredValue<number>;
+  other_income_breakdown: {
+    parking: LayeredValue<number>;
+    pet: LayeredValue<number>;
+    storage: LayeredValue<number>;
+    laundry: LayeredValue<number>;
+    rubs: LayeredValue<number>;
+    fees: LayeredValue<number>;
+    insurance_admin: LayeredValue<number>;
+    other: LayeredValue<number>;
+  };
+  egi: LayeredValue<number>;
+  payroll: LayeredValue<number>;
+  repairs_maintenance: LayeredValue<number>;
+  turnover: LayeredValue<number>;
+  amenities: LayeredValue<number>;
+  contract_services: LayeredValue<number>;
+  marketing: LayeredValue<number>;
+  office: LayeredValue<number>;
+  g_and_a: LayeredValue<number>;
+  hoa_dues: LayeredValue<number>;
+  utilities: LayeredValue<number>;
+  management_fee_pct: LayeredValue<number>;
+  insurance: LayeredValue<number>;
+  real_estate_tax: LayeredValue<number>;
+  personal_property_tax: LayeredValue<number>;
+  total_opex: LayeredValue<number>;
+  noi: LayeredValue<number>;
+  noi_per_unit: LayeredValue<number>;
+  source_docs: {
+    t12_doc_id?: string;
+    rent_roll_doc_id?: string;
+    tax_bill_doc_id?: string;
+    box_score_doc_id?: string;
+    aged_ar_doc_id?: string;
+    om_doc_id?: string;
+  };
+  _unit_count: number;
+  last_seeded_at: string;
+}
+
+export interface ExtractionT12Capsule {
+  source: 'platform';
+  updatedAt: string;
+  chart_format: ChartFormat;
+  document_id: string;
+  period_start: string;
+  period_end: string;
+  months_captured: number;
+  gpr: number;
+  loss_to_lease: number;
+  loss_to_lease_pct: number;
+  concessions: { one_time: number; renewal: number; total: number };
+  vacancy_loss: number;
+  vacancy_loss_pct: number;
+  non_revenue_units: number;
+  bad_debt: { gross: number; recovery: number; net: number };
+  net_rental_income: number;
+  other_income: {
+    total: number;
+    breakdown: Record<string, number>;
+  };
+  egi: number;
+  opex: {
+    payroll: number;
+    r_and_m: number;
+    turnover: number;
+    amenities: number;
+    contract: number;
+    marketing: number;
+    office: number;
+    g_and_a: number;
+    hoa_dues: number;
+    utilities: number;
+    mgmt_fee: number;
+    real_estate_tax: number;
+    personal_property_tax: number;
+    insurance: number | null;
+    total: number;
+  };
+  noi: number;
+  expense_ratio: number;
+  noi_margin: number;
+  mgmt_fee_pct_of_egi: number;
+  warnings: string[];
+}
+
+export interface ExtractionRentRollCapsule {
+  source: 'platform';
+  updatedAt: string;
+  layout: RentRollLayout;
+  document_id: string;
+  as_of_date: string;
+  source_system_id: string | null;
+  total_units: number;
+  occupied_units: number;
+  vacant_units: number;
+  non_revenue_units: number;
+  future_residents: number;
+  gpr_monthly: number;
+  in_place_rent_monthly: number;
+  loss_to_lease_monthly: number;
+  loss_to_lease_pct: number;
+  vacancy_loss_monthly: number;
+  concessions_monthly: number;
+  total_billings_monthly: number;
+  egi_in_place_annualized: number;
+  avg_market_rent: number;
+  avg_effective_rent: number;
+  avg_unit_sqft: number;
+  total_rentable_sqft: number;
+  occupancy_by_unit_pct: number;
+  occupancy_by_sqft_pct: number;
+  charge_codes: Record<string, number>;
+  other_income_monthly: {
+    parking: number;
+    pet_rent: number;
+    storage: number;
+    rubs: number;
+    fees: number;
+    insurance_admin: number;
+    concessions_other: number;
+    other: number;
+  };
+  floor_plan_mix: Record<string, {
+    count: number;
+    avg_sqft: number;
+    total_sqft: number;
+    avg_market_rent: number;
+    avg_effective_rent: number;
+    occupancy_pct: number;
+  }>;
+  bedroom_mix: Record<string, { count: number; pct: number; avg_rent: number }>;
+  outstanding_balance_total: number;
+  outstanding_balance_ratio: number;
+  security_deposits_held: number;
+  pre_lease_ratio: number;
+  expiration_curve: {
+    months_0_3: number;
+    months_3_6: number;
+    months_6_12: number;
+    months_12_plus: number;
+    mtm: number;
+  };
+  warnings: string[];
+}
+
+export interface CrossDocVariance {
+  metric: string;
+  doc_a: { source: string; value: number; doc_id: string };
+  doc_b: { source: string; value: number; doc_id: string };
+  delta_abs: number;
+  delta_pct: number;
+  severity: 'info' | 'warning' | 'critical';
+  scenarios?: Record<string, number>;
+  message: string;
 }
 
 export interface PipelineResult {

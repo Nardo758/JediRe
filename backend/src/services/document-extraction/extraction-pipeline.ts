@@ -31,8 +31,19 @@ export async function processDocument(
   filePath: string,
   filename: string,
   dealId: string,
-  uploadedBy: string
-): Promise<{ documentType: DocumentType; success: boolean; error?: string; rowsInserted?: number; alerts: string[] }> {
+  uploadedBy: string,
+  documentId?: string,
+): Promise<{
+  documentType: DocumentType;
+  success: boolean;
+  error?: string;
+  rowsInserted?: number;
+  capsuleUpdated?: boolean;
+  libraryUpdated?: boolean;
+  proformaSeeded?: boolean;
+  crossValidationVariances?: number;
+  alerts: string[];
+}> {
   const alerts: string[] = [];
 
   try {
@@ -72,12 +83,17 @@ export async function processDocument(
       dealId,
       filename,
       uploadedBy,
+      documentId,
     });
 
     return {
       documentType: classification.documentType,
       success: true,
       rowsInserted: routeResult.rowsInserted,
+      capsuleUpdated: routeResult.capsuleUpdated,
+      libraryUpdated: routeResult.libraryUpdated,
+      proformaSeeded: routeResult.proformaSeeded,
+      crossValidationVariances: routeResult.crossValidationVariances,
       alerts: [...alerts, ...routeResult.alerts, ...extractionResult.warnings],
     };
   } catch (err) {
@@ -97,6 +113,8 @@ export async function processDealDocuments(
   const pool = getPool();
   const results: PipelineResult['results'] = [];
   const allAlerts: string[] = [];
+  let anyCapsuleUpdated = false;
+  let anyLibraryUpdated = false;
 
   const docFiles = await pool.query(
     `SELECT id, filename, original_filename, file_path FROM deal_document_files
@@ -128,7 +146,10 @@ export async function processDealDocuments(
       continue;
     }
 
-    const result = await processDocument(filePath, doc.original_filename, dealId, uploadedBy);
+    const result = await processDocument(filePath, doc.original_filename, dealId, uploadedBy, doc.id);
+
+    if (result.capsuleUpdated) anyCapsuleUpdated = true;
+    if (result.libraryUpdated) anyLibraryUpdated = true;
 
     await pool.query(
       `UPDATE deal_document_files SET
@@ -139,6 +160,10 @@ export async function processDealDocuments(
         success: result.success,
         error: result.error,
         rowsInserted: result.rowsInserted,
+        capsuleUpdated: result.capsuleUpdated,
+        libraryUpdated: result.libraryUpdated,
+        proformaSeeded: result.proformaSeeded,
+        crossValidationVariances: result.crossValidationVariances,
         alerts: result.alerts,
       })]
     );
@@ -153,14 +178,12 @@ export async function processDealDocuments(
     allAlerts.push(...result.alerts);
   }
 
-  const anySuccess = results.some(r => r.success);
-
   return {
     dealId,
     documentsProcessed: results.length,
     results,
-    capsuleUpdated: anySuccess,
-    libraryUpdated: anySuccess,
+    capsuleUpdated: anyCapsuleUpdated,
+    libraryUpdated: anyLibraryUpdated,
     alerts: allAlerts,
   };
 }

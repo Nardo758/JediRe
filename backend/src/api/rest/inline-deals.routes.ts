@@ -247,7 +247,30 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
             [row.id, docIds, req.user!.userId]
           );
         }
-        await processDealDocuments(row.id, req.user!.userId);
+        const pipelineResult = await processDealDocuments(row.id, req.user!.userId);
+
+        const seedExists = await pool.query(
+          `SELECT 1 FROM deal_assumptions WHERE deal_id = $1 AND year1 IS NOT NULL`,
+          [row.id]
+        );
+        if (seedExists.rows.length > 0) {
+          try {
+            const { financialModelEngine } = await import('../../services/financial-model-engine.service');
+            const { buildAssumptionsFromYear1Seed } = await import('../../services/proforma-seeder.service');
+            const seedResult = await pool.query(
+              `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
+              [row.id]
+            );
+            const year1 = seedResult.rows[0]?.year1;
+            if (year1 && buildAssumptionsFromYear1Seed) {
+              const assumptions = buildAssumptionsFromYear1Seed(year1, row);
+              await financialModelEngine.buildModel(row.id, assumptions);
+              console.log(`[FinancialModel] Auto-built from seeded assumptions for deal ${row.id}`);
+            }
+          } catch (modelErr) {
+            console.error(`[FinancialModel] Auto-build failed for ${row.id}:`, modelErr instanceof Error ? modelErr.message : modelErr);
+          }
+        }
       } catch (err) {
         console.error(`[ExtractionPipeline] Deal creation trigger failed for ${row.id}:`, err instanceof Error ? err.message : err);
       }
@@ -1039,9 +1062,11 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
     };
 
     if (verifiedDealId) {
-      processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId)
+      processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId, docId)
         .then(async (result) => {
-          console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''})`);
+          const seedTag = result.proformaSeeded ? ' +seed' : '';
+          const xvalTag = result.crossValidationVariances ? ` +xval(${result.crossValidationVariances})` : '';
+          console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''}${seedTag}${xvalTag})`);
           if (result.alerts.length > 0) {
             console.log(`[ExtractionPipeline] Alerts: ${result.alerts.join('; ')}`);
           }
@@ -1052,9 +1077,34 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
                  extraction_result = $3, updated_at = NOW()
                WHERE id = $4`,
               [result.documentType, result.success ? 'completed' : 'failed',
-               JSON.stringify({ success: result.success, error: result.error, rowsInserted: result.rowsInserted, alerts: result.alerts }),
+               JSON.stringify({
+                 success: result.success,
+                 error: result.error,
+                 rowsInserted: result.rowsInserted,
+                 capsuleUpdated: result.capsuleUpdated,
+                 libraryUpdated: result.libraryUpdated,
+                 proformaSeeded: result.proformaSeeded,
+                 crossValidationVariances: result.crossValidationVariances,
+                 alerts: result.alerts,
+               }),
                docId]
             );
+
+            try {
+              const wsModule: any = await import('../../services/websocket.service');
+              const broadcastToDeal = wsModule.broadcastToDeal;
+              if (broadcastToDeal) {
+                broadcastToDeal(verifiedDealId, {
+                  type: 'extraction_complete',
+                  documentId: docId,
+                  documentType: result.documentType,
+                  success: result.success,
+                  capsuleUpdated: result.capsuleUpdated,
+                  proformaSeeded: result.proformaSeeded,
+                  crossValidationVariances: result.crossValidationVariances,
+                });
+              }
+            } catch { /* websocket optional */ }
           } catch (e) { console.error('[ExtractionPipeline] Status update error:', e); }
         })
         .catch(err => {
@@ -1132,6 +1182,67 @@ router.post('/:dealId/extract-document', requireAuth, documentUpload.single('fil
   } catch (error: any) {
     console.error('Error extracting document:', error);
     res.status(500).json({ success: false, error: error.message || 'Failed to extract document' });
+  }
+});
+
+router.get('/:dealId/proforma/year1', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+    const result = await pool.query(
+      `SELECT year1, source_type, source_date, updated_at
+       FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    if (result.rows.length === 0 || !result.rows[0].year1) {
+      return res.json({ success: true, data: null, message: 'No proforma seed available — upload a T12 or rent roll first' });
+    }
+    res.json({
+      success: true,
+      data: {
+        year1: result.rows[0].year1,
+        sourceType: result.rows[0].source_type,
+        seededAt: result.rows[0].source_date,
+        updatedAt: result.rows[0].updated_at,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const { fieldPath, value } = req.body;
+
+    if (!fieldPath || typeof fieldPath !== 'string') {
+      return res.status(400).json({ success: false, error: 'fieldPath required' });
+    }
+
+    if (value !== null && (typeof value !== 'number' || !isFinite(value))) {
+      return res.status(400).json({ success: false, error: 'value must be a finite number or null' });
+    }
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { applyUserOverride } = await import('../../services/proforma-seeder.service');
+    await applyUserOverride(pool, dealId, fieldPath, value, req.user!.userId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
