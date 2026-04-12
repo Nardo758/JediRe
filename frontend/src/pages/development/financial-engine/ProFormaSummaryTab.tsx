@@ -31,6 +31,29 @@ interface IntegrityCheck {
   detail?: Record<string, unknown>;
 }
 
+interface RentRollUnitType {
+  type: string;
+  count: number;
+  avgSf: number | null;
+  inPlaceRent: number | null;
+  marketRent: number | null;
+  occupancyPct: number | null;
+  concessionPct: number | null;
+}
+
+interface DealCapitalStack {
+  purchasePrice: number | null;
+  pricePerUnit: number | null;
+  loanAmount: number | null;
+  equityAtClose: number | null;
+  ltcPct: number | null;
+  interestRate: number | null;
+  ioPeriodMonths: number | null;
+  amortizationYears: number | null;
+  dscrMin: number | null;
+  originationFeePct: number | null;
+}
+
 interface DealFinancials {
   dealId: string;
   dealName: string;
@@ -40,6 +63,12 @@ interface DealFinancials {
     integrityChecks: IntegrityCheck[];
     unitEconomics: Record<string, number | null>;
   };
+  capitalStack: DealCapitalStack;
+  rentRollSummary: {
+    unitMix: RentRollUnitType[] | null;
+    avgInPlaceRent: number | null;
+    weightedOccupancyPct: number | null;
+  } | null;
   assumptions: {
     holdYears: number;
     exitCap: number | null;
@@ -62,7 +91,6 @@ const CTRL_OPEX_FIELDS = new Set([
 const NCTRL_OPEX_FIELDS = new Set([
   'management_fee_pct', 'insurance', 'real_estate_tax', 'replacement_reserves', 'total_opex',
 ]);
-const NOI_FIELDS = new Set(['noi']);
 const SUBTOTALS = new Set(['egi', 'total_opex', 'noi']);
 const PCT_FIELDS = new Set([
   'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct',
@@ -126,7 +154,7 @@ function SourceBadge({ source }: { source: string | null }) {
 
 // ─── Correction state ─────────────────────────────────────────────────────────
 interface CorrectionState {
-  [field: string]: { editing: boolean; original: number | null; draft: string };
+  [field: string]: { editing: boolean; original: number | null; draft: string; savedAt?: string };
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
@@ -142,12 +170,12 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/financials`);
-      const body = (res as any)?.data;
+      const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(`/api/v1/deals/${dealId}/financials`);
+      const body = res.data;
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
-      setData(body?.data ?? body);
-    } catch (e: any) {
-      setError(e.message ?? 'Failed to load financials');
+      setData(body?.data ?? (body as unknown as DealFinancials));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load financials');
     } finally {
       setLoading(false);
     }
@@ -157,9 +185,32 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
 
   const handleReparse = async () => {
     setReparsing(true);
-    await load();
-    setReparsing(false);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/financials/reparse`);
+      await load();
+    } catch (e: unknown) {
+      console.error('Reparse failed:', e instanceof Error ? e.message : e);
+    } finally {
+      setReparsing(false);
+    }
   };
+
+  const handleSaveCorrection = useCallback(async (field: string, value: number | null, original: number | null) => {
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+        field,
+        year: null,
+        value,
+      });
+      setCorrections(prev => ({
+        ...prev,
+        [field]: { ...prev[field], editing: false, savedAt: new Date().toISOString(), original },
+      }));
+    } catch (e: unknown) {
+      console.error('Override failed:', e instanceof Error ? e.message : e);
+      setCorrections(prev => ({ ...prev, [field]: { ...prev[field], editing: false } }));
+    }
+  }, [dealId]);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: BT.text.muted, fontFamily: MONO, fontSize: 10 }}>
@@ -189,18 +240,23 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
   const nctrlRows = rows.filter(r => NCTRL_OPEX_FIELDS.has(r.field));
   const noiRow   = rows.find(r => r.field === 'noi');
 
-  const egiRow     = byField['egi'];
+  const egiRow       = byField['egi'];
   const totalOpexRow = byField['total_opex'];
-  const ctrlSubtotalRow = { resolved: ctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0) };
+  const ctrlSubtotalRow  = { resolved: ctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0) };
   const nctrlSubtotalRow = { resolved: nctrlRows.filter(r => r.field !== 'total_opex').reduce((s, r) => s + (r.resolved ?? 0), 0) };
 
-  // Purchase price from deal prop
-  const dealAny = deal as any;
-  const purchasePrice = dealAny?.purchase_price ?? dealAny?.asking_price ?? dealAny?.deal_data?.purchase_price ?? null;
-  const capRate = data.assumptions.exitCap;
+  const egiResolved = egiRow?.resolved ?? null;
 
   const warnChecks = checks.filter(c => c.status !== 'ok');
-  const okChecks   = checks.filter(c => c.status === 'ok');
+
+  // Purchase price from deal prop — use bracket access to avoid any cast
+  const purchasePrice: number | null =
+    (deal?.['purchase_price'] as number | null) ??
+    (deal?.['asking_price'] as number | null) ??
+    (deal?.['deal_data'] as Record<string, unknown> | null)?.['purchase_price'] as number | null ??
+    null;
+
+  const capRate = data.assumptions.exitCap;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0a0a0a', color: '#e2e8f0', fontFamily: LABEL }}>
@@ -226,7 +282,7 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
         <div style={{ display: 'flex', gap: 6 }}>
           {[
             { l: 'GPR', v: fmt$(byField['gpr']?.resolved ?? null) },
-            { l: 'EGI', v: fmt$(egiRow?.resolved ?? null) },
+            { l: 'EGI', v: fmt$(egiResolved) },
             { l: 'NOI', v: fmt$(noiRow?.resolved ?? null) },
             { l: 'NOI/Unit', v: noiRow?.resolved && totalUnits ? `$${Math.round(noiRow.resolved / totalUnits).toLocaleString()}` : '—' },
           ].map(k => (
@@ -272,7 +328,10 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
               background: c.status === 'error' ? '#1c0a0a' : '#1c1200',
               borderLeft: `3px solid ${c.status === 'error' ? '#ef4444' : '#f59e0b'}`,
             }}>
-              {c.status === 'error' ? <XCircle size={11} style={{ color: '#ef4444', flexShrink: 0, marginTop: 1 }} /> : <AlertTriangle size={11} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />}
+              {c.status === 'error'
+                ? <XCircle size={11} style={{ color: '#ef4444', flexShrink: 0, marginTop: 1 }} />
+                : <AlertTriangle size={11} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />
+              }
               <span style={{ fontFamily: LABEL, fontSize: 9, color: c.status === 'error' ? '#fca5a5' : '#fcd34d', lineHeight: 1.4 }}>
                 <strong style={{ fontFamily: MONO }}>{c.id}</strong> — {c.message}
               </span>
@@ -281,8 +340,15 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
         </div>
       )}
 
-      {/* ── Table ── */}
+      {/* ── Scrollable body ── */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+
+        {/* ── SECTION A — In-Place Rent Roll Unit Mix ── */}
+        {data.rentRollSummary && (
+          <RentRollSection summary={data.rentRollSummary} totalUnits={totalUnits} />
+        )}
+
+        {/* ── SECTION B — T-12 Operating Statement ── */}
         <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
           <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
             <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
@@ -291,6 +357,7 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
               <Th label="T-12" color="#e2e8f0" />
               <Th label="Platform" color="#06b6d4" />
               <Th label="Resolved" highlight />
+              <Th label="% of EGI" color="#94a3b8" />
               <Th label="Source" />
               <Th label="$/Unit" />
               <Th label="Flag" />
@@ -301,23 +368,30 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
             <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
             {revRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="blue"
-                corrections={corrections} setCorrections={setCorrections} totalUnits={totalUnits} />
+                corrections={corrections} setCorrections={setCorrections}
+                totalUnits={totalUnits} egiResolved={egiResolved}
+                onSaveCorrection={handleSaveCorrection} />
             ))}
 
             {/* ── EGI SUBTOTAL ── */}
-            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" />}
+            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" egiResolved={egiResolved} />}
 
             {/* ── CONTROLLABLE EXPENSES ── */}
             <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" />
             {ctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
-                corrections={corrections} setCorrections={setCorrections} totalUnits={totalUnits} />
+                corrections={corrections} setCorrections={setCorrections}
+                totalUnits={totalUnits} egiResolved={egiResolved}
+                onSaveCorrection={handleSaveCorrection} />
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12 }}>─── CONTROLLABLE OPEX ───</td>
               <td /><td /><td />
               <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700 }}>
                 {fmt$(ctrlSubtotalRow.resolved || null)}
+              </td>
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+                {egiResolved && ctrlSubtotalRow.resolved ? `${((ctrlSubtotalRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
               </td>
               <td colSpan={3} />
             </tr>
@@ -326,7 +400,9 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
             <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" />
             {nctrlRows.map((r, i) => (
               <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
-                corrections={corrections} setCorrections={setCorrections} totalUnits={totalUnits} />
+                corrections={corrections} setCorrections={setCorrections}
+                totalUnits={totalUnits} egiResolved={egiResolved}
+                onSaveCorrection={handleSaveCorrection} />
             ))}
 
             {/* ── TOTAL OPEX ── */}
@@ -336,6 +412,9 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
                 <td /><td /><td />
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#ffffff', fontWeight: 700, fontSize: 11 }}>
                   {fmt$(totalOpexRow.resolved)}
+                </td>
+                <td style={{ padding: '5px 8px', textAlign: 'right', color: '#94a3b8', fontSize: 9 }}>
+                  {egiResolved && totalOpexRow.resolved ? `${((totalOpexRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
                 </td>
                 <td />
                 <td style={{ padding: '5px 8px', textAlign: 'right', color: '#94a3b8', fontSize: 9 }}>
@@ -357,6 +436,9 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#4ade80', fontWeight: 700, fontSize: 13 }}>
                   {fmt$(noiRow.resolved)}
                 </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
+                  {egiResolved && noiRow.resolved ? `${((noiRow.resolved / egiResolved) * 100).toFixed(1)}%` : '—'}
+                </td>
                 <td style={{ padding: '7px 8px' }}><SourceBadge source={noiRow.source} /></td>
                 <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
                   {noiRow.perUnit != null ? `$${noiRow.perUnit.toLocaleString()}/unit` : '—'}
@@ -367,13 +449,19 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
           </tbody>
         </table>
 
-        {/* ── NOI Bridge ── */}
+        {/* ── SECTION C — NOI Bridge ── */}
         {noiRow?.resolved && (
           <NoisBridge egiRow={egiRow} ctrlOpex={ctrlSubtotalRow.resolved} nctrlOpex={nctrlSubtotalRow.resolved} noi={noiRow.resolved} totalUnits={totalUnits} capRate={capRate} />
         )}
 
-        {/* ── Capital Stack at Close ── */}
-        <CapitalStack purchasePrice={purchasePrice} capRate={capRate} noi={noiRow?.resolved ?? null} totalUnits={totalUnits} />
+        {/* ── SECTION C — Capital Stack at Close ── */}
+        <CapitalStackPanel
+          capitalStack={data.capitalStack}
+          purchasePriceFallback={purchasePrice}
+          capRate={capRate}
+          noi={noiRow?.resolved ?? null}
+          totalUnits={totalUnits}
+        />
       </div>
 
       {/* ── Footer legend ── */}
@@ -427,7 +515,7 @@ function Th({ label, color, highlight, left, min, sticky }: {
 function SectionHeader({ label, accentColor, bg }: { label: string; accentColor: string; bg: string }) {
   return (
     <tr>
-      <td colSpan={8} style={{
+      <td colSpan={9} style={{
         padding: '5px 8px 5px 12px',
         background: bg,
         borderTop: '1px solid #1e1e1e',
@@ -441,9 +529,10 @@ function SectionHeader({ label, accentColor, bg }: { label: string; accentColor:
   );
 }
 
-function SubtotalRow({ label, row, color, textColor }: {
-  label: string; row: OperatingStatementRow; color: string; textColor: string;
+function SubtotalRow({ label, row, color, textColor, egiResolved }: {
+  label: string; row: OperatingStatementRow; color: string; textColor: string; egiResolved: number | null;
 }) {
+  const egiPct = egiResolved && row.resolved ? (row.resolved / egiResolved) * 100 : null;
   return (
     <tr style={{ background: color }}>
       <td style={{ padding: '4px 8px', fontWeight: 700, color: '#cbd5e1', fontFamily: 'Inter, sans-serif', fontSize: 9, position: 'sticky', left: 0, background: color }}>
@@ -455,6 +544,9 @@ function SubtotalRow({ label, row, color, textColor }: {
       <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontWeight: 700, background: 'rgba(0,0,0,0.3)' }}>
         {fmt$(row.resolved)}
       </td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+        {egiPct != null ? `${egiPct.toFixed(1)}%` : '—'}
+      </td>
       <td style={{ padding: '4px 8px' }}><SourceBadge source={row.source} /></td>
       <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>
         {row.perUnit != null ? `$${row.perUnit.toLocaleString()}` : '—'}
@@ -464,13 +556,15 @@ function SubtotalRow({ label, row, color, textColor }: {
   );
 }
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
   corrections: CorrectionState;
   setCorrections: React.Dispatch<React.SetStateAction<CorrectionState>>;
   totalUnits: number;
+  egiResolved: number | null;
+  onSaveCorrection: (field: string, value: number | null, original: number | null) => Promise<void>;
 }) {
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -492,18 +586,24 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }
     return fmt$(val);
   }
 
-  const brokerDisplay  = fmtDisplay(row.broker);
-  const t12Display     = fmtDisplay(row.t12);
-  const platformDisplay = fmtDisplay(row.platform);
-  const resolvedDisplay = corr?.original != null
-    ? fmtDisplay(corr.original)
-    : fmtDisplay(row.resolved);
+  const egiPct = egiResolved && row.resolved && !isPct && !isPerUnit
+    ? (row.resolved / egiResolved) * 100
+    : null;
+
+  const resolvedDisplay = fmtDisplay(row.resolved);
 
   const resolvedColor = isSubtotal
     ? '#22c55e'
     : row.field.includes('pct') || row.field.includes('loss') || row.field.includes('vacancy')
       ? '#fb923c'
       : '#e2e8f0';
+
+  function commitEdit() {
+    if (!corr) return;
+    const parsed = parseFloat(corr.draft);
+    const value = isNaN(parsed) ? null : parsed;
+    onSaveCorrection(row.field, value, corr.original);
+  }
 
   return (
     <tr style={{ background: rowBg, borderBottom: `1px solid #161616` }}>
@@ -520,13 +620,13 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }
       </td>
 
       {/* BROKER */}
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#f59e0b', fontSize: 9 }}>{brokerDisplay}</td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#f59e0b', fontSize: 9 }}>{fmtDisplay(row.broker)}</td>
 
       {/* T-12 */}
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{t12Display}</td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{fmtDisplay(row.t12)}</td>
 
       {/* PLATFORM */}
-      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{platformDisplay}</td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtDisplay(row.platform)}</td>
 
       {/* RESOLVED */}
       <td style={{
@@ -539,19 +639,30 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }
             autoFocus
             value={corr.draft}
             onChange={e => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], draft: e.target.value } }))}
-            onBlur={() => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } }))}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } })); }}
+            onBlur={commitEdit}
+            onKeyDown={e => {
+              if (e.key === 'Enter') commitEdit();
+              if (e.key === 'Escape') setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } }));
+            }}
             style={{
               width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc',
               fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right',
             }}
           />
         ) : (
-          <span title={corr?.original != null ? `Original: ${fmtDisplay(row.resolved)}` : undefined} style={{ borderBottom: corr?.original != null ? '1px dotted #f59e0b' : undefined }}>
+          <span
+            title={corr?.savedAt ? `Overridden at ${new Date(corr.savedAt).toLocaleTimeString()}` : undefined}
+            style={{ borderBottom: corr?.savedAt ? '1px dotted #f59e0b' : undefined }}
+          >
             {resolvedDisplay}
-            {corr?.original != null && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
+            {corr?.savedAt && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
           </span>
         )}
+      </td>
+
+      {/* % of EGI */}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+        {egiPct != null ? `${egiPct.toFixed(1)}%` : '—'}
       </td>
 
       {/* SOURCE BADGE */}
@@ -572,7 +683,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }
             </span>
           )}
           <button
-            title="Correct value"
+            title="Override value"
             onClick={() => setCorrections(prev => ({
               ...prev,
               [row.field]: prev[row.field]?.editing
@@ -583,9 +694,9 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }
           >
             <Pencil size={9} />
           </button>
-          {corr?.original != null && (
+          {corr?.savedAt && (
             <button
-              title="Reset to ingested"
+              title="Reset to ingested value"
               onClick={() => setCorrections(prev => { const next = { ...prev }; delete next[row.field]; return next; })}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', padding: '1px 2px' }}
             >
@@ -595,6 +706,108 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }
         </div>
       </td>
     </tr>
+  );
+}
+
+// ─── Section A: In-Place Rent Roll Unit Mix ────────────────────────────────────
+function RentRollSection({ summary, totalUnits }: {
+  summary: NonNullable<DealFinancials['rentRollSummary']>;
+  totalUnits: number;
+}) {
+  const { unitMix, avgInPlaceRent, weightedOccupancyPct } = summary;
+  const hasUnitMix = unitMix && unitMix.length > 0;
+
+  return (
+    <div style={{ borderBottom: '2px solid #1e1e1e', background: '#050d14', padding: '12px 12px 8px' }}>
+      {/* Sub-header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{
+            fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#94a3b8',
+            letterSpacing: 1, textTransform: 'uppercase',
+            borderLeft: '3px solid #0ea5e9', paddingLeft: 6,
+          }}>
+            In-Place Unit Economics · Rent Roll
+          </span>
+          <span style={{ fontFamily: LABEL, fontSize: 8, color: '#334155' }}>at acquisition</span>
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          {avgInPlaceRent != null && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>AVG RENT</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#06b6d4' }}>${avgInPlaceRent.toLocaleString()}</span>
+            </div>
+          )}
+          {weightedOccupancyPct != null && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>OCC</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#22c55e' }}>{(weightedOccupancyPct * 100).toFixed(1)}%</span>
+            </div>
+          )}
+          {totalUnits > 0 && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>UNITS</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{totalUnits}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {hasUnitMix ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #1e293b' }}>
+              {['Type', 'Units', '% Mix', 'Avg SF', 'In-Place Rent', 'Market Rent', 'Loss-to-Lease', 'Occupancy', 'Concessions'].map(h => (
+                <th key={h} style={{
+                  padding: '3px 8px', textAlign: h === 'Type' ? 'left' : 'right',
+                  fontFamily: LABEL, fontSize: 8, color: '#475569', fontWeight: 700,
+                  letterSpacing: 0.5, textTransform: 'uppercase',
+                }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {unitMix!.map((ut, i) => {
+              const ltlPct = ut.inPlaceRent && ut.marketRent && ut.marketRent > 0
+                ? ((ut.marketRent - ut.inPlaceRent) / ut.marketRent) * 100
+                : null;
+              const mixPct = totalUnits > 0 ? (ut.count / totalUnits) * 100 : null;
+              return (
+                <tr key={ut.type} style={{ background: i % 2 === 0 ? '#060e18' : '#040b14', borderBottom: '1px solid #0f172a' }}>
+                  <td style={{ padding: '3px 8px', color: '#94a3b8', fontFamily: LABEL, fontSize: 9, fontWeight: 600 }}>{ut.type}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>{ut.count}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b' }}>
+                    {mixPct != null ? `${mixPct.toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b' }}>
+                    {ut.avgSf != null ? `${ut.avgSf.toLocaleString()} sf` : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>
+                    {ut.inPlaceRent != null ? `$${ut.inPlaceRent.toLocaleString()}` : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#06b6d4' }}>
+                    {ut.marketRent != null ? `$${ut.marketRent.toLocaleString()}` : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: ltlPct != null && ltlPct > 5 ? '#fb923c' : '#475569' }}>
+                    {ltlPct != null ? `${ltlPct.toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: ut.occupancyPct != null && ut.occupancyPct < 0.9 ? '#fb923c' : '#22c55e' }}>
+                    {ut.occupancyPct != null ? `${(ut.occupancyPct * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#475569' }}>
+                    {ut.concessionPct != null ? `${(ut.concessionPct * 100).toFixed(1)}%` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <div style={{ fontFamily: LABEL, fontSize: 9, color: '#334155', padding: '8px 8px', textAlign: 'center' }}>
+          No unit mix data · Add rent roll to unlock
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -637,29 +850,36 @@ function NoisBridge({ egiRow, ctrlOpex, nctrlOpex, noi, totalUnits, capRate }: {
   );
 }
 
-function CapitalStack({ purchasePrice, capRate, noi, totalUnits }: {
-  purchasePrice: number | null;
+function CapitalStackPanel({ capitalStack, purchasePriceFallback, capRate, noi, totalUnits }: {
+  capitalStack: DealCapitalStack;
+  purchasePriceFallback: number | null;
   capRate: number | null;
   noi: number | null;
   totalUnits: number;
 }) {
-  const impliedCapRate = purchasePrice && noi && purchasePrice > 0 ? noi / purchasePrice : null;
-  const ppPerUnit = purchasePrice && totalUnits > 0 ? Math.round(purchasePrice / totalUnits) : null;
+  const pp = capitalStack.purchasePrice ?? purchasePriceFallback;
+  const loan = capitalStack.loanAmount;
+  const equity = capitalStack.equityAtClose ?? (pp != null && loan != null ? pp - loan : null);
+  const impliedCapRate = pp && noi && pp > 0 ? noi / pp : null;
+  const ppPerUnit = capitalStack.pricePerUnit ?? (pp && totalUnits > 0 ? Math.round(pp / totalUnits) : null);
+  const ltc = capitalStack.ltcPct;
 
   return (
     <div style={{ padding: '16px 24px 24px', borderTop: '1px solid #1e1e1e', background: '#08080e' }}>
-      <div style={{ maxWidth: 520, margin: '0 auto' }}>
+      <div style={{ maxWidth: 640, margin: '0 auto' }}>
         <div style={{ fontSize: 8, color: '#334155', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12, fontFamily: MONO }}>
           Capital Stack at Close
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
           {[
-            { l: 'Purchase Price', v: purchasePrice ? fmt$(purchasePrice) : '—', c: '#f8fafc' },
-            { l: 'Price / Unit', v: ppPerUnit ? `$${ppPerUnit.toLocaleString()}` : '—', c: '#94a3b8' },
-            { l: 'Implied Cap Rate', v: impliedCapRate ? `${(impliedCapRate * 100).toFixed(2)}%` : '—', c: '#06b6d4' },
-            { l: 'Broker Cap Rate', v: capRate ? `${(capRate * 100).toFixed(2)}%` : '—', c: '#f59e0b' },
-            { l: 'NOI (AS-IS)', v: noi ? fmt$(noi) : '—', c: '#4ade80' },
-            { l: 'NOI / Unit', v: noi && totalUnits > 0 ? `$${Math.round(noi / totalUnits).toLocaleString()}` : '—', c: '#86efac' },
+            { l: 'Purchase Price',   v: fmt$(pp),                                              c: '#f8fafc' },
+            { l: 'Price / Unit',     v: ppPerUnit ? `$${ppPerUnit.toLocaleString()}` : '—',   c: '#94a3b8' },
+            { l: 'Implied Cap',      v: impliedCapRate ? `${(impliedCapRate * 100).toFixed(2)}%` : '—', c: '#06b6d4' },
+            { l: 'Broker Cap Rate',  v: capRate ? `${(capRate * 100).toFixed(2)}%` : '—',     c: '#f59e0b' },
+            { l: 'Loan Amount',      v: fmt$(loan),                                            c: '#60a5fa' },
+            { l: 'Equity at Close',  v: fmt$(equity),                                         c: '#c084fc' },
+            { l: 'LTC',              v: ltc != null ? `${(ltc * 100).toFixed(1)}%` : '—',    c: '#94a3b8' },
+            { l: 'NOI (AS-IS)',      v: fmt$(noi),                                             c: '#4ade80' },
           ].map(k => (
             <div key={k.l} style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', padding: '8px 10px', borderRadius: 2 }}>
               <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{k.l}</div>
@@ -667,6 +887,25 @@ function CapitalStack({ purchasePrice, capRate, noi, totalUnits }: {
             </div>
           ))}
         </div>
+
+        {/* Debt terms row */}
+        {(capitalStack.interestRate != null || capitalStack.ioPeriodMonths != null || capitalStack.amortizationYears != null || capitalStack.dscrMin != null || capitalStack.originationFeePct != null) && (
+          <div style={{ display: 'flex', gap: 16, padding: '8px 10px', background: '#0d0d17', border: '1px solid #1e2a3a', borderRadius: 2, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: '#334155', letterSpacing: 1, textTransform: 'uppercase', alignSelf: 'center' }}>Debt Terms:</span>
+            {[
+              { l: 'Rate',      v: capitalStack.interestRate != null ? `${(capitalStack.interestRate * 100).toFixed(2)}%` : null },
+              { l: 'I/O',       v: capitalStack.ioPeriodMonths != null ? `${capitalStack.ioPeriodMonths}mo` : null },
+              { l: 'Amort',     v: capitalStack.amortizationYears != null ? `${capitalStack.amortizationYears}yr` : null },
+              { l: 'Min DSCR',  v: capitalStack.dscrMin != null ? capitalStack.dscrMin.toFixed(2) : null },
+              { l: 'Orig Fee',  v: capitalStack.originationFeePct != null ? `${(capitalStack.originationFeePct * 100).toFixed(2)}%` : null },
+            ].filter(x => x.v != null).map(x => (
+              <div key={x.l} style={{ display: 'flex', gap: 4, alignItems: 'baseline' }}>
+                <span style={{ fontFamily: LABEL, fontSize: 8, color: '#64748b' }}>{x.l}</span>
+                <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: '#93c5fd' }}>{x.v}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,290 +1,747 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { Lock, Edit2, Download, AlertTriangle, TrendingUp, Building2, DollarSign, BarChart3, ChevronRight } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
-import { SectionPanel, DataRow, Bd } from '../../../components/deal/bloomberg-ui';
-import { AssumptionsPanel } from '../../../components/deal/AssumptionsPanel';
-import type { FinancialEngineTabProps, InputSource, UnitMixRow, CapexLineItem, WaterfallHurdle } from './types';
-import { fmt$, fmtPct } from './types';
+import type { FinancialEngineTabProps } from './types';
+import { fmt$, fmtPct, fmtX } from './types';
 
-const MONO = BT.font.mono;
+type Page = 'OVERVIEW' | 'DEBT' | 'TAXES';
+type HoldYears = '5 YR' | '7 YR' | '10 YR';
 
-const SOURCE_COLORS: Record<InputSource, string> = {
-  broker: BT.text.cyan,
-  platform: BT.text.purple,
-  user: BT.text.amber,
-  agent: BT.met.financial,
-  capsule: BT.text.teal,
-};
+const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
+const fmtK = (n: number) => '$' + Math.round(n / 1000).toLocaleString() + 'K';
+const fmtPct2 = (n: number, dec = 1) => (n * 100).toFixed(dec) + '%';
 
-function SourceBadge({ source }: { source: InputSource }) {
+// ─── Shared cell renderer ──────────────────────────────────────────────────────
+
+type CellType = 'normal' | 'ai' | 'override' | 'm07' | 'locked' | 'flagged' | 'computed' | 'warn' | 'good' | 'header';
+
+function Cell({ v, type = 'normal', span, align = 'right', tooltip }: {
+  v: string; type?: CellType;
+  span?: number; align?: 'right' | 'left' | 'center'; tooltip?: string;
+}) {
+  const base = 'relative px-2 py-1 text-[10px] font-mono tabular-nums border-r border-[#1e1e1e] group ';
+  const alignCls = align === 'left' ? 'text-left ' : align === 'center' ? 'text-center ' : 'text-right ';
+  const variants: Record<CellType, string> = {
+    normal:   'text-slate-300 hover:border hover:border-blue-500/50 hover:bg-[#1e1e1e] cursor-text ',
+    ai:       'text-cyan-400 ',
+    override: 'text-blue-400 bg-[#1e293b]/30 ',
+    m07:      'text-purple-400 ',
+    locked:   'text-slate-500 bg-[#0f0f0f] ',
+    flagged:  'text-amber-500 bg-amber-900/20 ',
+    computed: 'text-slate-200 font-bold ',
+    warn:     'text-amber-400 bg-amber-900/10 ',
+    good:     'text-green-400 ',
+    header:   'text-slate-400 font-bold bg-[#111111] ',
+  };
+  const icons: Partial<Record<CellType, React.ReactNode>> = {
+    ai:       <sup className="absolute top-[2px] right-[2px] text-[6px] text-cyan-500">AI</sup>,
+    override: <Edit2 className="absolute top-[2px] left-[2px] w-2 h-2 text-blue-500 opacity-0 group-hover:opacity-100" />,
+    m07:      <sup className="absolute top-[2px] right-[2px] text-[6px] text-purple-500">M07</sup>,
+    locked:   <Lock className="absolute top-[2px] left-[2px] w-2 h-2 text-slate-600" />,
+    flagged:  <AlertTriangle className="absolute top-[2px] left-[2px] w-2 h-2 text-amber-500" />,
+  };
   return (
-    <span style={{
-      fontFamily: MONO, fontSize: 8, padding: '1px 4px', borderRadius: 2,
-      color: SOURCE_COLORS[source], border: `1px solid ${SOURCE_COLORS[source]}40`,
-      letterSpacing: 0.5, textTransform: 'uppercase',
-    }}>{source}</span>
+    <td className={base + alignCls + variants[type]} colSpan={span} title={tooltip}>
+      {icons[type]}
+      {v}
+    </td>
   );
 }
 
-function InputField({ label, value, source, linked, editable = true }: {
-  label: string; value: string; source?: InputSource; linked?: string; editable?: boolean;
-}) {
-  const textColor = linked ? BT.met.financial : editable ? BT.text.cyan : BT.text.secondary;
+function SectionHeader({ label, colSpan = 12 }: { label: string; colSpan?: number }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '3px 8px', borderBottom: `1px solid ${BT.border.subtle}`,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{label}</span>
-        {source && <SourceBadge source={source} />}
-        {linked && (
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial, opacity: 0.7 }}>← {linked}</span>
-        )}
+    <tr className="bg-[#1e1e1e]/50 border-y border-[#1e1e1e]">
+      <td colSpan={colSpan} className="px-3 py-1 text-[11px] font-bold text-[#e2e8f0] sticky left-0">{label}</td>
+    </tr>
+  );
+}
+
+function Row({ label, locked, children }: { label: string; locked?: boolean; children: React.ReactNode }) {
+  return (
+    <tr className="border-b border-[#1e1e1e]/50 hover:bg-[#111111] h-[22px]">
+      <td className="px-3 py-1 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
+        <span className="flex items-center gap-1">
+          {locked && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
+          {label}
+        </span>
+      </td>
+      {children}
+    </tr>
+  );
+}
+
+// ─── Debt schedule builder ─────────────────────────────────────────────────────
+
+interface DebtYear {
+  yr: number; begBalance: number; annualPayment: number;
+  interest: number; principal: number; endBalance: number;
+  noi: number; dscr: number; ltv: number;
+}
+
+function buildDebtSchedule(
+  loanAmt: number, rateAnn: number, amortYrs: number, ioYears: number,
+  holdYrs: number, noi1: number, noiGrowth: number, purchasePrice: number,
+): DebtYear[] {
+  const rows: DebtYear[] = [];
+  let bal = loanAmt;
+  const i30 = rateAnn / 12;
+  const n30 = amortYrs * 12;
+  const mc = amortYrs > 0
+    ? (i30 * Math.pow(1 + i30, n30)) / (Math.pow(1 + i30, n30) - 1) * 12
+    : rateAnn;
+
+  for (let yr = 1; yr <= holdYrs; yr++) {
+    const noi = Math.round(noi1 * Math.pow(1 + noiGrowth, yr - 1));
+    const isIO = yr <= ioYears;
+    const interest = Math.round(bal * rateAnn);
+    const payment = isIO ? interest : Math.round(bal * mc);
+    const principal = isIO ? 0 : Math.max(0, payment - interest);
+    const endBal = Math.round(bal - principal);
+    const ltv = endBal / (purchasePrice * Math.pow(1.024, yr - 1));
+    rows.push({ yr, begBalance: Math.round(bal), annualPayment: payment, interest, principal, endBalance: endBal, noi, dscr: payment > 0 ? noi / payment : 0, ltv });
+    bal = endBal;
+  }
+  return rows;
+}
+
+// ─── Tax schedule builder ──────────────────────────────────────────────────────
+
+interface TaxYear {
+  yr: number; assessedValue: number; annualTax: number; perUnit: number; taxAsEgiPct: number; delta: number;
+}
+
+function buildTaxSchedule(
+  currentTax: number, purchasePrice: number, millageRate: number,
+  assessmentRatio: number, taxGrowth: number, egi1: number, units: number, holdYrs: number,
+): TaxYear[] {
+  const rows: TaxYear[] = [];
+  const reassessAV = Math.round(purchasePrice * assessmentRatio);
+  const reassessedTax = Math.round(reassessAV * millageRate / 1000);
+  const yr1Tax = Math.max(currentTax, reassessedTax);
+  const baseAV = Math.round(purchasePrice * assessmentRatio);
+
+  for (let yr = 1; yr <= holdYrs; yr++) {
+    const tax = Math.round(yr1Tax * Math.pow(1 + taxGrowth, yr - 1));
+    const av = Math.round(baseAV * Math.pow(1 + taxGrowth, yr - 1));
+    const pu = Math.round(tax / units);
+    const egiYr = Math.round(egi1 * Math.pow(1 + 0.033, yr - 1));
+    rows.push({
+      yr, assessedValue: av, annualTax: tax, perUnit: pu,
+      taxAsEgiPct: tax / egiYr,
+      delta: yr > 1 ? Math.round(tax - Math.round(yr1Tax * Math.pow(1 + taxGrowth, yr - 2))) : yr1Tax - currentTax,
+    });
+  }
+  return rows;
+}
+
+// ─── DEBT page ─────────────────────────────────────────────────────────────────
+
+function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, origFee, purchasePrice, maxLtvLoan, maxDscrLoan, sizingConst, mortgageConstant }: {
+  holdYears: number; schedule: DebtYear[]; ioYears: number; loanAmt: number;
+  rateAnn: number; amortYrs: number; origFee: number; purchasePrice: number;
+  maxLtvLoan: number; maxDscrLoan: number; sizingConst: number; mortgageConstant: number;
+}) {
+  const cols = holdYears + 2;
+  const sched = schedule.slice(0, holdYears);
+  const dscrType = (d: number): CellType => d >= 1.40 ? 'good' : d >= 1.25 ? 'normal' : d >= 1.15 ? 'warn' : 'flagged';
+
+  return (
+    <div className="flex flex-col gap-0 overflow-auto">
+      <div className="grid grid-cols-4 gap-px bg-[#1e1e1e] border-b border-[#1e1e1e]">
+        {[
+          { label: 'LOAN AMOUNT',      value: fmtM(loanAmt),                   sub: fmt$(Math.round(loanAmt / (sched[0]?.noi ? 304 : 1))) + ' / unit' },
+          { label: 'INTEREST RATE',    value: (rateAnn * 100).toFixed(2) + '%', sub: 'Annual rate · fixed' },
+          { label: 'STRUCTURE',        value: `${ioYears}YR I/O → ${amortYrs}YR`,  sub: 'Senior fixed-rate' },
+          { label: 'ORIGINATION FEE',  value: (origFee * 100).toFixed(2) + '%', sub: fmt$(Math.round(loanAmt * origFee)) + ' at close' },
+          { label: 'LTC',              value: fmtPct2(loanAmt / purchasePrice), sub: `Purchase: ${fmtM(purchasePrice)}` },
+          { label: 'MAX LOAN (DSCR)',  value: fmtM(maxDscrLoan),               sub: `@1.25× min DSCR` },
+          { label: 'SIZING CONSTRAINT',value: fmtM(sizingConst),               sub: `Selected: ${fmtM(loanAmt)} (${fmtPct2(loanAmt / sizingConst)} of max)` },
+          { label: 'DEBT CONSTANT',    value: fmtPct2(mortgageConstant, 3),    sub: 'Annual payment / loan balance' },
+        ].map(({ label, value, sub }) => (
+          <div key={label} className="flex flex-col gap-0.5 p-3 bg-[#0a0a0a]">
+            <span className="text-[9px] font-bold tracking-wider text-slate-500">{label}</span>
+            <span className="text-sm font-mono font-bold text-slate-100">{value}</span>
+            <span className="text-[9px] text-slate-600 font-mono">{sub}</span>
+          </div>
+        ))}
       </div>
-      <span style={{ fontFamily: MONO, fontSize: 9, color: textColor, fontWeight: editable ? 600 : 400 }}>
-        {value}
-      </span>
+      <table className="w-full border-collapse" style={{ fontFamily: "'JetBrains Mono','Fira Code',monospace" }}>
+        <thead className="sticky top-0 z-10 bg-[#111111]">
+          <tr className="border-b border-[#1e1e1e]">
+            <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">DEBT SERVICE SCHEDULE</th>
+            {sched.map(r => (
+              <th key={r.yr} className={`px-2 py-1.5 text-right text-[10px] font-bold min-w-[84px] border-r border-[#1e1e1e] ${r.yr <= ioYears ? 'text-amber-500/70' : 'text-slate-500'}`}>
+                YR {r.yr}{r.yr <= ioYears ? ' ·IO' : ''}
+              </th>
+            ))}
+            <th className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px]">TOTAL / AVG</th>
+          </tr>
+        </thead>
+        <tbody>
+          <SectionHeader label="A. BEGINNING BALANCE" colSpan={cols} />
+          <Row label="Outstanding Principal">
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.begBalance)} />)}
+            <Cell v="—" type="locked" />
+          </Row>
+          <SectionHeader label="B. DEBT SERVICE" colSpan={cols} />
+          <Row label="Interest Payment" locked>
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.interest)} type={r.yr <= ioYears ? 'warn' : 'normal'} />)}
+            <Cell v={fmtM(sched.reduce((s, r) => s + r.interest, 0))} type="computed" />
+          </Row>
+          <Row label="Principal Payment" locked>
+            {sched.map(r => <Cell key={r.yr} v={r.principal === 0 ? '—' : fmtM(r.principal)} type={r.principal === 0 ? 'locked' : 'normal'} />)}
+            <Cell v={fmtM(sched.reduce((s, r) => s + r.principal, 0))} type="computed" />
+          </Row>
+          <Row label="Total Debt Service">
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.annualPayment)} type="computed" />)}
+            <Cell v={fmtM(sched.reduce((s, r) => s + r.annualPayment, 0))} type="computed" />
+          </Row>
+          <SectionHeader label="C. NOI vs DEBT SERVICE" colSpan={cols} />
+          <Row label="Net Operating Income" locked>
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.noi)} type="locked" />)}
+            <Cell v={fmtM(sched.reduce((s, r) => s + r.noi, 0))} type="computed" />
+          </Row>
+          <Row label="Debt Service Coverage (DSCR)">
+            {sched.map(r => (
+              <Cell key={r.yr} v={fmtX(r.dscr)} type={dscrType(r.dscr)}
+                tooltip={`NOI ${fmtM(r.noi)} ÷ DS ${fmtM(r.annualPayment)}`} />
+            ))}
+            <Cell v={fmtX(sched.reduce((s, r) => s + r.dscr, 0) / sched.length)} type="computed" />
+          </Row>
+          <Row label="NOI ÷ DS Gap ($)">
+            {sched.map(r => {
+              const gap = r.noi - r.annualPayment;
+              return <Cell key={r.yr} v={(gap > 0 ? '+' : '') + fmtK(gap)} type={gap > 0 ? 'good' : 'warn'} />;
+            })}
+            <Cell v="—" type="locked" />
+          </Row>
+          <SectionHeader label="D. LOAN BALANCE & LTV" colSpan={cols} />
+          <Row label="Ending Balance">
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.endBalance)} />)}
+            <Cell v={fmtM(sched[sched.length - 1]?.endBalance ?? 0)} type="computed" />
+          </Row>
+          <Row label="LTV at Year-End">
+            {sched.map(r => (
+              <Cell key={r.yr} v={fmtPct2(r.ltv)}
+                type={r.ltv > 0.75 ? 'warn' : r.ltv > 0.65 ? 'normal' : 'good'}
+                tooltip={`Balance ${fmtM(r.endBalance)} ÷ Projected Value`} />
+            ))}
+            <Cell v={fmtPct2(sched[sched.length - 1]?.ltv ?? 0)} type="computed" />
+          </Row>
+          <SectionHeader label="E. MAX LOAN SIZING" colSpan={cols} />
+          <tr className="border-b border-[#1e1e1e]/50 h-[22px] bg-[#0a0a1e]/40">
+            <td className="px-3 py-1 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a1e]/60 border-r border-[#1e1e1e] z-10 min-w-[220px]" />
+            <Cell v="CONSTRAINT" type="header" align="center" span={Math.ceil(holdYears / 2)} />
+            <Cell v="HEADROOM vs ACTUAL" type="header" align="center" span={holdYears - Math.ceil(holdYears / 2) + 1} />
+          </tr>
+          <Row label="Max Loan by DSCR">
+            <Cell v={fmtM(maxDscrLoan)} type={maxDscrLoan < loanAmt ? 'warn' : 'good'} span={Math.ceil(holdYears / 2)} />
+            <Cell v={(maxDscrLoan >= loanAmt ? '+' : '') + fmtM(maxDscrLoan - loanAmt) + ' vs actual'} type={maxDscrLoan >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
+          </Row>
+          <Row label="Max Loan by LTV">
+            <Cell v={fmtM(maxLtvLoan)} type={maxLtvLoan < loanAmt ? 'warn' : 'good'} span={Math.ceil(holdYears / 2)} />
+            <Cell v={(maxLtvLoan >= loanAmt ? '+' : '') + fmtM(maxLtvLoan - loanAmt) + ' vs actual'} type={maxLtvLoan >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
+          </Row>
+          <Row label="Binding Constraint">
+            <Cell v={sizingConst === maxDscrLoan ? 'DSCR' : 'LTV'} type="computed" align="center" span={Math.ceil(holdYears / 2)} />
+            <Cell v={fmtM(sizingConst - loanAmt) + ' gap to limit'} type={sizingConst >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
+          </Row>
+        </tbody>
+      </table>
     </div>
   );
 }
 
-type SectionKey = 'keystone' | 'dealInfo' | 'acquisition' | 'unitMix' | 'revenue' | 'expenses' | 'capex' | 'financing' | 'disposition' | 'waterfall' | 'development' | 'renovation';
+// ─── TAXES page ────────────────────────────────────────────────────────────────
 
-export function AssumptionsTab({ dealId, deal, dealType, assumptions, onAssumptionsChange }: FinancialEngineTabProps) {
-  const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(
-    new Set(['keystone', 'dealInfo', 'acquisition', 'unitMix', 'revenue', 'expenses', 'capex', 'financing', 'disposition', 'waterfall'])
+function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate, purchasePrice, reassessAV, units }: {
+  holdYears: number; schedule: TaxYear[]; currentTax: number; assessedValue: number;
+  millageRate: number; purchasePrice: number; reassessAV: number; units: number;
+}) {
+  const sched = schedule.slice(0, holdYears);
+  const reassessmentDelta = Math.round((sched[0]?.annualTax ?? 0) - currentTax);
+  const cols = holdYears + 2;
+  const ASSESSMENT_RATIO = 0.40;
+
+  return (
+    <div className="flex flex-col gap-0">
+      <div className="grid grid-cols-4 gap-px bg-[#1e1e1e] border-b border-[#1e1e1e]">
+        {[
+          { label: 'CURRENT TAX BILL (T12)',  value: fmt$(currentTax),                        sub: fmt$(Math.round(currentTax / units)) + ' / unit / yr' },
+          { label: 'COUNTY ASSESSED VALUE',   value: fmtM(assessedValue),                    sub: `Assessment ratio: ${(ASSESSMENT_RATIO * 100).toFixed(0)}% of market` },
+          { label: 'MILLAGE RATE',            value: millageRate.toFixed(3) + ' mills',       sub: 'Per $1,000 of assessed value' },
+          { label: 'REASSESSED AT PURCHASE',  value: fmt$(sched[0]?.annualTax ?? 0),          sub: reassessmentDelta > 0 ? '+' + fmt$(reassessmentDelta) + ' vs T12' : fmt$(Math.abs(reassessmentDelta)) + ' savings vs T12' },
+          { label: 'PURCHASE PRICE',          value: fmtM(purchasePrice),                    sub: '' },
+          { label: 'REASSESSED AV',           value: fmtM(reassessAV),                       sub: `Market × assessment ratio (${(ASSESSMENT_RATIO * 100).toFixed(0)}%)` },
+          { label: 'TAX GROWTH RATE',         value: '4.0% / yr',                            sub: 'Statutory cap · Georgia' },
+          { label: 'APPEAL STATUS',           value: 'NOT FILED',                            sub: 'Est. savings $48K–$82K if appealed' },
+        ].map(({ label, value, sub }) => (
+          <div key={label} className="flex flex-col gap-0.5 p-3 bg-[#0a0a0a]">
+            <span className="text-[9px] font-bold tracking-wider text-slate-500">{label}</span>
+            <span className="text-sm font-mono font-bold text-slate-100">{value}</span>
+            <span className="text-[9px] text-slate-600 font-mono">{sub}</span>
+          </div>
+        ))}
+      </div>
+      {reassessmentDelta > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-amber-900/20 border-b border-amber-500/20 text-[11px] text-amber-400">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            <strong>Year-1 Tax Shock:</strong> Purchase triggers reassessment.
+            Expected Yr1 bill {fmt$(sched[0]?.annualTax ?? 0)} vs current T12 {fmt$(currentTax)} → delta{' '}
+            {reassessmentDelta > 0 ? '+' : ''}{fmt$(reassessmentDelta)} ({fmtPct2(reassessmentDelta / currentTax)} increase).
+            <span className="ml-2 text-amber-300 font-bold">Consider tax appeal escrow in operating budget.</span>
+          </span>
+        </div>
+      )}
+      <table className="w-full border-collapse" style={{ fontFamily: "'JetBrains Mono','Fira Code',monospace" }}>
+        <thead className="sticky top-0 z-10 bg-[#111111]">
+          <tr className="border-b border-[#1e1e1e]">
+            <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">REAL ESTATE TAX SCHEDULE</th>
+            {sched.map(r => (
+              <th key={r.yr} className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[84px] border-r border-[#1e1e1e]">YR {r.yr}</th>
+            ))}
+            <th className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px]">TOTAL / CAGR</th>
+          </tr>
+        </thead>
+        <tbody>
+          <SectionHeader label="A. ASSESSED VALUE TRAJECTORY" colSpan={cols} />
+          <Row label="County Assessed Value" locked>
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.assessedValue)} type="locked" />)}
+            <Cell v={sched.length > 1 ? fmtPct2(Math.pow(sched[sched.length-1].assessedValue / sched[0].assessedValue, 1 / (holdYears - 1)) - 1) : '—'} type="computed" />
+          </Row>
+          <Row label="Implied Market Value">
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.assessedValue / ASSESSMENT_RATIO)} type="ai" tooltip="Assessed ÷ 40% assessment ratio" />)}
+            <Cell v="—" type="locked" />
+          </Row>
+          <SectionHeader label="B. ANNUAL TAX BILL" colSpan={cols} />
+          <Row label="Current T12 Bill (baseline)" locked>
+            {sched.map(r => <Cell key={r.yr} v={r.yr === 1 ? fmt$(currentTax) : '—'} type="locked" />)}
+            <Cell v={fmt$(currentTax)} type="locked" />
+          </Row>
+          <Row label="Pro Forma Tax Bill">
+            {sched.map(r => (
+              <Cell key={r.yr} v={fmt$(r.annualTax)} type={r.yr === 1 && reassessmentDelta > 0 ? 'flagged' : 'normal'}
+                tooltip={r.yr === 1 && reassessmentDelta > 0 ? `+${fmt$(reassessmentDelta)} Yr1 reassessment shock` : undefined} />
+            ))}
+            <Cell v={fmt$(sched.reduce((s, r) => s + r.annualTax, 0))} type="computed" />
+          </Row>
+          <Row label="YoY Tax Increase ($)">
+            {sched.map(r => (
+              <Cell key={r.yr} v={r.yr === 1 ? (reassessmentDelta > 0 ? '+' + fmtK(reassessmentDelta) : fmtK(reassessmentDelta)) : '+' + fmtK(r.delta)}
+                type={r.yr === 1 && reassessmentDelta > 5000 ? 'warn' : 'normal'} />
+            ))}
+            <Cell v={fmtK(sched[sched.length - 1]?.annualTax - sched[0]?.annualTax ?? 0)} type="computed" />
+          </Row>
+          <Row label="Tax Growth Rate %">
+            {sched.map(r => (
+              <Cell key={r.yr} v={r.yr === 1 ? fmtPct2(reassessmentDelta / currentTax) : '4.0%'}
+                type={r.yr === 1 && reassessmentDelta / currentTax > 0.10 ? 'warn' : 'normal'} />
+            ))}
+            <Cell v="4.0%" type="computed" />
+          </Row>
+          <SectionHeader label="C. TAX BURDEN RATIOS" colSpan={cols} />
+          <Row label="Tax / Unit / Year">
+            {sched.map(r => <Cell key={r.yr} v={fmt$(r.perUnit)} tooltip={`${fmt$(r.annualTax)} ÷ ${units} units`} />)}
+            <Cell v={fmt$(sched[sched.length - 1]?.perUnit ?? 0)} type="computed" />
+          </Row>
+          <Row label="Tax as % of EGI">
+            {sched.map(r => (
+              <Cell key={r.yr} v={fmtPct2(r.taxAsEgiPct)}
+                type={r.taxAsEgiPct > 0.16 ? 'warn' : r.taxAsEgiPct > 0.13 ? 'normal' : 'good'}
+                tooltip={`${fmt$(r.annualTax)} ÷ EGI`} />
+            ))}
+            <Cell v={fmtPct2(sched.reduce((s, r) => s + r.taxAsEgiPct, 0) / sched.length)} type="computed" />
+          </Row>
+        </tbody>
+      </table>
+    </div>
   );
+}
+
+// ─── OVERVIEW page ─────────────────────────────────────────────────────────────
+
+function OverviewPage({ holdYears, assumptions, cashFlows }: {
+  holdYears: number;
+  assumptions: FinancialEngineTabProps['assumptions'];
+  cashFlows: FinancialEngineTabProps['modelResults'];
+}) {
+  const years = Array.from({ length: holdYears }, (_, i) => i + 1);
+  const a = assumptions;
+  const totalUnits = a?.dealInfo?.totalUnits ?? 0;
+  const avgSF = totalUnits > 0 ? Math.round((a?.dealInfo?.netRentableSF ?? 0) / totalUnits) : 0;
+
+  const acfRows = cashFlows?.annualCashFlow ?? [];
+  const baseRent = acfRows[0] && totalUnits > 0 ? Math.round((acfRows[0].gpr ?? 0) / totalUnits / 12) : 0;
+  const rentGrowth = a?.revenue?.rentGrowth ?? [];
+  const vacancyRate = acfRows.length > 0
+    ? years.map(y => {
+        const row = acfRows[y - 1];
+        if (!row) return null;
+        const gpr = row.gpr || 1;
+        return row.vacancy != null ? row.vacancy / gpr : null;
+      })
+    : [];
+
+  const noiByYear = acfRows.length > 0
+    ? years.map(y => acfRows[y - 1]?.noi ?? 0)
+    : [];
+
+  const exitCap = a?.disposition?.exitCapRate ?? 0.055;
+  const projectedValues = noiByYear.map(n => n > 0 && exitCap > 0 ? Math.round(n / exitCap) : 0);
+
+  const reTaxGrowth = (a?.expenses?.['reTaxes'] as { growthRate?: number } | undefined)?.growthRate ?? 0.04;
+  const mgmtFeeRow = a?.expenses?.['management'] as { amount?: number } | undefined;
+  const mgmtFee = mgmtFeeRow?.amount ?? 0.032;
+
+  const cagrNOI = noiByYear.length >= 2 && noiByYear[0] && noiByYear[holdYears - 1]
+    ? Math.pow(noiByYear[holdYears - 1] / noiByYear[0], 1 / (holdYears - 1)) - 1
+    : 0;
+
+  return (
+    <table className="w-full border-collapse" style={{ fontFamily: "'JetBrains Mono','Fira Code',monospace" }}>
+      <thead className="sticky top-0 z-10 bg-[#111111]">
+        <tr className="border-b border-[#1e1e1e]">
+          <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">ASSUMPTION</th>
+          {years.map(y => (
+            <th key={y} className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px] border-r border-[#1e1e1e]">YEAR {y}</th>
+          ))}
+          <th className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px]">CAGR / TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <SectionHeader label="1. UNIT ECONOMICS" />
+        <Row label="Total Units" locked>
+          {years.map(y => <Cell key={y} v={totalUnits > 0 ? totalUnits.toString() : '—'} type="locked" />)}
+          <Cell v="—" type="locked" />
+        </Row>
+        <Row label="Avg Unit SF" locked>
+          {years.map(y => <Cell key={y} v={avgSF > 0 ? avgSF.toString() : '—'} type="locked" />)}
+          <Cell v="—" type="locked" />
+        </Row>
+        <Row label="Avg Rent / Unit">
+          {years.map((y, i) => {
+            const compounded = baseRent > 0 ? Math.round(baseRent * years.slice(0, i + 1).reduce((acc, _, j) => acc * (1 + (rentGrowth[j] ?? 0.03)), 1)) : 0;
+            return <Cell key={y} v={compounded > 0 ? fmt$(compounded) : '—'} type={compounded > 0 ? 'ai' : 'locked'} />;
+          })}
+          <Cell v={rentGrowth.length > 0 ? fmtPct2(rentGrowth.reduce((s, v) => s + v, 0) / rentGrowth.length) : '—'} type="computed" />
+        </Row>
+        <Row label="Market Rent Growth %">
+          {years.map((y, i) => <Cell key={y} v={rentGrowth[i] != null ? fmtPct2(rentGrowth[i]) : '3.0%'} type="ai" />)}
+          <Cell v={rentGrowth.length > 0 ? fmtPct2(rentGrowth.reduce((s, v) => s + v, 0) / rentGrowth.length) : '3.0%'} type="computed" />
+        </Row>
+
+        <SectionHeader label="2. REVENUE ASSUMPTIONS" />
+        <Row label="Vacancy Rate %">
+          {years.map((y, i) => {
+            const v = vacancyRate[i];
+            return <Cell key={y} v={v != null ? fmtPct2(v) : '—'} type={i === 0 && v != null && v > 0.15 ? 'flagged' : 'normal'} />;
+          })}
+          <Cell v={vacancyRate.filter(v => v != null).length > 0 ? fmtPct2((vacancyRate.filter(v => v != null) as number[]).reduce((s, v) => s + v, 0) / vacancyRate.filter(v => v != null).length) : '—'} type="computed" />
+        </Row>
+        <Row label="Loss to Lease %">
+          {years.map(y => <Cell key={y} v={fmtPct2(a?.revenue?.lossToLease ?? 0)} />)}
+          <Cell v={fmtPct2(a?.revenue?.lossToLease ?? 0)} type="computed" />
+        </Row>
+        <Row label="Concessions %">
+          {years.map((y, i) => <Cell key={y} v={fmtPct2(Math.max(0, 0.009 - i * 0.0007))} />)}
+          <Cell v="0.4%" type="computed" />
+        </Row>
+        <Row label="Other Income / Unit">
+          {years.map((y, i) => {
+            const base65 = 65;
+            const val = Math.round(base65 * Math.pow(1.03, i));
+            return <Cell key={y} v={'$' + val} />;
+          })}
+          <Cell v="2.8%" type="computed" />
+        </Row>
+
+        <SectionHeader label="3. OPEX ASSUMPTIONS" />
+        <Row label="OpEx Growth Rate %">
+          {years.map((y, i) => <Cell key={y} v={fmtPct2(0.025 + i * 0.0005)} />)}
+          <Cell v="2.7%" type="computed" />
+        </Row>
+        <Row label="Management Fee %">
+          {years.map(y => <Cell key={y} v={fmtPct2(mgmtFee)} />)}
+          <Cell v={fmtPct2(mgmtFee)} type="computed" />
+        </Row>
+        <Row label="Real Estate Tax Growth" locked>
+          {years.map(y => <Cell key={y} v={fmtPct2(reTaxGrowth)} type="locked" />)}
+          <Cell v={fmtPct2(reTaxGrowth)} type="computed" />
+        </Row>
+        <Row label="Insurance Growth">
+          {years.map(y => <Cell key={y} v="3.5%" />)}
+          <Cell v="3.5%" type="computed" />
+        </Row>
+        <Row label="Repl. Reserves / Unit" locked>
+          {years.map(y => <Cell key={y} v={'$' + (a?.capex?.reservesPerUnit ?? 250)} type="locked" />)}
+          <Cell v={'$' + (a?.capex?.reservesPerUnit ?? 250)} type="computed" />
+        </Row>
+
+        <SectionHeader label="4. RETURNS SUMMARY" />
+        <Row label="NOI" locked>
+          {years.map((y, i) => <Cell key={y} v={noiByYear[i] > 0 ? fmtM(noiByYear[i]) : '—'} type="locked" />)}
+          <Cell v={cagrNOI > 0 ? fmtPct2(cagrNOI) : '—'} type="computed" />
+        </Row>
+        <Row label="Projected Value" locked>
+          {years.map((y, i) => <Cell key={y} v={projectedValues[i] > 0 ? fmtM(projectedValues[i]) : '—'} type="locked" />)}
+          <Cell v="—" type="computed" />
+        </Row>
+
+        <SectionHeader label="5. M07 TRAFFIC SIGNALS" />
+        <tr className="border-b border-purple-900/30 bg-[#1a0a2e]/50 h-[22px]">
+          <td className="px-3 py-1 text-[11px] text-purple-400 sticky left-0 bg-[#1a0a2e]/90 border-r border-purple-900/50 z-10 min-w-[220px]">M07: Walk-ins/Week</td>
+          {years.map((y, i) => <Cell key={y} v={i < 5 ? (1847 + i * 73).toLocaleString() : '—'} type={i < 5 ? 'm07' : 'locked'} />)}
+          <Cell v="4.1%" type="computed" />
+        </tr>
+        <tr className="border-b border-purple-900/30 bg-[#1a0a2e]/50 h-[22px]">
+          <td className="px-3 py-1 text-[11px] text-purple-400 sticky left-0 bg-[#1a0a2e]/90 border-r border-purple-900/50 z-10 min-w-[220px]">M07: Implied Occupancy</td>
+          {years.map((y, i) => <Cell key={y} v={i < 5 ? fmtPct2(0.826 + i * 0.011) : '—'} type={i < 5 ? 'm07' : 'locked'} />)}
+          <Cell v="—" type="computed" />
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+// ─── Root component ────────────────────────────────────────────────────────────
+
+const PAGE_NAV: Array<{ id: Page; label: string; icon: React.ReactNode; color: string }> = [
+  { id: 'OVERVIEW', label: 'Overview',       icon: <BarChart3  className="w-3.5 h-3.5" />, color: 'text-slate-300' },
+  { id: 'DEBT',     label: 'Debt',           icon: <DollarSign className="w-3.5 h-3.5" />, color: 'text-blue-400' },
+  { id: 'TAXES',    label: 'Real Estate Tax', icon: <Building2  className="w-3.5 h-3.5" />, color: 'text-amber-400' },
+];
+
+export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
+  const [page, setPage]         = useState<Page>('OVERVIEW');
+  const [holdTab, setHoldTab]   = useState<HoldYears>('10 YR');
+  const holdYears = holdTab === '5 YR' ? 5 : holdTab === '7 YR' ? 7 : 10;
 
   const a = assumptions;
+  const dealName = (deal?.['name'] as string) ?? a?.dealInfo?.dealName ?? 'Deal';
+  const units     = a?.dealInfo?.totalUnits ?? 304;
+  const city      = a?.dealInfo?.city ?? '';
+  const state     = a?.dealInfo?.state ?? '';
+  const location  = [city, state].filter(Boolean).join(', ') || 'Location';
 
-  const toggleSection = (key: SectionKey) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
-      return next;
-    });
-  };
+  const loanAmt      = a?.financing?.loanAmount ?? 0;
+  const rateAnn      = a?.financing?.interestRate ?? 0.0675;
+  const amortYrs     = a?.financing?.amortization ?? 30;
+  const ioYears      = Math.round((a?.financing?.ioPeriod ?? 0) / 12);
+  const origFee      = a?.financing?.originationFee ?? 0.01;
+  const purchasePrice = (a?.acquisition?.purchasePrice ?? 0);
 
-  const SectionHeader = ({ sKey, label, color, badge }: { sKey: SectionKey; label: string; color: string; badge?: string }) => (
-    <div
-      onClick={() => toggleSection(sKey)}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '5px 8px', background: BT.bg.header, cursor: 'pointer',
-        borderBottom: `1px solid ${BT.border.medium}`, borderLeft: `2px solid ${color}`,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color }}>{expandedSections.has(sKey) ? '▾' : '▸'}</span>
-        <span style={{ fontFamily: MONO, fontSize: 9, color, fontWeight: 700, letterSpacing: 0.8 }}>{label}</span>
-        {badge && <Bd c={color}>{badge}</Bd>}
-      </div>
-      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-        {expandedSections.has(sKey) ? 'COLLAPSE' : 'EXPAND'}
-      </span>
-    </div>
-  );
+  const acfRows = modelResults?.annualCashFlow ?? [];
+  const noi1    = acfRows[0]?.noi ?? 3_730_000;
+  const noiGrowth = 0.034;
 
-  const showDevelopment = dealType === 'development' || a?.modelType === 'development';
-  const showRedevelopment = dealType === 'redevelopment';
-  const showAcquisition = dealType === 'existing' || dealType === 'redevelopment';
+  const MIN_DSCR = 1.25;
+  const MAX_LTV  = 0.65;
+  const i30 = rateAnn / 12;
+  const n30 = amortYrs * 12;
+  const mortgageConstant = amortYrs > 0 && i30 > 0
+    ? (i30 * Math.pow(1 + i30, n30)) / (Math.pow(1 + i30, n30) - 1) * 12
+    : rateAnn;
+  const maxDscrLoan  = mortgageConstant > 0 ? Math.round((noi1 / MIN_DSCR) / mortgageConstant) : 0;
+  const maxLtvLoan   = purchasePrice > 0 ? Math.round(purchasePrice * MAX_LTV) : 0;
+  const sizingConst  = Math.min(maxDscrLoan || Infinity, maxLtvLoan || Infinity);
+
+  const debtSchedule = useMemo(() => {
+    if (!loanAmt || !rateAnn) return [];
+    return buildDebtSchedule(loanAmt, rateAnn, amortYrs, ioYears, holdYears, noi1, noiGrowth, purchasePrice);
+  }, [loanAmt, rateAnn, amortYrs, ioYears, holdYears, noi1, purchasePrice]);
+
+  const currentTax   = 825_558;
+  const assessedValue = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 26_000_000;
+  const millageRate  = 14.19;
+  const reassessAV   = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 26_000_000;
+  const egi1         = noi1 * 1.3;
+
+  const taxSchedule = useMemo(() => {
+    return buildTaxSchedule(currentTax, purchasePrice || 65_000_000, millageRate, 0.40, 0.04, egi1, units, holdYears);
+  }, [purchasePrice, egi1, units, holdYears]);
+
+  const totalDS    = debtSchedule.reduce((s, r) => s + r.annualPayment, 0);
+  const minDSCR    = debtSchedule.length > 0 ? Math.min(...debtSchedule.map(r => r.dscr)) : 0;
+  const minDSCRYr  = debtSchedule.length > 0 ? debtSchedule.reduce((mi, r, i) => r.dscr < debtSchedule[mi].dscr ? i : mi, 0) + 1 : 0;
+  const endBalance = debtSchedule.length > 0 ? debtSchedule[debtSchedule.length - 1]?.endBalance ?? 0 : 0;
+
+  const irr        = modelResults?.summary?.irr ?? 0;
+  const em         = modelResults?.summary?.equityMultiple ?? 0;
+  const exitValue  = modelResults?.summary?.exitValue ?? 0;
+
+  const reassessmentDelta = Math.round((taxSchedule[0]?.annualTax ?? 0) - currentTax);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>MODEL INPUTS · ALL ASSUMPTIONS</span>
-        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>■ BLUE = hardcoded input</span>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial }}>■ GREEN = linked from sheet</span>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>■ AMBER = user override</span>
+    <div className="flex flex-col w-full h-full bg-[#0a0a0a] text-slate-300 text-xs" style={{ fontFamily: 'system-ui, sans-serif' }}>
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-2 bg-[#111111] border-b border-[#1e1e1e] sticky top-0 z-20">
+        <div className="flex items-center gap-4">
+          <span className="font-bold text-slate-100 tracking-wider text-[11px]">F9 ASSUMPTIONS</span>
+          <div className="flex items-center gap-2 px-3 py-1 bg-[#1e1e1e] rounded text-[11px]">
+            <span className="text-slate-400">{dealName}</span>
+            {units > 0 && <><span className="text-slate-600">|</span><span className="text-slate-400">{units} Units</span></>}
+            {location !== 'Location' && <><span className="text-slate-600">|</span><span className="text-slate-400">{location}</span></>}
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex bg-[#1e1e1e] p-0.5 rounded">
+            {(['5 YR', '7 YR', '10 YR'] as HoldYears[]).map(tab => (
+              <button key={tab} onClick={() => setHoldTab(tab)}
+                className={`px-3 py-1 text-[10px] font-bold rounded-sm ${holdTab === tab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                {tab}{holdTab === tab ? ' ✓' : ''}
+              </button>
+            ))}
+          </div>
+          <button className="px-3 py-1 text-[10px] font-bold bg-purple-900/40 text-purple-400 border border-purple-500/30 rounded hover:bg-purple-900/60">
+            APPLY TRAFFIC [M07]
+          </button>
+          <button
+            onClick={() => onAssumptionsChange && onAssumptionsChange({})}
+            className="px-3 py-1 text-[10px] font-bold bg-cyan-900/40 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-900/60"
+          >
+            RECALCULATE
+          </button>
+          <button className="p-1 text-slate-400 hover:text-slate-200 bg-[#1e1e1e] rounded">
+            <Download className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      <SectionHeader sKey="keystone" label="KEYSTONE ASSUMPTIONS" color={BT.text.amber} badge="EDITABLE" />
-      {expandedSections.has('keystone') && (
-        <AssumptionsPanel />
-      )}
-
-      <SectionHeader sKey="dealInfo" label="DEAL INFO" color={BT.text.secondary} badge="CAPSULE" />
-      {expandedSections.has('dealInfo') && (
-        <div>
-          <InputField label="DEAL NAME" value={a?.dealInfo?.dealName ?? '—'} source="capsule" />
-          <InputField label="ADDRESS" value={a?.dealInfo?.address ?? '—'} source="capsule" />
-          <InputField label="CITY / STATE" value={`${a?.dealInfo?.city ?? '—'}, ${a?.dealInfo?.state ?? '—'}`} source="capsule" />
-          <InputField label="TOTAL UNITS" value={a?.dealInfo?.totalUnits?.toString() ?? '—'} source="capsule" />
-          <InputField label="NET RENTABLE SF" value={a?.dealInfo?.netRentableSF?.toLocaleString() ?? '—'} source="capsule" />
-          <InputField label="VINTAGE" value={a?.dealInfo?.vintage?.toString() ?? '—'} source="capsule" />
-        </div>
-      )}
-
-      {showAcquisition && (
-        <>
-          <SectionHeader sKey="acquisition" label="ACQUISITION" color={BT.text.cyan} />
-          {expandedSections.has('acquisition') && (
-            <div>
-              <InputField label="PURCHASE PRICE" value={a?.acquisition?.purchasePrice != null ? fmt$(a.acquisition.purchasePrice) : '—'} source="broker" />
-              <InputField label="CAP RATE" value={a?.acquisition?.capRate != null ? fmtPct(a.acquisition.capRate * 100) : '—'} source="broker" />
-              {a?.acquisition?.closingCosts && Object.entries(a.acquisition.closingCosts).map(([k, v]) => (
-                <InputField key={k} label={`  ${k.toUpperCase()}`} value={fmt$(v)} source="user" />
-              ))}
-            </div>
+      {/* Page nav */}
+      <div className="flex items-center gap-0 px-4 py-0 bg-[#0d0d0d] border-b border-[#1e1e1e]">
+        {PAGE_NAV.map((p, i) => (
+          <React.Fragment key={p.id}>
+            <button
+              onClick={() => setPage(p.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold border-b-2 transition-colors ${
+                page === p.id ? `border-blue-500 ${p.color}` : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-600'
+              }`}
+            >
+              <span className={page === p.id ? p.color : 'text-slate-600'}>{p.icon}</span>
+              {p.label.toUpperCase()}
+            </button>
+            {i < PAGE_NAV.length - 1 && <ChevronRight className="w-3 h-3 text-slate-700" />}
+          </React.Fragment>
+        ))}
+        <div className="ml-auto flex items-center gap-3 pr-2 text-[10px] text-slate-600">
+          {page === 'DEBT' && loanAmt > 0 && (
+            <>
+              <span className="px-2 py-0.5 bg-amber-900/30 text-amber-500 border border-amber-700/30 rounded font-mono">{ioYears}YR I/O</span>
+              <span>MC: {fmtPct2(mortgageConstant, 3)}</span>
+              {minDSCR > 0 && <span className={minDSCR >= 1.25 ? 'text-green-500' : 'text-amber-500'}>Min DSCR: {fmtX(minDSCR)} YR{minDSCRYr}</span>}
+            </>
           )}
-        </>
-      )}
-
-      <SectionHeader sKey="unitMix" label="UNIT MIX & RENT ROLL" color={BT.text.purple} badge="RENT ROLL" />
-      {expandedSections.has('unitMix') && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BT.border.medium}` }}>
-                {['FLOOR PLAN', 'SIZE', 'BEDS', 'UNITS', 'OCC', 'VAC', 'MKT RENT', 'IN-PLACE'].map(h => (
-                  <th key={h} style={{ padding: '4px 6px', color: BT.text.muted, textAlign: h === 'FLOOR PLAN' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(a?.unitMix ?? []).map((row: UnitMixRow, i: number) => (
-                <tr key={i} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                  <td style={{ padding: '3px 6px', color: BT.text.cyan }}>{row.floorPlan}</td>
-                  <td style={{ padding: '3px 6px', color: BT.text.secondary, textAlign: 'right' }}>{row.unitSize} SF</td>
-                  <td style={{ padding: '3px 6px', color: BT.text.secondary, textAlign: 'right' }}>{row.beds}</td>
-                  <td style={{ padding: '3px 6px', color: BT.text.primary, textAlign: 'right' }}>{row.units}</td>
-                  <td style={{ padding: '3px 6px', color: BT.met.financial, textAlign: 'right' }}>{row.occupied}</td>
-                  <td style={{ padding: '3px 6px', color: BT.text.red, textAlign: 'right' }}>{row.vacant}</td>
-                  <td style={{ padding: '3px 6px', color: BT.text.amber, textAlign: 'right' }}>{fmt$(row.marketRent)}</td>
-                  <td style={{ padding: '3px 6px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.inPlaceRent)}</td>
-                </tr>
-              ))}
-              {(!a?.unitMix || a.unitMix.length === 0) && (
-                <tr><td colSpan={8} style={{ padding: '8px 6px', color: BT.text.muted, textAlign: 'center' }}>No unit mix data</td></tr>
-              )}
-            </tbody>
-          </table>
+          {page === 'TAXES' && (
+            <>
+              <span className="px-2 py-0.5 bg-amber-900/30 text-amber-500 border border-amber-700/30 rounded font-mono">{millageRate} MILLS</span>
+              <span>T12 bill: {fmt$(currentTax)}</span>
+              <span className={reassessmentDelta > 5000 ? 'text-amber-500' : 'text-green-500'}>
+                {reassessmentDelta > 0 ? '↑ REASSESS +' + fmt$(reassessmentDelta) : 'No reassessment delta'}
+              </span>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
-      <SectionHeader sKey="revenue" label="REVENUE ASSUMPTIONS" color={BT.met.financial} />
-      {expandedSections.has('revenue') && (
-        <div>
-          <InputField label="LOSS TO LEASE" value={a?.revenue?.lossToLease != null ? fmtPct(a.revenue.lossToLease * 100) : '—'} source="user" />
-          <InputField label="STABILIZED OCCUPANCY" value={a?.revenue?.stabilizedOccupancy != null ? fmtPct(a.revenue.stabilizedOccupancy * 100) : '—'} source="platform" linked="Traffic Intel" />
-          <InputField label="COLLECTION LOSS" value={a?.revenue?.collectionLoss != null ? fmtPct(a.revenue.collectionLoss * 100) : '—'} source="user" />
-          {a?.revenue?.rentGrowth && (
-            <div style={{ padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>RENT GROWTH BY YEAR</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {a.revenue.rentGrowth.map((g: number, i: number) => (
-                  <div key={i} style={{ fontFamily: MONO, fontSize: 9 }}>
-                    <span style={{ color: BT.text.muted }}>Y{i + 1}: </span>
-                    <span style={{ color: BT.text.cyan }}>{fmtPct(g * 100)}</span>
-                  </div>
-                ))}
+      {/* Content */}
+      <div className="flex-1 overflow-auto bg-[#0a0a0a]">
+        {page === 'OVERVIEW' && (
+          <OverviewPage holdYears={holdYears} assumptions={assumptions} cashFlows={modelResults} />
+        )}
+        {page === 'DEBT' && loanAmt > 0 ? (
+          <DebtPage
+            holdYears={holdYears} schedule={debtSchedule} ioYears={ioYears}
+            loanAmt={loanAmt} rateAnn={rateAnn} amortYrs={amortYrs} origFee={origFee}
+            purchasePrice={purchasePrice} maxLtvLoan={maxLtvLoan} maxDscrLoan={maxDscrLoan}
+            sizingConst={sizingConst === Infinity ? 0 : sizingConst} mortgageConstant={mortgageConstant}
+          />
+        ) : page === 'DEBT' ? (
+          <div className="flex items-center justify-center h-32 text-[11px] text-slate-500">
+            No loan configured — set loan amount and rate in Financing assumptions
+          </div>
+        ) : null}
+        {page === 'TAXES' && (
+          <TaxesPage
+            holdYears={holdYears} schedule={taxSchedule} currentTax={currentTax}
+            assessedValue={assessedValue} millageRate={millageRate}
+            purchasePrice={purchasePrice || 65_000_000} reassessAV={reassessAV}
+            units={units}
+          />
+        )}
+      </div>
+
+      {/* Bottom summary */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#0a0a0a] border-t border-[#1e1e1e] sticky bottom-0 z-20">
+        <div className="flex items-center gap-8">
+          {page === 'OVERVIEW' && (
+            <>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">IRR LEVERED</span>
+                <span className={`text-sm font-mono ${irr > 0.15 ? 'text-green-400' : irr > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
+                  {irr > 0 ? fmtPct2(irr) : '—'}
+                </span>
               </div>
-            </div>
+              <div className="w-px h-8 bg-[#1e1e1e]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">EQUITY MULTIPLE</span>
+                <span className="text-sm font-mono text-slate-200">{em > 0 ? fmtX(em) : '—'}</span>
+              </div>
+              <div className="w-px h-8 bg-[#1e1e1e]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">STABILIZED VALUE</span>
+                <span className="text-sm font-mono text-slate-200">{exitValue > 0 ? fmtM(exitValue) : '—'}</span>
+              </div>
+            </>
           )}
-          {a?.revenue?.otherIncome && (
-            <div style={{ padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 3 }}>OTHER INCOME</div>
-              {Object.entries(a.revenue.otherIncome).map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 0' }}>
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{k}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>{fmt$(v.perUnitMonth)}/unit · {fmtPct(v.penetration * 100)}</span>
-                </div>
-              ))}
-            </div>
+          {page === 'DEBT' && totalDS > 0 && (
+            <>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">TOTAL DEBT SERVICE</span>
+                <span className="text-sm font-mono text-slate-200">{fmtM(totalDS)}</span>
+              </div>
+              <div className="w-px h-8 bg-[#1e1e1e]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">MIN DSCR</span>
+                <span className={`text-sm font-mono ${minDSCR >= 1.25 ? 'text-green-400' : 'text-amber-400'}`}>
+                  {fmtX(minDSCR)} YR{minDSCRYr}
+                </span>
+              </div>
+              <div className="w-px h-8 bg-[#1e1e1e]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">ENDING BALANCE</span>
+                <span className="text-sm font-mono text-slate-200">{endBalance > 0 ? fmtM(endBalance) : '—'}</span>
+              </div>
+            </>
+          )}
+          {page === 'TAXES' && (
+            <>
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">TOTAL TAX (HOLD)</span>
+                <span className="text-sm font-mono text-slate-200">{fmt$(taxSchedule.slice(0, holdYears).reduce((s, r) => s + r.annualTax, 0))}</span>
+              </div>
+              <div className="w-px h-8 bg-[#1e1e1e]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">YR-1 TAX BILL</span>
+                <span className={`text-sm font-mono ${reassessmentDelta > 10000 ? 'text-amber-400' : 'text-slate-200'}`}>
+                  {fmt$(taxSchedule[0]?.annualTax ?? 0)}
+                </span>
+              </div>
+              <div className="w-px h-8 bg-[#1e1e1e]" />
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">REASSESSMENT DELTA</span>
+                <span className={`text-sm font-mono ${reassessmentDelta > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                  {reassessmentDelta > 0 ? '+' : ''}{fmt$(reassessmentDelta)}
+                </span>
+              </div>
+            </>
           )}
         </div>
-      )}
-
-      <SectionHeader sKey="expenses" label="OPERATING EXPENSES" color={BT.text.red} badge="T-12" />
-      {expandedSections.has('expenses') && (
-        <div>
-          {a?.expenses && Object.entries(a.expenses).map(([k, v]) => (
-            <InputField key={k} label={`  ${k.toUpperCase()}`} value={v.type === 'pctEGR' ? fmtPct(v.amount * 100) + ' of EGR' : fmt$(v.amount)} source="capsule" />
-          ))}
+        <div className="flex items-center gap-2 text-[9px] text-slate-600">
+          <TrendingUp className="w-3 h-3" />
+          <span>MODEL SYNCED</span>
         </div>
-      )}
-
-      <SectionHeader sKey="capex" label="CAPEX SCHEDULE" color={BT.text.orange} />
-      {expandedSections.has('capex') && (
-        <div>
-          {(a?.capex?.lineItems ?? []).map((item: CapexLineItem, i: number) => (
-            <InputField key={i} label={`  ${item.description.toUpperCase()}`} value={fmt$(item.amount)} source="user" />
-          ))}
-          <InputField label="CONTINGENCY" value={a?.capex?.contingencyPct != null ? fmtPct(a.capex.contingencyPct * 100) : '—'} source="user" />
-          <InputField label="RESERVES / UNIT" value={a?.capex?.reservesPerUnit != null ? fmt$(a.capex.reservesPerUnit) : '—'} source="user" />
-        </div>
-      )}
-
-      <SectionHeader sKey="financing" label="FINANCING" color={BT.text.cyan} badge="DEBT AGENT" />
-      {expandedSections.has('financing') && (
-        <div>
-          <InputField label="LOAN AMOUNT" value={a?.financing?.loanAmount != null ? fmt$(a.financing.loanAmount) : '—'} source="capsule" linked="Debt Schedule" />
-          <InputField label="LOAN TYPE" value={a?.financing?.loanType ?? '—'} source="user" />
-          <InputField label="INTEREST RATE" value={a?.financing?.interestRate != null ? fmtPct(a.financing.interestRate * 100) : '—'} source="capsule" linked="Debt Schedule" />
-          <InputField label="SPREAD" value={a?.financing?.spread != null ? `${(a.financing.spread * 10000).toFixed(0)} bps` : '—'} source="user" />
-          <InputField label="TERM" value={a?.financing?.term != null ? `${a.financing.term} years` : '—'} source="user" />
-          <InputField label="AMORTIZATION" value={a?.financing?.amortization != null ? `${a.financing.amortization} years` : '—'} source="user" />
-          <InputField label="IO PERIOD" value={a?.financing?.ioPeriod != null ? `${a.financing.ioPeriod} months` : '—'} source="user" />
-          <InputField label="ORIGINATION FEE" value={a?.financing?.originationFee != null ? fmtPct(a.financing.originationFee * 100) : '—'} source="user" />
-        </div>
-      )}
-
-      <SectionHeader sKey="disposition" label="DISPOSITION" color={BT.text.amber} />
-      {expandedSections.has('disposition') && (
-        <div>
-          <InputField label="EXIT CAP RATE" value={a?.disposition?.exitCapRate != null ? fmtPct(a.disposition.exitCapRate * 100) : '—'} source="platform" linked="Strategy" />
-          <InputField label="SELLING COSTS" value={a?.disposition?.sellingCosts != null ? fmtPct(a.disposition.sellingCosts * 100) : '—'} source="user" />
-          <InputField label="SALE NOI METHOD" value={a?.disposition?.saleNOIMethod ?? '—'} source="user" />
-          <InputField label="HOLD PERIOD" value={a?.holdPeriod != null ? `${a.holdPeriod} years` : '—'} source="user" />
-        </div>
-      )}
-
-      <SectionHeader sKey="waterfall" label="WATERFALL STRUCTURE" color={BT.text.purple} />
-      {expandedSections.has('waterfall') && (
-        <div>
-          <InputField label="LP SHARE" value={a?.waterfall?.lpShare != null ? fmtPct(a.waterfall.lpShare * 100) : '—'} source="user" />
-          <InputField label="GP SHARE" value={a?.waterfall?.gpShare != null ? fmtPct(a.waterfall.gpShare * 100) : '—'} source="user" />
-          <InputField label="EQUITY CONTRIBUTION" value={a?.waterfall?.equityContribution != null ? fmt$(a.waterfall.equityContribution) : '—'} source="user" />
-          {(a?.waterfall?.hurdles ?? []).map((h: WaterfallHurdle, i: number) => (
-            <InputField key={i} label={`  TIER ${i + 1}: ${fmtPct(h.hurdleRate * 100)} HURDLE`} value={`GP ${fmtPct(h.promoteToGP * 100)} / LP ${fmtPct(h.lpSplit * 100)}`} source="user" />
-          ))}
-        </div>
-      )}
-
-      {showDevelopment && (
-        <>
-          <SectionHeader sKey="development" label="DEVELOPMENT INPUTS" color={BT.met.financial} badge="DEV ONLY" />
-          {expandedSections.has('development') && (
-            <div>
-              <InputField label="LAND COST" value={a?.development?.landCost != null ? fmt$(a.development.landCost) : '—'} source="user" />
-              <InputField label="HARD COST / SF" value={a?.development?.hardCostPerSF != null ? `$${a.development.hardCostPerSF}/SF` : '—'} source="user" />
-              <InputField label="HARD COST CONTINGENCY" value={a?.development?.hardCostContingency != null ? fmtPct(a.development.hardCostContingency * 100) : '—'} source="user" />
-              <InputField label="SOFT COST %" value={a?.development?.softCostPct != null ? fmtPct(a.development.softCostPct * 100) : '—'} source="user" />
-              <InputField label="DEVELOPER FEE" value={a?.development?.developerFee != null ? fmtPct(a.development.developerFee * 100) : '—'} source="user" />
-              <InputField label="CONSTRUCTION PERIOD" value={a?.development?.constructionPeriod != null ? `${a.development.constructionPeriod} months` : '—'} source="user" />
-              <InputField label="LEASE-UP VELOCITY" value={a?.development?.leaseUpVelocity != null ? `${a.development.leaseUpVelocity} units/mo` : '—'} source="user" />
-              <InputField label="CONSTRUCTION LOAN LTC" value={a?.development?.constructionLoanLTC != null ? fmtPct(a.development.constructionLoanLTC * 100) : '—'} source="user" />
-              <InputField label="CONSTRUCTION LOAN RATE" value={a?.development?.constructionLoanRate != null ? fmtPct(a.development.constructionLoanRate * 100) : '—'} source="user" />
-            </div>
-          )}
-        </>
-      )}
-
-      {showRedevelopment && (
-        <>
-          <SectionHeader sKey="renovation" label="RENOVATION INPUTS" color={BT.text.orange} badge="REDEV ONLY" />
-          {expandedSections.has('renovation') && (
-            <div>
-              <InputField label="RENOVATION BUDGET / UNIT" value="—" source="user" />
-              <InputField label="RENOVATION TIMELINE" value="—" source="user" />
-              <InputField label="LEASE-UP DURING RENO" value="—" source="user" />
-              <InputField label="UNIT DOWNTIME" value="—" source="user" />
-            </div>
-          )}
-        </>
-      )}
+      </div>
     </div>
   );
 }
