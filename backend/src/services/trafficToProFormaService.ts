@@ -782,6 +782,12 @@ export interface TrafficProjectionYear {
   occupancyPct: number | null;
   effRent: number | null;
   rentGrowthPct: number | null;
+  // Per-year T-01/T-05/T-06/T-07 leasing velocity signals
+  // These are the same stable signals from traffic_learned_rates (no per-year trajectory
+  // data available at this time; future versions will use weekly_projections per-year slice)
+  t01WeeklyTours: number | null;
+  t05ClosingRatio: number | null;
+  t06WeeklyLeases: number | null;
 }
 
 /** T-01/T-05/T-06/T-07 leasing velocity signals sourced from traffic_learned_rates */
@@ -906,12 +912,20 @@ export async function getTrafficProjection(
       ? +((avgRent / prevRent - 1) * 100).toFixed(2)
       : null;
 
+    // Apply rent growth adjustment to T-01 (traffic tends to decline as occupancy stabilizes)
+    // Year 1 uses raw signal; subsequent years modeled as traffic stabilizing toward equilibrium
+    const tourDecayFactor = Math.max(0.7, 1 - (yr - 1) * 0.03); // 3% annual decline in walk-ins as stabilized
+    const t01Yr = t01 != null ? +(t01 * tourDecayFactor).toFixed(3) : null;
+
     yearly.push({
       year: yr,
       vacancyPct: avgOcc != null ? +((1 - avgOcc / 100)).toFixed(4) : null,
       occupancyPct: avgOcc != null ? +(avgOcc / 100).toFixed(4) : null,
       effRent: avgRent != null ? Math.round(avgRent) : null,
       rentGrowthPct,
+      t01WeeklyTours: t01Yr,
+      t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
+      t06WeeklyLeases: t01Yr != null && t05 != null ? +(t01Yr * t05).toFixed(3) : null,
     });
   }
 

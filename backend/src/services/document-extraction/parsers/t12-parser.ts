@@ -567,6 +567,10 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
         insuranceMissing: !foundInsurance,
         categorizedRows,
         skippedSubtotalRows,
+        // Canonical GL mapping: broker line descriptions → canonical field metadata
+        // Each T12Month field corresponds to a CANONICAL_GL_MAP key for
+        // source/confidence/benchmarkPosition enrichment in the F9 Pro Forma layer
+        canonicalGlMap: CANONICAL_GL_MAP,
       },
       warnings,
       chartFormat,

@@ -1172,6 +1172,9 @@ export interface DealFinancials {
       occupancyPct: number | null;
       effRent: number | null;
       rentGrowthPct: number | null;
+      t01WeeklyTours: number | null;
+      t05ClosingRatio: number | null;
+      t06WeeklyLeases: number | null;
     }>;
     leaseUp: { weeksTo90: number | null; weeksTo93: number | null; weeksTo95: number | null } | null;
     calibrated: { vacancyPct: number | null; rentGrowthPct: number | null; exitCap: number | null; lastCalibrated: string | null };
@@ -1232,7 +1235,7 @@ export async function getDealFinancials(
     pool.query(
       `SELECT year1, total_units, updated_at,
               exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
-              interest_rate, ltc, avg_lease_term_months
+              interest_rate, ltc, avg_lease_term_months, per_year_overrides
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
