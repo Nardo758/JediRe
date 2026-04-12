@@ -19,15 +19,16 @@ function LVRow({ label, lv, format, fieldPath }: {
   format?: (v: number) => string;
   fieldPath?: string;
 }) {
-  if (!lv) return null;
   const markFieldReviewed = useDealStore(s => s.markFieldReviewed);
   const fmt = format ?? ((v: number) => v.toFixed(1));
 
   const handleView = useCallback(() => {
-    if (fieldPath && lv.alertLevel === 'info' && !lv.userReviewed) {
+    if (fieldPath && lv && lv.alertLevel === 'info' && !lv.userReviewed) {
       markFieldReviewed(fieldPath);
     }
-  }, [fieldPath, lv.alertLevel, lv.userReviewed, markFieldReviewed]);
+  }, [fieldPath, lv, markFieldReviewed]);
+
+  if (!lv) return null;
 
   return (
     <div
@@ -107,11 +108,12 @@ function EditableCell({ value, onCommit, format, color }: {
 function IdentityField({ label, fieldPath, value, onChange, options }: {
   label: string;
   fieldPath: string;
-  value: string;
+  value: string | null | undefined;
   onChange: (v: string) => void;
   options?: readonly string[];
 }) {
-  const isEmpty = !value || value === '';
+  const safeValue = value ?? '';
+  const isEmpty = safeValue === '';
   return (
     <div
       data-field-path={fieldPath}
@@ -128,7 +130,7 @@ function IdentityField({ label, fieldPath, value, onChange, options }: {
       </div>
       {options ? (
         <select
-          value={value}
+          value={safeValue}
           onChange={e => onChange(e.target.value)}
           style={{
             fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber,
@@ -142,7 +144,7 @@ function IdentityField({ label, fieldPath, value, onChange, options }: {
       ) : (
         <input
           type="text"
-          value={value}
+          value={safeValue}
           onChange={e => onChange(e.target.value)}
           placeholder="Required"
           style={{

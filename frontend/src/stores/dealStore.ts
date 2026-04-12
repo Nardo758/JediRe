@@ -551,8 +551,12 @@ export const useDealStore = create<DealStore>()(
         const resolvedType = resolveProjectType(rawType);
         console.log('[dealStore] projectType resolved to:', resolvedType);
 
+        const rawIdentity = data.identity ?? {};
         const normalizedIdentity = {
-          ...data.identity,
+          ...INITIAL_CONTEXT.identity,
+          ...Object.fromEntries(
+            Object.entries(rawIdentity).map(([k, v]) => [k, v ?? INITIAL_CONTEXT.identity[k as keyof typeof INITIAL_CONTEXT.identity] ?? ''])
+          ),
           mode: resolvedType,
         };
 
