@@ -13,13 +13,11 @@ import agentRoutes from './agent.routes';
 import llmRoutes from './llm.routes';
 import microsoftRoutes from './microsoft.routes';
 import preferencesRoutes from './preferences.routes';
-import extractionsRoutes from './extractions.routes';
 import emailExtractionsRoutes from './email-extractions.routes';
 import mapsRoutes from './maps.routes';
 import proposalsRoutes from './proposals.routes';
 import notificationsRoutes from './notifications.routes';
 import pipelineRoutes from './pipeline';
-import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
 import taskCompletionRoutes from './task-completion.routes';
 import emailRoutes from './email.routes';
@@ -51,7 +49,6 @@ import auditRoutes from './audit.routes';
 import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
 import kafkaEventsRoutes from './kafka-events.routes';
-import filesRoutes from './files.routes';
 import documentsFilesRoutes from './documentsFiles.routes';
 import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
 import mapAnnotationsRoutes from './mapAnnotations.routes';
@@ -60,7 +57,6 @@ import moduleLibrariesRoutes from './module-libraries.routes';
 import neighboringPropertiesRoutes from './neighboringProperties.routes';
 import qwenRoutes from './qwen.routes';
 import competitionRoutes from './competition.routes';
-import errorsRoutes from './errors.routes';
 import dataTrackerRoutes from './data-tracker.routes';
 import entitlementRoutes from './entitlement.routes';
 import regulatoryAlertRoutes from './regulatory-alert.routes';
@@ -128,9 +124,6 @@ export function setupRESTRoutes(app: Application): void {
   // Property Types routes (Deal Creation)
   app.use(`${API_PREFIX}/property-types`, propertyTypesRoutes);
 
-  // Property extraction routes
-  app.use(`${API_PREFIX}/extractions`, extractionsRoutes);
-
   // Email extraction routes (Property + News from emails)
   app.use(`${API_PREFIX}/email-extractions`, emailExtractionsRoutes);
 
@@ -172,9 +165,6 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data pipeline routes (Python integration)
   app.use(`${API_PREFIX}/pipeline`, pipelineRoutes);
-
-  // Market analysis routes (JEDI RE Phase 1 engines)
-  app.use(`${API_PREFIX}/analysis`, analysisRoutes);
 
   // Tasks routes (Global Tasks Module)
   app.use(`${API_PREFIX}/tasks`, tasksRoutes);
@@ -264,9 +254,6 @@ export function setupRESTRoutes(app: Application): void {
   // Due Diligence Checklists routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/dd-checklists`, ddChecklistsRoutes);
 
-  // File Management routes (Asset Map Intelligence - Note Attachments)
-  app.use(`${API_PREFIX}`, filesRoutes);
-
   // Unified Documents & Files routes (Deal-level file management)
   app.use(`${API_PREFIX}`, documentsFilesRoutes);
 
@@ -304,9 +291,6 @@ export function setupRESTRoutes(app: Application): void {
 
   // Deal Market Intelligence routes
   app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
-
-  // Error Logging routes (Frontend error tracking and monitoring)
-  app.use(`${API_PREFIX}/errors`, errorsRoutes);
 
   // Data Tracker routes (Admin data coverage & completeness tracking)
   app.use(`${API_PREFIX}/admin/data-tracker`, dataTrackerRoutes);
