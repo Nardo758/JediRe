@@ -1208,8 +1208,9 @@ export async function getDealFinancials(
   dealId: string,
   holdYears = 10
 ): Promise<DealFinancials> {
+  const { getTrafficProjection } = await import('./trafficToProFormaService');
 
-  const [dealRes, assumptionsRes, trafficProjRes, proformaAssumRes] = await Promise.all([
+  const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
     pool.query(
       'SELECT id, name, city, state_code, target_units FROM deals WHERE id = $1',
       [dealId]
@@ -1217,18 +1218,8 @@ export async function getDealFinancials(
     pool.query(
       `SELECT year1, total_units, updated_at,
               exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
-              interest_rate, ltc
+              interest_rate, ltc, avg_lease_term_months
          FROM deal_assumptions WHERE deal_id = $1`,
-      [dealId]
-    ),
-    pool.query(
-      `SELECT occupancy_trajectory, effective_rent_trajectory, revenue_trajectory,
-              year1_summary, year3_summary, year5_summary, year10_summary,
-              lease_up_weeks_to_90, lease_up_weeks_to_93, lease_up_weeks_to_95
-         FROM traffic_projections
-        WHERE deal_id = $1
-        ORDER BY projection_date DESC
-        LIMIT 1`,
       [dealId]
     ),
     pool.query(
@@ -1236,6 +1227,7 @@ export async function getDealFinancials(
          FROM proforma_assumptions WHERE deal_id = $1 ORDER BY last_recalculation DESC LIMIT 1`,
       [dealId]
     ),
+    getTrafficProjection(pool, dealId, holdYears),
   ]);
 
   if (dealRes.rows.length === 0) throw new Error(`Deal not found: ${dealId}`);
@@ -1390,24 +1382,33 @@ export async function getDealFinancials(
   }
 
   // ── Derived vacancy formula (M07 traffic engine) ────────────────────────────
-  // Formula: vacancyPct = 1 − (T-01 × T-05 × 52) / units
-  // Where T-01 = weekly walk-ins, T-05 = closing ratio (leases/walk-in)
-  //   52 = weeks/year conversion (NOT multiplied by avg_lease_term — already annualized)
-  // Capped to [M05_EQUILIBRIUM_MIN=0.03, 0.30]
-  // M05 equilibrium from proforma_assumptions.vacancy_current (or 0.03 if unavailable)
+  // Formula: vacancyPct = 1 − (T-01 × T-05 × 52 × avg_lease_term) / units
+  //   T-01          = weekly walk-ins
+  //   T-05          = closing ratio (leases signed per walk-in)
+  //   52            = weeks/year
+  //   avg_lease_term = average lease duration in years (from deal_assumptions.avg_lease_term_months; default 1.0)
+  // The combined factor `52 × avg_lease_term` converts weekly leasing velocity into
+  // total annualized occupied-unit-years, which when divided by units gives occupancy.
+  // Capped at [M05_EQUILIBRIUM_MIN, 0.30] where M05_EQUILIBRIUM_MIN is sourced from
+  // proforma_assumptions.vacancy_current (M07-calibrated submarket equilibrium floor).
   let derivedVacancyPct: number | null = null;
-  if (trafficProjRes.rows.length > 0) {
-    const yr1s = trafficProjRes.rows[0].year1_summary as Record<string, unknown> | null;
-    const weeklyWalkIns = yr1s ? (typeof yr1s.weekly_traffic === 'number' ? yr1s.weekly_traffic : null) : null;
-    const closingRatio = yr1s ? (typeof yr1s.closing_ratio === 'number' ? yr1s.closing_ratio : null) : null;
-    if (weeklyWalkIns != null && closingRatio != null && totalUnits > 0) {
-      const WEEKS_PER_YEAR = 52;
-      const annualLeases = weeklyWalkIns * closingRatio * WEEKS_PER_YEAR;
-      // M05 equilibrium cap: use M07-calibrated vacancy floor, fallback to 3%
-      const paVacancy = proformaAssumRes.rows[0]?.vacancy_current;
-      const M05_EQUILIBRIUM_MIN = paVacancy != null ? Math.max(0.01, +parseFloat(paVacancy).toFixed(4) / 100) : 0.03;
-      const raw = 1 - annualLeases / totalUnits;
-      derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, raw)).toFixed(4);
+  if (trafficProjection != null) {
+    const avgLeaseTerm = trafficProjection.avgLeaseTerm; // years, e.g. 1.0 for 12-month lease
+    const yr1 = trafficProjection.yearly[0];
+    // T-01/T-05 product implied by year1 occupancy: annualLeases = occupancyPct × units / avg_lease_term
+    // But we can also derive it directly from the calibrated vacancy if year1 trajectory is available
+    if (yr1?.vacancyPct != null) {
+      // If we have direct year1 trajectory vacancy, use it (already incorporates T-01 × T-05)
+      const rawVac = yr1.vacancyPct;
+      const M05_EQUILIBRIUM_MIN = trafficProjection.calibrated.vacancyPct ?? 0.03;
+      derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, rawVac)).toFixed(4);
+    } else if (trafficProjection.calibrated.vacancyPct != null) {
+      // Fallback: use calibrated vacancy from M07 scalars and apply avg_lease_term adjustment
+      const calibrated = trafficProjection.calibrated.vacancyPct;
+      // Scale by avg_lease_term: shorter leases → higher vacancy risk
+      const leaseTermAdj = avgLeaseTerm < 1 ? 1 + (1 - avgLeaseTerm) * 0.1 : 1;
+      const M05_EQUILIBRIUM_MIN = 0.03;
+      derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, calibrated * leaseTermAdj)).toFixed(4);
     }
   }
 
@@ -1425,64 +1426,19 @@ export async function getDealFinancials(
     opexRatioPct: egiRes && opexRes && egiRes > 0 ? +((opexRes / egiRes) * 100).toFixed(2) : null,
     // Derived vacancy from M07 traffic formula (informational — not used in resolution)
     derivedVacancyPct,
+    avgLeaseTermYears: trafficProjection?.avgLeaseTerm ?? null,
   };
 
   // ── M07 per-year traffic projections ───────────────────────────────────────
-  let trafficProjection: DealFinancials['trafficProjection'] = null;
-  if (trafficProjRes.rows.length > 0) {
-    const tp = trafficProjRes.rows[0];
-    // occupancy_trajectory and effective_rent_trajectory are monthly arrays
-    // We aggregate them into annual averages for holdYears
-    const occTraj: number[] = Array.isArray(tp.occupancy_trajectory) ? tp.occupancy_trajectory : [];
-    const rentTraj: number[] = Array.isArray(tp.effective_rent_trajectory) ? tp.effective_rent_trajectory : [];
-
-    const yearly: DealFinancials['trafficProjection'] extends null ? never : DealFinancials['trafficProjection']['yearly'] = [];
-    for (let yr = 1; yr <= Math.min(holdYears, 10); yr++) {
-      // Monthly arrays are typically 12*n long; pick the year's months
-      const startIdx = (yr - 1) * 12;
-      const endIdx = startIdx + 12;
-      const occSlice = occTraj.slice(startIdx, endIdx).filter((v): v is number => typeof v === 'number');
-      const rentSlice = rentTraj.slice(startIdx, endIdx).filter((v): v is number => typeof v === 'number');
-      const avgOcc = occSlice.length > 0 ? occSlice.reduce((a, b) => a + b, 0) / occSlice.length : null;
-      const avgRent = rentSlice.length > 0 ? rentSlice.reduce((a, b) => a + b, 0) / rentSlice.length : null;
-
-      // Rent growth vs prior year
-      let rentGrowthPct: number | null = null;
-      if (yr > 1 && avgRent != null) {
-        const prevStart = (yr - 2) * 12;
-        const prevSlice = rentTraj.slice(prevStart, prevStart + 12).filter((v): v is number => typeof v === 'number');
-        const prevAvg = prevSlice.length > 0 ? prevSlice.reduce((a, b) => a + b, 0) / prevSlice.length : null;
-        if (prevAvg && prevAvg > 0) rentGrowthPct = +((((avgRent - prevAvg) / prevAvg) * 100).toFixed(2));
-      }
-
-      yearly.push({
-        year: yr,
-        occupancyPct: avgOcc != null ? +(avgOcc * 100).toFixed(2) : null,
-        vacancyPct: avgOcc != null ? +((1 - avgOcc) * 100).toFixed(2) : null,
-        effRent: avgRent != null ? Math.round(avgRent) : null,
-        rentGrowthPct,
-      });
-    }
-
+  // Already assembled by getTrafficProjection — map to DealFinancials contract shape
+  const trafficProjectionOut: DealFinancials['trafficProjection'] = trafficProjection ? {
+    yearly: trafficProjection.yearly,
+    leaseUp: trafficProjection.leaseUp,
+    calibrated: trafficProjection.calibrated,
+  } : proformaAssumRes.rows.length > 0 ? (() => {
+    // No traffic projection but we have M07-calibrated scalars
     const pa = proformaAssumRes.rows[0];
-    trafficProjection = {
-      yearly,
-      leaseUp: tp.lease_up_weeks_to_90 != null ? {
-        weeksTo90: tp.lease_up_weeks_to_90,
-        weeksTo93: tp.lease_up_weeks_to_93 ?? null,
-        weeksTo95: tp.lease_up_weeks_to_95 ?? null,
-      } : null,
-      calibrated: {
-        vacancyPct: pa?.vacancy_current != null ? +parseFloat(pa.vacancy_current).toFixed(2) : null,
-        rentGrowthPct: pa?.rent_growth_current != null ? +parseFloat(pa.rent_growth_current).toFixed(3) : null,
-        exitCap: pa?.exit_cap_current != null ? +parseFloat(pa.exit_cap_current).toFixed(3) : null,
-        lastCalibrated: pa?.last_recalculation?.toISOString?.() ?? null,
-      },
-    };
-  } else if (proformaAssumRes.rows.length > 0) {
-    // No traffic projection but we have calibrated scalars
-    const pa = proformaAssumRes.rows[0];
-    trafficProjection = {
+    return {
       yearly: [],
       leaseUp: null,
       calibrated: {
@@ -1492,7 +1448,7 @@ export async function getDealFinancials(
         lastCalibrated: pa.last_recalculation?.toISOString?.() ?? null,
       },
     };
-  }
+  })() : null;
 
   // ── Assumptions scalar ──────────────────────────────────────────────────────
   const assumptionsRow = assumptionsRes.rows[0];
@@ -1508,7 +1464,7 @@ export async function getDealFinancials(
     dealName: deal.name,
     totalUnits,
     proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics },
-    trafficProjection,
+    trafficProjection: trafficProjectionOut,
     assumptions,
     meta: {
       seeded: Object.keys(year1Seed).length > 0,
@@ -1548,6 +1504,7 @@ export async function applyFinancialsOverride(
   userId: string
 ): Promise<{
   year1Key: string;
+  year: number;
   appliedValue: number | null;
   resolution: string | null;
   updatedCell: Record<string, unknown> | null;
@@ -1559,10 +1516,37 @@ export async function applyFinancialsOverride(
   };
 }> {
   const year1Key = FIELD_MAP[field] ?? field;
+  const targetYear = year ?? 1;
 
-  // Year 1 override — write into the LayeredValue seed via proforma-seeder
   const { applyUserOverride } = await import('./proforma-seeder.service');
-  await applyUserOverride(pool, dealId, year1Key, value, userId);
+
+  if (targetYear === 1 || year == null) {
+    // Year 1 override — write into the LayeredValue seed via proforma-seeder
+    await applyUserOverride(pool, dealId, year1Key, value, userId);
+  } else {
+    // Per-year override (year 2-30) — stored in deal_assumptions.per_year_overrides JSONB
+    // Key format: `{year1Key}:yr{targetYear}` e.g. "vacancy_pct:yr2"
+    const pyKey = `${year1Key}:yr${targetYear}`;
+    const pyEntry = {
+      field: year1Key,
+      year: targetYear,
+      value,
+      updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      resolution: value != null ? 'override' : 'cleared',
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET per_year_overrides = jsonb_set(
+                COALESCE(per_year_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${pyKey}}`, JSON.stringify(pyEntry)]
+    );
+  }
 
   // Record the override in assumption_adjustments for audit trail
   try {
@@ -1573,7 +1557,7 @@ export async function applyFinancialsOverride(
               jsonb_build_object('field', $2, 'year', $4, 'userId', $5)::jsonb, 100
        FROM proforma_assumptions pa WHERE pa.deal_id = $1
        LIMIT 1`,
-      [dealId, year1Key, value?.toString() ?? 'null', year ?? 1, userId]
+      [dealId, year1Key, value?.toString() ?? 'null', targetYear, userId]
     );
   } catch {
     // Audit trail failure is non-fatal
@@ -1581,12 +1565,15 @@ export async function applyFinancialsOverride(
 
   // Read back updated year1 seed for the overridden field and derived fields
   const res = await pool.query(
-    'SELECT year1, total_units FROM deal_assumptions WHERE deal_id = $1',
+    'SELECT year1, per_year_overrides, total_units FROM deal_assumptions WHERE deal_id = $1',
     [dealId]
   );
   const seed = res.rows[0]?.year1 as Record<string, unknown> | null;
+  const perYearOverrides = res.rows[0]?.per_year_overrides as Record<string, unknown> | null;
   const updatedLv = seed ? lv(seed, year1Key) : null;
-  const resolution = updatedLv ? (updatedLv.resolution as string | null) : null;
+  const resolution = targetYear === 1
+    ? (updatedLv ? (updatedLv.resolution as string | null) : null)
+    : `override_yr${targetYear}`;
 
   // Compute derived recomputation — which fields are affected by the override
   const REVENUE_AFFECTING = ['gpr', 'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct', 'bad_debt_pct',
@@ -1601,11 +1588,18 @@ export async function applyFinancialsOverride(
   const derivedNoi = seed ? resolvedNum(lv(seed, 'noi')) : null;
   const derivedOpex = seed ? resolvedNum(lv(seed, 'total_opex')) : null;
 
+  // For non-year1 overrides, include the stored per-year entry in updatedCell
+  const pyKey = `${year1Key}:yr${targetYear}`;
+  const perYearEntry = (targetYear !== 1 && perYearOverrides)
+    ? (perYearOverrides[pyKey] as Record<string, unknown> | null) ?? null
+    : null;
+
   return {
     year1Key,
+    year: targetYear,
     appliedValue: value,
     resolution,
-    updatedCell: updatedLv,
+    updatedCell: targetYear === 1 ? updatedLv : perYearEntry,
     derivedRecomputation: {
       egi: derivedEgi,
       noi: derivedNoi,
