@@ -367,6 +367,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const [columnConfigs, setColumnConfigs] = useState<Record<string, ColumnConfig>>({});
   const [configPopoverCol, setConfigPopoverCol] = useState<string | null>(null);
   const [catalogMetricsMap, setCatalogMetricsMap] = useState<Map<string, CatalogMetric>>(new Map());
+  const [showManageModal, setShowManageModal] = useState(false);
 
   const activeColumnConfig = colPrefsMap[safeTab]?.columnConfig;
   useEffect(() => {
@@ -767,8 +768,6 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     };
     return cellMap[colId] ?? <span style={{ color: C.muted }}>—</span>;
   };
-
-  const [showManageModal, setShowManageModal] = useState(false);
 
   const handleSaveTemplate = async () => {
     if (!saveTemplateName.trim()) return;
