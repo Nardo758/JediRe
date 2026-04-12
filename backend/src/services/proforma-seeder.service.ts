@@ -89,10 +89,10 @@ function resolve(
 
   // Walk priority list
   for (const src of options.priority) {
-    const v = (lv as any)[src];
+    const v = (lv as unknown as Record<string, number | null>)[src];
     if (v != null && v !== 0) {
       lv.resolved = v;
-      lv.resolution = src;
+      lv.resolution = src as LayeredValue<number>['resolution'];
       return lv;
     }
   }
@@ -473,8 +473,8 @@ export async function seedProFormaYear1(
 
     // Surface warnings from any layered value
     for (const [k, v] of Object.entries(seed)) {
-      if (v && typeof v === 'object' && (v as any).warning) {
-        warnings.push(`${k}: ${(v as any).warning}`);
+      if (v && typeof v === 'object' && 'warning' in v && (v as Record<string, unknown>).warning) {
+        warnings.push(`${k}: ${(v as Record<string, unknown>).warning}`);
       }
     }
 
@@ -582,13 +582,17 @@ export async function applyUserOverride(
 /**
  * Recompute derived layered values in place. Called after any override.
  */
-function recomputeDerived(seed: any): void {
-  const gpr = seed.gpr?.resolved ?? 0;
-  const ltl = seed.loss_to_lease_pct?.resolved ?? 0;
-  const vac = seed.vacancy_pct?.resolved ?? 0;
-  const conc = seed.concessions_pct?.resolved ?? 0;
-  const nru = seed.non_revenue_units_pct?.resolved ?? 0;
-  const bd = seed.bad_debt_pct?.resolved ?? 0;
+function r(field: LayeredValue<number> | undefined): number {
+  return field?.resolved ?? 0;
+}
+
+function recomputeDerived(seed: ProFormaYear1Seed): void {
+  const gpr = r(seed.gpr);
+  const ltl = r(seed.loss_to_lease_pct);
+  const vac = r(seed.vacancy_pct);
+  const conc = r(seed.concessions_pct);
+  const nru = r(seed.non_revenue_units_pct);
+  const bd = r(seed.bad_debt_pct);
   const unitCount = seed._unit_count ?? 1;
   const otherIncome = seed.other_income_per_unit?.resolved != null
     ? seed.other_income_per_unit.resolved * unitCount
@@ -597,34 +601,27 @@ function recomputeDerived(seed: any): void {
   const nri = gpr - gpr * ltl - gpr * vac - gpr * conc - gpr * nru;
   const egi_pre_bd = nri + otherIncome;
   const egi = egi_pre_bd * (1 - bd);
-  const mgmtPct = seed.management_fee_pct?.resolved ?? 0;
+  const mgmtPct = r(seed.management_fee_pct);
   const mgmtDollar = egi * mgmtPct;
 
   const opex =
-    (seed.payroll?.resolved ?? 0) + (seed.repairs_maintenance?.resolved ?? 0) +
-    (seed.turnover?.resolved ?? 0) + (seed.amenities?.resolved ?? 0) +
-    (seed.contract_services?.resolved ?? 0) + (seed.marketing?.resolved ?? 0) +
-    (seed.office?.resolved ?? 0) + (seed.g_and_a?.resolved ?? 0) +
-    (seed.hoa_dues?.resolved ?? 0) + (seed.utilities?.resolved ?? 0) +
-    mgmtDollar + (seed.real_estate_tax?.resolved ?? 0) +
-    (seed.personal_property_tax?.resolved ?? 0) + (seed.insurance?.resolved ?? 0);
+    r(seed.payroll) + r(seed.repairs_maintenance) +
+    r(seed.turnover) + r(seed.amenities) +
+    r(seed.contract_services) + r(seed.marketing) +
+    r(seed.office) + r(seed.g_and_a) +
+    r(seed.hoa_dues) + r(seed.utilities) +
+    mgmtDollar + r(seed.real_estate_tax) +
+    r(seed.personal_property_tax) + r(seed.insurance);
 
-  if (seed.net_rental_income) {
-    seed.net_rental_income.resolved = nri;
-    seed.net_rental_income.updated_at = new Date().toISOString();
-  }
-  if (seed.egi) {
-    seed.egi.resolved = egi;
-    seed.egi.updated_at = new Date().toISOString();
-  }
-  if (seed.total_opex) {
-    seed.total_opex.resolved = opex;
-    seed.total_opex.updated_at = new Date().toISOString();
-  }
-  if (seed.noi) {
-    seed.noi.resolved = egi - opex;
-    seed.noi.updated_at = new Date().toISOString();
-  }
+  const ts = new Date().toISOString();
+  seed.net_rental_income.resolved = nri;
+  seed.net_rental_income.updated_at = ts;
+  seed.egi.resolved = egi;
+  seed.egi.updated_at = ts;
+  seed.total_opex.resolved = opex;
+  seed.total_opex.updated_at = ts;
+  seed.noi.resolved = egi - opex;
+  seed.noi.updated_at = ts;
 }
 
 // ============================================================================

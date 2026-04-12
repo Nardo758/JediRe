@@ -613,8 +613,12 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
   switch (result.documentType) {
     case 'T12': {
       const t12 = result.data as T12Data;
-      const ext = (result as any).chartFormat;
-      const summary = result.summary as any;
+      const ext = result.chartFormat;
+      const s = result.summary;
+      const n = (key: string, fallback = 0): number => {
+        const v = s[key];
+        return typeof v === 'number' ? v : fallback;
+      };
 
       capsulePayload.extraction_t12 = {
         source: 'platform',
@@ -624,49 +628,49 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
         period_start: t12.summary.periodStart,
         period_end: t12.summary.periodEnd,
         months_captured: t12.months.length,
-        gpr: summary.gpr ?? t12.summary.t12Revenue ?? 0,
-        loss_to_lease: summary.lossToLease ?? 0,
-        loss_to_lease_pct: summary.gpr > 0 ? Math.abs(summary.lossToLease ?? 0) / summary.gpr : 0,
+        gpr: n('gpr') || t12.summary.t12Revenue || 0,
+        loss_to_lease: n('lossToLease'),
+        loss_to_lease_pct: n('gpr') > 0 ? Math.abs(n('lossToLease')) / n('gpr') : 0,
         concessions: {
-          one_time: summary.concessionsOneTime ?? 0,
-          renewal: summary.concessionsRenewal ?? 0,
-          total: summary.concessions ?? 0,
+          one_time: n('concessionsOneTime'),
+          renewal: n('concessionsRenewal'),
+          total: n('concessions'),
         },
-        vacancy_loss: summary.vacancyLoss ?? 0,
-        vacancy_loss_pct: summary.gpr > 0 ? Math.abs(summary.vacancyLoss ?? 0) / summary.gpr : 0,
-        non_revenue_units: summary.nonRevenueUnits ?? 0,
+        vacancy_loss: n('vacancyLoss'),
+        vacancy_loss_pct: n('gpr') > 0 ? Math.abs(n('vacancyLoss')) / n('gpr') : 0,
+        non_revenue_units: n('nonRevenueUnits'),
         bad_debt: {
-          gross: summary.badDebtGross ?? summary.badDebt ?? 0,
-          recovery: summary.badDebtRecovery ?? 0,
-          net: summary.badDebt ?? 0,
+          gross: n('badDebtGross') || n('badDebt'),
+          recovery: n('badDebtRecovery'),
+          net: n('badDebt'),
         },
-        net_rental_income: summary.netRentalIncome ?? 0,
+        net_rental_income: n('netRentalIncome'),
         other_income: {
-          total: (summary.t12Revenue ?? 0) - (summary.netRentalIncome ?? 0),
+          total: n('t12Revenue') - n('netRentalIncome'),
           breakdown: {},
         },
-        egi: summary.t12Revenue ?? 0,
+        egi: n('t12Revenue'),
         opex: {
-          payroll: summary.payroll ?? 0,
-          r_and_m: summary.repairsMaintenance ?? 0,
-          turnover: summary.turnover ?? summary.turnoverCosts ?? 0,
-          amenities: summary.amenities ?? 0,
-          contract: summary.contractServices ?? 0,
-          marketing: summary.marketing ?? 0,
-          office: summary.office ?? 0,
-          g_and_a: summary.adminGeneral ?? 0,
-          hoa_dues: summary.hoaDues ?? 0,
-          utilities: summary.utilities ?? 0,
-          mgmt_fee: summary.managementFee ?? 0,
-          real_estate_tax: summary.propertyTax ?? 0,
-          personal_property_tax: summary.personalPropertyTax ?? 0,
-          insurance: summary.insurance ?? null,
-          total: summary.t12OpEx ?? 0,
+          payroll: n('payroll'),
+          r_and_m: n('repairsMaintenance'),
+          turnover: n('turnover') || n('turnoverCosts'),
+          amenities: n('amenities'),
+          contract: n('contractServices'),
+          marketing: n('marketing'),
+          office: n('office'),
+          g_and_a: n('adminGeneral'),
+          hoa_dues: n('hoaDues'),
+          utilities: n('utilities'),
+          mgmt_fee: n('managementFee'),
+          real_estate_tax: n('propertyTax'),
+          personal_property_tax: n('personalPropertyTax'),
+          insurance: n('insurance') || null,
+          total: n('t12OpEx'),
         },
-        noi: summary.t12NOI ?? 0,
-        expense_ratio: summary.expenseRatio ?? 0,
-        noi_margin: summary.noiMargin ?? 0,
-        mgmt_fee_pct_of_egi: summary.mgmtFeePctOfEgi ?? 0,
+        noi: n('t12NOI'),
+        expense_ratio: n('expenseRatio'),
+        noi_margin: n('noiMargin'),
+        mgmt_fee_pct_of_egi: n('mgmtFeePctOfEgi'),
         warnings: result.warnings,
       };
 
@@ -705,7 +709,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
     }
     case 'RENT_ROLL': {
       const rr = result.data as RentRollData;
-      const extras = (result as any).capsuleExtras ?? {};
+      const extras = result.capsuleExtras ?? {};
 
       capsulePayload.extraction_rent_roll = {
         source: 'platform',
@@ -828,7 +832,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
         taxYear: tax.taxYear,
         appealStatus: tax.appealStatus,
         annual_tax_current: tax.totalAnnualTax,
-        annual_tax_unappealed: tax.assessedValueAppeal != null ? tax.totalAnnualTax : tax.totalAnnualTax,
+        annual_tax_unappealed: tax.unappealedTaxAmount ?? tax.totalAnnualTax,
         appeal_status: tax.appealStatus ?? 'none',
         owner_lp: tax.ownerName ?? null,
       };

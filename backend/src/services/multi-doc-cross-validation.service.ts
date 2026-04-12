@@ -245,7 +245,7 @@ async function persistAlert(pool: Pool, dealId: string, variance: CrossDocVarian
   await pool.query(
     `INSERT INTO platform_intel (deal_id, alert_type, severity, title, detail, source_document_type, source_ref, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW(), NOW())
-     ON CONFLICT (deal_id, alert_type) WHERE alert_type IS NOT NULL
+     ON CONFLICT (deal_id, alert_type) WHERE alert_type LIKE 'cross_doc_%'
      DO UPDATE SET
        severity = EXCLUDED.severity,
        title = EXCLUDED.title,

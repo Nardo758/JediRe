@@ -15,14 +15,18 @@ export interface ClassificationResult {
   hints: string[];
 }
 
+export type ExtractionData = T12Data | RentRollData | AgedReceivablesData | BoxScoreData | ConcessionBurnoffData | LTOData | TaxBillData | OtherIncomeData;
+
 export interface ExtractionResult {
   documentType: DocumentType;
   success: boolean;
   error?: string;
-  data: any;
-  summary: Record<string, any>;
+  data: ExtractionData | null;
+  summary: Record<string, unknown>;
   warnings: string[];
   documentId?: string;
+  chartFormat?: ChartFormat;
+  capsuleExtras?: Record<string, unknown>;
 }
 
 export interface T12Data {
@@ -254,6 +258,8 @@ export interface TaxBillData {
   ownerAddress: string | null;
   appealStatus: string | null;
   taxYear: number | null;
+  unappealedTaxAmount?: number | null;
+  appealAssessment?: number | null;
   authorities: Array<{
     name: string;
     rate?: number;

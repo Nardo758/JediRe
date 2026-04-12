@@ -17,7 +17,7 @@ import { TaxBillData, ExtractionResult } from '../types';
 //   - Generic single-page county PDFs
 // ============================================================================
 
-function parseNum(val: any): number | null {
+function parseNum(val: string | number | null | undefined): number | null {
   if (val == null || val === '') return null;
   if (typeof val === 'number') return isNaN(val) ? null : val;
   let s = String(val).trim().replace(/[$,%\s]/g, '');
@@ -340,7 +340,7 @@ export function parseTaxBill(buffer: Buffer, filename: string): ExtractionResult
       appealStatus: data.appealStatus,
       assessedValue: data.assessedValue,
       taxYear: data.taxYear,
-    } as any,
+    },
     warnings,
   };
 }
@@ -392,7 +392,7 @@ export async function parseTaxBillAsync(buffer: Buffer, filename: string): Promi
       priorYearBalance: data.priorYearBalance,
       totalPayoff: data.totalPayoff,
       authorityCount: data.authorities?.length ?? 0,
-    } as any,
+    },
     warnings,
   };
 }

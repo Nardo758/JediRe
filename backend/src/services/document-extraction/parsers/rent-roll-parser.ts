@@ -262,7 +262,7 @@ function inferBedrooms(unitType: string): string {
   return 'Unknown';
 }
 
-export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResult & { layout?: RentRollLayout; capsuleExtras?: any } {
+export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResult & { layout?: RentRollLayout; capsuleExtras?: Record<string, unknown> } {
   const warnings: string[] = [];
 
   try {
@@ -368,7 +368,7 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
     }
 
     // Group charges by income category
-    const otherIncomeMonthly = {
+    const otherIncomeMonthly: Record<string, number> = {
       parking: 0, pet_rent: 0, storage: 0, rubs: 0,
       fees: 0, insurance_admin: 0, concessions_other: 0, other: 0,
     };
@@ -376,7 +376,7 @@ export function parseRentRoll(buffer: Buffer, filename: string): ExtractionResul
       if (code === 'rent') continue;
       const cat = CHARGE_CODE_CATEGORY[code];
       if (cat === 'concessions') otherIncomeMonthly.concessions_other += amt;
-      else if (cat && cat !== 'rent') (otherIncomeMonthly as any)[cat] += amt;
+      else if (cat && cat !== 'rent') otherIncomeMonthly[cat] = (otherIncomeMonthly[cat] ?? 0) + amt;
       else otherIncomeMonthly.other += amt;
     }
 

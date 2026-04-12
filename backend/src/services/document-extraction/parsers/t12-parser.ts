@@ -28,7 +28,7 @@ const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'se
  */
 interface CategoryRule {
   pattern: RegExp;
-  field: keyof T12Month | 'hoaDues' | 'amenities' | 'turnover' | 'concessionsOneTime' | 'concessionsRenewal' | 'badDebtRecovery' | 'nonRevenueUnits' | 'skip' | 'isSubtotal';
+  field: keyof T12Month | 'hoaDues' | 'amenities' | 'turnover' | 'concessionsOneTime' | 'concessionsRenewal' | 'badDebtRecovery' | 'nonRevenueUnits' | 'skip' | 'isSubtotal' | 'isHeader';
   isSubtotal?: boolean;
   isHeader?: boolean;
 }
@@ -55,12 +55,12 @@ const RULES: CategoryRule[] = [
   { pattern: /^total\s+expense/i, field: 'isSubtotal', isSubtotal: true },
   { pattern: /^net\s+operating\s+income\s*$/i, field: 'noi', isSubtotal: true },
   { pattern: /^potential\s+rent\s*$/i, field: 'isSubtotal', isSubtotal: true },
-  { pattern: /^(income|expenses?|revenue)\s*$/i, field: 'isHeader' as any, isHeader: true },
-  { pattern: /^rental\s+income\s*-?\s*residential\s*$/i, field: 'isHeader' as any, isHeader: true },
-  { pattern: /^other\s+rental\s+income/i, field: 'isHeader' as any, isHeader: true },
-  { pattern: /^other\s+income\s*-?\s*residential\s*$/i, field: 'isHeader' as any, isHeader: true },
-  { pattern: /^payroll\s*&?\s*benefits\s*$/i, field: 'isHeader' as any, isHeader: true },
-  { pattern: /^general\s+maintenance\s+expense\s*$/i, field: 'isHeader' as any, isHeader: true },
+  { pattern: /^(income|expenses?|revenue)\s*$/i, field: 'isHeader', isHeader: true },
+  { pattern: /^rental\s+income\s*-?\s*residential\s*$/i, field: 'isHeader', isHeader: true },
+  { pattern: /^other\s+rental\s+income/i, field: 'isHeader', isHeader: true },
+  { pattern: /^other\s+income\s*-?\s*residential\s*$/i, field: 'isHeader', isHeader: true },
+  { pattern: /^payroll\s*&?\s*benefits\s*$/i, field: 'isHeader', isHeader: true },
+  { pattern: /^general\s+maintenance\s+expense\s*$/i, field: 'isHeader', isHeader: true },
   // NOTE: We intentionally do NOT have text-based header rules for category-level
   // headers like "Management Fees" or "Taxes" because Yardi reuses the SAME
   // description text for the section header AND the underlying line item.
@@ -276,8 +276,8 @@ function categorize(desc: string, glCode: string | null): {
  */
 function addToMonth(month: ExtendedT12Month, field: string, value: number): void {
   if (!(field in month)) return;
-  const current = (month as any)[field];
-  (month as any)[field] = (current ?? 0) + value;
+  const rec = month as unknown as Record<string, number | null>;
+  rec[field] = (rec[field] ?? 0) + value;
 }
 
 export function parseT12(buffer: Buffer, filename: string): ExtractionResult & { chartFormat?: ChartFormat } {
@@ -528,7 +528,7 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
         insuranceMissing: !foundInsurance,
         categorizedRows,
         skippedSubtotalRows,
-      } as any,
+      },
       warnings,
       chartFormat,
     };
