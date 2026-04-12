@@ -136,23 +136,26 @@ export async function routeExtractionResult(
   }
 
   let proformaSeeded = false;
-  try {
-    const seedResult = await seedProFormaYear1(pool, ctx.dealId);
-    proformaSeeded = seedResult.seeded;
-    alerts.push(...seedResult.warnings.map(w => `[seeder] ${w}`));
-  } catch (err) {
-    alerts.push(`[seeder] failed: ${err instanceof Error ? err.message : 'unknown'}`);
-  }
-
   let crossValidationVariances = 0;
-  try {
-    const xValResult = await runCrossValidation(pool, ctx.dealId);
-    crossValidationVariances = xValResult.variancesFound;
-    if (xValResult.variancesFound > 0) {
-      alerts.push(`[xval] ${xValResult.variancesFound} cross-doc variance(s) flagged: ${xValResult.alertsBySeverity.critical} critical, ${xValResult.alertsBySeverity.warning} warning`);
+
+  if (capsuleUpdated) {
+    try {
+      const seedResult = await seedProFormaYear1(pool, ctx.dealId);
+      proformaSeeded = seedResult.seeded;
+      alerts.push(...seedResult.warnings.map(w => `[seeder] ${w}`));
+    } catch (err) {
+      alerts.push(`[seeder] failed: ${err instanceof Error ? err.message : 'unknown'}`);
     }
-  } catch (err) {
-    alerts.push(`[xval] failed: ${err instanceof Error ? err.message : 'unknown'}`);
+
+    try {
+      const xValResult = await runCrossValidation(pool, ctx.dealId);
+      crossValidationVariances = xValResult.variancesFound;
+      if (xValResult.variancesFound > 0) {
+        alerts.push(`[xval] ${xValResult.variancesFound} cross-doc variance(s) flagged: ${xValResult.alertsBySeverity.critical} critical, ${xValResult.alertsBySeverity.warning} warning`);
+      }
+    } catch (err) {
+      alerts.push(`[xval] failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
   }
 
   return { rowsInserted, capsuleUpdated, libraryUpdated, proformaSeeded, crossValidationVariances, alerts };

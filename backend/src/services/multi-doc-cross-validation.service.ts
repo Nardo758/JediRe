@@ -295,3 +295,5 @@ export async function runCrossValidation(pool: Pool, dealId: string): Promise<{
     variances,
   };
 }
+
+export const runCrossDocValidation = runCrossValidation;
