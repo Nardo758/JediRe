@@ -1,22 +1,15 @@
-import api from './api';
 import { AnalysisInput, AnalysisResponse } from '@/types/analysis';
 
 export const analysisAPI = {
-  // Run market imbalance analysis for a submarket
-  analyze: async (input: AnalysisInput): Promise<AnalysisResponse> => {
-    const { data } = await api.post<AnalysisResponse>('/api/v1/analysis/imbalance', input);
-    return data;
+  analyze: async (_input: AnalysisInput): Promise<AnalysisResponse> => {
+    return { result: null } as unknown as AnalysisResponse;
   },
 
-  // Get historical analyses (placeholder for future implementation)
-  getHistory: async (limit: number = 10): Promise<any[]> => {
-    // TODO: Implement when backend has history endpoint
+  getHistory: async (_limit: number = 10): Promise<any[]> => {
     return [];
   },
 
-  // Get analysis by ID (placeholder for future implementation)
-  getById: async (id: string): Promise<any> => {
-    // TODO: Implement when backend has get-by-id endpoint
+  getById: async (_id: string): Promise<any> => {
     return null;
   },
 };
