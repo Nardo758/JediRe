@@ -53,7 +53,7 @@ export const FileUploaderExample: React.FC = () => {
   const handleDeleteAttachment = async (filename: string, size: number) => {
     try {
       const response = await fetch(
-        `/api/v1/deals/files/${filename}`,
+        `/api/v1/files/notes/${assetId}/${noteId}/${filename}`,
         {
           method: 'DELETE',
           credentials: 'include',

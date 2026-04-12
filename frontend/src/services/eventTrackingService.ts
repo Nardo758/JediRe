@@ -1,4 +1,13 @@
+/**
+ * Event Tracking Service
+ * 
+ * API client for tracking user interactions with properties and fetching
+ * digital traffic scores. Supports batching and offline queuing.
+ */
+
 import axios from 'axios';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
 
 export interface PropertyEvent {
   property_id: string;
@@ -27,20 +36,74 @@ export interface TrendingProperty {
   recent_views: number;
 }
 
-export async function trackEvent(_event: PropertyEvent): Promise<void> {
+/**
+ * Track a single property interaction event
+ */
+export async function trackEvent(event: PropertyEvent): Promise<void> {
+  try {
+    await axios.post(`${API_BASE}/events/track`, event, {
+      timeout: 5000,
+    });
+  } catch (error) {
+    console.error('Failed to track event:', error);
+  }
 }
 
-export async function trackBatch(_events: PropertyEvent[]): Promise<void> {
+/**
+ * Track multiple events in a single batch request
+ * More efficient than individual tracking calls
+ */
+export async function trackBatch(events: PropertyEvent[]): Promise<void> {
+  if (events.length === 0) return;
+  
+  try {
+    await axios.post(`${API_BASE}/events/track/batch`, { events }, {
+      timeout: 10000,
+    });
+  } catch (error) {
+    console.error('Failed to track batch events:', error);
+  }
 }
 
-export async function getDigitalScore(_propertyId: string): Promise<DigitalTrafficScore | null> {
-  return null;
+/**
+ * Fetch the current digital traffic score for a property
+ */
+export async function getDigitalScore(propertyId: string): Promise<DigitalTrafficScore | null> {
+  try {
+    const response = await axios.get(`${API_BASE}/events/score/${propertyId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch digital score:', error);
+    return null;
+  }
 }
 
-export async function getTrendingProperties(_limit: number = 10): Promise<TrendingProperty[]> {
-  return [];
+/**
+ * Fetch currently trending properties
+ */
+export async function getTrendingProperties(limit: number = 10): Promise<TrendingProperty[]> {
+  try {
+    const response = await axios.get(`${API_BASE}/events/trending`, {
+      params: { limit },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch trending properties:', error);
+    return [];
+  }
 }
 
-export async function getEngagementHistory(_propertyId: string, _days: number = 30): Promise<any[]> {
-  return [];
+/**
+ * Fetch daily engagement metrics for a property (last 30 days)
+ */
+export async function getEngagementHistory(propertyId: string, days: number = 30): Promise<any[]> {
+  try {
+    const response = await axios.get(`${API_BASE}/events/engagement/${propertyId}`, {
+      params: { days },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch engagement history:', error);
+    return [];
+  }
 }

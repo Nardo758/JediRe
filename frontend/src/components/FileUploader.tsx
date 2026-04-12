@@ -250,7 +250,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     });
 
     try {
-      const response = await fetch('/api/v1/deals/files', {
+      const response = await fetch('/api/v1/upload/note-attachment', {
         method: 'POST',
         body: formData,
         credentials: 'include',
