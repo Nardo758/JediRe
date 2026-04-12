@@ -14,6 +14,7 @@ import {
   ComputedReturns,
   DEFAULT_ASSUMPTIONS 
 } from '../../types/deal-assumptions.types';
+import { seedProFormaYear1, applyUserOverride } from '../../services/proforma-seeder.service';
 
 const router = Router();
 const pool = getPool();
@@ -326,6 +327,366 @@ router.get('/:dealId/full-context', requireAuth, async (req: AuthenticatedReques
     res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * GET /:dealId/financials
+ * 
+ * Returns the full DealFinancials contract:
+ *   { proforma, trafficProjection, assumptions }
+ * 
+ * Proforma section is built from deal_assumptions.year1 (LayeredValue seed).
+ * Traffic section is pulled from the M07 handoff for the linked property (non-blocking).
+ * Integrity checks are derived server-side from the resolved values.
+ * 
+ * Query params:
+ *   seed=true  — (re)run seedProFormaYear1 before returning (default: false)
+ */
+router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const runSeed = req.query.seed === 'true';
+
+    if (runSeed) {
+      await seedProFormaYear1(pool, dealId);
+    }
+
+    const [assumptionsResult, dealResult, propResult] = await Promise.all([
+      pool.query('SELECT * FROM deal_assumptions WHERE deal_id = $1', [dealId]),
+      pool.query('SELECT id, name, city, state_code, target_units, budget FROM deals WHERE id = $1', [dealId]),
+      pool.query(
+        `SELECT dp.property_id FROM deal_properties dp WHERE dp.deal_id = $1 LIMIT 1`,
+        [dealId]
+      ),
+    ]);
+
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const deal = dealResult.rows[0];
+    const assumptionsRow = assumptionsResult.rows[0] ?? null;
+    const year1Seed = assumptionsRow?.year1 ?? null;
+
+    // Build operating statement from year1 seed
+    const operatingStatement = year1Seed
+      ? buildOperatingStatement(year1Seed, deal.target_units ?? 0)
+      : null;
+
+    // Build integrity checks from resolved values
+    const integrityChecks = operatingStatement
+      ? computeIntegrityChecks(operatingStatement, year1Seed)
+      : [];
+
+    // Non-blocking traffic fetch from proforma_assumptions (pre-computed by M07 engine)
+    let trafficProjection: Record<string, unknown> | null = null;
+    try {
+      const trafficResult = await pool.query(
+        `SELECT vacancy_current, rent_growth_current, absorption_current, exit_cap_current,
+                last_recalculation, data_confidence, traffic_source
+           FROM proforma_assumptions
+          WHERE deal_id = $1
+          ORDER BY last_recalculation DESC
+          LIMIT 1`,
+        [dealId]
+      );
+      if (trafficResult.rows.length > 0) {
+        const tr = trafficResult.rows[0];
+        trafficProjection = {
+          vacancyPct: tr.vacancy_current,
+          rentGrowthPct: tr.rent_growth_current,
+          absorptionRate: tr.absorption_current,
+          exitCap: tr.exit_cap_current,
+          lastCalibrated: tr.last_recalculation,
+          confidence: tr.data_confidence,
+          source: tr.traffic_source,
+        };
+      }
+    } catch (trafficErr) {
+      logger.warn('Traffic fetch non-fatal for financials (table may not exist)', {
+        dealId, error: (trafficErr as Error).message,
+      });
+    }
+
+    // Assumptions section — scalar fields + year1 seed rows
+    const assumptions = assumptionsRow
+      ? {
+          hold: {
+            holdPeriodYears: assumptionsRow.hold_period_years ?? 10,
+            exitCap: assumptionsRow.exit_cap,
+            interestRate: assumptionsRow.interest_rate,
+            ltc: assumptionsRow.ltc,
+            rentGrowthYr1: assumptionsRow.rent_growth_yr1,
+            rentGrowthStabilized: assumptionsRow.rent_growth_stabilized,
+          },
+          rows: year1Seed ? Object.entries(year1Seed as Record<string, unknown>)
+            .filter(([k]) => !k.startsWith('_') && !k.startsWith('source'))
+            .map(([k, v]) => ({ field: k, ...(v as Record<string, unknown>) })) : [],
+          gprDecomposition: operatingStatement?.gprDecomposition ?? null,
+          narrative: buildNarrative(integrityChecks, operatingStatement),
+        }
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        dealId,
+        dealName: deal.name,
+        totalUnits: deal.target_units,
+        proforma: {
+          operatingStatement,
+          unitEconomics: operatingStatement
+            ? buildUnitEconomics(operatingStatement, deal.target_units ?? 0)
+            : null,
+          integrityChecks,
+        },
+        trafficProjection,
+        assumptions,
+        meta: {
+          seeded: !!year1Seed,
+          seedRunAt: assumptionsRow?.source_date ?? null,
+          updatedAt: assumptionsRow?.updated_at ?? null,
+        },
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error fetching deal financials:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /:dealId/financials/override
+ * 
+ * Apply a user override to a single field in the year1 seed.
+ * Triggers server-side re-derivation of NOI, EGI, Total OpEx.
+ * 
+ * Body: { fieldPath: string, value: number | null }
+ *   fieldPath — dot-path into year1 seed, e.g. "vacancy_pct" or "gpr"
+ *   value     — new override value (number), or null to clear override
+ */
+router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { fieldPath, value } = req.body as { fieldPath: string; value: number | null };
+    const userId = req.user?.userId ?? 'unknown';
+
+    if (!fieldPath) {
+      return res.status(400).json({ error: 'fieldPath is required' });
+    }
+    if (value !== null && value !== undefined && typeof value !== 'number') {
+      return res.status(400).json({ error: 'value must be a number or null' });
+    }
+
+    await applyUserOverride(pool, dealId, fieldPath, value ?? null, userId);
+
+    const result = await pool.query(
+      'SELECT year1, updated_at FROM deal_assumptions WHERE deal_id = $1',
+      [dealId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        dealId,
+        fieldPath,
+        appliedValue: value ?? null,
+        year1: result.rows[0]?.year1 ?? null,
+        updatedAt: result.rows[0]?.updated_at ?? null,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error applying financials override:', error);
+    const status = error.message?.includes('No year1 seed') ? 422
+      : error.message?.includes('not a layered value') ? 400 : 500;
+    res.status(status).json({ error: error.message });
+  }
+});
+
+// ─── Internal helpers ────────────────────────────────────────────────────────
+
+interface OperatingStatement {
+  gpr: number | null;
+  lossToLease: number | null;
+  vacancyPct: number | null;
+  concessionsPct: number | null;
+  badDebtPct: number | null;
+  nonRevenueUnitsPct: number | null;
+  otherIncomePerUnit: number | null;
+  netRentalIncome: number | null;
+  egi: number | null;
+  opex: {
+    payroll: number | null;
+    repairsMaintenance: number | null;
+    turnover: number | null;
+    contractServices: number | null;
+    marketing: number | null;
+    utilities: number | null;
+    managementFeePct: number | null;
+    insurance: number | null;
+    realEstateTax: number | null;
+    personalPropertyTax: number | null;
+    gAndA: number | null;
+    hoaDues: number | null;
+    amenities: number | null;
+    replacementReserves: number | null;
+    total: number | null;
+  };
+  noi: number | null;
+  gprDecomposition: {
+    gpr: number | null;
+    units: number;
+    avgRentPerUnit: number | null;
+  };
+}
+
+function rv(lv: Record<string, unknown> | null | undefined): number | null {
+  if (!lv || typeof lv !== 'object') return null;
+  const v = (lv as Record<string, unknown>).resolved;
+  return typeof v === 'number' ? v : null;
+}
+
+function buildOperatingStatement(year1: Record<string, unknown>, units: number): OperatingStatement {
+  return {
+    gpr:               rv(year1.gpr as Record<string, unknown>),
+    lossToLease:       rv(year1.loss_to_lease_pct as Record<string, unknown>),
+    vacancyPct:        rv(year1.vacancy_pct as Record<string, unknown>),
+    concessionsPct:    rv(year1.concessions_pct as Record<string, unknown>),
+    badDebtPct:        rv(year1.bad_debt_pct as Record<string, unknown>),
+    nonRevenueUnitsPct:rv(year1.non_revenue_units_pct as Record<string, unknown>),
+    otherIncomePerUnit:rv(year1.other_income_per_unit as Record<string, unknown>),
+    netRentalIncome:   rv(year1.net_rental_income as Record<string, unknown>),
+    egi:               rv(year1.egi as Record<string, unknown>),
+    opex: {
+      payroll:           rv(year1.payroll as Record<string, unknown>),
+      repairsMaintenance:rv(year1.repairs_maintenance as Record<string, unknown>),
+      turnover:          rv(year1.turnover as Record<string, unknown>),
+      contractServices:  rv(year1.contract_services as Record<string, unknown>),
+      marketing:         rv(year1.marketing as Record<string, unknown>),
+      utilities:         rv(year1.utilities as Record<string, unknown>),
+      managementFeePct:  rv(year1.management_fee_pct as Record<string, unknown>),
+      insurance:         rv(year1.insurance as Record<string, unknown>),
+      realEstateTax:     rv(year1.real_estate_tax as Record<string, unknown>),
+      personalPropertyTax:rv(year1.personal_property_tax as Record<string, unknown>),
+      gAndA:             rv(year1.g_and_a as Record<string, unknown>),
+      hoaDues:           rv(year1.hoa_dues as Record<string, unknown>),
+      amenities:         rv(year1.amenities as Record<string, unknown>),
+      replacementReserves: units > 0 ? null : null,
+      total:             rv(year1.total_opex as Record<string, unknown>),
+    },
+    noi: rv(year1.noi as Record<string, unknown>),
+    gprDecomposition: {
+      gpr:           rv(year1.gpr as Record<string, unknown>),
+      units,
+      avgRentPerUnit: units > 0 && rv(year1.gpr as Record<string, unknown>) != null
+        ? Math.round((rv(year1.gpr as Record<string, unknown>) as number) / units / 12)
+        : null,
+    },
+  };
+}
+
+function buildUnitEconomics(os: OperatingStatement, units: number): Record<string, number | null> {
+  if (!units) return {};
+  const safe = (v: number | null) => v != null ? Math.round(v / units) : null;
+  return {
+    gprPerUnit: safe(os.gpr),
+    egiPerUnit: safe(os.egi),
+    opexPerUnit: safe(os.opex.total),
+    noiPerUnit: safe(os.noi),
+    opexRatioPct: os.egi && os.opex.total ? Math.round((os.opex.total / os.egi) * 10000) / 100 : null,
+  };
+}
+
+interface IntegrityCheck {
+  field: string;
+  status: 'ok' | 'warn' | 'error';
+  message: string;
+  brokerValue?: number | null;
+  platformValue?: number | null;
+  resolvedValue?: number | null;
+  deltaBps?: number | null;
+}
+
+function computeIntegrityChecks(os: OperatingStatement, year1: Record<string, unknown>): IntegrityCheck[] {
+  const checks: IntegrityCheck[] = [];
+
+  function lv(key: string): Record<string, unknown> | null {
+    const v = year1[key];
+    return v && typeof v === 'object' ? v as Record<string, unknown> : null;
+  }
+  function num(obj: Record<string, unknown> | null, key: string): number | null {
+    if (!obj) return null;
+    const v = obj[key];
+    return typeof v === 'number' ? v : null;
+  }
+
+  // Vacancy check — broker vs platform delta >100bps
+  const vacLv = lv('vacancy_pct');
+  const vacBroker = num(vacLv, 'broker') ?? num(vacLv, 'om');
+  const vacPlatform = num(vacLv, 'platform');
+  const vacResolved = os.vacancyPct;
+  if (vacBroker != null && vacPlatform != null) {
+    const deltaBps = Math.round((vacBroker - vacPlatform) * 100);
+    checks.push({
+      field: 'vacancy_pct',
+      status: Math.abs(deltaBps) > 100 ? 'warn' : 'ok',
+      message: Math.abs(deltaBps) > 100
+        ? `Vacancy: broker ${(vacBroker * 100).toFixed(1)}% vs platform ${(vacPlatform * 100).toFixed(1)}% (${deltaBps > 0 ? '+' : ''}${deltaBps}bps)`
+        : 'Vacancy within 100bps of platform',
+      brokerValue: vacBroker, platformValue: vacPlatform, resolvedValue: vacResolved, deltaBps,
+    });
+  }
+
+  // GPR reconciliation — T12 vs rent roll delta >5%
+  const gprLv = lv('gpr');
+  const gprT12 = num(gprLv, 't12');
+  const gprRR  = num(gprLv, 'rent_roll');
+  if (gprT12 != null && gprRR != null && gprT12 > 0) {
+    const deltaPct = Math.round(((gprRR - gprT12) / gprT12) * 10000) / 100;
+    checks.push({
+      field: 'gpr',
+      status: Math.abs(deltaPct) > 5 ? 'warn' : 'ok',
+      message: Math.abs(deltaPct) > 5
+        ? `GPR: rent roll ${deltaPct > 0 ? '+' : ''}${deltaPct}% vs T12 — verify unit mix`
+        : 'GPR: T12 and rent roll reconciled',
+      deltaBps: Math.round(deltaPct * 100),
+    });
+  }
+
+  // Real estate tax — T12 vs platform delta >2σ (proxy: >15%)
+  const taxLv = lv('real_estate_tax');
+  const taxT12 = num(taxLv, 't12');
+  const taxPlatform = num(taxLv, 'platform');
+  if (taxT12 != null && taxPlatform != null && taxPlatform > 0) {
+    const deltaPct = Math.abs((taxT12 - taxPlatform) / taxPlatform);
+    checks.push({
+      field: 'real_estate_tax',
+      status: deltaPct > 0.15 ? 'warn' : 'ok',
+      message: deltaPct > 0.15
+        ? `Real estate tax: T12 ${(deltaPct * 100).toFixed(0)}% from platform — confirm tax bill`
+        : 'Real estate tax confirmed',
+    });
+  }
+
+  // NOI sanity — must be positive
+  if (os.noi != null) {
+    checks.push({
+      field: 'noi',
+      status: os.noi > 0 ? 'ok' : 'error',
+      message: os.noi > 0
+        ? `NOI positive: $${os.noi.toLocaleString()}`
+        : `NOI negative — check expense inputs`,
+      resolvedValue: os.noi,
+    });
+  }
+
+  return checks;
+}
+
+function buildNarrative(checks: IntegrityCheck[], os: OperatingStatement | null): string {
+  const warns = checks.filter(c => c.status === 'warn' || c.status === 'error');
+  if (warns.length === 0) return 'All integrity checks passed. Pro forma is consistent across sources.';
+  return warns.map(c => c.message).join(' · ');
+}
 
 function computeReturns(params: {
   landCost: number;
