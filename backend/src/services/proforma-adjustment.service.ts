@@ -1135,6 +1135,7 @@ function lv(seed: Record<string, unknown>, key: string): Record<string, unknown>
 
 export interface OperatingStatementRow {
   field: string;
+  label: string;
   broker: number | null;
   platform: number | null;
   t12: number | null;
@@ -1143,6 +1144,9 @@ export interface OperatingStatementRow {
   resolved: number | null;
   resolution: string | null;
   perUnit: number | null;
+  source: string | null;
+  confidence: number | null;
+  benchmarkPosition: 'above' | 'below' | 'within' | null;
 }
 
 export interface IntegrityCheck {
@@ -1267,20 +1271,48 @@ export async function getDealFinancials(
   ];
   const NOI_FIELDS: Array<[string, string]> = [['noi', 'Net Operating Income']];
 
+  const SOURCE_CONFIDENCE: Record<string, number> = {
+    override: 95,
+    t12: 85,
+    tax_bill: 85,
+    rent_roll: 80,
+    box_score: 75,
+    platform: 70,
+    platform_fallback: 65,
+    om: 60,
+    broker: 60,
+    computed: 55,
+  };
+
   function toRow(key: string, label: string): OperatingStatementRow {
     const field = lv(year1Seed, key);
     const resolved = resolvedNum(field);
     const resolution = field ? (field.resolution as string | null) ?? null : null;
+    const platformVal = layerNum(field, 'platform');
+
+    // benchmarkPosition: compare resolved vs platform baseline (±5% band = 'within')
+    let benchmarkPosition: 'above' | 'below' | 'within' | null = null;
+    if (resolved != null && platformVal != null && platformVal !== 0) {
+      const ratio = resolved / platformVal;
+      if (ratio > 1.05) benchmarkPosition = 'above';
+      else if (ratio < 0.95) benchmarkPosition = 'below';
+      else benchmarkPosition = 'within';
+    }
+
     return {
       field: key,
+      label,
       broker: layerNum(field, 'om') ?? layerNum(field, 'broker'),
-      platform: layerNum(field, 'platform'),
+      platform: platformVal,
       t12: layerNum(field, 't12'),
       rentRoll: layerNum(field, 'rent_roll'),
       taxBill: layerNum(field, 'tax_bill'),
       resolved,
       resolution,
       perUnit: resolved != null && totalUnits > 0 ? Math.round(resolved / totalUnits) : null,
+      source: resolution,
+      confidence: resolution ? (SOURCE_CONFIDENCE[resolution] ?? null) : null,
+      benchmarkPosition,
     };
   }
 
@@ -1358,18 +1390,22 @@ export async function getDealFinancials(
   }
 
   // ── Derived vacancy formula (M07 traffic engine) ────────────────────────────
-  // Formula: vacancyPct = 1 − (T-01 × T-05 × 52 × avg_lease_term_wks) / units
-  // Where T-01 = weekly walk-ins, T-05 = closing ratio (leases/walk-ins)
+  // Formula: vacancyPct = 1 − (T-01 × T-05 × 52) / units
+  // Where T-01 = weekly walk-ins, T-05 = closing ratio (leases/walk-in)
+  //   52 = weeks/year conversion (NOT multiplied by avg_lease_term — already annualized)
   // Capped to [M05_EQUILIBRIUM_MIN=0.03, 0.30]
+  // M05 equilibrium from proforma_assumptions.vacancy_current (or 0.03 if unavailable)
   let derivedVacancyPct: number | null = null;
   if (trafficProjRes.rows.length > 0) {
     const yr1s = trafficProjRes.rows[0].year1_summary as Record<string, unknown> | null;
     const weeklyWalkIns = yr1s ? (typeof yr1s.weekly_traffic === 'number' ? yr1s.weekly_traffic : null) : null;
     const closingRatio = yr1s ? (typeof yr1s.closing_ratio === 'number' ? yr1s.closing_ratio : null) : null;
     if (weeklyWalkIns != null && closingRatio != null && totalUnits > 0) {
-      const avgLeaseTerm = 52; // 1-year standard lease in weeks
-      const annualLeases = weeklyWalkIns * closingRatio * avgLeaseTerm;
-      const M05_EQUILIBRIUM_MIN = 0.03;
+      const WEEKS_PER_YEAR = 52;
+      const annualLeases = weeklyWalkIns * closingRatio * WEEKS_PER_YEAR;
+      // M05 equilibrium cap: use M07-calibrated vacancy floor, fallback to 3%
+      const paVacancy = proformaAssumRes.rows[0]?.vacancy_current;
+      const M05_EQUILIBRIUM_MIN = paVacancy != null ? Math.max(0.01, +parseFloat(paVacancy).toFixed(4) / 100) : 0.03;
       const raw = 1 - annualLeases / totalUnits;
       derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, raw)).toFixed(4);
     }

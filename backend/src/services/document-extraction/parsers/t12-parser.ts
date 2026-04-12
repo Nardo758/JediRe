@@ -280,6 +280,45 @@ function addToMonth(month: ExtendedT12Month, field: string, value: number): void
   rec[field] = (rec[field] ?? 0) + value;
 }
 
+/**
+ * CANONICAL_GL_MAP — exported reference mapping canonical field names to their
+ * GL category metadata. Used by `getDealFinancials` to enrich year1 rows with
+ * stable field identifiers and revenue/expense classification.
+ *
+ * Fields are aligned with T12Month keys; additional fields (egi, noi, total_opex)
+ * are derived/rollup fields that do not appear directly in raw T-12 data.
+ */
+export const CANONICAL_GL_MAP: Record<string, {
+  label: string;
+  category: 'revenue' | 'expense' | 'rollup';
+  controllable: boolean;
+  glCodeRange: string | null;
+  unit: 'dollars' | 'percent' | 'units';
+}> = {
+  gpr:                    { label: 'Gross Potential Rent',     category: 'revenue',  controllable: false, glCodeRange: '41000-41099', unit: 'dollars' },
+  loss_to_lease_pct:      { label: 'Loss to Lease',            category: 'revenue',  controllable: false, glCodeRange: '41100-41199', unit: 'percent' },
+  vacancy_pct:            { label: 'Vacancy',                  category: 'revenue',  controllable: false, glCodeRange: '41200-41299', unit: 'percent' },
+  concessions_pct:        { label: 'Concessions',              category: 'revenue',  controllable: true,  glCodeRange: '41300-41399', unit: 'percent' },
+  bad_debt_pct:           { label: 'Bad Debt',                 category: 'revenue',  controllable: true,  glCodeRange: '41400-41499', unit: 'percent' },
+  non_revenue_units_pct:  { label: 'Non-Revenue Units',        category: 'revenue',  controllable: false, glCodeRange: '41500-41599', unit: 'percent' },
+  other_income_per_unit:  { label: 'Other Income',             category: 'revenue',  controllable: false, glCodeRange: '41600-41999', unit: 'dollars' },
+  net_rental_income:      { label: 'Net Rental Income',        category: 'rollup',   controllable: false, glCodeRange: null,          unit: 'dollars' },
+  egi:                    { label: 'Effective Gross Income',   category: 'rollup',   controllable: false, glCodeRange: null,          unit: 'dollars' },
+  payroll:                { label: 'Payroll & Benefits',       category: 'expense',  controllable: true,  glCodeRange: '50000-51999', unit: 'dollars' },
+  repairs_maintenance:    { label: 'Repairs & Maintenance',    category: 'expense',  controllable: true,  glCodeRange: '52000-53999', unit: 'dollars' },
+  turnover:               { label: 'Turnover / Make Ready',    category: 'expense',  controllable: true,  glCodeRange: '54000-54999', unit: 'dollars' },
+  contract_services:      { label: 'Contract Services',        category: 'expense',  controllable: true,  glCodeRange: '55000-55999', unit: 'dollars' },
+  marketing:              { label: 'Marketing',                category: 'expense',  controllable: true,  glCodeRange: '56000-56999', unit: 'dollars' },
+  utilities:              { label: 'Utilities',                category: 'expense',  controllable: false, glCodeRange: '57000-57999', unit: 'dollars' },
+  g_and_a:                { label: 'G&A / Administration',    category: 'expense',  controllable: true,  glCodeRange: '58000-58999', unit: 'dollars' },
+  management_fee_pct:     { label: 'Management Fee',          category: 'expense',  controllable: false, glCodeRange: '59000-59099', unit: 'percent' },
+  insurance:              { label: 'Property Insurance',       category: 'expense',  controllable: false, glCodeRange: '60000-60999', unit: 'dollars' },
+  real_estate_tax:        { label: 'Real Estate Tax',          category: 'expense',  controllable: false, glCodeRange: '61000-61999', unit: 'dollars' },
+  replacement_reserves:   { label: 'Replacement Reserves',    category: 'expense',  controllable: false, glCodeRange: '62000-62999', unit: 'dollars' },
+  total_opex:             { label: 'Total Operating Expenses', category: 'rollup',   controllable: false, glCodeRange: null,          unit: 'dollars' },
+  noi:                    { label: 'Net Operating Income',     category: 'rollup',   controllable: false, glCodeRange: null,          unit: 'dollars' },
+};
+
 export function parseT12(buffer: Buffer, filename: string): ExtractionResult & { chartFormat?: ChartFormat } {
   const warnings: string[] = [];
 
