@@ -1,94 +1,673 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
-import { SectionPanel, Bd } from '../../../components/deal/bloomberg-ui';
-import type { FinancialEngineTabProps, AnnualCashFlowRow } from './types';
-import { fmt$ } from './types';
+import { apiClient } from '../../../services/api.client';
+import type { FinancialEngineTabProps } from './types';
 
 const MONO = BT.font.mono;
+const LABEL = BT.font.label;
 
-const LINE_ITEMS = [
-  { key: 'gpr',          label: 'GROSS POTENTIAL RENT',       section: 'revenue', sign: 1 },
-  { key: 'vacancy',      label: '  Less: Vacancy & Loss',     section: 'revenue', sign: -1 },
-  { key: 'egr',          label: 'EFFECTIVE GROSS REVENUE',     section: 'revenue', sign: 1, isTotal: true },
-  { key: 'otherIncome',  label: '  Plus: Other Income',        section: 'revenue', sign: 1 },
-  { key: 'totalRevenue', label: 'TOTAL REVENUE',               section: 'revenue', sign: 1, isTotal: true },
-  { key: 'opex',         label: '  Less: Operating Expenses',  section: 'expense', sign: -1 },
-  { key: 'noi',          label: 'NET OPERATING INCOME',        section: 'noi',     sign: 1, isTotal: true, highlight: true },
-  { key: 'debtService',  label: '  Less: Debt Service',        section: 'debt',    sign: -1 },
-  { key: 'cashFlow',     label: 'CASH FLOW BEFORE TAX',        section: 'cf',      sign: 1, isTotal: true, highlight: true },
-] as const;
+// ─── API types (mirrors backend DealFinancials contract) ──────────────────────
+interface OperatingStatementRow {
+  field: string;
+  label: string;
+  broker: number | null;
+  platform: number | null;
+  t12: number | null;
+  rentRoll: number | null;
+  taxBill: number | null;
+  resolved: number | null;
+  resolution: string | null;
+  perUnit: number | null;
+  source: string | null;
+  confidence: number | null;
+  benchmarkPosition: 'above' | 'below' | 'within' | null;
+}
 
-export function ProFormaSummaryTab({ dealId, assumptions, modelResults }: FinancialEngineTabProps) {
-  const cf = modelResults?.annualCashFlow ?? [];
-  const holdPeriod = assumptions?.holdPeriod ?? 5;
-  const years = cf.length > 0 ? cf.slice(0, holdPeriod) : [];
+interface IntegrityCheck {
+  id: string;
+  status: 'ok' | 'warn' | 'error';
+  message: string;
+  detail?: Record<string, unknown>;
+}
+
+interface DealFinancials {
+  dealId: string;
+  dealName: string;
+  totalUnits: number;
+  proforma: {
+    year1: OperatingStatementRow[];
+    integrityChecks: IntegrityCheck[];
+    unitEconomics: Record<string, number | null>;
+  };
+  assumptions: {
+    holdYears: number;
+    exitCap: number | null;
+    rentGrowthYr1: number | null;
+    perYear: Array<{ year: number; vacancyPct: number | null; rentGrowthPct: number | null; exitCapIfLastYear: number | null }>;
+  };
+  meta: { seeded: boolean; updatedAt: string | null };
+}
+
+// ─── Sections layout ──────────────────────────────────────────────────────────
+const REVENUE_FIELDS = new Set([
+  'gpr', 'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct',
+  'bad_debt_pct', 'non_revenue_units_pct', 'other_income_per_unit',
+  'net_rental_income', 'egi',
+]);
+const CTRL_OPEX_FIELDS = new Set([
+  'payroll', 'repairs_maintenance', 'turnover', 'contract_services',
+  'marketing', 'utilities', 'g_and_a',
+]);
+const NCTRL_OPEX_FIELDS = new Set([
+  'management_fee_pct', 'insurance', 'real_estate_tax', 'replacement_reserves', 'total_opex',
+]);
+const NOI_FIELDS = new Set(['noi']);
+const SUBTOTALS = new Set(['egi', 'total_opex', 'noi']);
+const PCT_FIELDS = new Set([
+  'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct',
+  'bad_debt_pct', 'non_revenue_units_pct', 'management_fee_pct',
+]);
+const PER_UNIT_FIELDS = new Set(['other_income_per_unit']);
+
+// ─── Formatting ───────────────────────────────────────────────────────────────
+function fmt$(n: number | null): string {
+  if (n == null) return '—';
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000) return `$${n.toLocaleString()}`;
+  return `$${n}`;
+}
+
+function fmtPct(n: number | null): string {
+  if (n == null) return '—';
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function fmtVal(row: OperatingStatementRow, val: number | null): string {
+  if (val == null) return '—';
+  if (PCT_FIELDS.has(row.field)) return fmtPct(val);
+  if (PER_UNIT_FIELDS.has(row.field)) return `$${val}/unit`;
+  return fmt$(val);
+}
+
+// ─── Source badge ─────────────────────────────────────────────────────────────
+const SOURCE_META: Record<string, { label: string; color: string; bg: string }> = {
+  t12:              { label: 'T-12',           color: '#f8fafc', bg: '#334155' },
+  rent_roll:        { label: 'Rent Roll',       color: '#f8fafc', bg: '#1e3a5f' },
+  tax_bill:         { label: 'County Assessor', color: '#06b6d4', bg: '#083344' },
+  om:               { label: 'OM Narrative',    color: '#f59e0b', bg: '#292101' },
+  broker:           { label: 'OM Narrative',    color: '#f59e0b', bg: '#292101' },
+  platform:         { label: 'Platform',        color: '#60a5fa', bg: '#1e3a5f' },
+  platform_fallback:{ label: 'Platform',        color: '#60a5fa', bg: '#1e3a5f' },
+  override:         { label: 'Override',        color: '#c084fc', bg: '#2e1065' },
+  box_score:        { label: 'Box Score',       color: '#86efac', bg: '#14532d' },
+  computed:         { label: 'Computed',        color: '#94a3b8', bg: '#1e293b' },
+};
+
+function SourceBadge({ source }: { source: string | null }) {
+  const meta = source ? (SOURCE_META[source] ?? null) : null;
+  if (!meta) {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '1px 5px', borderRadius: 2,
+        fontFamily: MONO, fontSize: 8, letterSpacing: 0.3,
+        color: '#475569', background: '#1e293b',
+      }}>Not Provided</span>
+    );
+  }
+  return (
+    <span style={{
+      display: 'inline-block', padding: '1px 5px', borderRadius: 2,
+      fontFamily: MONO, fontSize: 8, letterSpacing: 0.3,
+      color: meta.color, background: meta.bg,
+    }}>{meta.label}</span>
+  );
+}
+
+// ─── Correction state ─────────────────────────────────────────────────────────
+interface CorrectionState {
+  [field: string]: { editing: boolean; original: number | null; draft: string };
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
+  const [data, setData] = useState<DealFinancials | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [reparsing, setReparsing] = useState(false);
+  const [corrections, setCorrections] = useState<CorrectionState>({});
+
+  const load = useCallback(async () => {
+    if (!dealId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/financials`);
+      const body = (res as any)?.data;
+      if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
+      setData(body?.data ?? body);
+    } catch (e: any) {
+      setError(e.message ?? 'Failed to load financials');
+    } finally {
+      setLoading(false);
+    }
+  }, [dealId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleReparse = async () => {
+    setReparsing(true);
+    await load();
+    setReparsing(false);
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: BT.text.muted, fontFamily: MONO, fontSize: 10 }}>
+      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+      Loading AS-IS financials…
+    </div>
+  );
+
+  if (error) return (
+    <div style={{ padding: 24, fontFamily: MONO, fontSize: 10, color: BT.text.red }}>
+      <div style={{ marginBottom: 8 }}>Failed: {error}</div>
+      <button onClick={load} style={{ color: BT.text.cyan, background: 'none', border: 'none', cursor: 'pointer', fontFamily: MONO, fontSize: 10 }}>Retry</button>
+    </div>
+  );
+
+  if (!data) return null;
+
+  const rows = data.proforma.year1;
+  const checks = data.proforma.integrityChecks;
+  const totalUnits = data.totalUnits;
+
+  const byField: Record<string, OperatingStatementRow> = {};
+  rows.forEach(r => { byField[r.field] = r; });
+
+  const revRows  = rows.filter(r => REVENUE_FIELDS.has(r.field));
+  const ctrlRows = rows.filter(r => CTRL_OPEX_FIELDS.has(r.field));
+  const nctrlRows = rows.filter(r => NCTRL_OPEX_FIELDS.has(r.field));
+  const noiRow   = rows.find(r => r.field === 'noi');
+
+  const egiRow     = byField['egi'];
+  const totalOpexRow = byField['total_opex'];
+  const ctrlSubtotalRow = { resolved: ctrlRows.reduce((s, r) => s + (r.resolved ?? 0), 0) };
+  const nctrlSubtotalRow = { resolved: nctrlRows.filter(r => r.field !== 'total_opex').reduce((s, r) => s + (r.resolved ?? 0), 0) };
+
+  // Purchase price from deal prop
+  const dealAny = deal as any;
+  const purchasePrice = dealAny?.purchase_price ?? dealAny?.asking_price ?? dealAny?.deal_data?.purchase_price ?? null;
+  const capRate = data.assumptions.exitCap;
+
+  const warnChecks = checks.filter(c => c.status !== 'ok');
+  const okChecks   = checks.filter(c => c.status === 'ok');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      <div style={{ padding: '6px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>
-          SUMMARY OPERATING STATEMENT · {holdPeriod}-YEAR HOLD · ANNUAL
-        </span>
-        <Bd c={BT.text.cyan}>QUICK SCAN</Bd>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: '#0a0a0a', color: '#e2e8f0', fontFamily: LABEL }}>
+
+      {/* ── Header bar ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 12px', height: 40, flexShrink: 0,
+        background: '#111111', borderBottom: '1px solid #1e1e1e',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#f8fafc', background: '#27272a', padding: '2px 6px', borderRadius: 2, letterSpacing: 1 }}>
+            AS-IS · BROKER LAYER
+          </span>
+          <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 600, color: '#f8fafc' }}>{data.dealName}</span>
+          {totalUnits > 0 && (
+            <span style={{ fontFamily: LABEL, fontSize: 9, color: '#64748b' }}>{totalUnits} Units</span>
+          )}
+          <span style={{ fontFamily: LABEL, fontSize: 9, color: '#475569' }}>At-Acquisition Snapshot</span>
+        </div>
+
+        {/* KPI pills */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[
+            { l: 'GPR', v: fmt$(byField['gpr']?.resolved ?? null) },
+            { l: 'EGI', v: fmt$(egiRow?.resolved ?? null) },
+            { l: 'NOI', v: fmt$(noiRow?.resolved ?? null) },
+            { l: 'NOI/Unit', v: noiRow?.resolved && totalUnits ? `$${Math.round(noiRow.resolved / totalUnits).toLocaleString()}` : '—' },
+          ].map(k => (
+            <div key={k.l} style={{ display: 'flex', alignItems: 'baseline', gap: 4, padding: '2px 8px', borderRadius: 2, border: '1px solid #27272a', background: '#111827' }}>
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: '#64748b' }}>{k.l}</span>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{k.v}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Integrity badges + reparse */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {checks.map(c => c.status === 'ok'
+            ? <span key={c.id} title={c.message} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#22c55e', fontFamily: LABEL }}>
+                <CheckCircle2 size={11} />{c.id}
+              </span>
+            : <span key={c.id} title={c.message} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 9, color: '#f59e0b', fontFamily: LABEL }}>
+                <AlertTriangle size={11} />{c.id}
+              </span>
+          )}
+          <button
+            onClick={handleReparse}
+            disabled={reparsing}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              padding: '3px 8px', borderRadius: 2, border: 'none',
+              background: '#1e293b', color: '#93c5fd', cursor: reparsing ? 'wait' : 'pointer',
+              fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 0.5,
+            }}
+          >
+            <RefreshCw size={10} style={reparsing ? { animation: 'spin 1s linear infinite' } : undefined} />
+            REPARSE
+          </button>
+        </div>
       </div>
 
-      <div style={{ overflowX: 'auto', flex: 1 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-          <thead>
-            <tr style={{ borderBottom: `2px solid ${BT.border.medium}` }}>
-              <th style={{ padding: '5px 8px', textAlign: 'left', color: BT.text.muted, fontWeight: 500, letterSpacing: 0.5, minWidth: 200, position: 'sticky', left: 0, background: BT.bg.header, zIndex: 1 }}>LINE ITEM</th>
-              {years.length > 0 ? years.map((_, i) => (
-                <th key={i} style={{ padding: '5px 8px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, letterSpacing: 0.5, minWidth: 90 }}>YEAR {i + 1}</th>
-              )) : Array.from({ length: holdPeriod }, (_, i) => (
-                <th key={i} style={{ padding: '5px 8px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, letterSpacing: 0.5, minWidth: 90 }}>YEAR {i + 1}</th>
-              ))}
+      {/* ── Integrity check detail banners (warn/error only) ── */}
+      {warnChecks.length > 0 && (
+        <div style={{ flexShrink: 0, borderBottom: '1px solid #1e1e1e' }}>
+          {warnChecks.map(c => (
+            <div key={c.id} style={{
+              display: 'flex', alignItems: 'flex-start', gap: 8, padding: '5px 12px',
+              background: c.status === 'error' ? '#1c0a0a' : '#1c1200',
+              borderLeft: `3px solid ${c.status === 'error' ? '#ef4444' : '#f59e0b'}`,
+            }}>
+              {c.status === 'error' ? <XCircle size={11} style={{ color: '#ef4444', flexShrink: 0, marginTop: 1 }} /> : <AlertTriangle size={11} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />}
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: c.status === 'error' ? '#fca5a5' : '#fcd34d', lineHeight: 1.4 }}>
+                <strong style={{ fontFamily: MONO }}>{c.id}</strong> — {c.message}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Table ── */}
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
+          <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+            <tr style={{ background: '#111111', borderBottom: '1px solid #2d2d2d' }}>
+              <Th label="Line Item" left min={180} sticky />
+              <Th label="Broker" color="#f59e0b" />
+              <Th label="T-12" color="#e2e8f0" />
+              <Th label="Platform" color="#06b6d4" />
+              <Th label="Resolved" highlight />
+              <Th label="Source" />
+              <Th label="$/Unit" />
+              <Th label="Flag" />
             </tr>
           </thead>
           <tbody>
-            {LINE_ITEMS.map((item, ri) => {
-              const isHighlight = item.highlight;
-              const isTotal = item.isTotal;
-              return (
-                <tr key={item.key} style={{
-                  background: isHighlight ? `${BT.met.financial}10` : ri % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-                  borderBottom: isTotal ? `2px solid ${BT.border.medium}` : `1px solid ${BT.border.subtle}`,
-                }}>
-                  <td style={{
-                    padding: '4px 8px',
-                    color: isHighlight ? BT.text.white : isTotal ? BT.text.primary : BT.text.secondary,
-                    fontWeight: isTotal ? 700 : 400,
-                    position: 'sticky', left: 0,
-                    background: isHighlight ? `${BT.met.financial}10` : ri % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-                    zIndex: 1,
-                  }}>
-                    {item.label}
-                  </td>
-                  {years.length > 0 ? years.map((row: AnnualCashFlowRow, ci: number) => {
-                    const val = (row as any)[item.key] as number | undefined;
-                    const displayVal = val != null ? item.sign < 0 ? fmt$(-Math.abs(val)) : fmt$(val) : '—';
-                    const cellColor = isHighlight ? BT.met.financial
-                      : item.sign < 0 ? BT.text.red
-                      : isTotal ? BT.text.white : BT.text.primary;
-                    return (
-                      <td key={ci} style={{ padding: '4px 8px', textAlign: 'right', color: cellColor, fontWeight: isTotal ? 700 : 400 }}>
-                        {displayVal}
-                      </td>
-                    );
-                  }) : Array.from({ length: holdPeriod }, (_, ci) => (
-                    <td key={ci} style={{ padding: '4px 8px', textAlign: 'right', color: BT.text.muted }}>—</td>
-                  ))}
-                </tr>
-              );
-            })}
+            {/* ── REVENUE ── */}
+            <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
+            {revRows.map((r, i) => (
+              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="blue"
+                corrections={corrections} setCorrections={setCorrections} totalUnits={totalUnits} />
+            ))}
+
+            {/* ── EGI SUBTOTAL ── */}
+            {egiRow && <SubtotalRow label="EGI" row={egiRow} color="#0f172a" textColor="#22c55e" />}
+
+            {/* ── CONTROLLABLE EXPENSES ── */}
+            <SectionHeader label="Controllable Expenses" accentColor="#f59e0b" bg="#1a110a" />
+            {ctrlRows.map((r, i) => (
+              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="warm"
+                corrections={corrections} setCorrections={setCorrections} totalUnits={totalUnits} />
+            ))}
+            <tr style={{ background: '#1a110a' }}>
+              <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12 }}>─── CONTROLLABLE OPEX ───</td>
+              <td /><td /><td />
+              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#fb923c', fontWeight: 700 }}>
+                {fmt$(ctrlSubtotalRow.resolved || null)}
+              </td>
+              <td colSpan={3} />
+            </tr>
+
+            {/* ── NON-CONTROLLABLE EXPENSES ── */}
+            <SectionHeader label="Non-Controllable Expenses" accentColor="#a855f7" bg="#0d0a14" />
+            {nctrlRows.map((r, i) => (
+              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="purple"
+                corrections={corrections} setCorrections={setCorrections} totalUnits={totalUnits} />
+            ))}
+
+            {/* ── TOTAL OPEX ── */}
+            {totalOpexRow && (
+              <tr style={{ background: '#1e1b4b', borderTop: '1px solid #312e81', borderBottom: '1px solid #312e81' }}>
+                <td style={{ padding: '5px 8px', fontWeight: 700, color: '#e2e8f0', fontFamily: LABEL, fontSize: 9, position: 'sticky', left: 0, background: '#1e1b4b' }}>═══ TOTAL OPEX ═══</td>
+                <td /><td /><td />
+                <td style={{ padding: '5px 8px', textAlign: 'right', color: '#ffffff', fontWeight: 700, fontSize: 11 }}>
+                  {fmt$(totalOpexRow.resolved)}
+                </td>
+                <td />
+                <td style={{ padding: '5px 8px', textAlign: 'right', color: '#94a3b8', fontSize: 9 }}>
+                  {totalOpexRow.perUnit != null ? `$${totalOpexRow.perUnit.toLocaleString()}/unit` : '—'}
+                </td>
+                <td />
+              </tr>
+            )}
+
+            {/* ── NOI ── */}
+            {noiRow && (
+              <tr style={{ background: '#042304', borderTop: '2px solid #166534', borderBottom: '2px solid #166534' }}>
+                <td style={{ padding: '7px 8px', fontWeight: 700, color: '#f8fafc', fontFamily: LABEL, letterSpacing: 1, position: 'sticky', left: 0, background: '#042304' }}>
+                  ═══ NET OPERATING INCOME ═══
+                </td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.broker)}</td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.t12)}</td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac' }}>{fmt$(noiRow.platform)}</td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#4ade80', fontWeight: 700, fontSize: 13 }}>
+                  {fmt$(noiRow.resolved)}
+                </td>
+                <td style={{ padding: '7px 8px' }}><SourceBadge source={noiRow.source} /></td>
+                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#86efac', fontSize: 9 }}>
+                  {noiRow.perUnit != null ? `$${noiRow.perUnit.toLocaleString()}/unit` : '—'}
+                </td>
+                <td />
+              </tr>
+            )}
           </tbody>
         </table>
+
+        {/* ── NOI Bridge ── */}
+        {noiRow?.resolved && (
+          <NoisBridge egiRow={egiRow} ctrlOpex={ctrlSubtotalRow.resolved} nctrlOpex={nctrlSubtotalRow.resolved} noi={noiRow.resolved} totalUnits={totalUnits} capRate={capRate} />
+        )}
+
+        {/* ── Capital Stack at Close ── */}
+        <CapitalStack purchasePrice={purchasePrice} capRate={capRate} noi={noiRow?.resolved ?? null} totalUnits={totalUnits} />
       </div>
 
-      {years.length === 0 && (
-        <div style={{ padding: '24px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>
-          Build model in Assumptions tab to populate the summary operating statement
+      {/* ── Footer legend ── */}
+      <div style={{
+        flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '4px 12px', borderTop: '1px solid #1e1e1e', background: '#111111',
+      }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569', letterSpacing: 0.5 }}>SOURCE LEGEND:</span>
+          {[
+            { color: '#f59e0b', label: 'OM Narrative' },
+            { color: '#f8fafc', label: 'T-12' },
+            { color: '#06b6d4', label: 'County Assessor' },
+            { color: '#60a5fa', label: 'Platform' },
+            { color: '#c084fc', label: 'Override' },
+            { color: '#475569', label: 'Not Provided' },
+          ].map(({ color, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 1, background: color, display: 'inline-block' }} />
+              <span style={{ fontFamily: LABEL, fontSize: 8, color: '#475569' }}>{label}</span>
+            </div>
+          ))}
         </div>
-      )}
+        <div style={{ fontFamily: MONO, fontSize: 8, color: '#334155' }}>
+          {data.meta.updatedAt ? `SEEDED ${new Date(data.meta.updatedAt).toISOString().slice(0, 16)} UTC` : 'PENDING SEED'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Sub-components ────────────────────────────────────────────────────────────
+
+function Th({ label, color, highlight, left, min, sticky }: {
+  label: string; color?: string; highlight?: boolean; left?: boolean; min?: number; sticky?: boolean;
+}) {
+  return (
+    <th style={{
+      padding: '5px 8px', textAlign: left ? 'left' : 'right',
+      color: highlight ? '#e2e8f0' : (color ?? '#64748b'),
+      fontWeight: 700, fontSize: 9, letterSpacing: 0.5,
+      minWidth: min, whiteSpace: 'nowrap',
+      position: sticky ? 'sticky' : undefined, left: sticky ? 0 : undefined,
+      background: '#111111', borderBottom: '1px solid #2d2d2d',
+      fontFamily: 'Inter, sans-serif',
+      ...(highlight ? { borderBottom: '2px solid #06b6d4', background: '#0d1f2d' } : {}),
+    }}>{label}</th>
+  );
+}
+
+function SectionHeader({ label, accentColor, bg }: { label: string; accentColor: string; bg: string }) {
+  return (
+    <tr>
+      <td colSpan={8} style={{
+        padding: '5px 8px 5px 12px',
+        background: bg,
+        borderTop: '1px solid #1e1e1e',
+        borderBottom: '1px solid #1e1e1e',
+        borderLeft: `3px solid ${accentColor}`,
+        fontFamily: 'Inter, sans-serif',
+        fontSize: 9, fontWeight: 700,
+        color: '#cbd5e1', letterSpacing: 0.8, textTransform: 'uppercase',
+      }}>{label}</td>
+    </tr>
+  );
+}
+
+function SubtotalRow({ label, row, color, textColor }: {
+  label: string; row: OperatingStatementRow; color: string; textColor: string;
+}) {
+  return (
+    <tr style={{ background: color }}>
+      <td style={{ padding: '4px 8px', fontWeight: 700, color: '#cbd5e1', fontFamily: 'Inter, sans-serif', fontSize: 9, position: 'sticky', left: 0, background: color }}>
+        ─── {label} ───
+      </td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.broker)}</td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.t12)}</td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>{fmt$(row.platform)}</td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontWeight: 700, background: 'rgba(0,0,0,0.3)' }}>
+        {fmt$(row.resolved)}
+      </td>
+      <td style={{ padding: '4px 8px' }}><SourceBadge source={row.source} /></td>
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: textColor, fontSize: 9 }}>
+        {row.perUnit != null ? `$${row.perUnit.toLocaleString()}` : '—'}
+      </td>
+      <td />
+    </tr>
+  );
+}
+
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits }: {
+  row: OperatingStatementRow;
+  isEven: boolean;
+  shade?: 'blue' | 'warm' | 'purple';
+  corrections: CorrectionState;
+  setCorrections: React.Dispatch<React.SetStateAction<CorrectionState>>;
+  totalUnits: number;
+}) {
+  const isSubtotal = SUBTOTALS.has(row.field);
+  const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
+  const isPct = PCT_FIELDS.has(row.field);
+  const isPerUnit = PER_UNIT_FIELDS.has(row.field);
+
+  const baseBg = shade === 'warm'
+    ? (isEven ? '#0e0a06' : '#0c0907')
+    : shade === 'purple'
+      ? (isEven ? '#0d0a10' : '#0b0810')
+      : (isEven ? '#0c0c0c' : '#0a0a0a');
+
+  const rowBg = isDeviant ? 'rgba(234,179,8,0.07)' : baseBg;
+  const corr = corrections[row.field];
+
+  function fmtDisplay(val: number | null): string {
+    if (isPct) return fmtPct(val);
+    if (isPerUnit) return val != null ? `$${val}/unit` : '—';
+    return fmt$(val);
+  }
+
+  const brokerDisplay  = fmtDisplay(row.broker);
+  const t12Display     = fmtDisplay(row.t12);
+  const platformDisplay = fmtDisplay(row.platform);
+  const resolvedDisplay = corr?.original != null
+    ? fmtDisplay(corr.original)
+    : fmtDisplay(row.resolved);
+
+  const resolvedColor = isSubtotal
+    ? '#22c55e'
+    : row.field.includes('pct') || row.field.includes('loss') || row.field.includes('vacancy')
+      ? '#fb923c'
+      : '#e2e8f0';
+
+  return (
+    <tr style={{ background: rowBg, borderBottom: `1px solid #161616` }}>
+      {/* LINE ITEM */}
+      <td style={{
+        padding: '4px 8px', whiteSpace: 'nowrap',
+        color: isSubtotal ? '#e2e8f0' : '#94a3b8',
+        fontWeight: isSubtotal ? 700 : 400,
+        fontFamily: 'Inter, sans-serif', fontSize: 9,
+        position: 'sticky', left: 0, background: rowBg,
+        paddingLeft: isSubtotal ? 8 : 16,
+      }}>
+        {row.label}
+      </td>
+
+      {/* BROKER */}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#f59e0b', fontSize: 9 }}>{brokerDisplay}</td>
+
+      {/* T-12 */}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#e2e8f0', fontSize: 9 }}>{t12Display}</td>
+
+      {/* PLATFORM */}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{platformDisplay}</td>
+
+      {/* RESOLVED */}
+      <td style={{
+        padding: '4px 8px', textAlign: 'right',
+        color: resolvedColor, fontWeight: isSubtotal ? 700 : 600,
+        background: '#0d1f2d',
+      }}>
+        {corr?.editing ? (
+          <input
+            autoFocus
+            value={corr.draft}
+            onChange={e => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], draft: e.target.value } }))}
+            onBlur={() => setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } }))}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setCorrections(prev => ({ ...prev, [row.field]: { ...prev[row.field], editing: false } })); }}
+            style={{
+              width: 80, background: '#0f172a', border: '1px solid #06b6d4', color: '#f8fafc',
+              fontFamily: MONO, fontSize: 9, padding: '1px 4px', borderRadius: 2, textAlign: 'right',
+            }}
+          />
+        ) : (
+          <span title={corr?.original != null ? `Original: ${fmtDisplay(row.resolved)}` : undefined} style={{ borderBottom: corr?.original != null ? '1px dotted #f59e0b' : undefined }}>
+            {resolvedDisplay}
+            {corr?.original != null && <span style={{ marginLeft: 4, color: '#f59e0b', fontSize: 8 }}>✎</span>}
+          </span>
+        )}
+      </td>
+
+      {/* SOURCE BADGE */}
+      <td style={{ padding: '4px 8px' }}><SourceBadge source={row.source} /></td>
+
+      {/* $/UNIT */}
+      <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
+        {row.perUnit != null ? `$${row.perUnit.toLocaleString()}` : '—'}
+      </td>
+
+      {/* FLAG + ACTIONS */}
+      <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {isDeviant && (
+            <span title={`${row.benchmarkPosition === 'above' ? 'Above' : 'Below'} platform benchmark`}
+              style={{ fontSize: 8, color: '#f59e0b', letterSpacing: 0.3, fontFamily: LABEL }}>
+              ⚠ {row.benchmarkPosition?.toUpperCase()}
+            </span>
+          )}
+          <button
+            title="Correct value"
+            onClick={() => setCorrections(prev => ({
+              ...prev,
+              [row.field]: prev[row.field]?.editing
+                ? prev[row.field]
+                : { editing: true, original: row.resolved, draft: String(row.resolved ?? '') },
+            }))}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#334155', padding: '1px 2px' }}
+          >
+            <Pencil size={9} />
+          </button>
+          {corr?.original != null && (
+            <button
+              title="Reset to ingested"
+              onClick={() => setCorrections(prev => { const next = { ...prev }; delete next[row.field]; return next; })}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', padding: '1px 2px' }}
+            >
+              <RotateCcw size={9} />
+            </button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function NoisBridge({ egiRow, ctrlOpex, nctrlOpex, noi, totalUnits, capRate }: {
+  egiRow: OperatingStatementRow | undefined;
+  ctrlOpex: number;
+  nctrlOpex: number;
+  noi: number;
+  totalUnits: number;
+  capRate: number | null;
+}) {
+  const impliedValue = capRate && noi ? noi / capRate : null;
+  return (
+    <div style={{ padding: '16px 24px', borderTop: '1px solid #1e1e1e', background: '#080808' }}>
+      <div style={{ maxWidth: 520, margin: '0 auto', fontFamily: MONO }}>
+        <div style={{ fontSize: 8, color: '#334155', textAlign: 'center', marginBottom: 12, letterSpacing: 1, textTransform: 'uppercase' }}>
+          At-Acquisition NOI Bridge · Year 1 AS-IS
+        </div>
+        {[
+          { label: 'EFFECTIVE GROSS INCOME', value: fmt$(egiRow?.resolved ?? null), color: '#22c55e', bold: true, border: true },
+          { label: '  Less: Controllable OpEx', value: `(${fmt$(ctrlOpex)})`, color: '#fb923c', border: false },
+          { label: '  Less: Non-Controllable OpEx', value: `(${fmt$(nctrlOpex)})`, color: '#c084fc', border: false },
+          { label: 'NET OPERATING INCOME', value: fmt$(noi), color: '#4ade80', bold: true, border: true, big: true },
+        ].map(row => (
+          <div key={row.label} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: row.big ? '10px 0' : '5px 0',
+            borderBottom: row.border ? '1px solid #1e1e1e' : undefined,
+          }}>
+            <span style={{ fontFamily: 'Inter, sans-serif', color: '#64748b', fontSize: row.bold ? 11 : 10, fontWeight: row.bold ? 700 : 400 }}>{row.label}</span>
+            <span style={{ color: row.color, fontSize: row.big ? 16 : 11, fontWeight: row.big ? 700 : (row.bold ? 600 : 400) }}>{row.value}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#334155', marginTop: 6 }}>
+          <span>NOI per unit: {totalUnits > 0 ? `$${Math.round(noi / totalUnits).toLocaleString()}` : '—'}</span>
+          {capRate && <span>@ {(capRate * 100).toFixed(2)}% cap: {impliedValue ? fmt$(Math.round(impliedValue)) : '—'}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CapitalStack({ purchasePrice, capRate, noi, totalUnits }: {
+  purchasePrice: number | null;
+  capRate: number | null;
+  noi: number | null;
+  totalUnits: number;
+}) {
+  const impliedCapRate = purchasePrice && noi && purchasePrice > 0 ? noi / purchasePrice : null;
+  const ppPerUnit = purchasePrice && totalUnits > 0 ? Math.round(purchasePrice / totalUnits) : null;
+
+  return (
+    <div style={{ padding: '16px 24px 24px', borderTop: '1px solid #1e1e1e', background: '#08080e' }}>
+      <div style={{ maxWidth: 520, margin: '0 auto' }}>
+        <div style={{ fontSize: 8, color: '#334155', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12, fontFamily: MONO }}>
+          Capital Stack at Close
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+          {[
+            { l: 'Purchase Price', v: purchasePrice ? fmt$(purchasePrice) : '—', c: '#f8fafc' },
+            { l: 'Price / Unit', v: ppPerUnit ? `$${ppPerUnit.toLocaleString()}` : '—', c: '#94a3b8' },
+            { l: 'Implied Cap Rate', v: impliedCapRate ? `${(impliedCapRate * 100).toFixed(2)}%` : '—', c: '#06b6d4' },
+            { l: 'Broker Cap Rate', v: capRate ? `${(capRate * 100).toFixed(2)}%` : '—', c: '#f59e0b' },
+            { l: 'NOI (AS-IS)', v: noi ? fmt$(noi) : '—', c: '#4ade80' },
+            { l: 'NOI / Unit', v: noi && totalUnits > 0 ? `$${Math.round(noi / totalUnits).toLocaleString()}` : '—', c: '#86efac' },
+          ].map(k => (
+            <div key={k.l} style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', padding: '8px 10px', borderRadius: 2 }}>
+              <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 8, color: '#475569', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>{k.l}</div>
+              <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: k.c }}>{k.v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
