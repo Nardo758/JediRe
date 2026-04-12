@@ -447,8 +447,8 @@ export interface ExtractionRentRollCapsule {
   in_place_rent_monthly: number;
   loss_to_lease_monthly: number;
   loss_to_lease_pct: number;
-  vacancy_loss_monthly: number;
-  concessions_monthly: number;
+  vacancy_loss_monthly?: number;
+  concessions_monthly?: number;
   total_billings_monthly: number;
   egi_in_place_annualized: number;
   avg_market_rent: number;

@@ -59,31 +59,6 @@ interface XValDealRow {
   legal_owner?: string;
 }
 
-interface DocSnapshot {
-  document_id: string;
-  document_type: string;
-  filename: string;
-  uploaded_at: string;
-  capsule: Record<string, unknown>;
-}
-
-async function loadAllDocSnapshots(pool: Pool, dealId: string): Promise<DocSnapshot[]> {
-  const result = await pool.query(
-    `SELECT id, document_type, original_filename, updated_at, extraction_result
-     FROM deal_document_files
-     WHERE deal_id = $1 AND extraction_status = 'completed'
-     ORDER BY updated_at DESC`,
-    [dealId]
-  );
-  return result.rows.map(r => ({
-    document_id: r.id,
-    document_type: r.document_type,
-    filename: r.original_filename,
-    uploaded_at: r.updated_at,
-    capsule: typeof r.extraction_result === 'string' ? JSON.parse(r.extraction_result) : (r.extraction_result ?? {}),
-  }));
-}
-
 async function loadCapsule(pool: Pool, dealId: string): Promise<DealCapsule> {
   const result = await pool.query(`SELECT deal_data FROM deals WHERE id = $1`, [dealId]);
   return (result.rows[0]?.deal_data ?? {}) as DealCapsule;

@@ -247,7 +247,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
             [row.id, docIds, req.user!.userId]
           );
         }
-        const pipelineResult = await processDealDocuments(row.id, req.user!.userId);
+        await processDealDocuments(row.id, req.user!.userId);
 
         const seedExists = await pool.query(
           `SELECT 1 FROM deal_assumptions WHERE deal_id = $1 AND year1 IS NOT NULL`,
