@@ -1156,6 +1156,29 @@ export interface IntegrityCheck {
   detail?: Record<string, unknown>;
 }
 
+export interface RentRollUnitType {
+  type: string;
+  count: number;
+  avgSf: number | null;
+  inPlaceRent: number | null;
+  marketRent: number | null;
+  occupancyPct: number | null;
+  concessionPct: number | null;
+}
+
+export interface DealCapitalStack {
+  purchasePrice: number | null;
+  pricePerUnit: number | null;
+  loanAmount: number | null;
+  equityAtClose: number | null;
+  ltcPct: number | null;
+  interestRate: number | null;
+  ioPeriodMonths: number | null;
+  amortizationYears: number | null;
+  dscrMin: number | null;
+  originationFeePct: number | null;
+}
+
 export interface DealFinancials {
   dealId: string;
   dealName: string;
@@ -1165,6 +1188,12 @@ export interface DealFinancials {
     integrityChecks: IntegrityCheck[];
     unitEconomics: Record<string, number | null>;
   };
+  capitalStack: DealCapitalStack;
+  rentRollSummary: {
+    unitMix: RentRollUnitType[] | null;
+    avgInPlaceRent: number | null;
+    weightedOccupancyPct: number | null;
+  } | null;
   trafficProjection: {
     yearly: Array<{
       year: number;
@@ -1234,13 +1263,15 @@ export async function getDealFinancials(
 
   const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
     pool.query(
-      'SELECT id, name, city, state_code, target_units FROM deals WHERE id = $1',
+      'SELECT id, name, city, state_code, target_units, budget, deal_data FROM deals WHERE id = $1',
       [dealId]
     ),
     pool.query(
       `SELECT year1, total_units, updated_at,
               exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
-              interest_rate, ltc, avg_lease_term_months, per_year_overrides
+              interest_rate, ltc, avg_lease_term_months, per_year_overrides,
+              io_period_months, amortization_years, dscr_min, origination_fee_pct,
+              unit_mix, avg_rent_per_unit, vacancy_pct
          FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
@@ -1521,11 +1552,87 @@ export async function getDealFinancials(
     perYear,
   };
 
+  // ── Capital Stack assembly ──────────────────────────────────────────────────
+  // Purchase price: prefer deal_data.purchase_price, fallback to budget column
+  const dealData = (deal.deal_data ?? {}) as Record<string, unknown>;
+  const purchasePrice: number | null =
+    (dealData.purchase_price != null ? +dealData.purchase_price : null) ??
+    (dealData.asking_price  != null ? +dealData.asking_price  : null) ??
+    (deal.budget            != null ? +deal.budget             : null);
+  const ltcPct: number | null = assumptionsRow?.ltc != null ? +parseFloat(assumptionsRow.ltc).toFixed(4) : null;
+  const loanAmount  = purchasePrice != null && ltcPct != null ? Math.round(purchasePrice * ltcPct) : null;
+  const equityAtClose = purchasePrice != null && loanAmount != null ? purchasePrice - loanAmount : null;
+  const interestRate: number | null = assumptionsRow?.interest_rate != null ? +parseFloat(assumptionsRow.interest_rate).toFixed(4) : null;
+  const ioPeriodMonths: number | null = assumptionsRow?.io_period_months ?? null;
+  const amortizationYears: number | null = assumptionsRow?.amortization_years ?? null;
+  const dscrMin: number | null = assumptionsRow?.dscr_min != null ? +parseFloat(assumptionsRow.dscr_min).toFixed(2) : null;
+  const originationFeePct: number | null = assumptionsRow?.origination_fee_pct != null ? +parseFloat(assumptionsRow.origination_fee_pct).toFixed(4) : null;
+  const capitalStack: DealCapitalStack = {
+    purchasePrice,
+    pricePerUnit: purchasePrice != null && totalUnits > 0 ? Math.round(purchasePrice / totalUnits) : null,
+    loanAmount,
+    equityAtClose,
+    ltcPct,
+    interestRate,
+    ioPeriodMonths,
+    amortizationYears,
+    dscrMin,
+    originationFeePct,
+  };
+
+  // ── Rent Roll Summary (unit mix from deal_assumptions.unit_mix) ─────────────
+  type RawUnitMixEntry = Record<string, unknown>;
+  const rawUnitMix: RawUnitMixEntry[] | null = (() => {
+    const um = assumptionsRow?.unit_mix;
+    if (!um) return null;
+    if (Array.isArray(um)) return um.length > 0 ? (um as RawUnitMixEntry[]) : null;
+    if (typeof um === 'object' && um !== null && !Array.isArray(um)) {
+      const entries = Object.entries(um as Record<string, unknown>);
+      if (entries.length === 0) return null;
+      return entries.map(([k, v]) => ({ type: k, ...(typeof v === 'object' && v !== null ? (v as object) : {}) })) as RawUnitMixEntry[];
+    }
+    return null;
+  })();
+
+  const parsedUnitMix: RentRollUnitType[] | null = rawUnitMix
+    ? rawUnitMix.map(e => ({
+        type:           String(e.type ?? e.unit_type ?? 'Unknown'),
+        count:          +(e.count ?? e.units ?? 0),
+        avgSf:          e.avg_sf != null ? +e.avg_sf : null,
+        inPlaceRent:    e.in_place_rent != null ? +e.in_place_rent : (e.avg_rent != null ? +e.avg_rent : null),
+        marketRent:     e.market_rent != null ? +e.market_rent : null,
+        occupancyPct:   e.occupancy_pct != null ? +e.occupancy_pct : null,
+        concessionPct:  e.concession_pct != null ? +e.concession_pct : null,
+      })).filter(e => e.count > 0)
+    : null;
+
+  const avgInPlaceRent: number | null = parsedUnitMix && parsedUnitMix.length > 0
+    ? (() => {
+        const totalWeighted = parsedUnitMix.reduce((s, e) => e.inPlaceRent != null ? s + e.inPlaceRent * e.count : s, 0);
+        const totalCount    = parsedUnitMix.reduce((s, e) => e.inPlaceRent != null ? s + e.count : s, 0);
+        return totalCount > 0 ? Math.round(totalWeighted / totalCount) : null;
+      })()
+    : (assumptionsRow?.avg_rent_per_unit != null ? +assumptionsRow.avg_rent_per_unit : null);
+
+  const weightedOccupancyPct: number | null = parsedUnitMix && parsedUnitMix.length > 0
+    ? (() => {
+        const totalWeighted = parsedUnitMix.reduce((s, e) => e.occupancyPct != null ? s + e.occupancyPct * e.count : s, 0);
+        const totalCount    = parsedUnitMix.reduce((s, e) => e.occupancyPct != null ? s + e.count : s, 0);
+        return totalCount > 0 ? +(totalWeighted / totalCount).toFixed(4) : null;
+      })()
+    : (assumptionsRow?.vacancy_pct != null ? +(1 - +assumptionsRow.vacancy_pct).toFixed(4) : null);
+
+  const rentRollSummary: DealFinancials['rentRollSummary'] = parsedUnitMix || avgInPlaceRent || weightedOccupancyPct
+    ? { unitMix: parsedUnitMix, avgInPlaceRent, weightedOccupancyPct }
+    : null;
+
   return {
     dealId,
     dealName: deal.name,
     totalUnits,
     proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics },
+    capitalStack,
+    rentRollSummary,
     trafficProjection: trafficProjectionOut,
     assumptions,
     meta: {

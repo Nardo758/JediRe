@@ -359,6 +359,27 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
 });
 
 /**
+ * POST /:dealId/financials/reparse
+ *
+ * Force-rerun seedProFormaYear1 (re-ingests all extraction capsule signals),
+ * then re-assembles and returns a fresh DealFinancials contract.
+ */
+router.post('/:dealId/financials/reparse', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    await seedProFormaYear1(pool, dealId);
+    const data = await getDealFinancials(pool, dealId, holdYears);
+    res.json({ success: true, data });
+  } catch (error: unknown) {
+    logger.error('Error reparsing deal financials:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
  * PATCH /:dealId/financials/override
  *
  * Thin controller — delegates to applyFinancialsOverride() in proforma-adjustment.service.
