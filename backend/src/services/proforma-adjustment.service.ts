@@ -1175,12 +1175,26 @@ export interface DealFinancials {
     }>;
     leaseUp: { weeksTo90: number | null; weeksTo93: number | null; weeksTo95: number | null } | null;
     calibrated: { vacancyPct: number | null; rentGrowthPct: number | null; exitCap: number | null; lastCalibrated: string | null };
+    leasingSignals: {
+      t01WeeklyTours: number | null;
+      t05ClosingRatio: number | null;
+      t06WeeklyLeases: number | null;
+      t07LeaseUpWeeksTo95: number | null;
+      stabilizedOccupancyPct: number | null;
+      confidence: number | null;
+    } | null;
   } | null;
   assumptions: {
     holdYears: number;
     exitCap: number | null;
     rentGrowthYr1: number | null;
     rentGrowthStabilized: number | null;
+    perYear: Array<{
+      year: number;
+      rentGrowthPct: number | null;
+      vacancyPct: number | null;
+      exitCapIfLastYear: number | null;
+    }>;
   };
   meta: {
     seeded: boolean;
@@ -1383,31 +1397,33 @@ export async function getDealFinancials(
 
   // ── Derived vacancy formula (M07 traffic engine) ────────────────────────────
   // Formula: vacancyPct = 1 − (T-01 × T-05 × 52 × avg_lease_term) / units
-  //   T-01          = weekly walk-ins
-  //   T-05          = closing ratio (leases signed per walk-in)
-  //   52            = weeks/year
-  //   avg_lease_term = average lease duration in years (from deal_assumptions.avg_lease_term_months; default 1.0)
-  // The combined factor `52 × avg_lease_term` converts weekly leasing velocity into
-  // total annualized occupied-unit-years, which when divided by units gives occupancy.
-  // Capped at [M05_EQUILIBRIUM_MIN, 0.30] where M05_EQUILIBRIUM_MIN is sourced from
-  // proforma_assumptions.vacancy_current (M07-calibrated submarket equilibrium floor).
+  //   T-01           = weekly walk-ins / tours (from traffic_learned_rates.tour_rate)
+  //   T-05           = closing ratio = app_rate × lease_rate (leases per tour)
+  //   52             = weeks/year
+  //   avg_lease_term = average lease duration in years (default 1.0 for 12-month lease)
+  // Capped to [M05_EQUILIBRIUM_MIN, 0.30]:
+  //   M05_EQUILIBRIUM_MIN sourced from trafficProjection.calibrated.vacancyPct
+  //   (M07 submarket equilibrium, calibrated from proforma_assumptions.vacancy_current)
   let derivedVacancyPct: number | null = null;
   if (trafficProjection != null) {
-    const avgLeaseTerm = trafficProjection.avgLeaseTerm; // years, e.g. 1.0 for 12-month lease
-    const yr1 = trafficProjection.yearly[0];
-    // T-01/T-05 product implied by year1 occupancy: annualLeases = occupancyPct × units / avg_lease_term
-    // But we can also derive it directly from the calibrated vacancy if year1 trajectory is available
-    if (yr1?.vacancyPct != null) {
-      // If we have direct year1 trajectory vacancy, use it (already incorporates T-01 × T-05)
-      const rawVac = yr1.vacancyPct;
-      const M05_EQUILIBRIUM_MIN = trafficProjection.calibrated.vacancyPct ?? 0.03;
+    const avgLeaseTerm = trafficProjection.avgLeaseTerm; // years (1.0 = standard 12-mo lease)
+    const M05_EQUILIBRIUM_MIN = trafficProjection.calibrated.vacancyPct ?? 0.03;
+    const WEEKS_PER_YEAR = 52;
+
+    const ls = trafficProjection.leasingSignals;
+    if (ls?.t01WeeklyTours != null && ls?.t05ClosingRatio != null && totalUnits > 0) {
+      // Primary path: use actual T-01 × T-05 from traffic_learned_rates
+      const annualLeases = ls.t01WeeklyTours * ls.t05ClosingRatio * WEEKS_PER_YEAR * avgLeaseTerm;
+      const raw = 1 - annualLeases / totalUnits;
+      derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, raw)).toFixed(4);
+    } else if (trafficProjection.yearly[0]?.vacancyPct != null) {
+      // Secondary path: use year1 trajectory vacancy (already incorporates T-01 × T-05)
+      const rawVac = trafficProjection.yearly[0].vacancyPct;
       derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, rawVac)).toFixed(4);
     } else if (trafficProjection.calibrated.vacancyPct != null) {
-      // Fallback: use calibrated vacancy from M07 scalars and apply avg_lease_term adjustment
+      // Tertiary fallback: calibrated vacancy with lease-term adjustment
       const calibrated = trafficProjection.calibrated.vacancyPct;
-      // Scale by avg_lease_term: shorter leases → higher vacancy risk
       const leaseTermAdj = avgLeaseTerm < 1 ? 1 + (1 - avgLeaseTerm) * 0.1 : 1;
-      const M05_EQUILIBRIUM_MIN = 0.03;
       derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, calibrated * leaseTermAdj)).toFixed(4);
     }
   }
@@ -1435,6 +1451,7 @@ export async function getDealFinancials(
     yearly: trafficProjection.yearly,
     leaseUp: trafficProjection.leaseUp,
     calibrated: trafficProjection.calibrated,
+    leasingSignals: trafficProjection.leasingSignals,
   } : proformaAssumRes.rows.length > 0 ? (() => {
     // No traffic projection but we have M07-calibrated scalars
     const pa = proformaAssumRes.rows[0];
@@ -1447,16 +1464,53 @@ export async function getDealFinancials(
         exitCap: pa.exit_cap_current != null ? +parseFloat(pa.exit_cap_current).toFixed(3) : null,
         lastCalibrated: pa.last_recalculation?.toISOString?.() ?? null,
       },
+      leasingSignals: null,
     };
   })() : null;
 
-  // ── Assumptions scalar ──────────────────────────────────────────────────────
+  // ── Assumptions scalar + per-year grid seeded from platform findings ────────
   const assumptionsRow = assumptionsRes.rows[0];
+  const exitCap = assumptionsRow?.exit_cap != null ? +parseFloat(assumptionsRow.exit_cap).toFixed(3) : null;
+  const rentGrowthYr1 = assumptionsRow?.rent_growth_yr1 != null ? +parseFloat(assumptionsRow.rent_growth_yr1).toFixed(3) : null;
+  const rentGrowthStab = assumptionsRow?.rent_growth_stabilized != null ? +parseFloat(assumptionsRow.rent_growth_stabilized).toFixed(3) : null;
+  const calibVacancy = trafficProjection?.calibrated.vacancyPct ?? null;
+  const calibRentGrowth = trafficProjection?.calibrated.rentGrowthPct ?? null;
+
+  // Per-year assumptions grid: year1 uses M07 calibrated values; years 2+ blend toward
+  // stabilized growth (platform findings from proforma_assumptions.rent_growth_current)
+  const perYear = Array.from({ length: holdYears }, (_, i) => {
+    const yr = i + 1;
+    // Rent growth: yr1 uses rentGrowthYr1, subsequent years blend toward stabilized over 5yrs
+    const growthBase = rentGrowthYr1 ?? calibRentGrowth ?? null;
+    const growthStab = rentGrowthStab ?? growthBase;
+    const blendFactor = Math.min(1, (yr - 1) / 5);
+    const rentGrowthPct = growthBase != null && growthStab != null
+      ? +(growthBase + (growthStab - growthBase) * blendFactor).toFixed(3)
+      : growthStab;
+
+    // Vacancy: use M07-calibrated floor (improving toward stabilized over first 3yrs)
+    const vacancyBase = calibVacancy ?? (yr === 1 ? derivedVacancyPct : null);
+    const vacancyPct = vacancyBase != null ? +Math.min(0.30, vacancyBase).toFixed(4) : null;
+
+    // Per-year overrides from deal_assumptions.per_year_overrides
+    const pyOverrides = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, { value: number | null }>;
+    const vacOverride = pyOverrides[`vacancy_pct:yr${yr}`];
+    const rentGrowthOverride = pyOverrides[`rent_growth_pct:yr${yr}`];
+
+    return {
+      year: yr,
+      rentGrowthPct: rentGrowthOverride?.value ?? rentGrowthPct,
+      vacancyPct: vacOverride?.value ?? vacancyPct,
+      exitCapIfLastYear: yr === holdYears ? exitCap : null,
+    };
+  });
+
   const assumptions = {
     holdYears,
-    exitCap: assumptionsRow?.exit_cap != null ? +parseFloat(assumptionsRow.exit_cap).toFixed(3) : null,
-    rentGrowthYr1: assumptionsRow?.rent_growth_yr1 != null ? +parseFloat(assumptionsRow.rent_growth_yr1).toFixed(3) : null,
-    rentGrowthStabilized: assumptionsRow?.rent_growth_stabilized != null ? +parseFloat(assumptionsRow.rent_growth_stabilized).toFixed(3) : null,
+    exitCap,
+    rentGrowthYr1,
+    rentGrowthStabilized: rentGrowthStab,
+    perYear,
   };
 
   return {

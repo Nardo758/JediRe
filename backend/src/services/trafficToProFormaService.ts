@@ -784,6 +784,16 @@ export interface TrafficProjectionYear {
   rentGrowthPct: number | null;
 }
 
+/** T-01/T-05/T-06/T-07 leasing velocity signals sourced from traffic_learned_rates */
+export interface LeasingSignals {
+  t01WeeklyTours: number | null;
+  t05ClosingRatio: number | null;
+  t06WeeklyLeases: number | null;
+  t07LeaseUpWeeksTo95: number | null;
+  stabilizedOccupancyPct: number | null;
+  confidence: number | null;
+}
+
 export interface TrafficProjectionResult {
   dealId: string;
   holdYears: number;
@@ -800,6 +810,7 @@ export interface TrafficProjectionResult {
     lastCalibrated: string | null;
   };
   avgLeaseTerm: number;
+  leasingSignals: LeasingSignals | null;
 }
 
 /**
@@ -816,23 +827,61 @@ export async function getTrafficProjection(
   dealId: string,
   holdYears = 10
 ): Promise<TrafficProjectionResult | null> {
-  const res = await pool.query(
-    `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
-            pa.updated_at AS pa_updated_at, da.avg_lease_term_months
-     FROM traffic_projections tp
-     LEFT JOIN proforma_assumptions pa ON pa.deal_id = tp.deal_id
-     LEFT JOIN deal_assumptions da ON da.deal_id = tp.deal_id
-     WHERE tp.deal_id = $1
-     ORDER BY tp.projection_date DESC
-     LIMIT 1`,
-    [dealId]
-  );
-  if (res.rows.length === 0) return null;
+  const [tpRes, lrRes] = await Promise.all([
+    pool.query(
+      `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
+              pa.updated_at AS pa_updated_at, da.avg_lease_term_months
+       FROM traffic_projections tp
+       LEFT JOIN proforma_assumptions pa ON pa.deal_id = tp.deal_id
+       LEFT JOIN deal_assumptions da ON da.deal_id = tp.deal_id
+       WHERE tp.deal_id = $1
+       ORDER BY tp.projection_date DESC
+       LIMIT 1`,
+      [dealId]
+    ),
+    // T-01/T-05/T-06 leasing velocity signals from traffic_learned_rates
+    // Join via traffic_projections.property_id (deals don't have a direct property_id)
+    pool.query(
+      `SELECT tlr.tour_rate, tlr.app_rate, tlr.lease_rate,
+              tlr.stabilized_occupancy, tlr.confidence_level, tlr.data_weeks
+       FROM traffic_learned_rates tlr
+       JOIN traffic_projections tp ON tp.property_id = tlr.property_id
+       WHERE tp.deal_id = $1
+       ORDER BY tlr.updated_at DESC
+       LIMIT 1`,
+      [dealId]
+    ),
+  ]);
 
-  const row = res.rows[0];
+  if (tpRes.rows.length === 0) return null;
+
+  const row = tpRes.rows[0];
+  const lr = lrRes.rows[0] ?? null;
 
   // avg_lease_term in years (default 1.0 = standard 12-month lease)
   const avgLeaseTerm = row.avg_lease_term_months != null ? Number(row.avg_lease_term_months) / 12 : 1.0;
+
+  // T-01/T-05/T-06/T-07 leasing signals from traffic_learned_rates
+  //   T-01 = tour_rate (weekly tours / walk-ins)
+  //   T-05 = closing ratio = app_rate × lease_rate (leases per tour)
+  //   T-06 = weekly leases = T-01 × T-05
+  //   T-07 = lease_up_weeks_to_95 from traffic_projections
+  const t01 = lr?.tour_rate != null ? Number(lr.tour_rate) : null;
+  const t05 = lr?.app_rate != null && lr?.lease_rate != null
+    ? Number(lr.app_rate) * Number(lr.lease_rate)
+    : null;
+  const t06 = t01 != null && t05 != null ? +(t01 * t05).toFixed(3) : null;
+  const t07 = row.lease_up_weeks_to_95 ?? null;
+  const stabilizedOccupancyPct = lr?.stabilized_occupancy != null ? Number(lr.stabilized_occupancy) / 100 : null;
+
+  const leasingSignals: LeasingSignals | null = (t01 != null || t05 != null) ? {
+    t01WeeklyTours: t01,
+    t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
+    t06WeeklyLeases: t06,
+    t07LeaseUpWeeksTo95: t07,
+    stabilizedOccupancyPct,
+    confidence: lr?.confidence_level != null ? Number(lr.confidence_level) : null,
+  } : null;
 
   // Build per-year trajectory from occupancy_trajectory / effective_rent_trajectory
   const occTraj: Array<{ month: number; value: number }> = row.occupancy_trajectory ?? [];
@@ -882,5 +931,6 @@ export async function getTrafficProjection(
       lastCalibrated: row.pa_updated_at ?? row.projection_date ?? null,
     },
     avgLeaseTerm,
+    leasingSignals,
   };
 }
