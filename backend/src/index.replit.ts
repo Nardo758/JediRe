@@ -155,19 +155,14 @@ const allowedOriginPatterns = [/\.replit\.dev(:\d+)?$/, /\.replit\.app(:\d+)?$/,
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
+  if (!isProduction) return true;
   if (allowedOrigins.includes(origin)) return true;
   return allowedOriginPatterns.some(pattern => pattern.test(origin));
 }
 
 const io = new Server(httpServer, {
   cors: {
-    origin: (origin, callback) => {
-      if (isOriginAllowed(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: true,
     methods: ['GET', 'POST'],
     credentials: true,
   }
@@ -182,13 +177,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(cors({
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));

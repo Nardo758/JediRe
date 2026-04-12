@@ -1,12 +1,11 @@
 #!/bin/bash
 # Kill any stale processes on our ports
+pkill -f "canvas-proxy" 2>/dev/null || true
+pkill -f "ts-node.*index.replit" 2>/dev/null || true
+pkill -f "vite.*5000" 2>/dev/null || true
+sleep 1
 for port in 3000 4000 5000; do
-  pids=$(lsof -t -i:"$port" 2>/dev/null)
-  if [ -n "$pids" ]; then
-    kill $pids 2>/dev/null
-    sleep 0.5
-    kill -9 $(lsof -t -i:"$port" 2>/dev/null) 2>/dev/null
-  fi
+  kill -9 $(lsof -t -i:"$port" 2>/dev/null) 2>/dev/null || true
 done
 sleep 1
 
