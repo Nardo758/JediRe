@@ -1,8 +1,13 @@
 #!/bin/bash
 # Kill any stale processes on our ports
-fuser -k 3000/tcp 2>/dev/null || true
-fuser -k 4000/tcp 2>/dev/null || true
-fuser -k 5000/tcp 2>/dev/null || true
+for port in 3000 4000 5000; do
+  pids=$(lsof -t -i:"$port" 2>/dev/null)
+  if [ -n "$pids" ]; then
+    kill $pids 2>/dev/null
+    sleep 0.5
+    kill -9 $(lsof -t -i:"$port" 2>/dev/null) 2>/dev/null
+  fi
+done
 sleep 1
 
 export MAPBOX_ACCESS_TOKEN="${MAPBOX_ACCESS_TOKEN:-$VITE_MAPBOX_TOKEN}"
