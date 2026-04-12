@@ -1091,8 +1091,8 @@ router.post('/upload-document', requireAuth, documentUpload.single('file'), asyn
             );
 
             try {
-              const wsModule: any = await import('../../services/websocket.service');
-              const broadcastToDeal = wsModule.broadcastToDeal;
+              const wsModule = await import('../../services/websocket.service') as Record<string, unknown>;
+              const broadcastToDeal = wsModule.broadcastToDeal as ((dealId: string, payload: Record<string, unknown>) => void) | undefined;
               if (broadcastToDeal) {
                 broadcastToDeal(verifiedDealId, {
                   type: 'extraction_complete',
@@ -1212,8 +1212,9 @@ router.get('/:dealId/proforma/year1', requireAuth, async (req: AuthenticatedRequ
         updatedAt: result.rows[0].updated_at,
       },
     });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 
@@ -1241,8 +1242,51 @@ router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: Authen
     const { applyUserOverride } = await import('../../services/proforma-seeder.service');
     await applyUserOverride(pool, dealId, fieldPath, value, req.user!.userId);
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+router.post('/:dealId/proforma/seed', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { seedProFormaYear1 } = await import('../../services/proforma-seeder.service');
+    const result = await seedProFormaYear1(pool, dealId);
+    res.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+router.post('/:dealId/validate/cross-doc', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { runCrossValidation } = await import('../../services/multi-doc-cross-validation.service');
+    const result = await runCrossValidation(pool, dealId);
+    res.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
   }
 });
 

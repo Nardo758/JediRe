@@ -822,15 +822,15 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       capsulePayload.extraction_tax_bill = {
         source: 'platform',
         updatedAt: now,
-        document_id: result.documentId ?? null,
+        document_id: ctx.documentId ?? null,
         totalAnnualTax: tax.totalAnnualTax,
         assessedValue: tax.assessedValue,
         taxYear: tax.taxYear,
         appealStatus: tax.appealStatus,
         annual_tax_current: tax.totalAnnualTax,
-        annual_tax_unappealed: (tax as any).unappealed ?? tax.totalAnnualTax,
+        annual_tax_unappealed: tax.assessedValueAppeal != null ? tax.totalAnnualTax : tax.totalAnnualTax,
         appeal_status: tax.appealStatus ?? 'none',
-        owner_lp: (tax as any).ownerName ?? null,
+        owner_lp: tax.ownerName ?? null,
       };
       break;
     }

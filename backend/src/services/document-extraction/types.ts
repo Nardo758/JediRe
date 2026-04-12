@@ -254,7 +254,16 @@ export interface TaxBillData {
   ownerAddress: string | null;
   appealStatus: string | null;
   taxYear: number | null;
-  authorities: Array<{ name: string; rate: number; amount: number }>;
+  authorities: Array<{
+    name: string;
+    rate?: number;
+    amount?: number;
+    taxableAssessment?: number | null;
+    millage?: number | null;
+    grossTax?: number | null;
+    netTax?: number | null;
+    units?: number;
+  }>;
 }
 
 export interface OtherIncomeCategory {

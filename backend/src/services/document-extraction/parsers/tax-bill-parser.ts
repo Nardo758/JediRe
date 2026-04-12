@@ -244,7 +244,7 @@ function parseFromText(text: string): { data: ParsedTaxBill; warnings: string[] 
         data.authorities!.push({
           name, taxableAssessment: null, millage: null, grossTax: total, netTax: total,
           units: units ?? undefined,
-        } as any);
+        });
       }
       continue;
     }
@@ -252,7 +252,7 @@ function parseFromText(text: string): { data: ParsedTaxBill; warnings: string[] 
     if (millage != null && (assessment != null || grossTax != null)) {
       data.authorities!.push({
         name, taxableAssessment: assessment, millage, grossTax, netTax,
-      } as any);
+      });
     }
   }
 
