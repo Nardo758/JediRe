@@ -15,22 +15,33 @@ export function findHeaderRow(
   const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
   const maxRow = Math.min(range.e.r, maxScanRows - 1);
 
+  let bestRow = 0;
+  let bestScore = -Infinity;
+
   for (let r = 0; r <= maxRow; r++) {
     const rowValues: string[] = [];
+    let populatedCells = 0;
     for (let c = range.s.c; c <= range.e.c; c++) {
       const cell = sheet[XLSX.utils.encode_cell({ r, c })];
       if (cell && cell.v != null) {
         rowValues.push(String(cell.v).trim().toLowerCase());
+        populatedCells++;
       }
     }
     const rowStr = rowValues.join(' ');
     const matches = requiredPatterns.filter(p => p.test(rowStr)).length;
     if (matches >= minMatches) {
-      return r;
+      const cellDensityBonus = populatedCells >= 4 ? populatedCells * 0.1 : 0;
+      const isSingleLongText = populatedCells <= 2 && rowStr.length > 60;
+      const score = matches + cellDensityBonus - (isSingleLongText ? 3 : 0);
+      if (score > bestScore) {
+        bestScore = score;
+        bestRow = r;
+      }
     }
   }
 
-  return 0;
+  return bestRow;
 }
 
 export function parseSheetFromRow(

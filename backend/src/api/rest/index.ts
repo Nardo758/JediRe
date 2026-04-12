@@ -91,6 +91,7 @@ import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
 import m08StrategiesRoutes from './strategies.routes';
 import { createCapsuleRoutes } from './capsule.routes';
+import inlineDealsRoutes from './inline-deals.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
 import dealCompSetsRoutes from './deal-comp-sets.routes';
@@ -411,6 +412,9 @@ export function setupRESTRoutes(app: Application): void {
   // Ticker feed — public macro data (FRED: 10Y Treasury, SOFR, CPI, Unemployment)
   // No auth required — mounts before the 404 handler so it is always reachable
   app.use(`${API_PREFIX}/ticker`, tickerRoutes);
+
+  // Inline Deals routes (Deal Capsule document upload, extraction, reprocessing)
+  app.use(`${API_PREFIX}/inline-deals`, inlineDealsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

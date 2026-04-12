@@ -9,7 +9,7 @@ const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i, type: 'T30_LTO' },
   { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i, type: 'TAX_BILL' },
   { pattern: /other[\s_-]*income[\s_-]*sched/i, type: 'OTHER_INCOME' },
-  { pattern: /rent[\s_-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },
+  { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },
   { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i, type: 'T12' },
 ];
 
@@ -154,7 +154,7 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
       /concession|burn.*off|recurring/i,
       /trade.*out|prior.*rent|new.*rent|effective/i,
       /per.*unit|annual|monthly|income|category/i,
-      /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec/i,
+      /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/i,
       /gross|noi|revenue|expense|vacancy/i,
     ];
     const headerRow = findHeaderRow(sheet, ALL_DOC_HEADER_PATTERNS, 20, 1);

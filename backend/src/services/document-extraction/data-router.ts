@@ -16,25 +16,18 @@ interface RouteResult {
   alerts: string[];
 }
 
-async function getPropertyIdForDeal(pool: Pool, dealId: string): Promise<string | null> {
-  const result = await pool.query(
-    `SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL
-     LIMIT 1`,
+async function getOrCreatePropertyForDeal(pool: Pool, dealId: string): Promise<string> {
+  const existing = await pool.query(
+    `SELECT property_id FROM deal_monthly_actuals WHERE deal_id = $1 AND property_id IS NOT NULL LIMIT 1`,
     [dealId]
   );
-  return result.rows[0]?.property_id || null;
-}
-
-async function ensurePropertyForDeal(pool: Pool, dealId: string): Promise<string | null> {
-  const existing = await getPropertyIdForDeal(pool, dealId);
-  if (existing) return existing;
+  if (existing.rows[0]?.property_id) return existing.rows[0].property_id;
 
   const dealResult = await pool.query(
     `SELECT name, address, target_units FROM deals WHERE id = $1`,
     [dealId]
   );
-  if (dealResult.rows.length === 0) return null;
-  const deal = dealResult.rows[0];
+  const deal = dealResult.rows[0] || {};
 
   const propResult = await pool.query(
     `INSERT INTO properties (name, address_line1, units, created_at, updated_at)
@@ -42,14 +35,7 @@ async function ensurePropertyForDeal(pool: Pool, dealId: string): Promise<string
      RETURNING id`,
     [deal.name || 'Untitled Property', deal.address || null, deal.target_units || null]
   );
-  const propertyId = propResult.rows[0].id;
-
-  await pool.query(
-    `UPDATE deals SET property_id = $2, updated_at = NOW() WHERE id = $1`,
-    [dealId, propertyId]
-  );
-
-  return propertyId;
+  return propResult.rows[0].id;
 }
 
 export async function routeExtractionResult(
@@ -61,7 +47,6 @@ export async function routeExtractionResult(
   }
 
   const pool = getPool();
-  const propertyId = await getPropertyIdForDeal(pool, ctx.dealId);
   const alerts: string[] = [];
   let rowsInserted = 0;
 
@@ -70,12 +55,8 @@ export async function routeExtractionResult(
 
   switch (result.documentType) {
     case 'T12': {
-      const t12PropertyId = propertyId || await ensurePropertyForDeal(pool, ctx.dealId);
-      if (!t12PropertyId) {
-        alerts.push('T12 data stored in deal capsule only — could not resolve or create property for deal_monthly_actuals insert.');
-      } else {
-        rowsInserted = await routeT12(pool, result.data as T12Data, t12PropertyId, ctx.dealId, sourceRef, sourceDate);
-      }
+      const propertyId = await getOrCreatePropertyForDeal(pool, ctx.dealId);
+      rowsInserted = await routeT12(pool, result.data as T12Data, propertyId, ctx.dealId, sourceRef, sourceDate);
       break;
     }
     case 'RENT_ROLL':
@@ -130,48 +111,24 @@ export async function routeExtractionResult(
 }
 
 async function routeT12(pool: Pool, data: T12Data, propertyId: string, dealId: string, sourceRef: string, sourceDate: string): Promise<number> {
+  await pool.query(
+    `DELETE FROM deal_monthly_actuals WHERE deal_id = $1 AND source_document_type = 'T12'`,
+    [dealId]
+  );
+
   let count = 0;
   for (const month of data.months) {
     await pool.query(
       `INSERT INTO deal_monthly_actuals (
-        property_id, report_month, total_units, occupied_units,
+        property_id, deal_id, report_month, total_units, occupied_units,
         gross_potential_rent, loss_to_lease, vacancy_loss, concessions, bad_debt,
         net_rental_income, other_income, utility_reimbursement, late_fees, misc_income,
         effective_gross_income, payroll, repairs_maintenance, turnover_costs, marketing,
         admin_general, management_fee, utilities, contract_services, property_tax, insurance,
         total_opex, noi, data_source, source_document_type, source_period_label, source_ref, source_date
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
-      ON CONFLICT (property_id, report_month, is_budget, is_proforma) DO UPDATE SET
-        gross_potential_rent = EXCLUDED.gross_potential_rent,
-        loss_to_lease = EXCLUDED.loss_to_lease,
-        vacancy_loss = EXCLUDED.vacancy_loss,
-        concessions = EXCLUDED.concessions,
-        bad_debt = EXCLUDED.bad_debt,
-        net_rental_income = EXCLUDED.net_rental_income,
-        other_income = EXCLUDED.other_income,
-        utility_reimbursement = EXCLUDED.utility_reimbursement,
-        late_fees = EXCLUDED.late_fees,
-        misc_income = EXCLUDED.misc_income,
-        effective_gross_income = EXCLUDED.effective_gross_income,
-        payroll = EXCLUDED.payroll,
-        repairs_maintenance = EXCLUDED.repairs_maintenance,
-        turnover_costs = EXCLUDED.turnover_costs,
-        marketing = EXCLUDED.marketing,
-        admin_general = EXCLUDED.admin_general,
-        management_fee = EXCLUDED.management_fee,
-        utilities = EXCLUDED.utilities,
-        contract_services = EXCLUDED.contract_services,
-        property_tax = EXCLUDED.property_tax,
-        insurance = EXCLUDED.insurance,
-        total_opex = EXCLUDED.total_opex,
-        noi = EXCLUDED.noi,
-        data_source = EXCLUDED.data_source,
-        source_document_type = EXCLUDED.source_document_type,
-        source_ref = EXCLUDED.source_ref,
-        source_date = EXCLUDED.source_date,
-        updated_at = NOW()`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)`,
       [
-        propertyId, month.reportMonth, month.totalUnits, month.occupiedUnits,
+        propertyId, dealId, month.reportMonth, month.totalUnits, month.occupiedUnits,
         month.grossPotentialRent, month.lossToLease, month.vacancyLoss, month.concessions, month.badDebt,
         month.netRentalIncome, month.otherIncome, month.utilityReimbursement, month.lateFees, month.miscIncome,
         month.effectiveGrossIncome, month.payroll, month.repairsMaintenance, month.turnoverCosts, month.marketing,
@@ -431,7 +388,7 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
     [dealId, taxRate, sourceRef, sourceDate]
   );
 
-  const taxPropertyId = await ensurePropertyForDeal(pool, dealId);
+  const taxPropertyId = await getOrCreatePropertyForDeal(pool, dealId);
   if (taxPropertyId) {
     await pool.query(
       `UPDATE properties SET
@@ -464,22 +421,24 @@ async function routeTaxBill(pool: Pool, data: TaxBillData, dealId: string, sourc
       for (let m = 1; m <= 12; m++) {
         const reportMonth = `${taxYear}-${String(m).padStart(2, '0')}-01`;
         await pool.query(
-          `INSERT INTO deal_monthly_actuals (property_id, report_month, property_tax, data_source, source_document_type, source_period_label, source_ref, source_date)
-           VALUES ($1, $2, $3, 'extraction', 'TAX_BILL', $4, $5, $6)
+          `INSERT INTO deal_monthly_actuals (property_id, deal_id, report_month, property_tax, data_source, source_document_type, source_period_label, source_ref, source_date)
+           VALUES ($1, $2, $3, $4, 'extraction', 'TAX_BILL', $5, $6, $7)
            ON CONFLICT (property_id, report_month, is_budget, is_proforma) DO UPDATE SET
+             deal_id = COALESCE(EXCLUDED.deal_id, deal_monthly_actuals.deal_id),
              property_tax = EXCLUDED.property_tax,
              source_document_type = 'TAX_BILL',
              source_ref = EXCLUDED.source_ref,
              source_date = EXCLUDED.source_date,
              updated_at = NOW()`,
-          [taxPropertyId, reportMonth, monthlyTax, reportMonth, sourceRef, sourceDate]
+          [taxPropertyId, dealId, reportMonth, monthlyTax, reportMonth, sourceRef, sourceDate]
         );
       }
     }
 
     const dealPriceResult = await pool.query(
-      `SELECT p.acquisition_price FROM deals d JOIN properties p ON d.property_id = p.id
-       WHERE d.id = $1 AND p.acquisition_price IS NOT NULL`,
+      `SELECT acquisition_price FROM properties
+       WHERE id IN (SELECT property_id FROM deal_monthly_actuals WHERE deal_id = $1 AND property_id IS NOT NULL LIMIT 1)
+       AND acquisition_price IS NOT NULL LIMIT 1`,
       [dealId]
     );
     const acquisitionPrice = parseFloat(dealPriceResult.rows[0]?.acquisition_price) || 0;
@@ -571,9 +530,9 @@ async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: Extrac
     );
   } else {
     const dealResult = await pool.query(
-      `SELECT d.id, d.name as deal_name, p.name as property_name, p.units, p.year_built, p.city, p.state_code
+      `SELECT d.id, d.name as deal_name, d.name as property_name, d.target_units as units,
+              NULL::integer as year_built, d.city, d.state_code
        FROM deals d
-       LEFT JOIN properties p ON p.id = d.property_id
        WHERE d.id = $1
        LIMIT 1`,
       [dealId]
@@ -690,7 +649,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       const revenueCheck = await pool.query(
         `SELECT AVG(effective_gross_income) as avg_monthly_revenue
          FROM deal_monthly_actuals
-         WHERE property_id IN (SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL)
+         WHERE deal_id = $1
            AND report_month >= (CURRENT_DATE - INTERVAL '3 months')::date
            AND effective_gross_income > 0`,
         [dealId]
@@ -776,7 +735,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       const t12Check = await pool.query(
         `SELECT SUM(COALESCE(other_income, 0) + COALESCE(utility_reimbursement, 0) + COALESCE(late_fees, 0) + COALESCE(misc_income, 0)) as t12_other_income
          FROM deal_monthly_actuals
-         WHERE property_id IN (SELECT property_id FROM deals WHERE id = $1 AND property_id IS NOT NULL)
+         WHERE deal_id = $1
            AND report_month >= (CURRENT_DATE - INTERVAL '12 months')::date`,
         [dealId]
       );
