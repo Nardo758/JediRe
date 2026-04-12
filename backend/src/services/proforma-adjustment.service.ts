@@ -1226,6 +1226,11 @@ export async function getDealFinancials(
   holdYears = 10
 ): Promise<DealFinancials> {
   const { getTrafficProjection } = await import('./trafficToProFormaService');
+  const { ensureDealAssumptionsSeeded } = await import('./proforma-seeder.service');
+
+  // Auto-seed if year1 is missing — guarantees non-null data for deals with extraction capsules
+  // No-op when year1 already exists; safe to call on every request
+  await ensureDealAssumptionsSeeded(pool, dealId);
 
   const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
     pool.query(
@@ -1550,7 +1555,12 @@ const FIELD_MAP: Record<string, string> = {
   utilities: 'utilities', gAndA: 'g_and_a', managementFeePct: 'management_fee_pct',
   insurance: 'insurance', realEstateTax: 'real_estate_tax',
   replacementReserves: 'replacement_reserves', totalOpex: 'total_opex', noi: 'noi',
+  // Traffic signal overrides: T-01/T-05 stored in per_year_overrides; trigger derived vacancy recomputation
+  t01WeeklyTours: 't01_weekly_tours', t05ClosingRatio: 't05_closing_ratio',
 };
+
+// Traffic signal fields that trigger derived vacancy recomputation
+const TRAFFIC_SIGNAL_FIELDS = new Set(['t01_weekly_tours', 't05_closing_ratio']);
 
 export async function applyFinancialsOverride(
   pool: Pool,
@@ -1569,6 +1579,7 @@ export async function applyFinancialsOverride(
     egi: number | null;
     noi: number | null;
     totalOpex: number | null;
+    derivedVacancyPct: number | null;
     affectedFields: string[];
   };
 }> {
@@ -1577,7 +1588,33 @@ export async function applyFinancialsOverride(
 
   const { applyUserOverride } = await import('./proforma-seeder.service');
 
-  if (targetYear === 1 || year == null) {
+  const isTrafficSignal = TRAFFIC_SIGNAL_FIELDS.has(year1Key);
+
+  if (isTrafficSignal) {
+    // Traffic signal overrides (T-01/T-05) always stored in per_year_overrides
+    // keyed as e.g. "t01_weekly_tours:yr1" so they're available per-year
+    const pyKey = `${year1Key}:yr${targetYear}`;
+    const pyEntry = {
+      field: year1Key,
+      year: targetYear,
+      value,
+      updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      resolution: value != null ? 'override' : 'cleared',
+      signalType: year1Key === 't01_weekly_tours' ? 'T-01' : 'T-05',
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET per_year_overrides = jsonb_set(
+                COALESCE(per_year_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${pyKey}}`, JSON.stringify(pyEntry)]
+    );
+  } else if (targetYear === 1 || year == null) {
     // Year 1 override — write into the LayeredValue seed via proforma-seeder
     await applyUserOverride(pool, dealId, year1Key, value, userId);
   } else {
@@ -1621,16 +1658,24 @@ export async function applyFinancialsOverride(
   }
 
   // Read back updated year1 seed for the overridden field and derived fields
-  const res = await pool.query(
-    'SELECT year1, per_year_overrides, total_units FROM deal_assumptions WHERE deal_id = $1',
-    [dealId]
-  );
+  const [res, dealUnitRes] = await Promise.all([
+    pool.query(
+      'SELECT year1, per_year_overrides, total_units, avg_lease_term_months FROM deal_assumptions WHERE deal_id = $1',
+      [dealId]
+    ),
+    pool.query('SELECT target_units FROM deals WHERE id = $1', [dealId]),
+  ]);
   const seed = res.rows[0]?.year1 as Record<string, unknown> | null;
   const perYearOverrides = res.rows[0]?.per_year_overrides as Record<string, unknown> | null;
+  // Prefer deal_assumptions.total_units; fall back to deals.target_units for derived vacancy math
+  const totalUnitsDA = (res.rows[0]?.total_units as number | null)
+    ?? (dealUnitRes.rows[0]?.target_units as number | null)
+    ?? 0;
+  const avgLeaseTermMonths = (res.rows[0]?.avg_lease_term_months as number | null) ?? 12;
   const updatedLv = seed ? lv(seed, year1Key) : null;
-  const resolution = targetYear === 1
-    ? (updatedLv ? (updatedLv.resolution as string | null) : null)
-    : `override_yr${targetYear}`;
+  const resolution = (isTrafficSignal || targetYear !== 1)
+    ? `override_yr${targetYear}`
+    : (updatedLv ? (updatedLv.resolution as string | null) : null);
 
   // Compute derived recomputation — which fields are affected by the override
   const REVENUE_AFFECTING = ['gpr', 'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct', 'bad_debt_pct',
@@ -1645,9 +1690,34 @@ export async function applyFinancialsOverride(
   const derivedNoi = seed ? resolvedNum(lv(seed, 'noi')) : null;
   const derivedOpex = seed ? resolvedNum(lv(seed, 'total_opex')) : null;
 
+  // For T-01/T-05 overrides, derive vacancy from the signal combination:
+  //   Weekly leases = T-01 (tours/week) × T-05 (closing ratio)
+  //   Annual leases = weeklyLeases × 52
+  //   Annual turnover = totalUnits / (avgLeaseTermMonths / 12)
+  //   Steady-state occupancy = min(annualLeases / annualTurnover, 1.0)
+  //   Derived vacancyPct = 1 - steady-state occupancy
+  let derivedVacancyPct: number | null = null;
+  if (isTrafficSignal && totalUnitsDA > 0 && perYearOverrides) {
+    const t01Key = `t01_weekly_tours:yr${targetYear}`;
+    const t05Key = `t05_closing_ratio:yr${targetYear}`;
+    const t01Entry = perYearOverrides[t01Key] as { value?: number } | null;
+    const t05Entry = perYearOverrides[t05Key] as { value?: number } | null;
+    // Use newly overridden value for the changed signal
+    const t01Val = year1Key === 't01_weekly_tours' ? (value ?? null) : (t01Entry?.value ?? null);
+    const t05Val = year1Key === 't05_closing_ratio' ? (value ?? null) : (t05Entry?.value ?? null);
+    if (t01Val != null && t05Val != null) {
+      const weeklyLeases = t01Val * t05Val;
+      const annualLeases = weeklyLeases * 52;
+      const annualTurnover = totalUnitsDA / (avgLeaseTermMonths / 12);
+      const steadyOcc = Math.min(annualLeases / annualTurnover, 1.0);
+      derivedVacancyPct = +Math.max(0, 1 - steadyOcc).toFixed(4);
+      affectedFields.push('vacancy_pct', 'egi', 'noi');
+    }
+  }
+
   // For non-year1 overrides, include the stored per-year entry in updatedCell
   const pyKey = `${year1Key}:yr${targetYear}`;
-  const perYearEntry = (targetYear !== 1 && perYearOverrides)
+  const perYearEntry = (isTrafficSignal || targetYear !== 1) && perYearOverrides
     ? (perYearOverrides[pyKey] as Record<string, unknown> | null) ?? null
     : null;
 
@@ -1656,11 +1726,12 @@ export async function applyFinancialsOverride(
     year: targetYear,
     appliedValue: value,
     resolution,
-    updatedCell: targetYear === 1 ? updatedLv : perYearEntry,
+    updatedCell: (!isTrafficSignal && targetYear === 1) ? updatedLv : perYearEntry,
     derivedRecomputation: {
       egi: derivedEgi,
       noi: derivedNoi,
       totalOpex: derivedOpex,
+      derivedVacancyPct,
       affectedFields,
     },
   };

@@ -542,6 +542,50 @@ export async function seedProFormaYear1(
 
 
 /**
+ * Ensure deal_assumptions.year1 is seeded for a deal with extraction data.
+ * Idempotent: if the row already exists with a non-null year1, skips re-seeding
+ * unless forceReseed=true. Callers use this as a safety net so getDealFinancials
+ * never returns null data for a deal that has extraction capsules.
+ */
+export async function ensureDealAssumptionsSeeded(
+  pool: Pool,
+  dealId: string,
+  opts: { forceReseed?: boolean } = {}
+): Promise<{ seeded: boolean; skipped: boolean; reason?: string }> {
+  // Check for existing seed
+  const existing = await pool.query(
+    `SELECT year1 FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+    [dealId]
+  ).catch(() => ({ rows: [] }));
+
+  const hasExistingSeed = existing.rows[0]?.year1 != null;
+
+  if (hasExistingSeed && !opts.forceReseed) {
+    return { seeded: false, skipped: true, reason: 'year1 already seeded' };
+  }
+
+  // Check deal has extraction data before attempting to seed
+  const dealCheck = await pool.query(
+    `SELECT id,
+            deal_data->'extraction_t12' IS NOT NULL AS has_t12,
+            deal_data->'extraction_rent_roll' IS NOT NULL AS has_rr,
+            deal_data->'extraction_tax_bill' IS NOT NULL AS has_tax
+       FROM deals WHERE id = $1`,
+    [dealId]
+  ).catch(() => ({ rows: [] }));
+
+  const row = dealCheck.rows[0];
+  if (!row) return { seeded: false, skipped: true, reason: 'deal not found' };
+
+  if (!row.has_t12 && !row.has_rr && !row.has_tax) {
+    return { seeded: false, skipped: true, reason: 'no extraction data available for deal' };
+  }
+
+  const result = await seedProFormaYear1(pool, dealId);
+  return { seeded: result.seeded, skipped: false, reason: result.warnings.join('; ') || undefined };
+}
+
+/**
  * Apply a user override to a single field on the year1 seed.
  * Triggers a re-resolve so derived fields (NOI, EGI, Total OpEx) reflect the change.
  */
