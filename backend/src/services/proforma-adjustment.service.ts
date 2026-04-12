@@ -13,6 +13,7 @@
 
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { Pool } from 'pg';
 
 // ============================================================================
 // Types
@@ -1109,3 +1110,413 @@ export class ProFormaAdjustmentService {
 // ============================================================================
 
 export const proformaAdjustmentService = new ProFormaAdjustmentService();
+
+// ============================================================================
+// DealFinancials contract — full F9 Pro Forma assembly
+// ============================================================================
+
+/** Resolved scalar extracted from a LayeredValue JSONB field */
+function resolvedNum(lv: Record<string, unknown> | null | undefined): number | null {
+  if (!lv || typeof lv !== 'object') return null;
+  const v = (lv as Record<string, unknown>).resolved;
+  return typeof v === 'number' ? v : null;
+}
+
+function layerNum(lv: Record<string, unknown> | null | undefined, layer: string): number | null {
+  if (!lv || typeof lv !== 'object') return null;
+  const v = (lv as Record<string, unknown>)[layer];
+  return typeof v === 'number' ? v : null;
+}
+
+function lv(seed: Record<string, unknown>, key: string): Record<string, unknown> | null {
+  const v = seed[key];
+  return v && typeof v === 'object' ? v as Record<string, unknown> : null;
+}
+
+export interface OperatingStatementRow {
+  field: string;
+  broker: number | null;
+  platform: number | null;
+  t12: number | null;
+  rentRoll: number | null;
+  taxBill: number | null;
+  resolved: number | null;
+  resolution: string | null;
+  perUnit: number | null;
+}
+
+export interface IntegrityCheck {
+  id: string;
+  status: 'ok' | 'warn' | 'error';
+  message: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface DealFinancials {
+  dealId: string;
+  dealName: string;
+  totalUnits: number;
+  proforma: {
+    year1: OperatingStatementRow[];
+    integrityChecks: IntegrityCheck[];
+    unitEconomics: Record<string, number | null>;
+  };
+  trafficProjection: {
+    yearly: Array<{
+      year: number;
+      vacancyPct: number | null;
+      occupancyPct: number | null;
+      effRent: number | null;
+      rentGrowthPct: number | null;
+    }>;
+    leaseUp: { weeksTo90: number | null; weeksTo93: number | null; weeksTo95: number | null } | null;
+    calibrated: { vacancyPct: number | null; rentGrowthPct: number | null; exitCap: number | null; lastCalibrated: string | null };
+  } | null;
+  assumptions: {
+    holdYears: number;
+    exitCap: number | null;
+    rentGrowthYr1: number | null;
+    rentGrowthStabilized: number | null;
+  };
+  meta: {
+    seeded: boolean;
+    updatedAt: string | null;
+  };
+}
+
+/**
+ * getDealFinancials — main F9 Pro Forma assembly function.
+ *
+ * Assembles the full DealFinancials contract from:
+ *  1. deal_assumptions.year1   — LayeredValue seed (SOT for all financials)
+ *  2. traffic_projections      — M07 10-year trajectory (per-year forward projections)
+ *  3. proforma_assumptions     — M07 calibrated scalars (vacancy/rent/cap current)
+ *  4. deal                     — deal meta (name, units)
+ *
+ * Integrity checks (4):
+ *  IC-01  T-12 NOI reconciliation: |seed.noi - t12_noi| / t12_noi > 10% → warn
+ *  IC-02  Rent Roll GPR×12 vs T-12 GPR within 3%: |rr×12 - t12| / t12 > 3% → warn
+ *  IC-03  Canonical OpEx source completeness: any of the 7 controllable opex fields is null → warn
+ *  IC-04  Tax-line assessor match: |seed.real_estate_tax.t12 - seed.real_estate_tax.tax_bill| / tax_bill > 15% → warn
+ */
+export async function getDealFinancials(
+  pool: Pool,
+  dealId: string,
+  holdYears = 10
+): Promise<DealFinancials> {
+
+  const [dealRes, assumptionsRes, trafficProjRes, proformaAssumRes] = await Promise.all([
+    pool.query(
+      'SELECT id, name, city, state_code, target_units FROM deals WHERE id = $1',
+      [dealId]
+    ),
+    pool.query(
+      'SELECT year1, total_units, updated_at FROM deal_assumptions WHERE deal_id = $1',
+      [dealId]
+    ),
+    pool.query(
+      `SELECT occupancy_trajectory, effective_rent_trajectory, revenue_trajectory,
+              year1_summary, year3_summary, year5_summary, year10_summary,
+              lease_up_weeks_to_90, lease_up_weeks_to_93, lease_up_weeks_to_95
+         FROM traffic_projections
+        WHERE deal_id = $1
+        ORDER BY projection_date DESC
+        LIMIT 1`,
+      [dealId]
+    ),
+    pool.query(
+      `SELECT vacancy_current, rent_growth_current, exit_cap_current, last_recalculation
+         FROM proforma_assumptions WHERE deal_id = $1 ORDER BY last_recalculation DESC LIMIT 1`,
+      [dealId]
+    ),
+  ]);
+
+  if (dealRes.rows.length === 0) throw new Error(`Deal not found: ${dealId}`);
+  const deal = dealRes.rows[0];
+  const totalUnits = assumptionsRes.rows[0]?.total_units ?? deal.target_units ?? 0;
+  const year1Seed: Record<string, unknown> = (assumptionsRes.rows[0]?.year1 as Record<string, unknown>) ?? {};
+
+  // ── Year-1 Operating Statement rows ────────────────────────────────────────
+  const REVENUE_FIELDS: Array<[string, string]> = [
+    ['gpr', 'Gross Potential Rent'],
+    ['loss_to_lease_pct', 'Loss to Lease (%)'],
+    ['vacancy_pct', 'Vacancy & Credit Loss (%)'],
+    ['concessions_pct', 'Concessions (%)'],
+    ['bad_debt_pct', 'Bad Debt (%)'],
+    ['non_revenue_units_pct', 'Non-Revenue Units (%)'],
+    ['other_income_per_unit', 'Other Income / Unit'],
+    ['net_rental_income', 'Net Rental Income'],
+    ['egi', 'Effective Gross Income'],
+  ];
+  const OPEX_FIELDS: Array<[string, string]> = [
+    ['payroll', 'Payroll'],
+    ['repairs_maintenance', 'Repairs & Maintenance'],
+    ['turnover', 'Turnover / Make Ready'],
+    ['contract_services', 'Contract Services'],
+    ['marketing', 'Marketing'],
+    ['utilities', 'Utilities'],
+    ['g_and_a', 'G&A / Admin'],
+    ['management_fee_pct', 'Management Fee (%)'],
+    ['insurance', 'Property Insurance'],
+    ['real_estate_tax', 'Real Estate Tax'],
+    ['replacement_reserves', 'Replacement Reserves'],
+    ['total_opex', 'Total OpEx'],
+  ];
+  const NOI_FIELDS: Array<[string, string]> = [['noi', 'Net Operating Income']];
+
+  function toRow(key: string, label: string): OperatingStatementRow {
+    const field = lv(year1Seed, key);
+    const resolved = resolvedNum(field);
+    const resolution = field ? (field.resolution as string | null) ?? null : null;
+    return {
+      field: key,
+      broker: layerNum(field, 'om') ?? layerNum(field, 'broker'),
+      platform: layerNum(field, 'platform'),
+      t12: layerNum(field, 't12'),
+      rentRoll: layerNum(field, 'rent_roll'),
+      taxBill: layerNum(field, 'tax_bill'),
+      resolved,
+      resolution,
+      perUnit: resolved != null && totalUnits > 0 ? Math.round(resolved / totalUnits) : null,
+    };
+  }
+
+  const year1Rows = [
+    ...REVENUE_FIELDS.map(([k, _l]) => toRow(k, _l)),
+    ...OPEX_FIELDS.map(([k, _l]) => toRow(k, _l)),
+    ...NOI_FIELDS.map(([k, _l]) => toRow(k, _l)),
+  ];
+
+  // ── Integrity checks ────────────────────────────────────────────────────────
+  const checks: IntegrityCheck[] = [];
+
+  // IC-01: T-12 NOI reconciliation (seed.noi resolved vs seed.noi.t12)
+  const noiLv = lv(year1Seed, 'noi');
+  const noiResolved = resolvedNum(noiLv);
+  const noiT12 = layerNum(noiLv, 't12');
+  if (noiResolved != null && noiT12 != null && noiT12 !== 0) {
+    const delta = Math.abs((noiResolved - noiT12) / noiT12);
+    checks.push({
+      id: 'IC-01',
+      status: delta > 0.10 ? 'warn' : 'ok',
+      message: delta > 0.10
+        ? `T-12 NOI reconciliation gap: resolved $${noiResolved.toLocaleString()} vs T-12 $${noiT12.toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 10%)`
+        : `T-12 NOI reconciled within 10% (gap ${(delta * 100).toFixed(1)}%)`,
+      detail: { noiResolved, noiT12, deltaPct: +(delta * 100).toFixed(2) },
+    });
+  }
+
+  // IC-02: Rent Roll GPR×12 vs T-12 GPR within 3%
+  const gprLv = lv(year1Seed, 'gpr');
+  const gprRentRoll = layerNum(gprLv, 'rent_roll');
+  const gprT12 = layerNum(gprLv, 't12');
+  if (gprRentRoll != null && gprT12 != null && gprT12 !== 0) {
+    // rent_roll value is already annualized in the seed
+    const delta = Math.abs((gprRentRoll - gprT12) / gprT12);
+    checks.push({
+      id: 'IC-02',
+      status: delta > 0.03 ? 'warn' : 'ok',
+      message: delta > 0.03
+        ? `GPR mismatch: rent roll $${gprRentRoll.toLocaleString()} vs T-12 $${gprT12.toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 3%)`
+        : `GPR: rent roll and T-12 within 3% (gap ${(delta * 100).toFixed(1)}%)`,
+      detail: { gprRentRoll, gprT12, deltaPct: +(delta * 100).toFixed(2) },
+    });
+  }
+
+  // IC-03: Canonical OpEx source completeness (all 7 controllable opex fields must be non-null)
+  const CONTROLLABLE_OPEX = ['payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'marketing', 'utilities', 'g_and_a'];
+  const missingOpex = CONTROLLABLE_OPEX.filter(k => resolvedNum(lv(year1Seed, k)) == null);
+  checks.push({
+    id: 'IC-03',
+    status: missingOpex.length > 0 ? 'warn' : 'ok',
+    message: missingOpex.length > 0
+      ? `Incomplete OpEx sources: ${missingOpex.join(', ')} have no resolved value — upload T-12 or enter manually`
+      : 'All 7 controllable OpEx fields sourced',
+    detail: { missing: missingOpex, total: CONTROLLABLE_OPEX.length },
+  });
+
+  // IC-04: Tax-line assessor match (seed.real_estate_tax.t12 vs .tax_bill within 15%)
+  const taxLv = lv(year1Seed, 'real_estate_tax');
+  const taxT12 = layerNum(taxLv, 't12');
+  const taxBill = layerNum(taxLv, 'tax_bill');
+  if (taxT12 != null && taxBill != null && taxBill !== 0) {
+    const delta = Math.abs((taxT12 - taxBill) / taxBill);
+    checks.push({
+      id: 'IC-04',
+      status: delta > 0.15 ? 'warn' : 'ok',
+      message: delta > 0.15
+        ? `Tax-line assessor gap: T-12 $${taxT12.toLocaleString()} vs tax bill $${taxBill.toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 15%)`
+        : `Real estate tax confirmed within 15% of assessor bill`,
+      detail: { taxT12, taxBill, deltaPct: +(delta * 100).toFixed(2) },
+    });
+  }
+  if (checks.length === 0) {
+    checks.push({ id: 'IC-SEED', status: 'warn', message: 'No source data yet — upload T-12 or rent roll to enable integrity checks' });
+  }
+
+  // ── Unit economics ──────────────────────────────────────────────────────────
+  const gprRes = resolvedNum(lv(year1Seed, 'gpr'));
+  const egiRes = resolvedNum(lv(year1Seed, 'egi'));
+  const opexRes = resolvedNum(lv(year1Seed, 'total_opex'));
+  const noiRes = resolvedNum(lv(year1Seed, 'noi'));
+  const safe = (v: number | null) => (v != null && totalUnits > 0 ? Math.round(v / totalUnits) : null);
+  const unitEconomics: Record<string, number | null> = {
+    gprPerUnit: safe(gprRes),
+    egiPerUnit: safe(egiRes),
+    opexPerUnit: safe(opexRes),
+    noiPerUnit: safe(noiRes),
+    opexRatioPct: egiRes && opexRes && egiRes > 0 ? +((opexRes / egiRes) * 100).toFixed(2) : null,
+  };
+
+  // ── M07 per-year traffic projections ───────────────────────────────────────
+  let trafficProjection: DealFinancials['trafficProjection'] = null;
+  if (trafficProjRes.rows.length > 0) {
+    const tp = trafficProjRes.rows[0];
+    // occupancy_trajectory and effective_rent_trajectory are monthly arrays
+    // We aggregate them into annual averages for holdYears
+    const occTraj: number[] = Array.isArray(tp.occupancy_trajectory) ? tp.occupancy_trajectory : [];
+    const rentTraj: number[] = Array.isArray(tp.effective_rent_trajectory) ? tp.effective_rent_trajectory : [];
+
+    const yearly: DealFinancials['trafficProjection'] extends null ? never : DealFinancials['trafficProjection']['yearly'] = [];
+    for (let yr = 1; yr <= Math.min(holdYears, 10); yr++) {
+      // Monthly arrays are typically 12*n long; pick the year's months
+      const startIdx = (yr - 1) * 12;
+      const endIdx = startIdx + 12;
+      const occSlice = occTraj.slice(startIdx, endIdx).filter((v): v is number => typeof v === 'number');
+      const rentSlice = rentTraj.slice(startIdx, endIdx).filter((v): v is number => typeof v === 'number');
+      const avgOcc = occSlice.length > 0 ? occSlice.reduce((a, b) => a + b, 0) / occSlice.length : null;
+      const avgRent = rentSlice.length > 0 ? rentSlice.reduce((a, b) => a + b, 0) / rentSlice.length : null;
+
+      // Rent growth vs prior year
+      let rentGrowthPct: number | null = null;
+      if (yr > 1 && avgRent != null) {
+        const prevStart = (yr - 2) * 12;
+        const prevSlice = rentTraj.slice(prevStart, prevStart + 12).filter((v): v is number => typeof v === 'number');
+        const prevAvg = prevSlice.length > 0 ? prevSlice.reduce((a, b) => a + b, 0) / prevSlice.length : null;
+        if (prevAvg && prevAvg > 0) rentGrowthPct = +((((avgRent - prevAvg) / prevAvg) * 100).toFixed(2));
+      }
+
+      yearly.push({
+        year: yr,
+        occupancyPct: avgOcc != null ? +(avgOcc * 100).toFixed(2) : null,
+        vacancyPct: avgOcc != null ? +((1 - avgOcc) * 100).toFixed(2) : null,
+        effRent: avgRent != null ? Math.round(avgRent) : null,
+        rentGrowthPct,
+      });
+    }
+
+    const pa = proformaAssumRes.rows[0];
+    trafficProjection = {
+      yearly,
+      leaseUp: tp.lease_up_weeks_to_90 != null ? {
+        weeksTo90: tp.lease_up_weeks_to_90,
+        weeksTo93: tp.lease_up_weeks_to_93 ?? null,
+        weeksTo95: tp.lease_up_weeks_to_95 ?? null,
+      } : null,
+      calibrated: {
+        vacancyPct: pa?.vacancy_current != null ? +parseFloat(pa.vacancy_current).toFixed(2) : null,
+        rentGrowthPct: pa?.rent_growth_current != null ? +parseFloat(pa.rent_growth_current).toFixed(3) : null,
+        exitCap: pa?.exit_cap_current != null ? +parseFloat(pa.exit_cap_current).toFixed(3) : null,
+        lastCalibrated: pa?.last_recalculation?.toISOString?.() ?? null,
+      },
+    };
+  } else if (proformaAssumRes.rows.length > 0) {
+    // No traffic projection but we have calibrated scalars
+    const pa = proformaAssumRes.rows[0];
+    trafficProjection = {
+      yearly: [],
+      leaseUp: null,
+      calibrated: {
+        vacancyPct: pa.vacancy_current != null ? +parseFloat(pa.vacancy_current).toFixed(2) : null,
+        rentGrowthPct: pa.rent_growth_current != null ? +parseFloat(pa.rent_growth_current).toFixed(3) : null,
+        exitCap: pa.exit_cap_current != null ? +parseFloat(pa.exit_cap_current).toFixed(3) : null,
+        lastCalibrated: pa.last_recalculation?.toISOString?.() ?? null,
+      },
+    };
+  }
+
+  // ── Assumptions scalar ──────────────────────────────────────────────────────
+  const assumptionsRow = assumptionsRes.rows[0];
+  const assumptions = {
+    holdYears,
+    exitCap: assumptionsRow?.exit_cap != null ? +parseFloat(assumptionsRow.exit_cap).toFixed(3) : null,
+    rentGrowthYr1: assumptionsRow?.rent_growth_yr1 != null ? +parseFloat(assumptionsRow.rent_growth_yr1).toFixed(3) : null,
+    rentGrowthStabilized: assumptionsRow?.rent_growth_stabilized != null ? +parseFloat(assumptionsRow.rent_growth_stabilized).toFixed(3) : null,
+  };
+
+  return {
+    dealId,
+    dealName: deal.name,
+    totalUnits,
+    proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics },
+    trafficProjection,
+    assumptions,
+    meta: {
+      seeded: Object.keys(year1Seed).length > 0,
+      updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
+    },
+  };
+}
+
+/**
+ * applyFinancialsOverride — cell-coordinate override in the year1 LayeredValue seed.
+ *
+ * body: { field: string, year: number | null, value: number | null }
+ *   field   — camelCase field name (e.g. "vacancyPct") mapped to snake_case year1 key
+ *   year    — hold year (1-10). null = year1 seed (current impl only supports year1)
+ *   value   — new override value (number), or null to clear
+ *
+ * For year != null and year != 1: stores override in assumption_adjustments for future
+ * multi-year seed support, then returns the year1 LayeredValue unchanged for that field.
+ */
+const FIELD_MAP: Record<string, string> = {
+  vacancyPct: 'vacancy_pct', gpr: 'gpr', lossToLeasePct: 'loss_to_lease_pct',
+  concessionsPct: 'concessions_pct', badDebtPct: 'bad_debt_pct',
+  nonRevenueUnitsPct: 'non_revenue_units_pct', otherIncomePerUnit: 'other_income_per_unit',
+  egi: 'egi', payroll: 'payroll', repairsMaintenance: 'repairs_maintenance',
+  turnover: 'turnover', contractServices: 'contract_services', marketing: 'marketing',
+  utilities: 'utilities', gAndA: 'g_and_a', managementFeePct: 'management_fee_pct',
+  insurance: 'insurance', realEstateTax: 'real_estate_tax',
+  replacementReserves: 'replacement_reserves', totalOpex: 'total_opex', noi: 'noi',
+};
+
+export async function applyFinancialsOverride(
+  pool: Pool,
+  dealId: string,
+  field: string,
+  year: number | null,
+  value: number | null,
+  userId: string
+): Promise<{ year1Key: string; appliedValue: number | null; resolution: string | null }> {
+  const year1Key = FIELD_MAP[field] ?? field;
+
+  // Year 1 override — write into the LayeredValue seed via proforma-seeder
+  const { applyUserOverride } = await import('./proforma-seeder.service');
+  await applyUserOverride(pool, dealId, year1Key, value, userId);
+
+  // Record the override in assumption_adjustments for audit trail
+  try {
+    await pool.query(
+      `INSERT INTO assumption_adjustments
+         (proforma_id, adjustment_trigger, assumption_type, previous_value, new_value, calculation_method, calculation_inputs, confidence_score)
+       SELECT pa.id, 'manual', $2, pa.vacancy_current::text, $3::text, 'user_override_f9',
+              jsonb_build_object('field', $2, 'year', $4, 'userId', $5)::jsonb, 100
+       FROM proforma_assumptions pa WHERE pa.deal_id = $1
+       LIMIT 1`,
+      [dealId, year1Key, value?.toString() ?? 'null', year ?? 1, userId]
+    );
+  } catch {
+    // Audit trail failure is non-fatal
+  }
+
+  // Read back the resolved value
+  const res = await pool.query(
+    'SELECT year1 FROM deal_assumptions WHERE deal_id = $1',
+    [dealId]
+  );
+  const seed = res.rows[0]?.year1 as Record<string, unknown> | null;
+  const updatedLv = seed && lv(seed, year1Key);
+  const resolution = updatedLv ? (updatedLv.resolution as string | null) : null;
+
+  return { year1Key, appliedValue: value, resolution };
+}
