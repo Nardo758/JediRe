@@ -1,25 +1,8 @@
 import { Pool } from 'pg';
 import type { LayeredValue, ProFormaYear1Seed } from './document-extraction/types';
 
-// ============================================================================
-// ProForma Seeder Service
-//
-// Takes the latest extraction-derived data for a deal, merges with platform
-// baseline, and produces a `ProFormaYear1Seed` JSONB stored on
-// `deal_assumptions.year1`.
-//
-// Resolution rules (LayeredValue priority):
-//   - User override always wins
-//   - Otherwise: most-recent + most-trustworthy source per field
-//     • GPR / Vacancy: rent_roll > t12 > platform (RR is point-in-time, T12 trailing)
-//     • Concessions: t12 > rent_roll (T12 captures full annual cycle including burnoff)
-//     • OpEx: t12 > platform (T12 only authoritative source for OpEx)
-//     • Tax: tax_bill > t12 > platform (bill is settled fact)
-//     • Insurance: om > platform (T12 often missing this line)
-//
-// Idempotent: re-running with same source data → same seed.
-// User overrides preserved across re-runs.
-// ============================================================================
+// ProForma Seeder: merges extraction capsules into ProFormaYear1Seed (deal_assumptions.year1).
+// Priority: override > field-specific source > platform fallback. Idempotent.
 
 interface PlatformBaseline {
   gpr_per_unit_per_month: number | null;
@@ -118,7 +101,7 @@ function resolve(
   // Walk priority list
   for (const src of options.priority) {
     const v = (lv as unknown as Record<string, number | null>)[src];
-    if (v != null && v !== 0) {
+    if (v != null) {
       lv.resolved = v;
       lv.resolution = src as LayeredValue<number>['resolution'];
       return lv;
@@ -552,9 +535,6 @@ export async function seedProFormaYear1(
   }
 }
 
-// ============================================================================
-// User override application
-// ============================================================================
 
 /**
  * Apply a user override to a single field on the year1 seed.
@@ -600,13 +580,25 @@ export async function applyUserOverride(
     field.resolved = value;
     field.resolution = 'override';
   } else {
-    // Clearing override — re-resolve from priority chain
-    const priorityOrder: Resolution[] = ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om', 'platform'];
+    const fieldPriorities: Record<string, Resolution[]> = {
+      gpr: ['rent_roll', 't12'],
+      loss_to_lease_pct: ['rent_roll', 't12'],
+      vacancy_pct: ['rent_roll', 't12'],
+      concessions_pct: ['t12', 'rent_roll'],
+      bad_debt_pct: ['t12'],
+      non_revenue_units_pct: ['t12'],
+      other_income_total: ['t12', 'rent_roll'],
+      other_income_per_unit: ['t12', 'rent_roll'],
+      real_estate_tax: ['tax_bill', 't12'],
+      management_fee_pct: ['t12'],
+      insurance: ['t12'],
+    };
+    const priorityOrder = fieldPriorities[fieldPath] ?? ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om'];
     field.resolution = 'platform_fallback';
     field.resolved = field.platform ?? null;
     for (const src of priorityOrder) {
       const srcVal = (field as unknown as Record<string, number | null>)[src];
-      if (srcVal != null && srcVal !== 0) {
+      if (srcVal != null) {
         field.resolved = srcVal;
         field.resolution = src as LayeredValue<number>['resolution'];
         break;
@@ -668,9 +660,6 @@ function recomputeDerived(seed: ProFormaYear1Seed): void {
   seed.noi.updated_at = ts;
 }
 
-// ============================================================================
-// Bridge to financial-model-engine
-// ============================================================================
 
 /**
  * Convert the LayeredValue Year-1 seed into the `ProFormaAssumptions` shape

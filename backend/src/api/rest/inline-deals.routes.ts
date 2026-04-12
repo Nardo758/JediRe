@@ -255,18 +255,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         );
         if (seedExists.rows.length > 0) {
           try {
-            const { financialModelEngine } = await import('../../services/financial-model-engine.service');
-            const { buildAssumptionsFromYear1Seed } = await import('../../services/proforma-seeder.service');
-            const seedResult = await pool.query(
-              `SELECT year1 FROM deal_assumptions WHERE deal_id = $1`,
-              [row.id]
-            );
-            const year1 = seedResult.rows[0]?.year1;
-            if (year1 && buildAssumptionsFromYear1Seed) {
-              const assumptions = buildAssumptionsFromYear1Seed(year1, row);
-              await financialModelEngine.buildModel(row.id, assumptions as unknown as Parameters<typeof financialModelEngine.buildModel>[1]);
-              console.log(`[FinancialModel] Auto-built from seeded assumptions for deal ${row.id}`);
-            }
+            console.log(`[FinancialModel] Seeder complete for deal ${row.id} — manual model build available via /proforma/year1`);
           } catch (modelErr) {
             console.error(`[FinancialModel] Auto-build failed for ${row.id}:`, modelErr instanceof Error ? modelErr.message : modelErr);
           }

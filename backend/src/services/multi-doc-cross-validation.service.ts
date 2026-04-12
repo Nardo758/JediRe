@@ -1,26 +1,8 @@
 import { Pool } from 'pg';
 import type { CrossDocVariance } from './document-extraction/types';
 
-// ============================================================================
-// Multi-Document Cross-Validation Service
-//
-// Runs after each new document extraction completes. Compares the same metric
-// across multiple uploaded documents and emits typed variance alerts to
-// `platform_intel` when divergence exceeds thresholds.
-//
-// Key cross-checks (in priority order):
-//   1. Annual property tax: Tax Bill vs T12 (T12 often understates pending bills)
-//   2. GPR: Rent Roll annualized vs T12 market rent (sanity check on rent universe)
-//   3. Occupancy: Rent Roll snapshot vs T12 implied vacancy
-//   4. AR exposure: Rent Roll outstanding vs Aged AR total
-//   5. Property identity: Owner LP from tax bill vs property metadata
-//   6. Concession ratio: T12 trailing vs Rent Roll snapshot (timing/seasonality)
-//
-// Alerts are typed by `metric` and severity. Downstream modules subscribe:
-//   - M14 Risk reads `severity:warning|critical` alerts
-//   - M09 ProForma reads scenarios when present
-//   - M22 Post-close uses these as baseline-at-acquisition
-// ============================================================================
+// Cross-doc validation: compares metrics across uploaded documents,
+// emits variance alerts to platform_intel when divergence exceeds thresholds.
 
 const VARIANCE_THRESHOLDS = {
   property_tax_warning_pct: 0.10,
@@ -107,7 +89,6 @@ async function loadCapsule(pool: Pool, dealId: string): Promise<DealCapsule> {
   return (result.rows[0]?.deal_data ?? {}) as DealCapsule;
 }
 
-// ─── Individual cross-checks ─────────────────────────────────────────────────
 
 function checkPropertyTax(capsule: DealCapsule): CrossDocVariance | null {
   const t12 = capsule.extraction_t12;
@@ -282,7 +263,6 @@ function checkOwnerIdentity(capsule: DealCapsule, dealRow: XValDealRow | null): 
   };
 }
 
-// ─── Persistence ─────────────────────────────────────────────────────────────
 
 async function persistAlert(pool: Pool, dealId: string, variance: CrossDocVariance): Promise<void> {
   // Idempotent on (deal_id, metric) — replace prior alert for same metric
@@ -309,7 +289,6 @@ async function persistAlert(pool: Pool, dealId: string, variance: CrossDocVarian
   );
 }
 
-// ─── Main entry point ───────────────────────────────────────────────────────
 
 export async function runCrossValidation(pool: Pool, dealId: string): Promise<{
   variancesFound: number;
