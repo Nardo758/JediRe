@@ -147,7 +147,7 @@ export class RiskScoringService {
     // Get existing units in trade area
     const existingResult = await query(
       `SELECT 
-         COALESCE(SUM(p.unit_count), 0) as existing_units
+         COALESCE(SUM(p.units), 0) as existing_units
        FROM properties p
        JOIN trade_areas ta ON ta.property_id = p.id
        WHERE ta.id = $1`,

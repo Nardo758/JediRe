@@ -308,8 +308,15 @@ router.get('/events', async (req: Request, res: Response) => {
  */
 router.post('/threshold', async (req: Request, res: Response) => {
   try {
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Authentication required',
+      });
+    }
+
     const {
-      userId,
       riskCategoryId,
       scoreThreshold = 70.0,
       changeThreshold = 5.0,
@@ -318,13 +325,6 @@ router.post('/threshold', async (req: Request, res: Response) => {
       notificationEnabled = true,
       notificationChannel = 'email',
     } = req.body;
-
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        error: 'userId is required',
-      });
-    }
 
     // Upsert threshold configuration
     const result = await query(
