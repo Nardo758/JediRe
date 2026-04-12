@@ -150,6 +150,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         property_data: row.property_data || null,
         zoningProfile: row.zoning_profile || null,
         purchasePrice: parseFloat(row.purchase_price) || null,
+        deal_data: row.deal_data || {},
         parcelId: row.linkedParcelId || null,
         zoningCode: row.linkedZoningCode || null,
         lotSizeAcres: parseFloat(row.linkedLotSizeAcres) || null,

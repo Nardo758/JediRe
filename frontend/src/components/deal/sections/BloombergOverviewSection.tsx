@@ -244,7 +244,9 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   const price = deal?.purchasePrice ? dollar(deal.purchasePrice)
     : deal?.budget ? dollar(deal.budget) : '$--';
 
-  const units = deal?.units || deal?.targetUnits || 0;
+  const extDealData = deal?.deal_data as Record<string, unknown> | null;
+  const extRRUnits = (extDealData?.extraction_rent_roll as Record<string, unknown> | undefined)?.totalUnits ?? (extDealData?.extraction_rent_roll as Record<string, unknown> | undefined)?.total_units;
+  const units = deal?.units || deal?.targetUnits || (extRRUnits != null ? Number(extRRUnits) : 0);
   const ppuNum = units > 0 && deal?.purchasePrice ? Math.round(deal.purchasePrice / units) : null;
   const ppuStr = ppuNum != null ? `$${ppuNum.toLocaleString()}` : '$--';
 
@@ -303,6 +305,11 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   })();
 
   // Row 3 — Assumptions table: Rent/unit, Vacancy, OpEx ratio, Cap Rate, Exit Year, IRR
+  // Extract platform data from deal_data extraction capsule (T12, Rent Roll)
+  const dData = deal?.deal_data as Record<string, unknown> | null;
+  const extT12 = dData?.extraction_t12 as Record<string, unknown> | undefined;
+  const extRR = dData?.extraction_rent_roll as Record<string, unknown> | undefined;
+
   // Rent/unit = $/unit/month (not rent growth %)
   const rentUnitBroker: string = (() => {
     const v = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions
@@ -313,25 +320,35 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     if (rentPsf != null && units > 0) return `$${Math.round(rentPsf * 900)}/mo`;
     return '—';
   })();
-  const rentUnitPlatform: string = market?.avgRent != null
-    ? `$${Math.round(market.avgRent as number).toLocaleString()}/mo`
-    : assumptions?.rentPerUnit != null
-      ? `$${Math.round(assumptions.rentPerUnit as number).toLocaleString()}/mo`
-      : '—';
+  const rentUnitPlatform: string = (() => {
+    if (market?.avgRent != null) return `$${Math.round(market.avgRent as number).toLocaleString()}/mo`;
+    if (assumptions?.rentPerUnit != null) return `$${Math.round(assumptions.rentPerUnit as number).toLocaleString()}/mo`;
+    const rrAvg = extRR?.avg_effective_rent ?? extRR?.avgEffectiveRent ?? extRR?.avg_market_rent ?? extRR?.avgMarketRent;
+    if (rrAvg != null) return `$${Math.round(Number(rrAvg)).toLocaleString()}/mo`;
+    return '—';
+  })();
 
   const vacancyBroker = brokerVacancy != null ? `${brokerVacancy.toFixed(1)}%` : '—';
-  const vacancyPlatform = platformVacancy != null ? `${platformVacancy.toFixed(1)}%` : '—';
+  const vacancyPlatform: string = (() => {
+    if (platformVacancy != null) return `${platformVacancy.toFixed(1)}%`;
+    const rrOcc = extRR?.occupancy_by_unit_pct ?? extRR?.occupancyRate;
+    if (rrOcc != null) return `${(100 - Number(rrOcc) * 100).toFixed(1)}%`;
+    return '—';
+  })();
 
   const opexBroker = (() => {
     const assumptions_ = (deal?.strategyDefaults as Record<string, unknown>)?.assumptions as Record<string, unknown> | undefined;
     if (assumptions_?.opexRatio != null) return `${assumptions_.opexRatio}%`;
-    const dData = deal?.deal_data as Record<string, unknown> | null;
     if (dData?.opex_ratio != null) return `${dData.opex_ratio}%`;
     return '—';
   })();
-  const opexPlatform = assumptions?.opexRatio != null
-    ? `${assumptions.opexRatio}%`
-    : financial?.noi != null && deal?.purchasePrice ? '38%' : '—';
+  const opexPlatform = (() => {
+    if (assumptions?.opexRatio != null) return `${assumptions.opexRatio}%`;
+    const t12Ratio = extT12?.expenseRatio ?? extT12?.expense_ratio;
+    if (t12Ratio != null) return `${(Number(t12Ratio) * 100).toFixed(0)}%`;
+    if (financial?.noi != null && deal?.purchasePrice) return '38%';
+    return '—';
+  })();
 
   const capRateBroker = deal?.capRate != null ? `${deal.capRate}%` : '—';
   const capRatePlatform = assumptions?.capRate != null ? `${assumptions.capRate}%`
