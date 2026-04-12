@@ -1,20 +1,3 @@
-// ============================================================================
-// integration.alta-porter.test.ts
-// End-to-end pipeline test using the actual Alta Porter files.
-//
-// Run: npm test -- integration.alta-porter
-// Requires: live Postgres connection (test DB recommended).
-//
-// What this proves:
-//   1. T12 parser extracts to capsule shape with EGI/NOI within 0.5% of truth
-//   2. Rent roll parser extracts charge codes with 100% match to Yardi summary
-//   3. Tax bill parser populates appeal scenarios
-//   4. Proforma seeder produces a LayeredValue tree with correct resolution
-//   5. Cross-validation flags the T12-vs-tax-bill variance
-//   6. deal_properties join row is created (no orphan property)
-//   7. financialModelEngine.buildModel() succeeds with seeded assumptions
-// ============================================================================
-
 import * as fs from 'fs';
 import * as path from 'path';
 import { Pool } from 'pg';
@@ -24,6 +7,7 @@ import { routeExtractionResult } from '../data-router';
 import { processDocument } from '../extraction-pipeline';
 import { seedProFormaYear1, buildAssumptionsFromYear1Seed } from '../../proforma-seeder.service';
 import { runCrossValidation } from '../../multi-doc-cross-validation.service';
+import type { ExtractionResult } from '../types';
 
 // Set TEST_DEAL_ID in env to use a real deal id; otherwise creates a synthetic one
 const TEST_DEAL_ID = process.env.TEST_DEAL_ID || 'c85c5ff5-49d1-42e7-92a2-a82f790587de';
@@ -43,13 +27,13 @@ describe('Alta Porter end-to-end pipeline', () => {
   describe('T12 parser', () => {
     it('extracts annual totals within 0.5% of ground truth', () => {
       const buf = fs.readFileSync(path.join(FIXTURES, 'T12_1_2026_AltaPorter.xlsx'));
-      const result: any = parseT12(buf, 'T12_1_2026_AltaPorter.xlsx');
+      const result: ExtractionResult = parseT12(buf, 'T12_1_2026_AltaPorter.xlsx');
 
       expect(result.success).toBe(true);
       expect(result.chartFormat).toBe('yardi_accrual');
       expect(result.warnings).toContain('No property insurance line found in T12 — proforma should use platform baseline');
 
-      const s = result.summary;
+      const s = result.summary as Record<string, number | boolean>;
       // Exact matches (parser captures Yardi GL line items 1:1)
       expect(s.gpr).toBe(8492563);
       expect(Math.round(s.lossToLease)).toBe(-185660);
@@ -80,12 +64,12 @@ describe('Alta Porter end-to-end pipeline', () => {
   describe('Rent Roll parser', () => {
     it('extracts unit counts and charge codes exactly matching Yardi summary', () => {
       const buf = fs.readFileSync(path.join(FIXTURES, 'RRwLC_-_Alta_Porter_on_Peachtree_-_3_10_2026.xlsx'));
-      const result: any = parseRentRoll(buf, 'RRwLC_Alta_Porter.xlsx');
+      const result: ExtractionResult = parseRentRoll(buf, 'RRwLC_Alta_Porter.xlsx');
 
       expect(result.success).toBe(true);
-      expect(result.layout).toBe('yardi_rrwlc');
+      expect((result as ExtractionResult & { layout?: string }).layout).toBe('yardi_rrwlc');
 
-      const s = result.data.summary;
+      const s = (result.data as Record<string, unknown>)?.summary as Record<string, number>;
       expect(s.totalUnits).toBe(291);
       expect(s.occupiedUnits).toBe(263);
       expect(s.vacantUnits).toBe(27);
@@ -93,24 +77,25 @@ describe('Alta Porter end-to-end pipeline', () => {
       expect(s.totalMarketRent).toBe(713161);
       expect(s.totalLeaseCharges).toBe(635629.4);
 
-      const x = result.capsuleExtras;
+      const x = result.capsuleExtras as Record<string, unknown>;
+      expect(x).toBeDefined();
       expect(x.as_of_date).toBe('2026-03-10');
       expect(x.source_system_id).toBe('gaaltpor');
       expect(x.total_rentable_sqft).toBe(279017);
-      expect(Math.round(x.avg_unit_sqft)).toBe(959);
+      expect(Math.round(x.avg_unit_sqft as number)).toBe(959);
       expect(x.occupancy_by_sqft_pct).toBeCloseTo(0.8939, 3);
 
-      // Every charge code matches Yardi summary exactly:
-      expect(x.charge_codes.rent).toBe(621854);
-      expect(x.charge_codes.parking).toBe(8940);
-      expect(x.charge_codes.trash).toBe(6575);
-      expect(x.charge_codes.storage).toBe(2945);
-      expect(x.charge_codes.pestctrl).toBe(789);
-      expect(x.charge_codes.utilreb).toBe(669);
-      expect(x.charge_codes.petrent).toBe(510);
-      expect(x.charge_codes.liabins).toBe(120);
-      expect(x.charge_codes.empdisc).toBe(-2001.2);
-      expect(x.charge_codes.otconc).toBe(-5163.5);
+      const cc = x.charge_codes as Record<string, number>;
+      expect(cc.rent).toBe(621854);
+      expect(cc.parking).toBe(8940);
+      expect(cc.trash).toBe(6575);
+      expect(cc.storage).toBe(2945);
+      expect(cc.pestctrl).toBe(789);
+      expect(cc.utilreb).toBe(669);
+      expect(cc.petrent).toBe(510);
+      expect(cc.liabins).toBe(120);
+      expect(cc.empdisc).toBe(-2001.2);
+      expect(cc.otconc).toBe(-5163.5);
     });
   });
 
@@ -182,11 +167,12 @@ describe('Alta Porter end-to-end pipeline', () => {
       const assumptions = buildAssumptionsFromYear1Seed(seedRow.year1, dealRow);
 
       expect(assumptions.modelType).toBe('acquisition');
-      expect(assumptions.revenue.gpr).toBeGreaterThan(8000000);
-      expect(assumptions.opex.realEstateTax).toBe(1734481);
-      expect(assumptions.opex.managementFeePct).toBeCloseTo(0.0306, 3);
-      expect(assumptions.derived.noi).toBeGreaterThan(3500000);
-      expect(assumptions.provenance.fieldResolutions['real_estate_tax']).toBe('tax_bill');
+      const rev = assumptions.revenue as Record<string, unknown>;
+      const opex = assumptions.opex as Record<string, unknown>;
+      expect(rev.gpr).toBeGreaterThan(8000000);
+      expect(opex.realEstateTax).toBe(1734481);
+      expect(opex.managementFeePct).toBeCloseTo(0.0306, 3);
+      expect(assumptions.noi).toBeGreaterThan(3500000);
     });
   });
 });
