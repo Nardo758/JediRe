@@ -254,11 +254,7 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
           [row.id]
         );
         if (seedExists.rows.length > 0) {
-          try {
-            console.log(`[FinancialModel] Seeder complete for deal ${row.id} — manual model build available via /proforma/year1`);
-          } catch (modelErr) {
-            console.error(`[FinancialModel] Auto-build failed for ${row.id}:`, modelErr instanceof Error ? modelErr.message : modelErr);
-          }
+          console.log(`[Seeder] Year1 seed available for deal ${row.id}`);
         }
       } catch (err) {
         console.error(`[ExtractionPipeline] Deal creation trigger failed for ${row.id}:`, err instanceof Error ? err.message : err);

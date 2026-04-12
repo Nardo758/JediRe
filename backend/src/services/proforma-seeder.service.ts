@@ -130,9 +130,14 @@ function buildSeed(
 ): ProFormaYear1Seed {
   const ex = existingSeed || {} as ExistingSeed;
   const getOverride = (fieldName: string): number | null => {
-    const field = ex[fieldName];
-    if (field && typeof field === 'object' && 'override' in field) {
-      return (field as LayeredValue<number>).override ?? null;
+    const parts = fieldName.split('.');
+    let current: unknown = ex;
+    for (const part of parts) {
+      if (!current || typeof current !== 'object') return null;
+      current = (current as Record<string, unknown>)[part];
+    }
+    if (current && typeof current === 'object' && 'override' in current) {
+      return (current as LayeredValue<number>).override ?? null;
     }
     return null;
   };
