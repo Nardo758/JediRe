@@ -1,0 +1,440 @@
+# F9 Financial Engine — Pro Forma + Assumptions Enhancement Spec
+
+**Module:** M09 (Pro Forma) + M09a (Assumptions)
+**Author:** Leon / JEDI RE
+**Status:** Spec — ready for Claude Code implementation session
+**Dependencies:** M02 (Rent Roll Ingestion), T-12 parser, `proforma-adjustment.service.ts` (1,110 lines), `LayeredValue<T>` resolver
+
+---
+
+## 1. The Problem
+
+Today the Pro Forma tab and Assumptions tab both look like "input sheets." That conflates two fundamentally different things:
+
+1. **AS-IS reality** — what the broker package actually shows (T-12 trailing, current rent roll, in-place opex). This is a historical fact, not a projection.
+2. **Forward assumptions** — what the model believes about growth, vacancy, expense inflation, exit, etc. on a per-year basis.
+
+Institutional underwriting always separates these. The "Pro Forma" in a broker OM is literally the in-place operating statement. The "Projections" are what you build on top of it. Right now F9 smears the two together and the user can't tell what is observed vs. what is assumed.
+
+This also breaks the 3-layer LayeredValue contract: **Broker** should populate the Pro Forma. **Platform** should populate the Assumptions (model findings). **User** overrides live on the Assumptions tab. Today the Broker layer has no home.
+
+---
+
+## 2. The Fix — Tab Semantics (locked)
+
+| Tab | What it is | Primary data source | User interaction |
+|---|---|---|---|
+| **Overview** | KPIs + S&U + AI synthesis | ENGINE + AI | Read-only |
+| **Pro Forma** | **AS-IS ingested T-12 / in-place rent roll** | **BROKER layer (ingestion)** | **Edit in-place values (corrections only)** |
+| **Projections** | Forward 3/5/7/10-yr operating statement | ENGINE (Pro Forma × Assumptions) | Read-only, timeline toggle |
+| **Assumptions** | **Per-year forward assumptions, model findings populated, user-editable** | **PLATFORM layer (findings) + USER overrides** | **Full edit, per-year grid** |
+| Debt | Loan stack + amortization | ENGINE | Select active loan |
+| Waterfall | LP/GP distributions | ENGINE | Read-only |
+| Sensitivity | Heat maps | ENGINE | Toggle drivers |
+| Decision | AI rationale | AI | Read-only |
+| Compare | Version diff | ENGINE + AI | Select versions |
+
+**The mental model:** Pro Forma = Year 0 snapshot (what is). Assumptions = Years 1-N deltas (what will be). Projections = Pro Forma compounded forward using Assumptions.
+
+### 2.1 Critical — how Gross Potential Revenue is actually built
+
+GPR is **not** `units × rent × 12 × (1 − vacancy)`. That's the accounting identity, but it hides the demand side. The real forward GPR is built from **two ingredients**:
+
+1. **Rent Growth assumption** → drives the **rate** per unit per month (the $ side)
+2. **Traffic Engine outputs (M07)** → drive **leased-unit throughput** (the occupancy/absorption side)
+
+```
+Forward GPR(year_t) = Σ per unit type:
+    in_place_rent × (1 + rent_growth_t)^t          ← Rent Growth assumption
+  × units                                          ← from Pro Forma rent roll
+  × leased_unit_pct_t                              ← DERIVED from Traffic Engine
+  × 12
+
+  where leased_unit_pct_t = f(
+    T-01 Weekly Walk-Ins_t,
+    T-05 Traffic-to-Lease conversion_t,
+    T-06 Capture Rate_t,
+    T-07 Traffic Trajectory_t        ← forward signal
+  )
+```
+
+This means the Traffic Engine is not a side panel on F10 — its outputs are **direct inputs into the Assumptions tab** for vacancy, lease-up, and absorption. The Assumptions tab must surface them, per year, with the same three-layer Broker/Platform/User treatment.
+
+---
+
+## 3. Pro Forma Tab — Detailed Spec
+
+### 3.1 Purpose
+
+Show the **ingested, as-is operating picture** of the property at acquisition. This is the broker's T-12 and current rent roll, parsed and normalized, with line items mapped to the platform's canonical chart of accounts. The user sees exactly what the seller is representing — and can correct obvious errors (miskeyed OpEx line, misclassified income) but cannot "project" here.
+
+### 3.2 Data sources (Broker layer)
+
+| Input | Source | Service |
+|---|---|---|
+| T-12 operating statement | Uploaded OM PDF / Excel | `t12-parser.service.ts` |
+| Current rent roll | Uploaded rent roll Excel | `rent-roll-parser.service.ts` |
+| Unit mix | Derived from rent roll | Aggregation in M02 |
+| Tax / insurance | T-12 + county assessor | M02 + county GIS |
+| Utilities / R&M / payroll | T-12 line items | `t12-parser` |
+| Management fee (in-place) | T-12 or stated in OM | `t12-parser` |
+
+Every field here is `LayeredValue<T>` with `broker` populated. If T-12 is missing a line, the cell shows `—` with a badge "NOT PROVIDED IN OM" (not zero, not platform-estimated — here we want the gap visible).
+
+### 3.3 Layout — three stacked sections
+
+#### Section A: In-Place Unit Economics (from rent roll)
+
+Grid rows = unit types (1BR/1BA, 2BR/2BA, etc.). Columns:
+
+| Column | Source | Editable |
+|---|---|---|
+| Unit Type | Rent roll | No |
+| Unit Count | Rent roll | Yes (correction) |
+| Avg SF | Rent roll | Yes (correction) |
+| Avg In-Place Rent | Rent roll (weighted) | Yes (correction) |
+| Market Rent (comp-derived) | M05 comps | Read-only, link to F5 |
+| Loss-to-Lease | Calc: market − in-place | Read-only |
+| % Occupied | Rent roll date-of snapshot | Yes (correction) |
+| % on Concession | Rent roll concession column | Yes |
+
+**Totals row:** weighted averages, total GPR at in-place, total GPR at market, loss-to-lease $.
+
+#### Section B: Trailing 12-Month Operating Statement (T-12)
+
+Two-column layout: **Line Item | T-12 Annual**. Every row is a canonical GL code, mapped from the broker's raw line descriptions. Source badge per row: `T-12` / `OM Narrative` / `County Assessor` / `Not Provided`.
+
+Canonical rows (grouped):
+
+**Revenue**
+- Gross Potential Rent
+- (Vacancy Loss)
+- (Concessions)
+- (Bad Debt)
+- Other Income — RUBS
+- Other Income — Fees (app, pet, late, parking)
+- Other Income — Laundry / Vending
+- **Effective Gross Income**
+
+**Operating Expenses**
+- Real Estate Taxes
+- Insurance
+- Utilities (sub: electric, water/sewer, gas, trash)
+- Repairs & Maintenance
+- Contract Services (landscape, pest, pool)
+- Turnover / Make-Ready
+- Payroll & Benefits
+- Marketing & Leasing
+- Management Fee (% of EGI shown in parens)
+- G&A
+- **Total OpEx**
+
+**Below NOI**
+- **NOI**
+- Reserves / CapEx Reserve (if stated in OM)
+
+Every row shows: `$ value | $/unit | % of EGI | Source badge`. Yellow highlight on any row where T-12 number diverges >20% from platform benchmark for the submarket (flags likely misclassification or aggressive broker presentation — Greystar peer data via M05).
+
+#### Section C: Capital Stack at Close (from OM)
+
+What the broker is asking. Not what you're modeling — just what's on the table.
+
+- Asking Price
+- Implied Cap Rate (T-12 NOI / Ask)
+- Assumable Debt (if any) — balance, rate, maturity, IO remaining
+- Other encumbrances
+
+### 3.4 Editing behavior
+
+- **In-place edits only.** User can correct a miskeyed value (e.g., parser grabbed $1.2M from wrong row). Every edit flips that cell's layer from `broker` to `broker_corrected` and logs the change with timestamp + old value. Shown with a small pencil icon.
+- **No forward projections on this tab.** If user tries to enter "rent growth" or "exit cap" here, UI routes them to Assumptions tab.
+- **"Reset to ingested" button per row** — reverts a correction back to the raw parsed value.
+- **"Reparse from source" button at top** — re-runs the T-12 parser (useful after a corrected OM is uploaded).
+
+### 3.5 Integrity checks (shown as banner at top)
+
+- ✓ / ✗ T-12 reconciles (Revenue − OpEx = NOI within $1k)
+- ✓ / ✗ Rent roll GPR × 12 matches T-12 GPR within 3%
+- ✓ / ✗ All canonical OpEx rows have a source (no silent zeros)
+- ✓ / ✗ Tax line matches county assessor trailing year
+
+If any check fails, banner is red and Projections tab shows a warning ("Pro Forma has unreconciled inputs — projections may be unreliable").
+
+---
+
+## 4. Assumptions Tab — Detailed Spec
+
+### 4.1 Purpose
+
+Show **every forward-looking input** the model uses, on a **per-year basis (Years 1–N where N = hold period)**, with the model's findings pre-populated (Platform layer) and user override available (User layer) per cell. This is the **single place** where future assumptions live. Projections tab just renders the math.
+
+### 4.2 Structure — spreadsheet grid
+
+Columns: `Assumption | Y1 | Y2 | Y3 | ... | YN | Source | Confidence`
+
+Rows grouped into 6 sections:
+
+#### Section 1: Revenue Assumptions — Rent side
+
+- Rent Growth % (per unit type row, or blended)
+- Concession % (burns off per schedule)
+- Bad Debt %
+- Other Income Growth %
+- Loss-to-Lease capture schedule (how fast in-place rolls to market)
+
+#### Section 2: Revenue Assumptions — Traffic / Demand side (NEW — from M07)
+
+These are the **second ingredient of GPR**. Every row is per-year, per-unit-type (or blended). Platform values come directly from the Traffic Engine's forward projections, not from historical submarket averages.
+
+| Row | Platform source | Notes |
+|---|---|---|
+| **Weekly Walk-Ins (T-01)** | `trafficPredictionEngine.ts` — 12-step pipeline, projected forward using T-07 trajectory | Absolute count per week. Compounds with T-07 trajectory for years 2+. |
+| **Traffic-to-Lease Conversion % (T-05)** | `multifamilyTrafficService.ts` calibrated from owned-asset actuals | Typically 8–18% of walk-ins sign. User can override based on on-site team quality. |
+| **Capture Rate (T-06)** | `calculateCaptureRate()` — property's share of submarket demand | The competitive share side. Affected by PCS rank changes from renovation. |
+| **Traffic Trajectory (T-07)** | Composite: digital_momentum×0.5 + aadt_yoy×0.3 + seasonal_deviation×0.2 | **Per-year delta applied to T-01**. This is how a "demand surge" shows up in Y1-Y3 assumptions as an absorption tailwind. |
+| **Vacancy %** (**derived, not independent**) | Computed from: 1 − (T-01 × T-05 × 52 × avg_lease_term) / units | Shown as read-only derived, with toggle to input manually. Most users will let it flow through. |
+| **Stabilized Occupancy Target** | Submarket equilibrium from M05 + PCS rank position | Caps the derived vacancy — you can't lease above submarket-supported equilibrium. |
+| **Lease-Up Curve** (for redev / dev / STR conversion) | Traffic-driven monthly absorption schedule | Replaces the old "X units/month flat" assumption with a traffic-grounded curve. |
+| **Renovation Traffic Lift** | PCS rank improvement → T-06 capture rate increase | When the user schedules a reno in Section 3, this row shows the predicted capture-rate lift and its timing lag. |
+
+**How the two ingredients combine in the grid:** a summary row at the bottom of Section 2 shows the resulting **GPR-per-year** number, labeled "Derived GPR (Rent × Traffic)" so the user sees the two drivers converging into one line. Click that row → drawer shows the full decomposition: rent component delta vs. traffic component delta, year over year.
+
+#### Section 3: Expense Assumptions
+- Real Estate Tax growth % (with reassessment event flag on sale year)
+- Insurance growth %
+- Utility inflation %
+- R&M inflation %
+- Payroll growth %
+- Management fee % of EGI (usually flat)
+- General inflation % (for catch-all lines)
+
+#### Section 4: CapEx / Reserves
+- Recurring CapEx reserve $/unit/yr
+- Renovation program — $/unit × units touched per year (schedule)
+- Renovation rent premium achieved — $/unit lift when unit rolls
+- **Renovation traffic impact** — links to Section 2 Renovation Traffic Lift row
+
+#### Section 5: Debt Assumptions (if M11 hasn't locked a loan)
+- Placeholder rate on refi year
+- Refi LTV target
+- Prepay / defeasance assumption
+
+#### Section 6: Exit Assumptions
+- Exit year (default = hold period)
+- Exit cap rate (shown as delta to going-in)
+- Selling costs % of gross
+- Terminal NOI basis (Y+1 forward or trailing)
+
+#### Section 7: Strategy-Specific (conditional on M08 path)
+- **If Redevelopment:** down units/mo schedule, construction duration, lease-up curve (traffic-grounded from Section 2)
+- **If Development:** GC cost/SF, timeline by phase, absorption pace (driven by T-01 projections)
+- **If STR conversion:** ADR ramp, occupancy ramp (driven by T-01 + tourist traffic overlay), OTA commission
+
+### 4.3 Per-cell structure (this is the key UI)
+
+Every cell in the grid shows **three stacked values** (or one with a hover reveal on compact mode):
+
+```
+┌─────────────────────────────┐
+│  3.5%  ← USER (blue)        │  ← what flows to Projections
+│  4.1%  ← PLATFORM (cyan)    │  ← model finding
+│  3.2%  ← BROKER (amber)     │  ← what OM claimed
+└─────────────────────────────┘
+```
+
+- **Resolution rule:** User > Platform > Broker (LayeredValue cascade).
+- **Cell color:** blue text = user override active; cyan = platform finding active; amber = broker default. Yellow background = user override deviates >100bps from platform. Red background = deviates >2 std dev from submarket benchmark.
+- **Click cell →** side drawer opens with:
+  - Platform finding derivation (what data, what formula, what events drove it)
+  - Broker claim + source (page/line of OM)
+  - Submarket benchmark + percentile position
+  - Confidence score from Platform layer
+  - "Use Platform" / "Use Broker" / "Use my override" toggle
+  - Editable input for user value
+  - "Apply to all years" button (for flat assumptions)
+
+### 4.4 Platform findings — where they come from
+
+This is where **all the model's intelligence shows up**. Every Platform value must be traceable.
+
+| Assumption | Platform finding source | Service |
+|---|---|---|
+| Rent Growth | M05 comp trends + M06 demand events + M04 supply absorption | `proforma-adjustment.service` F32 |
+| **Weekly Walk-Ins (T-01)** | FDOT AADT + Google Routes + digital momentum → 12-step pipeline | `trafficPredictionEngine.ts` |
+| **Traffic-to-Lease (T-05)** | Calibrated from owned-asset actuals (T-10 feedback) | `multifamilyTrafficService.ts` |
+| **Capture Rate (T-06)** | Property share of submarket demand, adjusted for PCS rank | `calculateCaptureRate()` |
+| **Traffic Trajectory (T-07)** | digital_momentum×0.5 + aadt_yoy×0.3 + seasonal_dev×0.2, projected forward | `trafficPredictionEngine.ts` trajectory module |
+| **Derived Vacancy** | 1 − (T-01 × T-05 × 52 × avg_lease_term) / units, capped by M05 submarket equilibrium | Computed in `proforma-adjustment.service` |
+| Concessions | M05 comp concession tracking + Google Review sentiment | F48–F53 |
+| Bad Debt | M22 submarket actuals benchmark | `deal_monthly_actuals` aggregation |
+| RE Tax growth | County reassessment schedule + millage trend | M02 + county GIS |
+| Insurance growth | FL insurance crisis model + carrier data | FRED + carrier feeds |
+| Utility inflation | BLS submarket CPI utilities component | FRED |
+| Payroll growth | BLS ECI multifamily ops | FRED |
+| Exit cap | M15 comp sales + M32 rate strategy + hold period | F37 exit cap derivation |
+| Loss-to-Lease capture | Turnover rate × market gap × T-01 walk-in capacity | M02 rent roll + M05 + M07 |
+| Renovation premium | M05 renovated comp delta | M05 comp stratification |
+| **Renovation traffic lift** | Predicted PCS rank improvement → T-06 capture rate delta | M07 + CI Engine PCS module |
+
+Every finding carries a **confidence score (0–1)** from the underlying agent. Displayed as a small meter in the Source column.
+
+### 4.5 Year-over-year editing
+
+Three input modes per row:
+
+1. **Flat** — single value applied to all years (default for most expense inflations).
+2. **Stepped** — different value per year (default for vacancy during lease-up, renovation schedules).
+3. **Formula** — expression referencing other cells (e.g., `Y1 + 0.25% per year`).
+
+Mode selector on the left of each row. Switching modes preserves as much data as possible (flat → stepped copies value across; stepped → flat averages).
+
+### 4.6 Bulk actions
+
+- **"Use all Platform"** — reverts every cell to platform finding. Useful after model re-runs.
+- **"Use all Broker"** — models the OM as-stated (for comparing broker's pro forma directly).
+- **"Lock user overrides"** — freezes user cells so a model re-run doesn't overwrite them.
+- **"Export to Excel"** — downloads grid with formulas preserved (black = formula, blue = hardcoded, green = cross-sheet link per existing color convention).
+
+### 4.7 Findings summary panel (right rail, collapsible)
+
+Above the grid, a narrative block generated by the AI Coordinator:
+
+> **Platform's view on this deal** (auto-generated)
+>
+> Rent growth 4.1% vs broker's 3.0% — driven by [Event: Amazon HQ2 demand, Apr 2026] and absorption of 1,200 pipeline units tracking ahead of delivery. Confidence 0.78.
+>
+> **Traffic trajectory +19.1% (DEMAND SURGE)** — digital momentum +35% leading physical AADT +4.2%, a 31pp digital-physical gap indicating demand is building faster than historical signals show. T-01 walk-ins projected to rise from 16.7/wk (Y1) to 22.4/wk (Y3). This is the second reason the Platform sits above broker on revenue.
+>
+> Derived vacancy 4.9% vs broker's in-place 5.8% — not a judgment, it's the math: 22.4 walk-ins/wk × 12% T-05 conversion × 52 weeks = 140 leases/yr against 208 units with 18mo avg tenancy → 91% leased equilibrium. Capped at submarket equilibrium of 94%.
+>
+> Exit cap 5.75% vs going-in 5.4% — 35bps expansion assumes Fed terminal at 3.5% (M32 rate strategy) and submarket cap rate regression to 10-yr mean. Downside 6.25% in bear scenario.
+>
+> **Key divergences from broker OM:** broker assumed 97% stabilized occupancy (platform derived: 93%, capped at submarket 94%), broker ignored the traffic trajectory signal entirely, broker under-budgeted insurance by 38% vs FL carrier trends, broker used 4.75% exit cap (platform: 5.75%).
+
+This narrative is the **output of the Assumptions agent** — it's the "why" behind every Platform value, consolidated.
+
+---
+
+## 5. Data Contract — what the backend must deliver
+
+Single endpoint: `GET /api/deals/:dealId/financials`
+
+```ts
+interface DealFinancials {
+  proforma: {
+    asOfDate: string;           // T-12 end date
+    unitEconomics: UnitTypeRow[];
+    operatingStatement: {
+      [canonicalRow: string]: LayeredValue<number> & {
+        source: 'T-12' | 'OM' | 'Assessor' | 'NotProvided';
+        confidence: number;
+        benchmarkPosition?: { percentile: number; delta: number };
+      }
+    };
+    integrityChecks: IntegrityCheck[];
+  };
+  trafficProjection: {                  // NEW — drives revenue assumptions
+    asOfDate: string;
+    baseline: {
+      t01_walkins_weekly: number;
+      t02_physical_score: number;
+      t03_digital_score: number;
+      t04_quadrant: 'hidden_gem' | 'winner' | 'hype' | 'dead';
+      t05_conversion_pct: number;
+      t06_capture_rate: number;
+      t07_trajectory_pct: number;
+      t08_generator_mix: Record<string, number>;
+      t09_competitive_share: number;
+      t10_confidence: number;
+    };
+    yearly: Array<{                     // length = hold
+      year: number;
+      t01_walkins_weekly: LayeredValue<number>;
+      t05_conversion_pct: LayeredValue<number>;
+      t06_capture_rate: LayeredValue<number>;
+      t07_trajectory_pct: LayeredValue<number>;
+      derived_leased_unit_pct: number;  // read-only, from formula
+      derived_vacancy_pct: number;       // read-only
+      lift_events: Array<{ source: 'renovation' | 'PCS_rank' | 'supply_change'; impact: number; }>;
+    }>;
+  };
+  assumptions: {
+    hold: number;                // years
+    rows: Array<{
+      key: string;                // e.g., 'rent_growth', 'walkins_weekly', 'conversion_pct'
+      group: 'revenue_rent' | 'revenue_traffic' | 'expense' | 'capex' | 'debt' | 'exit' | 'strategy';
+      mode: 'flat' | 'stepped' | 'formula' | 'derived';
+      years: Array<LayeredValue<number>>;
+      derivedFrom?: string[];     // e.g., vacancy row references walkins_weekly + conversion_pct
+      platformDerivation: {
+        formula: string;
+        inputs: Array<{ name: string; value: number; source: string }>;
+        confidence: number;
+        events?: string[];
+        trafficSignals?: string[];  // T-01, T-07 etc. that informed this
+      };
+      benchmark: { mean: number; p25: number; p75: number; source: string };
+    }>;
+    gprDecomposition: Array<{             // NEW — shows the two ingredients per year
+      year: number;
+      rent_component: number;             // units × rent × (1+growth)^t × 12
+      traffic_component: number;          // × leased_unit_pct from traffic
+      derived_gpr: number;
+      rent_delta_vs_prior: number;
+      traffic_delta_vs_prior: number;
+    }>;
+    narrative: string;
+  };
+}
+```
+
+Writes go through `PATCH /api/deals/:dealId/financials/override` with cell coordinates + new user value. Every write to a traffic-side assumption triggers a **derived vacancy recompute** in the same response. Every write emits a Kafka event that triggers Projections recalculation.
+
+---
+
+## 6. Implementation Sequence
+
+1. **M07 Traffic Engine wiring (prerequisite)** — mount `trafficPrediction.routes.ts`, run the three missing migrations (`traffic_predictions`, `traffic_calibration_factors`, `validation_properties`), wire M05→M07 submarket demand handoff, expose `getTrafficProjection(dealId, hold)` on the API client. **Without this step, Platform values on the traffic-side revenue assumptions will be empty.** (1–2 sessions, per existing TE-1/TE-4 audit items)
+2. **Backend contract** — extend `proforma-adjustment.service.ts` to expose the `DealFinancials` shape above, including `trafficProjection` stream and `gprDecomposition`. Add T-12 parser canonical GL mapping. Add the derived-vacancy formula that combines T-01 × T-05 × T-06. (1 session)
+3. **Pro Forma tab rebuild** — three-section layout, editable cells with correction tracking, integrity banner. (1 session)
+4. **Assumptions grid** — per-year spreadsheet with 3-layer cell component, mode selector per row (including new `derived` mode for vacancy), source drawer on click. Section 2 traffic rows render T-01/T-05/T-06/T-07 per year with the same LayeredValue treatment. (2 sessions — grid is the largest piece)
+5. **GPR decomposition widget** — summary row in Section 2 that shows rent_component + traffic_component = derived_gpr per year, clickable to expand delta attribution. (0.5 session)
+6. **Findings narrative** — AI Coordinator endpoint that consolidates Platform derivations into prose, explicitly including traffic trajectory signal and digital-physical gap when material. (1 session)
+7. **Projections rewire** — change Projections tab to consume resolved `LayeredValue` stream from Assumptions + Pro Forma base. GPR line wired to decomposition output, not the legacy formula. Remove any inline assumptions from Projections itself. (1 session)
+8. **Excel export** — extend `excel-export.service.ts` to emit Pro Forma, Traffic Projection, and Assumptions as separate sheets, preserving the broker/platform/user layering via cell comments. Derived cells (vacancy, GPR decomposition) carry Excel formulas so the spreadsheet stays live. (1 session)
+
+Total: ~8–9 Claude Code sessions. The M07 wiring is the critical path item — if it isn't mounted, Section 2 of Assumptions has no Platform values to show.
+
+---
+
+## 7. Design tokens (Bloomberg dark, matches existing F9)
+
+- Pro Forma in-place values: `T.text.primary` (white), correction flag: `T.text.amber`
+- Broker layer: `T.text.amber` (OM/broker amber)
+- Platform layer: `T.text.cyan`
+- User layer: `T.text.blue` (same blue as existing override convention)
+- Benchmark divergence warning background: `rgba(255,193,7,0.08)` (yellow tint)
+- Red stats divergence background: `rgba(244,67,54,0.08)`
+- Grid row height: 22px. Font: JetBrains Mono 10px for numbers, IBM Plex Sans 9px for labels.
+- Source badges: 8px uppercase, 2px padding, 2px border radius.
+
+---
+
+## 8. Test cases before merge
+
+1. Upload a T-12 + rent roll → Pro Forma renders with every canonical row populated or flagged NotProvided.
+2. Correct a miskeyed OpEx cell → Projections recalculates, correction persists across page reload.
+3. Assumptions Y1 rent growth shows 3 layers; override to 5% → Projections reflects; "Reset to Platform" reverts.
+4. Switch hold period 5→10 → Assumptions grid expands, platform extends findings (traffic T-07 trajectory extrapolated), user overrides preserved for Y1-5.
+5. Re-upload corrected OM → Pro Forma re-parses, user corrections surface a conflict dialog.
+6. Integrity check fails (T-12 doesn't reconcile) → red banner, Projections shows warning.
+7. Export to Excel → Pro Forma + Traffic Projection + Assumptions sheets, formulas intact, layer metadata in cell comments.
+8. **Traffic: override T-05 conversion from 12% to 16% (better on-site team) → derived vacancy drops, GPR decomposition shows traffic_component lift, Projections GPR line ticks up.**
+9. **Traffic: schedule a renovation in Section 4 that touches 40 units in Y2 → Section 2 "Renovation Traffic Lift" row auto-populates with predicted T-06 capture-rate delta and timing lag; click the row to see the PCS-rank derivation.**
+10. **Traffic: T-07 trajectory = +19% in Y1 → Section 2 walk-ins row shows Platform value compounding from 16.7/wk baseline to 22.4/wk by Y3; user can override per year or switch to flat mode.**
+11. **Traffic: derived vacancy exceeds submarket equilibrium cap → cell shows the cap binding with a small lock icon; tooltip explains "capped at submarket 94% equilibrium (M05)."**
+12. **M07 not wired (dev environment) → Section 2 rows show Broker values only with a banner: "Traffic Engine offline — revenue projections using rent-growth only model. Wire M07 for full GPR decomposition."**
+
+---
+
+**End of spec.**
