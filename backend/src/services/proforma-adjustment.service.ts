@@ -1211,7 +1211,10 @@ export async function getDealFinancials(
       [dealId]
     ),
     pool.query(
-      'SELECT year1, total_units, updated_at FROM deal_assumptions WHERE deal_id = $1',
+      `SELECT year1, total_units, updated_at,
+              exit_cap, rent_growth_yr1, rent_growth_stabilized, hold_period_years,
+              interest_rate, ltc
+         FROM deal_assumptions WHERE deal_id = $1`,
       [dealId]
     ),
     pool.query(
@@ -1290,19 +1293,19 @@ export async function getDealFinancials(
   // ── Integrity checks ────────────────────────────────────────────────────────
   const checks: IntegrityCheck[] = [];
 
-  // IC-01: T-12 NOI reconciliation (seed.noi resolved vs seed.noi.t12)
+  // IC-01: T-12 NOI reconciliation — absolute gap must be < $1,000
   const noiLv = lv(year1Seed, 'noi');
   const noiResolved = resolvedNum(noiLv);
   const noiT12 = layerNum(noiLv, 't12');
-  if (noiResolved != null && noiT12 != null && noiT12 !== 0) {
-    const delta = Math.abs((noiResolved - noiT12) / noiT12);
+  if (noiResolved != null && noiT12 != null) {
+    const gapDollars = Math.abs(noiResolved - noiT12);
     checks.push({
       id: 'IC-01',
-      status: delta > 0.10 ? 'warn' : 'ok',
-      message: delta > 0.10
-        ? `T-12 NOI reconciliation gap: resolved $${noiResolved.toLocaleString()} vs T-12 $${noiT12.toLocaleString()} (${(delta * 100).toFixed(1)}% — threshold 10%)`
-        : `T-12 NOI reconciled within 10% (gap ${(delta * 100).toFixed(1)}%)`,
-      detail: { noiResolved, noiT12, deltaPct: +(delta * 100).toFixed(2) },
+      status: gapDollars > 1000 ? 'warn' : 'ok',
+      message: gapDollars > 1000
+        ? `T-12 NOI reconciliation gap $${gapDollars.toLocaleString()} (resolved $${noiResolved.toLocaleString()} vs T-12 $${noiT12.toLocaleString()}) — threshold $1,000`
+        : `T-12 NOI reconciled within $1,000 (gap $${gapDollars.toLocaleString()})`,
+      detail: { noiResolved, noiT12, gapDollars },
     });
   }
 
@@ -1354,6 +1357,24 @@ export async function getDealFinancials(
     checks.push({ id: 'IC-SEED', status: 'warn', message: 'No source data yet — upload T-12 or rent roll to enable integrity checks' });
   }
 
+  // ── Derived vacancy formula (M07 traffic engine) ────────────────────────────
+  // Formula: vacancyPct = 1 − (T-01 × T-05 × 52 × avg_lease_term_wks) / units
+  // Where T-01 = weekly walk-ins, T-05 = closing ratio (leases/walk-ins)
+  // Capped to [M05_EQUILIBRIUM_MIN=0.03, 0.30]
+  let derivedVacancyPct: number | null = null;
+  if (trafficProjRes.rows.length > 0) {
+    const yr1s = trafficProjRes.rows[0].year1_summary as Record<string, unknown> | null;
+    const weeklyWalkIns = yr1s ? (typeof yr1s.weekly_traffic === 'number' ? yr1s.weekly_traffic : null) : null;
+    const closingRatio = yr1s ? (typeof yr1s.closing_ratio === 'number' ? yr1s.closing_ratio : null) : null;
+    if (weeklyWalkIns != null && closingRatio != null && totalUnits > 0) {
+      const avgLeaseTerm = 52; // 1-year standard lease in weeks
+      const annualLeases = weeklyWalkIns * closingRatio * avgLeaseTerm;
+      const M05_EQUILIBRIUM_MIN = 0.03;
+      const raw = 1 - annualLeases / totalUnits;
+      derivedVacancyPct = +Math.min(0.30, Math.max(M05_EQUILIBRIUM_MIN, raw)).toFixed(4);
+    }
+  }
+
   // ── Unit economics ──────────────────────────────────────────────────────────
   const gprRes = resolvedNum(lv(year1Seed, 'gpr'));
   const egiRes = resolvedNum(lv(year1Seed, 'egi'));
@@ -1366,6 +1387,8 @@ export async function getDealFinancials(
     opexPerUnit: safe(opexRes),
     noiPerUnit: safe(noiRes),
     opexRatioPct: egiRes && opexRes && egiRes > 0 ? +((opexRes / egiRes) * 100).toFixed(2) : null,
+    // Derived vacancy from M07 traffic formula (informational — not used in resolution)
+    derivedVacancyPct,
   };
 
   // ── M07 per-year traffic projections ───────────────────────────────────────
@@ -1487,7 +1510,18 @@ export async function applyFinancialsOverride(
   year: number | null,
   value: number | null,
   userId: string
-): Promise<{ year1Key: string; appliedValue: number | null; resolution: string | null }> {
+): Promise<{
+  year1Key: string;
+  appliedValue: number | null;
+  resolution: string | null;
+  updatedCell: Record<string, unknown> | null;
+  derivedRecomputation: {
+    egi: number | null;
+    noi: number | null;
+    totalOpex: number | null;
+    affectedFields: string[];
+  };
+}> {
   const year1Key = FIELD_MAP[field] ?? field;
 
   // Year 1 override — write into the LayeredValue seed via proforma-seeder
@@ -1509,14 +1543,38 @@ export async function applyFinancialsOverride(
     // Audit trail failure is non-fatal
   }
 
-  // Read back the resolved value
+  // Read back updated year1 seed for the overridden field and derived fields
   const res = await pool.query(
-    'SELECT year1 FROM deal_assumptions WHERE deal_id = $1',
+    'SELECT year1, total_units FROM deal_assumptions WHERE deal_id = $1',
     [dealId]
   );
   const seed = res.rows[0]?.year1 as Record<string, unknown> | null;
-  const updatedLv = seed && lv(seed, year1Key);
+  const updatedLv = seed ? lv(seed, year1Key) : null;
   const resolution = updatedLv ? (updatedLv.resolution as string | null) : null;
 
-  return { year1Key, appliedValue: value, resolution };
+  // Compute derived recomputation — which fields are affected by the override
+  const REVENUE_AFFECTING = ['gpr', 'loss_to_lease_pct', 'vacancy_pct', 'concessions_pct', 'bad_debt_pct',
+    'non_revenue_units_pct', 'other_income_per_unit', 'net_rental_income'];
+  const OPEX_AFFECTING = ['payroll', 'repairs_maintenance', 'turnover', 'contract_services', 'marketing',
+    'utilities', 'g_and_a', 'management_fee_pct', 'insurance', 'real_estate_tax', 'replacement_reserves'];
+  const affectedFields: string[] = [year1Key];
+  if (REVENUE_AFFECTING.includes(year1Key)) affectedFields.push('egi', 'noi');
+  if (OPEX_AFFECTING.includes(year1Key)) affectedFields.push('total_opex', 'noi');
+
+  const derivedEgi = seed ? resolvedNum(lv(seed, 'egi')) : null;
+  const derivedNoi = seed ? resolvedNum(lv(seed, 'noi')) : null;
+  const derivedOpex = seed ? resolvedNum(lv(seed, 'total_opex')) : null;
+
+  return {
+    year1Key,
+    appliedValue: value,
+    resolution,
+    updatedCell: updatedLv,
+    derivedRecomputation: {
+      egi: derivedEgi,
+      noi: derivedNoi,
+      totalOpex: derivedOpex,
+      affectedFields,
+    },
+  };
 }
