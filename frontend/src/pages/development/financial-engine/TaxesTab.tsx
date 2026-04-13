@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { AlertTriangle, Lock, ChevronDown, ChevronRight, Link, Check } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
+import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps, F9TaxData, F9TaxYear, F9DealFinancials } from './types';
 
 const MONO = BT.font.mono;
@@ -316,7 +317,8 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [costSeg, setCostSeg] = useState(true);
   const [bonusYear, setBonusYear] = useState<2026 | 2027>(2026);
-  const [miamiDadeOverride, setMiamiDadeOverride] = useState<boolean | null>(null);
+  // County: null = use server-resolved value; true/false = user explicit override (persisted)
+  const [countyOverride, setCountyOverride] = useState<boolean | null>(taxes?.userOverrides?.taxCounty ?? null);
 
   const [userAssessedValue, setUserAssessedValue] = useState<number | null>(taxes?.userOverrides?.taxAssessedValue ?? null);
   const [userMillageRate, setUserMillageRate]       = useState<number | null>(taxes?.userOverrides?.taxMillageRate   ?? null);
@@ -326,13 +328,14 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   // Only hydrate once (when local state is still null) to avoid clobbering live user edits.
   useEffect(() => {
     if (taxes?.userOverrides) {
-      setUserAssessedValue(prev => prev ?? (taxes.userOverrides.taxAssessedValue ?? null));
-      setUserMillageRate(prev   => prev ?? (taxes.userOverrides.taxMillageRate   ?? null));
-      setUserTppAmount(prev     => prev ?? (taxes.userOverrides.tppAmount        ?? null));
+      setCountyOverride(prev        => prev ?? (taxes.userOverrides.taxCounty        ?? null));
+      setUserAssessedValue(prev     => prev ?? (taxes.userOverrides.taxAssessedValue ?? null));
+      setUserMillageRate(prev       => prev ?? (taxes.userOverrides.taxMillageRate   ?? null));
+      setUserTppAmount(prev         => prev ?? (taxes.userOverrides.tppAmount        ?? null));
     }
   }, [taxes?.userOverrides]);
 
-  const isMiamiDade = miamiDadeOverride ?? taxes?.reTax.isMiamiDade ?? false;
+  const isMiamiDade = countyOverride ?? taxes?.reTax.isMiamiDade ?? false;
   const effMillageRate = userMillageRate ?? (isMiamiDade ? 23.09 : 20.00);
   const effAssessedValue = userAssessedValue ?? taxes?.reTax.platformAssessedValue ?? null;
   const effAnnualTax = effAssessedValue != null ? Math.round(effAssessedValue * (effMillageRate / 1000)) : null;
@@ -362,18 +365,14 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
     return rows;
   }, [effAssessedValue, effMillageRate, taxes?.reTax.perYear]);
 
-  // Debounced PATCH helper
+  // Debounced PATCH helper — uses apiClient for consistent auth/error handling
   const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const patchField = useCallback((field: string, value: number | null) => {
     clearTimeout(patchTimeouts.current[field]);
     patchTimeouts.current[field] = setTimeout(async () => {
       try {
-        await fetch(`/api/v1/deals/${dealId}/financials/override`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field, year: 1, value }),
-        });
-      } catch { /* non-fatal */ }
+        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field, year: 1, value });
+      } catch { /* non-fatal override failure */ }
     }, 600);
   }, [dealId]);
 
@@ -420,16 +419,25 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
           <span style={{ fontFamily: MONO, fontSize: 8, padding: '2px 6px', background: isMiamiDade ? '#1A1A2E' : '#0A1A0A', border: `1px solid ${isMiamiDade ? '#3B3B8B' : '#1A3B1A'}`, borderRadius: 3, color: isMiamiDade ? BT.text.purple : BT.text.green }}>
             {isMiamiDade ? 'MIAMI-DADE RATES' : 'STATEWIDE RATES'}
           </span>
-          {taxes?.reTax.isMiamiDade && !miamiDadeOverride && (
+          {countyOverride == null && taxes?.reTax.isMiamiDade && (
             <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>auto-detected</span>
+          )}
+          {countyOverride != null && (
+            <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>overridden</span>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>COUNTY:</span>
-          <button onClick={() => setMiamiDadeOverride(false)} style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: !isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${!isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: !isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}>
+          <button
+            onClick={() => { setCountyOverride(false); patchField('taxCounty', 0); }}
+            style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: !isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${!isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: !isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}
+          >
             STATEWIDE
           </button>
-          <button onClick={() => setMiamiDadeOverride(true)} style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}>
+          <button
+            onClick={() => { setCountyOverride(true); patchField('taxCounty', 1); }}
+            style={{ padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: isMiamiDade ? BT.bg.active : BT.bg.panel, border: `1px solid ${isMiamiDade ? BT.border.bright : BT.border.subtle}`, color: isMiamiDade ? BT.text.white : BT.text.muted, borderRadius: 3, cursor: 'pointer' }}
+          >
             MIAMI-DADE
           </button>
         </div>

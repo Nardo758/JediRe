@@ -314,6 +314,7 @@ export interface F9TaxData {
     taxAssessedValue: number | null;
     taxMillageRate: number | null;
     tppAmount: number | null;
+    taxCounty: boolean | null;
   };
 }
 

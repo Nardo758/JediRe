@@ -1793,10 +1793,16 @@ export async function getDealFinancials(
     const v = rawTaxOvs['tax:tpp_amount:yr1'];
     return v?.value != null ? Number(v.value) : null;
   })();
+  // County override: 1 = Miami-Dade, 0 = statewide; null = auto-detected from city
+  const taxCountyOvr: boolean | null = (() => {
+    const v = rawTaxOvs['tax:county_override:yr1'];
+    return v?.value != null ? Number(v.value) === 1 : null;
+  })();
+  const resolvedIsMiamiDade = taxCountyOvr ?? isMiamiDade;
 
   // Platform assessed value: purchase price post-acquisition reassessment (resolved or override)
   const platformAssessedValue: number | null = taxAssessedValueOvr ?? purchasePrice;
-  const resolvedMillage = taxMillageRateOvr ?? millageRate;
+  const resolvedMillage = taxMillageRateOvr ?? (resolvedIsMiamiDade ? 23.09 : 20.00);
   const platformAnnualTax: number | null = platformAssessedValue != null
     ? Math.round(platformAssessedValue * (resolvedMillage / 1000)) : null;
 
@@ -1836,8 +1842,8 @@ export async function getDealFinancials(
   const currentYear = new Date().getFullYear();
   const bonusRate = currentYear >= 2027 ? 0.20 : 0.40;  // 2026=40%, 2027=20%
 
-  // FL transfer taxes (Doc Stamps + Intangible Tax on new mortgage)
-  const docStampRate = isMiamiDade ? 0.0105 : 0.0070;
+  // FL transfer taxes — use resolvedIsMiamiDade so county override persists to Sources & Uses
+  const docStampRate = resolvedIsMiamiDade ? 0.0105 : 0.0070;
   const docStampAmount = purchasePrice != null ? Math.round(purchasePrice * docStampRate) : null;
   const intangibleTaxAmount = loanAmount != null ? Math.round(loanAmount * 0.002) : null;
   const totalTransferTax = ((docStampAmount ?? 0) + (intangibleTaxAmount ?? 0)) || null;
@@ -1845,7 +1851,7 @@ export async function getDealFinancials(
   const taxes = {
     reTax: {
       t12AssessedValue, t12MillageRate: millageRate, t12AnnualTax,
-      platformAssessedValue, platformAnnualTax, isMiamiDade,
+      platformAssessedValue, platformAnnualTax, isMiamiDade: resolvedIsMiamiDade,
       sohCapPct: FL_SOH_CAP, perYear: reTaxPerYear, deltaVsT12Pct,
     },
     tpp: { broker: tppBroker, platform: tppPlatform },
@@ -1854,7 +1860,8 @@ export async function getDealFinancials(
       annualDepreciation, bonusDepreciationCurrentYearPct: bonusRate, costSegAvailablePct: 0.30,
     },
     transferTax: {
-      purchasePrice, isMiamiDade, miamiDadeRatePct: 0.0105, statewideFlatRatePct: 0.0070,
+      purchasePrice, isMiamiDade: resolvedIsMiamiDade,
+      miamiDadeRatePct: 0.0105, statewideFlatRatePct: 0.0070,
       appliedRatePct: docStampRate, docStampAmount, intangibleTaxAmount,
       loanAmount, totalTransferTax,
     },
@@ -1862,6 +1869,7 @@ export async function getDealFinancials(
       taxAssessedValue: taxAssessedValueOvr,
       taxMillageRate: taxMillageRateOvr,
       tppAmount: tppAmountOvr,
+      taxCounty: taxCountyOvr,
     },
   };
 
@@ -2113,6 +2121,7 @@ export async function applyFinancialsOverride(
     taxAssessedValue: 'tax:assessed_value:yr1',
     taxMillageRate:   'tax:millage_rate:yr1',
     tppAmount:        'tax:tpp_amount:yr1',
+    taxCounty:        'tax:county_override:yr1',
   };
   if (TAX_FIELD_TO_PY_KEY[field]) {
     const pyKey = TAX_FIELD_TO_PY_KEY[field];
