@@ -1254,6 +1254,49 @@ export interface DealFinancials {
     equityMultiple: number | null;
     cashOnCash: number | null;
   } | null;
+  /** FL tax computations — RE tax, TPP, income tax/depreciation, transfer taxes */
+  taxes: {
+    reTax: {
+      t12AssessedValue: number | null;
+      t12MillageRate: number | null;
+      t12AnnualTax: number | null;
+      platformAssessedValue: number | null;
+      platformAnnualTax: number | null;
+      isMiamiDade: boolean;
+      sohCapPct: number;
+      perYear: Array<{
+        year: number; assessedValue: number; millageRate: number;
+        taxAmount: number; sohCapBinding: boolean; reassessmentEvent: boolean;
+      }>;
+      deltaVsT12Pct: number | null;
+    };
+    tpp: { broker: number | null; platform: number | null };
+    incomeTax: {
+      purchasePrice: number | null;
+      landValuePct: number;
+      depreciableBase: number | null;
+      annualDepreciation: number | null;
+      bonusDepreciationCurrentYearPct: number;
+      costSegAvailablePct: number;
+    };
+    transferTax: {
+      purchasePrice: number | null;
+      isMiamiDade: boolean;
+      miamiDadeRatePct: number;
+      statewideFlatRatePct: number;
+      appliedRatePct: number;
+      docStampAmount: number | null;
+      intangibleTaxAmount: number | null;
+      loanAmount: number | null;
+      totalTransferTax: number | null;
+    };
+    userOverrides: {
+      taxAssessedValue: number | null;
+      taxMillageRate: number | null;
+      tppAmount: number | null;
+      taxCounty: boolean | null;
+    };
+  } | null;
 }
 
 /**
