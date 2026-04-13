@@ -303,7 +303,48 @@ function MarketContext() {
         <div style={{ ...mono, color: C.green, fontSize: 10, fontWeight: 700 }}>PRICING WINDOW: FAVORABLE</div>
         <div style={{ color: C.textMuted, fontSize: 9, marginTop: 2 }}>Forward curve supports floating bridge + rate cap today. Lock fixed perm at refi M24 when SOFR lower.</div>
       </div>
-      <div style={{ marginTop: 12 }}>
+      {/* FedWatch — from Debt Market tab */}
+      <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+        <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 6 }}>FED WATCH · FOMC</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ color: C.textMuted, fontSize: 9 }}>Next meeting</span>
+          <span style={{ ...mono, color: C.textPrimary, fontSize: 9 }}>Jun 17–18</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <span style={{ color: C.textMuted, fontSize: 9 }}>Dot plot 2026</span>
+          <span style={{ ...mono, color: C.cyan, fontSize: 9 }}>4.1%</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ color: C.textMuted, fontSize: 9 }}>Dot plot 2027</span>
+          <span style={{ ...mono, color: C.cyan, fontSize: 9 }}>3.4%</span>
+        </div>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 2 }}>
+          {['—', '↓', '↓', '↓', '↓'].map((a, i) => (
+            <span key={i} style={{ ...mono, fontSize: 11, color: a === '↓' ? C.green : C.textMuted }}>{a}</span>
+          ))}
+          <span style={{ color: C.textMuted, fontSize: 8, marginLeft: 4 }}>4 cuts projected 2026</span>
+        </div>
+      </div>
+      {/* Spread by product bar chart — from Debt Market tab */}
+      <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+        <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 8 }}>SPREAD OVER INDEX (bps)</div>
+        {[
+          { n: 'Agency', s: 165, c: C.cyan },
+          { n: 'CMBS', s: 215, c: '#b794f4' },
+          { n: 'Bank', s: 250, c: '#4fd1c5' },
+          { n: 'Bridge', s: 340, c: C.amber },
+          { n: 'Mezz', s: 650, c: '#f6e05e' },
+        ].map(x => (
+          <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+            <span style={{ color: C.textMuted, fontSize: 8, minWidth: 40, textAlign: 'right' as const }}>{x.n}</span>
+            <div style={{ flex: 1, height: 8, background: `${C.border}60`, borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${(x.s / 700) * 100}%`, background: `${x.c}40`, borderRadius: 2, borderRight: `2px solid ${x.c}` }} />
+            </div>
+            <span style={{ ...mono, fontSize: 8, color: x.c, minWidth: 30, textAlign: 'right' as const }}>+{x.s}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
         <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 6 }}>ACTIVE COR SIGNALS</div>
         {[['COR-08', 'Permit velocity +42%', C.amber], ['COR-01', 'Traffic surge active', C.cyan]].map(([id, label, col]) => (
           <div key={id as string} style={{ display: 'flex', gap: 6, marginBottom: 3 }}>
@@ -772,9 +813,203 @@ function SensitivityTabContent() {
   );
 }
 
+// ─── Exit Tab (from ExitCapitalModule: Exit Strategy + Exit Timing) ───────────
+function ExitTab({ onNavigate }: { onNavigate: (tab: 'advisor' | 'configure' | 'sensitivity') => void }) {
+  const [selectedFwd, setSelectedFwd] = useState(8);
+  const [selectedStrategy, setSelectedStrategy] = useState('sell-stabilized');
+
+  const RSS_DATA = [
+    { q: 'Q1\'27', rss: 58, irr: 16.1 },
+    { q: 'Q2\'27', rss: 63, irr: 17.4 },
+    { q: 'Q3\'27', rss: 71, irr: 18.9 },
+    { q: 'Q4\'27', rss: 78, irr: 19.3 },
+    { q: 'Q1\'28', rss: 82, irr: 19.8 },
+    { q: 'Q2\'28', rss: 86, irr: 20.1 },
+    { q: 'Q3\'28', rss: 84, irr: 20.4 },
+    { q: 'Q4\'28', rss: 79, irr: 19.9 },
+    { q: 'Q1\'29', rss: 73, irr: 19.2 },
+    { q: 'Q2\'29', rss: 67, irr: 18.3 },
+  ];
+  const optimalFwd = 6;
+  const sel = RSS_DATA[selectedFwd] ?? RSS_DATA[optimalFwd];
+  const opt = RSS_DATA[optimalFwd];
+  const rssColor = sel.rss >= 85 ? C.green : sel.rss >= 70 ? C.cyan : sel.rss >= 55 ? C.amber : C.red;
+
+  const exitOptions = [
+    { id: 'sell-stabilized', label: 'Sell at Stabilization', desc: 'Value-add complete → sell at Y3 to institutional buyer at 5.25% cap', tl: '24–36mo', irr: '19.3%', em: '1.92×', color: C.cyan },
+    { id: 'refi-hold', label: 'Refinance & Hold', desc: 'Fannie DUS refi M24 → hold 7–10yr for cash flow compounding', tl: '7–10 yrs', irr: '21.7%', em: '3.10×', color: C.green },
+    { id: '1031-exchange', label: '1031 Exchange', desc: 'Sell and defer gains → redeploy into larger MSA asset', tl: '24–36mo', irr: '19.1%', em: '1.89×', color: C.purple },
+  ];
+
+  const rssBreakdown = [
+    { label: 'Market Window', score: 82, weight: '35%', color: C.green },
+    { label: 'Rate Environment', score: 74, weight: '25%', color: C.cyan },
+    { label: 'Supply Position', score: 68, weight: '20%', color: C.cyan },
+    { label: 'Op. Readiness', score: 55, weight: '15%', color: C.amber },
+    { label: 'Buyer Pressure', score: 61, weight: '5%', color: C.amber },
+  ];
+
+  return (
+    <div style={{ padding: '14px 20px', overflowY: 'auto' as const }}>
+      {/* Header strip */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div>
+          <div style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', marginBottom: 3 }}>EXIT INTELLIGENCE — DRIVEN BY M08 CAPTURE SCHEDULE</div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span style={{ ...mono, color: C.textPrimary, fontSize: 13, fontWeight: 700 }}>Platform Optimal Exit: Q3 '28</span>
+            <span style={{ ...mono, backgroundColor: `${C.green}18`, color: C.green, border: `1px solid ${C.green}40`, borderRadius: 2, padding: '1px 6px', fontSize: 10 }}>RSS 84 — Strong sell window</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => onNavigate('advisor')} style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 2, cursor: 'pointer' }}>← Advisor</button>
+          <button onClick={() => onNavigate('configure')} style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}>Lock to Configure →</button>
+        </div>
+      </div>
+
+      {/* 21-year convergence chart */}
+      <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: '12px 16px', marginBottom: 14, backgroundColor: C.panel }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+          <div>
+            <div style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em' }}>21-YEAR CONVERGENCE · CLICK FUTURE QUARTER TO SET EXIT</div>
+            <div style={{ color: C.textMuted, fontSize: 9, marginTop: 2 }}>10yr history · 10yr forward · NOI ramp, cap rates, supply pressure, RSS</div>
+          </div>
+          <div style={{ textAlign: 'right' as const }}>
+            <div style={{ ...mono, color: C.textMuted, fontSize: 8 }}>SELECTED EXIT</div>
+            <div style={{ ...mono, color: rssColor, fontSize: 14, fontWeight: 700 }}>{sel.q}</div>
+            <div style={{ ...mono, color: C.textMuted, fontSize: 9 }}>IRR {sel.irr.toFixed(1)}% · RSS {sel.rss}</div>
+          </div>
+        </div>
+        <svg width="100%" height={90} viewBox="0 0 700 90" style={{ display: 'block' }}>
+          {/* historical shading */}
+          <rect x={0} y={0} width={240} height={90} fill={`${C.border}30`} />
+          <text x={4} y={10} fontSize={7} fill={C.textMuted} fontFamily="JetBrains Mono">◀ 10yr history</text>
+          <text x={250} y={10} fontSize={7} fill={C.textMuted} fontFamily="JetBrains Mono">10yr forward ▶</text>
+          {/* NOW line */}
+          <line x1={240} y1={0} x2={240} y2={90} stroke={C.amber} strokeWidth={1} strokeDasharray="3,2" />
+          <text x={243} y={10} fontSize={7} fill={C.amber} fontFamily="JetBrains Mono">NOW</text>
+          {/* NOI ramp — rising cyan line */}
+          <polyline points="0,75 60,72 120,68 180,62 240,58 300,52 350,44 390,38 430,32 460,28 490,26 520,24 560,23 620,22 700,21" fill="none" stroke={C.cyan} strokeWidth={1.5} />
+          {/* Cap rate compression — purple line */}
+          <polyline points="0,30 60,31 120,32 180,34 240,36 300,40 340,46 370,52 400,55 440,54 480,52 530,50 580,49 640,48 700,47" fill="none" stroke="#a855f7" strokeWidth={1.5} />
+          {/* RSS convergence — green dashed */}
+          <polyline points="240,62 280,56 320,48 360,40 400,34 440,28 480,30 520,35 560,42 600,50 640,57 700,63" fill="none" stroke={C.green} strokeWidth={1} strokeDasharray="4,2" />
+          {/* Optimal exit marker */}
+          <line x1={480} y1={0} x2={480} y2={90} stroke={C.green} strokeWidth={1} strokeDasharray="2,2" />
+          <circle cx={480} cy={28} r={4} fill={C.green} />
+          <text x={484} y={24} fontSize={7} fill={C.green} fontFamily="JetBrains Mono">OPT Q3'28</text>
+          {/* Selected exit marker */}
+          {selectedFwd !== optimalFwd && (
+            <>
+              <line x1={240 + selectedFwd * 32} y1={0} x2={240 + selectedFwd * 32} y2={90} stroke={C.amber} strokeWidth={1} strokeDasharray="2,2" />
+              <circle cx={240 + selectedFwd * 32} cy={35} r={3} fill={C.amber} />
+            </>
+          )}
+          {/* Clickable future quarter zones */}
+          {RSS_DATA.map((_, i) => (
+            <rect
+              key={i}
+              x={248 + i * 32 - 14}
+              y={0}
+              width={28}
+              height={90}
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setSelectedFwd(i)}
+            />
+          ))}
+          {/* Legend */}
+          <line x1={10} y1={82} x2={26} y2={82} stroke={C.cyan} strokeWidth={1.5} />
+          <text x={29} y={85} fontSize={6} fill={C.textMuted} fontFamily="JetBrains Mono">NOI</text>
+          <line x1={60} y1={82} x2={76} y2={82} stroke="#a855f7" strokeWidth={1.5} />
+          <text x={79} y={85} fontSize={6} fill={C.textMuted} fontFamily="JetBrains Mono">Cap Rate</text>
+          <line x1={120} y1={82} x2={136} y2={82} stroke={C.green} strokeWidth={1} strokeDasharray="4,2" />
+          <text x={139} y={85} fontSize={6} fill={C.textMuted} fontFamily="JetBrains Mono">RSS</text>
+        </svg>
+      </div>
+
+      {/* RSS Breakdown cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8, marginBottom: 14 }}>
+        {rssBreakdown.map((r, i) => (
+          <div key={i} style={{ border: `1px solid ${r.color}30`, borderRadius: 2, padding: '8px 10px', backgroundColor: `${r.color}06` }}>
+            <div style={{ ...mono, color: C.textMuted, fontSize: 8, marginBottom: 4 }}>{r.label}</div>
+            <div style={{ ...mono, color: r.color, fontSize: 18, fontWeight: 700 }}>{r.score}</div>
+            <div style={{ color: C.textMuted, fontSize: 8, marginTop: 2 }}>wt {r.weight}</div>
+            <div style={{ marginTop: 6, height: 3, background: `${C.border}60`, borderRadius: 1, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${r.score}%`, background: r.color, borderRadius: 1 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Exit strategy option cards */}
+      <div style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', marginBottom: 8 }}>EXIT STRATEGY OPTIONS — SELECT TO MODEL</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 18 }}>
+        {exitOptions.map(opt => (
+          <div
+            key={opt.id}
+            onClick={() => setSelectedStrategy(opt.id)}
+            style={{ border: `1px solid ${selectedStrategy === opt.id ? opt.color + '60' : C.border}`, borderRadius: 2, padding: '12px 14px', cursor: 'pointer', backgroundColor: selectedStrategy === opt.id ? `${opt.color}08` : C.panel, transition: 'all 0.1s' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+              <span style={{ ...mono, color: opt.color, fontSize: 11, fontWeight: 700 }}>{opt.label}</span>
+              <span style={{ ...mono, color: C.textMuted, fontSize: 9 }}>{opt.tl}</span>
+            </div>
+            <div style={{ color: C.textMuted, fontSize: 10, marginBottom: 10, lineHeight: 1.4 }}>{opt.desc}</div>
+            <div style={{ display: 'flex', gap: 16 }}>
+              <div><div style={{ color: C.textMuted, fontSize: 8 }}>IRR</div><div style={{ ...mono, color: C.textPrimary, fontSize: 12, fontWeight: 700 }}>{opt.irr}</div></div>
+              <div><div style={{ color: C.textMuted, fontSize: 8 }}>EM</div><div style={{ ...mono, color: C.textPrimary, fontSize: 12, fontWeight: 700 }}>{opt.em}</div></div>
+            </div>
+            {selectedStrategy === opt.id && (
+              <div style={{ marginTop: 8, ...mono, color: opt.color, fontSize: 8 }}>✓ SELECTED — locks to Configure on accept</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* IRR by exit quarter + Optimal vs Selected comparison */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: '12px 14px', backgroundColor: C.panel }}>
+          <div style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', marginBottom: 10 }}>IRR BY EXIT QUARTER — click to select · pushes hold period to ProForma</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 80 }}>
+            {RSS_DATA.map((d, i) => {
+              const h = Math.max(8, (d.irr / 22) * 76);
+              const isSelected = i === selectedFwd;
+              const isOptimal = i === optimalFwd;
+              const col = isSelected ? C.textPrimary : isOptimal ? C.green : d.irr >= 19 ? C.green : d.irr >= 17 ? C.cyan : C.amber;
+              return (
+                <div key={i} onClick={() => setSelectedFwd(i)} style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 2, cursor: 'pointer' }}>
+                  <span style={{ ...mono, fontSize: 8, color: isSelected ? C.textPrimary : C.textMuted, fontWeight: isSelected ? 700 : 400 }}>{d.irr.toFixed(0)}</span>
+                  <div style={{ width: '100%', height: h, borderRadius: 1, backgroundColor: isSelected ? `${C.textPrimary}20` : `${col}20`, border: `1px solid ${isSelected ? C.textPrimary : isOptimal ? C.green : col + '40'}` }} />
+                  <span style={{ ...mono, fontSize: 7, color: C.textMuted }}>{d.q.split('\'')[0]}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+          {[
+            { title: 'YOUR SELECTION', d: sel, bc: `${C.textPrimary}20`, tc: C.textPrimary },
+            { title: 'PLATFORM OPTIMAL', d: opt, bc: `${C.green}20`, tc: C.green },
+          ].map((c, i) => (
+            <div key={i} style={{ border: `1px solid ${c.bc}`, borderRadius: 2, padding: '10px 12px', flex: 1 }}>
+              <div style={{ ...mono, color: c.tc, fontSize: 8, fontWeight: 700, marginBottom: 6 }}>{c.title} — {c.d.q}</div>
+              {[['IRR', `${c.d.irr.toFixed(1)}%`], ['RSS', `${c.d.rss}/100`], ['Hold', `${selectedFwd < 4 ? 'Y1' : selectedFwd < 8 ? 'Y2' : 'Y3'}–Y${i === 0 ? selectedFwd < 6 ? 2 : 3 : 3}`]].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: `1px solid ${C.border}20` }}>
+                  <span style={{ color: C.textMuted, fontSize: 9 }}>{k}</span>
+                  <span style={{ ...mono, color: c.tc, fontSize: 9, fontWeight: 600 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export function DebtAdvisorTab() {
-  const [activeTab, setActiveTab] = useState<'advisor' | 'configure' | 'sensitivity'>('advisor');
+  const [activeTab, setActiveTab] = useState<'advisor' | 'exit' | 'configure' | 'sensitivity'>('advisor');
   const [expandedPhase, setExpandedPhase] = useState<string | null>('bridge');
 
   return (
@@ -788,6 +1023,7 @@ export function DebtAdvisorTab() {
           </div>
           {([
             { id: 'advisor' as const, label: 'ADVISOR', desc: 'AI strategy-driven recommendation' },
+            { id: 'exit' as const, label: 'EXIT', desc: 'Convergence chart · RSS · Exit timing' },
             { id: 'configure' as const, label: 'CONFIGURE', desc: 'Loan builder · F6 Debt' },
             { id: 'sensitivity' as const, label: 'SENSITIVITY', desc: 'Heatmaps · F8 + debt axes' },
           ]).map(t => (
@@ -823,6 +1059,7 @@ export function DebtAdvisorTab() {
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginLeft: 16, flexShrink: 0, flexDirection: 'column' as const }}>
                   <button onClick={() => setActiveTab('configure')} style={{ ...mono, fontSize: 10, padding: '6px 12px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' as const }}>Accept → Configure tab</button>
+                  <button onClick={() => setActiveTab('exit')} style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.green, border: `1px solid ${C.green}40`, borderRadius: 2, cursor: 'pointer' }}>Plan Exit →</button>
                   <button onClick={() => setActiveTab('sensitivity')} style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.purple, border: `1px solid ${C.purple}40`, borderRadius: 2, cursor: 'pointer' }}>Sensitivity →</button>
                   <button style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.cyan, border: `1px solid ${C.cyan}40`, borderRadius: 2, cursor: 'pointer' }}>Modify</button>
                 </div>
@@ -852,6 +1089,9 @@ export function DebtAdvisorTab() {
           </div>
         </div>
       )}
+
+      {/* EXIT tab (from ExitCapitalModule: Exit Strategy + Exit Timing) */}
+      {activeTab === 'exit' && <ExitTab onNavigate={(tab) => setActiveTab(tab)} />}
 
       {/* CONFIGURE tab (F6 loan builder) */}
       {activeTab === 'configure' && <ConfigureTab />}
