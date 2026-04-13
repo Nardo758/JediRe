@@ -1801,6 +1801,7 @@ export async function getDealFinancials(
     ? Math.round(platformAssessedValue * (resolvedMillage / 1000)) : null;
 
   // Y1-Y10 RE tax projection (SOH cap applies after Y1 acquisition reassessment)
+  // Always generate minimum 10 years so Section A grid is complete regardless of hold period
   const reTaxPerYear: Array<{
     year: number; assessedValue: number; millageRate: number;
     taxAmount: number; sohCapBinding: boolean; reassessmentEvent: boolean;
@@ -1808,7 +1809,7 @@ export async function getDealFinancials(
   const baseAssessed = platformAssessedValue ?? 0;
   let prevCapped = baseAssessed;
   const mktGrowthRate = 0.05;  // assumed 5% market-value growth after acquisition
-  for (let yr = 1; yr <= holdYears; yr++) {
+  for (let yr = 1; yr <= Math.max(holdYears, 10); yr++) {
     const isReassessment = yr === 1;
     const marketValue = baseAssessed * Math.pow(1 + mktGrowthRate, yr - 1);
     const capLimited = yr === 1 ? baseAssessed : Math.min(marketValue, prevCapped * (1 + FL_SOH_CAP));

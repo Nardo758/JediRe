@@ -191,7 +191,14 @@ function SohGrid({ perYear }: { perYear: F9TaxYear[] }) {
                   <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.amber, fontWeight: 700 }}>{fmtDlr(row.taxAmount)}</td>
                   <td style={{ padding: '3px 10px', textAlign: 'center' }}>
                     {row.sohCapBinding
-                      ? <span style={{ color: BT.text.red, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}><Lock style={{ width: 8, height: 8 }} />CAP</span>
+                      ? (
+                        <span
+                          title="FL Save Our Homes 10% annual cap binding — market value growth exceeds the 10% cap, so assessed value is limited to prior year + 10%. RE tax liability is lower than market-value-based assessment."
+                          style={{ color: BT.text.red, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'help' }}
+                        >
+                          <Lock style={{ width: 8, height: 8 }} />CAP
+                        </span>
+                      )
                       : <span style={{ color: BT.text.green }}>—</span>}
                   </td>
                   <td style={{ padding: '3px 10px', textAlign: 'center' }}>
@@ -322,6 +329,28 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
 
   const effectiveTaxRate = effAnnualTax != null && f9Financials?.capitalStack?.purchasePrice != null
     ? effAnnualTax / f9Financials.capitalStack.purchasePrice : null;
+
+  // Client-side SOH projection — recomputed whenever assessed value or millage changes
+  // so the grid reflects user overrides immediately without waiting for a server round-trip.
+  const FL_SOH_CAP = 0.10;
+  const MKT_GROWTH = 0.05;
+  const computedPerYear: F9TaxYear[] = useMemo(() => {
+    const baseAssessed = effAssessedValue;
+    if (!baseAssessed) return taxes?.reTax.perYear ?? [];
+    const numYears = Math.max(taxes?.reTax.perYear.length ?? 10, 10);
+    const rows: F9TaxYear[] = [];
+    let prevCapped = baseAssessed;
+    for (let yr = 1; yr <= numYears; yr++) {
+      const marketValue = baseAssessed * Math.pow(1 + MKT_GROWTH, yr - 1);
+      const capLimited = yr === 1 ? baseAssessed : Math.min(marketValue, prevCapped * (1 + FL_SOH_CAP));
+      const sohCapBinding = yr > 1 && marketValue > capLimited + 1;
+      const assessedValue = Math.round(capLimited);
+      const taxAmount = Math.round(assessedValue * (effMillageRate / 1000));
+      rows.push({ year: yr, assessedValue, millageRate: effMillageRate, taxAmount, sohCapBinding, reassessmentEvent: yr === 1 });
+      prevCapped = capLimited;
+    }
+    return rows;
+  }, [effAssessedValue, effMillageRate, taxes?.reTax.perYear]);
 
   // Debounced PATCH helper
   const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -459,17 +488,17 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                   locked
                   format={fmtDlr}
                 />
-                {/* SOH Projection Grid */}
+                {/* SOH Projection Grid — uses client-side computed values so overrides show immediately */}
                 <tr>
                   <td colSpan={6} style={{ padding: '4px 12px 2px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.6, background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    FL SOH 10% CAP ENGINE — Y1–Y{taxes?.reTax.perYear.length ?? 10} PROJECTION &nbsp;
+                    FL SOH 10% CAP ENGINE — Y1–Y{computedPerYear.length || 10} PROJECTION &nbsp;
                     <span style={{ color: BT.text.red }}>█ REASSESSMENT</span>
                     &nbsp;&nbsp;
                     <span style={{ color: BT.text.muted }}>🔒 SOH CAP BINDING</span>
                   </td>
                 </tr>
-                {taxes?.reTax.perYear.length ? (
-                  <SohGrid perYear={taxes.reTax.perYear} />
+                {computedPerYear.length > 0 ? (
+                  <SohGrid perYear={computedPerYear} />
                 ) : (
                   <tr>
                     <td colSpan={6} style={{ padding: '8px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
