@@ -95,7 +95,12 @@ export interface DebtAdvisorResponse {
     addPcaReserveNote: boolean;
     ltvHaircutPct: number;
   };
-  correlationContext: null;
+  correlationContext: {
+    slug: string;
+    riskScore: number;
+    correlationImplication: string;
+    rssAdjustmentBps: number;
+  } | null;
   summary: {
     primaryProduct: string;
     primaryProductLabel: string;
@@ -301,6 +306,36 @@ function buildMonitoringTriggers(
   return triggers;
 }
 
+const PRODUCT_KEY_ALIASES: Record<string, string> = {
+  'agency': 'agency_fixed',
+  'agency_dus': 'agency_fixed',
+  'fannie': 'agency_fixed',
+  'freddie': 'agency_fixed',
+  'construction': 'construction_to_perm',
+  'ground_up': 'construction_to_perm',
+  'bridge_or_agency': 'bridge',
+  'debt_fund_fixed': 'bridge',
+  'sfr_portfolio': 'portfolio_blanket',
+  'conventional_investment': 'dscr_loan',
+  'rental_loan': 'dscr_loan',
+  'net_lease': 'cmbs_10yr',
+  'nnn_net_lease': 'cmbs_10yr',
+  'perm_fixed': 'cmbs_10yr',
+  'agency_fixed_5yr': 'agency_fixed',
+  'agency_fixed_10yr': 'agency_fixed',
+  'str_dscr': 'dscr_loan',
+};
+
+function normalizeProductKey(key: string): string {
+  return PRODUCT_KEY_ALIASES[key] ?? key;
+}
+
+function resolveTermYears(phaseStruct: Record<string, any>, defaultYears: number = 3): number {
+  if (phaseStruct.termMonths != null) return phaseStruct.termMonths / 12;
+  if (phaseStruct.termYears != null) return phaseStruct.termYears;
+  return defaultYears;
+}
+
 function buildPhases(
   mapping: Record<string, any>,
   rateEnv: RateEnvironmentResult,
@@ -331,17 +366,18 @@ function buildPhases(
   targetLtv = Math.max(0, targetLtv - contextMods.ltvHaircutPct);
 
   const phase1LoanM = (purchasePrice * targetLtv) / 1_000_000;
-  const termYears = phaseStructure.termYears || 3;
-  const ioMonths = phaseStructure.ioMonths || (rateType === 'Floating' ? termYears * 12 : 24);
+  const termYears = resolveTermYears(phaseStructure, 3);
+  const termMonthsActual = termYears * 12;
+  const ioMonths = phaseStructure.ioMonths || (rateType === 'Floating' ? termMonthsActual : 24);
   const amortYears = phaseStructure.amortYears || (rateType === 'Fixed' ? 30 : 0);
 
-  const phase1ProductRaw = phaseStructure.product || mapping.primaryProduct || 'bridge';
+  const phase1ProductRaw = normalizeProductKey(phaseStructure.product || mapping.primaryProduct || 'bridge');
   const primaryProduct = contextMods.productExclusions.includes(phase1ProductRaw)
-    ? (mapping.alternatives || []).find((a: string) => !contextMods.productExclusions.includes(a)) || 'bridge'
+    ? (mapping.alternatives || []).map(normalizeProductKey).find((a: string) => !contextMods.productExclusions.includes(a)) || 'bridge'
     : phase1ProductRaw;
 
   const phase1Lenders = targetLenders(primaryProduct, phase1LoanM, state, targetLtv, !contextMods.recourseRequired, 5);
-  const phase1EndMonth = Math.min(termYears * 12, holdMonths);
+  const phase1EndMonth = Math.min(termMonthsActual, holdMonths);
   const phase1Triggers = buildMonitoringTriggers(subStrategyKey, holdMonths, [{ rateType, ioMonths }], sofr);
 
   const phase1Rationale = contextMods.narrativeNotes.length > 0
@@ -372,7 +408,7 @@ function buildPhases(
     isRefiEvent: false,
   });
 
-  if (structure.phase2 && holdMonths > (termYears * 12)) {
+  if (structure.phase2 && holdMonths > termMonthsActual) {
     const p2 = structure.phase2;
     const refiMonth = p2.triggerMonth || phase1EndMonth;
     const p2Rate = rateEnv.classification === 'Rising'
@@ -380,9 +416,11 @@ function buildPhases(
       : (p2.rate || sofr + 0.012);
     const p2Ltv = Math.max(0, (p2.targetLtv || 0.65) - contextMods.ltvHaircutPct);
     const p2LoanM = (purchasePrice * p2Ltv) / 1_000_000;
-    const p2Product = contextMods.productExclusions.includes(p2.product || 'agency_fixed')
+    const p2ProductRaw = normalizeProductKey(p2.product || 'agency_fixed');
+    const p2Product = contextMods.productExclusions.includes(p2ProductRaw)
       ? 'portfolio_bank'
-      : (p2.product || 'agency_fixed');
+      : p2ProductRaw;
+    const p2TermYears = resolveTermYears(p2, 10);
     const p2Lenders = targetLenders(p2Product, p2LoanM, state, p2Ltv, !contextMods.recourseRequired, 3);
 
     phases.push({
@@ -393,7 +431,7 @@ function buildPhases(
       startMonth: refiMonth,
       endMonth: holdMonths,
       loanAmountEst: p2LoanM * 1_000_000,
-      termYears: p2.termYears || 10,
+      termYears: p2TermYears,
       ioMonths: p2.ioMonths || 24,
       amortYears: p2.amortYears || 30,
       rateType: (p2.rateType || 'Fixed') as 'Fixed' | 'Floating',
@@ -437,15 +475,43 @@ function buildPhases(
   return phases;
 }
 
+function buildCorrelationContext(
+  m08Output: M08StrategyOutput,
+  rateEnv: RateEnvironmentResult
+): { slug: string; riskScore: number; correlationImplication: string; rssAdjustmentBps: number } {
+  const slug = m08Output.strategySlug;
+  const riskScore = m08Output.riskScore;
+  const cls = rateEnv.classification;
+
+  let implication: string;
+  let rssAdj = 0;
+
+  if (cls === 'Rising') {
+    rssAdj = riskScore > 7 ? 35 : riskScore > 4 ? 20 : 10;
+    implication = `Rising-rate environment amplifies carry risk on floating-rate strategies. ${slug.includes('value_add') || slug.includes('brrrr') ? 'BRRRR/value-add bridge exposure requires rate-cap hedging (≥2yr, SOFR+300 strike).' : 'Consider locking into fixed permanent debt as soon as stabilized occupancy permits.'}`;
+  } else if (cls === 'Falling') {
+    rssAdj = -15;
+    implication = `Falling-rate environment benefits floating-rate bridge loans and improves refi optionality. ${slug.includes('hold') ? 'Long-hold strategies may delay perm refi to capture further rate compression.' : 'Accelerate stabilization timeline to maximize refi window before rate floor.'}`;
+  } else if (cls === 'Inverted') {
+    rssAdj = riskScore > 6 ? 45 : 25;
+    implication = `Inverted yield curve penalizes short-term bridge lending: 10yr treasury near/below short SOFR. Agency/life-co term financing offers spread advantage. ${riskScore > 6 ? 'High-risk profile warrants conservative LTV (≤60%) and pre-arranged perm exit.' : 'Consider bypassing bridge phase if property cash-flows at purchase.'}`;
+  } else {
+    rssAdj = riskScore > 7 ? 15 : 0;
+    implication = `Stable rate environment provides predictable carry; lender credit boxes are fully open. ${slug.includes('nnn') || slug.includes('net_lease') ? 'Net-lease assets command tightest CMBS spreads in stable regimes.' : 'Focus on execution speed — current lender competition narrows spreads.'}`;
+  }
+
+  return { slug, riskScore, correlationImplication: implication, rssAdjustmentBps: rssAdj };
+}
+
 function buildAlternatives(
   mapping: Record<string, any>,
   rateEnv: RateEnvironmentResult,
   contextMods: ContextModification
 ): DebtAlternative[] {
   const alts: DebtAlternative[] = [];
-  const alternatives: string[] = (mapping.alternatives || []).filter(
-    (a: string) => !contextMods.productExclusions.includes(a)
-  );
+  const alternatives: string[] = (mapping.alternatives || [])
+    .map(normalizeProductKey)
+    .filter((a: string) => !contextMods.productExclusions.includes(a));
   const productLabels = strategyDebtMapping.productLabels as Record<string, string>;
 
   if (alternatives[0]) {
@@ -644,7 +710,7 @@ export async function formulateDebtPlan(dealId: string): Promise<DebtAdvisorResp
       addPcaReserveNote: contextMods.addPcaReserveNote,
       ltvHaircutPct: contextMods.ltvHaircutPct,
     },
-    correlationContext: null,
+    correlationContext: buildCorrelationContext(m08Output, rateEnv),
     summary: {
       primaryProduct: mapping.primaryProduct || '',
       primaryProductLabel: mapping.primaryProductLabel || '',
