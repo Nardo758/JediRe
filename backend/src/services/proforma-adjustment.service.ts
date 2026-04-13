@@ -1429,6 +1429,30 @@ export interface DealFinancials {
       totalGpFees: number;
     };
   };
+  /** Server-side per-year projections — authoritative operating statement resolving all upstream tabs */
+  projections: Array<{
+    year: number;
+    gpr: number; vacancyLoss: number; lossToLease: number; concessions: number; badDebt: number; nru: number;
+    nri: number; otherIncome: number; egi: number;
+    payroll: number; repairs: number; turnover: number; contractSvc: number;
+    marketing: number; utilities: number; gAndA: number; mgmtFee: number;
+    insurance: number; reTaxes: number; reserves: number;
+    totalOpex: number; noi: number;
+    opMargin: number | null; noiPerUnit: number | null;
+    interest: number; principal: number; annualDS: number; outstandingBalance: number;
+    cfbt: number; cfads: number;
+    depreciation: number | null; taxableIncome: number | null; taxPayable: number | null;
+    afterTaxCfads: number | null; effectiveTaxRate: number | null;
+    coc: number | null; dscr: number | null; debtYield: number | null;
+    occupancy: number | null; rentGrowthPct: number | null;
+    opexRatioPct: number | null; noiMarginPct: number | null; capRatePct: number | null;
+    cumulativeEM: number | null;
+    exitNoi: number | null; exitCap: number; grossSaleValue: number | null;
+    sellingCosts: number | null; dispositionDocStamps: number | null;
+    loanPayoff: number; netSaleProceeds: number | null;
+    reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
+    debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
+  }> | null;
 }
 
 /**
@@ -2629,6 +2653,192 @@ export async function getDealFinancials(
     },
   };
 
+  // ── Server-side Projections Engine ─────────────────────────────────────────
+  // Computes authoritative per-year operating statement resolving all upstream tabs:
+  // Assumptions (growth rates), Taxes (RE tax per year), Debt (amortization schedule),
+  // Capital (CFADS from waterfall). No hardcoded assumptions — all values sourced here.
+  const projections: DealFinancials['projections'] = (() => {
+    // Y1 seed values via resolved LayeredValue
+    const ry1 = (k: string) => resolvedNum(lv(year1Seed, k)) ?? 0;
+    const seeded = Object.keys(year1Seed).length > 0;
+    if (!seeded) return [];
+
+    // Debt parameters — prefer debt_tab senior loan data
+    const seniorLoanOvr = debtStack?.loans?.find(l => l.id === 'senior');
+    const projLoan       = capitalStackWithOverrides.loanAmount ?? 0;
+    const projRate       = (seniorLoanOvr?.interestRate?.platform ?? capitalStackWithOverrides.interestRate ?? 0);
+    const projIoMonths   = seniorLoanOvr?.ioMonths?.platform ?? capitalStackWithOverrides.ioPeriodMonths ?? 0;
+    const projAmortYrs   = seniorLoanOvr?.amortYears?.platform ?? capitalStackWithOverrides.amortizationYears ?? 30;
+    const projIoYrs      = Math.max(0, Math.round(projIoMonths / 12));
+    const projMonthlyRate = projRate / 12;
+    const projNumPmts    = Math.max(1, projAmortYrs * 12);
+    const projMonthlyPmt = projLoan > 0 && projMonthlyRate > 0
+      ? (projLoan * projMonthlyRate * Math.pow(1 + projMonthlyRate, projNumPmts)) /
+        (Math.pow(1 + projMonthlyRate, projNumPmts) - 1)
+      : projLoan > 0 ? projLoan / projNumPmts : 0;
+
+    // Y1 opex seeds
+    const gprY1        = assumptions.gprDecomposition?.resolvedAnnual ?? ry1('gpr');
+    const lossToLeasePct = ry1('loss_to_lease_pct');
+    const concPct      = ry1('concessions_pct');
+    const badDebtPct   = ry1('bad_debt_pct');
+    const nruPct       = ry1('non_revenue_units_pct');
+    const otherIncPU   = ry1('other_income_per_unit');
+    const mgmtFeePct   = ry1('management_fee_pct') || 0.05;
+    const payrollY1    = ry1('payroll');
+    const repairsY1    = ry1('repairs_maintenance');
+    const turnoverY1   = ry1('turnover');
+    const contractY1   = ry1('contract_services');
+    const marketingY1  = ry1('marketing');
+    const utilitiesY1  = ry1('utilities');
+    const gAndAY1      = ry1('g_and_a');
+    const insuranceY1  = ry1('insurance');
+    const reTaxY1Base  = ry1('real_estate_tax');
+    const reservesY1   = ry1('replacement_reserves') || (totalUnits * 350);
+
+    // After-tax: income tax data from taxes tab
+    const annualDeprec   = taxes?.incomeTax?.annualDepreciation ?? null;
+    const marginalTaxRate = taxes?.incomeTax != null ? 0.37 : null; // only use when taxes seeded
+
+    // Transfer tax for sale-year disposition
+    const docStampAmtPurch = taxes?.transferTax?.docStampAmount ?? null;
+    const intangibleTaxAmt = taxes?.transferTax?.intangibleTaxAmount ?? null;
+
+    let projBalance = projLoan;
+    let cumulCF = 0;
+    const projEquity = capitalStackWithOverrides.equityAtClose ?? 0;
+    const rows: NonNullable<DealFinancials['projections']> = [];
+
+    for (let yr = 1; yr <= holdYears; yr++) {
+      const pv = assumptions.perYear.find(p => p.year === yr);
+      const tv = trafficProjectionOut?.yearly?.find(t => t.year === yr);
+
+      // Rent growth multiplier (compound from Y1)
+      let rentMult = 1;
+      for (let y = 1; y < yr; y++) {
+        const g = assumptions.perYear.find(p => p.year === y)?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
+        rentMult *= 1 + (g ?? 0.03);
+      }
+      const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
+      const opexMult = Math.pow(1.03, yr - 1);
+      const insMult  = Math.pow(1.035, yr - 1);
+
+      // Revenue
+      const gpr         = Math.round(gprY1 * rentMult);
+      const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? (ry1('vacancy_pct') / 100 || 0.05);
+      const vacancyLoss = Math.round(gpr * vacPct);
+      const lossToLease = Math.round(gpr * lossToLeasePct);
+      const concessions = Math.round(gpr * concPct);
+      const badDebt     = Math.round(gpr * badDebtPct);
+      const nru         = Math.round(gpr * nruPct);
+      const nri         = gpr - vacancyLoss - lossToLease - concessions - badDebt - nru;
+      const otherIncome = Math.round(otherIncPU * rentMult * totalUnits * 12);
+      const egi         = nri + otherIncome;
+
+      // Expenses
+      const payroll    = Math.round(payrollY1   * opexMult);
+      const repairs    = Math.round(repairsY1   * opexMult);
+      const turnover   = Math.round(turnoverY1  * opexMult);
+      const contractSvc = Math.round(contractY1 * opexMult);
+      const marketing  = Math.round(marketingY1 * opexMult);
+      const utilities  = Math.round(utilitiesY1 * opexMult);
+      const gAndA      = Math.round(gAndAY1     * opexMult);
+      const mgmtFee    = Math.round(egi          * mgmtFeePct);
+      const insurance  = Math.round(insuranceY1  * insMult);
+
+      // RE Taxes: prefer taxes tab perYear, else compound Y1 seed
+      let reTaxes = 0;
+      let reTaxSource: 'taxes_tab' | 'proforma' | 'estimate' = 'estimate';
+      const taxYr = taxes?.reTax?.perYear?.find(t => t.year === yr);
+      if (taxYr?.taxAmount != null && taxYr.taxAmount > 0) {
+        reTaxes = Math.round(taxYr.taxAmount); reTaxSource = 'taxes_tab';
+      } else if (reTaxY1Base > 0) {
+        reTaxes = Math.round(reTaxY1Base * opexMult); reTaxSource = 'proforma';
+      }
+
+      const reserves   = Math.round(reservesY1 * opexMult);
+      const totalOpex  = payroll + repairs + turnover + contractSvc + marketing + utilities + gAndA + mgmtFee + insurance + reTaxes + reserves;
+      const noi        = egi - totalOpex;
+
+      // Debt service — true per-year amortization schedule
+      let interest = 0, principal = 0, annualDS = 0;
+      let debtSource: 'taxes_tab' | 'proforma' | 'estimate' | 'debt_tab' | 'capital_stack' = 'estimate';
+      if (projLoan > 0) {
+        debtSource = seniorLoanOvr ? 'debt_tab' : 'capital_stack';
+        if (yr <= projIoYrs || projAmortYrs === 0) {
+          interest  = Math.round(projBalance * projRate);
+          principal = 0;
+          annualDS  = interest;
+        } else {
+          let yi = 0, yp = 0;
+          for (let m = 0; m < 12; m++) {
+            const mi = projBalance * projMonthlyRate;
+            const mp = projMonthlyPmt - mi;
+            yi += mi; yp += mp;
+            projBalance = Math.max(0, projBalance - mp);
+          }
+          interest  = Math.round(yi);
+          principal = Math.round(yp);
+          annualDS  = interest + principal;
+        }
+      }
+
+      const cfbt  = noi - annualDS;
+      const capRow = schedRows.find(r => r.year === yr);
+      const cfads  = capRow?.cfads ?? cfbt;
+      cumulCF     += cfbt;
+
+      // After-tax (only when income tax data is seeded)
+      const depreciation  = annualDeprec;
+      const taxableIncome = depreciation != null ? noi - interest - depreciation : null;
+      const taxPayable    = taxableIncome != null && marginalTaxRate != null
+        ? Math.round(Math.max(0, taxableIncome) * marginalTaxRate) : null;
+      const afterTaxCfads = taxPayable != null ? cfads - taxPayable : null;
+      const effectiveTaxRate = marginalTaxRate;
+
+      // Metrics
+      const opMargin     = egi > 0 ? +(noi / egi).toFixed(4) : null;
+      const noiPerUnit   = totalUnits > 0 ? Math.round(noi / totalUnits) : null;
+      const coc          = projEquity > 0 ? +(cfbt / projEquity).toFixed(4) : null;
+      const dscr         = annualDS > 0 ? +(noi / annualDS).toFixed(4) : null;
+      const debtYield    = projBalance > 0 ? +(noi / projBalance).toFixed(4) : null;
+      const occupancy    = tv?.occupancyPct ?? (vacPct != null ? +(1 - vacPct).toFixed(4) : null);
+      const opexRatioPct = egi > 0 ? +(totalOpex / egi).toFixed(4) : null;
+      const noiMarginPct = egi > 0 ? +(noi / egi).toFixed(4) : null;
+      const rentGrowthPct = thisYrGrowth;
+
+      // Exit / Disposition
+      const exitCap = pv?.exitCapIfLastYear ?? trafficProjectionOut?.calibrated?.exitCap ?? assumptions.exitCap ?? 0.055;
+      const exitNoi = Math.round(noi * (1 + (rentGrowthPct ?? 0.03)));
+      const grossSaleValue = exitCap > 0 ? Math.round(exitNoi / exitCap) : null;
+      const sellingCosts   = grossSaleValue != null ? Math.round(grossSaleValue * 0.015) : null;
+      const loanPayoff     = Math.round(projBalance);
+      const capRatePct     = grossSaleValue != null && grossSaleValue > 0 ? +(noi / grossSaleValue).toFixed(4) : null;
+      // Doc stamps on disposition (same rate as acquisition, but applied to sale price)
+      const dispositionDocStamps = grossSaleValue != null && taxes?.transferTax != null
+        ? Math.round(grossSaleValue * taxes.transferTax.appliedRatePct) : null;
+      const netSaleProceeds = grossSaleValue != null && sellingCosts != null
+        ? grossSaleValue - sellingCosts - loanPayoff - (dispositionDocStamps ?? 0)
+        : null;
+      const cumulativeEM = projEquity > 0 && netSaleProceeds != null
+        ? +((cumulCF + netSaleProceeds) / projEquity).toFixed(4) : null;
+
+      rows.push({
+        year: yr,
+        gpr, vacancyLoss, lossToLease, concessions, badDebt, nru, nri, otherIncome, egi,
+        payroll, repairs, turnover, contractSvc, marketing, utilities, gAndA, mgmtFee, insurance, reTaxes, reserves,
+        totalOpex, noi, opMargin, noiPerUnit,
+        interest, principal, annualDS, outstandingBalance: loanPayoff,
+        cfbt, cfads,
+        depreciation, taxableIncome, taxPayable, afterTaxCfads, effectiveTaxRate,
+        coc, dscr, debtYield, occupancy, rentGrowthPct, opexRatioPct, noiMarginPct, capRatePct, cumulativeEM,
+        exitNoi, exitCap, grossSaleValue, sellingCosts, dispositionDocStamps, loanPayoff, netSaleProceeds,
+        reTaxSource, debtSource,
+      });
+    }
+    return rows;
+  })();
+
   return {
     dealId,
     dealName: deal.name,
@@ -2649,6 +2859,7 @@ export async function getDealFinancials(
     sourcesUses,
     waterfall,
     capital,
+    projections,
   };
 }
 

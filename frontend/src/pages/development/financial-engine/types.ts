@@ -303,6 +303,30 @@ export interface F9DealFinancials {
     };
     userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
   } | null;
+  /** Server-side per-year projections — authoritative operating statement resolving all upstream tabs */
+  projections: Array<{
+    year: number;
+    gpr: number; vacancyLoss: number; lossToLease: number; concessions: number; badDebt: number; nru: number;
+    nri: number; otherIncome: number; egi: number;
+    payroll: number; repairs: number; turnover: number; contractSvc: number;
+    marketing: number; utilities: number; gAndA: number; mgmtFee: number;
+    insurance: number; reTaxes: number; reserves: number;
+    totalOpex: number; noi: number;
+    opMargin: number | null; noiPerUnit: number | null;
+    interest: number; principal: number; annualDS: number; outstandingBalance: number;
+    cfbt: number; cfads: number;
+    depreciation: number | null; taxableIncome: number | null; taxPayable: number | null;
+    afterTaxCfads: number | null; effectiveTaxRate: number | null;
+    coc: number | null; dscr: number | null; debtYield: number | null;
+    occupancy: number | null; rentGrowthPct: number | null;
+    opexRatioPct: number | null; noiMarginPct: number | null; capRatePct: number | null;
+    cumulativeEM: number | null;
+    exitNoi: number | null; exitCap: number; grossSaleValue: number | null;
+    sellingCosts: number | null; dispositionDocStamps: number | null;
+    loanPayoff: number; netSaleProceeds: number | null;
+    reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
+    debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
+  }> | null;
   /** Capital tranche configuration + server-side computed distribution schedule */
   capital: {
     tranches: Array<{
