@@ -459,3 +459,196 @@ export function exportToExcel(assumptions: ModelAssumptions | null, results: Mod
   const filename = `${(dealName ?? 'financial-model').replace(/[^a-zA-Z0-9_-]/g, '_')}_proforma.xlsx`;
   XLSX.writeFile(wb, filename, { bookSST: true, cellStyles: true });
 }
+
+// ─── Financials export (DealFinancials + ProjYear[]) ──────────────────────
+
+interface ExportDealFinancials {
+  dealId: string; dealName: string; totalUnits: number;
+  capitalStack: { purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null; ltcPct: number|null; interestRate: number|null; ioPeriodMonths: number|null; amortizationYears: number|null };
+  assumptions: {
+    holdYears: number; exitCap: number|null; rentGrowthYr1: number|null; rentGrowthStabilized: number|null;
+    gprDecomposition: {
+      brokerAnnual: number|null; platformAnnual: number|null; t12Annual: number|null;
+      rentRollAnnual: number|null; resolvedAnnual: number|null;
+      brokerPerUnitMo: number|null; platformPerUnitMo: number|null; resolvedPerUnitMo: number|null;
+    } | null;
+    narrative: string|null;
+  };
+  proforma: { year1: Array<{ field: string; label: string; resolved: number|null; broker: number|null; platform: number|null; t12: number|null }> };
+}
+
+interface ExportProjYear {
+  year: number;
+  gpr: number; vacancyLoss: number; lossToLease: number; concessions: number; badDebt: number; nru: number;
+  nri: number; otherIncome: number; egi: number;
+  payroll: number; repairs: number; turnover: number; contractSvc: number;
+  marketing: number; utilities: number; gAndA: number; mgmtFee: number;
+  insurance: number; reTaxes: number; reserves: number;
+  totalOpex: number; noi: number;
+  opMargin: number|null; noiPerUnit: number|null;
+  interest: number; principal: number; annualDS: number;
+  cfbt: number; netCF: number;
+  coc: number|null; dscr: number|null; debtYield: number|null; occupancy: number|null;
+  exitNoi: number|null; exitCap: number|null; grossSaleValue: number|null;
+  sellingCosts: number|null; loanPayoff: number; netSaleProceeds: number|null;
+}
+
+export function exportFinancialsToExcel(
+  financials: ExportDealFinancials,
+  projections: ExportProjYear[],
+  dealName?: string,
+) {
+  const wb = XLSX.utils.book_new();
+  const n = (v: number | null | undefined): number | string => v ?? '';
+  const pct = (v: number | null | undefined): number | string => v != null ? v : '';
+
+  const name = dealName ?? financials.dealName ?? 'deal';
+  const holdYears = projections.length;
+  const yrCols = projections.map(p => `YR ${p.year}`);
+
+  // ── Summary Sheet ──────────────────────────────────────────────────────
+  const cs = financials.capitalStack;
+  const ass = financials.assumptions;
+  const summaryRows: Row[] = [
+    ['Deal Name', name],
+    ['Total Units', financials.totalUnits],
+    ['Hold Period', holdYears],
+    ['', ''],
+    ['ACQUISITION', ''],
+    ['Purchase Price', n(cs.purchasePrice)],
+    ['Loan Amount', n(cs.loanAmount)],
+    ['Equity at Close', n(cs.equityAtClose)],
+    ['LTC %', n(cs.ltcPct)],
+    ['Interest Rate', n(cs.interestRate)],
+    ['IO Period (mo)', n(cs.ioPeriodMonths)],
+    ['', ''],
+    ['ASSUMPTIONS', ''],
+    ['Exit Cap Rate', n(ass.exitCap)],
+    ['Rent Growth Yr1', n(ass.rentGrowthYr1)],
+    ['Rent Growth Stabilized', n(ass.rentGrowthStabilized)],
+    ['', ''],
+    ['GPR DECOMPOSITION', ''],
+    ['Resolved Annual', n(ass.gprDecomposition?.resolvedAnnual)],
+    ['Platform Annual', n(ass.gprDecomposition?.platformAnnual)],
+    ['Broker Annual', n(ass.gprDecomposition?.brokerAnnual)],
+    ['T12 Annual', n(ass.gprDecomposition?.t12Annual)],
+    ['Rent Roll Annual', n(ass.gprDecomposition?.rentRollAnnual)],
+  ];
+  const summarySheet = buildFormattedSheet(['METRIC', 'VALUE'], summaryRows, {
+    colWidths: [30, 20],
+    sectionRows: [4, 12, 17],
+  });
+  [5,6,7,18,19,20,21,22].forEach(r => {
+    const ref = cellRef(1, r + 1);
+    if (summarySheet[ref] && typeof summarySheet[ref].v === 'number') applyNumberFormat(summarySheet, ref, FMT_USD);
+  });
+  [8,13,14,15].forEach(r => {
+    const ref = cellRef(1, r + 1);
+    if (summarySheet[ref] && typeof summarySheet[ref].v === 'number') applyNumberFormat(summarySheet, ref, FMT_PCT);
+  });
+  XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+  // ── Operating Statement Sheet ──────────────────────────────────────────
+  const osHeaders = ['LINE ITEM', ...yrCols];
+  const osRows: Row[] = [];
+  const osSections: number[] = [];
+  const osTotals: number[] = [];
+
+  const addSection = (label: string) => { osSections.push(osRows.length); osRows.push([label, ...yrCols.map(() => '')]); };
+  const addRow = (label: string, key: keyof ExportProjYear, isTotal = false) => {
+    if (isTotal) osTotals.push(osRows.length);
+    osRows.push([label, ...projections.map(p => n(p[key] as number | null))]);
+  };
+  const addPctRow = (label: string, key: keyof ExportProjYear) => {
+    osRows.push([label, ...projections.map(p => pct(p[key] as number | null))]);
+  };
+
+  addSection('REVENUE');
+  addRow('Gross Potential Rent', 'gpr', true);
+  addRow('  Vacancy Loss', 'vacancyLoss');
+  addRow('  Loss to Lease', 'lossToLease');
+  addRow('  Concessions', 'concessions');
+  addRow('  Bad Debt', 'badDebt');
+  addRow('  Non-Revenue Units', 'nru');
+  addRow('Net Rental Income', 'nri', true);
+  addRow('  Other Income', 'otherIncome');
+  addRow('Effective Gross Income', 'egi', true);
+
+  addSection('EXPENSES');
+  addRow('  Payroll', 'payroll');
+  addRow('  Repairs & Maintenance', 'repairs');
+  addRow('  Turnover', 'turnover');
+  addRow('  Contract Services', 'contractSvc');
+  addRow('  Marketing', 'marketing');
+  addRow('  Utilities', 'utilities');
+  addRow('  G&A', 'gAndA');
+  addRow('  Management Fee', 'mgmtFee');
+  addRow('  Insurance', 'insurance');
+  addRow('  Real Estate Taxes', 'reTaxes');
+  addRow('  Replacement Reserves', 'reserves');
+  addRow('Total Operating Expenses', 'totalOpex', true);
+
+  addSection('NOI');
+  addRow('Net Operating Income', 'noi', true);
+  addPctRow('  Operating Margin', 'opMargin');
+  addRow('  NOI / Unit', 'noiPerUnit');
+
+  addSection('DEBT SERVICE');
+  addRow('  Interest', 'interest');
+  addRow('  Principal', 'principal');
+  addRow('Total Debt Service', 'annualDS', true);
+
+  addSection('CASH FLOW');
+  addRow('Cash Flow Before Tax', 'cfbt', true);
+  addRow('Net Cash Flow', 'netCF', true);
+
+  addSection('METRICS');
+  addPctRow('  Cash-on-Cash Return', 'coc');
+  osRows.push(['  DSCR', ...projections.map(p => p.dscr != null ? p.dscr.toFixed(2) + 'x' : '')]);
+  addPctRow('  Debt Yield', 'debtYield');
+  addPctRow('  Occupancy', 'occupancy');
+
+  addSection('EXIT');
+  addRow('  Forward NOI', 'exitNoi');
+  addRow('  Gross Sale Value', 'grossSaleValue', true);
+  addRow('  (–) Selling Costs', 'sellingCosts');
+  addRow('  (–) Loan Payoff', 'loanPayoff');
+  addRow('Net Sale Proceeds', 'netSaleProceeds', true);
+
+  const osSheet = buildFormattedSheet(osHeaders, osRows, {
+    colWidths: [28, ...yrCols.map(() => 14)],
+    currencyCols: yrCols.map((_, i) => i + 1),
+    sectionRows: osSections,
+    totalRows: osTotals,
+  });
+  XLSX.utils.book_append_sheet(wb, osSheet, 'Operating Statement');
+
+  // ── Year 1 Assumptions Sheet ───────────────────────────────────────────
+  const y1Rows: Row[] = financials.proforma.year1.map(r => [
+    r.label || r.field,
+    n(r.broker),
+    n(r.platform),
+    n(r.t12),
+    n(r.resolved),
+  ]);
+  const y1Sheet = buildFormattedSheet(['FIELD', 'BROKER', 'PLATFORM', 'T12', 'RESOLVED'], y1Rows, {
+    colWidths: [28, 16, 16, 16, 16],
+    currencyCols: [1, 2, 3, 4],
+  });
+  XLSX.utils.book_append_sheet(wb, y1Sheet, 'Year 1 Assumptions');
+
+  // ── AI Findings Sheet (if available) ─────────────────────────────────
+  if (ass.narrative) {
+    const narSheet = XLSX.utils.aoa_to_sheet([
+      ['AI MARKET FINDINGS (M07 Engine)'],
+      [''],
+      [ass.narrative],
+    ]);
+    narSheet['A1'] = { v: 'AI MARKET FINDINGS (M07 Engine)', t: 's', s: { font: { bold: true, sz: 12 } } };
+    narSheet['!cols'] = [{ wch: 100 }];
+    XLSX.utils.book_append_sheet(wb, narSheet, 'AI Findings');
+  }
+
+  const filename = `${name.replace(/[^a-zA-Z0-9_-]/g, '_')}_projections.xlsx`;
+  XLSX.writeFile(wb, filename, { bookSST: true, cellStyles: true });
+}
