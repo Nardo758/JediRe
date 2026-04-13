@@ -1,77 +1,86 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   Lock, Download, AlertTriangle, TrendingUp, Building2, DollarSign,
-  BarChart3, ChevronRight, X, Info, Zap, ChevronDown,
+  BarChart3, ChevronRight, X, Zap, ChevronDown,
 } from 'lucide-react';
-import { BT } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
 import type { AnnualCashFlowRow } from './types';
-import { fmt$, fmtPct, fmtX } from './types';
+import { fmt$, fmtX } from './types';
 import { apiClient } from '../../../services/api.client';
+
+// ─── Local type declarations (matching backend DealFinancials contract) ─────────
+interface OperatingStatementRow {
+  field: string;
+  label: string;
+  broker: number | null;
+  platform: number | null;
+  t12: number | null;
+  rentRoll: number | null;
+  taxBill: number | null;
+  resolved: number | null;
+  resolution: string | null;
+  perUnit: number | null;
+  source: string | null;
+  confidence: number | null;
+  benchmarkPosition: 'above' | 'below' | 'within' | null;
+}
+
+interface TrafficYearly {
+  year: number;
+  vacancyPct: number | null;
+  occupancyPct: number | null;
+  effRent: number | null;
+  rentGrowthPct: number | null;
+  t01WeeklyTours: number | null;
+  t05ClosingRatio: number | null;
+  t06WeeklyLeases: number | null;
+}
+
+interface DealFinancials {
+  dealId: string;
+  dealName: string;
+  totalUnits: number;
+  proforma: { year1: OperatingStatementRow[]; integrityChecks: unknown[]; unitEconomics: Record<string, number | null> };
+  capitalStack: {
+    purchasePrice: number | null; pricePerUnit: number | null; loanAmount: number | null;
+    equityAtClose: number | null; ltcPct: number | null; interestRate: number | null;
+    ioPeriodMonths: number | null; amortizationYears: number | null; dscrMin: number | null;
+    originationFeePct: number | null;
+  };
+  rentRollSummary: { unitMix: unknown[] | null; avgInPlaceRent: number | null; weightedOccupancyPct: number | null } | null;
+  trafficProjection: {
+    yearly: TrafficYearly[];
+    leaseUp: { weeksTo90: number | null; weeksTo93: number | null; weeksTo95: number | null } | null;
+    calibrated: { vacancyPct: number | null; rentGrowthPct: number | null; exitCap: number | null; lastCalibrated: string | null };
+    leasingSignals: {
+      t01WeeklyTours: number | null; t05ClosingRatio: number | null; t06WeeklyLeases: number | null;
+      t07LeaseUpWeeksTo95: number | null; stabilizedOccupancyPct: number | null; confidence: number | null;
+    } | null;
+  } | null;
+  assumptions: {
+    holdYears: number;
+    exitCap: number | null;
+    rentGrowthYr1: number | null;
+    rentGrowthStabilized: number | null;
+    perYear: Array<{ year: number; rentGrowthPct: number | null; vacancyPct: number | null; exitCapIfLastYear: number | null }>;
+  };
+  meta: { seeded: boolean; updatedAt: string | null };
+}
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const MONO = "'JetBrains Mono','Fira Code',monospace";
+type CellType = 'normal' | 'ai' | 'override' | 'm07' | 'locked' | 'flagged' | 'computed' | 'warn' | 'good' | 'header';
 
-type CellType = 'normal' | 'ai' | 'override' | 'm07' | 'locked' | 'flagged' | 'computed'
-  | 'warn' | 'good' | 'header';
+const fmtM   = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
+const fmtK   = (n: number) => '$' + Math.round(n / 1000).toLocaleString() + 'K';
+const fmtPct = (n: number, dec = 1) => (n * 100).toFixed(dec) + '%';
 
-const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
-const fmtK = (n: number) => '$' + Math.round(n / 1000).toLocaleString() + 'K';
-const fmtPct2 = (n: number, dec = 1) => (n * 100).toFixed(dec) + '%';
+// ─── Row mode types ────────────────────────────────────────────────────────────
+type RowMode = 'flat' | 'stepped' | 'formula';
 
-// ─── Traffic API types ─────────────────────────────────────────────────────────
-interface TrafficYearData {
-  year: number;
-  weeklyTours: number;
-  weeklyApps: number;
-  weeklyLeases: number;
-  closingRatio: number;
-  occPct: number;
-  effRent: number;
-  annualLeases: number;
-  turnover: number;
-  confidence: number;
-}
-
-interface TrafficHandoff {
-  rawTraffic: TrafficYearData[];
-  occupancyTrajectory: { year: number; occ: number; vacancy: number; confidence: number }[];
-  rentTrajectory: { year: number; effRent: number; growth: number; confidence: number }[];
-  leasingVelocity: { weeklyLeases: number; annualized: number; confidence: number };
-  leaseUpTimeline?: { weeksTo95: number; weeksTo93: number; weeksTo90: number } | null;
-  modelConfidence: number;
-  dataWeeks?: number;
-  lastCalibrated?: string;
-}
-
-// ─── Layer source + cell state ─────────────────────────────────────────────────
-type LayerSource = 'broker' | 'platform' | 'user';
-
-interface CellKey { rowKey: string; year: number }
-
-interface DrawerState {
-  open: boolean;
-  rowKey: string;
-  rowLabel: string;
-  year: number;
-  brokerVal: number | null;
-  platformVal: number | null;
-  userVal: number | null;
-  format: (n: number) => string;
-  patchField: string | null;
-  platformSource: string;
-  brokerSource: string;
-  confidence: number | null;
-  unit: string;
-  description: string;
-}
-
-const DRAWER_CLOSED: DrawerState = {
-  open: false, rowKey: '', rowLabel: '', year: 1,
-  brokerVal: null, platformVal: null, userVal: null,
-  format: n => String(n), patchField: null,
-  platformSource: '', brokerSource: '', confidence: null, unit: '', description: '',
-};
+// ─── Grid override state ───────────────────────────────────────────────────────
+// { [rowKey]: { [year]: value | null } }
+type Overrides = Record<string, Record<number, number | null>>;
 
 // ─── Row definition ────────────────────────────────────────────────────────────
 interface RowDef {
@@ -83,11 +92,17 @@ interface RowDef {
   format: (n: number) => string;
   description?: string;
   patchField?: string;
-  brokerGetter?: (a: FinancialEngineTabProps['assumptions'], yr: number) => number | null;
-  platformGetter?: (t: TrafficHandoff | null, cf: AnnualCashFlowRow[], yr: number) => number | null;
-  confidence?: (t: TrafficHandoff | null) => number | null;
-  platformSource?: string;
-  brokerSource?: string;
+  platformSource: string;
+  brokerSource: string;
+  brokerPage?: string;
+  brokerLine?: string;
+  benchmarkP25?: number;
+  benchmarkP50?: number;
+  benchmarkP75?: number;
+  // Data getters — all derive from DealFinancials (fetched on mount)
+  getBroker: (f: DealFinancials, yr: number) => number | null;
+  getPlatform: (f: DealFinancials, yr: number) => number | null;
+  getConfidence: (f: DealFinancials) => number | null;
 }
 
 const SECTION_LABELS: Record<number, string> = {
@@ -100,453 +115,457 @@ const SECTION_LABELS: Record<number, string> = {
   7: '7. STRATEGY-SPECIFIC',
 };
 
+// Helper: look up OperatingStatementRow by field name
+function y1Row(f: DealFinancials, field: string): OperatingStatementRow | null {
+  return f.proforma.year1.find(r => r.field === field) ?? null;
+}
+
+// Helper: compound per-year rent growth up to year Y
+function compoundRentGrowth(f: DealFinancials, yr: number): number {
+  if (yr <= 1) return 1;
+  let mult = 1;
+  for (let y = 1; y < yr; y++) {
+    const g = f.assumptions.perYear.find(p => p.year === y)?.rentGrowthPct
+      ?? f.assumptions.rentGrowthStabilized ?? 0.03;
+    mult *= (1 + (g ?? 0.03));
+  }
+  return mult;
+}
+
+// Helper: compound per-year opex growth up to year Y (3% default)
+function compoundOpexGrowth(yr: number): number {
+  return Math.pow(1.03, yr - 1);
+}
+
 const ROW_DEFS: RowDef[] = [
   // ── Section 1: Revenue — Rent Side ──────────────────────────────────────
   {
-    key: 'avgRent', label: 'Avg Rent / Unit / Mo', section: 1, unit: '$',
-    format: n => fmt$(n),
-    patchField: 'avgRentPerUnit',
-    description: 'Average effective rent per unit per month across all unit types',
-    brokerGetter: (a, yr) => {
-      const cf = null; // not needed for this calculation
-      const baseRent = a?.revenue ? (() => {
-        const rg = a.revenue.rentGrowth ?? [];
-        const mix = a.unitMix ?? [];
-        const totalUnits = a.dealInfo?.totalUnits ?? 0;
-        if (!totalUnits) return null;
-        const wtdRent = mix.reduce((s, r) => s + (r.inPlaceRent ?? 0) * r.units, 0) / totalUnits;
-        if (!wtdRent) return null;
-        let v = wtdRent;
-        for (let i = 0; i < yr - 1; i++) v *= (1 + (rg[i] ?? 0.03));
-        return Math.round(v);
-      })() : null;
-      return baseRent;
-    },
-    platformGetter: (t, cf, yr) => {
-      const row = cf[yr - 1];
-      if (!row) return null;
-      const units = cf.length > 0 ? null : null; // derive from GPR if available
-      if (row.gpr && t?.rawTraffic?.[yr - 1]) {
-        return null; // use rent trajectory instead
-      }
-      if (t?.rentTrajectory?.[yr - 1]) {
-        return Math.round(t.rentTrajectory[yr - 1].effRent);
-      }
-      return null;
-    },
-    confidence: t => t?.modelConfidence ?? null,
+    key: 'effRent', label: 'Avg Eff Rent / Unit / Mo', section: 1, unit: '$',
+    format: n => '$' + Math.round(n).toLocaleString(),
+    patchField: 'rentPerUnit',
+    description: 'Average effective rent per unit per month across all unit types. Compound grows by rent growth % each year.',
     platformSource: 'M07 Traffic Engine — Rent Trajectory',
     brokerSource: 'OM / Broker In-Place Rent',
+    brokerPage: 'Rent Roll Summary', brokerLine: 'Avg In-Place Rent',
+    benchmarkP25: 1400, benchmarkP50: 1780, benchmarkP75: 2200,
+    getBroker: (f, yr) => {
+      const base = f.rentRollSummary?.avgInPlaceRent ?? y1Row(f, 'gpr')?.broker;
+      if (base == null) return null;
+      return Math.round(base * compoundRentGrowth(f, yr));
+    },
+    getPlatform: (f, yr) => {
+      const t = f.trafficProjection?.yearly.find(r => r.year === yr);
+      if (t?.effRent) return Math.round(t.effRent);
+      const base = y1Row(f, 'gpr')?.platform;
+      if (base == null) return null;
+      return Math.round(base * compoundRentGrowth(f, yr));
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
     key: 'rentGrowth', label: 'Rent Growth %', section: 1, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
     patchField: 'rentGrowthPct',
     description: 'YoY effective rent growth rate. Platform = Traffic Engine eff-rent trajectory CAGR.',
-    brokerGetter: (a, yr) => a?.revenue?.rentGrowth?.[yr - 1] ?? null,
-    platformGetter: (t, _cf, yr) => {
-      const traj = t?.rentTrajectory;
-      if (!traj || yr < 2) return null;
-      const curr = traj[yr - 1]?.effRent;
-      const prev = traj[yr - 2]?.effRent;
-      if (curr && prev && prev > 0) return (curr / prev) - 1;
-      if (traj[yr - 1]?.growth) return traj[yr - 1].growth / 100;
-      return null;
-    },
-    confidence: t => t?.modelConfidence ?? null,
     platformSource: 'M07 Traffic Engine — Rent Trajectory CAGR',
-    brokerSource: 'OM / Broker Rent Growth',
+    brokerSource: 'OM / Broker Rent Growth', brokerPage: 'Operating Assumptions', brokerLine: 'Rent Growth',
+    benchmarkP25: 0.02, benchmarkP50: 0.03, benchmarkP75: 0.045,
+    getBroker: (f, yr) => f.assumptions.perYear.find(p => p.year === yr)?.rentGrowthPct ?? f.assumptions.rentGrowthStabilized ?? 0.03,
+    getPlatform: (f, yr) => {
+      const t = f.trafficProjection?.yearly.find(r => r.year === yr);
+      return t?.rentGrowthPct != null ? t.rentGrowthPct : null;
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
     key: 'lossToLease', label: 'Loss-to-Lease %', section: 1, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
     patchField: 'lossToLeasePct',
-    description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll.',
-    brokerGetter: (a, _yr) => a?.revenue?.lossToLease ?? 0.03,
-    platformGetter: (_t, _cf, _yr) => 0.025,
-    confidence: _t => 60,
-    platformSource: 'JEDI Platform — Submarket Avg',
-    brokerSource: 'OM / Broker Assumption',
+    description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll at renewal.',
+    platformSource: 'JEDI Platform — Submarket Avg Loss-to-Lease',
+    brokerSource: 'OM / Operating Assumptions', brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
+    benchmarkP25: 0.01, benchmarkP50: 0.025, benchmarkP75: 0.05,
+    getBroker: (f, _yr) => y1Row(f, 'lossToLease')?.broker ?? 0.03,
+    getPlatform: (f, _yr) => y1Row(f, 'lossToLease')?.platform ?? 0.025,
+    getConfidence: f => y1Row(f, 'lossToLease')?.confidence ?? 60,
   },
   {
     key: 'concessions', label: 'Concessions %', section: 1, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
     patchField: 'concessionsPct',
-    description: 'Free rent / net effective concessions as % of GPR',
-    brokerGetter: (_a, _yr) => 0.005,
-    platformGetter: (_t, cf, yr) => {
-      const row = cf[yr - 1];
-      return row ? 0.005 : null;
-    },
-    confidence: _t => 55,
-    platformSource: 'JEDI Platform — Traffic velocity inference',
-    brokerSource: 'OM / Broker Assumption',
+    description: 'Free rent / net effective concessions as % of GPR. Narrows as market tightens.',
+    platformSource: 'M07 Traffic — Leasing velocity → concession pressure',
+    brokerSource: 'OM / Operating Assumptions', brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
+    benchmarkP25: 0.002, benchmarkP50: 0.005, benchmarkP75: 0.012,
+    getBroker: (f, _yr) => y1Row(f, 'concessions')?.broker ?? 0.005,
+    getPlatform: (f, _yr) => y1Row(f, 'concessions')?.platform ?? 0.004,
+    getConfidence: f => y1Row(f, 'concessions')?.confidence ?? 55,
   },
   {
     key: 'badDebt', label: 'Bad Debt / Collection Loss %', section: 1, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
     patchField: 'badDebtPct',
-    description: 'Non-payment and collection losses as % of GPR',
-    brokerGetter: (a, _yr) => a?.revenue?.collectionLoss ?? 0.015,
-    platformGetter: (_t, _cf, _yr) => 0.012,
-    confidence: _t => 50,
+    description: 'Non-payment and collection losses as % of GPR.',
     platformSource: 'JEDI Platform — Local collections data',
-    brokerSource: 'OM / Broker Assumption',
+    brokerSource: 'OM / T12 Statement', brokerPage: 'T12 Operating Statement', brokerLine: 'Collection Loss',
+    benchmarkP25: 0.008, benchmarkP50: 0.015, benchmarkP75: 0.025,
+    getBroker: (f, _yr) => y1Row(f, 'badDebt')?.broker ?? 0.015,
+    getPlatform: (f, _yr) => y1Row(f, 'badDebt')?.platform ?? 0.012,
+    getConfidence: f => y1Row(f, 'badDebt')?.confidence ?? 50,
   },
   {
     key: 'otherIncome', label: 'Other Income / Unit / Mo', section: 1, unit: '$',
     format: n => '$' + n.toFixed(0),
     patchField: 'otherIncomePerUnit',
-    description: 'Non-rent ancillary income (parking, storage, RUBS, etc.)',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, cf, yr) => {
-      const row = cf[yr - 1];
-      return row?.otherIncome ? Math.round(row.otherIncome / 12) : null;
-    },
-    confidence: _t => 65,
+    description: 'Non-rent ancillary income (parking, storage, RUBS, pet fees) per unit/month.',
     platformSource: 'JEDI Platform — Historical ancillary data',
-    brokerSource: 'OM / Broker Other Income',
+    brokerSource: 'OM / T12 Other Income', brokerPage: 'T12 Operating Statement', brokerLine: 'Other Income',
+    benchmarkP25: 40, benchmarkP50: 75, benchmarkP75: 130,
+    getBroker: (f, _yr) => y1Row(f, 'otherIncome')?.perUnit ?? null,
+    getPlatform: (f, _yr) => y1Row(f, 'otherIncome')?.platform != null
+      ? Math.round((y1Row(f, 'otherIncome')!.platform! / (f.totalUnits || 1)) / 12)
+      : null,
+    getConfidence: f => y1Row(f, 'otherIncome')?.confidence ?? 65,
   },
+
   // ── Section 2: Traffic / Demand ─────────────────────────────────────────
   {
     key: 't01WeeklyTours', label: 'T-01 Walk-Ins / Week', section: 2, unit: '/wk',
     format: n => n.toFixed(1) + '/wk',
     patchField: 't01WeeklyTours',
-    description: 'Total walk-in / inbound tour volume per week. M07 real-time. Primary demand signal.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, _cf, yr) => t?.rawTraffic?.[yr - 1]?.weeklyTours ?? null,
-    confidence: t => t?.rawTraffic?.[0]?.confidence ?? null,
+    description: 'Total walk-in / inbound tour volume per week. M07 real-time primary demand signal.',
     platformSource: 'M07 Traffic Engine — T-01 Signal',
-    brokerSource: 'N/A — traffic signal',
+    brokerSource: 'N/A — real-time traffic signal', brokerPage: 'N/A',
+    benchmarkP25: 6, benchmarkP50: 12, benchmarkP75: 22,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => f.trafficProjection?.yearly.find(r => r.year === yr)?.t01WeeklyTours ?? null,
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't05ClosingRatio', label: 'T-05 Conversion %', section: 2, unit: '%',
+    key: 't05ClosingRatio', label: 'T-05 Conversion % (Tours→Leases)', section: 2, unit: '%',
     format: n => (n * 100).toFixed(1) + '%',
     patchField: 't05ClosingRatio',
-    description: 'Tours → leases conversion rate. T-05 signal. Higher = better demand quality.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, _cf, yr) => {
-      const raw = t?.rawTraffic?.[yr - 1];
-      return raw?.closingRatio ? raw.closingRatio / 100 : null;
-    },
-    confidence: t => t?.rawTraffic?.[0]?.confidence ?? null,
+    description: 'Tour-to-lease conversion rate. T-05 signal. Higher = stronger qualified demand.',
     platformSource: 'M07 Traffic Engine — T-05 Signal',
-    brokerSource: 'N/A — traffic signal',
-  },
-  {
-    key: 't06CaptureRate', label: 'T-06 Capture Rate %', section: 2, unit: '%',
-    format: n => (n * 100).toFixed(1) + '%',
-    patchField: 't06CaptureRate',
-    description: 'Property capture of submarket renter demand. >avg = demand pull. Signal T-06.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => null,
-    platformSource: 'M07 Traffic Engine — T-06 Signal',
-    brokerSource: 'N/A — traffic signal',
-  },
-  {
-    key: 't07Trajectory', label: 'T-07 Trajectory %', section: 2, unit: '%',
-    format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%',
-    patchField: 't07Trajectory',
-    description: 'Demand trajectory YoY change. Positive = accelerating demand. Signal T-07.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, _cf, yr) => {
-      const curr = t?.rawTraffic?.[yr - 1]?.weeklyTours;
-      const prev = t?.rawTraffic?.[yr - 2]?.weeklyTours;
-      if (curr != null && prev != null && prev > 0) return (curr / prev) - 1;
-      return null;
+    brokerSource: 'N/A — real-time traffic signal', brokerPage: 'N/A',
+    benchmarkP25: 0.18, benchmarkP50: 0.28, benchmarkP75: 0.40,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => {
+      const t = f.trafficProjection?.yearly.find(r => r.year === yr);
+      if (t?.t05ClosingRatio == null) return null;
+      return t.t05ClosingRatio > 1 ? t.t05ClosingRatio / 100 : t.t05ClosingRatio;
     },
-    confidence: t => t?.rawTraffic?.[0]?.confidence ?? null,
-    platformSource: 'M07 Traffic Engine — T-07 Signal (derived)',
-    brokerSource: 'N/A — traffic signal',
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'derivedVacancy', label: 'Derived Vacancy % ⟨locked⟩', section: 2, unit: '%',
+    key: 't06WeeklyLeases', label: 'T-06 Weekly Net Leases', section: 2, unit: '/wk',
+    format: n => n.toFixed(1) + '/wk',
+    patchField: 't06WeeklyLeases',
+    description: 'Net new leases executed per week. T-06 signal. Key lease-up velocity indicator.',
+    platformSource: 'M07 Traffic Engine — T-06 Signal',
+    brokerSource: 'N/A — real-time traffic signal', brokerPage: 'N/A',
+    benchmarkP25: 1.5, benchmarkP50: 3.0, benchmarkP75: 5.5,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => f.trafficProjection?.yearly.find(r => r.year === yr)?.t06WeeklyLeases ?? null,
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+  },
+  {
+    key: 't07Trajectory', label: 'T-07 Demand Trajectory %', section: 2, unit: '%',
+    format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%',
+    description: 'YoY demand change (T-01 tours). Positive = accelerating demand. T-07 signal.',
+    platformSource: 'M07 Traffic Engine — T-07 Signal (derived from T-01 YoY)',
+    brokerSource: 'N/A — real-time traffic signal', brokerPage: 'N/A',
+    benchmarkP25: -0.05, benchmarkP50: 0.05, benchmarkP75: 0.15,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => {
+      const curr = f.trafficProjection?.yearly.find(r => r.year === yr)?.t01WeeklyTours;
+      const prev = f.trafficProjection?.yearly.find(r => r.year === yr - 1)?.t01WeeklyTours;
+      if (curr == null || prev == null || yr < 2) return null;
+      return prev > 0 ? (curr / prev) - 1 : null;
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+  },
+  {
+    key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 2, unit: '%',
     readonly: true,
     format: n => (n * 100).toFixed(2) + '%',
-    description: 'Derived from T-01 × T-05 equilibrium. Read-only when cap binding.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, _cf, yr) => {
-      const occ = t?.occupancyTrajectory?.[yr - 1]?.occ;
-      return occ != null ? (100 - occ) / 100 : null;
+    description: 'Vacancy derived from T-01×T-05 traffic equilibrium model. Read-only — override via stabilized occ. target.',
+    platformSource: 'M07 Traffic Engine — Equilibrium Vacancy Model',
+    brokerSource: 'N/A — derived from traffic signals', brokerPage: 'N/A',
+    benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => {
+      const t = f.trafficProjection?.yearly.find(r => r.year === yr);
+      if (t?.vacancyPct != null) return t.vacancyPct;
+      if (t?.occupancyPct != null) return 1 - t.occupancyPct;
+      return null;
     },
-    confidence: t => t?.modelConfidence ?? null,
-    platformSource: 'M07 Traffic Engine — equilibrium vacancy model',
-    brokerSource: 'N/A — derived',
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
     key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 2, unit: '%',
     format: n => (n * 100).toFixed(1) + '%',
     patchField: 'vacancyPct',
-    description: 'Long-run stabilized occupancy. Platform sets from traffic equilibrium model.',
-    brokerGetter: (a, _yr) => a?.revenue?.stabilizedOccupancy ?? null,
-    platformGetter: (t, _cf, yr) => {
-      const occ = t?.occupancyTrajectory?.[yr - 1]?.occ;
-      return occ != null ? occ / 100 : null;
+    description: 'Long-run stabilized occupancy. Platform sets from traffic equilibrium; broker from OM pro forma.',
+    platformSource: 'M07 Traffic Engine — Stabilized Occupancy Trajectory',
+    brokerSource: 'OM / Pro Forma Assumptions', brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
+    benchmarkP25: 0.90, benchmarkP50: 0.94, benchmarkP75: 0.97,
+    getBroker: (f, yr) => {
+      const base = f.assumptions.perYear.find(p => p.year === yr)?.vacancyPct;
+      return base != null ? 1 - base : null;
     },
-    confidence: t => t?.modelConfidence ?? null,
-    platformSource: 'M07 Traffic Engine — Occupancy Trajectory',
-    brokerSource: 'OM / Broker Stabilized Occ',
+    getPlatform: (f, yr) => {
+      const t = f.trafficProjection?.yearly.find(r => r.year === yr);
+      return t?.occupancyPct != null ? t.occupancyPct : null;
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpCurve', label: 'Lease-Up Curve (Weeks to 95%)', section: 2, unit: 'wks',
+    key: 'leaseUpWeeks', label: 'Lease-Up to 95% Occ (weeks)', section: 2, unit: 'wks',
     format: n => Math.round(n) + ' wks',
-    description: 'Weeks for the property to reach 95% occupancy. Dev deals primary constraint.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, _cf, _yr) => t?.leaseUpTimeline?.weeksTo95 ?? null,
-    confidence: t => t?.modelConfidence ?? null,
-    platformSource: 'M07 Traffic Engine — Lease-Up Timeline',
-    brokerSource: 'OM / Broker Lease-Up Estimate',
+    description: 'Weeks to reach 95% occupancy. M07 T-06 signal — primary dev deal constraint.',
+    platformSource: 'M07 Traffic Engine — T-06 Weekly Leases → Lease-Up Timeline',
+    brokerSource: 'OM / Pro Forma Assumptions', brokerPage: 'Operating Assumptions', brokerLine: 'Lease-Up Period',
+    benchmarkP25: 24, benchmarkP50: 36, benchmarkP75: 56,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo95 ?? null,
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
-  {
-    key: 'renovTrafficLift', label: 'Renovation Traffic Lift %', section: 2, unit: '%',
-    format: n => (n * 100).toFixed(0) + '%',
-    patchField: 'renovTrafficLift',
-    description: 'Expected % increase in traffic volume from unit renovations. Value-add specific.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, _cf, _yr) => 0.12,
-    confidence: _t => 45,
-    platformSource: 'JEDI Platform — Value-add renovation lift model',
-    brokerSource: 'OM / Broker Renovation Estimate',
-  },
+
   // ── Section 3: Expense Assumptions ──────────────────────────────────────
   {
-    key: 'payroll', label: 'Payroll / Property Mgmt', section: 3, unit: '$/unit',
+    key: 'payroll', label: 'Payroll / Property Mgmt ($/unit/yr)', section: 3, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'payroll',
-    description: 'On-site payroll and property management per unit per year',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, cf, yr) => {
-      const row = cf[yr - 1];
-      return row ? null : null;
-    },
-    confidence: _t => 60,
+    description: 'On-site payroll + property management fee per unit per year.',
     platformSource: 'JEDI Platform — Submarket OpEx benchmark',
-    brokerSource: 'OM / T12 Operating Statement',
+    brokerSource: 'OM / T12 Statement', brokerPage: 'T12 Operating Statement', brokerLine: 'Payroll & Benefits',
+    benchmarkP25: 1100, benchmarkP50: 1450, benchmarkP75: 1900,
+    getBroker: (f, yr) => {
+      const base = y1Row(f, 'payroll')?.broker ?? y1Row(f, 'payroll')?.t12;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getPlatform: (f, yr) => {
+      const base = y1Row(f, 'payroll')?.platform;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getConfidence: f => y1Row(f, 'payroll')?.confidence ?? 60,
   },
   {
-    key: 'repairsMaint', label: 'Repairs & Maintenance', section: 3, unit: '$/unit',
+    key: 'repairsMaint', label: 'Repairs & Maintenance ($/unit/yr)', section: 3, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'repairsMaintenance',
     description: 'Routine R&M per unit per year. Excludes CapEx.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 55,
-    platformSource: 'JEDI Platform — Property Class benchmark',
-    brokerSource: 'OM / T12 Operating Statement',
+    platformSource: 'JEDI Platform — Property class benchmark',
+    brokerSource: 'OM / T12 Statement', brokerPage: 'T12 Operating Statement', brokerLine: 'Repairs & Maintenance',
+    benchmarkP25: 350, benchmarkP50: 550, benchmarkP75: 850,
+    getBroker: (f, yr) => {
+      const base = y1Row(f, 'repairsMaintenance')?.broker ?? y1Row(f, 'repairsMaintenance')?.t12;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getPlatform: (f, yr) => {
+      const base = y1Row(f, 'repairsMaintenance')?.platform;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getConfidence: f => y1Row(f, 'repairsMaintenance')?.confidence ?? 55,
   },
   {
-    key: 'utilities', label: 'Utilities', section: 3, unit: '$/unit',
+    key: 'utilities', label: 'Utilities ($/unit/yr)', section: 3, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'utilities',
-    description: 'Owner-paid utilities per unit per year (water, gas, electric)',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 60,
+    description: 'Owner-paid utilities per unit per year (water, gas, electric).',
     platformSource: 'JEDI Platform — Utility benchmark by market',
-    brokerSource: 'OM / T12 Operating Statement',
+    brokerSource: 'OM / T12 Statement', brokerPage: 'T12 Operating Statement', brokerLine: 'Utilities',
+    benchmarkP25: 400, benchmarkP50: 620, benchmarkP75: 900,
+    getBroker: (f, yr) => {
+      const base = y1Row(f, 'utilities')?.broker ?? y1Row(f, 'utilities')?.t12;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getPlatform: (f, yr) => {
+      const base = y1Row(f, 'utilities')?.platform;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getConfidence: f => y1Row(f, 'utilities')?.confidence ?? 60,
   },
   {
     key: 'mgmtFeePct', label: 'Management Fee %', section: 3, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
     patchField: 'managementFeePct',
-    description: 'Third-party property management fee as % of EGI',
-    brokerGetter: (a, _yr) => {
-      const mgmt = (a?.expenses?.['management'] as { amount?: number } | undefined);
-      return mgmt?.amount ?? 0.035;
-    },
-    platformGetter: (_t, _cf, _yr) => 0.04,
-    confidence: _t => 70,
+    description: 'Third-party property management fee as % of EGI. Includes leasing commissions.',
     platformSource: 'JEDI Platform — Market management fee avg',
-    brokerSource: 'OM / T12 Operating Statement',
+    brokerSource: 'OM / Management Agreement', brokerPage: 'Operating Assumptions', brokerLine: 'Management Fee',
+    benchmarkP25: 0.03, benchmarkP50: 0.04, benchmarkP75: 0.05,
+    getBroker: (f, _yr) => y1Row(f, 'managementFee')?.broker != null
+      ? (y1Row(f, 'managementFee')!.broker! / (y1Row(f, 'gpr')?.broker ?? 1))
+      : 0.035,
+    getPlatform: (f, _yr) => y1Row(f, 'managementFee')?.platform != null
+      ? (y1Row(f, 'managementFee')!.platform! / (y1Row(f, 'gpr')?.platform ?? 1))
+      : 0.04,
+    getConfidence: f => y1Row(f, 'managementFee')?.confidence ?? 70,
   },
   {
-    key: 'insurance', label: 'Insurance', section: 3, unit: '$/unit',
+    key: 'insurance', label: 'Insurance ($/unit/yr)', section: 3, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'insurance',
-    description: 'Hazard, liability, and specialty insurance per unit per year',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 65,
+    description: 'Hazard, liability, and specialty insurance per unit per year.',
     platformSource: 'JEDI Platform — Insurance benchmark',
-    brokerSource: 'OM / T12 Operating Statement',
+    brokerSource: 'OM / T12 Statement', brokerPage: 'T12 Operating Statement', brokerLine: 'Insurance',
+    benchmarkP25: 300, benchmarkP50: 475, benchmarkP75: 700,
+    getBroker: (f, yr) => {
+      const base = y1Row(f, 'insurance')?.broker ?? y1Row(f, 'insurance')?.t12;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getPlatform: (f, yr) => {
+      const base = y1Row(f, 'insurance')?.platform;
+      return base != null ? Math.round(base * compoundOpexGrowth(yr)) : null;
+    },
+    getConfidence: f => y1Row(f, 'insurance')?.confidence ?? 65,
   },
   {
-    key: 'reTax', label: 'Real Estate Taxes', section: 3, unit: '$/unit',
+    key: 'reTax', label: 'Real Estate Taxes ($/unit/yr)', section: 3, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'realEstateTax',
-    description: 'Annual property tax bill per unit. Reassessment at purchase may create Year-1 shock.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, cf, yr) => {
-      const row = cf[yr - 1];
-      return row ? null : null;
-    },
-    confidence: _t => 75,
+    description: 'Annual RE tax per unit. Reassessment at purchase may create Year-1 shock.',
     platformSource: 'JEDI Platform — County millage model',
-    brokerSource: 'OM / T12 RE Tax Line',
+    brokerSource: 'OM / T12 Statement', brokerPage: 'T12 Operating Statement', brokerLine: 'Real Estate Taxes',
+    benchmarkP25: 600, benchmarkP50: 950, benchmarkP75: 1400,
+    getBroker: (f, yr) => {
+      const base = y1Row(f, 'realEstateTax')?.broker ?? y1Row(f, 'realEstateTax')?.t12 ?? y1Row(f, 'realEstateTax')?.taxBill;
+      return base != null ? Math.round(base * Math.pow(1.04, yr - 1)) : null;
+    },
+    getPlatform: (f, yr) => {
+      const base = y1Row(f, 'realEstateTax')?.platform;
+      return base != null ? Math.round(base * Math.pow(1.04, yr - 1)) : null;
+    },
+    getConfidence: f => y1Row(f, 'realEstateTax')?.confidence ?? 75,
   },
-  {
-    key: 'opexGrowth', label: 'OpEx Growth %', section: 3, unit: '%',
-    format: n => (n * 100).toFixed(1) + '%',
-    patchField: 'opexGrowthPct',
-    description: 'YoY total operating expense growth. CPI + spread.',
-    brokerGetter: (_a, _yr) => 0.03,
-    platformGetter: (_t, _cf, _yr) => 0.03,
-    confidence: _t => 65,
-    platformSource: 'JEDI Platform — CPI + 50bps',
-    brokerSource: 'OM / Broker OpEx Assumption',
-  },
+
   // ── Section 4: CapEx / Reserves ─────────────────────────────────────────
   {
-    key: 'totalCapex', label: 'Total CapEx Budget', section: 4, unit: '$',
-    format: n => fmtM(n),
-    description: 'Total capital expenditure budget including contingency',
-    brokerGetter: (a, _yr) => {
-      const items = a?.capex?.lineItems ?? [];
-      const cont = a?.capex?.contingencyPct ?? 0.05;
-      const tot = items.reduce((s, i) => s + i.amount, 0);
-      return tot > 0 ? Math.round(tot * (1 + cont)) : null;
-    },
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 50,
-    platformSource: 'JEDI Platform — Renovation scope model',
-    brokerSource: 'OM / Broker CapEx Estimate',
-  },
-  {
-    key: 'capexPerUnit', label: 'CapEx / Unit', section: 4, unit: '$/unit',
+    key: 'capexPerUnit', label: 'CapEx Budget ($/unit)', section: 4, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
-    description: 'CapEx per unit. Benchmark: value-add $10K–$30K/unit.',
-    brokerGetter: (a, _yr) => {
-      const items = a?.capex?.lineItems ?? [];
-      const cont = a?.capex?.contingencyPct ?? 0.05;
-      const tot = items.reduce((s, i) => s + i.amount, 0);
-      const units = a?.dealInfo?.totalUnits ?? 0;
-      return (tot > 0 && units > 0) ? Math.round(tot * (1 + cont) / units) : null;
-    },
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 50,
+    description: 'Total capital expenditure budget per unit. Value-add benchmark: $10K–$30K/unit.',
     platformSource: 'JEDI Platform — Value-add comp database',
-    brokerSource: 'OM / Broker CapEx Estimate',
+    brokerSource: 'OM / CapEx Schedule', brokerPage: 'Capital Budget', brokerLine: 'Total CapEx',
+    benchmarkP25: 8000, benchmarkP50: 16000, benchmarkP75: 28000,
+    getBroker: (f, _yr) => y1Row(f, 'capex')?.broker != null
+      ? Math.round(y1Row(f, 'capex')!.broker! / (f.totalUnits || 1)) : null,
+    getPlatform: (_f, _yr) => null,
+    getConfidence: _f => 50,
   },
   {
-    key: 'reserves', label: 'Replacement Reserves / Unit / Yr', section: 4, unit: '$/unit',
+    key: 'reserves', label: 'Replacement Reserves ($/unit/yr)', section: 4, unit: '$/unit',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'replacementReserves',
-    description: 'Annual replacement reserves. Typical: $150–$350/unit for stabilized.',
-    brokerGetter: (a, _yr) => a?.capex?.reservesPerUnit ?? null,
-    platformGetter: (_t, _cf, _yr) => 250,
-    confidence: _t => 70,
+    description: 'Annual replacement reserves. Industry standard: $150–$350/unit for stabilized assets.',
     platformSource: 'JEDI Platform — Industry reserve standard',
-    brokerSource: 'OM / Broker Reserves',
+    brokerSource: 'OM / Pro Forma Expenses', brokerPage: 'Pro Forma Assumptions', brokerLine: 'Replacement Reserves',
+    benchmarkP25: 150, benchmarkP50: 250, benchmarkP75: 350,
+    getBroker: (f, _yr) => y1Row(f, 'reserves')?.broker ?? null,
+    getPlatform: (_f, _yr) => 250,
+    getConfidence: _f => 70,
   },
+
   // ── Section 5: Debt Assumptions ─────────────────────────────────────────
   {
     key: 'interestRate', label: 'Interest Rate', section: 5, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
-    description: 'Senior loan fixed / base rate',
-    brokerGetter: (a, _yr) => a?.financing?.interestRate ?? null,
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 80,
-    platformSource: 'JEDI Platform — SOFR + spread',
-    brokerSource: 'OM / Debt term sheet',
+    description: 'Senior loan fixed rate. Platform = SOFR + spread from current market.',
+    platformSource: 'JEDI Platform — SOFR + 175bps (current)',
+    brokerSource: 'OM / Term Sheet or Debt Broker', brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
+    benchmarkP25: 0.0575, benchmarkP50: 0.0675, benchmarkP75: 0.0775,
+    getBroker: (f, _yr) => f.capitalStack.interestRate ?? null,
+    getPlatform: (_f, _yr) => 0.0675,
+    getConfidence: _f => 80,
   },
   {
-    key: 'ltv', label: 'LTC / LTV %', section: 5, unit: '%',
+    key: 'ltv', label: 'LTV / LTC %', section: 5, unit: '%',
     format: n => (n * 100).toFixed(1) + '%',
-    description: 'Loan-to-cost or loan-to-value at closing',
-    brokerGetter: (a, _yr) => {
-      const loan = a?.financing?.loanAmount;
-      const price = a?.acquisition?.purchasePrice;
-      return (loan && price && price > 0) ? loan / price : null;
-    },
-    platformGetter: (_t, _cf, _yr) => 0.65,
-    confidence: _t => 75,
+    description: 'Loan-to-value (or LTC for development) at closing.',
     platformSource: 'JEDI Platform — Market LTV norms',
-    brokerSource: 'OM / Debt term sheet',
+    brokerSource: 'OM / Financing Assumptions', brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
+    benchmarkP25: 0.55, benchmarkP50: 0.65, benchmarkP75: 0.72,
+    getBroker: (f, _yr) => f.capitalStack.ltcPct ?? null,
+    getPlatform: (_f, _yr) => 0.65,
+    getConfidence: _f => 75,
   },
   {
     key: 'ioPeriod', label: 'Interest-Only Period (mo)', section: 5, unit: 'mo',
     format: n => Math.round(n) + ' mo',
-    description: 'Months of interest-only payments before amortization begins',
-    brokerGetter: (a, _yr) => a?.financing?.ioPeriod ?? null,
-    platformGetter: (_t, _cf, _yr) => null,
-    confidence: _t => 80,
+    description: 'Months of I/O payments before amortization begins.',
     platformSource: 'JEDI Platform — Lender market norms',
-    brokerSource: 'OM / Debt term sheet',
+    brokerSource: 'OM / Term Sheet', brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
+    benchmarkP25: 0, benchmarkP50: 24, benchmarkP75: 48,
+    getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
+    getPlatform: (_f, _yr) => 24,
+    getConfidence: _f => 80,
   },
+
   // ── Section 6: Exit Assumptions ─────────────────────────────────────────
   {
     key: 'exitCapRate', label: 'Exit Cap Rate', section: 6, unit: '%',
     format: n => (n * 100).toFixed(2) + '%',
     patchField: 'exitCapRate',
-    description: 'Terminal cap rate applied to final-year NOI to derive sale price',
-    brokerGetter: (a, _yr) => a?.disposition?.exitCapRate ?? null,
-    platformGetter: (t, _cf, _yr) => {
-      if (!t) return null;
-      return t.modelConfidence > 75 ? 0.053 : 0.055;
-    },
-    confidence: t => t ? 60 : null,
+    description: 'Terminal cap rate applied to final-year forward NOI to derive sale price.',
     platformSource: 'M07 Traffic — Demand velocity implies cap compression',
-    brokerSource: 'OM / Broker Exit Cap Assumption',
+    brokerSource: 'OM / Underwriting Assumptions', brokerPage: 'Operating Assumptions', brokerLine: 'Exit Cap Rate',
+    benchmarkP25: 0.048, benchmarkP50: 0.055, benchmarkP75: 0.065,
+    getBroker: (f, _yr) => f.assumptions.exitCap ?? null,
+    getPlatform: (f, _yr) => f.trafficProjection?.calibrated?.exitCap ?? null,
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
   },
   {
     key: 'sellingCosts', label: 'Selling Costs %', section: 6, unit: '%',
     format: n => (n * 100).toFixed(1) + '%',
-    description: 'Brokerage, legal, and transfer costs at disposition',
-    brokerGetter: (a, _yr) => a?.disposition?.sellingCosts ?? 0.02,
-    platformGetter: (_t, _cf, _yr) => 0.02,
-    confidence: _t => 80,
+    description: 'Brokerage, legal, and transfer costs at disposition.',
     platformSource: 'JEDI Platform — Market transaction cost norms',
-    brokerSource: 'OM / Broker Disposition Cost',
+    brokerSource: 'OM / Disposition Assumptions', brokerPage: 'Operating Assumptions', brokerLine: 'Selling Costs',
+    benchmarkP25: 0.015, benchmarkP50: 0.02, benchmarkP75: 0.025,
+    getBroker: (f, _yr) => y1Row(f, 'sellingCosts')?.broker ?? 0.02,
+    getPlatform: (_f, _yr) => 0.02,
+    getConfidence: _f => 80,
   },
-  {
-    key: 'holdPeriod', label: 'Hold Period (Yrs)', section: 6, unit: 'yrs',
-    format: n => Math.round(n) + ' yrs',
-    description: 'Target hold period in years. Changes grid column count.',
-    brokerGetter: (a, _yr) => a?.holdPeriod ?? 5,
-    platformGetter: (_t, _cf, _yr) => 5,
-    confidence: _t => 60,
-    platformSource: 'JEDI Platform — Strategy default',
-    brokerSource: 'OM / Broker Investment Horizon',
-  },
+
   // ── Section 7: Strategy-Specific ────────────────────────────────────────
   {
-    key: 'targetAfterRepairRent', label: 'Target After-Repair Rent', section: 7, unit: '$',
+    key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 7, unit: '$',
     format: n => '$' + Math.round(n).toLocaleString(),
     patchField: 'afterRepairRent',
-    description: 'Target in-place rent after value-add renovation. Value-add strategy only.',
-    brokerGetter: (_a, _yr) => null,
-    platformGetter: (t, _cf, yr) => {
-      if (!t) return null;
-      return t.rentTrajectory?.[yr - 1]?.effRent ? Math.round(t.rentTrajectory[yr - 1].effRent * 1.08) : null;
+    description: 'Target in-place rent post-renovation. Value-add strategy only.',
+    platformSource: 'M07 Traffic — Rent trajectory + renovation premium model',
+    brokerSource: 'OM / Value-Add Pro Forma', brokerPage: 'Pro Forma Assumptions', brokerLine: 'Post-Renovation Rent',
+    benchmarkP25: 1600, benchmarkP50: 2000, benchmarkP75: 2500,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => {
+      const t = f.trafficProjection?.yearly.find(r => r.year === yr);
+      return t?.effRent != null ? Math.round(t.effRent * 1.08) : null;
     },
-    confidence: _t => 50,
-    platformSource: 'M07 Traffic — Rent trajectory + renovation premium',
-    brokerSource: 'OM / Broker Renovation Target',
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 50,
   },
   {
     key: 'leaseUpVelocity', label: 'Lease-Up Velocity (leases/mo)', section: 7, unit: '/mo',
     format: n => Math.round(n) + '/mo',
-    description: 'Monthly net leasing velocity target during lease-up period',
-    brokerGetter: (a, _yr) => a?.development?.leaseUpVelocity ?? null,
-    platformGetter: (t, _cf, _yr) => {
-      const wkly = t?.leasingVelocity?.weeklyLeases;
-      return wkly ? Math.round(wkly * 4.33) : null;
+    description: 'Monthly net leasing velocity target during lease-up.',
+    platformSource: 'M07 Traffic Engine — T-06 weekly lease velocity × 4.33',
+    brokerSource: 'OM / Pro Forma Assumptions', brokerPage: 'Pro Forma Assumptions', brokerLine: 'Lease-Up Velocity',
+    benchmarkP25: 8, benchmarkP50: 15, benchmarkP75: 25,
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, _yr) => {
+      const wkly = f.trafficProjection?.leasingSignals?.t06WeeklyLeases;
+      return wkly != null ? Math.round(wkly * 4.33) : null;
     },
-    confidence: t => t?.leasingVelocity?.confidence ?? null,
-    platformSource: 'M07 Traffic Engine — Weekly lease velocity',
-    brokerSource: 'OM / Broker Lease-Up Projection',
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
 ];
 
-// ─── Shared cell renderer (existing style, used for Debt/Tax sub-pages) ────────
+// ─── Shared cell renderer (used for Debt/Tax sub-pages) ────────────────────────
 function Cell({ v, type = 'normal', span, align = 'right', tooltip }: {
   v: string; type?: CellType; span?: number; align?: 'right' | 'left' | 'center'; tooltip?: string;
 }) {
-  const base = 'relative px-2 py-1 text-[10px] font-mono tabular-nums border-r border-[#1e1e1e] group ';
+  const base = 'relative px-2 py-1 text-[10px] font-mono tabular-nums border-r border-[#1e1e1e] ';
   const alignCls = align === 'left' ? 'text-left ' : align === 'center' ? 'text-center ' : 'text-right ';
   const variants: Record<CellType, string> = {
-    normal:   'text-slate-300 hover:border hover:border-blue-500/50 hover:bg-[#1e1e1e] cursor-text ',
+    normal:   'text-slate-300 hover:bg-[#1e1e1e] cursor-text ',
     ai:       'text-cyan-400 ',
     override: 'text-blue-400 bg-[#1e293b]/30 ',
     m07:      'text-purple-400 ',
@@ -558,9 +577,7 @@ function Cell({ v, type = 'normal', span, align = 'right', tooltip }: {
     header:   'text-slate-400 font-bold bg-[#111111] ',
   };
   return (
-    <td className={base + alignCls + variants[type]} colSpan={span} title={tooltip}>
-      {v}
-    </td>
+    <td className={base + alignCls + variants[type]} colSpan={span} title={tooltip}>{v}</td>
   );
 }
 
@@ -601,141 +618,141 @@ function LayeredCell({ brokerVal, platformVal, userVal, readonly, format, onClic
   const hasUser = userVal != null;
   const hasPlatform = platformVal != null;
   const hasBroker = brokerVal != null;
-
+  // Divergence: user vs platform
   const divergence = (hasPlatform && hasUser && platformVal !== 0)
     ? Math.abs((userVal! - platformVal) / Math.abs(platformVal))
     : 0;
-
   const bgClass = divergence > 0.05 ? 'bg-red-900/15 ' : divergence > 0.01 ? 'bg-amber-900/10 ' : '';
 
   return (
     <td
       onClick={readonly ? undefined : onClick}
-      className={`relative px-2 py-0.5 border-r border-[#1e1e1e] min-w-[80px] align-top
+      className={`relative px-2 py-0.5 border-r border-[#1e1e1e] min-w-[82px] align-top
         ${readonly ? 'cursor-default' : 'cursor-pointer hover:border hover:border-blue-500/40'}
-        ${bgClass}
-      `}
+        ${bgClass}`}
     >
       {hasM07 && <sup className="absolute top-[2px] right-[2px] text-[6px] text-purple-500 font-bold">M07</sup>}
       {readonly && <Lock className="absolute top-[2px] left-[2px] w-2 h-2 text-slate-700" />}
-      {hasUser && (
-        <div className="text-[9px] font-mono font-bold text-blue-400 leading-[1.2]">{format(userVal!)}</div>
-      )}
+      {hasUser && <div className="text-[9px] font-mono font-bold text-blue-400 leading-[1.25]">{format(userVal!)}</div>}
       {hasPlatform && (
-        <div className={`text-[9px] font-mono leading-[1.2] ${hasUser ? 'text-cyan-700' : 'text-cyan-400 font-bold'}`}>
+        <div className={`text-[9px] font-mono leading-[1.25] ${hasUser ? 'text-cyan-700' : 'text-cyan-400 font-bold'}`}>
           {format(platformVal!)}
         </div>
       )}
       {hasBroker && (
-        <div className={`text-[9px] font-mono leading-[1.2] ${(hasUser || hasPlatform) ? 'text-amber-800' : 'text-amber-400 font-bold'}`}>
+        <div className={`text-[9px] font-mono leading-[1.25] ${(hasUser || hasPlatform) ? 'text-amber-800' : 'text-amber-400 font-bold'}`}>
           {format(brokerVal!)}
         </div>
       )}
       {!hasUser && !hasPlatform && !hasBroker && (
-        <div className="text-[9px] font-mono text-slate-700">—</div>
+        <div className="text-[9px] font-mono text-slate-700 leading-[1.25]">—</div>
       )}
     </td>
   );
 }
 
 // ─── Cell Drawer ───────────────────────────────────────────────────────────────
-interface CellDrawerProps {
+interface DrawerState {
+  open: boolean; rowKey: string; rowLabel: string; year: number;
+  brokerVal: number | null; platformVal: number | null; userVal: number | null;
+  format: (n: number) => string; patchField: string | null;
+  platformSource: string; brokerSource: string; brokerPage: string; brokerLine: string;
+  confidence: number | null; unit: string; description: string;
+  benchmarkP25: number | null; benchmarkP50: number | null; benchmarkP75: number | null;
+  benchmarkPosition: 'above' | 'below' | 'within' | null;
+}
+const DRAWER_CLOSED: DrawerState = {
+  open: false, rowKey: '', rowLabel: '', year: 1,
+  brokerVal: null, platformVal: null, userVal: null,
+  format: n => String(n), patchField: null,
+  platformSource: '', brokerSource: '', brokerPage: '', brokerLine: '',
+  confidence: null, unit: '', description: '',
+  benchmarkP25: null, benchmarkP50: null, benchmarkP75: null, benchmarkPosition: null,
+};
+
+type LayerSource = 'broker' | 'platform' | 'user';
+
+function CellDrawer({ state, onClose, onApply }: {
   state: DrawerState;
   onClose: () => void;
   onApply: (rowKey: string, year: number, value: number | null, applyAll: boolean) => void;
-}
-
-function CellDrawer({ state, onClose, onApply }: CellDrawerProps) {
-  const [draft, setDraft] = useState('');
-  const [activeLayer, setActiveLayer] = useState<LayerSource>('platform');
+}) {
+  const [draft, setDraft]     = useState('');
+  const [layer, setLayer]     = useState<LayerSource>('platform');
   const [applyAll, setApplyAll] = useState(false);
 
   useEffect(() => {
-    if (state.open) {
-      setDraft(state.userVal != null ? state.format(state.userVal).replace(/[^0-9.-]/g, '') : '');
-      setActiveLayer(state.userVal != null ? 'user' : state.platformVal != null ? 'platform' : 'broker');
-      setApplyAll(false);
-    }
+    if (!state.open) return;
+    setLayer(state.userVal != null ? 'user' : state.platformVal != null ? 'platform' : 'broker');
+    setDraft(state.userVal != null
+      ? state.unit === '%' ? (state.userVal * 100).toFixed(2) : String(Math.round(state.userVal))
+      : '');
+    setApplyAll(false);
   }, [state.open, state.rowKey, state.year]);
 
   const handleApply = () => {
-    if (activeLayer === 'user') {
+    if (layer === 'user') {
       const n = parseFloat(draft);
-      if (!isNaN(n)) {
-        // Convert percent inputs (e.g. "3.5" → 0.035 for % fields)
-        const normalized = state.unit === '%' ? n / 100 : n;
-        onApply(state.rowKey, state.year, normalized, applyAll);
-      }
-    } else if (activeLayer === 'platform' && state.platformVal != null) {
+      if (!isNaN(n)) onApply(state.rowKey, state.year, state.unit === '%' ? n / 100 : n, applyAll);
+    } else if (layer === 'platform' && state.platformVal != null) {
       onApply(state.rowKey, state.year, state.platformVal, applyAll);
-    } else if (activeLayer === 'broker' && state.brokerVal != null) {
+    } else if (layer === 'broker' && state.brokerVal != null) {
       onApply(state.rowKey, state.year, state.brokerVal, applyAll);
     }
     onClose();
   };
 
-  const handleClear = () => {
-    onApply(state.rowKey, state.year, null, applyAll);
-    onClose();
-  };
+  // Benchmark percentile bar
+  const pctPosition = (() => {
+    const { benchmarkP25: p25, benchmarkP50: p50, benchmarkP75: p75, platformVal, brokerVal } = state;
+    const val = state.userVal ?? platformVal ?? brokerVal;
+    if (val == null || p25 == null || p75 == null) return null;
+    const range = p75 - p25;
+    if (range <= 0) return null;
+    return Math.max(0, Math.min(100, ((val - p25) / range) * 100));
+  })();
 
   if (!state.open) return null;
-
-  const displayActive = activeLayer === 'user' ? state.userVal : activeLayer === 'platform' ? state.platformVal : state.brokerVal;
-
   return (
-    <div
-      style={{
-        position: 'fixed', right: 0, top: 0, bottom: 0, width: 340, zIndex: 100,
-        background: BT.bg.panel, borderLeft: `1px solid #1e1e1e`,
-        display: 'flex', flexDirection: 'column', fontFamily: MONO,
-        boxShadow: '-8px 0 32px rgba(0,0,0,0.6)',
-      }}
-    >
+    <div style={{
+      position: 'fixed', right: 0, top: 0, bottom: 0, width: 340, zIndex: 200,
+      background: '#0d0d0d', borderLeft: '1px solid #1e1e1e',
+      display: 'flex', flexDirection: 'column', fontFamily: MONO,
+      boxShadow: '-8px 0 32px rgba(0,0,0,0.7)',
+    }}>
       {/* Header */}
-      <div style={{
-        padding: '10px 12px', background: '#111', borderBottom: '1px solid #1e1e1e',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
+      <div style={{ padding: '10px 12px', background: '#111', borderBottom: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#e2e8f0', letterSpacing: 0.5 }}>{state.rowLabel}</div>
-          <div style={{ fontSize: 9, color: '#64748b' }}>Year {state.year} · {state.unit}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{state.rowLabel}</div>
+          <div style={{ fontSize: 9, color: '#64748b' }}>YR {state.year} · {state.unit}</div>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
-          <X style={{ width: 16, height: 16 }} />
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#475569', cursor: 'pointer', marginTop: 2 }}>
+          <X style={{ width: 14, height: 14 }} />
         </button>
       </div>
 
       {/* Layer toggle */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e' }}>
-        <div style={{ fontSize: 8, color: '#64748b', letterSpacing: 0.5, marginBottom: 6 }}>SELECT ACTIVE LAYER</div>
+        <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 6 }}>ACTIVE LAYER</div>
         <div style={{ display: 'flex', gap: 4 }}>
-          {(['platform', 'broker', 'user'] as LayerSource[]).map(layer => {
-            const val = layer === 'platform' ? state.platformVal : layer === 'broker' ? state.brokerVal : state.userVal;
-            const color = layer === 'user' ? '#3b82f6' : layer === 'platform' ? '#22d3ee' : '#f59e0b';
-            const label = layer === 'user' ? 'USER' : layer === 'platform' ? 'PLATFORM' : 'BROKER';
+          {(['platform', 'broker', 'user'] as LayerSource[]).map(src => {
+            const val = src === 'platform' ? state.platformVal : src === 'broker' ? state.brokerVal : state.userVal;
+            const color = src === 'user' ? '#3b82f6' : src === 'platform' ? '#22d3ee' : '#f59e0b';
+            const lbl = src === 'user' ? 'USER' : src === 'platform' ? 'PLATFORM' : 'BROKER';
+            const active = layer === src;
             return (
-              <button
-                key={layer}
-                onClick={() => setActiveLayer(layer)}
-                disabled={val == null && layer !== 'user'}
+              <button key={src} onClick={() => setLayer(src)}
+                disabled={val == null && src !== 'user'}
                 style={{
-                  flex: 1, padding: '4px 6px', fontSize: 9, fontFamily: MONO, fontWeight: 700,
-                  border: `1px solid ${activeLayer === layer ? color : '#1e1e1e'}`,
-                  background: activeLayer === layer ? `${color}18` : 'transparent',
-                  color: activeLayer === layer ? color : '#475569',
-                  borderRadius: 2, cursor: 'pointer',
-                }}
-              >
-                {label}
-                {val != null && (
-                  <div style={{ fontSize: 8, fontWeight: 400, color: activeLayer === layer ? color : '#334155' }}>
-                    {state.format(val)}
-                  </div>
-                )}
-                {val == null && layer !== 'user' && (
-                  <div style={{ fontSize: 8, color: '#1e293b' }}>—</div>
-                )}
+                  flex: 1, padding: '4px 4px', fontSize: 8, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.5,
+                  border: `1px solid ${active ? color : '#1e1e1e'}`,
+                  background: active ? `${color}18` : 'transparent',
+                  color: active ? color : '#334155', borderRadius: 2, cursor: val == null && src !== 'user' ? 'not-allowed' : 'pointer',
+                }}>
+                {lbl}
+                <div style={{ fontSize: 8, fontWeight: 400, color: active ? `${color}cc` : '#1e293b' }}>
+                  {val != null ? state.format(val) : '—'}
+                </div>
               </button>
             );
           })}
@@ -744,68 +761,86 @@ function CellDrawer({ state, onClose, onApply }: CellDrawerProps) {
 
       {/* Description */}
       {state.description && (
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e' }}>
-          <div style={{ fontSize: 8, color: '#94a3b8', lineHeight: 1.5 }}>{state.description}</div>
+        <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e' }}>
+          <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.5 }}>{state.description}</div>
         </div>
       )}
 
-      {/* Platform source */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e' }}>
-        <div style={{ fontSize: 8, color: '#22d3ee80', letterSpacing: 0.5, marginBottom: 3 }}>PLATFORM SOURCE</div>
-        <div style={{ fontSize: 9, color: '#22d3ee' }}>{state.platformSource || 'JEDI Platform'}</div>
+      {/* Platform derivation */}
+      <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e' }}>
+        <div style={{ fontSize: 8, color: '#22d3ee60', letterSpacing: 0.5, marginBottom: 3 }}>PLATFORM DERIVATION</div>
+        <div style={{ fontSize: 9, color: '#22d3ee', marginBottom: 4 }}>{state.platformSource}</div>
         {state.confidence != null && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-            <div style={{
-              height: 4, flex: 1, background: '#1e1e1e', borderRadius: 2, overflow: 'hidden',
-            }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ flex: 1, height: 3, background: '#1e1e1e', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{
-                height: '100%', width: `${state.confidence}%`,
+                height: '100%', width: `${state.confidence}%`, borderRadius: 2,
                 background: state.confidence > 80 ? '#10b981' : state.confidence > 60 ? '#f59e0b' : '#ef4444',
-                borderRadius: 2,
               }} />
             </div>
-            <span style={{ fontSize: 8, color: '#64748b' }}>{state.confidence}% conf</span>
+            <span style={{ fontSize: 8, color: '#475569' }}>{state.confidence}% conf</span>
           </div>
         )}
       </div>
 
-      {/* Broker source */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e' }}>
-        <div style={{ fontSize: 8, color: '#f59e0b80', letterSpacing: 0.5, marginBottom: 3 }}>BROKER SOURCE</div>
-        <div style={{ fontSize: 9, color: '#f59e0b' }}>{state.brokerSource || 'OM / Broker Assumption'}</div>
+      {/* Broker citation */}
+      <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e' }}>
+        <div style={{ fontSize: 8, color: '#f59e0b60', letterSpacing: 0.5, marginBottom: 3 }}>BROKER SOURCE</div>
+        <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 2 }}>{state.brokerSource}</div>
+        {(state.brokerPage || state.brokerLine) && (
+          <div style={{ fontSize: 8, color: '#78350f' }}>
+            {state.brokerPage && <span>Page: {state.brokerPage}</span>}
+            {state.brokerPage && state.brokerLine && <span> · </span>}
+            {state.brokerLine && <span>Line: {state.brokerLine}</span>}
+          </div>
+        )}
       </div>
 
-      {/* User override input (shown when USER layer is active) */}
-      {activeLayer === 'user' && (
-        <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e' }}>
-          <div style={{ fontSize: 8, color: '#3b82f680', letterSpacing: 0.5, marginBottom: 4 }}>YOUR OVERRIDE</div>
+      {/* Benchmark percentile */}
+      {pctPosition != null && (
+        <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e' }}>
+          <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 6 }}>SUBMARKET BENCHMARK POSITION</div>
+          <div style={{ position: 'relative', height: 12, background: '#1e1e1e', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', left: '0%', right: '0%', top: 0, bottom: 0, background: 'linear-gradient(to right, #ef4444, #f59e0b, #10b981)', opacity: 0.3 }} />
+            <div style={{ position: 'absolute', left: `${pctPosition}%`, top: 0, width: 2, height: '100%', background: '#fff', borderRadius: 1 }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 8, color: '#334155' }}>
+            <span>P25: {state.format(state.benchmarkP25!)}</span>
+            <span style={{ color: '#64748b' }}>P50: {state.format(state.benchmarkP50!)}</span>
+            <span>P75: {state.format(state.benchmarkP75!)}</span>
+          </div>
+          {state.benchmarkPosition && (
+            <div style={{ marginTop: 4, fontSize: 8, color: state.benchmarkPosition === 'within' ? '#10b981' : '#f59e0b' }}>
+              Position: {state.benchmarkPosition.toUpperCase()} benchmark range
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* User override input */}
+      {layer === 'user' && (
+        <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e' }}>
+          <div style={{ fontSize: 8, color: '#3b82f660', letterSpacing: 0.5, marginBottom: 5 }}>YOUR OVERRIDE</div>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input
-              autoFocus
-              value={draft}
+            <input autoFocus value={draft}
               onChange={e => setDraft(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleApply(); if (e.key === 'Escape') onClose(); }}
-              placeholder={state.unit === '%' ? 'e.g. 3.5 (%)' : 'value'}
+              placeholder={state.unit === '%' ? 'e.g. 3.5 (%)' : 'numeric value'}
               style={{
                 flex: 1, fontFamily: MONO, fontSize: 11, color: '#3b82f6', fontWeight: 700,
                 background: '#0f172a', border: '1px solid #3b82f6', borderRadius: 2,
                 padding: '4px 8px', outline: 'none',
               }}
             />
-            <span style={{ fontSize: 9, color: '#64748b' }}>{state.unit}</span>
+            <span style={{ fontSize: 9, color: '#475569' }}>{state.unit}</span>
           </div>
         </div>
       )}
 
-      {/* Apply-to-all toggle */}
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e' }}>
+      {/* Apply-to-all */}
+      <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e' }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={applyAll}
-            onChange={e => setApplyAll(e.target.checked)}
-            style={{ width: 12, height: 12 }}
-          />
+          <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} style={{ width: 12, height: 12 }} />
           <span style={{ fontSize: 9, color: '#64748b' }}>Apply to all years in hold period</span>
         </label>
       </div>
@@ -813,357 +848,391 @@ function CellDrawer({ state, onClose, onApply }: CellDrawerProps) {
       {/* Action buttons */}
       <div style={{ padding: '10px 12px', marginTop: 'auto', display: 'flex', gap: 6 }}>
         {state.userVal != null && (
-          <button
-            onClick={handleClear}
-            style={{
-              fontFamily: MONO, fontSize: 9, padding: '5px 10px', borderRadius: 2, cursor: 'pointer',
-              background: 'none', border: '1px solid #334155', color: '#64748b',
-            }}
-          >CLEAR OVERRIDE</button>
+          <button onClick={() => { onApply(state.rowKey, state.year, null, applyAll); onClose(); }}
+            style={{ fontFamily: MONO, fontSize: 9, padding: '5px 8px', borderRadius: 2, cursor: 'pointer', background: 'none', border: '1px solid #1e293b', color: '#475569' }}>
+            CLEAR
+          </button>
         )}
-        <button
-          onClick={handleApply}
-          style={{
-            flex: 1, fontFamily: MONO, fontSize: 9, fontWeight: 700, padding: '5px 10px',
-            borderRadius: 2, cursor: 'pointer',
-            background: '#3b82f6', border: 'none', color: '#fff',
-          }}
-        >APPLY</button>
+        <button onClick={handleApply}
+          style={{ flex: 1, fontFamily: MONO, fontSize: 9, fontWeight: 700, padding: '5px 0', borderRadius: 2, cursor: 'pointer', background: '#3b82f6', border: 'none', color: '#fff' }}>
+          APPLY
+        </button>
       </div>
     </div>
   );
 }
 
-// ─── GPR Decomposition Row ────────────────────────────────────────────────────
-function GprDecompRow({
-  years, units, baseRent, rentGrowths, trafficVacancy, brokerVacancy, userOverrides,
-  format,
-}: {
-  years: number; units: number; baseRent: number; rentGrowths: number[]; trafficVacancy: (number | null)[];
-  brokerVacancy: number; userOverrides: Record<number, number | null>; format: (n: number) => string;
-}) {
-  const gprRows = Array.from({ length: years }, (_, i) => {
-    const yr = i + 1;
-    const rent = baseRent * rentGrowths.slice(0, i).reduce((acc, g) => acc * (1 + g), 1);
-    const gpr = Math.round(rent * units * 12);
-    const trafVac = trafficVacancy[i] ?? brokerVacancy;
-    const rentComp = Math.round(gpr * (1 - brokerVacancy));
-    const trafficComp = Math.round(gpr * (brokerVacancy - trafVac));
-    const derivedGpr = Math.round(gpr * (1 - trafVac));
-    return { yr, gpr, rentComp, trafficComp, derivedGpr };
-  });
-
+// ─── GPR Decomposition Row ─────────────────────────────────────────────────────
+function GprDecompRow({ years, financials }: { years: number[]; financials: DealFinancials | null }) {
   const [expanded, setExpanded] = useState(false);
+
+  const rows = years.map(yr => {
+    if (!financials) return { yr, brokerGpr: null, platformGpr: null, trafficLift: null };
+    const units = financials.totalUnits || 1;
+    const tYr = financials.trafficProjection?.yearly.find(r => r.year === yr);
+    const pYr = financials.assumptions.perYear.find(p => p.year === yr);
+
+    // Broker: base Y1 rent × compounded growth × units × 12 × (1 - vacancy)
+    const brokerRent = financials.rentRollSummary?.avgInPlaceRent ?? y1Row(financials, 'gpr')?.broker;
+    const brokerVac = pYr?.vacancyPct ?? 0.06;
+    const brokerGpr = brokerRent != null
+      ? Math.round(brokerRent * compoundRentGrowth(financials, yr) * units * 12 * (1 - brokerVac))
+      : null;
+
+    // Platform: from M07 effRent × occupancy
+    const platRent = tYr?.effRent;
+    const platOcc = tYr?.occupancyPct ?? (1 - (tYr?.vacancyPct ?? 0.06));
+    const platformGpr = platRent != null ? Math.round(platRent * units * 12 * platOcc) : null;
+
+    // Traffic lift = platform GPR - broker GPR (if both available)
+    const trafficLift = platformGpr != null && brokerGpr != null ? platformGpr - brokerGpr : null;
+
+    return { yr, brokerGpr, platformGpr, trafficLift };
+  });
 
   return (
     <>
-      <tr
-        className="border-b border-amber-500/20 bg-amber-900/10 hover:bg-amber-900/20 cursor-pointer h-[26px]"
-        onClick={() => setExpanded(x => !x)}
-      >
-        <td className="px-3 py-1 text-[10px] font-bold text-amber-400 sticky left-0 bg-amber-900/10 border-r border-[#1e1e1e] z-10 min-w-[220px]">
+      <tr className="border-b border-amber-500/20 bg-amber-900/10 hover:bg-amber-900/20 cursor-pointer h-[24px]"
+        onClick={() => setExpanded(x => !x)}>
+        <td className="px-3 py-0.5 text-[10px] font-bold text-amber-400 sticky left-0 bg-amber-900/10 border-r border-[#1e1e1e] z-10 min-w-[220px]">
           <span className="flex items-center gap-1">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            GPR DECOMPOSITION ▸ click to expand
+            GPR DECOMPOSITION (Rent × Traffic → Derived)
           </span>
         </td>
-        {gprRows.map(r => (
-          <td key={r.yr} className="px-2 py-1 text-right text-[10px] font-bold font-mono tabular-nums text-amber-400 border-r border-[#1e1e1e]">
-            {format(r.derivedGpr)}
+        {rows.map(r => (
+          <td key={r.yr} className="px-2 py-0.5 text-right text-[10px] font-bold font-mono tabular-nums text-amber-400 border-r border-[#1e1e1e]">
+            {r.platformGpr != null ? fmt$(r.platformGpr) : r.brokerGpr != null ? fmt$(r.brokerGpr) : '—'}
           </td>
         ))}
-        <td className="px-2 py-1 text-right text-[10px] font-mono text-slate-600">—</td>
+        <td className="px-2 py-0.5 text-right text-[9px] font-mono text-slate-700">MODE</td>
       </tr>
-      {expanded && (
-        <>
-          <tr className="border-b border-[#1e1e1e]/40 h-[20px]">
-            <td className="pl-8 pr-3 py-0.5 text-[9px] text-cyan-600 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">Rent Component (no vacancy)</td>
-            {gprRows.map(r => (
-              <td key={r.yr} className="px-2 py-0.5 text-right text-[9px] font-mono text-cyan-600 border-r border-[#1e1e1e]">{format(r.rentComp)}</td>
-            ))}
-            <td />
-          </tr>
-          <tr className="border-b border-[#1e1e1e]/40 h-[20px]">
-            <td className="pl-8 pr-3 py-0.5 text-[9px] text-purple-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">Traffic Lift Component (M07 vacancy tightening)</td>
-            {gprRows.map(r => (
-              <td key={r.yr} className="px-2 py-0.5 text-right text-[9px] font-mono text-purple-500 border-r border-[#1e1e1e]">{r.trafficComp > 0 ? '+' : ''}{format(r.trafficComp)}</td>
-            ))}
-            <td />
-          </tr>
-          <tr className="border-b border-amber-500/20 h-[20px]">
-            <td className="pl-8 pr-3 py-0.5 text-[9px] font-bold text-amber-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">= Derived GPR</td>
-            {gprRows.map(r => (
-              <td key={r.yr} className="px-2 py-0.5 text-right text-[9px] font-bold font-mono text-amber-400 border-r border-[#1e1e1e]">{format(r.derivedGpr)}</td>
-            ))}
-            <td />
-          </tr>
-        </>
-      )}
+      {expanded && rows.map(r => (
+        <React.Fragment key={r.yr + '_decomp'}>
+          {r.yr === years[0] && (
+            <>
+              <tr className="border-b border-[#1e1e1e]/40 h-[19px]">
+                <td className="pl-8 pr-3 py-0.5 text-[9px] text-amber-700 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">Broker GPR (rent × broker vacancy)</td>
+                {rows.map(row => (
+                  <td key={row.yr} className="px-2 py-0.5 text-right text-[9px] font-mono text-amber-700 border-r border-[#1e1e1e]">
+                    {row.brokerGpr != null ? fmt$(row.brokerGpr) : '—'}
+                  </td>
+                ))}
+                <td />
+              </tr>
+              <tr className="border-b border-[#1e1e1e]/40 h-[19px]">
+                <td className="pl-8 pr-3 py-0.5 text-[9px] text-purple-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">M07 Platform GPR (eff rent × M07 occ)</td>
+                {rows.map(row => (
+                  <td key={row.yr} className="px-2 py-0.5 text-right text-[9px] font-mono text-purple-500 border-r border-[#1e1e1e]">
+                    {row.platformGpr != null ? fmt$(row.platformGpr) : '—'}
+                  </td>
+                ))}
+                <td />
+              </tr>
+              <tr className="border-b border-amber-500/20 h-[19px]">
+                <td className="pl-8 pr-3 py-0.5 text-[9px] font-bold text-green-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">Traffic Lift Δ (M07 vs Broker)</td>
+                {rows.map(row => (
+                  <td key={row.yr} className="px-2 py-0.5 text-right text-[9px] font-bold font-mono border-r border-[#1e1e1e]"
+                    style={{ color: row.trafficLift != null && row.trafficLift > 0 ? '#10b981' : '#ef4444' }}>
+                    {row.trafficLift != null ? (row.trafficLift >= 0 ? '+' : '') + fmt$(row.trafficLift) : '—'}
+                  </td>
+                ))}
+                <td />
+              </tr>
+            </>
+          )}
+        </React.Fragment>
+      ))}
     </>
+  );
+}
+
+// ─── Findings Narrative Right Rail ────────────────────────────────────────────
+function FindingsRail({ financials }: { financials: DealFinancials | null }) {
+  const [open, setOpen] = useState(true);
+
+  if (!open) {
+    return (
+      <div className="w-8 bg-[#0d0d0d] border-l border-[#1e1e1e] flex items-start justify-center pt-4 cursor-pointer"
+        onClick={() => setOpen(true)}>
+        <span style={{ writingMode: 'vertical-rl', fontSize: 9, color: '#334155', letterSpacing: 0.5, fontFamily: MONO }}>FINDINGS ▸</span>
+      </div>
+    );
+  }
+
+  const sig = financials?.trafficProjection?.leasingSignals;
+  const conf = sig?.confidence;
+  const yr1Rent = financials?.trafficProjection?.yearly[0]?.effRent;
+  const yr1Occ = financials?.trafficProjection?.yearly[0]?.occupancyPct;
+  const yr1Vacancy = yr1Occ != null ? (100 - yr1Occ).toFixed(1) : null;
+  const rentGrowthYr1 = financials?.trafficProjection?.yearly[0]?.rentGrowthPct;
+
+  return (
+    <div className="w-[210px] bg-[#0d0d0d] border-l border-[#1e1e1e] flex flex-col overflow-hidden shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 bg-[#111111] border-b border-[#1e1e1e] cursor-pointer"
+        onClick={() => setOpen(false)}>
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#64748b', letterSpacing: 0.5 }}>AI FINDINGS</span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: '#1e293b' }}>◂</span>
+      </div>
+      <div className="flex-1 overflow-auto p-3 space-y-4" style={{ fontFamily: MONO }}>
+        {!financials?.trafficProjection ? (
+          <div className="text-[9px] text-slate-700">Traffic Engine offline — no AI findings.</div>
+        ) : (
+          <>
+            <div>
+              <div className="text-[8px] text-slate-600 mb-2 tracking-wider">MODEL CONFIDENCE</div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{
+                    width: `${conf ?? 0}%`,
+                    background: (conf ?? 0) > 80 ? '#10b981' : (conf ?? 0) > 60 ? '#f59e0b' : '#ef4444',
+                  }} />
+                </div>
+                <span className="text-[9px] font-bold text-slate-300">{conf ?? 0}%</span>
+              </div>
+            </div>
+            {yr1Rent && (
+              <div>
+                <div className="text-[8px] text-cyan-700 mb-1 tracking-wider">YR 1 EFF RENT</div>
+                <div className="text-sm font-bold text-slate-200">${yr1Rent.toLocaleString()}</div>
+                {rentGrowthYr1 != null && <div className="text-[8px] text-green-600">+{(rentGrowthYr1 * 100).toFixed(1)}% YoY</div>}
+              </div>
+            )}
+            {yr1Vacancy && (
+              <div>
+                <div className="text-[8px] text-cyan-700 mb-1 tracking-wider">YR 1 VACANCY</div>
+                <div className="text-sm font-bold text-slate-200">{yr1Vacancy}%</div>
+                <div className="text-[8px] text-slate-600">Traffic equilibrium model</div>
+              </div>
+            )}
+            {sig?.t01WeeklyTours != null && (
+              <div>
+                <div className="text-[8px] text-cyan-700 mb-1 tracking-wider">LEASING SIGNALS</div>
+                <div className="text-[9px] text-slate-400 space-y-0.5">
+                  <div>T-01: <span className="text-slate-200">{sig.t01WeeklyTours.toFixed(1)}/wk</span></div>
+                  {sig.t05ClosingRatio != null && <div>T-05: <span className="text-slate-200">{(sig.t05ClosingRatio * (sig.t05ClosingRatio > 1 ? 1 : 100)).toFixed(1)}%</span></div>}
+                  {sig.t06WeeklyLeases != null && <div>T-06: <span className="text-slate-200">{sig.t06WeeklyLeases.toFixed(1)}/wk</span></div>}
+                </div>
+              </div>
+            )}
+            {financials.trafficProjection?.leaseUp?.weeksTo95 != null && (
+              <div>
+                <div className="text-[8px] text-cyan-700 mb-1 tracking-wider">LEASE-UP TIMELINE</div>
+                <div className="text-[9px] text-slate-400">
+                  95% Occ: <span className="text-slate-200">{financials.trafficProjection.leaseUp.weeksTo95} wks</span>
+                </div>
+              </div>
+            )}
+            {financials.meta.updatedAt && (
+              <div className="border-t border-[#1e1e1e] pt-3">
+                <div className="text-[8px] text-slate-700">Updated: {new Date(financials.meta.updatedAt).toLocaleDateString()}</div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
 // ─── Assumptions Grid Page ─────────────────────────────────────────────────────
 function AssumptionsGridPage({
-  dealId, assumptions, modelResults, holdYears, trafficData, trafficOffline,
+  dealId, holdYears, financials, trafficOffline, onAfterPatch,
 }: {
   dealId: string;
-  assumptions: FinancialEngineTabProps['assumptions'];
-  modelResults: FinancialEngineTabProps['modelResults'];
   holdYears: number;
-  trafficData: TrafficHandoff | null;
+  financials: DealFinancials | null;
   trafficOffline: boolean;
+  onAfterPatch: () => void;
 }) {
-  const years = Array.from({ length: holdYears }, (_, i) => i + 1);
-  const cols = holdYears + 2;
-
-  // User overrides state: { [rowKey]: { [year]: value | null } }
-  const [overrides, setOverrides] = useState<Record<string, Record<number, number | null>>>({});
-  // Row modes: { [rowKey]: 'flat' | 'stepped' }
-  const [rowModes, setRowModes] = useState<Record<string, 'flat' | 'stepped'>>({});
-  // Drawer state
+  const years = useMemo(() => Array.from({ length: holdYears }, (_, i) => i + 1), [holdYears]);
+  const [overrides, setOverrides] = useState<Overrides>({});
+  const [rowModes, setRowModes] = useState<Record<string, RowMode>>({});
   const [drawer, setDrawer] = useState<DrawerState>(DRAWER_CLOSED);
-  // Saving state
-  const [saving, setSaving] = useState<Record<string, boolean>>({});
-  // Active layer for bulk actions
-  const [bulkLayer, setBulkLayer] = useState<LayerSource | null>(null);
+  const [bulkLayer, setBulkLayer] = useState<'platform' | 'broker' | null>(null);
 
-  const a = assumptions;
-  const cf = modelResults?.annualCashFlow ?? [];
+  const getMode = (key: string): RowMode => rowModes[key] ?? 'flat';
 
-  const getMode = (rowKey: string): 'flat' | 'stepped' => rowModes[rowKey] ?? 'flat';
+  const getBroker = useCallback((rd: RowDef, yr: number): number | null =>
+    financials ? rd.getBroker(financials, yr) : null, [financials]);
 
-  const getBrokerVal = useCallback((rowDef: RowDef, yr: number): number | null => {
-    return rowDef.brokerGetter?.(a, yr) ?? null;
-  }, [a]);
+  const getPlatform = useCallback((rd: RowDef, yr: number): number | null =>
+    financials ? rd.getPlatform(financials, yr) : null, [financials]);
 
-  const getPlatformVal = useCallback((rowDef: RowDef, yr: number): number | null => {
-    return rowDef.platformGetter?.(trafficData, cf, yr) ?? null;
-  }, [trafficData, cf]);
+  const getUser = useCallback((key: string, yr: number): number | null =>
+    overrides[key]?.[yr] ?? null, [overrides]);
 
-  const getUserVal = useCallback((rowKey: string, yr: number): number | null => {
-    return overrides[rowKey]?.[yr] ?? null;
-  }, [overrides]);
-
-  const getEffectiveVal = useCallback((rowDef: RowDef, yr: number): number | null => {
-    const userVal = getUserVal(rowDef.key, yr);
-    if (userVal != null) return userVal;
-    return getPlatformVal(rowDef, yr) ?? getBrokerVal(rowDef, yr);
-  }, [getUserVal, getPlatformVal, getBrokerVal]);
-
-  // Patch API call
+  // Patch + re-fetch
   const patchOverride = useCallback(async (field: string, year: number, value: number | null) => {
     if (!field) return;
-    const saveKey = `${field}:${year}`;
-    setSaving(s => ({ ...s, [saveKey]: true }));
     try {
       await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field, year, value });
-    } catch (e) {
-      console.error('Patch override failed:', e);
-    } finally {
-      setSaving(s => { const n = { ...s }; delete n[saveKey]; return n; });
-    }
-  }, [dealId]);
+      onAfterPatch();
+    } catch (e) { console.warn('PATCH override failed:', field, year, e); }
+  }, [dealId, onAfterPatch]);
 
-  // Apply value from drawer
+  // Apply: flat mode propagates Y1 to all years; stepped is per-year
   const handleApply = useCallback((rowKey: string, year: number, value: number | null, applyAll: boolean) => {
-    const rowDef = ROW_DEFS.find(r => r.key === rowKey);
-    if (!rowDef) return;
+    const rd = ROW_DEFS.find(r => r.key === rowKey);
+    if (!rd) return;
+    const mode = getMode(rowKey);
+    const targetYears = (applyAll || mode === 'flat') ? years : [year];
 
-    const targetYears = applyAll ? years : [year];
-    const newOverrides = { ...overrides };
-    if (!newOverrides[rowKey]) newOverrides[rowKey] = {};
-
-    for (const yr of targetYears) {
-      newOverrides[rowKey][yr] = value;
-      if (rowDef.patchField) {
-        patchOverride(rowDef.patchField, yr, value);
-      }
-    }
-    setOverrides(newOverrides);
-  }, [overrides, years, patchOverride]);
-
-  // Open drawer for a cell
-  const openDrawer = useCallback((rowDef: RowDef, yr: number) => {
-    if (rowDef.readonly) return;
-    setDrawer({
-      open: true,
-      rowKey: rowDef.key,
-      rowLabel: rowDef.label,
-      year: yr,
-      brokerVal: getBrokerVal(rowDef, yr),
-      platformVal: getPlatformVal(rowDef, yr),
-      userVal: getUserVal(rowDef.key, yr),
-      format: rowDef.format,
-      patchField: rowDef.patchField ?? null,
-      platformSource: rowDef.platformSource ?? '',
-      brokerSource: rowDef.brokerSource ?? '',
-      confidence: rowDef.confidence?.(trafficData) ?? null,
-      unit: rowDef.unit,
-      description: rowDef.description ?? '',
+    setOverrides(prev => {
+      const next = { ...prev, [rowKey]: { ...(prev[rowKey] ?? {}) } };
+      for (const yr of targetYears) next[rowKey][yr] = value;
+      return next;
     });
-  }, [getBrokerVal, getPlatformVal, getUserVal, trafficData]);
+    if (rd.patchField) {
+      for (const yr of targetYears) patchOverride(rd.patchField, yr, value);
+    }
+  }, [years, getMode, patchOverride]);
 
-  // Bulk: Use all Platform
+  const openDrawer = useCallback((rd: RowDef, yr: number) => {
+    if (rd.readonly) return;
+    const y1 = financials ? y1Row(financials, rd.patchField ?? rd.key) : null;
+    setDrawer({
+      open: true, rowKey: rd.key, rowLabel: rd.label, year: yr,
+      brokerVal: getBroker(rd, yr),
+      platformVal: getPlatform(rd, yr),
+      userVal: getUser(rd.key, yr),
+      format: rd.format, patchField: rd.patchField ?? null,
+      platformSource: rd.platformSource, brokerSource: rd.brokerSource,
+      brokerPage: rd.brokerPage ?? '', brokerLine: rd.brokerLine ?? '',
+      confidence: financials ? rd.getConfidence(financials) : null,
+      unit: rd.unit, description: rd.description ?? '',
+      benchmarkP25: rd.benchmarkP25 ?? null, benchmarkP50: rd.benchmarkP50 ?? null, benchmarkP75: rd.benchmarkP75 ?? null,
+      benchmarkPosition: y1?.benchmarkPosition ?? null,
+    });
+  }, [financials, getBroker, getPlatform, getUser]);
+
   const handleUsePlatform = () => {
-    const newOverrides = { ...overrides };
-    for (const rowDef of ROW_DEFS) {
-      if (rowDef.readonly) continue;
+    const next: Overrides = { ...overrides };
+    for (const rd of ROW_DEFS) {
+      if (rd.readonly) continue;
       for (const yr of years) {
-        const platformVal = getPlatformVal(rowDef, yr);
-        if (platformVal != null) {
-          if (!newOverrides[rowDef.key]) newOverrides[rowDef.key] = {};
-          newOverrides[rowDef.key][yr] = platformVal;
-          if (rowDef.patchField) patchOverride(rowDef.patchField, yr, platformVal);
+        const v = getPlatform(rd, yr);
+        if (v != null) {
+          if (!next[rd.key]) next[rd.key] = {};
+          next[rd.key][yr] = v;
+          if (rd.patchField) patchOverride(rd.patchField, yr, v);
         }
       }
     }
-    setOverrides(newOverrides);
-    setBulkLayer('platform');
+    setOverrides(next); setBulkLayer('platform');
   };
 
-  // Bulk: Use all Broker
   const handleUseBroker = () => {
-    const newOverrides = { ...overrides };
-    for (const rowDef of ROW_DEFS) {
-      if (rowDef.readonly) continue;
+    const next: Overrides = { ...overrides };
+    for (const rd of ROW_DEFS) {
+      if (rd.readonly) continue;
       for (const yr of years) {
-        const brokerVal = getBrokerVal(rowDef, yr);
-        if (brokerVal != null) {
-          if (!newOverrides[rowDef.key]) newOverrides[rowDef.key] = {};
-          newOverrides[rowDef.key][yr] = brokerVal;
-          if (rowDef.patchField) patchOverride(rowDef.patchField, yr, brokerVal);
+        const v = getBroker(rd, yr);
+        if (v != null) {
+          if (!next[rd.key]) next[rd.key] = {};
+          next[rd.key][yr] = v;
+          if (rd.patchField) patchOverride(rd.patchField, yr, v);
         }
       }
     }
-    setOverrides(newOverrides);
-    setBulkLayer('broker');
+    setOverrides(next); setBulkLayer('broker');
   };
 
-  // Bulk: Lock user overrides (clears overrides)
-  const handleLockOverrides = () => {
-    setOverrides({});
-    setBulkLayer(null);
-  };
+  const hasAnyOverride = Object.values(overrides).some(yr =>
+    Object.values(yr).some(v => v != null));
 
-  const hasAnyOverride = Object.values(overrides).some(yr => Object.values(yr).some(v => v != null));
-
-  // Group rows by section
   const sectionNums = [1, 2, 3, 4, 5, 6, 7] as const;
-
-  // Derived values for GPR decomposition
-  const units = a?.dealInfo?.totalUnits ?? 0;
-  const baseRent = (() => {
-    const mix = a?.unitMix ?? [];
-    const u = a?.dealInfo?.totalUnits ?? 0;
-    if (!u || mix.length === 0) return cf[0]?.gpr ? Math.round(cf[0].gpr / u / 12) : 1800;
-    return Math.round(mix.reduce((s, r) => s + r.inPlaceRent * r.units, 0) / u);
-  })();
-  const rentGrowths = a?.revenue?.rentGrowth ?? Array(holdYears).fill(0.03);
-  const trafficVacancy = years.map(yr => trafficData?.occupancyTrajectory?.[yr - 1]?.occ != null
-    ? (100 - trafficData.occupancyTrajectory[yr - 1].occ) / 100 : null);
-  const brokerVacancy = 1 - (a?.revenue?.stabilizedOccupancy ?? 0.94);
 
   return (
     <div className="flex h-full">
-      {/* Main grid */}
       <div className="flex-1 overflow-auto bg-[#0a0a0a]" style={{ minWidth: 0 }}>
         {/* M07 offline banner */}
         {trafficOffline && (
-          <div className="flex items-center gap-3 px-4 py-2 bg-amber-900/20 border-b border-amber-500/30 text-[11px] text-amber-400">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>
-              <strong>Traffic Engine offline</strong> — Section 2 using Broker values only.
-              M07 occupancy trajectory and rent trajectory unavailable.
-            </span>
+          <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/20 border-b border-amber-500/20 text-[10px] text-amber-400 sticky top-0 z-30">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            Traffic Engine offline — Section 2 shows Broker layer only. M07 signals unavailable.
           </div>
         )}
-
-        {/* Bulk actions bar */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-[#0d0d0d] border-b border-[#1e1e1e] sticky top-0 z-20">
-          <span className="text-[9px] font-bold text-slate-500 tracking-wider mr-2">BULK:</span>
-          <button
-            onClick={handleUsePlatform}
-            className={`px-3 py-1 text-[9px] font-bold rounded border transition-colors ${bulkLayer === 'platform' ? 'border-cyan-500 bg-cyan-900/30 text-cyan-400' : 'border-[#1e1e1e] text-slate-500 hover:text-cyan-400 hover:border-cyan-500/40'}`}
-          >USE ALL PLATFORM</button>
-          <button
-            onClick={handleUseBroker}
-            className={`px-3 py-1 text-[9px] font-bold rounded border transition-colors ${bulkLayer === 'broker' ? 'border-amber-500 bg-amber-900/30 text-amber-400' : 'border-[#1e1e1e] text-slate-500 hover:text-amber-400 hover:border-amber-500/40'}`}
-          >USE ALL BROKER</button>
+        {/* Bulk actions */}
+        <div className="flex items-center gap-3 px-4 py-1.5 bg-[#0d0d0d] border-b border-[#1e1e1e] sticky top-0 z-20">
+          <span className="text-[8px] font-bold text-slate-600 tracking-widest">BULK:</span>
+          <button onClick={handleUsePlatform}
+            className={`px-2 py-0.5 text-[8px] font-bold rounded border ${bulkLayer === 'platform' ? 'border-cyan-500/60 bg-cyan-900/20 text-cyan-400' : 'border-[#1e1e1e] text-slate-600 hover:text-cyan-500'}`}>
+            USE ALL PLATFORM
+          </button>
+          <button onClick={handleUseBroker}
+            className={`px-2 py-0.5 text-[8px] font-bold rounded border ${bulkLayer === 'broker' ? 'border-amber-500/60 bg-amber-900/20 text-amber-400' : 'border-[#1e1e1e] text-slate-600 hover:text-amber-500'}`}>
+            USE ALL BROKER
+          </button>
           {hasAnyOverride && (
-            <button
-              onClick={handleLockOverrides}
-              className="px-3 py-1 text-[9px] font-bold rounded border border-red-500/30 text-red-400 hover:border-red-500/60"
-            >CLEAR ALL OVERRIDES</button>
+            <button onClick={() => { setOverrides({}); setBulkLayer(null); }}
+              className="px-2 py-0.5 text-[8px] font-bold rounded border border-red-500/20 text-red-500 hover:border-red-500/50">
+              CLEAR OVERRIDES
+            </button>
           )}
-          <div className="ml-auto flex items-center gap-4 text-[8px] text-slate-700">
-            <span><span className="text-blue-400 font-bold">■</span> USER</span>
-            <span><span className="text-cyan-400 font-bold">■</span> PLATFORM</span>
-            <span><span className="text-amber-400 font-bold">■</span> BROKER</span>
+          <div className="ml-auto flex items-center gap-3 text-[8px] text-slate-700">
+            <span><span className="text-blue-500 font-bold">■</span> USER</span>
+            <span><span className="text-cyan-500 font-bold">■</span> PLATFORM</span>
+            <span><span className="text-amber-500 font-bold">■</span> BROKER</span>
           </div>
         </div>
 
-        {/* Grid table */}
+        {/* Grid */}
         <table className="w-full border-collapse" style={{ fontFamily: MONO }}>
-          <thead className="sticky top-[37px] z-10 bg-[#111111]">
+          <thead className="sticky top-[30px] z-10 bg-[#111111]">
             <tr className="border-b border-[#1e1e1e]">
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">
-                ASSUMPTION
-              </th>
+              <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 min-w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">ASSUMPTION</th>
               {years.map(yr => (
-                <th key={yr} className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px] border-r border-[#1e1e1e]">
-                  YR {yr}
-                </th>
+                <th key={yr} className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[82px] border-r border-[#1e1e1e]">YR {yr}</th>
               ))}
-              <th className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px]">
-                MODE
-              </th>
+              <th className="px-2 py-1.5 text-center text-[9px] font-bold text-slate-600 min-w-[60px]">MODE</th>
             </tr>
           </thead>
           <tbody>
-            {sectionNums.map(section => {
-              const rows = ROW_DEFS.filter(r => r.section === section);
-              if (rows.length === 0) return null;
+            {sectionNums.map(sec => {
+              const rows = ROW_DEFS.filter(r => r.section === sec);
+              if (!rows.length) return null;
               return (
-                <React.Fragment key={section}>
-                  <SectionHeader label={SECTION_LABELS[section]} colSpan={cols} />
-                  {rows.map(rowDef => {
-                    const isM07 = section === 2;
-                    const mode = getMode(rowDef.key);
+                <React.Fragment key={sec}>
+                  <SectionHeader label={SECTION_LABELS[sec]} colSpan={years.length + 2} />
+                  {rows.map(rd => {
+                    const isM07Section = sec === 2;
+                    const mode = getMode(rd.key);
                     return (
-                      <tr key={rowDef.key} className="border-b border-[#1e1e1e]/50 hover:bg-[#111111]">
+                      <tr key={rd.key} className="border-b border-[#1e1e1e]/50 hover:bg-[#111111]">
                         <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
                           <span className="flex items-center gap-1">
-                            {rowDef.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
-                            {isM07 && !rowDef.readonly && (
-                              <span className="text-[7px] text-purple-500 font-bold">M07</span>
-                            )}
-                            <span className="truncate">{rowDef.label.replace(' ⟨locked⟩', '')}</span>
+                            {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
+                            {isM07Section && !rd.readonly && <span className="text-[7px] text-purple-600 font-bold">M07</span>}
+                            <span className="truncate">{rd.label.replace(' (M07 equilibrium)', '')}</span>
                           </span>
                         </td>
                         {years.map(yr => (
                           <LayeredCell
                             key={yr}
-                            brokerVal={getBrokerVal(rowDef, yr)}
-                            platformVal={getPlatformVal(rowDef, yr)}
-                            userVal={getUserVal(rowDef.key, yr)}
-                            readonly={rowDef.readonly}
-                            format={rowDef.format}
-                            hasM07={isM07 && getPlatformVal(rowDef, yr) != null}
-                            onClick={() => openDrawer(rowDef, yr)}
+                            brokerVal={getBroker(rd, yr)}
+                            platformVal={getPlatform(rd, yr)}
+                            userVal={getUser(rd.key, yr)}
+                            readonly={rd.readonly}
+                            format={rd.format}
+                            hasM07={isM07Section && getPlatform(rd, yr) != null}
+                            onClick={() => openDrawer(rd, yr)}
                           />
                         ))}
-                        {/* Mode selector */}
-                        <td className="px-2 py-0.5 text-center border-r border-[#1e1e1e]">
-                          {!rowDef.readonly && (
+                        {/* Row mode selector: Flat / Stepped / Formula */}
+                        <td className="px-1 py-0.5 text-center border-r border-[#1e1e1e]">
+                          {!rd.readonly && (
                             <div className="flex gap-0.5 justify-center">
-                              {(['flat', 'stepped'] as const).map(m => (
-                                <button
-                                  key={m}
-                                  onClick={() => setRowModes(s => ({ ...s, [rowDef.key]: m }))}
-                                  className={`px-1.5 py-0.5 text-[8px] font-bold rounded-sm ${mode === m ? 'bg-blue-600/40 text-blue-400' : 'text-slate-600 hover:text-slate-400'}`}
+                              {(['flat', 'stepped', 'formula'] as RowMode[]).map(m => (
+                                <button key={m}
+                                  onClick={() => setRowModes(s => ({ ...s, [rd.key]: m }))}
+                                  title={m === 'formula' ? 'Formula mode — available in v2' : m === 'flat' ? 'Flat: Y1 value propagated to all years' : 'Stepped: per-year independent values'}
+                                  className={`px-1.5 py-0.5 text-[7px] font-bold rounded-sm relative ${
+                                    mode === m ? 'bg-blue-600/40 text-blue-400' : 'text-slate-700 hover:text-slate-400'
+                                  } ${m === 'formula' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                  disabled={m === 'formula'}
                                 >
-                                  {m === 'flat' ? 'F' : 'S'}
+                                  {m === 'flat' ? 'F' : m === 'stepped' ? 'S' : 'Fx'}
                                 </button>
                               ))}
                             </div>
@@ -1172,18 +1241,9 @@ function AssumptionsGridPage({
                       </tr>
                     );
                   })}
-                  {/* GPR Decomposition after Section 2 */}
-                  {section === 2 && units > 0 && (
-                    <GprDecompRow
-                      years={holdYears}
-                      units={units}
-                      baseRent={baseRent}
-                      rentGrowths={rentGrowths}
-                      trafficVacancy={trafficVacancy}
-                      brokerVacancy={brokerVacancy}
-                      userOverrides={overrides}
-                      format={n => fmt$(n)}
-                    />
+                  {/* GPR decomposition after Section 2 */}
+                  {sec === 2 && (
+                    <GprDecompRow years={years} financials={financials} />
                   )}
                 </React.Fragment>
               );
@@ -1192,126 +1252,8 @@ function AssumptionsGridPage({
         </table>
       </div>
 
-      {/* Right rail — Findings narrative (collapsible) */}
-      <FindingsRail trafficData={trafficData} holdYears={holdYears} />
-
-      {/* Cell drawer overlay */}
+      <FindingsRail financials={financials} />
       <CellDrawer state={drawer} onClose={() => setDrawer(DRAWER_CLOSED)} onApply={handleApply} />
-    </div>
-  );
-}
-
-// ─── Findings Narrative Right Rail ────────────────────────────────────────────
-function FindingsRail({ trafficData, holdYears }: { trafficData: TrafficHandoff | null; holdYears: number }) {
-  const [expanded, setExpanded] = useState(true);
-
-  if (!expanded) {
-    return (
-      <div
-        className="w-8 bg-[#0d0d0d] border-l border-[#1e1e1e] flex items-start justify-center pt-4 cursor-pointer"
-        onClick={() => setExpanded(true)}
-      >
-        <span style={{ writingMode: 'vertical-rl', fontSize: 9, color: '#475569', letterSpacing: 0.5, fontFamily: MONO }}>
-          FINDINGS ▸
-        </span>
-      </div>
-    );
-  }
-
-  const conf = trafficData?.modelConfidence;
-  const yr1Rent = trafficData?.rentTrajectory?.[0]?.effRent;
-  const yr1Occ = trafficData?.occupancyTrajectory?.[0]?.occ;
-  const yr1Vacancy = yr1Occ != null ? (100 - yr1Occ).toFixed(1) : null;
-  const rentGrowthY1 = trafficData?.rentTrajectory?.[0]?.growth;
-
-  return (
-    <div className="w-[220px] bg-[#0d0d0d] border-l border-[#1e1e1e] flex flex-col overflow-hidden shrink-0">
-      <div
-        className="flex items-center justify-between px-3 py-2 bg-[#111111] border-b border-[#1e1e1e] cursor-pointer"
-        onClick={() => setExpanded(false)}
-      >
-        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
-          AI FINDINGS
-        </span>
-        <span style={{ fontFamily: MONO, fontSize: 8, color: '#334155' }}>◂ collapse</span>
-      </div>
-
-      <div className="flex-1 overflow-auto p-3 space-y-3" style={{ fontFamily: MONO }}>
-        {!trafficData ? (
-          <div className="text-[9px] text-slate-600">Traffic Engine offline. No AI findings available.</div>
-        ) : (
-          <>
-            {/* Confidence */}
-            <div>
-              <div className="text-[8px] text-slate-600 mb-1 tracking-wider">MODEL CONFIDENCE</div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${conf ?? 0}%`,
-                      background: (conf ?? 0) > 80 ? '#10b981' : (conf ?? 0) > 60 ? '#f59e0b' : '#ef4444',
-                    }}
-                  />
-                </div>
-                <span className="text-[9px] font-bold text-slate-300">{conf ?? 0}%</span>
-              </div>
-            </div>
-
-            {/* Key metrics */}
-            {yr1Rent && (
-              <div>
-                <div className="text-[8px] text-cyan-500 mb-1">Y1 EFF RENT</div>
-                <div className="text-sm font-bold text-slate-200">${yr1Rent.toLocaleString()}</div>
-                {rentGrowthY1 && <div className="text-[8px] text-green-500">+{rentGrowthY1.toFixed(1)}% YoY growth</div>}
-              </div>
-            )}
-            {yr1Vacancy && (
-              <div>
-                <div className="text-[8px] text-cyan-500 mb-1">Y1 VACANCY</div>
-                <div className="text-sm font-bold text-slate-200">{yr1Vacancy}%</div>
-                <div className="text-[8px] text-slate-600">Traffic-derived equilibrium</div>
-              </div>
-            )}
-
-            {/* Narrative */}
-            <div>
-              <div className="text-[8px] text-cyan-500 mb-2 tracking-wider">RENT GROWTH</div>
-              <div className="text-[9px] text-slate-400 leading-relaxed">
-                Traffic Engine projects{' '}
-                <span className="text-green-400 font-bold">{rentGrowthY1?.toFixed(1) ?? '—'}%</span> Y1 rent growth,
-                tapering over the {holdYears}-year hold period.
-                {(trafficData.rentTrajectory?.length ?? 0) > 0 && (
-                  <> Y{holdYears} eff rent: <span className="text-slate-300 font-bold">${(trafficData.rentTrajectory[holdYears - 1]?.effRent ?? 0).toLocaleString()}</span>.</>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-[8px] text-cyan-500 mb-2 tracking-wider">TRAFFIC TRAJECTORY</div>
-              <div className="text-[9px] text-slate-400 leading-relaxed">
-                {trafficData.leasingVelocity?.weeklyLeases != null
-                  ? `${trafficData.leasingVelocity.weeklyLeases.toFixed(1)} leases/wk → ${trafficData.leasingVelocity.annualized} annualized. `
-                  : 'No leasing velocity data. '}
-                {yr1Vacancy
-                  ? `Y1 vacancy ${yr1Vacancy}% (traffic-derived). `
-                  : ''}
-              </div>
-            </div>
-
-            {/* Data quality */}
-            <div className="border-t border-[#1e1e1e] pt-3">
-              <div className="text-[8px] text-slate-600 mb-1">DATA QUALITY</div>
-              {trafficData.dataWeeks && (
-                <div className="text-[9px] text-slate-500">{trafficData.dataWeeks} weeks of traffic data</div>
-              )}
-              {trafficData.lastCalibrated && (
-                <div className="text-[9px] text-slate-600">Calibrated: {trafficData.lastCalibrated}</div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
     </div>
   );
 }
@@ -1331,7 +1273,7 @@ function buildDebtSchedule(
   let bal = loanAmt;
   const i30 = rateAnn / 12;
   const n30 = amortYrs * 12;
-  const mc = amortYrs > 0
+  const mc = (amortYrs > 0 && i30 > 0)
     ? (i30 * Math.pow(1 + i30, n30)) / (Math.pow(1 + i30, n30) - 1) * 12
     : rateAnn;
 
@@ -1342,7 +1284,7 @@ function buildDebtSchedule(
     const payment = isIO ? interest : Math.round(bal * mc);
     const principal = isIO ? 0 : Math.max(0, payment - interest);
     const endBal = Math.round(bal - principal);
-    const ltv = endBal / (purchasePrice * Math.pow(1.024, yr - 1));
+    const ltv = purchasePrice > 0 ? endBal / (purchasePrice * Math.pow(1.024, yr - 1)) : 0;
     rows.push({ yr, begBalance: Math.round(bal), annualPayment: payment, interest, principal, endBalance: endBal, noi, dscr: payment > 0 ? noi / payment : 0, ltv });
     bal = endBal;
   }
@@ -1359,19 +1301,18 @@ function buildTaxSchedule(
   assessmentRatio: number, taxGrowth: number, egi1: number, units: number, holdYrs: number,
 ): TaxYear[] {
   const rows: TaxYear[] = [];
-  const reassessAV = Math.round(purchasePrice * assessmentRatio);
-  const reassessedTax = Math.round(reassessAV * millageRate / 1000);
-  const yr1Tax = Math.max(currentTax, reassessedTax);
   const baseAV = Math.round(purchasePrice * assessmentRatio);
+  const reassessedTax = Math.round(baseAV * millageRate / 1000);
+  const yr1Tax = Math.max(currentTax, reassessedTax);
 
   for (let yr = 1; yr <= holdYrs; yr++) {
     const tax = Math.round(yr1Tax * Math.pow(1 + taxGrowth, yr - 1));
     const av = Math.round(baseAV * Math.pow(1 + taxGrowth, yr - 1));
-    const pu = Math.round(tax / units);
-    const egiYr = Math.round(egi1 * Math.pow(1 + 0.033, yr - 1));
+    const pu = units > 0 ? Math.round(tax / units) : 0;
+    const egiYr = Math.round(egi1 * Math.pow(1.033, yr - 1));
     rows.push({
       yr, assessedValue: av, annualTax: tax, perUnit: pu,
-      taxAsEgiPct: tax / egiYr,
+      taxAsEgiPct: egiYr > 0 ? tax / egiYr : 0,
       delta: yr > 1 ? Math.round(tax - Math.round(yr1Tax * Math.pow(1 + taxGrowth, yr - 2))) : yr1Tax - currentTax,
     });
   }
@@ -1382,8 +1323,7 @@ function buildTaxSchedule(
 function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, origFee, purchasePrice, maxLtvLoan, maxDscrLoan, sizingConst, mortgageConstant, units }: {
   holdYears: number; schedule: DebtYear[]; ioYears: number; loanAmt: number;
   rateAnn: number; amortYrs: number; origFee: number; purchasePrice: number;
-  maxLtvLoan: number; maxDscrLoan: number; sizingConst: number; mortgageConstant: number;
-  units: number;
+  maxLtvLoan: number; maxDscrLoan: number; sizingConst: number; mortgageConstant: number; units: number;
 }) {
   const cols = holdYears + 2;
   const sched = schedule.slice(0, holdYears);
@@ -1393,14 +1333,14 @@ function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, or
     <div className="flex flex-col gap-0 overflow-auto">
       <div className="grid grid-cols-4 gap-px bg-[#1e1e1e] border-b border-[#1e1e1e]">
         {[
-          { label: 'LOAN AMOUNT',      value: fmtM(loanAmt),                   sub: fmt$(units > 0 ? Math.round(loanAmt / units) : loanAmt) + ' / unit' },
-          { label: 'INTEREST RATE',    value: (rateAnn * 100).toFixed(2) + '%', sub: 'Annual rate · fixed' },
-          { label: 'STRUCTURE',        value: `${ioYears}YR I/O → ${amortYrs}YR`,  sub: 'Senior fixed-rate' },
-          { label: 'ORIGINATION FEE',  value: (origFee * 100).toFixed(2) + '%', sub: fmt$(Math.round(loanAmt * origFee)) + ' at close' },
-          { label: 'LTC',              value: fmtPct2(loanAmt / purchasePrice), sub: `Purchase: ${fmtM(purchasePrice)}` },
-          { label: 'MAX LOAN (DSCR)',  value: fmtM(maxDscrLoan),               sub: `@1.25× min DSCR` },
-          { label: 'SIZING CONSTRAINT',value: fmtM(sizingConst),               sub: `Selected: ${fmtM(loanAmt)} (${fmtPct2(loanAmt / sizingConst)} of max)` },
-          { label: 'DEBT CONSTANT',    value: fmtPct2(mortgageConstant, 3),    sub: 'Annual payment / loan balance' },
+          { label: 'LOAN AMOUNT',      value: fmtM(loanAmt),                    sub: fmt$(units > 0 ? Math.round(loanAmt / units) : loanAmt) + ' / unit' },
+          { label: 'INTEREST RATE',    value: fmtPct(rateAnn, 2),               sub: 'Annual rate · fixed' },
+          { label: 'STRUCTURE',        value: `${ioYears}YR I/O → ${amortYrs}YR`,   sub: 'Senior fixed-rate' },
+          { label: 'ORIGINATION FEE',  value: fmtPct(origFee, 2),               sub: fmt$(Math.round(loanAmt * origFee)) + ' at close' },
+          { label: 'LTC',              value: purchasePrice > 0 ? fmtPct(loanAmt / purchasePrice) : '—', sub: `Purchase: ${fmtM(purchasePrice)}` },
+          { label: 'MAX LOAN (DSCR)',  value: fmtM(maxDscrLoan),                sub: `@1.25× min DSCR` },
+          { label: 'SIZING CONSTRAINT',value: fmtM(sizingConst),                sub: `Selected: ${fmtM(loanAmt)}` },
+          { label: 'DEBT CONSTANT',    value: fmtPct(mortgageConstant, 3),      sub: 'Annual payment / loan balance' },
         ].map(({ label, value, sub }) => (
           <div key={label} className="flex flex-col gap-0.5 p-3 bg-[#0a0a0a]">
             <span className="text-[9px] font-bold tracking-wider text-slate-500">{label}</span>
@@ -1446,10 +1386,8 @@ function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, or
             <Cell v={fmtM(sched.reduce((s, r) => s + r.noi, 0))} type="computed" />
           </Row>
           <Row label="Debt Service Coverage (DSCR)">
-            {sched.map(r => (
-              <Cell key={r.yr} v={fmtX(r.dscr)} type={dscrType(r.dscr)} tooltip={`NOI ${fmtM(r.noi)} ÷ DS ${fmtM(r.annualPayment)}`} />
-            ))}
-            <Cell v={fmtX(sched.reduce((s, r) => s + r.dscr, 0) / sched.length)} type="computed" />
+            {sched.map(r => <Cell key={r.yr} v={fmtX(r.dscr)} type={dscrType(r.dscr)} tooltip={`NOI ${fmtM(r.noi)} ÷ DS ${fmtM(r.annualPayment)}`} />)}
+            <Cell v={fmtX(sched.reduce((s, r) => s + r.dscr, 0) / Math.max(sched.length, 1))} type="computed" />
           </Row>
           <Row label="NOI ÷ DS Gap ($)">
             {sched.map(r => {
@@ -1465,23 +1403,18 @@ function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, or
           </Row>
           <Row label="LTV at Year-End">
             {sched.map(r => (
-              <Cell key={r.yr} v={fmtPct2(r.ltv)} type={r.ltv > 0.75 ? 'warn' : r.ltv > 0.65 ? 'normal' : 'good'} tooltip={`Balance ${fmtM(r.endBalance)} ÷ Projected Value`} />
+              <Cell key={r.yr} v={fmtPct(r.ltv)} type={r.ltv > 0.75 ? 'warn' : r.ltv > 0.65 ? 'normal' : 'good'} />
             ))}
-            <Cell v={fmtPct2(sched[sched.length - 1]?.ltv ?? 0)} type="computed" />
+            <Cell v={fmtPct(sched[sched.length - 1]?.ltv ?? 0)} type="computed" />
           </Row>
-          <SectionHeader label="E. MAX LOAN SIZING" colSpan={cols} />
-          <tr className="border-b border-[#1e1e1e]/50 h-[22px] bg-[#0a0a1e]/40">
-            <td className="px-3 py-1 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a1e]/60 border-r border-[#1e1e1e] z-10 min-w-[220px]" />
-            <Cell v="CONSTRAINT" type="header" align="center" span={Math.ceil(holdYears / 2)} />
-            <Cell v="HEADROOM vs ACTUAL" type="header" align="center" span={holdYears - Math.ceil(holdYears / 2) + 1} />
-          </tr>
+          <SectionHeader label="E. LOAN SIZING CONSTRAINTS" colSpan={cols} />
           <Row label="Max Loan by DSCR">
             <Cell v={fmtM(maxDscrLoan)} type={maxDscrLoan < loanAmt ? 'warn' : 'good'} span={Math.ceil(holdYears / 2)} />
-            <Cell v={(maxDscrLoan >= loanAmt ? '+' : '') + fmtM(maxDscrLoan - loanAmt) + ' vs actual'} type={maxDscrLoan >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
+            <Cell v={(maxDscrLoan >= loanAmt ? '+' : '') + fmtM(maxDscrLoan - loanAmt)} type={maxDscrLoan >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
           </Row>
           <Row label="Max Loan by LTV">
             <Cell v={fmtM(maxLtvLoan)} type={maxLtvLoan < loanAmt ? 'warn' : 'good'} span={Math.ceil(holdYears / 2)} />
-            <Cell v={(maxLtvLoan >= loanAmt ? '+' : '') + fmtM(maxLtvLoan - loanAmt) + ' vs actual'} type={maxLtvLoan >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
+            <Cell v={(maxLtvLoan >= loanAmt ? '+' : '') + fmtM(maxLtvLoan - loanAmt)} type={maxLtvLoan >= loanAmt ? 'good' : 'flagged'} span={holdYears - Math.ceil(holdYears / 2) + 1} />
           </Row>
           <Row label="Binding Constraint">
             <Cell v={sizingConst === maxDscrLoan ? 'DSCR' : 'LTV'} type="computed" align="center" span={Math.ceil(holdYears / 2)} />
@@ -1501,28 +1434,24 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
   const sched = schedule.slice(0, holdYears);
   const reassessmentDelta = Math.round((sched[0]?.annualTax ?? 0) - currentTax);
   const cols = holdYears + 2;
-  const ASSESSMENT_RATIO = 0.40;
+  const AR = 0.40;
 
-  if (sched.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-32 text-[11px] text-slate-500">
-        Millage rate unavailable — tax schedule cannot be computed
-      </div>
-    );
+  if (!sched.length) {
+    return <div className="flex items-center justify-center h-32 text-[11px] text-slate-500">Millage rate unavailable — tax schedule cannot be computed</div>;
   }
 
   return (
     <div className="flex flex-col gap-0">
       <div className="grid grid-cols-4 gap-px bg-[#1e1e1e] border-b border-[#1e1e1e]">
         {[
-          { label: 'CURRENT TAX BILL (T12)',  value: fmt$(currentTax),                        sub: fmt$(Math.round(currentTax / units)) + ' / unit / yr' },
-          { label: 'COUNTY ASSESSED VALUE',   value: fmtM(assessedValue),                    sub: `Assessment ratio: ${(ASSESSMENT_RATIO * 100).toFixed(0)}% of market` },
-          { label: 'MILLAGE RATE',            value: millageRate != null ? millageRate.toFixed(3) + ' mills' : '—', sub: 'Per $1,000 of assessed value' },
-          { label: 'REASSESSED AT PURCHASE',  value: fmt$(sched[0]?.annualTax ?? 0),          sub: reassessmentDelta > 0 ? '+' + fmt$(reassessmentDelta) + ' vs T12' : fmt$(Math.abs(reassessmentDelta)) + ' savings vs T12' },
-          { label: 'PURCHASE PRICE',          value: fmtM(purchasePrice),                    sub: '' },
-          { label: 'REASSESSED AV',           value: fmtM(reassessAV),                       sub: `Market × assessment ratio (${(ASSESSMENT_RATIO * 100).toFixed(0)}%)` },
-          { label: 'TAX GROWTH RATE',         value: '4.0% / yr',                            sub: 'Statutory cap' },
-          { label: 'APPEAL STATUS',           value: 'NOT FILED',                            sub: 'Est. savings if appealed' },
+          { label: 'CURRENT TAX BILL (T12)',  value: fmt$(currentTax),                          sub: units > 0 ? fmt$(Math.round(currentTax / units)) + ' / unit / yr' : '—' },
+          { label: 'COUNTY ASSESSED VALUE',   value: fmtM(assessedValue),                      sub: `Assessment ratio: ${(AR * 100).toFixed(0)}%` },
+          { label: 'MILLAGE RATE',            value: millageRate != null ? millageRate.toFixed(3) + ' mills' : '—', sub: 'Per $1,000 assessed' },
+          { label: 'REASSESSED AT PURCHASE',  value: fmt$(sched[0]?.annualTax ?? 0),            sub: reassessmentDelta > 0 ? '+' + fmt$(reassessmentDelta) + ' vs T12' : '—' },
+          { label: 'PURCHASE PRICE',          value: fmtM(purchasePrice),                      sub: '' },
+          { label: 'REASSESSED AV',           value: fmtM(reassessAV),                         sub: `Market × ${(AR * 100).toFixed(0)}%` },
+          { label: 'TAX GROWTH RATE',         value: '4.0% / yr',                              sub: 'Statutory cap' },
+          { label: 'APPEAL STATUS',           value: 'NOT FILED',                              sub: 'Estimated savings if appealed' },
         ].map(({ label, value, sub }) => (
           <div key={label} className="flex flex-col gap-0.5 p-3 bg-[#0a0a0a]">
             <span className="text-[9px] font-bold tracking-wider text-slate-500">{label}</span>
@@ -1535,9 +1464,8 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
         <div className="flex items-center gap-3 px-4 py-2 bg-amber-900/20 border-b border-amber-500/20 text-[11px] text-amber-400">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>
-            <strong>Year-1 Tax Shock:</strong> Purchase triggers reassessment.
-            Expected Yr1 bill {fmt$(sched[0]?.annualTax ?? 0)} vs current T12 {fmt$(currentTax)} → delta{' '}
-            {reassessmentDelta > 0 ? '+' : ''}{fmt$(reassessmentDelta)} ({fmtPct2(reassessmentDelta / currentTax)} increase).
+            <strong>Year-1 Tax Shock:</strong> Reassessment expected at purchase.
+            Yr1 bill {fmt$(sched[0]?.annualTax ?? 0)} vs T12 {fmt$(currentTax)} → {reassessmentDelta > 0 ? '+' : ''}{fmt$(reassessmentDelta)} ({fmtPct(reassessmentDelta / Math.max(currentTax, 1))} increase).
           </span>
         </div>
       )}
@@ -1545,9 +1473,7 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
         <thead className="sticky top-0 z-10 bg-[#111111]">
           <tr className="border-b border-[#1e1e1e]">
             <th className="px-3 py-1.5 text-left text-[10px] font-bold text-slate-500 w-[220px] sticky left-0 bg-[#111111] z-20 border-r border-[#1e1e1e]">REAL ESTATE TAX SCHEDULE</th>
-            {sched.map(r => (
-              <th key={r.yr} className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[84px] border-r border-[#1e1e1e]">YR {r.yr}</th>
-            ))}
+            {sched.map(r => <th key={r.yr} className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[84px] border-r border-[#1e1e1e]">YR {r.yr}</th>)}
             <th className="px-2 py-1.5 text-right text-[10px] font-bold text-slate-500 min-w-[80px]">TOTAL / CAGR</th>
           </tr>
         </thead>
@@ -1555,14 +1481,14 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
           <SectionHeader label="A. ASSESSED VALUE TRAJECTORY" colSpan={cols} />
           <Row label="County Assessed Value" locked>
             {sched.map(r => <Cell key={r.yr} v={fmtM(r.assessedValue)} type="locked" />)}
-            <Cell v={sched.length > 1 ? fmtPct2(Math.pow(sched[sched.length-1].assessedValue / sched[0].assessedValue, 1 / (holdYears - 1)) - 1) : '—'} type="computed" />
+            <Cell v={sched.length > 1 ? fmtPct(Math.pow(sched[sched.length-1].assessedValue / sched[0].assessedValue, 1 / (holdYears - 1)) - 1) : '—'} type="computed" />
           </Row>
           <Row label="Implied Market Value">
-            {sched.map(r => <Cell key={r.yr} v={fmtM(r.assessedValue / ASSESSMENT_RATIO)} type="ai" tooltip="Assessed ÷ 40% assessment ratio" />)}
+            {sched.map(r => <Cell key={r.yr} v={fmtM(r.assessedValue / AR)} type="ai" tooltip="Assessed ÷ assessment ratio" />)}
             <Cell v="—" type="locked" />
           </Row>
           <SectionHeader label="B. ANNUAL TAX BILL" colSpan={cols} />
-          <Row label="Current T12 Bill (baseline)" locked>
+          <Row label="Current T12 Bill" locked>
             {sched.map(r => <Cell key={r.yr} v={r.yr === 1 ? fmt$(currentTax) : '—'} type="locked" />)}
             <Cell v={fmt$(currentTax)} type="locked" />
           </Row>
@@ -1572,13 +1498,6 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
             ))}
             <Cell v={fmt$(sched.reduce((s, r) => s + r.annualTax, 0))} type="computed" />
           </Row>
-          <Row label="YoY Tax Increase ($)">
-            {sched.map(r => (
-              <Cell key={r.yr} v={r.yr === 1 ? (reassessmentDelta > 0 ? '+' + fmtK(reassessmentDelta) : fmtK(reassessmentDelta)) : '+' + fmtK(r.delta)}
-                type={r.yr === 1 && reassessmentDelta > 5000 ? 'warn' : 'normal'} />
-            ))}
-            <Cell v={fmtK((sched[sched.length - 1]?.annualTax ?? 0) - (sched[0]?.annualTax ?? 0))} type="computed" />
-          </Row>
           <SectionHeader label="C. TAX BURDEN RATIOS" colSpan={cols} />
           <Row label="Tax / Unit / Year">
             {sched.map(r => <Cell key={r.yr} v={fmt$(r.perUnit)} tooltip={`${fmt$(r.annualTax)} ÷ ${units} units`} />)}
@@ -1586,10 +1505,9 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
           </Row>
           <Row label="Tax as % of EGI">
             {sched.map(r => (
-              <Cell key={r.yr} v={fmtPct2(r.taxAsEgiPct)}
-                type={r.taxAsEgiPct > 0.16 ? 'warn' : r.taxAsEgiPct > 0.13 ? 'normal' : 'good'} />
+              <Cell key={r.yr} v={fmtPct(r.taxAsEgiPct)} type={r.taxAsEgiPct > 0.16 ? 'warn' : r.taxAsEgiPct > 0.13 ? 'normal' : 'good'} />
             ))}
-            <Cell v={fmtPct2(sched.reduce((s, r) => s + r.taxAsEgiPct, 0) / sched.length)} type="computed" />
+            <Cell v={fmtPct(sched.reduce((s, r) => s + r.taxAsEgiPct, 0) / Math.max(sched.length, 1))} type="computed" />
           </Row>
         </tbody>
       </table>
@@ -1597,9 +1515,9 @@ function TaxesPage({ holdYears, schedule, currentTax, assessedValue, millageRate
   );
 }
 
-// ─── Sub-page types ────────────────────────────────────────────────────────────
+// ─── Root component ────────────────────────────────────────────────────────────
 type Page = 'GRID' | 'DEBT' | 'TAXES';
-type HoldYears = '5 YR' | '7 YR' | '10 YR';
+type HoldTab = '5 YR' | '7 YR' | '10 YR';
 
 const PAGE_NAV: Array<{ id: Page; label: string; icon: React.ReactNode; color: string }> = [
   { id: 'GRID',  label: 'Assumptions Grid',  icon: <BarChart3  className="w-3.5 h-3.5" />, color: 'text-slate-300' },
@@ -1607,29 +1525,69 @@ const PAGE_NAV: Array<{ id: Page; label: string; icon: React.ReactNode; color: s
   { id: 'TAXES', label: 'Real Estate Tax',   icon: <Building2  className="w-3.5 h-3.5" />, color: 'text-amber-400' },
 ];
 
-// ─── Root component ────────────────────────────────────────────────────────────
 export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
-  const [page, setPage]       = useState<Page>('GRID');
-  const [holdTab, setHoldTab] = useState<HoldYears>('10 YR');
-  const holdYears = holdTab === '5 YR' ? 5 : holdTab === '7 YR' ? 7 : 10;
-
-  // Traffic data
-  const [trafficData, setTrafficData]     = useState<TrafficHandoff | null>(null);
+  const [page, setPage]         = useState<Page>('GRID');
+  const [holdTab, setHoldTab]   = useState<HoldTab | null>(null); // null = use DB holdYears
+  const [financials, setFinancials] = useState<DealFinancials | null>(null);
   const [trafficOffline, setTrafficOffline] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const fetchCountRef = useRef(0);
 
+  // Derive hold years: user tab override > DB value > default 5
+  const dbHoldYears = financials?.assumptions?.holdYears ?? 5;
+  const holdYears = holdTab === '5 YR' ? 5 : holdTab === '7 YR' ? 7 : holdTab === '10 YR' ? 10 : dbHoldYears;
+
+  // Fetch financials from API (called on mount and after each PATCH)
+  const fetchFinancials = useCallback(async (hold?: number) => {
+    if (!dealId) return;
+    const h = hold ?? holdYears;
+    fetchCountRef.current++;
+    const thisFetch = fetchCountRef.current;
+    setLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/financials?hold=${h}`);
+      if (thisFetch !== fetchCountRef.current) return; // stale
+      const data: DealFinancials = res.data?.data ?? res.data;
+      if (data?.proforma) {
+        setFinancials(data);
+        setTrafficOffline(!data.trafficProjection?.yearly?.length);
+      }
+    } catch (e) {
+      if (thisFetch === fetchCountRef.current) {
+        console.warn('AssumptionsTab: financials fetch failed', e);
+        setTrafficOffline(true);
+      }
+    } finally {
+      if (thisFetch === fetchCountRef.current) setLoading(false);
+    }
+  }, [dealId, holdYears]);
+
+  // Mount: fetch financials
+  useEffect(() => { fetchFinancials(); }, [dealId]);
+
+  // When hold tab changes: re-fetch with new hold period
+  useEffect(() => { if (holdTab !== null) fetchFinancials(holdYears); }, [holdTab]);
+
+  // Called after each PATCH to re-fetch derived values
+  const handleAfterPatch = useCallback(() => {
+    fetchFinancials(holdYears);
+  }, [fetchFinancials, holdYears]);
+
+  // Derive values from props (for Debt/Tax sub-pages)
   const a = assumptions;
-  const dealName = (deal?.['name'] as string) ?? a?.dealInfo?.dealName ?? 'Deal';
-  const units    = a?.dealInfo?.totalUnits ?? 0;
-  const city     = a?.dealInfo?.city ?? '';
-  const state    = a?.dealInfo?.state ?? '';
+  const cs = financials?.capitalStack;
+  const dealName = (deal?.['name'] as string) ?? financials?.dealName ?? a?.dealInfo?.dealName ?? 'Deal';
+  const units = financials?.totalUnits ?? a?.dealInfo?.totalUnits ?? 0;
+  const city  = a?.dealInfo?.city ?? '';
+  const state = a?.dealInfo?.state ?? '';
   const location = [city, state].filter(Boolean).join(', ') || 'Location';
 
-  const loanAmt       = a?.financing?.loanAmount ?? 0;
-  const rateAnn       = a?.financing?.interestRate ?? 0.0675;
-  const amortYrs      = a?.financing?.amortization ?? 30;
-  const ioYears       = Math.round((a?.financing?.ioPeriod ?? 0) / 12);
-  const origFee       = a?.financing?.originationFee ?? 0.01;
-  const purchasePrice = a?.acquisition?.purchasePrice ?? 0;
+  const loanAmt       = cs?.loanAmount ?? a?.financing?.loanAmount ?? 0;
+  const rateAnn       = cs?.interestRate ?? a?.financing?.interestRate ?? 0.0675;
+  const amortYrs      = cs?.amortizationYears ?? a?.financing?.amortization ?? 30;
+  const ioYears       = cs?.ioPeriodMonths != null ? Math.round(cs.ioPeriodMonths / 12) : Math.round((a?.financing?.ioPeriod ?? 0) / 12);
+  const origFee       = cs?.originationFeePct ?? a?.financing?.originationFee ?? 0.01;
+  const purchasePrice = cs?.purchasePrice ?? a?.acquisition?.purchasePrice ?? 0;
 
   const acfRows   = modelResults?.annualCashFlow ?? [];
   const noi1      = acfRows[0]?.noi ?? 3_730_000;
@@ -1639,7 +1597,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const MAX_LTV  = 0.65;
   const i30 = rateAnn / 12;
   const n30 = amortYrs * 12;
-  const mortgageConstant = amortYrs > 0 && i30 > 0
+  const mortgageConstant = (amortYrs > 0 && i30 > 0)
     ? (i30 * Math.pow(1 + i30, n30)) / (Math.pow(1 + i30, n30) - 1) * 12
     : rateAnn;
   const maxDscrLoan = mortgageConstant > 0 ? Math.round((noi1 / MIN_DSCR) / mortgageConstant) : 0;
@@ -1654,7 +1612,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const currentTax    = (a?.taxes?.currentReTax as number | null | undefined) ?? 0;
   const assessedValue = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 0;
   const millageRate   = (a?.taxes?.millageRate as number | null | undefined) ?? null;
-  const reassessAV    = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 0;
+  const reassessAV    = assessedValue;
   const egi1          = noi1 * 1.3;
 
   const taxSchedule = useMemo(() => {
@@ -1662,69 +1620,53 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     return buildTaxSchedule(currentTax, purchasePrice || 0, millageRate, 0.40, 0.04, egi1, units, holdYears);
   }, [currentTax, purchasePrice, millageRate, egi1, units, holdYears]);
 
-  // Fetch M07 traffic data
-  useEffect(() => {
-    if (!dealId) return;
-    let cancelled = false;
-    const fetchTraffic = async () => {
-      try {
-        const res = await apiClient.get(`/api/v1/leasing-traffic/v2/intelligence/${dealId}`);
-        if (cancelled) return;
-        const data = res.data?.data ?? res.data;
-        if (data?.rawTraffic || data?.occupancyTrajectory) {
-          setTrafficData(data as TrafficHandoff);
-          setTrafficOffline(false);
-        } else {
-          setTrafficOffline(true);
-        }
-      } catch {
-        if (!cancelled) setTrafficOffline(true);
-      }
-    };
-    fetchTraffic();
-    return () => { cancelled = true; };
-  }, [dealId]);
-
   const totalDS    = debtSchedule.reduce((s, r) => s + r.annualPayment, 0);
   const minDSCR    = debtSchedule.length > 0 ? Math.min(...debtSchedule.map(r => r.dscr)) : 0;
   const minDSCRYr  = debtSchedule.length > 0 ? debtSchedule.reduce((mi, r, i) => r.dscr < debtSchedule[mi].dscr ? i : mi, 0) + 1 : 0;
-  const endBalance = debtSchedule.length > 0 ? debtSchedule[debtSchedule.length - 1]?.endBalance ?? 0 : 0;
+  const endBalance = debtSchedule.length > 0 ? (debtSchedule[debtSchedule.length - 1]?.endBalance ?? 0) : 0;
   const irr        = modelResults?.summary?.irr ?? 0;
   const em         = modelResults?.summary?.equityMultiple ?? 0;
   const exitValue  = modelResults?.summary?.exitValue ?? 0;
   const reassessmentDelta = Math.round((taxSchedule[0]?.annualTax ?? 0) - currentTax);
 
+  const m07Conf = financials?.trafficProjection?.leasingSignals?.confidence;
+
   return (
     <div className="flex flex-col w-full h-full bg-[#0a0a0a] text-slate-300 text-xs" style={{ fontFamily: 'system-ui, sans-serif' }}>
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#111111] border-b border-[#1e1e1e] sticky top-0 z-20">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between px-4 py-2 bg-[#111111] border-b border-[#1e1e1e] sticky top-0 z-30">
+        <div className="flex items-center gap-3">
           <span className="font-bold text-slate-100 tracking-wider text-[11px]">F9 ASSUMPTIONS</span>
-          <div className="flex items-center gap-2 px-3 py-1 bg-[#1e1e1e] rounded text-[11px]">
+          <div className="flex items-center gap-2 px-3 py-1 bg-[#1e1e1e] rounded text-[10px]">
             <span className="text-slate-400">{dealName}</span>
             {units > 0 && <><span className="text-slate-600">|</span><span className="text-slate-400">{units} Units</span></>}
             {location !== 'Location' && <><span className="text-slate-600">|</span><span className="text-slate-400">{location}</span></>}
           </div>
-          {trafficData && (
+          {m07Conf != null && (
             <div className="flex items-center gap-1 px-2 py-0.5 bg-purple-900/30 text-purple-400 border border-purple-500/20 rounded text-[9px]">
               <Zap className="w-2.5 h-2.5" />
-              M07 LIVE · {trafficData.modelConfidence}% conf
+              M07 · {m07Conf}% conf
             </div>
           )}
+          {loading && <span style={{ fontFamily: MONO, fontSize: 8, color: '#22d3ee' }}>SYNCING…</span>}
         </div>
         <div className="flex items-center gap-3">
+          {/* Hold period tabs — default from DB, override with tabs */}
           <div className="flex bg-[#1e1e1e] p-0.5 rounded">
-            {(['5 YR', '7 YR', '10 YR'] as HoldYears[]).map(tab => (
-              <button key={tab} onClick={() => setHoldTab(tab)}
-                className={`px-3 py-1 text-[10px] font-bold rounded-sm ${holdTab === tab ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
-                {tab}
-              </button>
-            ))}
+            {(['5 YR', '7 YR', '10 YR'] as HoldTab[]).map(tab => {
+              const active = holdTab === tab || (holdTab === null && holdYears === (tab === '5 YR' ? 5 : tab === '7 YR' ? 7 : 10));
+              return (
+                <button key={tab} onClick={() => setHoldTab(tab)}
+                  className={`px-3 py-1 text-[10px] font-bold rounded-sm ${active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-slate-200'}`}>
+                  {tab}
+                </button>
+              );
+            })}
           </div>
-          <button
-            onClick={() => onAssumptionsChange && onAssumptionsChange({})}
-            className="px-3 py-1 text-[10px] font-bold bg-cyan-900/40 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-900/60"
-          >RECALCULATE</button>
+          <button onClick={() => { onAssumptionsChange && onAssumptionsChange({}); fetchFinancials(holdYears); }}
+            className="px-3 py-1 text-[10px] font-bold bg-cyan-900/40 text-cyan-400 border border-cyan-500/30 rounded hover:bg-cyan-900/60">
+            RECALCULATE
+          </button>
           <button className="p-1 text-slate-400 hover:text-slate-200 bg-[#1e1e1e] rounded">
             <Download className="w-3.5 h-3.5" />
           </button>
@@ -1735,12 +1677,10 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       <div className="flex items-center gap-0 px-4 py-0 bg-[#0d0d0d] border-b border-[#1e1e1e]">
         {PAGE_NAV.map((p, i) => (
           <React.Fragment key={p.id}>
-            <button
-              onClick={() => setPage(p.id)}
+            <button onClick={() => setPage(p.id)}
               className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-bold border-b-2 transition-colors ${
                 page === p.id ? `border-blue-500 ${p.color}` : 'border-transparent text-slate-500 hover:text-slate-300 hover:border-slate-600'
-              }`}
-            >
+              }`}>
               <span className={page === p.id ? p.color : 'text-slate-600'}>{p.icon}</span>
               {p.label.toUpperCase()}
             </button>
@@ -1750,17 +1690,17 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         <div className="ml-auto flex items-center gap-3 pr-2 text-[10px] text-slate-600">
           {page === 'DEBT' && loanAmt > 0 && (
             <>
-              <span className="px-2 py-0.5 bg-amber-900/30 text-amber-500 border border-amber-700/30 rounded font-mono">{ioYears}YR I/O</span>
-              <span>MC: {fmtPct2(mortgageConstant, 3)}</span>
+              <span className="px-2 py-0.5 bg-amber-900/30 text-amber-500 border border-amber-700/30 rounded" style={{ fontFamily: MONO }}>{ioYears}YR I/O</span>
+              <span>MC: {fmtPct(mortgageConstant, 3)}</span>
               {minDSCR > 0 && <span className={minDSCR >= 1.25 ? 'text-green-500' : 'text-amber-500'}>Min DSCR: {fmtX(minDSCR)} YR{minDSCRYr}</span>}
             </>
           )}
           {page === 'TAXES' && (
             <>
-              <span className="px-2 py-0.5 bg-amber-900/30 text-amber-500 border border-amber-700/30 rounded font-mono">{millageRate} MILLS</span>
-              <span>T12 bill: {fmt$(currentTax)}</span>
+              <span className="px-2 py-0.5 bg-amber-900/30 text-amber-500 border border-amber-700/30 rounded" style={{ fontFamily: MONO }}>{millageRate} MILLS</span>
+              <span>T12: {fmt$(currentTax)}</span>
               <span className={reassessmentDelta > 5000 ? 'text-amber-500' : 'text-green-500'}>
-                {reassessmentDelta > 0 ? '↑ REASSESS +' + fmt$(reassessmentDelta) : 'No reassessment delta'}
+                {reassessmentDelta > 0 ? '↑ +' + fmt$(reassessmentDelta) : 'No reassess delta'}
               </span>
             </>
           )}
@@ -1775,35 +1715,35 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         {page === 'GRID' && (
           <AssumptionsGridPage
             dealId={dealId}
-            assumptions={assumptions}
-            modelResults={modelResults}
             holdYears={holdYears}
-            trafficData={trafficData}
+            financials={financials}
             trafficOffline={trafficOffline}
+            onAfterPatch={handleAfterPatch}
           />
         )}
-        {page === 'DEBT' && loanAmt > 0 ? (
+        {page === 'DEBT' && (
           <div className="overflow-auto h-full">
-            <DebtPage
-              holdYears={holdYears} schedule={debtSchedule} ioYears={ioYears}
-              loanAmt={loanAmt} rateAnn={rateAnn} amortYrs={amortYrs} origFee={origFee}
-              purchasePrice={purchasePrice} maxLtvLoan={maxLtvLoan} maxDscrLoan={maxDscrLoan}
-              sizingConst={sizingConst === Infinity ? 0 : sizingConst} mortgageConstant={mortgageConstant}
-              units={units}
-            />
+            {loanAmt > 0 ? (
+              <DebtPage
+                holdYears={holdYears} schedule={debtSchedule} ioYears={ioYears}
+                loanAmt={loanAmt} rateAnn={rateAnn} amortYrs={amortYrs} origFee={origFee}
+                purchasePrice={purchasePrice} maxLtvLoan={maxLtvLoan} maxDscrLoan={maxDscrLoan}
+                sizingConst={sizingConst === Infinity ? 0 : sizingConst} mortgageConstant={mortgageConstant}
+                units={units}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-32 text-[11px] text-slate-500">
+                No loan configured — set loan amount and rate in Financing assumptions
+              </div>
+            )}
           </div>
-        ) : page === 'DEBT' ? (
-          <div className="flex items-center justify-center h-32 text-[11px] text-slate-500">
-            No loan configured — set loan amount and rate in Financing assumptions
-          </div>
-        ) : null}
+        )}
         {page === 'TAXES' && (
           <div className="overflow-auto h-full">
             <TaxesPage
               holdYears={holdYears} schedule={taxSchedule} currentTax={currentTax}
               assessedValue={assessedValue} millageRate={millageRate}
-              purchasePrice={purchasePrice || 65_000_000} reassessAV={reassessAV}
-              units={units}
+              purchasePrice={purchasePrice || 0} reassessAV={reassessAV} units={units}
             />
           </div>
         )}
@@ -1817,7 +1757,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
               <div className="flex flex-col">
                 <span className="text-[10px] text-slate-500 font-bold tracking-wider">IRR LEVERED</span>
                 <span className={`text-sm font-mono ${irr > 0.15 ? 'text-green-400' : irr > 0 ? 'text-amber-400' : 'text-slate-500'}`}>
-                  {irr > 0 ? fmtPct2(irr) : '—'}
+                  {irr > 0 ? fmtPct(irr) : '—'}
                 </span>
               </div>
               <div className="w-px h-8 bg-[#1e1e1e]" />
@@ -1827,8 +1767,8 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
               </div>
               <div className="w-px h-8 bg-[#1e1e1e]" />
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-500 font-bold tracking-wider">STABILIZED VALUE</span>
-                <span className="text-sm font-mono text-slate-200">{exitValue > 0 ? fmtM(exitValue) : '—'}</span>
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">HOLD</span>
+                <span className="text-sm font-mono text-slate-200">{holdYears} YR</span>
               </div>
             </>
           )}
@@ -1867,7 +1807,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
               </div>
               <div className="w-px h-8 bg-[#1e1e1e]" />
               <div className="flex flex-col">
-                <span className="text-[10px] text-slate-500 font-bold tracking-wider">REASSESSMENT DELTA</span>
+                <span className="text-[10px] text-slate-500 font-bold tracking-wider">REASSESSMENT Δ</span>
                 <span className={`text-sm font-mono ${reassessmentDelta > 0 ? 'text-amber-400' : 'text-green-400'}`}>
                   {reassessmentDelta > 0 ? '+' : ''}{fmt$(reassessmentDelta)}
                 </span>
@@ -1877,7 +1817,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         </div>
         <div className="flex items-center gap-2 text-[9px] text-slate-600">
           <TrendingUp className="w-3 h-3" />
-          <span>F9 ASSUMPTIONS · {holdYears}YR HOLD</span>
+          <span style={{ fontFamily: MONO }}>F9 · {holdYears}YR · {financials?.meta?.seeded ? 'SEEDED' : 'PROPS'}</span>
         </div>
       </div>
     </div>
