@@ -385,6 +385,14 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           />
           <KvRow label="LTC (Loan-to-Cost)"   value={fmtCap(ret?.debtMetrics?.structural?.ltc ?? null)} indent />
           <KvRow label="LTSV"                  value={fmtCap(ret?.debtMetrics?.structural?.ltsv ?? null)} indent />
+          <KvRow label="Refi-Out Probability"
+            value={ret?.debtMetrics?.structural?.refiOutProbability != null ? `${(ret.debtMetrics.structural.refiOutProbability * 100).toFixed(0)}%` : '—'}
+            color={BT.text.muted}
+          />
+          <KvRow label="Maturity Risk Score"
+            value={ret?.debtMetrics?.structural?.maturityRiskScore != null ? `${ret.debtMetrics.structural.maturityRiskScore.toFixed(1)} / 10` : '—'}
+            color={ret?.debtMetrics?.structural?.maturityRiskScore != null && ret.debtMetrics.structural.maturityRiskScore > 7 ? BT.text.red : BT.text.muted}
+          />
 
           {/* 5c — Leverage Position */}
           <div style={{ padding: '3px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}`, background: `${BT.text.orange}08` }}>
@@ -442,6 +450,11 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           <KvRow label="Cash Trap Distance"
             value={ret?.debtMetrics?.stress?.cashTrapDistanceBps != null ? `${ret.debtMetrics.stress.cashTrapDistanceBps.toFixed(0)} bps` : '—'}
             color={ret?.debtMetrics?.stress?.cashTrapDistanceBps != null && ret.debtMetrics.stress.cashTrapDistanceBps < 10 * 100 ? BT.text.amber : undefined}
+          />
+          <KvRow label="Default Buffer"
+            value={ret?.debtMetrics?.stress?.defaultBufferMonths != null ? `${ret.debtMetrics.stress.defaultBufferMonths.toFixed(0)} mo` : '—'}
+            sub="months of reserves to cover DS shortfall"
+            color={ret?.debtMetrics?.stress?.defaultBufferMonths != null && ret.debtMetrics.stress.defaultBufferMonths < 3 ? BT.text.red : BT.text.muted}
           />
 
           {/* 5e — Refi Economics */}
@@ -661,7 +674,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
                 <thead>
                   <tr style={{ background: BT.bg.header }}>
-                    {['Metric', 'Going-In', 'Stab', 'Exit', 'Submarket'].map(h => (
+                    {['Metric', 'Going-In', 'Stab', 'Exit', 'Submarket', 'Pctile'].map(h => (
                       <th key={h} style={{ padding: '2px 6px', textAlign: 'right', fontSize: 8, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, fontWeight: 600 }}>{h}</th>
                     ))}
                   </tr>
@@ -681,6 +694,9 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
                       {ret.valuation.perUnit.submarketMedian != null ? `$${ret.valuation.perUnit.submarketMedian.toLocaleString()}` : '—'}
                     </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
+                      {ret.valuation.perUnit.percentile != null ? `${ret.valuation.perUnit.percentile}p` : '—'}
+                    </td>
                   </tr>
                   <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                     <td style={{ padding: '3px 6px', color: BT.text.secondary }}>$/NR SF</td>
@@ -693,6 +709,9 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                     </td>
                     <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
                       {ret.valuation.perSF.netRentable.submarketMedian != null ? `$${ret.valuation.perSF.netRentable.submarketMedian.toFixed(0)}` : '—'}
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
+                      {ret.valuation.perSF.netRentable.percentile != null ? `${ret.valuation.perSF.netRentable.percentile}p` : '—'}
                     </td>
                   </tr>
                 </tbody>
@@ -756,53 +775,87 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                 </div>
               )}
 
-              {/* Position Matrix 2×2 */}
+              {/* Position Matrix — scatter-dot visualization */}
               <div style={{ padding: '4px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>POSITION MATRIX  (Price/SF vs Cap Rate)</span>
               </div>
               {(() => {
                 const pm = ret.valuation.positionMatrix;
                 const qLabels: Record<string, { label: string; color: string; desc: string }> = {
-                  value_buy:        { label: 'VALUE BUY', color: BT.text.green, desc: 'Low $/SF + High Cap — the sweet spot' },
-                  suspicious:       { label: 'SUSPICIOUS', color: BT.text.amber, desc: 'Low $/SF + Low Cap — why is yield low?' },
-                  distressed_trophy: { label: 'DISTRESSED TROPHY', color: BT.text.amber, desc: 'High $/SF + High Cap — premium asset, broken ops' },
-                  trophy:            { label: 'TROPHY', color: BT.text.muted, desc: 'High $/SF + Low Cap — premium pricing' },
+                  value_buy:          { label: 'VALUE BUY', color: BT.text.green, desc: 'Low $/SF + High Cap — the sweet spot' },
+                  suspicious:         { label: 'SUSPICIOUS', color: BT.text.amber, desc: 'Low $/SF + Low Cap — why is yield compressed?' },
+                  distressed_trophy:  { label: 'DISTRESSED TROPHY', color: BT.text.amber, desc: 'High $/SF + High Cap — premium asset, broken ops' },
+                  trophy:             { label: 'TROPHY', color: BT.text.muted, desc: 'High $/SF + Low Cap — premium pricing' },
                 };
                 const q = pm.quadrant ? qLabels[pm.quadrant] : null;
+
+                // Scatter plot axes: X = Price/SF (0→500), Y = Cap Rate (0→10%)
+                // We use a 140×100px canvas-like SVG
+                const W = 140; const H = 100;
+                const PAD = { l: 20, b: 14, r: 6, t: 6 };
+                const plotW = W - PAD.l - PAD.r;
+                const plotH = H - PAD.t - PAD.b;
+                const sfThreshold = 200; const capThreshold = 0.055;
+                // Normalize SF (0–500) and cap rate (0–0.12) to plot coords
+                const toX = (sf: number) => PAD.l + Math.min(1, sf / 500) * plotW;
+                const toY = (cap: number) => PAD.t + plotH - Math.min(1, cap / 0.12) * plotH;
+
+                // Threshold lines in plot coords
+                const threshX = toX(sfThreshold);
+                const threshY = toY(capThreshold);
+
+                // Deal dot
+                const dealX = pm.priceSF != null ? toX(pm.priceSF) : null;
+                const dealY = pm.capRate != null ? toY(pm.capRate) : null;
+
                 return (
                   <div style={{ padding: '8px 10px' }}>
                     {q && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: q.color }}>{q.label}</div>
-                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 2 }}>{q.desc}</div>
+                      <div style={{ marginBottom: 6 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: q.color }}>{q.label}</span>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 1 }}>{q.desc}</div>
                       </div>
                     )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, fontSize: 8, fontFamily: MONO }}>
-                      {[
-                        { k: 'value_buy', l: 'VALUE BUY', hint: 'Low$/High Cap' },
-                        { k: 'suspicious', l: 'SUSPICIOUS', hint: 'Low$/Low Cap' },
-                        { k: 'distressed_trophy', l: 'DISTRESSED', hint: 'High$/High Cap' },
-                        { k: 'trophy', l: 'TROPHY', hint: 'High$/Low Cap' },
-                      ].map(cell => {
-                        const isActive = pm.quadrant === cell.k;
-                        const cellColor = cell.k === 'value_buy' ? BT.text.green : cell.k === 'trophy' ? BT.text.muted : BT.text.amber;
-                        return (
-                          <div key={cell.k} style={{
-                            padding: '4px 6px',
-                            background: isActive ? `${cellColor}20` : `${BT.text.muted}08`,
-                            border: isActive ? `1px solid ${cellColor}60` : `1px solid ${BT.border.subtle}`,
-                            borderRadius: 2, textAlign: 'center',
-                          }}>
-                            <div style={{ color: isActive ? cellColor : BT.text.muted, fontWeight: isActive ? 700 : 400 }}>{cell.l}</div>
-                            <div style={{ color: BT.text.muted, fontSize: 7 }}>{cell.hint}</div>
-                            {isActive && <div style={{ color: cellColor, fontSize: 7, marginTop: 2 }}>◀ this deal</div>}
-                          </div>
-                        );
-                      })}
-                    </div>
+                    {/* SVG scatter plot */}
+                    <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
+                      {/* Quadrant backgrounds */}
+                      <rect x={PAD.l} y={PAD.t} width={threshX - PAD.l} height={threshY - PAD.t} fill={`${BT.text.amber}10`} />
+                      <rect x={threshX} y={PAD.t} width={PAD.l + plotW - threshX} height={threshY - PAD.t} fill={`${BT.text.muted}08`} />
+                      <rect x={PAD.l} y={threshY} width={threshX - PAD.l} height={PAD.t + plotH - threshY} fill={`${BT.text.green}12`} />
+                      <rect x={threshX} y={threshY} width={PAD.l + plotW - threshX} height={PAD.t + plotH - threshY} fill={`${BT.text.amber}08`} />
+                      {/* Axes */}
+                      <line x1={PAD.l} y1={PAD.t} x2={PAD.l} y2={PAD.t + plotH} stroke={BT.border.subtle} strokeWidth={0.5} />
+                      <line x1={PAD.l} y1={PAD.t + plotH} x2={PAD.l + plotW} y2={PAD.t + plotH} stroke={BT.border.subtle} strokeWidth={0.5} />
+                      {/* Threshold lines */}
+                      <line x1={threshX} y1={PAD.t} x2={threshX} y2={PAD.t + plotH} stroke={BT.text.muted} strokeWidth={0.5} strokeDasharray="2,2" />
+                      <line x1={PAD.l} y1={threshY} x2={PAD.l + plotW} y2={threshY} stroke={BT.text.muted} strokeWidth={0.5} strokeDasharray="2,2" />
+                      {/* Quadrant labels */}
+                      <text x={PAD.l + 2} y={PAD.t + 9} fill={BT.text.green} fontSize={5} fontFamily="monospace">VALUE</text>
+                      <text x={threshX + 2} y={PAD.t + 9} fill={BT.text.muted} fontSize={5} fontFamily="monospace">TROPHY</text>
+                      <text x={PAD.l + 2} y={PAD.t + plotH - 3} fill={BT.text.amber} fontSize={5} fontFamily="monospace">SUSP.</text>
+                      <text x={threshX + 2} y={PAD.t + plotH - 3} fill={BT.text.amber} fontSize={5} fontFamily="monospace">DISTRESSED</text>
+                      {/* Axis labels */}
+                      <text x={PAD.l + plotW / 2} y={H - 1} fill={BT.text.muted} fontSize={5} textAnchor="middle" fontFamily="monospace">$/SF →</text>
+                      <text x={4} y={PAD.t + plotH / 2} fill={BT.text.muted} fontSize={5} textAnchor="middle" transform={`rotate(-90,4,${PAD.t + plotH / 2})`} fontFamily="monospace">Cap%↑</text>
+                      {/* Comp dots */}
+                      {pm.comps.map((c, i) => (
+                        <circle key={i} cx={toX(c.priceSF)} cy={toY(c.capRate)} r={2.5} fill={BT.text.muted} opacity={0.5} />
+                      ))}
+                      {/* Deal dot */}
+                      {dealX != null && dealY != null && (
+                        <>
+                          <circle cx={dealX} cy={dealY} r={4} fill={q ? q.color : BT.text.cyan} opacity={0.9} />
+                          <text x={dealX + 5} y={dealY + 4} fill={q ? q.color : BT.text.cyan} fontSize={6} fontFamily="monospace">THIS DEAL</text>
+                        </>
+                      )}
+                      {/* Placeholder cross when no data */}
+                      {dealX == null && (
+                        <text x={PAD.l + plotW / 2} y={PAD.t + plotH / 2 + 3} fill={BT.text.muted} fontSize={7} textAnchor="middle" fontFamily="monospace">no $/SF data</text>
+                      )}
+                    </svg>
                     {pm.priceSF != null && (
-                      <div style={{ marginTop: 6, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-                        Deal: ${pm.priceSF.toFixed(0)}/SF · {pm.capRate != null ? fmtCap(pm.capRate) : '—'} cap
+                      <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 2 }}>
+                        Deal: ${pm.priceSF.toFixed(0)}/SF · {pm.capRate != null ? fmtCap(pm.capRate) : '—'} cap · threshold $200/SF / 5.5%
                       </div>
                     )}
                   </div>
