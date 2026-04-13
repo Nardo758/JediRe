@@ -228,6 +228,49 @@ function setComment(ws: XLSX.WorkSheet, cellAddr: string, text: string): void {
   (ws[cellAddr].c as Array<{ a: string; t: string }>).push({ a: 'JediRE F9', t: text });
 }
 
+// ─── Cell style helpers ──────────────────────────────────────────────────
+// Color semantics (standard Excel audit convention):
+//   Black = hardcoded input value  (default cell)
+//   Blue  = formula / computed     (0070C0)
+//   Green = M07-linked / traffic   (00B050)
+
+type CellStyle = {
+  font?: { bold?: boolean; color?: { rgb: string }; sz?: number; name?: string };
+  fill?: { fgColor?: { rgb: string }; patternType?: string };
+  border?: {
+    top?: { style: string; color: { rgb: string } };
+    bottom?: { style: string; color: { rgb: string } };
+  };
+  alignment?: { horizontal?: string; vertical?: string };
+  numFmt?: string;
+};
+
+function styleCell(ws: XLSX.WorkSheet, cellAddr: string, s: CellStyle): void {
+  if (!ws[cellAddr]) ws[cellAddr] = { v: '', t: 's' };
+  ws[cellAddr].s = s;
+}
+
+function styleRow(
+  ws: XLSX.WorkSheet,
+  rowIdx: number,
+  numCols: number,
+  s: CellStyle,
+): void {
+  for (let c = 0; c <= numCols; c++) {
+    styleCell(ws, addr(rowIdx, c), s);
+  }
+}
+
+// Styles
+const S = {
+  title:   { font: { bold: true, sz: 12, name: 'Calibri', color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F1319' }, patternType: 'solid' } },
+  header:  { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1B2A4A' }, patternType: 'solid' }, alignment: { horizontal: 'center' } },
+  section: { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: 'F5A623' } }, fill: { fgColor: { rgb: '0F1319' }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: '2A3A5A' } } } },
+  formula: { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: '0070C0' } }, border: { top: { style: 'thin', color: { rgb: '2A3A5A' } }, bottom: { style: 'double', color: { rgb: '2A3A5A' } } } },
+  linked:  { font: { sz: 10, name: 'Calibri', color: { rgb: '00B050' } } },
+  input:   { font: { sz: 10, name: 'Calibri', color: { rgb: '000000' } } },
+} as const;
+
 // ─── Sheet builders ──────────────────────────────────────────────────────────
 
 // Row index constants (0-based array index → Excel row = idx + 1)
@@ -471,17 +514,51 @@ function buildProFormaSheet(
     e: { r: totalRows - 1, c: N },
   });
 
+  // ── Apply cell styles (black=input, blue=formula, green=M07-linked) ──────
+  styleRow(ws, R.TITLE,   N, S.title);
+  styleRow(ws, R.SUBTITLE, N, S.title);
+  styleRow(ws, R.HDRS,    N, S.header);
+
+  // Section headers
+  for (const secRow of [14, 32, 40, 47]) {
+    styleRow(ws, secRow, N, S.section);
+  }
+  // REVENUE header (implied in row 4 as GPR title context — add explicit marker at row 3.5)
+  // Instead, style the section above GPR via a header in row 4-1:
+  // GPR section = row before R.GPR. Since R.HDRS=3 and R.GPR=4, we style GPR row label in section color
+  styleCell(ws, addr(R.GPR, 0), S.section);
+
+  // Formula/total rows (blue): NRI, EGI, TOPEX, NOI, TOTALDS, CFBT, NETSALE
+  for (const fRow of [R.NRI, R.EGI, R.TOPEX, R.NOI, R.TOTALDS, R.CFBT, R.NETSALE]) {
+    for (let c = 0; c <= N; c++) {
+      styleCell(ws, addr(fRow, c), S.formula);
+    }
+  }
+
+  // Traffic-linked rows (green): Vacancy comes from M07
+  for (let c = 1; c <= N; c++) {
+    const yr = c;
+    const tvYr = f.trafficProjection?.yearly.find(t => t.year === yr);
+    if (tvYr?.vacancyPct != null) {
+      styleCell(ws, addr(R.VAC, c), S.linked);
+    }
+  }
+
   return ws;
 }
 
 function buildTrafficSheet(f: DealFinancials, holdYears: number): XLSX.WorkSheet {
   const yearly = f.trafficProjection?.yearly ?? [];
+  // T07 is a scalar from leasingSignals; repeated across all years to satisfy per-year column requirement
+  const t07Scalar = f.trafficProjection?.leasingSignals?.t07LeaseUpWeeksTo95 ?? null;
+
   const aoa: (string | number | null)[][] = [
-    ['Traffic Projection — M07 Engine', null, null, null, null, null, null, null],
+    ['Traffic Projection — M07 Engine', null, null, null, null, null, null, null, null],
     [`Deal: ${f.dealName}  |  ${f.totalUnits} Units  |  Hold: ${holdYears} Yrs  |  Generated: ${new Date().toLocaleDateString()}`],
     [],
+    // T07 column added per-year (repeats scalar value; per-year trajectory not yet in M07 output)
     ['Year', 'Occupancy %', 'Vacancy %', 'Eff Rent/Mo', 'Rent Growth %',
-     'T01 Weekly Tours', 'T05 Closing Ratio', 'T06 Weekly Leases'],
+     'T01 Weekly Tours', 'T05 Closing Ratio', 'T06 Weekly Leases', 'T07 Lease-Up Wks (to 95%)'],
     ...Array.from({ length: holdYears }, (_, i) => {
       const yr = i + 1;
       const tv = yearly.find(t => t.year === yr);
@@ -494,6 +571,7 @@ function buildTrafficSheet(f: DealFinancials, holdYears: number): XLSX.WorkSheet
         tv?.t01WeeklyTours ?? null,
         tv?.t05ClosingRatio ?? null,
         tv?.t06WeeklyLeases ?? null,
+        t07Scalar,   // scalar, repeated per year (trajectory data not available per-year)
       ];
     }),
     [],
@@ -507,7 +585,7 @@ function buildTrafficSheet(f: DealFinancials, holdYears: number): XLSX.WorkSheet
     ['T01 Weekly Tours', f.trafficProjection?.leasingSignals?.t01WeeklyTours ?? null],
     ['T05 Closing Ratio', f.trafficProjection?.leasingSignals?.t05ClosingRatio ?? null],
     ['T06 Weekly Leases', f.trafficProjection?.leasingSignals?.t06WeeklyLeases ?? null],
-    ['T07 Lease-Up to 95% (wks)', f.trafficProjection?.leasingSignals?.t07LeaseUpWeeksTo95 ?? null],
+    ['T07 Lease-Up to 95% (wks)', t07Scalar],
     ['Stabilized Occupancy', f.trafficProjection?.leasingSignals?.stabilizedOccupancyPct ?? null],
     ['Model Confidence', f.trafficProjection?.leasingSignals?.confidence != null
       ? `${f.trafficProjection.leasingSignals.confidence}%` : '—'],
@@ -517,8 +595,15 @@ function buildTrafficSheet(f: DealFinancials, holdYears: number): XLSX.WorkSheet
   ws['!cols'] = [
     { wch: 24 },
     { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-    { wch: 18 }, { wch: 18 }, { wch: 18 },
+    { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 24 },
   ];
+
+  // ── Apply styles to traffic sheet ────────────────────────────────────────
+  const numDataCols = 8;
+  styleRow(ws, 0, numDataCols, S.title);
+  styleRow(ws, 1, numDataCols, S.title);
+  styleRow(ws, 3, numDataCols, S.header);
+
   return ws;
 }
 

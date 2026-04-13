@@ -22,8 +22,25 @@ import { buildF9Workbook } from '../../services/f9-financial-export.service';
 const router = Router();
 
 // ─── Narrative cache (24h per deal) ──────────────────────────────────────────
+// Two-layer cache: in-memory (fast) + DB (persistent across restarts)
 const narrativeCache = new Map<string, { text: string | null; generatedAt: number }>();
 const NARRATIVE_TTL_MS = 24 * 60 * 60 * 1000;
+
+let narrativeColsMigrated = false;
+
+async function ensureNarrativeColumns(): Promise<void> {
+  if (narrativeColsMigrated) return;
+  try {
+    await pool.query(`
+      ALTER TABLE deal_assumptions
+        ADD COLUMN IF NOT EXISTS narrative_text TEXT,
+        ADD COLUMN IF NOT EXISTS narrative_generated_at TIMESTAMPTZ
+    `);
+    narrativeColsMigrated = true;
+  } catch (err: unknown) {
+    logger.warn('Could not ensure narrative columns (non-fatal):', err);
+  }
+}
 const pool = getPool();
 
 router.get('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -521,21 +538,63 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
     const { dealId } = req.params;
     const forceRefresh = req.query.refresh === 'true';
     const now = Date.now();
-    const cached = narrativeCache.get(dealId);
 
-    if (!forceRefresh && cached && (now - cached.generatedAt) < NARRATIVE_TTL_MS) {
+    // ── Layer 1: in-memory cache ──────────────────────────────────────────
+    const memCached = narrativeCache.get(dealId);
+    if (!forceRefresh && memCached && (now - memCached.generatedAt) < NARRATIVE_TTL_MS) {
       return res.json({
         success: true,
         data: {
-          narrative: cached.text,
-          cachedAt: new Date(cached.generatedAt).toISOString(),
+          narrative: memCached.text,
+          cachedAt: new Date(memCached.generatedAt).toISOString(),
+          source: 'memory',
           fresh: false,
         },
       });
     }
 
-    const data = await getDealFinancials(pool, dealId, 10);
+    // ── Layer 2: DB cache (persisted across restarts) ─────────────────────
+    await ensureNarrativeColumns();
+    if (!forceRefresh) {
+      const dbRow = await pool.query<{
+        narrative_text: string | null;
+        narrative_generated_at: Date | null;
+      }>(
+        `SELECT narrative_text, narrative_generated_at
+           FROM deal_assumptions
+          WHERE deal_id = $1`,
+        [dealId],
+      );
+      if (dbRow.rows.length > 0 && dbRow.rows[0].narrative_generated_at != null) {
+        const dbAge = now - dbRow.rows[0].narrative_generated_at.getTime();
+        if (dbAge < NARRATIVE_TTL_MS) {
+          const text = dbRow.rows[0].narrative_text;
+          narrativeCache.set(dealId, { text, generatedAt: dbRow.rows[0].narrative_generated_at.getTime() });
+          return res.json({
+            success: true,
+            data: {
+              narrative: text,
+              cachedAt: dbRow.rows[0].narrative_generated_at.toISOString(),
+              source: 'db',
+              fresh: false,
+            },
+          });
+        }
+      }
+    }
+
+    // ── Layer 3: generate fresh via M07 signal synthesis ──────────────────
+    const data     = await getDealFinancials(pool, dealId, 10);
     const narrative = data.assumptions.narrative;
+
+    // Persist to DB (UPDATE only — INSERT is owned by seedProFormaYear1)
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET narrative_text = $2, narrative_generated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, narrative],
+    );
+
     narrativeCache.set(dealId, { text: narrative, generatedAt: now });
 
     res.json({
@@ -543,6 +602,7 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
       data: {
         narrative,
         cachedAt: new Date(now).toISOString(),
+        source: 'fresh',
         fresh: true,
       },
     });

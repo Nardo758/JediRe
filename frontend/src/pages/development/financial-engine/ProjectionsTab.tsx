@@ -508,10 +508,12 @@ export function ProjectionsTab({
   );
   const [showGprDecomp, setShowGprDecomp]   = useState(true);
   const [showFindings,  setShowFindings]    = useState(true);
-  const [financials,    setFinancials]      = useState<DealFinancials | null>(null);
-  const [loading,       setLoading]         = useState(false);
-  const [error,         setError]           = useState<string | null>(null);
-  const [exporting,     setExporting]       = useState(false);
+  const [financials,      setFinancials]      = useState<DealFinancials | null>(null);
+  const [loading,         setLoading]         = useState(false);
+  const [error,           setError]           = useState<string | null>(null);
+  const [exporting,       setExporting]       = useState(false);
+  const [narrative,       setNarrative]       = useState<string | null>(null);
+  const [narrativeLoading,setNarrativeLoading]= useState(false);
 
   const loadFinancials = useCallback(async () => {
     if (!dealId) return;
@@ -535,7 +537,24 @@ export function ProjectionsTab({
     }
   }, [dealId, timeline]);
 
+  const loadNarrative = useCallback(async () => {
+    if (!dealId) return;
+    setNarrativeLoading(true);
+    try {
+      const res = await apiClient.get<{
+        success: boolean;
+        data: { narrative: string | null; cachedAt: string; source: string; fresh: boolean };
+      }>(`/api/v1/deals/${dealId}/financials/narrative`);
+      setNarrative(res.data?.data?.narrative ?? null);
+    } catch {
+      // Non-fatal: narrative panel simply stays hidden
+    } finally {
+      setNarrativeLoading(false);
+    }
+  }, [dealId]);
+
   useEffect(() => { loadFinancials(); }, [loadFinancials]);
+  useEffect(() => { loadNarrative(); }, [loadNarrative]);
 
   const holdYears  = financials
     ? Math.min(timeline, financials.assumptions.holdYears || timeline)
@@ -586,7 +605,7 @@ export function ProjectionsTab({
   const years    = Array.from({ length: colCount }, (_, i) => i + 1);
 
   const hasGprDecomp = financials?.assumptions.gprDecomposition != null;
-  const hasNarrative = financials?.assumptions.narrative != null;
+  const hasNarrative = narrative != null && narrative.length > 0;
   const integrityChecks = financials?.proforma.integrityChecks ?? [];
 
   return (
@@ -830,8 +849,8 @@ export function ProjectionsTab({
       </div>
 
       {/* ── AI Findings ───────────────────────────────────────────────────── */}
-      {showFindings && hasNarrative && (
-        <FindingsPanel narrative={financials!.assumptions.narrative!} />
+      {showFindings && (narrativeLoading || hasNarrative) && (
+        <FindingsPanel narrative={narrativeLoading ? '…loading AI analysis…' : narrative!} />
       )}
     </div>
   );
