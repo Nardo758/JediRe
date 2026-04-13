@@ -407,7 +407,8 @@ function buildDrilldown(
       const base = f?.taxes?.incomeTax?.depreciableBase;
       entries.push({ label: 'Depreciable Base', value: base != null ? fmt$(base) : '—', sourceTab: 'TAXES', tabIndex: 4, formula: 'purchasePrice × (1 − landValuePct)' });
       entries.push({ label: 'Annual Depreciation (39yr)', value: depr != null ? fmt$(depr) : '—', sourceTab: 'TAXES', tabIndex: 4 });
-      entries.push({ label: 'Effective Tax Rate', value: '37.00%', sourceTab: 'TAXES', tabIndex: 4, formula: 'Blended federal + state estimate' });
+      const mtr = f?.taxes?.incomeTax?.marginalTaxRate;
+      entries.push({ label: 'Effective Tax Rate', value: mtr != null ? `${(mtr * 100).toFixed(2)}%` : '37.00%', sourceTab: 'TAXES', tabIndex: 4, formula: 'Sourced from taxes.incomeTax.marginalTaxRate' });
       break;
     }
     case 'noi': {
