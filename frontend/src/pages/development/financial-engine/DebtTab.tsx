@@ -131,24 +131,32 @@ export function DebtTab({ dealId, deal, assumptions, modelResults, f9Financials 
         }}>{showAmort ? 'HIDE' : 'SHOW'} SCHEDULE</button>
       </div>
 
-      {/* F8 wiring: F9 debt metrics — DSCR, debt yield, LTV, implied cap */}
+      {/* F8 wiring: F9 debt metrics — derived from NOI + purchase price + loan (not pre-computed) */}
       {f9Financials && (() => {
         const noi    = f9Financials.proforma.year1.find(r => r.field === 'noi')?.resolved ?? null;
         const pp     = f9Financials.capitalStack.purchasePrice;
         const loan   = f9Financials.capitalStack.loanAmount;
-        const dscr   = f9Financials.capitalStack.dscrMin;
-        const ltv    = f9Financials.capitalStack.ltcPct;
+        const rate   = f9Financials.capitalStack.interestRate ?? 0.07;
+        // Derive annual debt service from loan + rate (IO assumption for DSCR derivation)
+        const annualDS = loan != null ? loan * rate : null;
+        // DSCR: NOI / Annual Debt Service (derived — not read from pre-computed dscrMin)
+        const derivedDscr = noi != null && annualDS != null && annualDS > 0 ? noi / annualDS : null;
+        // LTV: Loan / Purchase Price (derived — not read from pre-computed ltcPct)
+        const derivedLtv = loan != null && pp != null && pp > 0 ? loan / pp : f9Financials.capitalStack.ltcPct;
+        // Debt yield: NOI / Loan
         const debtYield = noi != null && loan != null && loan > 0 ? noi / loan : null;
+        // Implied cap rate: NOI / Purchase Price
         const impliedCap = noi != null && pp != null && pp > 0 ? noi / pp : null;
+        const equity = loan != null && pp != null ? pp - loan : null;
         return (
           <div style={{ padding: '6px 10px', background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
-            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>F9 DEBT METRICS · M07 CALIBRATED</div>
-            <div style={{ display: 'flex', gap: 12 }}>
-              {dscr != null && <span style={{ fontFamily: MONO, fontSize: 9, color: dscr >= 1.25 ? BT.met.financial : BT.text.red }}>DSCR {dscr.toFixed(2)}×</span>}
-              {ltv != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>LTV {fmtPct(ltv * 100)}</span>}
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>F9 DEBT METRICS · DERIVED FROM NOI + CAPITAL STACK</div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {derivedDscr != null && <span style={{ fontFamily: MONO, fontSize: 9, color: derivedDscr >= 1.25 ? BT.met.financial : BT.text.red }}>DSCR {derivedDscr.toFixed(2)}× (derived)</span>}
+              {derivedLtv != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>LTV {fmtPct(derivedLtv * 100)} (derived)</span>}
               {debtYield != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>DEBT YIELD {fmtPct(debtYield * 100)}</span>}
               {impliedCap != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>IMPLIED CAP {fmtPct(impliedCap * 100)}</span>}
-              {noi != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>NOI {fmt$(noi)}</span>}
+              {equity != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>EQUITY {fmt$(equity)}</span>}
             </div>
           </div>
         );

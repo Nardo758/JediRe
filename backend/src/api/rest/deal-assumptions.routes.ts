@@ -4,6 +4,7 @@
  * Endpoints for managing deal underwriting assumptions
  */
 
+import axios from 'axios';
 import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -18,6 +19,11 @@ import * as XLSX from 'xlsx';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
 import { buildF9Workbook } from '../../services/f9-financial-export.service';
+
+// ─── AI Coordinator config ────────────────────────────────────────────────────
+const ANTHROPIC_API_KEY  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+const CLAUDE_MODEL       = 'claude-sonnet-4-5';
 
 const router = Router();
 
@@ -39,6 +45,67 @@ interface NarrativeCacheEntry {
 // Two-layer cache: in-memory (fast) + DB (persistent across restarts)
 const narrativeCache = new Map<string, NarrativeCacheEntry>();
 const NARRATIVE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * AI Coordinator: generates a structured narrative for a deal using Claude.
+ * Returns null if the API key is not set (graceful degradation).
+ */
+async function generateAiNarrative(
+  data: Awaited<ReturnType<typeof getDealFinancials>>,
+  blocks: NarrativeBlock[],
+): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) {
+    logger.warn('AI_INTEGRATIONS_ANTHROPIC_API_KEY not set — narrative will be block-derived only');
+    return null;
+  }
+  try {
+    const cs  = data.capitalStack;
+    const tp  = data.trafficProjection;
+    const ass = data.assumptions;
+    const gpr = ass.gprDecomposition;
+
+    const context = [
+      `Deal: ${data.dealName} | ${data.totalUnits} units`,
+      cs.purchasePrice != null ? `Purchase Price: $${(cs.purchasePrice / 1e6).toFixed(2)}M` : '',
+      cs.loanAmount    != null ? `Loan: $${(cs.loanAmount / 1e6).toFixed(2)}M` : '',
+      ass.exitCap      != null ? `Assumed Exit Cap: ${(ass.exitCap * 100).toFixed(2)}%` : '',
+      tp?.calibrated.exitCap != null ? `M07 Platform Exit Cap: ${(tp.calibrated.exitCap * 100).toFixed(2)}%` : '',
+      ass.rentGrowthYr1 != null ? `Assumed Yr-1 Rent Growth: ${(ass.rentGrowthYr1 * 100).toFixed(2)}%` : '',
+      tp?.calibrated.rentGrowthPct != null ? `M07 Rent Growth: ${(tp.calibrated.rentGrowthPct * 100).toFixed(2)}%` : '',
+      gpr?.brokerPerUnitMo != null ? `Broker GPR: $${gpr.brokerPerUnitMo.toFixed(0)}/unit/mo` : '',
+      gpr?.platformPerUnitMo != null ? `Platform GPR: $${gpr.platformPerUnitMo.toFixed(0)}/unit/mo` : '',
+      tp?.leasingSignals?.confidence != null ? `M07 Confidence: ${tp.leasingSignals.confidence.toFixed(0)}%` : '',
+    ].filter(Boolean).join('\n');
+
+    const blockSummaries = blocks.map(b => `[${b.status.toUpperCase()}] ${b.label}: ${b.summary}`).join('\n');
+
+    const response = await axios.post(
+      `${ANTHROPIC_BASE_URL}/v1/messages`,
+      {
+        model: CLAUDE_MODEL,
+        max_tokens: 400,
+        temperature: 0.2,
+        system: 'You are JediRE F9 Financial Intelligence. Write a concise 2-3 sentence deal intelligence summary for a real estate underwriter. Be specific about numbers. Use financial professional language. Do not use bullet points.',
+        messages: [{
+          role: 'user',
+          content: `Synthesize the following deal signals into a 2-3 sentence intelligence narrative:\n\n${context}\n\nStructured findings:\n${blockSummaries}`,
+        }],
+      },
+      {
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        timeout: 20000,
+      },
+    );
+    return (response.data?.content?.[0]?.text as string | undefined) ?? null;
+  } catch (err: unknown) {
+    logger.warn('AI Coordinator narrative generation failed (non-fatal):', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
 
 let narrativeColsMigrated = false;
 
@@ -722,13 +789,13 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
       }
     }
 
-    // ── Layer 3: fresh derivation from DealFinancials ─────────────────────
+    // ── Layer 3: fresh derivation + AI Coordinator narrative ──────────────
     const data   = await getDealFinancials(pool, dealId, 10);
     const blocks = buildNarrativeBlocks(data);
-    // Plain text: blocks summaries joined with separator
-    const narrative = blocks.length > 0
-      ? blocks.map(b => b.summary).join(' · ')
-      : data.assumptions.narrative;
+    // AI Coordinator: generate rich narrative text; falls back to block-derived text if unavailable
+    const aiText = await generateAiNarrative(data, blocks);
+    const narrative = aiText
+      ?? (blocks.length > 0 ? blocks.map(b => b.summary).join(' · ') : data.assumptions.narrative);
 
     // Persist to DB (non-blocking — fire-and-forget)
     pool.query(

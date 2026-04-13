@@ -1,76 +1,21 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { BT, Bd } from '../../../components/deal/bloomberg-ui';
-import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
+import type {
+  FinancialEngineTabProps, F9NarrativeBlock,
+  F9DealFinancials, F9TrafficYear, F9GprDecomposition, F9ProFormaRow, F9IntegrityCheck,
+} from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
 
-// ─── Backend contract (mirrors proforma-adjustment.service.ts) ────────────
-interface OSRow {
-  field: string; label: string;
-  broker: number|null; platform: number|null; t12: number|null;
-  rentRoll: number|null; taxBill: number|null;
-  resolved: number|null; resolution: string|null; perUnit: number|null;
-}
-interface IntegrityCheckItem {
-  id: string;
-  status: 'ok' | 'warn' | 'error';
-  message: string;
-  detail?: Record<string, unknown>;
-}
-interface TrafficYear {
-  year: number; vacancyPct: number|null; occupancyPct: number|null;
-  effRent: number|null; rentGrowthPct: number|null;
-  t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null;
-}
-interface GprDecomposition {
-  brokerAnnual: number|null; platformAnnual: number|null; t12Annual: number|null;
-  rentRollAnnual: number|null; resolvedAnnual: number|null;
-  brokerPerUnitMo: number|null; platformPerUnitMo: number|null;
-  t12PerUnitMo: number|null; resolvedPerUnitMo: number|null;
-}
-interface DealFinancials {
-  dealId: string; dealName: string; totalUnits: number;
-  proforma: {
-    year1: OSRow[];
-    integrityChecks: IntegrityCheckItem[];
-    unitEconomics: Record<string, number|null>;
-  };
-  capitalStack: {
-    purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null;
-    ltcPct: number|null; interestRate: number|null; ioPeriodMonths: number|null;
-    amortizationYears: number|null; dscrMin: number|null;
-    originationFeePct: number|null; pricePerUnit: number|null;
-  };
-  rentRollSummary: { avgInPlaceRent: number|null; weightedOccupancyPct: number|null }|null;
-  trafficProjection: {
-    yearly: TrafficYear[];
-    leaseUp: { weeksTo90: number|null; weeksTo93: number|null; weeksTo95: number|null }|null;
-    calibrated: {
-      vacancyPct: number|null; rentGrowthPct: number|null;
-      exitCap: number|null; lastCalibrated: string|null;
-    };
-    leasingSignals: {
-      t01WeeklyTours: number|null; t05ClosingRatio: number|null;
-      t06WeeklyLeases: number|null; t07LeaseUpWeeksTo95: number|null;
-      stabilizedOccupancyPct: number|null; confidence: number|null;
-    }|null;
-  }|null;
-  assumptions: {
-    holdYears: number; exitCap: number|null; rentGrowthYr1: number|null;
-    rentGrowthStabilized: number|null;
-    perYear: Array<{
-      year: number; rentGrowthPct: number|null; vacancyPct: number|null;
-      exitCapIfLastYear: number|null;
-    }>;
-    gprDecomposition: GprDecomposition|null;
-    narrative: string|null;
-  };
-  userOverrides: Record<string, Record<number, number|null>>;
-  meta: { seeded: boolean; updatedAt: string|null };
-}
+// Type aliases — use shared types from types.ts (single source of truth)
+type DealFinancials     = F9DealFinancials;
+type TrafficYear        = F9TrafficYear;
+type GprDecomposition   = F9GprDecomposition;
+type OSRow              = F9ProFormaRow;
+type IntegrityCheckItem = F9IntegrityCheck;
 
 // API response envelope
 interface FinancialsApiResponse {

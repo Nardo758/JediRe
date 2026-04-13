@@ -37,16 +37,75 @@ const SEVERITY_COLORS = {
 
 export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const summary = modelResults?.summary;
-  // F10 wiring: merge F9 integrity check errors/warnings as additional risk flags
-  const f9Flags: RiskFlag[] = (f9Financials?.proforma.integrityChecks ?? [])
-    .filter(c => c.status !== 'ok')
-    .map(c => ({
-      severity: c.status === 'error' ? 'high' : 'medium' as 'high' | 'medium',
-      label: `INTEGRITY: ${c.id.toUpperCase().replace(/_/g, ' ')}`,
-      detail: c.message,
-    }));
+
+  // F10 wiring: benchmark-based risk flags from financials.assumptions vs M07 platform signals
+  const f9Flags: RiskFlag[] = [];
+  if (f9Financials) {
+    const ass = f9Financials.assumptions;
+    const tp  = f9Financials.trafficProjection;
+    const cs  = f9Financials.capitalStack;
+
+    // Integrity check failures → high/medium flags
+    for (const c of f9Financials.proforma.integrityChecks) {
+      if (c.status === 'ok') continue;
+      f9Flags.push({
+        severity: c.status === 'error' ? 'high' : 'medium',
+        label: `INTEGRITY: ${c.id.toUpperCase().replace(/_/g, ' ')}`,
+        detail: c.message,
+      });
+    }
+
+    // Rent growth divergence vs M07 platform calibration (benchmark comparison)
+    if (ass.rentGrowthYr1 != null && tp?.calibrated.rentGrowthPct != null) {
+      const delta = ass.rentGrowthYr1 - tp.calibrated.rentGrowthPct;
+      if (Math.abs(delta) > 0.01) {
+        f9Flags.push({
+          severity: delta > 0.02 ? 'high' : 'medium',
+          label: 'RENT GROWTH BENCHMARK DIVERGENCE',
+          detail: `Assumed Yr-1 rent growth (${fmtPct(ass.rentGrowthYr1 * 100)}) diverges ${delta > 0 ? '+' : ''}${fmtPct(delta * 100)} from M07 platform calibration (${fmtPct(tp.calibrated.rentGrowthPct * 100)})`,
+        });
+      }
+    }
+
+    // Exit cap divergence vs M07 platform calibration
+    if (ass.exitCap != null && tp?.calibrated.exitCap != null) {
+      const delta = ass.exitCap - tp.calibrated.exitCap;
+      if (Math.abs(delta) > 0.005) {
+        f9Flags.push({
+          severity: delta < -0.01 ? 'high' : 'medium',
+          label: 'EXIT CAP BENCHMARK DIVERGENCE',
+          detail: `Assumed exit cap (${fmtPct(ass.exitCap * 100)}) is ${delta > 0 ? '+' : ''}${fmtPct(delta * 100)} vs M07 calibration (${fmtPct(tp.calibrated.exitCap * 100)})${delta < 0 ? ' — aggressive compression assumed' : ''}`,
+        });
+      }
+    }
+
+    // Leverage risk: LTV > 75%
+    if (cs.ltcPct != null && cs.ltcPct > 0.75) {
+      f9Flags.push({
+        severity: cs.ltcPct > 0.80 ? 'high' : 'medium',
+        label: 'HIGH LEVERAGE',
+        detail: `LTC of ${fmtPct(cs.ltcPct * 100)} exceeds the ${cs.ltcPct > 0.80 ? '80%' : '75%'} institutional threshold — refinancing risk elevated`,
+      });
+    }
+
+    // Vacancy assumption vs M07 platform vacancy
+    const assumedVac = ass.perYear[0]?.vacancyPct;
+    const platformVac = tp?.calibrated.vacancyPct;
+    if (assumedVac != null && platformVac != null && Math.abs(assumedVac - platformVac) > 0.03) {
+      const delta = assumedVac - platformVac;
+      f9Flags.push({
+        severity: 'medium',
+        label: 'VACANCY ASSUMPTION DIVERGENCE',
+        detail: `Yr-1 assumed vacancy (${fmtPct(assumedVac * 100)}) differs ${delta > 0 ? '+' : ''}${fmtPct(delta * 100)} from M07 platform estimate (${fmtPct(platformVac * 100)})`,
+      });
+    }
+  }
+
   const baseFlags = deriveRiskFlags(assumptions, modelResults);
-  const flags = [...f9Flags, ...baseFlags.filter(f => f.label !== 'NO FLAGS' || f9Flags.length === 0)];
+  const flags = [
+    ...f9Flags,
+    ...baseFlags.filter(f => f.label !== 'NO FLAGS' || f9Flags.length === 0),
+  ];
   const highFlags = flags.filter(f => f.severity === 'high');
   const medFlags = flags.filter(f => f.severity === 'medium');
 

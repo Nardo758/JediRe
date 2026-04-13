@@ -251,6 +251,9 @@ export interface F9DealFinancials {
   meta: { seeded: boolean; updatedAt: string|null };
 }
 
+export type F9ProFormaRow = F9DealFinancials['proforma']['year1'][number];
+export type F9IntegrityCheck = F9DealFinancials['proforma']['integrityChecks'][number];
+
 export interface F9NarrativeBlock {
   id: string;
   label: string;
