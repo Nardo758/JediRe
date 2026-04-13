@@ -149,7 +149,7 @@ function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, or
     <div className="flex flex-col gap-0 overflow-auto">
       <div className="grid grid-cols-4 gap-px bg-[#1e1e1e] border-b border-[#1e1e1e]">
         {[
-          { label: 'LOAN AMOUNT',      value: fmtM(loanAmt),                   sub: fmt$(Math.round(loanAmt / (sched[0]?.noi ? 304 : 1))) + ' / unit' },
+          { label: 'LOAN AMOUNT',      value: fmtM(loanAmt),                   sub: fmt$(units > 0 ? Math.round(loanAmt / units) : loanAmt) + ' / unit' },
           { label: 'INTEREST RATE',    value: (rateAnn * 100).toFixed(2) + '%', sub: 'Annual rate · fixed' },
           { label: 'STRUCTURE',        value: `${ioYears}YR I/O → ${amortYrs}YR`,  sub: 'Senior fixed-rate' },
           { label: 'ORIGINATION FEE',  value: (origFee * 100).toFixed(2) + '%', sub: fmt$(Math.round(loanAmt * origFee)) + ' at close' },
@@ -551,15 +551,18 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     return buildDebtSchedule(loanAmt, rateAnn, amortYrs, ioYears, holdYears, noi1, noiGrowth, purchasePrice);
   }, [loanAmt, rateAnn, amortYrs, ioYears, holdYears, noi1, purchasePrice]);
 
-  const currentTax   = 825_558;
-  const assessedValue = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 26_000_000;
-  const millageRate  = 14.19;
-  const reassessAV   = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 26_000_000;
+  // RE tax: pull from assumptions data if available; 0 if unknown (do not hardcode)
+  const currentTax   = (a?.taxes?.currentReTax as number | null | undefined) ?? 0;
+  const assessedValue = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 0;
+  // Millage rate: pull from assumptions data; null if unknown (avoid county-specific hardcode)
+  const millageRate  = (a?.taxes?.millageRate as number | null | undefined) ?? null;
+  const reassessAV   = purchasePrice > 0 ? Math.round(purchasePrice * 0.40) : 0;
   const egi1         = noi1 * 1.3;
 
   const taxSchedule = useMemo(() => {
-    return buildTaxSchedule(currentTax, purchasePrice || 65_000_000, millageRate, 0.40, 0.04, egi1, units, holdYears);
-  }, [purchasePrice, egi1, units, holdYears]);
+    if (!millageRate) return [];
+    return buildTaxSchedule(currentTax, purchasePrice || 0, millageRate, 0.40, 0.04, egi1, units, holdYears);
+  }, [currentTax, purchasePrice, millageRate, egi1, units, holdYears]);
 
   const totalDS    = debtSchedule.reduce((s, r) => s + r.annualPayment, 0);
   const minDSCR    = debtSchedule.length > 0 ? Math.min(...debtSchedule.map(r => r.dscr)) : 0;
