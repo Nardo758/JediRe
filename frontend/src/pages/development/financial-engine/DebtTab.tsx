@@ -12,7 +12,7 @@ const MONO = BT.font.mono;
 const SOFR_FWD: number[] = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
 
 // ─── Loan type presets ────────────────────────────────────────────────────────
-type LoanPresetKey = 'Bridge' | 'Agency' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz';
+type LoanPresetKey = 'Bridge' | 'Agency' | 'FannieDUS' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz';
 
 interface LoanPreset {
   label: LoanPresetKey;
@@ -31,12 +31,13 @@ interface LoanPreset {
 }
 
 const LOAN_PRESETS: Record<LoanPresetKey, LoanPreset> = {
-  Bridge:  { label: 'Bridge',  rateType: 'Floating', rate: 0.085, spread: 0.035, term: 3,  amort: 0,  io: 36, origFee: 0.015, exitFee: 0.005, rateCapCost: 0.005, minDscr: 1.15, maxLtv: 0.80, prepayType: 'open' },
-  Agency:  { label: 'Agency',  rateType: 'Fixed',    rate: 0.055, spread: 0,     term: 10, amort: 30, io: 0,  origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.25, maxLtv: 0.75, prepayType: 'stepdown' },
-  CMBS:    { label: 'CMBS',    rateType: 'Fixed',    rate: 0.065, spread: 0,     term: 10, amort: 30, io: 24, origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.70, prepayType: 'defeasance' },
-  HUD:     { label: 'HUD',     rateType: 'Fixed',    rate: 0.045, spread: 0,     term: 35, amort: 35, io: 36, origFee: 0.008, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.87, prepayType: 'yield_maintenance' },
-  LifeCo:  { label: 'LifeCo',  rateType: 'Fixed',    rate: 0.048, spread: 0,     term: 15, amort: 30, io: 0,  origFee: 0.005, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.65, prepayType: 'yield_maintenance' },
-  Mezz:    { label: 'Mezz',    rateType: 'Floating', rate: 0.120, spread: 0.060, term: 3,  amort: 0,  io: 36, origFee: 0.020, exitFee: 0.010, rateCapCost: 0.008, minDscr: 1.10, maxLtv: 0.90, prepayType: 'open' },
+  Bridge:    { label: 'Bridge',    rateType: 'Floating', rate: 0.085, spread: 0.035, term: 3,  amort: 0,  io: 36, origFee: 0.015, exitFee: 0.005, rateCapCost: 0.005, minDscr: 1.15, maxLtv: 0.80, prepayType: 'open' },
+  Agency:    { label: 'Agency',    rateType: 'Fixed',    rate: 0.055, spread: 0,     term: 10, amort: 30, io: 0,  origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.25, maxLtv: 0.75, prepayType: 'stepdown' },
+  FannieDUS: { label: 'FannieDUS', rateType: 'Fixed',    rate: 0.054, spread: 0,     term: 10, amort: 30, io: 24, origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.25, maxLtv: 0.80, prepayType: 'yield_maintenance' },
+  CMBS:      { label: 'CMBS',      rateType: 'Fixed',    rate: 0.065, spread: 0,     term: 10, amort: 30, io: 24, origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.70, prepayType: 'defeasance' },
+  HUD:       { label: 'HUD',       rateType: 'Fixed',    rate: 0.045, spread: 0,     term: 35, amort: 35, io: 36, origFee: 0.008, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.87, prepayType: 'yield_maintenance' },
+  LifeCo:    { label: 'LifeCo',    rateType: 'Fixed',    rate: 0.048, spread: 0,     term: 15, amort: 30, io: 0,  origFee: 0.005, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.65, prepayType: 'yield_maintenance' },
+  Mezz:      { label: 'Mezz',      rateType: 'Floating', rate: 0.120, spread: 0.060, term: 3,  amort: 0,  io: 36, origFee: 0.020, exitFee: 0.010, rateCapCost: 0.008, minDscr: 1.10, maxLtv: 0.90, prepayType: 'open' },
 };
 
 // ─── Per-loan editable state ──────────────────────────────────────────────────
@@ -127,21 +128,40 @@ interface AnnualRow {
   covenantBreach: boolean;
 }
 
-function buildAmort(loanAmt: number, rate: number, termYrs: number, amortYrs: number, ioMo: number, annualNoi: number, minDscr: number): AmortRow[] {
+// sofrCurve: 5-element array of annual SOFR rates by year (e.g. [0.05, 0.0475, ...])
+// spread: credit spread added to SOFR for floating rate loans
+// isFloating: if true, uses sofrCurve[yearIdx] + spread per year; else uses constant rate
+function buildAmort(
+  loanAmt: number,
+  rate: number,
+  termYrs: number,
+  amortYrs: number,
+  ioMo: number,
+  annualNoi: number,
+  minDscr: number,
+  isFloating: boolean,
+  sofrCurve: number[],
+  spread: number,
+): AmortRow[] {
   const rows: AmortRow[] = [];
-  const mr = rate / 12;
   const totalMo = Math.min(termYrs * 12, 120);
   const amortMo = amortYrs * 12;
   const monthlyNoi = annualNoi / 12;
   let bal = loanAmt;
   for (let m = 1; m <= totalMo; m++) {
+    // For floating rate, pick SOFR from curve for this year-bucket + spread
+    const yearIdx = Math.min(Math.floor((m - 1) / 12), (sofrCurve.length || 1) - 1);
+    const annualRate = isFloating ? ((sofrCurve[yearIdx] ?? sofrCurve[0] ?? rate) + spread) : rate;
+    const mr = annualRate / 12;
     const isIO = m <= ioMo;
     const begBalance = bal;
     const interest = bal * mr;
     let principal = 0;
     let payment = interest;
     if (!isIO && amortMo > 0 && mr > 0) {
-      payment = (loanAmt * mr * Math.pow(1 + mr, amortMo)) / (Math.pow(1 + mr, amortMo) - 1);
+      // Use original loan and initial mr for fixed payment schedule, but re-compute for floating
+      const schedMr = isFloating ? mr : rate / 12;
+      payment = (loanAmt * schedMr * Math.pow(1 + schedMr, amortMo)) / (Math.pow(1 + schedMr, amortMo) - 1);
       principal = payment - interest;
     }
     bal = Math.max(0, bal - principal);
@@ -316,17 +336,36 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   ]);
   const [activeLoanId, setActiveLoanId] = useState<string>('senior');
 
-  // Hydrate from f9Loan0 on data arrival
+  // Hydrate from f9Debt.loans on data arrival — restores both senior and mezz from backend
   useEffect(() => {
-    if (!f9Loan0) return;
-    const key: LoanPresetKey = LOAN_PRESETS[f9Loan0.loanTypeLabel as LoanPresetKey] ? f9Loan0.loanTypeLabel as LoanPresetKey : 'Bridge';
-    setLoans(prev => prev.map(l => l.id !== 'senior' ? l : {
-      ...l,
-      loanTypeLabel: key,
-      rateType: f9Loan0.rateType,
-      sofrCurve: f9Loan0.sofrCurve?.length === 5 ? f9Loan0.sofrCurve : SOFR_FWD,
-    }));
-  }, [f9Loan0?.id]);
+    if (!f9Debt?.loans?.length) return;
+    setLoans(prev => {
+      const next = [...prev];
+      for (const f9L of f9Debt.loans) {
+        const key: LoanPresetKey = LOAN_PRESETS[f9L.loanTypeLabel as LoanPresetKey] ? f9L.loanTypeLabel as LoanPresetKey : (f9L.id === 'mezz' ? 'Mezz' : 'Bridge');
+        const existing = next.find(l => l.id === f9L.id);
+        if (existing) {
+          Object.assign(existing, {
+            loanTypeLabel: key,
+            rateType: f9L.rateType,
+            sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
+            prepayType: f9L.prepayType as PrepayType ?? existing.prepayType,
+          });
+        } else if (f9L.id === 'mezz') {
+          // Mezz loan persisted in backend — reconstruct it
+          const mPreset = LOAN_PRESETS.Mezz;
+          next.push({
+            ...makeLoanState('mezz', 'Mezz / B-Note', mPreset, f9L as F9DebtLoan, f9L.loanAmount.platform ?? 0),
+            loanTypeLabel: key,
+            rateType: f9L.rateType,
+            sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
+            prepayType: f9L.prepayType as PrepayType ?? mPreset.prepayType,
+          });
+        }
+      }
+      return next;
+    });
+  }, [f9Debt?.loans?.length]);
 
   const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];
   const preset = LOAN_PRESETS[activeLoan.loanTypeLabel];
@@ -351,8 +390,16 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const effLtc      = purchasePrice != null && purchasePrice > 0 ? effLoanAmt / purchasePrice : null;
   const effLtv      = purchasePrice != null && purchasePrice > 0 ? effLoanAmt / purchasePrice : null;
 
-  // Amortization
-  const amortRows = useMemo(() => buildAmort(effLoanAmt, effRate, effTerm, effAmort, effIO, typeof noi1 === 'number' ? noi1 : 0, effMinDscr), [effLoanAmt, effRate, effTerm, effAmort, effIO, noi1, effMinDscr]);
+  // Amortization — floating rate uses SOFR curve per year-bucket + spread
+  const effSpread = activeLoan.userSpread ?? f9ThisLoan?.spread.platform ?? preset.spread;
+  const amortRows = useMemo(() => buildAmort(
+    effLoanAmt, effRate, effTerm, effAmort, effIO,
+    typeof noi1 === 'number' ? noi1 : 0,
+    effMinDscr,
+    activeLoan.rateType === 'Floating',
+    activeLoan.sofrCurve,
+    effSpread,
+  ), [effLoanAmt, effRate, effTerm, effAmort, effIO, noi1, effMinDscr, activeLoan.rateType, activeLoan.sofrCurve, effSpread]);
   const annualRows = useMemo(() => buildAnnual(amortRows, typeof noi1 === 'number' ? noi1 : 0, rentGrowth, effMinDscr), [amortRows, noi1, rentGrowth, effMinDscr]);
 
   // Derived metrics
@@ -373,18 +420,28 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const ltvColor  = (v: number | null) => v == null ? BT.text.muted : v <= 0.60 ? BT.met.financial : v <= 0.70 ? BT.text.amber : BT.text.red;
 
   // ── Patch debounce ──────────────────────────────────────────────────────────
-  // field = "debt:{loanId}:{fieldName}" — routed to per_year_overrides via PATCH
+  // Numeric fields: "debt:{loanId}:{fieldName}" — fieldName must match backend debtOvr() aliases
+  // String fields:  "debt:{loanId}:{fieldName}" — routed to debtOvrStr() in backend
   const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const patchDebt = useCallback((loanId: string, fieldName: string, value: number | string | null) => {
+  const patchDebt = useCallback((loanId: string, fieldName: string, value: number | null) => {
     const key = `debt:${loanId}:${fieldName}`;
     clearTimeout(patchTimeouts.current[key]);
     patchTimeouts.current[key] = setTimeout(async () => {
       try {
-        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
-          field: key, year: 1, value: typeof value === 'string' ? null : value,
-        });
+        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field: key, year: 1, value });
         onF9Refresh?.();
-      } catch { /* non-fatal override failure */ }
+      } catch { /* non-fatal */ }
+    }, 600);
+  }, [dealId, onF9Refresh]);
+  // String fields use the same endpoint but value is sent as a JSON string
+  const patchDebtStr = useCallback((loanId: string, fieldName: string, value: string) => {
+    const key = `debt:${loanId}:${fieldName}`;
+    clearTimeout(patchTimeouts.current[key]);
+    patchTimeouts.current[key] = setTimeout(async () => {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field: key, year: 1, value, strValue: value });
+        onF9Refresh?.();
+      } catch { /* non-fatal */ }
     }, 600);
   }, [dealId, onF9Refresh]);
 
@@ -415,21 +472,31 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       userMinOcc: null,
       userMaxLtv: null,
     }));
-    // Persist loan type to backend so it survives page refresh
-    patchDebt(id, 'loanTypeLabel', null); // clear any old override; use null since strings not supported
-  }, [patchDebt]);
+    // Persist loan type, rate type, prepay type to backend
+    patchDebtStr(id, 'loanTypeLabel', key);
+    patchDebtStr(id, 'rateType', LOAN_PRESETS[key].rateType);
+    patchDebtStr(id, 'prepayType', LOAN_PRESETS[key].prepayType);
+  }, [patchDebtStr]);
 
   const addMezz = useCallback(() => {
     if (loans.find(l => l.id === 'mezz')) return;
-    setLoans(prev => [...prev, makeLoanState('mezz', 'Mezz / B-Note', LOAN_PRESETS.Mezz)]);
+    const p = LOAN_PRESETS.Mezz;
+    setLoans(prev => [...prev, makeLoanState('mezz', 'Mezz / B-Note', p)]);
     setActiveLoanId('mezz');
-  }, [loans]);
+    // Persist mezz loan defaults so it survives page refresh (backend includes mezz when loanAmount override exists)
+    patchDebt('mezz', 'loanAmount', 0);
+    patchDebtStr('mezz', 'loanTypeLabel', 'Mezz');
+    patchDebtStr('mezz', 'rateType', p.rateType);
+    patchDebtStr('mezz', 'prepayType', p.prepayType);
+  }, [loans, patchDebt, patchDebtStr]);
 
   const removeLoan = useCallback((id: string) => {
     if (id === 'senior') return;
     setLoans(prev => prev.filter(l => l.id !== id));
     setActiveLoanId('senior');
-  }, []);
+    // Clear the mezz loan amount override so backend no longer includes it in loans[]
+    patchDebt(id, 'loanAmount', null);
+  }, [patchDebt]);
 
   // ── Collapsed sections ──────────────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['amort']));
@@ -554,7 +621,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         {(['Fixed', 'Floating'] as const).map(rt => (
           <button
             key={rt}
-            onClick={() => updateLoan(activeLoan.id, { rateType: rt })}
+            onClick={() => { updateLoan(activeLoan.id, { rateType: rt }); patchDebtStr(activeLoan.id, 'rateType', rt); }}
             style={{
               padding: '2px 10px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
               background: activeLoan.rateType === rt ? `${rt === 'Fixed' ? BT.met.financial : BT.text.amber}20` : 'transparent',
@@ -829,7 +896,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             {(['lockout', 'yield_maintenance', 'defeasance', 'stepdown', 'open'] as PrepayType[]).map(t => (
               <button
                 key={t}
-                onClick={() => updateLoan(activeLoan.id, { prepayType: t })}
+                onClick={() => { updateLoan(activeLoan.id, { prepayType: t }); patchDebtStr(activeLoan.id, 'prepayType', t); }}
                 style={{
                   padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
                   background: activeLoan.prepayType === t ? `${BT.text.amber}20` : 'transparent',
@@ -899,7 +966,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userMinDY}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => { updateLoan(activeLoan.id, { userMinDY: v }); patchDebt(activeLoan.id, 'minDebtYield', v); }}
+                onUserChange={v => { updateLoan(activeLoan.id, { userMinDY: v }); patchDebt(activeLoan.id, 'minDY', v); }}
                 pass={debtYieldY1 != null ? debtYieldY1 >= effMinDY : undefined}
                 sub={debtYieldY1 != null ? `Y1 DY: ${fmtPct(debtYieldY1 * 100)}` : undefined}
               />
@@ -909,7 +976,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userMinOcc}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => { updateLoan(activeLoan.id, { userMinOcc: v }); patchDebt(activeLoan.id, 'minOccupancy', v); }}
+                onUserChange={v => { updateLoan(activeLoan.id, { userMinOcc: v }); patchDebt(activeLoan.id, 'minOcc', v); }}
               />
               <DebtRow
                 label="MAX LTV"
@@ -950,7 +1017,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userTIEscrow}
                 userEditable
                 format={v => v != null ? `${v}mo — ${fmt$(effLoanAmt * effRate / 12 * (v ?? 0))}` : '—'}
-                onUserChange={v => { updateLoan(activeLoan.id, { userTIEscrow: v }); patchDebt(activeLoan.id, 'tiEscrowMonths', v); }}
+                onUserChange={v => { updateLoan(activeLoan.id, { userTIEscrow: v }); patchDebt(activeLoan.id, 'tiEscrow', v); }}
                 sub="Tax & insurance upfront reserve"
               />
               <DebtRow
@@ -959,7 +1026,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userReplReserve}
                 userEditable
                 format={v => v != null ? `$${v}/unit/yr` : '—'}
-                onUserChange={v => { updateLoan(activeLoan.id, { userReplReserve: v }); patchDebt(activeLoan.id, 'replaceReserve', v); }}
+                onUserChange={v => { updateLoan(activeLoan.id, { userReplReserve: v }); patchDebt(activeLoan.id, 'replReserve', v); }}
               />
               <DebtRow
                 label="OPERATING RESERVE (months of DS)"

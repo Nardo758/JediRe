@@ -2025,14 +2025,65 @@ export async function getDealFinancials(
     sofrCurve: sofrCurveSenior,
   };
 
+  // Build mezz loan entry from persisted overrides (only if loanAmount override exists)
+  const mezzLoanAmt = debtOvr('mezz', 'loanAmount');
+  const mezzRate = debtOvr('mezz', 'interestRate');
+  const sofrCurveMezz = SOFR_CURVE_DEFAULT.map((v, i) => debtOvr('mezz', `sofrCurve:${i}`) ?? v);
+  const mezzRateTypeStr = debtOvrStr('mezz', 'rateType');
+  const mezzRateType: 'Fixed' | 'Floating' = mezzRateTypeStr === 'Fixed' ? 'Fixed' : 'Floating';
+  const mezzAnnualDS = mezzLoanAmt != null && mezzRate != null ? mezzLoanAmt * mezzRate : null;
+
+  const loans = [seniorLoanEntry as DealFinancials['debt']['loans'][0]];
+
+  if (mezzLoanAmt != null) {
+    const mezzEntry: DealFinancials['debt']['loans'][0] = {
+      id: 'mezz',
+      name: 'Mezz / B-Note',
+      loanTypeLabel: debtOvrStr('mezz', 'loanTypeLabel') ?? 'Mezz',
+      rateType: mezzRateType,
+      loanAmount: { broker: null, platform: mezzLoanAmt },
+      ltcPct: { broker: null, platform: purchasePrice != null && mezzLoanAmt > 0 && purchasePrice > 0 ? +(mezzLoanAmt / purchasePrice).toFixed(4) : null },
+      ltv: { platform: purchasePrice != null && mezzLoanAmt > 0 && purchasePrice > 0 ? +(mezzLoanAmt / purchasePrice).toFixed(4) : null },
+      interestRate: { broker: null, platform: mezzRate ?? 0.12 },
+      sofr: { platform: mezzRateType === 'Floating' ? sofrCurveMezz[0] : null },
+      spread: { broker: null, platform: mezzRateType === 'Floating' ? (mezzRate != null ? +(mezzRate - sofrCurveMezz[0]).toFixed(4) : 0.060) : null },
+      capRate: { broker: null, platform: mezzRateType === 'Floating' ? 0.09 : null },
+      termYears: { broker: null, platform: debtOvr('mezz', 'termYears') ?? 3 },
+      amortYears: { broker: null, platform: debtOvr('mezz', 'amortYears') ?? 0 },
+      ioMonths: { broker: null, platform: debtOvr('mezz', 'ioMonths') ?? 36 },
+      origFee: { broker: null, platform: debtOvr('mezz', 'origFee') ?? 0.02 },
+      exitFee: { platform: debtOvr('mezz', 'exitFee') ?? 0.01 },
+      rateCapCost: { broker: null, platform: mezzRateType === 'Floating' ? (debtOvr('mezz', 'rateCapCost') ?? 0.008) : null },
+      minDscr: { platform: debtOvr('mezz', 'minDscr') ?? 1.10 },
+      minDebtYield: { platform: debtOvr('mezz', 'minDY') ?? 0.09 },
+      minOccupancy: { platform: debtOvr('mezz', 'minOcc') ?? 0.85 },
+      maxLtv: { platform: debtOvr('mezz', 'maxLtv') ?? 0.90 },
+      cashTrapDscr: { platform: debtOvr('mezz', 'cashTrapDscr') ?? 1.05 },
+      tiEscrowMonths: { platform: debtOvr('mezz', 'tiEscrow') ?? 0 },
+      replacementReserve: { platform: debtOvr('mezz', 'replReserve') ?? 0 },
+      operatingReserveMonths: { platform: debtOvr('mezz', 'opReserveMonths') ?? 0 },
+      prepayType: debtOvrStr('mezz', 'prepayType') ?? 'open',
+      derivedAnnualDS: mezzAnnualDS,
+      sofrCurve: sofrCurveMezz,
+    };
+    loans.push(mezzEntry);
+  }
+
+  const totalLoanAmt = (seniorLoanAmtEff ?? 0) + (mezzLoanAmt ?? 0);
+  const totalAnnualDS = (seniorAnnualDS ?? 0) + (mezzAnnualDS ?? 0);
+  const blendedRate = totalLoanAmt > 0
+    ? ((seniorLoanAmtEff ?? 0) * (seniorRateEff ?? 0) + (mezzLoanAmt ?? 0) * (mezzRate ?? 0)) / totalLoanAmt
+    : seniorRateEff;
+  const aggregateDscr = totalAnnualDS != null && totalAnnualDS > 0 && typeof noiFull === 'number' ? noiFull / totalAnnualDS : seniorDscr;
+
   const debtStack: DealFinancials['debt'] = {
-    loans: [seniorLoanEntry],
+    loans,
     aggregate: {
-      totalLoanAmount: seniorLoanAmtEff,
-      blendedRatePct: seniorRateEff,
+      totalLoanAmount: totalLoanAmt,
+      blendedRatePct: blendedRate,
       combinedLtcPct: capitalStack.ltcPct,
-      totalAnnualDS: seniorAnnualDS,
-      aggregateDscr: seniorDscr,
+      totalAnnualDS: totalAnnualDS || null,
+      aggregateDscr,
     },
   };
 
@@ -2259,12 +2310,12 @@ export async function applyFinancialsOverride(
   dealId: string,
   field: string,
   year: number | null,
-  value: number | null,
+  value: number | string | null,
   userId: string
 ): Promise<{
   year1Key: string;
   year: number;
-  appliedValue: number | null;
+  appliedValue: number | string | null;
   resolution: string | null;
   updatedCell: Record<string, unknown> | null;
   derivedRecomputation: {
@@ -2277,7 +2328,7 @@ export async function applyFinancialsOverride(
 }> {
   // Route unit_mix cell overrides to dedicated handler
   if (field.startsWith('unit_mix:')) {
-    return applyUnitMixOverride(pool, dealId, field, value, userId);
+    return applyUnitMixOverride(pool, dealId, field, typeof value === 'number' ? value : null, userId);
   }
 
   // Route FL tax overrides to per_year_overrides with 'tax:' prefix
@@ -2389,7 +2440,7 @@ export async function applyFinancialsOverride(
     );
   } else if (targetYear === 1 || year == null) {
     // Year 1 override — write into the LayeredValue seed via proforma-seeder
-    await applyUserOverride(pool, dealId, year1Key, value, userId);
+    await applyUserOverride(pool, dealId, year1Key, typeof value === 'number' ? value : null, userId);
   } else {
     // Per-year override (year 2-30) — stored in deal_assumptions.per_year_overrides JSONB
     // Key format: `{year1Key}:yr{targetYear}` e.g. "vacancy_pct:yr2"
@@ -2481,7 +2532,7 @@ export async function applyFinancialsOverride(
   if (isTrafficSignal && totalUnitsDA > 0 && perYearOverrides) {
     if (year1Key === 't06_weekly_leases') {
       // T-06 direct net-leases-per-week override → back-derive vacancy
-      const t06Val = value ?? null;
+      const t06Val = typeof value === 'number' ? value : null;
       if (t06Val != null) {
         const annualLeases = t06Val * 52;
         const annualTurnover = totalUnitsDA / (avgLeaseTermMonths / 12);
@@ -2495,8 +2546,9 @@ export async function applyFinancialsOverride(
       const t05Key = `t05_closing_ratio:yr${targetYear}`;
       const t01Entry = perYearOverrides[t01Key] as { value?: number } | null;
       const t05Entry = perYearOverrides[t05Key] as { value?: number } | null;
-      const t01Val = year1Key === 't01_weekly_tours' ? (value ?? null) : (t01Entry?.value ?? null);
-      const t05Val = year1Key === 't05_closing_ratio' ? (value ?? null) : (t05Entry?.value ?? null);
+      const numVal = typeof value === 'number' ? value : null;
+      const t01Val = year1Key === 't01_weekly_tours' ? numVal : (t01Entry?.value ?? null);
+      const t05Val = year1Key === 't05_closing_ratio' ? numVal : (t05Entry?.value ?? null);
       if (t01Val != null && t05Val != null) {
         const weeklyLeases = t01Val * t05Val;
         const annualLeases = weeklyLeases * 52;

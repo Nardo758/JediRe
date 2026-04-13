@@ -539,17 +539,21 @@ router.post('/:dealId/financials/reparse', requireAuth, async (req: Authenticate
 router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { field, year = null, value } = req.body as { field: string; year?: number | null; value: number | null };
+    const { field, year = null, value, strValue } = req.body as { field: string; year?: number | null; value: number | string | null; strValue?: string };
     const userId = req.user?.userId ?? 'unknown';
 
     if (!field || typeof field !== 'string') {
       return res.status(400).json({ error: 'field is required (camelCase field name, e.g. "vacancyPct")' });
     }
-    if (value !== null && value !== undefined && typeof value !== 'number') {
+    // Debt string fields (loanTypeLabel, rateType, prepayType) may arrive as string values
+    const isDebtStrField = field.startsWith('debt:') && (strValue != null || typeof value === 'string');
+    if (!isDebtStrField && value !== null && value !== undefined && typeof value !== 'number') {
       return res.status(400).json({ error: 'value must be a number or null' });
     }
 
-    const result = await applyFinancialsOverride(pool, dealId, field, year ?? null, value ?? null, userId);
+    // For string-valued debt fields, coerce the value to pass through
+    const effectiveValue = isDebtStrField ? (strValue ?? String(value)) as unknown as number : (value as number | null);
+    const result = await applyFinancialsOverride(pool, dealId, field, year ?? null, effectiveValue ?? null, userId);
     res.json({ success: true, data: { dealId, ...result } });
   } catch (error: any) {
     logger.error('Error applying financials override:', error);
