@@ -545,15 +545,15 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     if (!field || typeof field !== 'string') {
       return res.status(400).json({ error: 'field is required (camelCase field name, e.g. "vacancyPct")' });
     }
-    // Debt string fields (loanTypeLabel, rateType, prepayType) may arrive as string values
-    const isDebtStrField = field.startsWith('debt:') && (strValue != null || typeof value === 'string');
+    // Debt string fields (loanTypeLabel, rateType, prepayType) may arrive as string values via strValue param
+    const isDebtStrField = field.startsWith('debt:') && strValue != null;
     if (!isDebtStrField && value !== null && value !== undefined && typeof value !== 'number') {
       return res.status(400).json({ error: 'value must be a number or null' });
     }
 
-    // For string-valued debt fields, coerce the value to pass through
-    const effectiveValue = isDebtStrField ? (strValue ?? String(value)) as unknown as number : (value as number | null);
-    const result = await applyFinancialsOverride(pool, dealId, field, year ?? null, effectiveValue ?? null, userId);
+    // applyFinancialsOverride accepts number | string | null for debt string fields
+    const effectiveValue: number | string | null = isDebtStrField ? strValue! : (value as number | null);
+    const result = await applyFinancialsOverride(pool, dealId, field, year ?? null, effectiveValue, userId);
     res.json({ success: true, data: { dealId, ...result } });
   } catch (error: any) {
     logger.error('Error applying financials override:', error);

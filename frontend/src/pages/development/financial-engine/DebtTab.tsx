@@ -144,7 +144,7 @@ function buildAmort(
   spread: number,
 ): AmortRow[] {
   const rows: AmortRow[] = [];
-  const totalMo = Math.min(termYrs * 12, 120);
+  const totalMo = Math.min(termYrs * 12, 480); // up to 40yr (HUD/LifeCo)
   const amortMo = amortYrs * 12;
   const monthlyNoi = annualNoi / 12;
   let bal = loanAmt;
