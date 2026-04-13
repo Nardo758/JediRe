@@ -445,13 +445,14 @@ function NoStratNavBtn({ dealId }: { dealId: string }) {
   );
 }
 
-function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoanAmount, configuredRate, onAdvisorAccepted }: {
+function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoanAmount, configuredRate, onAdvisorAccepted, onF9Refresh }: {
   dealId: string;
   onSwitchToConfigure: () => void;
   onAccept: () => void;
   configuredLoanAmount?: number | null;
   configuredRate?: number | null;
   onAdvisorAccepted?: (loanAmount: number, rate: number) => void;
+  onF9Refresh?: () => Promise<void> | void;
 }) {
   const [data, setData] = useState<DebtAdvisorData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -479,17 +480,26 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
 
   useEffect(() => { fetchAdvisor(); }, [fetchAdvisor]);
 
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [recomputeError, setRecomputeError] = useState<string | null>(null);
+
   const handleAccept = async () => {
     setAccepting(true);
+    setAcceptError(null);
     try {
-      await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/accept`, { phaseIndex: 0 });
+      const res = await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/accept`, { phaseIndex: 0 });
+      if (!res.data?.success) {
+        setAcceptError(res.data?.error || 'Accept failed — check response');
+        return;
+      }
       if (data?.summary) {
         onAdvisorAccepted?.(data.summary.initialLoanAmount, data.summary.blendedAllInRate);
       }
       onAccept();
+      await onF9Refresh?.();
       onSwitchToConfigure();
-    } catch {
-      // silently handle
+    } catch (e: any) {
+      setAcceptError(e?.response?.data?.error || e?.message || 'Accept failed — server error');
     } finally {
       setAccepting(false);
     }
@@ -497,10 +507,17 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
 
   const handleRecompute = async (productHint?: string) => {
     setRecomputing(true);
+    setRecomputeError(null);
     try {
       const res = await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/recompute`, productHint ? { productHint } : {});
-      if (res.data?.success && res.data?.data) setData(res.data.data as DebtAdvisorData);
-    } catch { /* ignore */ } finally {
+      if (res.data?.success && res.data?.data) {
+        setData(res.data.data as DebtAdvisorData);
+      } else {
+        setRecomputeError(res.data?.error || 'Recompute failed');
+      }
+    } catch (e: any) {
+      setRecomputeError(e?.response?.data?.error || e?.message || 'Recompute failed — server error');
+    } finally {
       setRecomputing(false);
     }
   };
@@ -667,6 +684,20 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
               All-in rate: <span style={{ color: BT.text.amber }}>{fmtPct(summary.blendedAllInRate * 100)}</span>
             </div>
           </div>
+          {acceptError && (
+            <div style={{ marginBottom: 8, padding: '4px 8px', background: `${BT.text.red}12`, border: `1px solid ${BT.text.red}40`, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle style={{ width: 10, height: 10, color: BT.text.red, flexShrink: 0 }} />
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red }}>{acceptError}</span>
+              <button onClick={() => setAcceptError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: BT.text.muted, cursor: 'pointer', fontFamily: MONO, fontSize: 8 }}>×</button>
+            </div>
+          )}
+          {recomputeError && (
+            <div style={{ marginBottom: 8, padding: '4px 8px', background: `${BT.text.amber}12`, border: `1px solid ${BT.text.amber}40`, borderRadius: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <AlertTriangle style={{ width: 10, height: 10, color: BT.text.amber, flexShrink: 0 }} />
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>{recomputeError}</span>
+              <button onClick={() => setRecomputeError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: BT.text.muted, cursor: 'pointer', fontFamily: MONO, fontSize: 8 }}>×</button>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               onClick={handleAccept}
@@ -1234,6 +1265,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             configuredLoanAmount={effLoanAmt}
             configuredRate={effRate}
             onAdvisorAccepted={(la, r) => setAdvisorBaseline({ loanAmount: la, rate: r })}
+            onF9Refresh={onF9Refresh}
           />
         </div>
       )}

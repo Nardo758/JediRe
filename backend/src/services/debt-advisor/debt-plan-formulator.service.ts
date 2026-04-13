@@ -15,6 +15,7 @@ import { classifyRateEnvironment, RateEnvironmentResult } from './rate-environme
 import { targetLenders, LenderTarget } from './lender-targeting.service';
 import { getM08StrategyOutput, M08StrategyOutput } from './m08-strategy-output.service';
 import { applyDebtContextModifier, ContextModification } from './debt-context-modifier.service';
+import { applyDebtAdvisorPlatformDefault } from '../proforma-adjustment.service';
 import { logger } from '../../utils/logger';
 import strategyDebtMapping from './strategy-debt-mapping.json';
 
@@ -741,40 +742,6 @@ export function bustAdvisorCache(dealId: string): void {
   advisorCache.delete(dealId);
 }
 
-/**
- * writeDebtPlatformDefault — writes a single debt field to per_year_overrides
- * with resolution: 'platform' (not 'override') so Configure displays it as an
- * AI/Platform default that users can then override on top, matching the layered
- * value architecture: broker < platform < override.
- */
-async function writeDebtPlatformDefault(
-  pool: Pool,
-  dealId: string,
-  field: string,
-  value: number | string | null,
-  source: string
-): Promise<void> {
-  const entry = {
-    field,
-    year: 1,
-    value,
-    updatedAt: new Date().toISOString(),
-    resolution: 'platform',
-    source,
-  };
-  await pool.query(
-    `UPDATE deal_assumptions
-        SET per_year_overrides = jsonb_set(
-              COALESCE(per_year_overrides, '{}'::jsonb),
-              $2::text[],
-              $3::jsonb
-            ),
-            updated_at = NOW()
-      WHERE deal_id = $1`,
-    [dealId, `{${field}}`, JSON.stringify(entry)]
-  );
-}
-
 export async function acceptDebtPlan(
   dealId: string,
   userId: string,
@@ -798,15 +765,15 @@ export async function acceptDebtPlan(
 
   try {
     await Promise.all([
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:loanAmount`, phase.loanAmountEst, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:interestRate`, phase.rateEst, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:termYears`, phase.termYears, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:amortYears`, phase.amortYears, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:ioMonths`, phase.ioMonths, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:origFee`, phase.origFee, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:exitFee`, phase.exitFee ?? 0, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:rateType`, phase.rateType, source),
-      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:prepayType`, phase.prepayType, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'loanAmount', phase.loanAmountEst, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'interestRate', phase.rateEst, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'termYears', phase.termYears, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'amortYears', phase.amortYears, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'ioMonths', phase.ioMonths, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'origFee', phase.origFee, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'exitFee', phase.exitFee ?? 0, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'rateType', phase.rateType, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'prepayType', phase.prepayType, source),
     ]);
   } catch (overrideErr: any) {
     logger.error('[DebtAdvisor] Platform-default pipeline failed on accept — Configure fields not populated', {

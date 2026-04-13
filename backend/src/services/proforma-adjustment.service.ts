@@ -3907,3 +3907,44 @@ export async function applyFinancialsOverride(
     },
   };
 }
+
+/**
+ * applyDebtAdvisorPlatformDefault — canonical path for Debt Advisor to write
+ * per_year_overrides debt fields with resolution:'platform'.
+ *
+ * This mirrors the debt:* branch of applyFinancialsOverride but sets
+ * resolution:'platform' (confidence=70) instead of 'override' (confidence=95),
+ * so Configure shows values as AI platform defaults that users can still override.
+ *
+ * Uses the same key format (debt:{loanId}:{fieldName}) as the F9 resolver's
+ * debtOvr() helper, ensuring full compatibility with the layered value system.
+ */
+export async function applyDebtAdvisorPlatformDefault(
+  pool: Pool,
+  dealId: string,
+  loanId: string,
+  fieldName: string,
+  value: number | string | null,
+  source: string = 'debt_advisor'
+): Promise<void> {
+  const key = `debt:${loanId}:${fieldName}`;
+  const entry = {
+    field: key,
+    year: 1,
+    value,
+    updatedAt: new Date().toISOString(),
+    resolution: 'platform',
+    source,
+  };
+  await pool.query(
+    `UPDATE deal_assumptions
+        SET per_year_overrides = jsonb_set(
+              COALESCE(per_year_overrides, '{}'::jsonb),
+              $2::text[],
+              $3::jsonb
+            ),
+            updated_at = NOW()
+      WHERE deal_id = $1`,
+    [dealId, `{${key}}`, JSON.stringify(entry)]
+  );
+}
