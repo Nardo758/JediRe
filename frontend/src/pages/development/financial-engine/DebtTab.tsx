@@ -350,7 +350,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             rateType: f9L.rateType,
             sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
             prepayType: f9L.prepayType as PrepayType ?? existing.prepayType,
-            extensionOptions: (f9L as any).extensionOptions ?? existing.extensionOptions,
+            extensionOptions: f9L.extensionOptions ?? existing.extensionOptions,
           });
         } else if (f9L.id === 'mezz') {
           const mPreset = LOAN_PRESETS.Mezz;
@@ -364,15 +364,14 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         }
         // Restore refi state from senior loan overrides
         if (f9L.id === 'senior') {
-          const fl = f9L as any;
-          if (fl.refiEnabled != null || fl.refiTriggerYear != null || fl.refiNewLoanType != null) {
-            setRefi(r => ({
-              ...r,
-              enabled: !!fl.refiEnabled,
-              triggerYear: fl.refiTriggerYear ?? r.triggerYear,
-              newLoanType: (fl.refiNewLoanType && LOAN_PRESETS[fl.refiNewLoanType as LoanPresetKey]) ? fl.refiNewLoanType as LoanPresetKey : r.newLoanType,
-            }));
-          }
+          setRefi(r => ({
+            ...r,
+            enabled: f9L.refiEnabled,
+            triggerYear: f9L.refiTriggerYear ?? r.triggerYear,
+            newLoanType: (f9L.refiNewLoanType && LOAN_PRESETS[f9L.refiNewLoanType as LoanPresetKey])
+              ? f9L.refiNewLoanType as LoanPresetKey
+              : r.newLoanType,
+          }));
         }
       }
       return next;

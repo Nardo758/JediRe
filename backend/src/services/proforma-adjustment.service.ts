@@ -1285,6 +1285,10 @@ export interface DealFinancials {
       prepayType: string;
       derivedAnnualDS: number | null;
       sofrCurve: number[];
+      extensionOptions: string | null;
+      refiEnabled: boolean;
+      refiTriggerYear: number;
+      refiNewLoanType: string | null;
     }>;
     aggregate: {
       totalLoanAmount: number|null;
@@ -2078,6 +2082,10 @@ export async function getDealFinancials(
       prepayType: debtOvrStr('mezz', 'prepayType') ?? 'open',
       derivedAnnualDS: mezzAnnualDS,
       sofrCurve: sofrCurveMezz,
+      extensionOptions: null,
+      refiEnabled: false,
+      refiTriggerYear: 3,
+      refiNewLoanType: null,
     };
     loans.push(mezzEntry);
   }

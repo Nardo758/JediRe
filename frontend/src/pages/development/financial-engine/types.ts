@@ -391,6 +391,12 @@ export interface F9DebtLoan {
   derivedAnnualDS: number | null;
   /** SOFR forward curve (5 years), pct decimal e.g. 0.05 */
   sofrCurve: number[];
+  /** Extension options text (persisted, senior only) */
+  extensionOptions: string | null;
+  /** Refi event configuration (persisted, senior only) */
+  refiEnabled: boolean;
+  refiTriggerYear: number;
+  refiNewLoanType: string | null;
 }
 
 export interface F9DebtStack {
