@@ -131,35 +131,36 @@ const SECTIONS: SectionDef[] = [
     rows: [
       { label: 'Depreciation',               key: 'depreciation',  indent: true, sign: -1, afterTaxOnly: true, tabLink: 4 },
       { label: 'Taxable Income',             key: 'taxableIncome', indent: true, afterTaxOnly: true },
-      { label: 'Tax Payable (37%)',          key: 'taxPayable',    indent: true, sign: -1, afterTaxOnly: true },
+      { label: 'Tax Payable',               key: 'taxPayable',    indent: true, sign: -1, afterTaxOnly: true },
       { label: 'After-Tax CFADS',            key: 'afterTaxCfads', isTotal: true, afterTaxOnly: true },
     ],
   },
   {
-    label: 'METRICS', key: 'metrics', color: BT.text.amber,
-    rows: [
-      { label: 'Occupancy',                  key: 'occupancy',     fmt: 'pct' },
-      { label: 'Rent Growth',                key: 'rentGrowthPct', fmt: 'pct' },
-      { label: 'OpEx Ratio',                 key: 'opexRatioPct',  fmt: 'pct' },
-      { label: 'NOI Margin',                 key: 'noiMarginPct',  fmt: 'pct' },
-      { label: 'DSCR',                       key: 'dscr',          fmt: 'x' },
-      { label: 'Debt Yield',                 key: 'debtYield',     fmt: 'pct' },
-      { label: 'Implied Cap Rate',           key: 'capRatePct',    fmt: 'pct' },
-      { label: 'Cash-on-Cash Return',        key: 'coc',           fmt: 'pct' },
-      { label: 'Cumulative Equity Multiple', key: 'cumulativeEM',  fmt: 'x' },
-    ],
-  },
-  {
-    label: 'EXIT / REVERSION', key: 'exit', color: BT.text.amber,
+    label: 'SALE-YEAR DISPOSITION', key: 'exit', color: BT.text.amber,
     rows: [
       { label: 'Forward NOI (Exit)',         key: 'exitNoi' },
-      { label: 'Exit Cap Rate',              key: 'exitCap',       fmt: 'pct' },
+      { label: 'Exit Cap Rate',              key: 'exitCap',             fmt: 'pct' },
       { label: 'Gross Sale Value',           key: 'grossSaleValue' },
-      { label: '(–) Selling Costs (1.5%)',   key: 'sellingCosts',  indent: true, sign: -1 },
-      { label: '(–) Loan Payoff',            key: 'loanPayoff',    indent: true, sign: -1 },
-      { label: 'Net Sale Proceeds',          key: 'netSaleProceeds', isTotal: true },
+      { label: '(–) Selling Costs',         key: 'sellingCosts',         indent: true, sign: -1 },
+      { label: '(–) Doc Stamps / Transfer', key: 'dispositionDocStamps', indent: true, sign: -1, tabLink: 4 },
+      { label: '(–) Loan Payoff',           key: 'loanPayoff',           indent: true, sign: -1 },
+      { label: '(–) Sale Tax Payable',      key: 'taxPayable',           indent: true, sign: -1, afterTaxOnly: true },
+      { label: 'Net Sale Proceeds',          key: 'netSaleProceeds',      isTotal: true },
     ],
   },
+];
+
+// Key metrics strip — fixed bottom row (not a collapsible section)
+interface MetricDef { label: string; key: keyof ProjYear; fmt: 'pct' | 'x' | 'dollar'; }
+const METRICS_STRIP: MetricDef[] = [
+  { label: 'OCC',  key: 'occupancy',     fmt: 'pct' },
+  { label: 'DSCR', key: 'dscr',          fmt: 'x'   },
+  { label: 'DY',   key: 'debtYield',     fmt: 'pct' },
+  { label: 'CoC',  key: 'coc',           fmt: 'pct' },
+  { label: 'EM',   key: 'cumulativeEM',  fmt: 'x'   },
+  { label: 'Cap',  key: 'capRatePct',    fmt: 'pct' },
+  { label: 'RG',   key: 'rentGrowthPct', fmt: 'pct' },
+  { label: 'OER',  key: 'opexRatioPct',  fmt: 'pct' },
 ];
 
 // Source badge label
@@ -683,8 +684,8 @@ export function ProjectionsTab({
                 </th>
                 {isAnnual
                   ? annualYears.map(yr => (
-                      <th key={yr} style={{ padding: '5px 8px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, minWidth: 90 }}>
-                        YR {yr}
+                      <th key={yr} style={{ padding: '5px 8px', textAlign: 'right', color: yr === holdYears ? BT.text.amber : BT.text.muted, fontWeight: yr === holdYears ? 700 : 500, minWidth: 90, borderLeft: yr === holdYears ? `2px solid ${BT.text.amber}40` : undefined }}>
+                        {yr === holdYears ? `YR ${yr} ★` : `YR ${yr}`}
                       </th>
                     ))
                   : subCols.map(c => (
@@ -735,11 +736,17 @@ export function ProjectionsTab({
 
                           {isAnnual
                             ? annualYears.map(yr => {
+                                const isSaleYear = section.key === 'exit' && yr === holdYears;
                                 const proj    = projections[yr - 1];
                                 const rawVal  = proj ? (proj[row.key] as number | null) : null;
                                 const display = fmtCell(rawVal, row.fmt, row.sign);
                                 const isNeg   = rawVal != null && rawVal < 0;
-                                const textColor = row.isTotal ? section.color : isNeg ? BT.text.red : row.sign === -1 && rawVal != null && rawVal > 0 ? BT.text.red : BT.text.primary;
+                                const textColor = isSaleYear && row.isTotal
+                                  ? BT.text.amber
+                                  : row.isTotal ? section.color
+                                  : isNeg ? BT.text.red
+                                  : row.sign === -1 && rawVal != null && rawVal > 0 ? BT.text.red
+                                  : BT.text.primary;
                                 // Source badge
                                 const srcKey  = row.sourceKey ? (proj?.[row.sourceKey] as string | undefined) : undefined;
                                 const srcBadge = srcKey ? SOURCE_LABELS[srcKey] : null;
@@ -747,8 +754,8 @@ export function ProjectionsTab({
                                   <td
                                     key={yr}
                                     onClick={() => proj && setDrilldown(buildDrilldown(row, proj, financials))}
-                                    style={{ padding: '3px 8px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default' }}
-                                    title={proj ? `Click for formula drilldown` : undefined}
+                                    style={{ padding: '3px 8px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default', borderLeft: isSaleYear ? `2px solid ${BT.text.amber}40` : undefined, background: isSaleYear ? `${BT.text.amber}06` : undefined }}
+                                    title={proj ? (isSaleYear ? `SALE YEAR — Click for formula drilldown` : `Click for formula drilldown`) : undefined}
                                   >
                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
                                       {srcBadge && (
@@ -823,6 +830,25 @@ export function ProjectionsTab({
                   </td>
                 </tr>
               )}
+
+              {/* ── Key metrics strip (pinned bottom row) ─────────────────── */}
+              {isAnnual && projections.length > 0 && METRICS_STRIP.map((m, mi) => (
+                <tr key={m.key} style={{ background: mi % 2 === 0 ? `${BT.text.amber}08` : BT.bg.panel, borderBottom: mi === METRICS_STRIP.length - 1 ? `2px solid ${BT.text.amber}40` : `1px solid ${BT.border.subtle}` }}>
+                  <td style={{ padding: '3px 8px', color: BT.text.amber, fontWeight: 500, fontSize: 8, position: 'sticky', left: 0, background: mi % 2 === 0 ? `${BT.text.amber}08` : BT.bg.panel, zIndex: 1, fontFamily: MONO, letterSpacing: 0.5 }}>
+                    {m.label}
+                  </td>
+                  {annualYears.map(yr => {
+                    const proj = projections[yr - 1];
+                    const rawVal = proj ? (proj[m.key] as number | null) : null;
+                    const display = fmtCell(rawVal, m.fmt);
+                    return (
+                      <td key={yr} style={{ padding: '3px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 8, color: rawVal != null ? BT.text.amber : BT.text.muted, fontWeight: 500 }}>
+                        {display}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
 

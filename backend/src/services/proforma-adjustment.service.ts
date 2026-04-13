@@ -2762,7 +2762,7 @@ export async function getDealFinancials(
 
       // Debt service — true per-year amortization schedule
       let interest = 0, principal = 0, annualDS = 0;
-      let debtSource: 'taxes_tab' | 'proforma' | 'estimate' | 'debt_tab' | 'capital_stack' = 'estimate';
+      let debtSource: 'debt_tab' | 'capital_stack' | 'estimate' = 'estimate';
       if (projLoan > 0) {
         debtSource = seniorLoanOvr ? 'debt_tab' : 'capital_stack';
         if (yr <= projIoYrs || projAmortYrs === 0) {
