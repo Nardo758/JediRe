@@ -453,23 +453,47 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
   const gpShareEff = tranches.filter(t => t.role === 'gp').reduce((s, t) => s + t.pct, 0);
 
   // ── Run waterfall ──────────────────────────────────────────────────────────
+  // Prefer server-side schedule from capital.schedule (authoritative, post-persist);
+  // fall back to client-side engine for immediate interactivity when server has no data.
+  const serverSchedule = f9Financials?.capital?.schedule ?? null;
+  const serverMetrics  = f9Financials?.capital?.metrics ?? null;
+
   const distRows = useMemo((): DistRow[] => {
+    // Use server-side schedule if available (deal has financial data & server computed it)
+    if (serverSchedule && serverSchedule.length > 0) {
+      return serverSchedule.map(r => ({
+        year: r.year,
+        label: r.period,
+        cfads: r.cfads,
+        activeTier: r.activeTier,
+        lpDist: r.lpDist,
+        gpDist: r.gpDist,
+        gpPromote: r.gpPromote,
+        gpFees: r.gpFees,
+        lpIrrToDate: r.lpIrr,
+        lpEmToDate: r.lpEm,
+        prefAccrued: r.prefAccrued,
+        prefPaid: r.prefPaid,
+        isPromoteCrystallize: r.isExit && r.gpPromote > 0,
+      }));
+    }
+    // Client-side fallback (when no backend data seeded yet — provides immediate interactivity)
     if (equity <= 0 || noi_y1 <= 0) return [];
     const runner = wfType === 'european' ? runEuropean : runAmerican;
     return runner(equity, lpShareEff, gpShareEff, prefRate, tiers, annualCfads, exitProceeds, fees, equity, egi_y1);
-  }, [equity, noi_y1, lpShareEff, gpShareEff, prefRate, tiers, annualCfads, exitProceeds, fees, egi_y1, wfType]);
+  }, [serverSchedule, equity, noi_y1, lpShareEff, gpShareEff, prefRate, tiers, annualCfads, exitProceeds, fees, egi_y1, wfType]);
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────
-  const totalLP      = distRows.reduce((s, r) => s + r.lpDist, 0);
-  const totalGP      = distRows.reduce((s, r) => s + r.gpDist, 0);
-  const totalPromote = distRows.reduce((s, r) => s + r.gpPromote, 0);
-  const totalFees    = distRows.reduce((s, r) => s + r.gpFees, 0);
+  // ── KPIs — prefer server metrics when available (post-persist authoritative) ──
+  const totalLP      = serverMetrics?.totalLpDistributions ?? distRows.reduce((s, r) => s + r.lpDist, 0);
+  const totalGP      = serverMetrics?.totalGpDistributions ?? distRows.reduce((s, r) => s + r.gpDist, 0);
+  const totalPromote = serverMetrics?.totalGpPromote       ?? distRows.reduce((s, r) => s + r.gpPromote, 0);
+  const totalFees    = serverMetrics?.totalGpFees          ?? distRows.reduce((s, r) => s + r.gpFees, 0);
   const lpEquity     = equity * lpShareEff;
   const gpEquity     = equity * gpShareEff;
-  const lpEm         = lpEquity > 0 ? totalLP / lpEquity : null;
-  const gpEm         = gpEquity > 0 ? (totalGP + equity * fees.acquisitionFeePct) / Math.max(gpEquity, 1) : null;
+  const lpEm         = serverMetrics?.lpEquityMultiple ?? (lpEquity > 0 ? totalLP / lpEquity : null);
+  const gpEm         = serverMetrics?.gpEquityMultiple ?? (gpEquity > 0 ? (totalGP + equity * fees.acquisitionFeePct) / Math.max(gpEquity, 1) : null);
   const lpCFs        = [-lpEquity, ...distRows.map(r => r.lpDist)];
-  const lpIrr        = lpEquity > 0 && distRows.length > 0 ? calcIrr(lpCFs) : null;
+  const lpIrr        = serverMetrics?.lpIrr ?? (lpEquity > 0 && distRows.length > 0 ? calcIrr(lpCFs) : null);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
@@ -531,8 +555,12 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                           ? <EditNum value={tr.prefRate} pct onCommit={async v => {
                               const next = tranches.map((t, j) => j === i ? { ...t, prefRate: v } : t);
                               setTranches(next);
-                              if (tr.id === 'lpA') { setPrefRate(v); }
-                              await persistTranches(next);
+                              // Sync global prefRate: use the first LP tranche's pref as the governing rate
+                              const firstLpPref = next.find(t => t.role !== 'gp')?.prefRate ?? v;
+                              setPrefRate(firstLpPref);
+                              await patchWf(dealId, 'prefRate', firstLpPref);
+                              await persistTranches(next, true);
+                              onF9Refresh?.();
                             }} />
                           : <span style={{ color: BT.text.muted }}>—</span>
                         }
