@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { AlertTriangle, Lock, ChevronDown, ChevronRight, Link, Check } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps, F9TaxData, F9TaxYear, F9DealFinancials } from './types';
@@ -322,6 +322,16 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   const [userMillageRate, setUserMillageRate]       = useState<number | null>(taxes?.userOverrides?.taxMillageRate   ?? null);
   const [userTppAmount, setUserTppAmount]           = useState<number | null>(taxes?.userOverrides?.tppAmount ?? null);
 
+  // Sync local state when async f9Financials arrives after mount (e.g. on initial load).
+  // Only hydrate once (when local state is still null) to avoid clobbering live user edits.
+  useEffect(() => {
+    if (taxes?.userOverrides) {
+      setUserAssessedValue(prev => prev ?? (taxes.userOverrides.taxAssessedValue ?? null));
+      setUserMillageRate(prev   => prev ?? (taxes.userOverrides.taxMillageRate   ?? null));
+      setUserTppAmount(prev     => prev ?? (taxes.userOverrides.tppAmount        ?? null));
+    }
+  }, [taxes?.userOverrides]);
+
   const isMiamiDade = miamiDadeOverride ?? taxes?.reTax.isMiamiDade ?? false;
   const effMillageRate = userMillageRate ?? (isMiamiDade ? 23.09 : 20.00);
   const effAssessedValue = userAssessedValue ?? taxes?.reTax.platformAssessedValue ?? null;
@@ -385,7 +395,11 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   const intangible = loan != null ? Math.round(loan * 0.002) : null;
   const totalTransfer = ((docStamps ?? 0) + (intangible ?? 0)) || null;
 
-  const deltaVsT12 = taxes?.reTax.deltaVsT12Pct ?? null;
+  // Recompute delta vs T-12 from effective (potentially user-overridden) values
+  const t12AnnualTax = taxes?.reTax.t12AnnualTax ?? null;
+  const deltaVsT12 = effAnnualTax != null && t12AnnualTax != null && t12AnnualTax > 0
+    ? (effAnnualTax - t12AnnualTax) / t12AnnualTax
+    : taxes?.reTax.deltaVsT12Pct ?? null;
   const largeDelta = deltaVsT12 != null && Math.abs(deltaVsT12) > 0.30;
 
   if (!taxes && !f9Financials) {
