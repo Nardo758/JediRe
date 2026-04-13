@@ -337,29 +337,124 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
             </div>
           )}
 
-          {/* § 5 — Debt Returns */}
+          {/* § 5 — Debt Returns (expanded) */}
           <SectionHeader label="§ 5  DEBT RETURNS" color={BT.text.orange} />
-          <KvRow label="Min DSCR"
-            value={fmtDscr(ret?.minDscr ?? null)}
-            sub={ret?.minDscrYear != null ? `Yr ${ret.minDscrYear}` : undefined}
-            color={ret?.minDscr != null && ret.minDscr < 1.2 ? BT.text.red : undefined}
+
+          {/* 5a — Coverage */}
+          <div style={{ padding: '3px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}`, background: `${BT.text.orange}08` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>COVERAGE RATIOS</span>
+          </div>
+          <KvRow label="DSCR (Y1)"
+            value={fmtDscr(ret?.debtMetrics?.coverage?.dscrY1 ?? ret?.minDscr ?? null)}
+            color={(() => { const v = ret?.debtMetrics?.coverage?.dscrY1 ?? ret?.minDscr; return v != null && v < 1.25 ? BT.text.amber : undefined; })()}
+          />
+          <KvRow label="DSCR Min"
+            value={fmtDscr(ret?.debtMetrics?.coverage?.dscrMin?.value ?? ret?.minDscr ?? null)}
+            sub={ret?.debtMetrics?.coverage?.dscrMin?.year != null ? `Yr ${ret.debtMetrics.coverage.dscrMin.year}` : ret?.minDscrYear != null ? `Yr ${ret.minDscrYear}` : undefined}
+            color={(() => { const v = ret?.debtMetrics?.coverage?.dscrMin?.value ?? ret?.minDscr; return v != null && v < 1.2 ? BT.text.red : undefined; })()}
             bold
           />
-          <KvRow label="Avg DSCR"         value={fmtDscr(ret?.avgDscr ?? null)} />
-          <KvRow label="Min Debt Yield"
-            value={ret?.minDebtYield != null ? fmtCap(ret.minDebtYield) : '—'}
-            sub={ret?.minDebtYieldYear != null ? `Yr ${ret.minDebtYieldYear}` : undefined}
+          <KvRow label="DSCR Avg"   value={fmtDscr(ret?.debtMetrics?.coverage?.dscrAvg ?? ret?.avgDscr ?? null)} />
+          <KvRow label="Debt Yield (Y1)"
+            value={ret?.debtMetrics?.coverage?.dyY1 != null ? fmtCap(ret.debtMetrics.coverage.dyY1) : ret?.minDebtYield != null ? fmtCap(ret.minDebtYield) : '—'}
+          />
+          <KvRow label="Debt Yield Min"
+            value={ret?.debtMetrics?.coverage?.dyMin?.value != null ? fmtCap(ret.debtMetrics.coverage.dyMin.value) : '—'}
+            sub={ret?.debtMetrics?.coverage?.dyMin?.year != null ? `Yr ${ret.debtMetrics.coverage.dyMin.year}` : undefined}
+          />
+          <KvRow label="Interest Coverage (ICR)" value={fmtDscr(ret?.debtMetrics?.coverage?.icr ?? null)} indent />
+          <KvRow label="Cash Flow Coverage"      value={fmtDscr(ret?.debtMetrics?.coverage?.cashFlowCoverage ?? null)} indent />
+          <KvRow label="Loan Constant"
+            value={ret?.debtMetrics?.coverage?.loanConstantBlended != null ? fmtCap(ret.debtMetrics.coverage.loanConstantBlended) : '—'}
             bold
           />
-          <KvRow label="Avg Debt Yield"   value={ret?.avgDebtYield != null ? fmtCap(ret.avgDebtYield) : '—'} />
-          <KvRow label="Maturity LTV"
-            value={fmtCap(ret?.maturityLtv ?? null)}
-            color={ret?.maturityLtv != null && ret.maturityLtv > 0.75 ? BT.text.amber : undefined}
+
+          {/* 5b — Structural */}
+          <div style={{ padding: '3px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}`, background: `${BT.text.orange}08` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>STRUCTURAL</span>
+          </div>
+          <KvRow label="LTV at Close"
+            value={fmtCap(ret?.debtMetrics?.structural?.ltvAtClose ?? null)}
+            color={ret?.debtMetrics?.structural?.ltvAtClose != null && ret.debtMetrics.structural.ltvAtClose > 0.80 ? BT.text.amber : undefined}
+            bold
           />
+          <KvRow label="LTV at Stabilization" value={fmtCap(ret?.debtMetrics?.structural?.ltvAtStab ?? null)} />
+          <KvRow label="LTV at Maturity"
+            value={fmtCap(ret?.debtMetrics?.structural?.ltvAtMaturity ?? ret?.maturityLtv ?? null)}
+            color={(() => { const v = ret?.debtMetrics?.structural?.ltvAtMaturity ?? ret?.maturityLtv; return v != null && v > 0.75 ? BT.text.amber : undefined; })()}
+          />
+          <KvRow label="LTC (Loan-to-Cost)"   value={fmtCap(ret?.debtMetrics?.structural?.ltc ?? null)} indent />
+          <KvRow label="LTSV"                  value={fmtCap(ret?.debtMetrics?.structural?.ltsv ?? null)} indent />
+
+          {/* 5c — Leverage Position */}
+          <div style={{ padding: '3px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}`, background: `${BT.text.orange}08` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>LEVERAGE POSITION</span>
+          </div>
+          {ret?.debtMetrics?.leverage?.positiveLeverage != null && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>Leverage</span>
+              <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: ret.debtMetrics.leverage.positiveLeverage ? BT.text.green : BT.text.red }}>
+                {ret.debtMetrics.leverage.positiveLeverage ? '✓ Positive' : '✗ Negative'}
+              </span>
+            </div>
+          )}
+          {!ret?.debtMetrics?.leverage?.positiveLeverage && ret?.debtMetrics?.leverage?.positiveLeverage === false && (
+            <div style={{ padding: '4px 10px 6px', background: `${BT.text.red}08`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red }}>
+                Loan constant exceeds going-in cap. Return depends on appreciation, not cash flow.
+              </span>
+            </div>
+          )}
+          <KvRow label="Leverage Spread"
+            value={ret?.debtMetrics?.leverage?.leverageSpreadBps != null ? `${ret.debtMetrics.leverage.leverageSpreadBps.toFixed(0)} bps` : '—'}
+            color={ret?.debtMetrics?.leverage?.leverageSpreadBps != null && ret.debtMetrics.leverage.leverageSpreadBps < 0 ? BT.text.red : BT.text.green}
+          />
+          <KvRow label="CoC Spread vs Constant"
+            value={ret?.debtMetrics?.leverage?.cashOnCashSpread != null ? fmtCap(ret.debtMetrics.leverage.cashOnCashSpread) : '—'}
+          />
+          <KvRow label="IRR Lift from Leverage"
+            value={ret?.debtMetrics?.leverage?.leverageIrrLiftBps != null ? `${ret.debtMetrics.leverage.leverageIrrLiftBps.toFixed(0)} bps` : '—'}
+            color={BT.text.muted}
+          />
+
+          {/* 5d — Stress Tests */}
+          <div style={{ padding: '3px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}`, background: `${BT.text.orange}08` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>STRESS TESTS</span>
+          </div>
+          <KvRow label="Breakeven Occupancy"
+            value={ret?.debtMetrics?.stress?.breakevenOccupancy != null ? `${(ret.debtMetrics.stress.breakevenOccupancy * 100).toFixed(1)}%` : '—'}
+            sub="occ at which NOI = DS"
+            bold
+          />
+          <KvRow label="Breakeven Rent/Unit"
+            value={ret?.debtMetrics?.stress?.breakevenRent != null ? `$${Math.round(ret.debtMetrics.stress.breakevenRent).toLocaleString()}/mo` : '—'}
+            sub="rent where NOI covers DS"
+          />
+          <KvRow label="DSCR at −10% NOI"
+            value={fmtDscr(ret?.debtMetrics?.stress?.dscrAtMinus10PctNOI ?? null)}
+            color={ret?.debtMetrics?.stress?.dscrAtMinus10PctNOI != null && ret.debtMetrics.stress.dscrAtMinus10PctNOI < 1.0 ? BT.text.red : undefined}
+            indent
+          />
+          <KvRow label="DSCR at +200bps Rate"
+            value={fmtDscr(ret?.debtMetrics?.stress?.dscrAtPlus200bps ?? null)}
+            indent
+          />
+          <KvRow label="Cash Trap Distance"
+            value={ret?.debtMetrics?.stress?.cashTrapDistanceBps != null ? `${ret.debtMetrics.stress.cashTrapDistanceBps.toFixed(0)} bps` : '—'}
+            color={ret?.debtMetrics?.stress?.cashTrapDistanceBps != null && ret.debtMetrics.stress.cashTrapDistanceBps < 10 * 100 ? BT.text.amber : undefined}
+          />
+
+          {/* 5e — Refi Economics */}
+          <div style={{ padding: '3px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}`, background: `${BT.text.orange}08` }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5 }}>REFI ECONOMICS</span>
+          </div>
           <KvRow label="Refi Events"
             value={ret?.refiEventCount != null ? `${ret.refiEventCount}` : '—'}
             color={ret?.refiEventCount != null && ret.refiEventCount > 0 ? BT.text.amber : undefined}
           />
+          <KvRow label="Defeasance Cost Today" value={ret?.debtMetrics?.refi?.defeasanceCostToday != null ? fmt$(ret.debtMetrics.refi.defeasanceCostToday) : '—'} indent />
+          <KvRow label="YM Cost Today"          value={ret?.debtMetrics?.refi?.ymCostToday != null ? fmt$(ret.debtMetrics.refi.ymCostToday) : '—'} indent />
+          <KvRow label="Cost-to-Refi-Now"       value={ret?.debtMetrics?.refi?.costToRefiNowBps != null ? `${ret.debtMetrics.refi.costToRefiNowBps.toFixed(0)} bps IRR` : '—'} indent />
           <KvRow label="Interest Rate"    value={cap?.interestRate != null ? fmtCap(cap.interestRate) : '—'} indent />
           <KvRow label="IO Period"        value={cap?.ioPeriodMonths != null ? `${cap.ioPeriodMonths} mo` : '—'} indent />
 
@@ -550,6 +645,204 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           ⊞ Run Monte Carlo →
         </button>
       </div>
+
+      {/* § 8 — Valuation Metrics */}
+      {ret?.valuation && (
+        <>
+          <SectionHeader label="§ 8  VALUATION METRICS" color={BT.text.cyan} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+
+            {/* Left: Per-Unit/SF + Income Multiples */}
+            <div>
+              {/* Per-Unit / SF table */}
+              <div style={{ padding: '4px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PRICE PER UNIT / SF</span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+                <thead>
+                  <tr style={{ background: BT.bg.header }}>
+                    {['Metric', 'Going-In', 'Stab', 'Exit', 'Submarket'].map(h => (
+                      <th key={h} style={{ padding: '2px 6px', textAlign: 'right', fontSize: 8, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, fontWeight: 600 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                    <td style={{ padding: '3px 6px', color: BT.text.secondary }}>$/Unit</td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary, fontWeight: 600 }}>
+                      {ret.valuation.perUnit.goingIn != null ? `$${ret.valuation.perUnit.goingIn.toLocaleString()}` : '—'}
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
+                      {ret.valuation.perUnit.stabilized != null ? `$${ret.valuation.perUnit.stabilized.toLocaleString()}` : '—'}
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.amber }}>
+                      {ret.valuation.perUnit.atExit != null ? `$${ret.valuation.perUnit.atExit.toLocaleString()}` : '—'}
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
+                      {ret.valuation.perUnit.submarketMedian != null ? `$${ret.valuation.perUnit.submarketMedian.toLocaleString()}` : '—'}
+                    </td>
+                  </tr>
+                  <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                    <td style={{ padding: '3px 6px', color: BT.text.secondary }}>$/NR SF</td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary, fontWeight: 600 }}>
+                      {ret.valuation.perSF.netRentable.goingIn != null ? `$${ret.valuation.perSF.netRentable.goingIn.toFixed(0)}` : '—'}
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>—</td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.amber }}>
+                      {ret.valuation.perSF.netRentable.atExit != null ? `$${ret.valuation.perSF.netRentable.atExit.toFixed(0)}` : '—'}
+                    </td>
+                    <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>
+                      {ret.valuation.perSF.netRentable.submarketMedian != null ? `$${ret.valuation.perSF.netRentable.submarketMedian.toFixed(0)}` : '—'}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Income Multiples */}
+              <div style={{ padding: '4px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>INCOME MULTIPLES</span>
+              </div>
+              {[
+                { label: 'GRM', val: ret.valuation.multiples.grm.goingIn, sub: ret.valuation.multiples.grm.submarketMedian, fmt: (n: number) => `${n.toFixed(1)}×`, note: ret.valuation.multiples.grm.goingIn != null && ret.valuation.multiples.grm.goingIn > 12 ? { text: '>12× — high', color: BT.text.red } : null },
+                { label: 'GIM', val: ret.valuation.multiples.gim.goingIn, sub: ret.valuation.multiples.gim.submarketMedian, fmt: (n: number) => `${n.toFixed(1)}×`, note: null },
+                { label: 'NIM', val: ret.valuation.multiples.nim, sub: null, fmt: (n: number) => `${n.toFixed(1)}×`, note: null },
+                { label: 'OER (Y1)', val: ret.valuation.multiples.opexRatio.y1, sub: null, fmt: (n: number) => `${(n * 100).toFixed(1)}%`, note: null },
+                { label: 'CoC (Y1)', val: ret.valuation.multiples.coc.y1, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
+                { label: 'YoC (Untrended)', val: ret.valuation.multiples.yieldOnCost.untrended, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
+                { label: 'YoC (Trended)', val: ret.valuation.multiples.yieldOnCost.trended, sub: null, fmt: (n: number) => `${(n * 100).toFixed(2)}%`, note: null },
+                { label: 'Dev Spread', val: ret.valuation.multiples.devSpread, sub: null, fmt: (n: number) => `${(n * 10000).toFixed(0)} bps`, note: null },
+              ].map(row => (
+                <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{row.label}</span>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 600, color: row.note ? row.note.color : BT.text.primary }}>
+                      {row.val != null ? row.fmt(row.val) : '—'}
+                    </span>
+                    {row.sub != null && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginLeft: 6 }}>mkt: {row.fmt(row.sub)}</span>}
+                    {row.note && <span style={{ fontFamily: MONO, fontSize: 8, color: row.note.color, marginLeft: 6 }}>{row.note.text}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Right: Replacement Cost + Position Matrix */}
+            <div style={{ borderLeft: `1px solid ${BT.border.subtle}` }}>
+              {/* Replacement Cost */}
+              <div style={{ padding: '4px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>REPLACEMENT COST</span>
+              </div>
+              {ret.valuation.replacementCost.rcTotal != null ? (
+                <>
+                  <KvRow label="RC Total" value={fmt$(ret.valuation.replacementCost.rcTotal)} bold />
+                  <KvRow label="RC / Unit" value={ret.valuation.replacementCost.rcPerUnit != null ? fmt$(ret.valuation.replacementCost.rcPerUnit) : '—'} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                    <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>Price / RC</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.primary }}>
+                        {ret.valuation.replacementCost.priceToRC != null ? `${(ret.valuation.replacementCost.priceToRC * 100).toFixed(0)}%` : '—'}
+                      </span>
+                      {ret.valuation.replacementCost.buildArbitrageFlag === 'buy_existing' && (
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, background: `${BT.text.green}18`, padding: '1px 4px', borderRadius: 2 }}>Buy&lt;Build</span>
+                      )}
+                      {ret.valuation.replacementCost.buildArbitrageFlag === 'build_new' && (
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, background: `${BT.text.amber}18`, padding: '1px 4px', borderRadius: 2 }}>Build&lt;Buy</span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+                  Replacement cost not yet seeded — requires construction cost feed.
+                </div>
+              )}
+
+              {/* Position Matrix 2×2 */}
+              <div style={{ padding: '4px 10px 2px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>POSITION MATRIX  (Price/SF vs Cap Rate)</span>
+              </div>
+              {(() => {
+                const pm = ret.valuation.positionMatrix;
+                const qLabels: Record<string, { label: string; color: string; desc: string }> = {
+                  value_buy:        { label: 'VALUE BUY', color: BT.text.green, desc: 'Low $/SF + High Cap — the sweet spot' },
+                  suspicious:       { label: 'SUSPICIOUS', color: BT.text.amber, desc: 'Low $/SF + Low Cap — why is yield low?' },
+                  distressed_trophy: { label: 'DISTRESSED TROPHY', color: BT.text.amber, desc: 'High $/SF + High Cap — premium asset, broken ops' },
+                  trophy:            { label: 'TROPHY', color: BT.text.muted, desc: 'High $/SF + Low Cap — premium pricing' },
+                };
+                const q = pm.quadrant ? qLabels[pm.quadrant] : null;
+                return (
+                  <div style={{ padding: '8px 10px' }}>
+                    {q && (
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: q.color }}>{q.label}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 2 }}>{q.desc}</div>
+                      </div>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, fontSize: 8, fontFamily: MONO }}>
+                      {[
+                        { k: 'value_buy', l: 'VALUE BUY', hint: 'Low$/High Cap' },
+                        { k: 'suspicious', l: 'SUSPICIOUS', hint: 'Low$/Low Cap' },
+                        { k: 'distressed_trophy', l: 'DISTRESSED', hint: 'High$/High Cap' },
+                        { k: 'trophy', l: 'TROPHY', hint: 'High$/Low Cap' },
+                      ].map(cell => {
+                        const isActive = pm.quadrant === cell.k;
+                        const cellColor = cell.k === 'value_buy' ? BT.text.green : cell.k === 'trophy' ? BT.text.muted : BT.text.amber;
+                        return (
+                          <div key={cell.k} style={{
+                            padding: '4px 6px',
+                            background: isActive ? `${cellColor}20` : `${BT.text.muted}08`,
+                            border: isActive ? `1px solid ${cellColor}60` : `1px solid ${BT.border.subtle}`,
+                            borderRadius: 2, textAlign: 'center',
+                          }}>
+                            <div style={{ color: isActive ? cellColor : BT.text.muted, fontWeight: isActive ? 700 : 400 }}>{cell.l}</div>
+                            <div style={{ color: BT.text.muted, fontSize: 7 }}>{cell.hint}</div>
+                            {isActive && <div style={{ color: cellColor, fontSize: 7, marginTop: 2 }}>◀ this deal</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {pm.priceSF != null && (
+                      <div style={{ marginTop: 6, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                        Deal: ${pm.priceSF.toFixed(0)}/SF · {pm.capRate != null ? fmtCap(pm.capRate) : '—'} cap
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* § 9 — Strategy Comparison Footer */}
+      {ret?.strategyAlternative ? (
+        <div style={{ margin: '8px 12px 0', padding: '10px 14px', background: `${BT.text.cyan}08`, border: `1px solid ${BT.text.cyan}30`, borderRadius: 4 }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, fontWeight: 700, marginBottom: 6 }}>
+            § 9  STRATEGY COMPARISON  (M08 Strategy Arbitrage)
+          </div>
+          <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>Current Strategy</div>
+              <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: BT.text.primary }}>
+                {fmtIrr(ret.lpNetIrr)} IRR · {fmtEm(ret.lpEquityMultiple)}
+              </div>
+            </div>
+            <div style={{ color: BT.text.muted, fontFamily: MONO, fontSize: 14 }}>→</div>
+            <div>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>{ret.strategyAlternative.strategy}</div>
+              <div style={{ fontFamily: MONO, fontSize: 12, fontWeight: 700, color: BT.text.cyan }}>
+                {fmtIrr(ret.strategyAlternative.irr)} IRR · {fmtEm(ret.strategyAlternative.em)}
+              </div>
+            </div>
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 6 }}>{ret.strategyAlternative.rationale}</div>
+        </div>
+      ) : (
+        <div style={{ margin: '6px 12px 0', padding: '6px 12px', background: `${BT.text.muted}06`, border: `1px dashed ${BT.border.subtle}`, borderRadius: 4 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+            § 9  Strategy comparison not yet run (M08 Strategy Arbitrage module).
+          </span>
+        </div>
+      )}
 
       {/* Source footnote */}
       <div style={{ padding: '8px 12px 0', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>

@@ -1302,6 +1302,23 @@ export interface DealFinancials {
     irr: number | null;
     equityMultiple: number | null;
     cashOnCash: number | null;
+    // ── Extended (v2 spec) ────────────────────────────────────────────
+    debtMetrics: {
+      coverage: { dscrY1: number | null; dscrMin: { year: number; value: number } | null; dscrAvg: number | null; dscrStab: number | null; dyY1: number | null; dyMin: { year: number; value: number } | null; dyAvg: number | null; icr: number | null; cashFlowCoverage: number | null; loanConstantBlended: number | null };
+      structural: { ltvAtClose: number | null; ltvAtStab: number | null; ltvAtMaturity: number | null; ltc: number | null; ltsv: number | null; refiOutProbability: number | null; maturityRiskScore: number | null };
+      leverage: { positiveLeverage: boolean | null; leverageSpreadBps: number | null; leverageIrrLiftBps: number | null; cashOnCashSpread: number | null };
+      stress: { breakevenOccupancy: number | null; breakevenRent: number | null; dscrAtMinus10PctNOI: number | null; dscrAtPlus200bps: number | null; cashTrapDistanceBps: number | null; defaultBufferMonths: number | null };
+      refi: { events: Array<{ year: number; payoff: number; prepayPenalty: number; exitFee: number; netProceeds: number }>; defeasanceCostToday: number | null; ymCostToday: number | null; costToRefiNowBps: number | null };
+      covenants: { dscrCushionBps: number | null; sweepTriggerYear: number | null; recourseBurnoffDate: string | null };
+    } | null;
+    valuation: {
+      perUnit: { goingIn: number | null; stabilized: number | null; atExit: number | null; submarketMedian: number | null; percentile: number | null };
+      perSF: { netRentable: { goingIn: number | null; atExit: number | null; submarketMedian: number | null; percentile: number | null }; gross: { goingIn: number | null; submarketMedian: number | null } };
+      multiples: { grm: { goingIn: number | null; submarketMedian: number | null; percentile: number | null }; gim: { goingIn: number | null; submarketMedian: number | null; percentile: number | null }; nim: number | null; opexRatio: { y1: number | null; stab: number | null }; coc: { y1: number | null; stab: number | null; avg: number | null }; capRate: { goingIn: number | null; stabilized: number | null; atExit: number | null }; yieldOnCost: { untrended: number | null; trended: number | null }; devSpread: number | null };
+      replacementCost: { rcTotal: number | null; rcPerUnit: number | null; priceToRC: number | null; buildArbitrageFlag: 'buy_existing' | 'neutral' | 'build_new' | null; insurableValue: number | null };
+      positionMatrix: { priceSF: number | null; capRate: number | null; quadrant: 'value_buy' | 'suspicious' | 'distressed_trophy' | 'trophy' | null; comps: Array<{ name: string; priceSF: number; capRate: number }> };
+    } | null;
+    strategyAlternative: { strategy: string; irr: number; em: number; rationale: string } | null;
   } | null;
   /** Sources & Uses — capital deployment at close */
   sourcesUses: {
@@ -3028,6 +3045,168 @@ export async function getDealFinancials(
       const maturityLtv = loanAmount && lastRow.grossSaleValue && lastRow.grossSaleValue > 0
         ? +(loanAmount / lastRow.grossSaleValue).toFixed(4) : null;
 
+      // ── Extended debt metrics ─────────────────────────────────────────────────
+      const row1 = rows[0];
+      const annualDS_Y1 = row1?.annualDS ?? 0;
+      const noi_Y1      = row1?.noi ?? 0;
+      const interest_Y1 = row1?.interest ?? 0;
+      const cfads_Y1    = row1?.cfads ?? 0;
+      const gpr_Y1      = row1?.gpr ?? 0;
+      const egi_Y1      = row1?.egi ?? 0;
+      const totalOpex_Y1 = row1?.totalOpex ?? 0;
+      const loanConstant = loanAmount && loanAmount > 0 && annualDS_Y1 > 0
+        ? +(annualDS_Y1 / loanAmount).toFixed(4) : null;
+      const icr = interest_Y1 > 0 ? +(noi_Y1 / interest_Y1).toFixed(4) : null;
+      const cashFlowCoverage = annualDS_Y1 > 0 ? +(cfads_Y1 / annualDS_Y1).toFixed(4) : null;
+      // Leverage position
+      const positiveLeverage = goingInCapRate != null && loanConstant != null
+        ? goingInCapRate > loanConstant : null;
+      const leverageSpreadBps = goingInCapRate != null && loanConstant != null
+        ? +((goingInCapRate - loanConstant) * 10000).toFixed(1) : null;
+      const cashOnCashSpread_ext = row1?.coc != null && loanConstant != null
+        ? +(row1.coc - loanConstant).toFixed(4) : null;
+      // Structural LTV
+      const totalCostSU = sourcesUses?.totalUses ?? purchasePrice;
+      const ltvAtClose_ext = loanAmount && purchasePrice && purchasePrice > 0
+        ? +(loanAmount / purchasePrice).toFixed(4) : null;
+      const exitCapForStab = lastRow.exitCap ?? assumptions?.exitCap ?? null;
+      const ltvAtStab = loanAmount && (peakNoi ?? 0) > 0 && exitCapForStab && exitCapForStab > 0
+        ? +(loanAmount / (peakNoi / exitCapForStab)).toFixed(4) : null;
+      const ltc_ext = loanAmount && totalCostSU && totalCostSU > 0
+        ? +(loanAmount / totalCostSU).toFixed(4) : null;
+      // Stress
+      const breakevenOccupancy = gpr_Y1 > 0 && annualDS_Y1 > 0
+        ? +Math.min(1, (annualDS_Y1 + totalOpex_Y1) / gpr_Y1).toFixed(4) : null;
+      const breakevenRent = totalUnits > 0 && annualDS_Y1 > 0
+        ? +((annualDS_Y1 + totalOpex_Y1) / totalUnits / 12).toFixed(2) : null;
+      const dscrAtMinus10PctNOI = annualDS_Y1 > 0 && noi_Y1 > 0
+        ? +((noi_Y1 * 0.9) / annualDS_Y1).toFixed(4) : null;
+      // Covenant cushion (assume no covenants seeded — show null)
+      const covenantDscrMin = debtStack?.loans?.find(l => l.id === 'senior')?.covenants?.minDscr ?? null;
+      const dscrCushionBps = minDscrRow?.dscr != null && covenantDscrMin != null
+        ? +((minDscrRow.dscr - covenantDscrMin) * 10000).toFixed(0) : null;
+
+      // Composite debtMetrics object (§ 5 expanded)
+      const debtMetrics = {
+        coverage: {
+          dscrY1: row1?.dscr ?? null,
+          dscrMin: minDscrRow ? { year: minDscrRow.yr, value: minDscrRow.dscr! } : null,
+          dscrAvg: avgDscr,
+          dscrStab: dscrRows.find(r => r.yr === peakNoiYear)?.dscr ?? null,
+          dyY1: row1?.debtYield ?? null,
+          dyMin: minDyRow ? { year: minDyRow.yr, value: minDyRow.dy! } : null,
+          dyAvg: avgDebtYield,
+          icr,
+          cashFlowCoverage,
+          loanConstantBlended: loanConstant,
+        },
+        structural: {
+          ltvAtClose: ltvAtClose_ext,
+          ltvAtStab,
+          ltvAtMaturity: maturityLtv,
+          ltc: ltc_ext,
+          ltsv: ltvAtStab,
+          refiOutProbability: null as number | null,
+          maturityRiskScore: null as number | null,
+        },
+        leverage: {
+          positiveLeverage,
+          leverageSpreadBps,
+          leverageIrrLiftBps: null as number | null,
+          cashOnCashSpread: cashOnCashSpread_ext,
+        },
+        stress: {
+          breakevenOccupancy,
+          breakevenRent,
+          dscrAtMinus10PctNOI,
+          dscrAtPlus200bps: null as number | null,
+          cashTrapDistanceBps: dscrCushionBps,
+          defaultBufferMonths: null as number | null,
+        },
+        refi: {
+          events: [] as Array<{ year: number; payoff: number; prepayPenalty: number; exitFee: number; netProceeds: number }>,
+          defeasanceCostToday: null as number | null,
+          ymCostToday: null as number | null,
+          costToRefiNowBps: null as number | null,
+        },
+        covenants: {
+          dscrCushionBps,
+          sweepTriggerYear: null as number | null,
+          recourseBurnoffDate: null as string | null,
+        },
+      };
+
+      // ── Valuation metrics ────────────────────────────────────────────────────
+      const pricePerUnit_v = purchasePrice && totalUnits > 0 ? Math.round(purchasePrice / totalUnits) : null;
+      const dealDataJSON = (deal.deal_data ?? {}) as Record<string, unknown>;
+      const netRentableSF: number | null = (dealDataJSON.net_rentable_sf as number | null) ?? null;
+      const pricePerSF_v = purchasePrice && netRentableSF && netRentableSF > 0 ? +(purchasePrice / netRentableSF).toFixed(2) : null;
+      const stabValue_v = (peakNoi ?? 0) > 0 && exitCapForStab && exitCapForStab > 0 ? Math.round(peakNoi / exitCapForStab) : null;
+      const stabPricePerUnit = stabValue_v && totalUnits > 0 ? Math.round(stabValue_v / totalUnits) : null;
+      const exitPricePerUnit_v = lastRow.grossSaleValue && totalUnits > 0 ? Math.round(lastRow.grossSaleValue / totalUnits) : null;
+      const exitPricePerSF_v = lastRow.grossSaleValue && netRentableSF && netRentableSF > 0 ? +(lastRow.grossSaleValue / netRentableSF).toFixed(2) : null;
+      const grm = purchasePrice && gpr_Y1 > 0 ? +(purchasePrice / gpr_Y1).toFixed(2) : null;
+      const gim = purchasePrice && egi_Y1 > 0 ? +(purchasePrice / egi_Y1).toFixed(2) : null;
+      const nim = purchasePrice && noi_Y1 > 0 ? +(purchasePrice / noi_Y1).toFixed(2) : null;
+      const oer = egi_Y1 > 0 ? +(totalOpex_Y1 / egi_Y1).toFixed(4) : null;
+      // Position matrix: Price/SF vs Cap Rate (simplified without submarket comp data)
+      type PosQuad = 'value_buy' | 'suspicious' | 'distressed_trophy' | 'trophy';
+      let positionQuadrant: PosQuad | null = null;
+      if (pricePerSF_v != null && goingInCapRate != null) {
+        const highCap = goingInCapRate > 0.055;
+        const lowSF   = pricePerSF_v < 200;
+        if (lowSF && highCap) positionQuadrant = 'value_buy';
+        else if (lowSF && !highCap) positionQuadrant = 'suspicious';
+        else if (!lowSF && highCap) positionQuadrant = 'distressed_trophy';
+        else positionQuadrant = 'trophy';
+      }
+
+      const valuation = {
+        perUnit: {
+          goingIn: pricePerUnit_v,
+          stabilized: stabPricePerUnit,
+          atExit: exitPricePerUnit_v,
+          submarketMedian: null as number | null,
+          percentile: null as number | null,
+        },
+        perSF: {
+          netRentable: {
+            goingIn: pricePerSF_v,
+            atExit: exitPricePerSF_v,
+            submarketMedian: null as number | null,
+            percentile: null as number | null,
+          },
+          gross: { goingIn: null as number | null, submarketMedian: null as number | null },
+        },
+        multiples: {
+          grm: { goingIn: grm, submarketMedian: null as number | null, percentile: null as number | null },
+          gim: { goingIn: gim, submarketMedian: null as number | null, percentile: null as number | null },
+          nim,
+          opexRatio: { y1: oer, stab: null as number | null },
+          coc: { y1: row1?.coc ?? null, stab: null as number | null, avg: avgCashOnCash },
+          capRate: {
+            goingIn: goingInCapRate,
+            stabilized: stabilizedCapRate,
+            atExit: exitCapForStab,
+          },
+          yieldOnCost: { untrended: yocUntrended, trended: yocTrended },
+          devSpread: developmentSpread,
+        },
+        replacementCost: {
+          rcTotal: null as number | null,
+          rcPerUnit: null as number | null,
+          priceToRC: null as number | null,
+          buildArbitrageFlag: null as 'buy_existing' | 'neutral' | 'build_new' | null,
+          insurableValue: null as number | null,
+        },
+        positionMatrix: {
+          priceSF: pricePerSF_v,
+          capRate: goingInCapRate,
+          quadrant: positionQuadrant,
+          comps: [] as Array<{ name: string; priceSF: number; capRate: number }>,
+        },
+      };
+
       // ── Time-based ────────────────────────────────────────────────────────────
       const holdMonths = rows.length * 12;
       let equityRecoveryYear: number | null = null;
@@ -3145,6 +3324,10 @@ export async function getDealFinancials(
         netDistributionsByYear, cumulativeCfByYear, lpTrancheReturns,
         totalGpFees, totalGpPromote, gpAllInMultiple, gpCoInvestIrr, gpCoInvestEm,
         irr: lpNetIrr, equityMultiple: lpEquityMultiple, cashOnCash: avgCashOnCash,
+        // Extended fields (v2 spec)
+        debtMetrics,
+        valuation,
+        strategyAlternative: null as null | { strategy: string; irr: number; em: number; rationale: string },
       };
     })(),
     taxes,

@@ -252,6 +252,22 @@ export interface F9DealFinancials {
     totalGpFees: number|null; totalGpPromote: number|null; gpAllInMultiple: number|null;
     gpCoInvestIrr: number|null; gpCoInvestEm: number|null;
     irr: number|null; equityMultiple: number|null; cashOnCash: number|null;
+    debtMetrics: {
+      coverage: { dscrY1: number|null; dscrMin: { year: number; value: number }|null; dscrAvg: number|null; dscrStab: number|null; dyY1: number|null; dyMin: { year: number; value: number }|null; dyAvg: number|null; icr: number|null; cashFlowCoverage: number|null; loanConstantBlended: number|null };
+      structural: { ltvAtClose: number|null; ltvAtStab: number|null; ltvAtMaturity: number|null; ltc: number|null; ltsv: number|null; refiOutProbability: number|null; maturityRiskScore: number|null };
+      leverage: { positiveLeverage: boolean|null; leverageSpreadBps: number|null; leverageIrrLiftBps: number|null; cashOnCashSpread: number|null };
+      stress: { breakevenOccupancy: number|null; breakevenRent: number|null; dscrAtMinus10PctNOI: number|null; dscrAtPlus200bps: number|null; cashTrapDistanceBps: number|null; defaultBufferMonths: number|null };
+      refi: { events: Array<{ year: number; payoff: number; prepayPenalty: number; exitFee: number; netProceeds: number }>; defeasanceCostToday: number|null; ymCostToday: number|null; costToRefiNowBps: number|null };
+      covenants: { dscrCushionBps: number|null; sweepTriggerYear: number|null; recourseBurnoffDate: string|null };
+    }|null;
+    valuation: {
+      perUnit: { goingIn: number|null; stabilized: number|null; atExit: number|null; submarketMedian: number|null; percentile: number|null };
+      perSF: { netRentable: { goingIn: number|null; atExit: number|null; submarketMedian: number|null; percentile: number|null }; gross: { goingIn: number|null; submarketMedian: number|null } };
+      multiples: { grm: { goingIn: number|null; submarketMedian: number|null; percentile: number|null }; gim: { goingIn: number|null; submarketMedian: number|null; percentile: number|null }; nim: number|null; opexRatio: { y1: number|null; stab: number|null }; coc: { y1: number|null; stab: number|null; avg: number|null }; capRate: { goingIn: number|null; stabilized: number|null; atExit: number|null }; yieldOnCost: { untrended: number|null; trended: number|null }; devSpread: number|null };
+      replacementCost: { rcTotal: number|null; rcPerUnit: number|null; priceToRC: number|null; buildArbitrageFlag: 'buy_existing'|'neutral'|'build_new'|null; insurableValue: number|null };
+      positionMatrix: { priceSF: number|null; capRate: number|null; quadrant: 'value_buy'|'suspicious'|'distressed_trophy'|'trophy'|null; comps: Array<{ name: string; priceSF: number; capRate: number }> };
+    }|null;
+    strategyAlternative: { strategy: string; irr: number; em: number; rationale: string }|null;
   } | null;
   capitalStack: {
     purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null;
