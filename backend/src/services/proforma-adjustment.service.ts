@@ -1273,10 +1273,15 @@ export interface DealFinancials {
     minDebtYieldYear: number | null;
     avgDebtYield: number | null;
     maturityLtv: number | null;
+    refiEventCount: number;
     // ── Time-based ───────────────────────────────────────────────────
     holdMonths: number | null;
     equityRecoveryYear: number | null;
+    equityRecoveryMonths: number | null;
     breakevenCfYear: number | null;
+    breakevenCfMonths: number | null;
+    leaseUpMonths: number | null;
+    prefAccrualYears: number | null;
     peakEquityDeployed: number | null;
     // ── LP aggregate ─────────────────────────────────────────────────
     totalLpDistributions: number | null;
@@ -1284,10 +1289,13 @@ export interface DealFinancials {
     prefPaid: number | null;
     netDistributionsByYear: number[];
     cumulativeCfByYear: number[];
+    lpTrancheReturns: Array<{ id: string; avgCoc: number | null; twr: number | null; promoteTierHit: boolean | null }>;
     // ── GP ────────────────────────────────────────────────────────────
     totalGpFees: number | null;
     totalGpPromote: number | null;
     gpAllInMultiple: number | null;
+    gpCoInvestIrr: number | null;
+    gpCoInvestEm: number | null;
     // ── Legacy fields ────────────────────────────────────────────────
     irr: number | null;
     equityMultiple: number | null;
@@ -3040,9 +3048,67 @@ export async function getDealFinancials(
       // ── GP ────────────────────────────────────────────────────────────────────
       const totalGpFees    = capital?.metrics?.totalGpFees ?? null;
       const totalGpPromote = capital?.metrics?.totalGpPromote ?? null;
+      const gpShare        = waterfall?.gpShare ?? 0.1;
       const gpAllInMultiple = equity && (totalGpFees != null || totalGpPromote != null)
-        ? +(((totalGpFees ?? 0) + (totalGpPromote ?? 0)) / (equity * (waterfall?.gpShare ?? 0.1))).toFixed(4) : null;
+        ? +(((totalGpFees ?? 0) + (totalGpPromote ?? 0)) / (equity * gpShare)).toFixed(4) : null;
       const gpPromoteEarned = totalGpPromote;
+
+      // ── GP co-invest IRR / EM ────────────────────────────────────────────────
+      const gpEquityIn = equity ? equity * gpShare : null;
+      let gpCoInvestIrr: number | null = null;
+      let gpCoInvestEm:  number | null = null;
+      if (gpEquityIn && gpEquityIn > 0) {
+        const gpCfs: number[] = [-gpEquityIn];
+        for (let i = 0; i < rows.length; i++) {
+          const annualGp = rows[i].cfads * gpShare;
+          const saleYr   = i === rows.length - 1
+            ? (rows[i].netSaleProceeds ?? 0) * gpShare + (totalGpFees ?? 0) + (totalGpPromote ?? 0)
+            : 0;
+          gpCfs.push(annualGp + saleYr);
+        }
+        gpCoInvestIrr = xirr(gpCfs);
+        const gpTotal = gpCfs.slice(1).reduce((s, v) => s + v, 0);
+        gpCoInvestEm  = +(gpTotal / gpEquityIn).toFixed(4);
+      }
+
+      // ── LP per-tranche returns ───────────────────────────────────────────────
+      const wfTiers = waterfall?.tiers ?? [];
+      const firstTierTrigger = wfTiers.length > 0 ? wfTiers[0].triggerIrr : null;
+      const lpTrancheReturns = (capital?.tranches ?? [])
+        .filter(t => t.role === 'lp')
+        .map(t => {
+          const tranchePct = t.pct / 100;
+          const tEquity    = equity ? equity * tranchePct : null;
+          // TWR: product of period (1 + cfads_i / equity) - 1
+          let twr: number | null = null;
+          if (tEquity && tEquity > 0) {
+            let twrProduct = 1;
+            for (const r of rows) {
+              twrProduct *= 1 + (r.cfads * tranchePct) / tEquity;
+            }
+            twr = +(twrProduct - 1).toFixed(4);
+          }
+          // Avg CoC per tranche = fund-level avgCashOnCash (same pct pool)
+          const avgCoc = avgCashOnCash;
+          // Promote tier hit: did the LP's achieved IRR clear the first tier trigger?
+          const promoteTierHit = lpNetIrr != null && firstTierTrigger != null
+            ? lpNetIrr >= firstTierTrigger : null;
+          return { id: t.id, avgCoc, twr, promoteTierHit };
+        });
+
+      // ── Extended time-based ──────────────────────────────────────────────────
+      const equityRecoveryMonths = equityRecoveryYear != null ? equityRecoveryYear * 12 : null;
+      const breakevenCfMonths    = breakevenCfYear    != null ? breakevenCfYear    * 12 : null;
+      // Lease-up months from traffic projection (weeks to 95% → months)
+      const weeksTo95   = trafficProjectionOut?.leaseUp?.weeksTo95 ?? null;
+      const leaseUpMonths = weeksTo95 != null ? Math.round(weeksTo95 * 7 / 30) : null;
+      // Pref accrual years: count years where pref was not fully paid
+      const prefAccrualYears = capital
+        ? capital.schedule.filter(p => p.prefPaid < p.prefAccrued * 0.99).length
+        : null;
+
+      // ── Refi events: 0 (no refi engine yet) ─────────────────────────────────
+      const refiEventCount = 0;
 
       return {
         lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned,
@@ -3050,11 +3116,13 @@ export async function getDealFinancials(
         yocUntrended, yocTrended, developmentSpread, avgNoiGrowth, peakNoiYear,
         minDscr: minDscrRow?.dscr ?? null, minDscrYear: minDscrRow?.yr ?? null, avgDscr,
         minDebtYield: minDyRow?.dy ?? null, minDebtYieldYear: minDyRow?.yr ?? null, avgDebtYield, maturityLtv,
-        holdMonths, equityRecoveryYear, breakevenCfYear, peakEquityDeployed: equity,
+        refiEventCount,
+        holdMonths, equityRecoveryYear, equityRecoveryMonths, breakevenCfYear, breakevenCfMonths,
+        leaseUpMonths, prefAccrualYears, peakEquityDeployed: equity,
         totalLpDistributions: totalLpDist,
         prefAccrued: totalPrefAccrued, prefPaid: totalPrefPaid,
-        netDistributionsByYear, cumulativeCfByYear,
-        totalGpFees, totalGpPromote, gpAllInMultiple,
+        netDistributionsByYear, cumulativeCfByYear, lpTrancheReturns,
+        totalGpFees, totalGpPromote, gpAllInMultiple, gpCoInvestIrr, gpCoInvestEm,
         irr: lpNetIrr, equityMultiple: lpEquityMultiple, cashOnCash: avgCashOnCash,
       };
     })(),

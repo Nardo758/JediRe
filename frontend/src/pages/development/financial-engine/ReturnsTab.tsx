@@ -282,7 +282,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: MONO }}>
                 <thead>
                   <tr style={{ background: BT.bg.header }}>
-                    {['Tranche', '% Eq.', 'Pref', 'IRR', 'EM', 'Pref OK'].map(h => (
+                    {['Tranche', '% Eq.', 'Pref', 'IRR', 'EM', 'Avg CoC', 'TWR', 'Tier Hit', 'Pref OK'].map(h => (
                       <th key={h} style={{
                         padding: '3px 6px', textAlign: 'right', color: BT.text.muted,
                         fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 8,
@@ -291,20 +291,37 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
                   </tr>
                 </thead>
                 <tbody>
-                  {lpTranches.map(t => (
-                    <tr key={t.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                      <td style={{ padding: '3px 6px', color: BT.text.secondary, fontSize: 9 }}>{t.label}</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary }}>{t.pctOfEquity.toFixed(0)}%</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>{fmtIrr(t.prefRate)}</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.met.financial, fontWeight: 600 }}>{fmtIrr(t.irr)}</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.cyan, fontWeight: 600 }}>{fmtEm(t.em)}</td>
-                      <td style={{ padding: '3px 6px', textAlign: 'right' }}>
-                        <span style={{ color: t.prefAchieved ? BT.text.green : BT.text.red }}>
-                          {t.prefAchieved ? '✓' : '✗'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {lpTranches.map(t => {
+                    const backendT = ret?.lpTrancheReturns?.find(r => r.id === t.id);
+                    return (
+                      <tr key={t.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                        <td style={{ padding: '3px 6px', color: BT.text.secondary, fontSize: 9 }}>{t.label}</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary }}>{t.pctOfEquity.toFixed(0)}%</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>{fmtIrr(t.prefRate)}</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.met.financial, fontWeight: 600 }}>{fmtIrr(t.irr)}</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.cyan, fontWeight: 600 }}>{fmtEm(t.em)}</td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.purple }}>
+                          {backendT?.avgCoc != null ? fmtIrr(backendT.avgCoc) : '—'}
+                        </td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.amber }}>
+                          {backendT?.twr != null ? fmtEm(backendT.twr + 1) : '—'}
+                        </td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right' }}>
+                          {backendT?.promoteTierHit == null
+                            ? <span style={{ color: BT.text.muted }}>—</span>
+                            : <span style={{ color: backendT.promoteTierHit ? BT.text.green : BT.text.red }}>
+                                {backendT.promoteTierHit ? '✓ hit' : '✗ miss'}
+                              </span>
+                          }
+                        </td>
+                        <td style={{ padding: '3px 6px', textAlign: 'right' }}>
+                          <span style={{ color: t.prefAchieved ? BT.text.green : BT.text.red }}>
+                            {t.prefAchieved ? '✓' : '✗'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -328,6 +345,10 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           <KvRow label="Maturity LTV"
             value={fmtCap(ret?.maturityLtv ?? null)}
             color={ret?.maturityLtv != null && ret.maturityLtv > 0.75 ? BT.text.amber : undefined}
+          />
+          <KvRow label="Refi Events"
+            value={ret?.refiEventCount != null ? `${ret.refiEventCount}` : '—'}
+            color={ret?.refiEventCount != null && ret.refiEventCount > 0 ? BT.text.amber : undefined}
           />
           <KvRow label="Interest Rate"    value={cap?.interestRate != null ? fmtCap(cap.interestRate) : '—'} indent />
           <KvRow label="IO Period"        value={cap?.ioPeriodMonths != null ? `${cap.ioPeriodMonths} mo` : '—'} indent />
@@ -402,6 +423,8 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
 
           {/* § 4 — GP Returns */}
           <SectionHeader label="§ 4  GP RETURNS" color={BT.text.amber} />
+          <KvRow label="GP Co-Invest IRR"    value={fmtIrr(ret?.gpCoInvestIrr ?? null)} bold color={BT.text.amber} />
+          <KvRow label="GP Co-Invest EM"     value={fmtEm(ret?.gpCoInvestEm ?? null)} bold />
           <KvRow label="GP Equity Share"     value={wf?.gpShare != null ? `${(wf.gpShare * 100).toFixed(0)}%` : '—'} />
           <KvRow label="Preferred Return"    value={prefRate != null ? `${(prefRate * 100).toFixed(1)}%` : '—'} indent />
           <KvRow label="Total GP Fees"       value={ret?.totalGpFees != null ? fmt$(ret.totalGpFees) : '—'} bold />
@@ -418,37 +441,54 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
             color={ret?.gpAllInMultiple != null && ret.gpAllInMultiple >= 2 ? BT.text.green : BT.text.primary}
           />
 
-          {/* Waterfall tiers */}
+          {/* Promote tier bar visualization */}
           {wf?.tiers && wf.tiers.length > 0 && (
             <div style={{ padding: '6px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
-              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>PROMOTE TIERS</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8, fontFamily: MONO }}>
-                <thead>
-                  <tr>
-                    {['Trigger IRR', 'LP %', 'GP %'].map(h => (
-                      <th key={h} style={{ padding: '2px 4px', textAlign: 'right', color: BT.text.muted }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {wf.tiers.map((tier, i) => (
-                    <tr key={i}>
-                      <td style={{ padding: '2px 4px', color: BT.text.secondary }}>≥ {fmtIrr(tier.triggerIrr)}</td>
-                      <td style={{ padding: '2px 4px', textAlign: 'right', color: BT.text.primary }}>{(tier.lpPct * 100).toFixed(0)}%</td>
-                      <td style={{ padding: '2px 4px', textAlign: 'right', color: BT.text.amber, fontWeight: 600 }}>{(tier.gpPct * 100).toFixed(0)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 6 }}>PROMOTE TIER BAR</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {wf.tiers.map((tier, i) => {
+                  const gpPct = tier.gpPct * 100;
+                  const lpPct = tier.lpPct * 100;
+                  const isHit = ret?.lpNetIrr != null && ret.lpNetIrr >= tier.triggerIrr;
+                  const barColor = isHit ? BT.text.green : BT.text.muted;
+                  return (
+                    <div key={i}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: isHit ? BT.text.green : BT.text.muted }}>
+                          {isHit ? '✓' : '○'} ≥ {fmtIrr(tier.triggerIrr)}
+                        </span>
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                          LP {lpPct.toFixed(0)}% / GP {gpPct.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', height: 8, borderRadius: 2, overflow: 'hidden', background: `${BT.text.muted}20` }}>
+                        <div style={{ width: `${lpPct}%`, background: `${barColor}60` }} />
+                        <div style={{ width: `${gpPct}%`, background: BT.text.amber, opacity: isHit ? 1 : 0.3 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {/* § 6 — Time-Based */}
           <SectionHeader label="§ 6  TIME-BASED METRICS" color={BT.text.secondary} />
-          <KvRow label="Hold Period"          value={fmtMo(ret?.holdMonths ?? null)} bold />
-          <KvRow label="Equity Recovery Year" value={fmtYr(ret?.equityRecoveryYear ?? null)} />
-          <KvRow label="Breakeven CF Year"    value={fmtYr(ret?.breakevenCfYear ?? null)} />
-          <KvRow label="Preferred Rate"       value={prefRate != null ? `${(prefRate * 100).toFixed(1)}%/yr` : '—'} indent />
+          <KvRow label="Hold Period"               value={fmtMo(ret?.holdMonths ?? null)} bold />
+          <KvRow label="Lease-Up Period"           value={ret?.leaseUpMonths != null ? fmtMo(ret.leaseUpMonths) : '—'} />
+          <KvRow label="Equity Recovery"
+            value={ret?.equityRecoveryYear != null ? fmtYr(ret.equityRecoveryYear) : '—'}
+            sub={ret?.equityRecoveryMonths != null ? `≈ ${ret.equityRecoveryMonths} mo` : undefined}
+          />
+          <KvRow label="Breakeven CF"
+            value={ret?.breakevenCfYear != null ? fmtYr(ret.breakevenCfYear) : '—'}
+            sub={ret?.breakevenCfMonths != null ? `≈ ${ret.breakevenCfMonths} mo` : undefined}
+          />
+          <KvRow label="Pref Accrual Years"
+            value={ret?.prefAccrualYears != null ? `${ret.prefAccrualYears} yr${ret.prefAccrualYears !== 1 ? 's' : ''}` : '—'}
+            color={ret?.prefAccrualYears != null && ret.prefAccrualYears > 0 ? BT.text.amber : undefined}
+          />
+          <KvRow label="Preferred Rate"           value={prefRate != null ? `${(prefRate * 100).toFixed(1)}%/yr` : '—'} indent />
 
         </div>
       </div>
@@ -483,7 +523,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           </div>
         </div>
         <button
-          onClick={() => onTabChange?.(9)}
+          onClick={() => onTabChange?.(8)}
           style={{
             padding: '8px 14px',
             background: `${BT.text.amber}18`,

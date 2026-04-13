@@ -241,10 +241,15 @@ export interface F9DealFinancials {
     yocUntrended: number|null; yocTrended: number|null; developmentSpread: number|null; avgNoiGrowth: number|null; peakNoiYear: number|null;
     minDscr: number|null; minDscrYear: number|null; avgDscr: number|null;
     minDebtYield: number|null; minDebtYieldYear: number|null; avgDebtYield: number|null; maturityLtv: number|null;
-    holdMonths: number|null; equityRecoveryYear: number|null; breakevenCfYear: number|null; peakEquityDeployed: number|null;
+    refiEventCount: number;
+    holdMonths: number|null; equityRecoveryYear: number|null; equityRecoveryMonths: number|null;
+    breakevenCfYear: number|null; breakevenCfMonths: number|null;
+    leaseUpMonths: number|null; prefAccrualYears: number|null; peakEquityDeployed: number|null;
     totalLpDistributions: number|null; prefAccrued: number|null; prefPaid: number|null;
     netDistributionsByYear: number[]; cumulativeCfByYear: number[];
+    lpTrancheReturns: Array<{ id: string; avgCoc: number|null; twr: number|null; promoteTierHit: boolean|null }>;
     totalGpFees: number|null; totalGpPromote: number|null; gpAllInMultiple: number|null;
+    gpCoInvestIrr: number|null; gpCoInvestEm: number|null;
     irr: number|null; equityMultiple: number|null; cashOnCash: number|null;
   } | null;
   capitalStack: {

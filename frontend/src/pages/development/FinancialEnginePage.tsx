@@ -33,10 +33,10 @@ const TAB_LABELS = [
   '⇄ SRC & USES',
   '⊙ DEBT',
   '◈ CAP & WFALL',
-  '% RETURNS',
   '∿ SENSITIVITY',
   '✓ DECISION',
   '⇔ COMPARE',
+  '% RETURNS',
 ];
 
 interface FinancialEnginePageProps {
@@ -585,10 +585,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 5  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 6  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 7  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8  && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 9  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 11 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 9  && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 10 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 11 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
         </div>
       </div>
 
