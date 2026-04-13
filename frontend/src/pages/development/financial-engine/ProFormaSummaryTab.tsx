@@ -181,9 +181,9 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
       const financials = body?.data ?? (body as unknown as DealFinancials);
       setData(financials);
-      // Notify parent whether any integrity check has error status
+      // Notify parent whether any integrity check is non-ok (warn or error blocks projections)
       if (onIntegrityChange && financials?.proforma?.integrityChecks) {
-        const hasErrors = financials.proforma.integrityChecks.some(c => c.status === 'error');
+        const hasErrors = financials.proforma.integrityChecks.some(c => c.status !== 'ok');
         onIntegrityChange(hasErrors);
       }
     } catch (e: unknown) {

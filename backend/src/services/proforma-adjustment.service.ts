@@ -1669,6 +1669,162 @@ const FIELD_MAP: Record<string, string> = {
 // Traffic signal fields that trigger derived vacancy recomputation
 const TRAFFIC_SIGNAL_FIELDS = new Set(['t01_weekly_tours', 't05_closing_ratio']);
 
+/** Handle unit_mix:{index}:{field} overrides by patching the JSONB array in deal_assumptions */
+async function applyUnitMixOverride(
+  pool: Pool,
+  dealId: string,
+  field: string,
+  value: number | null,
+  userId: string
+): Promise<{
+  year1Key: string;
+  year: number;
+  appliedValue: number | null;
+  resolution: string | null;
+  updatedCell: Record<string, unknown> | null;
+  derivedRecomputation: {
+    egi: number | null;
+    noi: number | null;
+    totalOpex: number | null;
+    derivedVacancyPct: number | null;
+    affectedFields: string[];
+  };
+}> {
+  // field format: unit_mix:{rowIndex}:{fieldName}  e.g. unit_mix:0:in_place_rent
+  const parts = field.split(':');
+  const rowIndex = parseInt(parts[1] ?? '0', 10);
+  const cellField = parts[2] ?? '';
+
+  // Allowed mutable fields in a unit mix row
+  const ALLOWED = new Set(['count', 'avg_sf', 'in_place_rent', 'occupancy_pct', 'concession_pct']);
+  if (!ALLOWED.has(cellField)) {
+    throw new Error(`unit_mix cell field '${cellField}' is not overridable`);
+  }
+
+  // Read current unit_mix array
+  const res = await pool.query(
+    'SELECT unit_mix FROM deal_assumptions WHERE deal_id = $1',
+    [dealId]
+  );
+  const currentMix: Array<Record<string, unknown>> = res.rows[0]?.unit_mix ?? [];
+  if (rowIndex < 0 || rowIndex >= currentMix.length) {
+    throw new Error(`unit_mix row index ${rowIndex} out of bounds (length ${currentMix.length})`);
+  }
+
+  // We store overrides in unit_mix_overrides keyed as "unit_mix_override:{row}:{field}"
+  // On first write, we capture the originalValue so we can restore on clear (value=null)
+  const overrideKey = `unit_mix_override:${rowIndex}:${cellField}`;
+
+  // Read existing override entry (to get originalValue if already set)
+  const existingOverrideRes = await pool.query(
+    `SELECT unit_mix_overrides->$2 AS entry, unit_mix->${rowIndex}->>$3 AS current_val FROM deal_assumptions WHERE deal_id = $1`,
+    [dealId, overrideKey, cellField]
+  );
+  const existingEntry = existingOverrideRes.rows[0]?.entry as { originalValue?: number } | null;
+  const currentVal = existingOverrideRes.rows[0]?.current_val != null
+    ? parseFloat(existingOverrideRes.rows[0].current_val as string)
+    : null;
+
+  if (value != null) {
+    // Setting: store override entry with originalValue captured on first write
+    const originalValue = existingEntry?.originalValue ?? currentVal;
+    const overrideEntry = {
+      value,
+      originalValue,
+      resolution: 'broker_corrected',
+      updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET unit_mix_overrides = jsonb_set(
+                COALESCE(unit_mix_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              unit_mix = jsonb_set(
+                COALESCE(unit_mix, '[]'::jsonb),
+                $4::text[],
+                $5::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${overrideKey}}`, JSON.stringify(overrideEntry), `{${rowIndex},${cellField}}`, JSON.stringify(value)]
+    );
+  } else {
+    // Clearing: restore originalValue if we captured it, otherwise leave unit_mix unchanged
+    const restoreValue = existingEntry?.originalValue ?? null;
+    if (restoreValue != null) {
+      await pool.query(
+        `UPDATE deal_assumptions
+            SET unit_mix_overrides = jsonb_set(
+                  COALESCE(unit_mix_overrides, '{}'::jsonb),
+                  $2::text[],
+                  'null'::jsonb
+                ),
+                unit_mix = jsonb_set(
+                  COALESCE(unit_mix, '[]'::jsonb),
+                  $3::text[],
+                  $4::jsonb
+                ),
+                updated_at = NOW()
+          WHERE deal_id = $1`,
+        [dealId, `{${overrideKey}}`, `{${rowIndex},${cellField}}`, JSON.stringify(restoreValue)]
+      );
+    } else {
+      // No original to restore — just clear the override entry
+      await pool.query(
+        `UPDATE deal_assumptions
+            SET unit_mix_overrides = jsonb_set(
+                  COALESCE(unit_mix_overrides, '{}'::jsonb),
+                  $2::text[],
+                  'null'::jsonb
+                ),
+                updated_at = NOW()
+          WHERE deal_id = $1`,
+        [dealId, `{${overrideKey}}`]
+      );
+    }
+  }
+
+  // Record audit trail
+  try {
+    await pool.query(
+      `INSERT INTO assumption_adjustments
+         (proforma_id, adjustment_trigger, assumption_type, previous_value, new_value, calculation_method, calculation_inputs, confidence_score)
+       SELECT pa.id, 'manual', $2, NULL, $3::text, 'user_override_unit_mix',
+              jsonb_build_object('field', $2, 'rowIndex', $4, 'cellField', $5, 'userId', $6)::jsonb, 100
+       FROM proforma_assumptions pa WHERE pa.deal_id = $1 LIMIT 1`,
+      [dealId, field, value?.toString() ?? 'null', rowIndex, cellField, userId]
+    );
+  } catch {
+    // Non-fatal
+  }
+
+  const updatedCell = {
+    field,
+    rowIndex,
+    cellField,
+    appliedValue: value,
+    resolution: value != null ? 'user_corrected' : 'cleared',
+  };
+
+  return {
+    year1Key: field,
+    year: 1,
+    appliedValue: value,
+    resolution: value != null ? 'user_corrected' : 'cleared',
+    updatedCell,
+    derivedRecomputation: {
+      egi: null,
+      noi: null,
+      totalOpex: null,
+      derivedVacancyPct: null,
+      affectedFields: ['gpr', 'unit_mix'],
+    },
+  };
+}
+
 export async function applyFinancialsOverride(
   pool: Pool,
   dealId: string,
@@ -1690,6 +1846,11 @@ export async function applyFinancialsOverride(
     affectedFields: string[];
   };
 }> {
+  // Route unit_mix cell overrides to dedicated handler
+  if (field.startsWith('unit_mix:')) {
+    return applyUnitMixOverride(pool, dealId, field, value, userId);
+  }
+
   const year1Key = FIELD_MAP[field] ?? field;
   const targetYear = year ?? 1;
 
