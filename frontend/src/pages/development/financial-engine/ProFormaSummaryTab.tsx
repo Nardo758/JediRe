@@ -648,15 +648,20 @@ function VSSnapshotTile({
       <div style={{ fontFamily: MONO, fontSize: 16, color: '#e2e8f0', fontWeight: 700, lineHeight: 1.1 }}>
         {value}
       </div>
-      {sub && (
-        <div style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>
-          MED {sub}
-        </div>
-      )}
+      <div style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>
+        MED {sub ?? '—'}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
         <PctBadge pct={pct} invert={invertBadge} />
         {note && (
-          <span style={{ fontFamily: MONO, fontSize: 8, color: '#64748b' }}>{note}</span>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            padding: '1px 5px', borderRadius: 3,
+            background: flagColor === '#22c55e' ? '#0a1c10' : flagColor === '#f59e0b' ? '#1a1200' : '#1e1e1e',
+            fontFamily: MONO, fontSize: 8,
+            color: flagColor === '#22c55e' ? '#22c55e' : flagColor === '#f59e0b' ? '#f59e0b' : '#94a3b8',
+            fontWeight: 700, letterSpacing: 0.4,
+          }}>{note}</span>
         )}
       </div>
     </div>
@@ -676,7 +681,7 @@ function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
 
   return (
     <div style={{
-      position: 'sticky', top: 0, zIndex: 10,
+      position: 'sticky', top: 0, zIndex: 20,
       flexShrink: 0, borderBottom: '1px solid #1e1e1e',
       background: '#0a0a0a',
     }}>
