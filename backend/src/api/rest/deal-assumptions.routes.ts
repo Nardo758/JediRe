@@ -14,10 +14,16 @@ import {
   ComputedReturns,
   DEFAULT_ASSUMPTIONS 
 } from '../../types/deal-assumptions.types';
+import * as XLSX from 'xlsx';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
+import { buildF9Workbook } from '../../services/f9-financial-export.service';
 
 const router = Router();
+
+// ─── Narrative cache (24h per deal) ──────────────────────────────────────────
+const narrativeCache = new Map<string, { text: string | null; generatedAt: number }>();
+const NARRATIVE_TTL_MS = 24 * 60 * 60 * 1000;
 const pool = getPool();
 
 router.get('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -503,5 +509,92 @@ function computeReturns(params: {
     ltv,
   };
 }
+
+/**
+ * GET /:dealId/financials/narrative
+ *
+ * Returns AI-synthesized M07 narrative for the deal, cached in-memory for 24h.
+ * Use ?refresh=true to force regeneration.
+ */
+router.get('/:dealId/financials/narrative', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const forceRefresh = req.query.refresh === 'true';
+    const now = Date.now();
+    const cached = narrativeCache.get(dealId);
+
+    if (!forceRefresh && cached && (now - cached.generatedAt) < NARRATIVE_TTL_MS) {
+      return res.json({
+        success: true,
+        data: {
+          narrative: cached.text,
+          cachedAt: new Date(cached.generatedAt).toISOString(),
+          fresh: false,
+        },
+      });
+    }
+
+    const data = await getDealFinancials(pool, dealId, 10);
+    const narrative = data.assumptions.narrative;
+    narrativeCache.set(dealId, { text: narrative, generatedAt: now });
+
+    res.json({
+      success: true,
+      data: {
+        narrative,
+        cachedAt: new Date(now).toISOString(),
+        fresh: true,
+      },
+    });
+  } catch (error: unknown) {
+    logger.error('Error fetching deal financials narrative:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * GET /:dealId/financials/export
+ *
+ * Downloads an XLSX workbook with three sheets:
+ *   1. Pro Forma — per-year operating statement with live formula cells + layer metadata comments
+ *   2. Traffic Projection — per-year M07 signal data
+ *   3. Assumptions — GPR decomposition, capital stack, hold/exit parameters
+ *
+ * Query params:
+ *   hold=N — hold period in years (default: 10)
+ */
+router.get('/:dealId/financials/export', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+
+    const data = await getDealFinancials(pool, dealId, holdYears);
+    const wb   = buildF9Workbook(data, holdYears);
+
+    const buffer = XLSX.write(wb, {
+      type: 'buffer',
+      bookType: 'xlsx',
+      bookSST: false,
+      cellStyles: true,
+    }) as Buffer;
+
+    const safeName = data.dealName.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60);
+    const filename  = `${safeName}_ProForma_${holdYears}yr.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(buffer);
+  } catch (error: unknown) {
+    logger.error('Error exporting deal financials XLSX:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
 
 export default router;
