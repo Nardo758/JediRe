@@ -235,7 +235,18 @@ export interface F9DealFinancials {
     unitEconomics: Record<string, number|null>;
   };
   /** Hold-period returns computed from the F9 projection engine */
-  returns: { irr: number|null; equityMultiple: number|null; cashOnCash: number|null } | null;
+  returns: {
+    lpNetIrr: number|null; lpEquityMultiple: number|null; avgCashOnCash: number|null; gpPromoteEarned: number|null;
+    unleveragedIrr: number|null; unleveragedEm: number|null; goingInCapRate: number|null; stabilizedCapRate: number|null;
+    yocUntrended: number|null; yocTrended: number|null; developmentSpread: number|null; avgNoiGrowth: number|null; peakNoiYear: number|null;
+    minDscr: number|null; minDscrYear: number|null; avgDscr: number|null;
+    minDebtYield: number|null; minDebtYieldYear: number|null; avgDebtYield: number|null; maturityLtv: number|null;
+    holdMonths: number|null; equityRecoveryYear: number|null; breakevenCfYear: number|null; peakEquityDeployed: number|null;
+    totalLpDistributions: number|null; prefAccrued: number|null; prefPaid: number|null;
+    netDistributionsByYear: number[]; cumulativeCfByYear: number[];
+    totalGpFees: number|null; totalGpPromote: number|null; gpAllInMultiple: number|null;
+    irr: number|null; equityMultiple: number|null; cashOnCash: number|null;
+  } | null;
   capitalStack: {
     purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null;
     ltcPct: number|null; interestRate: number|null; ioPeriodMonths: number|null;

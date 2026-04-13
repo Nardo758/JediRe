@@ -1,298 +1,512 @@
 import React, { useState, useMemo } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
-import { SectionPanel, DataRow, Bd, KpiTile } from '../../../components/deal/bloomberg-ui';
 import type { FinancialEngineTabProps } from './types';
-import { fmt$, fmtPct, fmtX } from './types';
+import { fmt$, fmtPctRaw, fmtX } from './types';
 
 const MONO = BT.font.mono;
 
-interface SensCell { irr: number | null; em: number | null }
+// ─── Formatting helpers ────────────────────────────────────────────────────
+const fmtIrr  = (n: number | null): string => n == null ? '—' : `${(n * 100).toFixed(2)}%`;
+const fmtEm   = (n: number | null): string => n == null ? '—' : `${n.toFixed(2)}×`;
+const fmtCap  = (n: number | null): string => n == null ? '—' : `${(n * 100).toFixed(2)}%`;
+const fmtDscr = (n: number | null): string => n == null ? '—' : `${n.toFixed(2)}×`;
+const fmtYr   = (n: number | null): string => n == null ? '—' : `Yr ${n}`;
+const fmtMo   = (n: number | null): string => n == null ? '—' : `${n} mo`;
 
-function computeIRR(cashFlows: number[]): number | null {
-  if (cashFlows.length < 2) return null;
-  let lo = -0.999, hi = 10.0;
-  for (let iter = 0; iter < 100; iter++) {
-    const mid = (lo + hi) / 2;
-    const npv = cashFlows.reduce((s, cf, t) => s + cf / Math.pow(1 + mid, t), 0);
-    if (Math.abs(npv) < 0.01) return mid;
-    if (npv > 0) lo = mid; else hi = mid;
-  }
-  return (lo + hi) / 2;
-}
-
-function computeEM(equity: number, cashFlows: number[]): number | null {
-  if (equity <= 0) return null;
-  const totalIn = cashFlows.filter(c => c > 0).reduce((s, c) => s + c, 0);
-  return totalIn / equity;
-}
-
-function makeScenarioCashFlows(
-  equity: number,
-  noi_y1: number,
-  rentGrowth: number,
-  annualDS: number,
-  holdYears: number,
-  exitCap: number,
-  sellingCostsPct: number,
-  loanBalance: number,
-): number[] {
-  if (equity <= 0 || noi_y1 <= 0) return [];
-  const cfs: number[] = [-equity];
-  for (let y = 1; y <= holdYears; y++) {
-    const noi = noi_y1 * Math.pow(1 + rentGrowth, y - 1);
-    const btcf = noi - annualDS;
-    if (y < holdYears) {
-      cfs.push(btcf);
-    } else {
-      const exitNoi = noi_y1 * Math.pow(1 + rentGrowth, y);
-      const exitSalePrice = exitCap > 0 ? exitNoi / exitCap : 0;
-      const netProceeds = exitSalePrice * (1 - sellingCostsPct) - loanBalance;
-      cfs.push(btcf + netProceeds);
-    }
-  }
-  return cfs;
-}
-
-export function ReturnsTab({ dealId, deal, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
-  const [showSensitivity, setShowSensitivity] = useState(true);
-
-  const purchasePrice = f9Financials?.capitalStack?.purchasePrice
-    ?? assumptions?.acquisition?.purchasePrice
-    ?? (typeof deal?.purchase_price === 'number' ? deal.purchase_price as number : 0);
-
-  const loanAmount = f9Financials?.capitalStack?.loanAmount
-    ?? assumptions?.financing?.loanAmount
-    ?? purchasePrice * 0.65;
-
-  const equity = f9Financials?.capitalStack?.equityAtClose
-    ?? (purchasePrice - loanAmount);
-
-  const f9Noi = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? null;
-  const noi_y1 = f9Noi ?? modelResults?.summary?.noi ?? 0;
-
-  const holdYears   = f9Financials?.assumptions?.holdYears ?? assumptions?.holdPeriod ?? 5;
-  const exitCap     = f9Financials?.assumptions?.exitCap ?? assumptions?.disposition?.exitCapRate ?? 0.055;
-  const rentGrowth  = f9Financials?.assumptions?.rentGrowthStabilized ?? 0.03;
-  const sellingCostsPct = assumptions?.disposition?.sellingCosts ?? 0.03;
-  const interestRate = f9Financials?.capitalStack?.interestRate ?? assumptions?.financing?.interestRate ?? 0.07;
-  const annualDS = loanAmount * interestRate;
-
-  const f9Returns = f9Financials?.returns;
-
-  const cashFlows = useMemo(() => makeScenarioCashFlows(
-    equity, noi_y1, rentGrowth, annualDS, holdYears, exitCap, sellingCostsPct, loanAmount,
-  ), [equity, noi_y1, rentGrowth, annualDS, holdYears, exitCap, sellingCostsPct, loanAmount]);
-
-  const derivedIRR = useMemo(() => computeIRR(cashFlows), [cashFlows]);
-  const derivedEM  = useMemo(() => computeEM(equity, cashFlows), [equity, cashFlows]);
-  const derivedCoC = noi_y1 > 0 && equity > 0 ? ((noi_y1 - annualDS) / equity) : null;
-
-  const irr = f9Returns?.irr ?? derivedIRR;
-  const em  = f9Returns?.equityMultiple ?? derivedEM;
-  const coc = f9Returns?.cashOnCash ?? derivedCoC;
-
-  const lpShare = assumptions?.waterfall?.lpShare ?? 0.90;
-  const gpShare = assumptions?.waterfall?.gpShare ?? 0.10;
-  const lpEquity = equity * lpShare;
-  const gpEquity = equity * gpShare;
-
-  const prefRate = assumptions?.waterfall?.hurdles?.[0]?.hurdleRate ?? 0.08;
-  const promoteRate = assumptions?.waterfall?.hurdles?.[0]?.promoteToGP ?? 0.20;
-
-  const lpIrr  = modelResults?.summary?.lpIrr  ?? null;
-  const lpEm   = modelResults?.summary?.lpEm   ?? null;
-  const gpIrr  = modelResults?.summary?.gpIrr  ?? null;
-  const gpEm   = modelResults?.summary?.gpEm   ?? null;
-  const gpPromote = modelResults?.summary?.gpPromoteEarned ?? null;
-
-  const exitSalePrice = holdYears > 0 && exitCap > 0
-    ? (noi_y1 * Math.pow(1 + rentGrowth, holdYears)) / exitCap
-    : 0;
-  const exitNetProceeds = exitSalePrice * (1 - sellingCostsPct) - loanAmount;
-  const totalReturn = cashFlows.slice(1).reduce((s, cf) => s + cf, 0);
-  const totalProfit = totalReturn - equity;
-
-  const EXIT_CAPS  = [0.040, 0.045, 0.050, 0.055, 0.060, 0.065, 0.070];
-  const HOLD_YEARS = [3, 4, 5, 6, 7, 8, 10];
-
-  const sensGrid: SensCell[][] = useMemo(() => {
-    return EXIT_CAPS.map(cap => HOLD_YEARS.map(hy => {
-      const cfs = makeScenarioCashFlows(equity, noi_y1, rentGrowth, annualDS, hy, cap, sellingCostsPct, loanAmount);
-      const irrV = computeIRR(cfs);
-      const emV  = computeEM(equity, cfs);
-      return { irr: irrV, em: emV };
-    }));
-  }, [equity, noi_y1, rentGrowth, annualDS, sellingCostsPct, loanAmount]);
-
-  const irrColor = (v: number | null) => {
-    if (v == null) return BT.text.muted;
-    if (v >= 0.18) return BT.text.cyan;
-    if (v >= 0.14) return BT.met.financial;
-    if (v >= 0.10) return BT.text.amber;
-    return BT.text.red;
-  };
-
-  const emColor = (v: number | null) => {
-    if (v == null) return BT.text.muted;
-    if (v >= 2.0) return BT.text.cyan;
-    if (v >= 1.7) return BT.met.financial;
-    if (v >= 1.4) return BT.text.amber;
-    return BT.text.red;
-  };
-
-  const [sensMode, setSensMode] = useState<'irr' | 'em'>('irr');
-
-  const maxBarW = 80;
-  const btcfValues = cashFlows.slice(1, -1);
-
+// ─── Section header ─────────────────────────────────────────────────────────
+function SectionHeader({ label, color = BT.met.financial }: { label: string; color?: string }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      {/* Header */}
-      <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>UNLEVERED & LEVERED · LP / GP SPLIT · SENSITIVITY</span>
-        <Bd c={BT.met.financial}>RETURNS ANALYSIS</Bd>
-        {f9Returns && <Bd c={BT.text.cyan}>F9 ENGINE</Bd>}
+    <div style={{
+      padding: '5px 10px', marginTop: 8,
+      background: `${color}12`,
+      borderLeft: `3px solid ${color}`,
+      borderBottom: `1px solid ${color}30`,
+    }}>
+      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color, letterSpacing: 0.8 }}>{label}</span>
+    </div>
+  );
+}
+
+// ─── Key-value row ──────────────────────────────────────────────────────────
+interface KvRowProps {
+  label: string; value: string; sub?: string; color?: string; bold?: boolean; indent?: boolean;
+}
+function KvRow({ label, value, sub, color, bold, indent }: KvRowProps) {
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+      padding: '3px 10px', borderBottom: `1px solid ${BT.border.subtle}`,
+    }}>
+      <span style={{
+        fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
+        paddingLeft: indent ? 12 : 0, fontWeight: bold ? 600 : 400,
+      }}>{label}</span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: bold ? 700 : 500, color: color ?? BT.text.primary }}>
+          {value}
+        </span>
+        {sub && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{sub}</span>}
       </div>
+    </div>
+  );
+}
 
-      {/* KPI strip */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, background: BT.border.subtle, padding: 1 }}>
-        <KpiTile label="LEVERED IRR" value={irr != null ? fmtPct(irr * 100) : '—'} color={irrColor(irr)} />
-        <KpiTile label="EQUITY MULTIPLE" value={em != null ? fmtX(em) : '—'} color={emColor(em)} />
-        <KpiTile label="CASH-ON-CASH" value={coc != null ? fmtPct(coc * 100) : '—'} color={BT.text.cyan} />
-        <KpiTile label="EXIT VALUE" value={exitSalePrice > 0 ? fmt$(exitSalePrice) : '—'} color={BT.text.white} />
-        <KpiTile label="TOTAL PROFIT" value={totalProfit > 0 ? fmt$(totalProfit) : '—'} color={BT.met.financial} />
+// ─── Sparkline SVG ──────────────────────────────────────────────────────────
+function Sparkline({ data, color = BT.met.financial, width = 220, height = 32 }: {
+  data: number[]; color?: string; width?: number; height?: number;
+}) {
+  if (data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((v - min) / range) * (height - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const zeroY = height - ((0 - min) / range) * (height - 4) - 2;
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      {min < 0 && max > 0 && (
+        <line x1={0} y1={zeroY} x2={width} y2={zeroY}
+          stroke={`${BT.text.muted}60`} strokeWidth={0.5} strokeDasharray="2,2" />
+      )}
+      <polyline fill="none" stroke={color} strokeWidth={1.5} points={pts} />
+      {data.map((v, i) => {
+        const x = (i / (data.length - 1)) * width;
+        const y = height - ((v - min) / range) * (height - 4) - 2;
+        return <circle key={i} cx={x} cy={y} r={2} fill={v >= 0 ? color : BT.text.red} />;
+      })}
+    </svg>
+  );
+}
+
+// ─── Editable hurdle input ──────────────────────────────────────────────────
+function HurdleInput({ label, value, onChange, isX }: {
+  label: string; value: number; onChange: (v: number) => void; isX?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft]     = useState('');
+  const display = isX ? `${value.toFixed(2)}×` : `${(value * 100).toFixed(1)}%`;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{label}</span>
+      {editing ? (
+        <input autoFocus value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={() => {
+            const n = parseFloat(draft.replace(/[^0-9.-]/g, ''));
+            if (!isNaN(n)) onChange(isX ? n : n / 100);
+            setEditing(false);
+          }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              const n = parseFloat(draft.replace(/[^0-9.-]/g, ''));
+              if (!isNaN(n)) onChange(isX ? n : n / 100);
+              setEditing(false);
+            }
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          style={{
+            background: `${BT.text.amber}18`, border: `1px solid ${BT.text.amber}`,
+            color: BT.text.amber, fontFamily: MONO, fontSize: 9, width: 64,
+            padding: '2px 4px', textAlign: 'center', borderRadius: 2,
+          }}
+        />
+      ) : (
+        <span
+          onClick={() => { setDraft(isX ? value.toFixed(2) : (value * 100).toFixed(1)); setEditing(true); }}
+          title="Click to edit hurdle"
+          style={{
+            fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.amber,
+            cursor: 'pointer', borderBottom: `1px dashed ${BT.text.amber}66`,
+          }}
+        >{display}</span>
+      )}
+    </div>
+  );
+}
+
+// ─── Hero tile with hurdle color ────────────────────────────────────────────
+function HeroTile({ label, value, hurdle, actual, isX, baseColor }: {
+  label: string; value: string; hurdle?: number; actual?: number | null; isX?: boolean; baseColor: string;
+}) {
+  const aboveHurdle = hurdle != null && actual != null ? actual >= hurdle : null;
+  const statusColor = aboveHurdle == null ? baseColor : aboveHurdle ? BT.text.green : BT.text.red;
+  return (
+    <div style={{
+      flex: 1, padding: '10px 14px', textAlign: 'center',
+      background: `${statusColor}10`,
+      border: `1px solid ${statusColor}40`,
+      borderTop: `3px solid ${statusColor}`,
+      borderRadius: 4,
+    }}>
+      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>
+        {label}
       </div>
-
-      {/* Deal vs LP vs GP */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
-        <SectionPanel title="DEAL-LEVEL RETURNS" subtitle="Levered, before promote" borderColor={BT.met.financial}>
-          <DataRow label="EQUITY INVESTED" value={equity > 0 ? fmt$(equity) : '—'} valueColor={BT.text.white} />
-          <DataRow label="LEVERED IRR" value={irr != null ? fmtPct(irr * 100) : '—'} valueColor={irrColor(irr)} />
-          <DataRow label="EQUITY MULTIPLE" value={em != null ? fmtX(em) : '—'} valueColor={emColor(em)} />
-          <DataRow label="CASH-ON-CASH (Y1)" value={coc != null ? fmtPct(coc * 100) : '—'} valueColor={BT.text.cyan} />
-          <DataRow label="TOTAL PROFIT" value={totalProfit > 0 ? fmt$(totalProfit) : '—'} valueColor={BT.met.financial} />
-          <DataRow label="HOLD PERIOD" value={`${holdYears} years`} valueColor={BT.text.secondary} border={false} />
-        </SectionPanel>
-
-        <SectionPanel title="LP RETURNS" subtitle={`${fmtPct(lpShare * 100)} equity · ${fmtPct(prefRate * 100)} pref`} borderColor={BT.text.cyan}>
-          <DataRow label="LP EQUITY" value={lpEquity > 0 ? fmt$(lpEquity) : '—'} valueColor={BT.text.white} />
-          <DataRow label="LP IRR" value={lpIrr != null ? fmtPct(lpIrr * 100) : (irr != null ? fmtPct(irr * 100) : '—')} valueColor={irrColor(lpIrr ?? irr)} />
-          <DataRow label="LP EQUITY MULTIPLE" value={lpEm != null ? fmtX(lpEm) : (em != null ? fmtX(em) : '—')} valueColor={emColor(lpEm ?? em)} />
-          <DataRow label="PREF RETURN RATE" value={fmtPct(prefRate * 100)} valueColor={BT.text.amber} />
-          <DataRow label="ANNUAL PREF" value={lpEquity > 0 ? fmt$(lpEquity * prefRate) + '/yr' : '—'} valueColor={BT.text.cyan} />
-          <DataRow label="LP TOTAL DIST" value={modelResults?.summary?.lpTotalDistributions != null ? fmt$(modelResults.summary.lpTotalDistributions) : '—'} valueColor={BT.text.cyan} border={false} />
-        </SectionPanel>
-
-        <SectionPanel title="GP RETURNS" subtitle={`${fmtPct(gpShare * 100)} equity · ${fmtPct(promoteRate * 100)} promote`} borderColor={BT.text.orange}>
-          <DataRow label="GP EQUITY" value={gpEquity > 0 ? fmt$(gpEquity) : '—'} valueColor={BT.text.white} />
-          <DataRow label="GP IRR" value={gpIrr != null ? fmtPct(gpIrr * 100) : '—'} valueColor={irrColor(gpIrr)} />
-          <DataRow label="GP EQUITY MULTIPLE" value={gpEm != null ? fmtX(gpEm) : '—'} valueColor={emColor(gpEm)} />
-          <DataRow label="PROMOTE RATE" value={fmtPct(promoteRate * 100)} valueColor={BT.text.amber} />
-          <DataRow label="GP PROMOTE EARNED" value={gpPromote != null ? fmt$(gpPromote) : '—'} valueColor={BT.text.orange} />
-          <DataRow label="GP TOTAL DIST" value={modelResults?.summary?.gpTotalDistributions != null ? fmt$(modelResults.summary.gpTotalDistributions) : '—'} valueColor={BT.text.orange} border={false} />
-        </SectionPanel>
-      </div>
-
-      {/* Cash flow timeline */}
-      <SectionPanel title="CASH FLOW TIMELINE" subtitle="Annual BTCF by year" borderColor={BT.text.cyan}>
-        <div style={{ padding: '8px 12px', display: 'flex', gap: 8, alignItems: 'flex-end', minHeight: 80 }}>
-          {cashFlows.slice(1).map((cf, i) => {
-            const isExit = i === cashFlows.length - 2;
-            const maxCf = Math.max(...cashFlows.slice(1).map(Math.abs), 1);
-            const barH  = Math.max(4, (Math.abs(cf) / maxCf) * 70);
-            const color = isExit ? BT.text.amber : (cf >= 0 ? BT.met.financial : BT.text.red);
-            return (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <span style={{ fontFamily: MONO, fontSize: 7, color }}>{cf >= 0 ? '+' : ''}{fmt$(cf)}</span>
-                <div style={{ width: '100%', height: barH, background: color, opacity: 0.8, borderRadius: 2 }} />
-                <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Y{i + 1}{isExit ? '*' : ''}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ padding: '4px 12px', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-          * Exit year includes sale proceeds ({fmt$(exitNetProceeds)} net after loan payoff + selling costs)
-        </div>
-      </SectionPanel>
-
-      {/* Sensitivity grid */}
-      <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>SENSITIVITY MATRIX — EXIT CAP × HOLD PERIOD</span>
-        <div style={{ display: 'flex', gap: 4 }}>
-          {(['irr', 'em'] as const).map(m => (
-            <button key={m} onClick={() => setSensMode(m)} style={{
-              background: sensMode === m ? `${BT.met.financial}20` : 'transparent',
-              border: `1px solid ${sensMode === m ? BT.met.financial : BT.border.medium}`,
-              color: sensMode === m ? BT.met.financial : BT.text.muted,
-              fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
-            }}>{m.toUpperCase()}</button>
-          ))}
-          <button onClick={() => setShowSensitivity(!showSensitivity)} style={{
-            background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted,
-            fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
-          }}>{showSensitivity ? 'HIDE' : 'SHOW'}</button>
-        </div>
-      </div>
-
-      {showSensitivity && (
-        <div style={{ overflowX: 'auto', background: BT.bg.panel }}>
-          <table style={{ borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9, width: '100%' }}>
-            <thead>
-              <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
-                <th style={{ padding: '4px 10px', color: BT.text.muted, textAlign: 'left', fontWeight: 500 }}>EXIT CAP ↓ / HOLD →</th>
-                {HOLD_YEARS.map(hy => (
-                  <th key={hy} style={{ padding: '4px 10px', color: BT.text.muted, textAlign: 'center', fontWeight: 500 }}>{hy}yr</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {EXIT_CAPS.map((cap, ci) => (
-                <tr key={cap} style={{
-                  background: ci % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-                  borderBottom: `1px solid ${BT.border.subtle}`,
-                  outline: Math.abs(cap - exitCap) < 0.0001 ? `1px solid ${BT.border.medium}` : 'none',
-                }}>
-                  <td style={{ padding: '3px 10px', color: Math.abs(cap - exitCap) < 0.0001 ? BT.text.amber : BT.text.muted, fontWeight: Math.abs(cap - exitCap) < 0.0001 ? 700 : 400 }}>
-                    {fmtPct(cap * 100)}{Math.abs(cap - exitCap) < 0.0001 ? ' ◄' : ''}
-                  </td>
-                  {HOLD_YEARS.map((hy, hi) => {
-                    const cell = sensGrid[ci][hi];
-                    const v = sensMode === 'irr' ? cell.irr : cell.em;
-                    const col = sensMode === 'irr' ? irrColor(v) : emColor(v);
-                    const isCurrent = Math.abs(cap - exitCap) < 0.0001 && hy === holdYears;
-                    return (
-                      <td key={hy} style={{
-                        padding: '3px 10px', textAlign: 'center',
-                        color: col, fontWeight: isCurrent ? 700 : 400,
-                        background: isCurrent ? `${BT.text.amber}15` : 'transparent',
-                      }}>
-                        {v == null ? '—' : sensMode === 'irr' ? fmtPct(v * 100) : fmtX(v)}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-            <span style={{ color: BT.text.cyan }}>■</span> {'>'}18% IRR
-            <span style={{ marginLeft: 8, color: BT.met.financial }}>■</span> 14–18%
-            <span style={{ marginLeft: 8, color: BT.text.amber }}>■</span> 10–14%
-            <span style={{ marginLeft: 8, color: BT.text.red }}>■</span> {'<'}10%
-            <span style={{ marginLeft: 12, color: BT.text.amber }}>◄ Current scenario</span>
-          </div>
+      <div style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: statusColor }}>{value}</div>
+      {hurdle != null && (
+        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 3 }}>
+          hurdle: {isX ? `${hurdle.toFixed(2)}×` : `${(hurdle * 100).toFixed(1)}%`}
+          {aboveHurdle != null && (
+            <span style={{ marginLeft: 4, color: statusColor }}>
+              {aboveHurdle ? '▲ pass' : '▼ miss'}
+            </span>
+          )}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Exit analysis */}
-      <SectionPanel title="EXIT ANALYSIS" subtitle={`Year ${holdYears} disposition`} borderColor={BT.text.amber}>
-        <DataRow label="EXIT CAP RATE" value={exitCap > 0 ? fmtPct(exitCap * 100) : '—'} valueColor={BT.text.amber} />
-        <DataRow label="TERMINAL NOI" value={noi_y1 > 0 ? fmt$(noi_y1 * Math.pow(1 + rentGrowth, holdYears)) : '—'} valueColor={BT.met.financial} />
-        <DataRow label="GROSS SALE PRICE" value={exitSalePrice > 0 ? fmt$(exitSalePrice) : '—'} valueColor={BT.text.white} />
-        <DataRow label="SELLING COSTS" value={exitSalePrice > 0 ? fmt$(exitSalePrice * sellingCostsPct) : '—'} valueColor={BT.text.red} sub={fmtPct(sellingCostsPct * 100)} />
-        <DataRow label="LOAN PAYOFF" value={loanAmount > 0 ? fmt$(loanAmount) : '—'} valueColor={BT.text.red} />
-        <DataRow label="NET SALE PROCEEDS" value={exitNetProceeds > 0 ? fmt$(exitNetProceeds) : '—'} valueColor={BT.text.cyan} border={false} />
-      </SectionPanel>
+// ─── Main ReturnsTab ─────────────────────────────────────────────────────────
+export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProps) {
+  const ret    = f9Financials?.returns;
+  const cap    = f9Financials?.capitalStack;
+  const wf     = f9Financials?.waterfall;
+  const capData = f9Financials?.capital;
+  const proj   = f9Financials?.projections;
+
+  // Local hurdle state (no server persistence needed)
+  const [irrHurdle, setIrrHurdle] = useState(0.12);
+  const [emHurdle,  setEmHurdle]  = useState(1.8);
+  const [cocHurdle, setCocHurdle] = useState(0.07);
+
+  const prefRate = wf?.prefRate ?? 0.08;
+
+  // Per-LP-tranche rows built from capital.tranches + schedule
+  const lpTranches = useMemo(() => {
+    if (!capData?.tranches) return [];
+    const equityTotal = cap?.equityAtClose ?? 0;
+    return capData.tranches.filter(t => t.role === 'lp').map(t => {
+      const equityIn = equityTotal * (t.pct / 100);
+      const distTotal = capData.schedule.reduce((s, p) => s + p.lpDist, 0) * (t.pct / 100);
+      const em = equityIn > 0 ? distTotal / equityIn : null;
+      const prefAchieved = capData.schedule.every(p => p.prefPaid >= p.prefAccrued * 0.99);
+      return { id: t.id, label: t.label, pctOfEquity: t.pct, prefRate: t.prefRate, irr: capData.metrics.lpIrr, em, prefAchieved };
+    });
+  }, [capData, cap]);
+
+  // Annual cashflow bars from projections
+  const cfBars = useMemo(() => {
+    if (!proj || proj.length === 0) return [];
+    return proj.map(r => ({
+      yr: r.year,
+      cfbt: r.cfbt,
+      cfads: r.cfads,
+      netSale: r.netSaleProceeds,
+      isSale: r.netSaleProceeds != null,
+    }));
+  }, [proj]);
+
+  if (!f9Financials) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: BT.text.muted, fontFamily: MONO, fontSize: 10 }}>
+        Load a deal to see returns analysis.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', background: BT.bg.terminal, paddingBottom: 24 }}>
+
+      {/* ── Hurdle Settings Bar ──────────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 20,
+        padding: '8px 16px',
+        background: BT.bg.header,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.6 }}>
+          HURDLE TARGETS
+        </span>
+        <HurdleInput label="IRR Hurdle" value={irrHurdle} onChange={setIrrHurdle} />
+        <HurdleInput label="EM Hurdle"  value={emHurdle}  onChange={setEmHurdle}  isX />
+        <HurdleInput label="CoC Hurdle" value={cocHurdle} onChange={setCocHurdle} />
+        <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+          Click values to edit · green = above hurdle · red = below hurdle
+        </span>
+      </div>
+
+      {/* ── Hero Strip ────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', gap: 8, padding: '12px 12px 4px' }}>
+        <HeroTile
+          label="LP NET IRR" value={fmtIrr(ret?.lpNetIrr ?? null)}
+          hurdle={irrHurdle} actual={ret?.lpNetIrr ?? null} baseColor={BT.met.financial}
+        />
+        <HeroTile
+          label="LP EQUITY MULTIPLE" value={fmtEm(ret?.lpEquityMultiple ?? null)}
+          hurdle={emHurdle} actual={ret?.lpEquityMultiple ?? null} isX baseColor={BT.text.cyan}
+        />
+        <HeroTile
+          label="AVG CASH-ON-CASH" value={fmtIrr(ret?.avgCashOnCash ?? null)}
+          hurdle={cocHurdle} actual={ret?.avgCashOnCash ?? null} baseColor={BT.text.purple}
+        />
+        <HeroTile
+          label="GP PROMOTE EARNED" value={ret?.gpPromoteEarned != null ? fmt$(ret.gpPromoteEarned) : '—'}
+          baseColor={BT.text.orange}
+        />
+      </div>
+
+      {/* ── Two-column body ────────────────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+
+        {/* ──── LEFT COLUMN ──── */}
+        <div>
+
+          {/* § 1 — Property-Level Returns */}
+          <SectionHeader label="§ 1  PROPERTY-LEVEL RETURNS" color={BT.met.financial} />
+          <KvRow label="Unleveraged IRR"     value={fmtIrr(ret?.unleveragedIrr ?? null)} bold />
+          <KvRow label="Unleveraged EM"      value={fmtEm(ret?.unleveragedEm ?? null)} bold />
+          <KvRow label="Going-In Cap Rate"   value={fmtCap(ret?.goingInCapRate ?? null)} />
+          <KvRow label="Stabilized Cap Rate" value={fmtCap(ret?.stabilizedCapRate ?? null)} />
+          <KvRow label="YOC (Untrended)"     value={fmtCap(ret?.yocUntrended ?? null)} indent />
+          <KvRow label="YOC (Trended)"       value={fmtCap(ret?.yocTrended ?? null)} indent />
+          <KvRow label="Development Spread"
+            value={ret?.developmentSpread != null ? `${(ret.developmentSpread * 10000).toFixed(0)} bps` : '—'}
+          />
+          <KvRow label="Avg NOI Growth"      value={fmtIrr(ret?.avgNoiGrowth ?? null)} />
+          <KvRow label="Peak NOI Year"       value={fmtYr(ret?.peakNoiYear ?? null)} />
+
+          {/* § 2 — LP Returns by Tranche */}
+          <SectionHeader label="§ 2  LP RETURNS BY TRANCHE" color={BT.text.cyan} />
+          {lpTranches.length === 0 ? (
+            <div style={{ padding: '8px 10px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+              No LP tranches configured.{' '}
+              <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(7)}>
+                Configure in Cap &amp; Wfall →
+              </span>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: MONO }}>
+                <thead>
+                  <tr style={{ background: BT.bg.header }}>
+                    {['Tranche', '% Eq.', 'Pref', 'IRR', 'EM', 'Pref OK'].map(h => (
+                      <th key={h} style={{
+                        padding: '3px 6px', textAlign: 'right', color: BT.text.muted,
+                        fontWeight: 600, borderBottom: `1px solid ${BT.border.subtle}`, fontSize: 8,
+                      }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lpTranches.map(t => (
+                    <tr key={t.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <td style={{ padding: '3px 6px', color: BT.text.secondary, fontSize: 9 }}>{t.label}</td>
+                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.primary }}>{t.pctOfEquity.toFixed(0)}%</td>
+                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.muted }}>{fmtIrr(t.prefRate)}</td>
+                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.met.financial, fontWeight: 600 }}>{fmtIrr(t.irr)}</td>
+                      <td style={{ padding: '3px 6px', textAlign: 'right', color: BT.text.cyan, fontWeight: 600 }}>{fmtEm(t.em)}</td>
+                      <td style={{ padding: '3px 6px', textAlign: 'right' }}>
+                        <span style={{ color: t.prefAchieved ? BT.text.green : BT.text.red }}>
+                          {t.prefAchieved ? '✓' : '✗'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* § 5 — Debt Returns */}
+          <SectionHeader label="§ 5  DEBT RETURNS" color={BT.text.orange} />
+          <KvRow label="Min DSCR"
+            value={fmtDscr(ret?.minDscr ?? null)}
+            sub={ret?.minDscrYear != null ? `Yr ${ret.minDscrYear}` : undefined}
+            color={ret?.minDscr != null && ret.minDscr < 1.2 ? BT.text.red : undefined}
+            bold
+          />
+          <KvRow label="Avg DSCR"         value={fmtDscr(ret?.avgDscr ?? null)} />
+          <KvRow label="Min Debt Yield"
+            value={ret?.minDebtYield != null ? fmtCap(ret.minDebtYield) : '—'}
+            sub={ret?.minDebtYieldYear != null ? `Yr ${ret.minDebtYieldYear}` : undefined}
+            bold
+          />
+          <KvRow label="Avg Debt Yield"   value={ret?.avgDebtYield != null ? fmtCap(ret.avgDebtYield) : '—'} />
+          <KvRow label="Maturity LTV"
+            value={fmtCap(ret?.maturityLtv ?? null)}
+            color={ret?.maturityLtv != null && ret.maturityLtv > 0.75 ? BT.text.amber : undefined}
+          />
+          <KvRow label="Interest Rate"    value={cap?.interestRate != null ? fmtCap(cap.interestRate) : '—'} indent />
+          <KvRow label="IO Period"        value={cap?.ioPeriodMonths != null ? `${cap.ioPeriodMonths} mo` : '—'} indent />
+
+          {/* Annual CF bar chart */}
+          {cfBars.length > 0 && (
+            <div style={{ padding: '8px 10px', borderTop: `1px solid ${BT.border.subtle}`, marginTop: 4 }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 6 }}>ANNUAL CASH FLOW BTCF</div>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 52 }}>
+                {cfBars.map(bar => {
+                  const maxAbs = Math.max(...cfBars.map(b => Math.abs(b.cfbt)), 1);
+                  const barH = Math.max(3, (Math.abs(bar.cfbt) / maxAbs) * 44);
+                  const col  = bar.isSale ? BT.text.amber : bar.cfbt >= 0 ? BT.met.financial : BT.text.red;
+                  return (
+                    <div key={bar.yr} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <div style={{ width: '100%', height: barH, background: col, borderRadius: 1, opacity: 0.85 }} />
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Y{bar.yr}{bar.isSale ? '★' : ''}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* ──── RIGHT COLUMN ──── */}
+        <div style={{ borderLeft: `1px solid ${BT.border.subtle}` }}>
+
+          {/* § 3 — LP Aggregate */}
+          <SectionHeader label="§ 3  LP AGGREGATE" color={BT.text.purple} />
+          <KvRow label="Peak Equity Deployed"   value={ret?.peakEquityDeployed != null ? fmt$(ret.peakEquityDeployed) : '—'} bold />
+          <KvRow label="Total LP Distributions" value={ret?.totalLpDistributions != null ? fmt$(ret.totalLpDistributions) : '—'} bold />
+          <KvRow label="Equity Recovery Year"   value={fmtYr(ret?.equityRecoveryYear ?? null)} />
+          <KvRow label="Pref Accrued (total)"   value={ret?.prefAccrued != null ? fmt$(ret.prefAccrued) : '—'} />
+          <KvRow label="Pref Paid (total)"      value={ret?.prefPaid != null ? fmt$(ret.prefPaid) : '—'} />
+          {ret?.prefAccrued != null && ret?.prefPaid != null && ret.prefPaid < ret.prefAccrued * 0.99 && (
+            <div style={{ padding: '3px 10px', background: `${BT.text.red}10`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red }}>
+                ⚠ Pref gap: {fmt$(ret.prefAccrued - ret.prefPaid)} unpaid
+              </span>
+            </div>
+          )}
+
+          {/* Cumulative CF sparkline */}
+          {ret?.cumulativeCfByYear && ret.cumulativeCfByYear.length > 1 && (
+            <div style={{ padding: '8px 10px 4px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>
+                CUMULATIVE LP CASHFLOW (CFADS)
+              </div>
+              <Sparkline data={ret.cumulativeCfByYear} color={BT.text.purple} width={220} height={40} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Yr 1</span>
+                <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Yr {ret.cumulativeCfByYear.length}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Net distributions by year */}
+          {ret?.netDistributionsByYear && ret.netDistributionsByYear.length > 0 && (
+            <div style={{ padding: '4px 10px 8px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>NET DISTRIBUTIONS BY YEAR</div>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                {ret.netDistributionsByYear.map((v, i) => (
+                  <span key={i} style={{ fontFamily: MONO, fontSize: 8, color: v >= 0 ? BT.text.purple : BT.text.red }}>
+                    Y{i + 1}: {v >= 0 ? fmt$(v) : `(${fmt$(-v)})`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* § 4 — GP Returns */}
+          <SectionHeader label="§ 4  GP RETURNS" color={BT.text.amber} />
+          <KvRow label="GP Equity Share"     value={wf?.gpShare != null ? `${(wf.gpShare * 100).toFixed(0)}%` : '—'} />
+          <KvRow label="Preferred Return"    value={prefRate != null ? `${(prefRate * 100).toFixed(1)}%` : '—'} indent />
+          <KvRow label="Total GP Fees"       value={ret?.totalGpFees != null ? fmt$(ret.totalGpFees) : '—'} bold />
+          <KvRow label="  Acq. Fee"
+            value={wf?.fees?.acquisitionFeePct != null ? fmtCap(wf.fees.acquisitionFeePct) : '—'} indent />
+          <KvRow label="  Asset Mgmt Fee"
+            value={wf?.fees?.assetMgmtFeePct != null ? fmtCap(wf.fees.assetMgmtFeePct) : '—'} indent />
+          <KvRow label="  Disposition Fee"
+            value={wf?.fees?.dispositionFeePct != null ? fmtCap(wf.fees.dispositionFeePct) : '—'} indent />
+          <KvRow label="Total GP Promote"
+            value={ret?.totalGpPromote != null ? fmt$(ret.totalGpPromote) : '—'} bold color={BT.text.amber} />
+          <KvRow label="GP All-In Multiple"
+            value={ret?.gpAllInMultiple != null ? fmtEm(ret.gpAllInMultiple) : '—'}
+            color={ret?.gpAllInMultiple != null && ret.gpAllInMultiple >= 2 ? BT.text.green : BT.text.primary}
+          />
+
+          {/* Waterfall tiers */}
+          {wf?.tiers && wf.tiers.length > 0 && (
+            <div style={{ padding: '6px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>PROMOTE TIERS</div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8, fontFamily: MONO }}>
+                <thead>
+                  <tr>
+                    {['Trigger IRR', 'LP %', 'GP %'].map(h => (
+                      <th key={h} style={{ padding: '2px 4px', textAlign: 'right', color: BT.text.muted }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {wf.tiers.map((tier, i) => (
+                    <tr key={i}>
+                      <td style={{ padding: '2px 4px', color: BT.text.secondary }}>≥ {fmtIrr(tier.triggerIrr)}</td>
+                      <td style={{ padding: '2px 4px', textAlign: 'right', color: BT.text.primary }}>{(tier.lpPct * 100).toFixed(0)}%</td>
+                      <td style={{ padding: '2px 4px', textAlign: 'right', color: BT.text.amber, fontWeight: 600 }}>{(tier.gpPct * 100).toFixed(0)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* § 6 — Time-Based */}
+          <SectionHeader label="§ 6  TIME-BASED METRICS" color={BT.text.secondary} />
+          <KvRow label="Hold Period"          value={fmtMo(ret?.holdMonths ?? null)} bold />
+          <KvRow label="Equity Recovery Year" value={fmtYr(ret?.equityRecoveryYear ?? null)} />
+          <KvRow label="Breakeven CF Year"    value={fmtYr(ret?.breakevenCfYear ?? null)} />
+          <KvRow label="Preferred Rate"       value={prefRate != null ? `${(prefRate * 100).toFixed(1)}%/yr` : '—'} indent />
+
+        </div>
+      </div>
+
+      {/* § 7 — Risk-Adjusted Placeholder */}
+      <SectionHeader label="§ 7  RISK-ADJUSTED RETURNS  (M14 Monte Carlo — not yet run)" color={BT.text.muted} />
+      <div style={{
+        margin: '8px 12px 0',
+        padding: '14px 18px',
+        background: `${BT.text.muted}08`,
+        border: `1px dashed ${BT.border.subtle}`,
+        borderRadius: 4,
+        display: 'flex', alignItems: 'center', gap: 20,
+      }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 10 }}>
+            Monte Carlo engine (M14) has not been run for this deal.
+            Probabilistic returns require a simulation pass over the assumption space.
+          </div>
+          <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+            {[
+              { label: 'Prob-Weighted IRR' },
+              { label: 'IRR Std Dev' },
+              { label: 'Downside IRR (P10)' },
+              { label: 'Sharpe Ratio' },
+            ].map(m => (
+              <div key={m.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{m.label}</div>
+                <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: `${BT.text.muted}80` }}>—</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <button
+          onClick={() => onTabChange?.(9)}
+          style={{
+            padding: '8px 14px',
+            background: `${BT.text.amber}18`,
+            border: `1px solid ${BT.text.amber}`,
+            color: BT.text.amber,
+            fontFamily: MONO, fontSize: 9, fontWeight: 600,
+            cursor: 'pointer', borderRadius: 4, whiteSpace: 'nowrap',
+          }}
+        >
+          ∿ Run Sensitivity →
+        </button>
+      </div>
+
+      {/* Source footnote */}
+      <div style={{ padding: '8px 12px 0', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+        All metrics sourced from backend projection engine (GET /financials?hold=N).
+        LP IRR: Newton-Raphson on annual equity cashflows incl. net sale proceeds.
+        Unleveraged IRR: NOI cashflows + gross sale / purchase price.
+        {' '}
+        <span style={{ color: BT.text.cyan, cursor: 'pointer' }} onClick={() => onTabChange?.(2)}>
+          View Projections →
+        </span>
+      </div>
     </div>
   );
 }

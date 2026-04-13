@@ -1250,6 +1250,45 @@ export interface DealFinancials {
   };
   /** Hold-period returns computed by the F9 projection engine */
   returns: {
+    // ── Core LP / property ────────────────────────────────────────────
+    lpNetIrr: number | null;
+    lpEquityMultiple: number | null;
+    avgCashOnCash: number | null;
+    gpPromoteEarned: number | null;
+    // ── Property-level ────────────────────────────────────────────────
+    unleveragedIrr: number | null;
+    unleveragedEm: number | null;
+    goingInCapRate: number | null;
+    stabilizedCapRate: number | null;
+    yocUntrended: number | null;
+    yocTrended: number | null;
+    developmentSpread: number | null;
+    avgNoiGrowth: number | null;
+    peakNoiYear: number | null;
+    // ── Debt metrics ──────────────────────────────────────────────────
+    minDscr: number | null;
+    minDscrYear: number | null;
+    avgDscr: number | null;
+    minDebtYield: number | null;
+    minDebtYieldYear: number | null;
+    avgDebtYield: number | null;
+    maturityLtv: number | null;
+    // ── Time-based ───────────────────────────────────────────────────
+    holdMonths: number | null;
+    equityRecoveryYear: number | null;
+    breakevenCfYear: number | null;
+    peakEquityDeployed: number | null;
+    // ── LP aggregate ─────────────────────────────────────────────────
+    totalLpDistributions: number | null;
+    prefAccrued: number | null;
+    prefPaid: number | null;
+    netDistributionsByYear: number[];
+    cumulativeCfByYear: number[];
+    // ── GP ────────────────────────────────────────────────────────────
+    totalGpFees: number | null;
+    totalGpPromote: number | null;
+    gpAllInMultiple: number | null;
+    // ── Legacy fields ────────────────────────────────────────────────
     irr: number | null;
     equityMultiple: number | null;
     cashOnCash: number | null;
@@ -1473,6 +1512,34 @@ export interface DealFinancials {
  *  IC-03  Canonical OpEx source completeness: any of the 7 controllable opex fields is null → warn
  *  IC-04  Tax-line assessor match: |seed.real_estate_tax.t12 - seed.real_estate_tax.tax_bill| / tax_bill > 15% → warn
  */
+
+/**
+ * xirr — Annual IRR approximation via Newton-Raphson on annual cashflows.
+ * cashflows[0] must be negative (initial investment).
+ * Returns null when cashflows are all non-negative, all non-positive, or do not converge.
+ */
+function xirr(cashflows: number[]): number | null {
+  if (cashflows.length < 2) return null;
+  const hasNeg = cashflows.some(c => c < 0);
+  const hasPos = cashflows.some(c => c > 0);
+  if (!hasNeg || !hasPos) return null;
+  let rate = 0.1;
+  for (let i = 0; i < 100; i++) {
+    let npv = 0;
+    let dnpv = 0;
+    for (let t = 0; t < cashflows.length; t++) {
+      const disc = Math.pow(1 + rate, t);
+      npv  += cashflows[t] / disc;
+      dnpv -= t * cashflows[t] / (disc * (1 + rate));
+    }
+    const newRate = rate - npv / dnpv;
+    if (Math.abs(newRate - rate) < 1e-7) return +newRate.toFixed(6);
+    rate = newRate;
+    if (!isFinite(rate) || rate < -0.999) return null;
+  }
+  return null;
+}
+
 export async function getDealFinancials(
   pool: Pool,
   dealId: string,
@@ -2663,6 +2730,9 @@ export async function getDealFinancials(
     },
   };
 
+  // Hoist equity to outer scope so the returns IIFE can access it post-projections
+  const projEquityOuter = capitalStackWithOverrides.equityAtClose ?? 0;
+
   // ── Server-side Projections Engine ─────────────────────────────────────────
   // Computes authoritative per-year operating statement resolving all upstream tabs:
   // Assumptions (growth rates), Taxes (RE tax per year), Debt (amortization schedule),
@@ -2872,7 +2942,122 @@ export async function getDealFinancials(
       seeded: Object.keys(year1Seed).length > 0,
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
     },
-    returns: null,
+    returns: (() => {
+      if (!projections || projections.length === 0) return null;
+      const rows = projections;
+      const lastRow = rows[rows.length - 1];
+      const equity = projEquityOuter > 0 ? projEquityOuter : null;
+
+      // ── LP IRR: -equity at t=0, cfads each year, + netSaleProceeds in last year ──
+      const lpCfs: number[] = equity ? [-equity] : [];
+      for (let i = 0; i < rows.length; i++) {
+        const cf = rows[i].cfads;
+        const sale = i === rows.length - 1 ? (rows[i].netSaleProceeds ?? 0) : 0;
+        lpCfs.push(cf + sale);
+      }
+      const lpNetIrr = equity ? xirr(lpCfs) : null;
+
+      // ── LP EM: (sum(cfads) + netSaleProceeds) / equity ────────────────────────
+      const totalCfads = rows.reduce((s, r) => s + r.cfads, 0);
+      const saleProceeds = lastRow.netSaleProceeds ?? 0;
+      const lpEquityMultiple = equity ? +((totalCfads + saleProceeds) / equity).toFixed(4) : null;
+
+      // ── Avg CoC ───────────────────────────────────────────────────────────────
+      const cocValues = rows.map(r => r.coc).filter((c): c is number => c != null);
+      const avgCashOnCash = cocValues.length > 0 ? +(cocValues.reduce((s, c) => s + c, 0) / cocValues.length).toFixed(4) : null;
+
+      // ── Unleveraged IRR: -purchasePrice at t=0, noi each year, + grossSaleValue ──
+      const purchasePrice = capitalStackWithOverrides?.purchasePrice ?? null;
+      const ulCfs: number[] = purchasePrice ? [-purchasePrice] : [];
+      for (let i = 0; i < rows.length; i++) {
+        const noi = rows[i].noi;
+        const sale = i === rows.length - 1 ? (lastRow.grossSaleValue ?? 0) : 0;
+        ulCfs.push(noi + sale);
+      }
+      const unleveragedIrr = purchasePrice ? xirr(ulCfs) : null;
+      const unleveragedEm = purchasePrice && lastRow.grossSaleValue != null
+        ? +((rows.reduce((s, r) => s + r.noi, 0) + lastRow.grossSaleValue) / purchasePrice).toFixed(4) : null;
+
+      // ── Going-in cap rate ─────────────────────────────────────────────────────
+      const year1noi = rows[0]?.noi ?? null;
+      const goingInCapRate = purchasePrice && year1noi && purchasePrice > 0 ? +(year1noi / purchasePrice).toFixed(4) : null;
+
+      // ── Stabilized cap rate (peak NOI year / purchase price) ─────────────────
+      let peakNoi = -Infinity;
+      let peakNoiYear: number | null = null;
+      for (const r of rows) {
+        if (r.noi > peakNoi) { peakNoi = r.noi; peakNoiYear = r.year; }
+      }
+      const stabilizedCapRate = purchasePrice && peakNoi > 0 && purchasePrice > 0 ? +(peakNoi / purchasePrice).toFixed(4) : null;
+
+      // ── YOC untrended/trended ─────────────────────────────────────────────────
+      const totalCost = sourcesUses?.totalUses ?? purchasePrice;
+      const yocUntrended = totalCost && year1noi && totalCost > 0 ? +(year1noi / totalCost).toFixed(4) : null;
+      const yocTrended   = totalCost && peakNoi > 0 && totalCost > 0 ? +(peakNoi / totalCost).toFixed(4) : null;
+      const developmentSpread = lastRow.exitCap != null && goingInCapRate != null ? +(lastRow.exitCap - goingInCapRate).toFixed(4) : null;
+
+      // ── Avg NOI growth ────────────────────────────────────────────────────────
+      const rgValues = rows.map(r => r.rentGrowthPct).filter((g): g is number => g != null);
+      const avgNoiGrowth = rgValues.length > 0 ? +(rgValues.reduce((s, g) => s + g, 0) / rgValues.length).toFixed(4) : null;
+
+      // ── Debt metrics ──────────────────────────────────────────────────────────
+      const dscrRows = rows.map(r => ({ yr: r.year, dscr: r.dscr, dy: r.debtYield })).filter(r => r.dscr != null);
+      const minDscrRow = dscrRows.length > 0 ? dscrRows.reduce((a, b) => (a.dscr! < b.dscr! ? a : b)) : null;
+      const avgDscr = dscrRows.length > 0 ? +(dscrRows.reduce((s, r) => s + r.dscr!, 0) / dscrRows.length).toFixed(4) : null;
+      const dyRows = rows.map(r => ({ yr: r.year, dy: r.debtYield })).filter(r => r.dy != null);
+      const minDyRow = dyRows.length > 0 ? dyRows.reduce((a, b) => (a.dy! < b.dy! ? a : b)) : null;
+      const avgDebtYield = dyRows.length > 0 ? +(dyRows.reduce((s, r) => s + r.dy!, 0) / dyRows.length).toFixed(4) : null;
+      const loanAmount = capitalStackWithOverrides?.loanAmount ?? null;
+      const maturityLtv = loanAmount && lastRow.grossSaleValue && lastRow.grossSaleValue > 0
+        ? +(loanAmount / lastRow.grossSaleValue).toFixed(4) : null;
+
+      // ── Time-based ────────────────────────────────────────────────────────────
+      const holdMonths = rows.length * 12;
+      let equityRecoveryYear: number | null = null;
+      let cumulCf = 0;
+      for (const r of rows) {
+        cumulCf += r.cfads;
+        if (equityRecoveryYear == null && equity && cumulCf >= equity) equityRecoveryYear = r.year;
+      }
+      let breakevenCfYear: number | null = null;
+      for (const r of rows) {
+        if (r.cfbt > 0) { breakevenCfYear = r.year; break; }
+      }
+
+      // ── LP aggregate ─────────────────────────────────────────────────────────
+      const totalLpDist = capital?.metrics?.totalLpDistributions ?? null;
+      const totalPrefAccrued = capital ? capital.schedule.reduce((s, p) => s + p.prefAccrued, 0) : null;
+      const totalPrefPaid    = capital ? capital.schedule.reduce((s, p) => s + p.prefPaid,    0) : null;
+      const netDistributionsByYear = rows.map(r => {
+        const schedRow = capital?.schedule.find(s => s.year === r.year);
+        return schedRow ? schedRow.lpDist : r.cfads;
+      });
+      const cumulativeCfByYear = netDistributionsByYear.reduce<number[]>((acc, v) => {
+        acc.push((acc[acc.length - 1] ?? 0) + v);
+        return acc;
+      }, []);
+
+      // ── GP ────────────────────────────────────────────────────────────────────
+      const totalGpFees    = capital?.metrics?.totalGpFees ?? null;
+      const totalGpPromote = capital?.metrics?.totalGpPromote ?? null;
+      const gpAllInMultiple = equity && (totalGpFees != null || totalGpPromote != null)
+        ? +(((totalGpFees ?? 0) + (totalGpPromote ?? 0)) / (equity * (waterfall?.gpShare ?? 0.1))).toFixed(4) : null;
+      const gpPromoteEarned = totalGpPromote;
+
+      return {
+        lpNetIrr, lpEquityMultiple, avgCashOnCash, gpPromoteEarned,
+        unleveragedIrr, unleveragedEm, goingInCapRate, stabilizedCapRate,
+        yocUntrended, yocTrended, developmentSpread, avgNoiGrowth, peakNoiYear,
+        minDscr: minDscrRow?.dscr ?? null, minDscrYear: minDscrRow?.yr ?? null, avgDscr,
+        minDebtYield: minDyRow?.dy ?? null, minDebtYieldYear: minDyRow?.yr ?? null, avgDebtYield, maturityLtv,
+        holdMonths, equityRecoveryYear, breakevenCfYear, peakEquityDeployed: equity,
+        totalLpDistributions: totalLpDist,
+        prefAccrued: totalPrefAccrued, prefPaid: totalPrefPaid,
+        netDistributionsByYear, cumulativeCfByYear,
+        totalGpFees, totalGpPromote, gpAllInMultiple,
+        irr: lpNetIrr, equityMultiple: lpEquityMultiple, cashOnCash: avgCashOnCash,
+      };
+    })(),
     taxes,
     debt: debtStack,
     sourcesUses,
