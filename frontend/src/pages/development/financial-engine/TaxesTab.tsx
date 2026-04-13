@@ -310,7 +310,7 @@ function DeprecSchedule({ taxes, costSeg, bonusYear, f9Financials }: {
   );
 }
 
-export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
+export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: FinancialEngineTabProps) {
   const taxes = f9Financials?.taxes ?? null;
   const dealName = f9Financials?.dealName ?? 'Deal';
 
@@ -372,9 +372,11 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
     patchTimeouts.current[field] = setTimeout(async () => {
       try {
         await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field, year: 1, value });
+        // Refresh parent f9Financials so cross-tab totals (Sources & Uses, etc.) update
+        onF9Refresh?.();
       } catch { /* non-fatal override failure */ }
     }, 600);
-  }, [dealId]);
+  }, [dealId, onF9Refresh]);
 
   const handleAssessedValue = (v: number | null) => { setUserAssessedValue(v); patchField('taxAssessedValue', v); };
   const handleMillageRate   = (v: number | null) => { setUserMillageRate(v);   patchField('taxMillageRate', v); };
@@ -707,13 +709,20 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                   locked
                   format={fmtDlr}
                 />
-                {/* Cross-tab link badge → Sources & Uses */}
+                {/* Cross-tab link badge → Sources & Uses (tab index 7) */}
                 <tr>
                   <td colSpan={6} style={{ padding: '6px 12px', borderBottom: `1px solid ${BT.border.medium}` }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', background: '#065f4630', border: `1px solid #10b981`, borderRadius: 4 }}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onTabChange?.(7)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onTabChange?.(7); }}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', background: '#065f4630', border: `1px solid #10b981`, borderRadius: 4, cursor: onTabChange ? 'pointer' : 'default' }}
+                      title="Click to open Sources & Uses tab"
+                    >
                       <Link style={{ width: 10, height: 10, color: '#10b981' }} />
                       <span style={{ fontFamily: MONO, fontSize: 8, color: '#10b981', fontWeight: 700 }}>
-                        → SOURCES & USES TAB — Transfer taxes ({fmtDlr(totalTransfer)}) auto-populate closing costs line
+                        → SOURCES & USES — Transfer taxes ({fmtDlr(totalTransfer)}) included in total uses
                       </span>
                       <Check style={{ width: 10, height: 10, color: '#10b981' }} />
                     </div>

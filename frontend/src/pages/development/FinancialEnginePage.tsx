@@ -125,7 +125,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   }, [resolvedDealId]);
 
   // ── F9 DealFinancials — fetched at page level for F1/F8/F10 cross-tab wiring ─
-  useEffect(() => {
+  const fetchF9Financials = useCallback(() => {
     if (!resolvedDealId) return;
     apiClient.get<{ success: boolean; data: F9DealFinancials }>(
       `/api/v1/deals/${resolvedDealId}/financials?hold=5`,
@@ -133,6 +133,10 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       if (res.data?.data) setF9Financials(res.data.data);
     }).catch(() => {});
   }, [resolvedDealId]);
+
+  useEffect(() => {
+    fetchF9Financials();
+  }, [fetchF9Financials]);
 
   const handleBuildModel = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;
@@ -289,7 +293,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     activeVersion,
     onIntegrityChange: setIntegrityBlocked,
     f9Financials,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials]);
+    onTabChange: setActiveTab,
+    onF9Refresh: fetchF9Financials,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>

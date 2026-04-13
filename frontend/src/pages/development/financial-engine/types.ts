@@ -343,6 +343,10 @@ export interface FinancialEngineTabProps {
   f9Financials?: F9DealFinancials | null;
   /** True when Pro Forma integrity checks contain errors — tab shows warning banner but remains accessible */
   integrityWarning?: boolean;
+  /** Navigate to a sibling tab by index */
+  onTabChange?: (tabIndex: number) => void;
+  /** Refetch f9Financials from the server (e.g. after a PATCH override) */
+  onF9Refresh?: () => void;
 }
 
 export const fmt$ = (n: number): string => {
