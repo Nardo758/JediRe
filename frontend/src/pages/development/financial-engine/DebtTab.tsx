@@ -363,6 +363,7 @@ interface AdvisorAlternative {
   rationale: string;
   tradeoff: string;
   deltaAllInBps: number;
+  irrImpactBps?: number;
 }
 interface DebtAdvisorData {
   dealId: string;
@@ -832,8 +833,15 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                   <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.white, marginBottom: 3 }}>{alt.productLabel}</div>
                   <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.5, marginBottom: 4 }}>{alt.tradeoff}</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontFamily: MONO, fontSize: 8, color: alt.deltaAllInBps > 0 ? BT.text.red : BT.met.financial }}>
-                      {alt.deltaAllInBps > 0 ? '+' : ''}{alt.deltaAllInBps}bps all-in vs primary
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: alt.deltaAllInBps > 0 ? BT.text.red : BT.met.financial }}>
+                        {alt.deltaAllInBps > 0 ? '+' : ''}{alt.deltaAllInBps}bps all-in vs primary
+                      </div>
+                      {alt.irrImpactBps !== undefined && (
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: alt.irrImpactBps >= 0 ? BT.met.financial : BT.text.red }}>
+                          IRR: {alt.irrImpactBps >= 0 ? '+' : ''}{alt.irrImpactBps}bps vs primary
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => handleRecompute(alt.product)}

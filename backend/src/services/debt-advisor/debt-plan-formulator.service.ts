@@ -63,6 +63,7 @@ export interface DebtAlternative {
   rationale: string;
   tradeoff: string;
   deltaAllInBps: number;
+  irrImpactBps: number;
 }
 
 export interface DebtAdvisorResponse {
@@ -515,6 +516,7 @@ function buildAlternatives(
   const productLabels = strategyDebtMapping.productLabels as Record<string, string>;
 
   if (alternatives[0]) {
+    const deltaA = alternatives[0].includes('fixed') || alternatives[0].includes('agency') ? 15 : -20;
     alts.push({
       label: 'Alt A — Alternative Product',
       product: alternatives[0],
@@ -523,29 +525,34 @@ function buildAlternatives(
       tradeoff: rateEnv.classification === 'Rising'
         ? 'Fixed-rate alternative adds rate certainty but reduces prepay flexibility'
         : 'Floating alternative saves expected 30-50bps over hold but adds rate risk',
-      deltaAllInBps: alternatives[0].includes('fixed') || alternatives[0].includes('agency') ? 15 : -20,
+      deltaAllInBps: deltaA,
+      irrImpactBps: -Math.round(deltaA * 0.25),
     });
   }
 
   if (rateEnv.classification === 'Rising' && !alternatives[0]?.includes('fixed')) {
+    const deltaB = 25;
     alts.push({
       label: 'Alt B — Rate Certainty',
       product: 'cmbs_10yr',
       productLabel: 'CMBS 10-Year Fixed',
       rationale: 'If sponsor wants zero rate risk in a rising rate environment: lock into 10yr fixed CMBS.',
       tradeoff: `Rising rate env: fixed rate saves est. +${Math.round(Math.abs(rateEnv.sofrForward12moBps) * 0.6)}bps vs floating over hold`,
-      deltaAllInBps: 25,
+      deltaAllInBps: deltaB,
+      irrImpactBps: -Math.round(deltaB * 0.25),
     });
   }
 
   if (alternatives[1]) {
+    const deltaC = 75;
     alts.push({
       label: 'Alt C — High-Leverage Option',
       product: alternatives[1],
       productLabel: productLabels[alternatives[1]] || alternatives[1].replace(/_/g, ' '),
       rationale: 'If leverage needs exceed senior capacity: add mezz or subordinate piece.',
       tradeoff: 'Adding 10% mezz at 12-14% blended raises all-in cost by ~60-90bps',
-      deltaAllInBps: 75,
+      deltaAllInBps: deltaC,
+      irrImpactBps: -Math.round(deltaC * 0.25),
     });
   }
 
@@ -761,19 +768,35 @@ export async function acceptDebtPlan(
   const pool = getPool();
   const loanId = 'senior';
   const source = 'debt_advisor';
-  const overrideCount = 9;
+
+  // For floating loans Configure computes effRate = sofr.platform + spread.platform,
+  // NOT interestRate.platform. Write the two components separately so Configure
+  // resolves the identical rate the Advisor recommended.
+  const isFloating = phase.rateType === 'Floating';
+  const spreadDecimal = (phase.spreadBps ?? 0) / 10000;
+  const sofrDecimal   = isFloating ? Math.max(0, phase.rateEst - spreadDecimal) : null;
+
+  const rateWrites: Promise<void>[] = isFloating
+    ? [
+        applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'sofr',   sofrDecimal,   source),
+        applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'spread', spreadDecimal, source),
+      ]
+    : [
+        applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'interestRate', phase.rateEst, source),
+      ];
+  const overrideCount = 8 + rateWrites.length;
 
   try {
     await Promise.all([
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'loanAmount', phase.loanAmountEst, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'interestRate', phase.rateEst, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'termYears', phase.termYears, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'amortYears', phase.amortYears, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'ioMonths', phase.ioMonths, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'origFee', phase.origFee, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'exitFee', phase.exitFee ?? 0, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'rateType', phase.rateType, source),
-      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'prepayType', phase.prepayType, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'loanAmount',  phase.loanAmountEst, source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'termYears',   phase.termYears,     source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'amortYears',  phase.amortYears,    source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'ioMonths',    phase.ioMonths,      source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'origFee',     phase.origFee,       source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'exitFee',     phase.exitFee ?? 0,  source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'rateType',    phase.rateType,      source),
+      applyDebtAdvisorPlatformDefault(pool, dealId, loanId, 'prepayType',  phase.prepayType,    source),
+      ...rateWrites,
     ]);
   } catch (overrideErr: any) {
     logger.error('[DebtAdvisor] Platform-default pipeline failed on accept — Configure fields not populated', {
