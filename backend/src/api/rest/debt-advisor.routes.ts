@@ -52,7 +52,13 @@ router.post('/:dealId/debt/advisor/accept', requireAuth, async (req: Authenticat
         message: trigger.condition,
         suggestedAction: trigger.action,
         impactSummary: `Frequency: ${trigger.frequency} | Threshold: ${trigger.threshold}`,
-      }).catch(() => null)
+      }).catch((alertErr: any) => {
+        logger.warn('[DebtAdvisor] Non-critical: failed to register monitoring alert', {
+          dealId,
+          triggerId: trigger.id,
+          error: alertErr?.message,
+        });
+      })
     );
     await Promise.all(alertPromises);
 

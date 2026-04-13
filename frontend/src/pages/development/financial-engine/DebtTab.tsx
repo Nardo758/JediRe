@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { KpiTile } from '../../../components/deal/bloomberg-ui';
-import { Lock, Link, ChevronDown, ChevronRight, Plus, X, TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle, Zap, RefreshCw, Activity } from 'lucide-react';
+import { Lock, Link, ChevronDown, ChevronRight, Plus, X, TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle, Zap, RefreshCw, Activity, Info } from 'lucide-react';
 import type { FinancialEngineTabProps, F9DebtLoan, PrepayType } from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
@@ -366,6 +366,7 @@ interface AdvisorAlternative {
 interface DebtAdvisorData {
   dealId: string;
   computedAt: string;
+  hasStrategy: boolean;
   strategyInputs: {
     subStrategyKey: string;
     strategySlug: string;
@@ -393,6 +394,14 @@ interface DebtAdvisorData {
   recommendedStack: AdvisorPhase[];
   alternatives: AdvisorAlternative[];
   monitoringTriggers: AdvisorTrigger[];
+  contextModifications?: {
+    narrativeNotes: string[];
+    geographyWarning: string | null;
+    sizeWarning: string | null;
+    recourseRequired: boolean;
+    addPcaReserveNote: boolean;
+    ltvHaircutPct: number;
+  };
   correlationContext: {
     slug: string;
     riskScore: number;
@@ -488,21 +497,25 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
     </div>
   );
 
-  if (error || !data) {
-    if (!data?.strategyInputs?.hasStrategy) {
-      return (
-        <div style={{ padding: 32, textAlign: 'center' }}>
-          <Zap style={{ width: 32, height: 32, color: BT.text.amber, marginBottom: 12 }} />
-          <div style={{ fontFamily: MONO, fontSize: 13, color: BT.text.white, marginBottom: 8 }}>RUN STRATEGY FIRST</div>
-          <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>
-            The Debt Advisor is driven by M08 Strategy output. Run strategy scoring to get a personalized debt recommendation.
-          </div>
-          <button onClick={handleRecompute} style={{ marginTop: 20, padding: '8px 20px', background: `${BT.text.cyan}20`, border: `1px solid ${BT.text.cyan}`, color: BT.text.cyan, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
-            CHECK AGAIN
-          </button>
+  if (data && !data.hasStrategy) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: 240, padding: 32, textAlign: 'center' }}>
+        <Zap style={{ width: 32, height: 32, color: BT.text.amber, marginBottom: 12 }} />
+        <div style={{ fontFamily: MONO, fontSize: 13, color: BT.text.white, marginBottom: 8 }}>RUN STRATEGY ANALYSIS FIRST</div>
+        <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
+          The Debt Advisor is driven by M08 Strategy Analysis output. Navigate to the Strategies tab, run the analysis, and return here for a strategy-specific debt recommendation.
         </div>
-      );
-    }
+        <button
+          onClick={handleRecompute}
+          style={{ marginTop: 20, padding: '8px 20px', background: `${BT.text.cyan}20`, border: `1px solid ${BT.text.cyan}`, color: BT.text.cyan, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer' }}
+        >
+          CHECK AGAIN
+        </button>
+      </div>
+    );
+  }
+
+  if (error || !data) {
     return (
       <div style={{ padding: 24, fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>
         <AlertTriangle style={{ width: 16, height: 16, color: BT.text.amber, marginRight: 8, display: 'inline' }} />
@@ -535,16 +548,6 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
       {/* ── Main panel ──────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 0 }}>
-
-        {/* No-strategy CTA banner */}
-        {!si.hasStrategy && (
-          <div style={{ padding: '8px 16px', background: `${BT.text.amber}15`, borderBottom: `1px solid ${BT.text.amber}40`, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Zap style={{ width: 12, height: 12, color: BT.text.amber, flexShrink: 0 }} />
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
-              No strategy detected — showing general debt recommendation. Run M08 Strategy for a strategy-specific plan.
-            </span>
-          </div>
-        )}
 
         {/* Divergence banner — shown when Configure values deviate from Advisor recommendation */}
         {hasDivergence && (
@@ -581,6 +584,35 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                   ({correlationContext.rssAdjustmentBps > 0 ? '+' : ''}{correlationContext.rssAdjustmentBps}bps spread adj applied to alternatives)
                 </span>
               )}
+            </span>
+          </div>
+        )}
+
+        {/* Geography / size context modifier banners */}
+        {data.contextModifications?.geographyWarning && (
+          <div style={{ padding: '6px 16px', background: `${BT.text.amber}12`, borderBottom: `1px solid ${BT.text.amber}30`, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertTriangle style={{ width: 10, height: 10, color: BT.text.amber, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+              <span style={{ color: BT.text.amber }}>GEOGRAPHY </span>
+              {data.contextModifications.geographyWarning}
+            </span>
+          </div>
+        )}
+        {data.contextModifications?.sizeWarning && (
+          <div style={{ padding: '6px 16px', background: `${BT.text.cyan}08`, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Info style={{ width: 10, height: 10, color: BT.text.cyan, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+              <span style={{ color: BT.text.cyan }}>SIZE TIER </span>
+              {data.contextModifications.sizeWarning}
+            </span>
+          </div>
+        )}
+        {data.contextModifications?.recourseRequired && (
+          <div style={{ padding: '6px 16px', background: `${BT.text.red}10`, borderBottom: `1px solid ${BT.text.red}30`, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertTriangle style={{ width: 10, height: 10, color: BT.text.red, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+              <span style={{ color: BT.text.red }}>RECOURSE REQUIRED </span>
+              Lenders will require full personal recourse guaranty based on sponsor experience and/or liquidity profile.
             </span>
           </div>
         )}
