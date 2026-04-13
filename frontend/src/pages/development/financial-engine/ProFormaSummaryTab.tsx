@@ -231,11 +231,12 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
         ...prev,
         [field]: { ...prev[field], editing: false, savedAt: new Date().toISOString(), original },
       }));
+      load();
     } catch (e: unknown) {
       console.error('Override failed:', e instanceof Error ? e.message : e);
       setCorrections(prev => ({ ...prev, [field]: { ...prev[field], editing: false } }));
     }
-  }, [dealId]);
+  }, [dealId, load]);
 
   // Clears a user override on the backend (value: null = revert to ingested)
   const handleResetCorrection = useCallback(async (field: string) => {
@@ -245,12 +246,13 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
         year: null,
         value: null,
       });
+      load();
     } catch (e: unknown) {
       console.error('Reset override failed:', e instanceof Error ? e.message : e);
     } finally {
       setCorrections(prev => { const next = { ...prev }; delete next[field]; return next; });
     }
-  }, [dealId]);
+  }, [dealId, load]);
 
   // Unit mix cell: save
   const handleUnitMixSave = useCallback(async (index: number, field: string, rawDraft: string) => {
@@ -267,11 +269,12 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
         ...prev,
         [cellKey]: { editing: false, draft: rawDraft, savedAt: new Date().toISOString() },
       }));
+      load();
     } catch (e: unknown) {
       console.error('Unit mix override failed:', e instanceof Error ? e.message : e);
       setUnitMixEdits(prev => ({ ...prev, [cellKey]: { ...prev[cellKey], editing: false } }));
     }
-  }, [dealId]);
+  }, [dealId, load]);
 
   // Unit mix cell: reset
   const handleUnitMixReset = useCallback(async (index: number, field: string) => {
@@ -282,12 +285,13 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
         year: null,
         value: null,
       });
+      load();
     } catch (e: unknown) {
       console.error('Unit mix reset failed:', e instanceof Error ? e.message : e);
     } finally {
       setUnitMixEdits(prev => { const next = { ...prev }; delete next[cellKey]; return next; });
     }
-  }, [dealId]);
+  }, [dealId, load]);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 8, color: BT.text.muted, fontFamily: MONO, fontSize: 10 }}>
@@ -603,7 +607,7 @@ function vsFmtDollarK(v: number | null): string {
 }
 
 function PctBadge({ pct, invert = false }: { pct: number | null; invert?: boolean }) {
-  if (pct == null) return <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>NO COMP</span>;
+  if (pct == null) return <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>—</span>;
   const isHigh = invert ? pct < 30 : pct > 70;
   const isMid = pct >= 30 && pct <= 70;
   const bg = isHigh ? '#1c0a0a' : isMid ? '#1a1200' : '#0a1c10';
@@ -660,7 +664,7 @@ function VSSnapshotTile({
 }
 
 function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
-  const grmFlag = vs.grm != null && vs.grm > 12 && (vs.grmSubmarketMedian == null || vs.grmSubmarketMedian < 10)
+  const grmFlag = vs.grm != null && vs.grm > 12 && vs.grmSubmarketMedian != null && vs.grmSubmarketMedian < 10
     ? '#ef4444' : null;
 
   const priceToRCBadgeColor =
@@ -672,8 +676,9 @@ function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
 
   return (
     <div style={{
+      position: 'sticky', top: 0, zIndex: 10,
       flexShrink: 0, borderBottom: '1px solid #1e1e1e',
-      padding: '0 0 0 0',
+      background: '#0a0a0a',
     }}>
       <div style={{
         padding: '5px 12px 4px',
