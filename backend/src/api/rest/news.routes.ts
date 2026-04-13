@@ -11,12 +11,13 @@ import Parser from 'rss-parser';
 const logger = { error: (...args: any[]) => console.error(...args) };
 
 // RSS Feed Configuration
+// Bloomberg has no public RSS (proprietary Terminal API only)
 const RSS_SOURCES = [
-  { id: 'globest', label: 'Globe St', url: 'https://www.globest.com/feed/', color: '#1A5276' },
-  { id: 'bisnow', label: 'Bisnow', url: 'https://www.bisnow.com/rss/feed', color: '#E74C3C' },
-  { id: 'trd', label: 'The Real Deal', url: 'https://therealdeal.com/feed/', color: '#000000' },
-  { id: 'housingwire', label: 'Housing Wire', url: 'https://www.housingwire.com/feed/', color: '#2E86C1' },
-  { id: 'multihousingnews', label: 'Multi-Housing News', url: 'https://www.multihousingnews.com/feed/', color: '#FF6B35' },
+  { id: 'housingwire',  label: 'Housing Wire',      url: 'https://www.housingwire.com/feed/',                                                    color: '#2E86C1' },
+  { id: 'cnbc_re',      label: 'CNBC Real Estate',  url: 'https://www.cnbc.com/id/10000664/device/rss/rss.html',                                  color: '#CC0000' },
+  { id: 'cnbc_fin',     label: 'CNBC Finance',       url: 'https://www.cnbc.com/id/10001147/device/rss/rss.html',                                  color: '#CC0000' },
+  { id: 'mw_re',        label: 'MarketWatch RE',     url: 'https://feeds.content.dowjones.io/public/rss/mw_realestate',                            color: '#004B87' },
+  { id: 'calculated',   label: 'Calculated Risk',    url: 'https://www.calculatedriskblog.com/feeds/posts/default',                                color: '#27AE60' },
 ];
 
 const rssParser = new Parser({

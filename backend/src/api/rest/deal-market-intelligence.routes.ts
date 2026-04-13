@@ -192,7 +192,7 @@ async function generateMarketIntelligence(
   newsEvents: any[],
   competingProps: any
 ) {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const anthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!anthropicKey) {
     logger.warn('No Anthropic API key — returning template market intelligence');
     return buildTemplateResponse(deal, censusData, submarketData, msaData, newsEvents, competingProps);
