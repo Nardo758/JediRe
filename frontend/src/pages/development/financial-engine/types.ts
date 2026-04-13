@@ -303,7 +303,7 @@ export interface F9DealFinancials {
     };
     userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
   } | null;
-  /** Capital tranche configuration (persisted tranches from backend) */
+  /** Capital tranche configuration + server-side computed distribution schedule */
   capital: {
     tranches: Array<{
       id: string;
@@ -315,6 +315,30 @@ export interface F9DealFinancials {
       cumulative: boolean;
       participatePromote: boolean;
     }>;
+    schedule: Array<{
+      period: string;
+      year: number;
+      cfads: number;
+      activeTier: string;
+      lpDist: number;
+      gpDist: number;
+      gpPromote: number;
+      gpFees: number;
+      prefAccrued: number;
+      prefPaid: number;
+      lpIrr: number | null;
+      lpEm: number;
+      isExit: boolean;
+    }>;
+    metrics: {
+      lpIrr: number | null;
+      lpEquityMultiple: number | null;
+      gpEquityMultiple: number | null;
+      totalLpDistributions: number;
+      totalGpDistributions: number;
+      totalGpPromote: number;
+      totalGpFees: number;
+    };
   } | null;
 }
 

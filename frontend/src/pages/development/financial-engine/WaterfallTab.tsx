@@ -206,6 +206,9 @@ function runAmerican(
 }
 
 // ─── European waterfall: defer all LP dists to terminal event ────────────────
+// Operating years: GP receives asset mgmt fees; LP gets nothing.
+// Terminal event: total CFADS + exit proceeds, LESS all accumulated GP fees,
+// then distribute ROC → pref → promote in a single crystallization.
 function runEuropean(
   equity: number, lpShare: number, gpShare: number,
   prefRate: number, tiers: WfTier[], annualCfads: number[],
@@ -215,9 +218,13 @@ function runEuropean(
   const lpEquity = equity * lpShare;
   const rows: DistRow[] = [];
 
+  // Track cumulative GP operating fees — these are deducted from terminal pool
+  let totalOperatingGpFees = 0;
+
   for (let yr = 1; yr <= holdYears; yr++) {
     const rawCf = annualCfads[yr - 1] ?? 0;
     const amFee = (fees.assetMgmtBasis === 'equity' ? equityBase : egi_y1) * fees.assetMgmtFeePct;
+    totalOperatingGpFees += amFee;
     rows.push({
       year: yr, label: `YR ${yr}`, cfads: rawCf, activeTier: 'EUROPEAN (DEFERRED)',
       lpDist: 0, gpDist: amFee, gpPromote: 0, gpFees: amFee,
@@ -227,10 +234,12 @@ function runEuropean(
     });
   }
 
+  // Terminal: total pool = cumulative operating CF + exit proceeds, minus all GP fees already taken
   const totalOperatingCF = annualCfads.reduce((s, c) => s + c, 0);
   const totalCF = totalOperatingCF + exitProceeds;
   const dispFee = exitProceeds * fees.dispositionFeePct;
-  let avail = Math.max(totalCF - dispFee, 0);
+  // Deduct all GP fees (operating AM fees + disposition) from distributable pool
+  let avail = Math.max(totalCF - dispFee - totalOperatingGpFees, 0);
 
   const rocToLP = Math.min(avail, lpEquity); avail -= rocToLP;
   const prefAccruedTotal = lpEquity * prefRate * holdYears;

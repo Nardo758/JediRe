@@ -1392,7 +1392,7 @@ export interface DealFinancials {
     };
     userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
   } | null;
-  /** Capital tranche configuration persisted via wf:trancheN:* overrides */
+  /** Capital tranche configuration + server-side computed distribution schedule */
   capital: {
     tranches: Array<{
       id: string;
@@ -1404,6 +1404,30 @@ export interface DealFinancials {
       cumulative: boolean;
       participatePromote: boolean;
     }>;
+    schedule: Array<{
+      period: string;
+      year: number;
+      cfads: number;
+      activeTier: string;
+      lpDist: number;
+      gpDist: number;
+      gpPromote: number;
+      gpFees: number;
+      prefAccrued: number;
+      prefPaid: number;
+      lpIrr: number | null;
+      lpEm: number;
+      isExit: boolean;
+    }>;
+    metrics: {
+      lpIrr: number | null;
+      lpEquityMultiple: number | null;
+      gpEquityMultiple: number | null;
+      totalLpDistributions: number;
+      totalGpDistributions: number;
+      totalGpPromote: number;
+      totalGpFees: number;
+    };
   };
 }
 
@@ -2396,8 +2420,183 @@ export async function getDealFinancials(
     }
   }
   // Fall back to defaults if no tranches persisted
+  const resolvedTranches = capitalTranches.length > 0 ? capitalTranches : TRANCHE_DEFAULTS;
+
+  // ── Server-side waterfall schedule computation ──────────────────────────────
+  // Use available financial data to produce a distribution schedule
+  const schedNoi       = noiFull ?? 0;
+  const schedLoan      = loanAmount ?? 0;
+  const schedEquity    = equityAtClose ?? 0;
+  const schedRate      = interestRate ?? 0.07;
+  const schedAnnualDS  = schedLoan * schedRate;
+  const schedRentGr    = rentGrowthStab ?? 0.03;
+  const schedExitCap   = exitCap ?? 0.055;
+  const schedSellingPct= 0.025;
+  const schedWfType    = waterfall.waterfallType;
+  const schedLpShare   = wfLpShare;
+  const schedGpShare   = wfGpShare;
+  const schedPrefRate  = wfPrefRate;
+  const schedFees      = waterfall.fees;
+
+  // Build period-by-period CFADS
+  const schedCfads: number[] = [];
+  for (let yr = 1; yr <= holdYears; yr++) {
+    schedCfads.push(Math.max((schedNoi * Math.pow(1 + schedRentGr, yr - 1)) - schedAnnualDS, 0));
+  }
+  const schedExitNoi  = schedNoi * Math.pow(1 + schedRentGr, holdYears);
+  const schedGrossSale = schedExitCap > 0 ? schedExitNoi / schedExitCap : 0;
+  const schedExitProc = Math.max(schedGrossSale * (1 - schedSellingPct) - schedLoan, 0);
+  const schedLpEq     = schedEquity * schedLpShare;
+  const schedGpEq     = schedEquity * schedGpShare;
+
+  type SchedRow = {
+    period: string; year: number; cfads: number; activeTier: string;
+    lpDist: number; gpDist: number; gpPromote: number; gpFees: number;
+    prefAccrued: number; prefPaid: number; lpIrr: number | null; lpEm: number;
+    isExit: boolean;
+  };
+
+  const schedRows: SchedRow[] = [];
+
+  const serverIrr = (cashFlows: number[]): number | null => {
+    if (cashFlows.length < 2) return null;
+    let r = 0.1;
+    for (let iter = 0; iter < 100; iter++) {
+      let npv = 0; let d = 0;
+      for (let t = 0; t < cashFlows.length; t++) {
+        const disc = Math.pow(1 + r, t);
+        npv += cashFlows[t] / disc;
+        d   -= t * cashFlows[t] / (disc * (1 + r));
+      }
+      if (Math.abs(d) < 1e-12) break;
+      const nr = r - npv / d;
+      if (Math.abs(nr - r) < 1e-8) { r = nr; break; }
+      r = nr;
+      if (r < -0.999 || r > 10) return null;
+    }
+    return r;
+  };
+
+  if (schedEquity > 0 && schedNoi > 0) {
+    if (schedWfType === 'european') {
+      // European: accumulate operating fees; terminal waterfall on total CFADS + exit
+      let totalGpFees = 0;
+      for (let yr = 1; yr <= holdYears; yr++) {
+        const rawCf = schedCfads[yr - 1] ?? 0;
+        const amBase = schedFees.assetMgmtBasis === 'equity' ? schedEquity : schedNoi * 1.15;
+        const amFee  = amBase * schedFees.assetMgmtFeePct;
+        totalGpFees += amFee;
+        const prefAcc = schedLpEq * schedPrefRate * yr;
+        schedRows.push({
+          period: `YR ${yr}`, year: yr, cfads: rawCf, activeTier: 'EUROPEAN (DEFERRED)',
+          lpDist: 0, gpDist: amFee, gpPromote: 0, gpFees: amFee,
+          prefAccrued: prefAcc, prefPaid: 0, lpIrr: null, lpEm: 0, isExit: false,
+        });
+      }
+      // Terminal event
+      const totalOpCF = schedCfads.reduce((s: number, c: number) => s + c, 0);
+      const totalCF   = totalOpCF + schedExitProc;
+      const dispFee   = schedExitProc * schedFees.dispositionFeePct;
+      // Deduct all accumulated GP fees (operating AM fees already extracted above, now deduct from terminal)
+      let avail = Math.max(totalCF - dispFee - totalGpFees, 0);
+      const rocToLP = Math.min(avail, schedLpEq); avail -= rocToLP;
+      const prefAccTotal = schedLpEq * schedPrefRate * holdYears;
+      const prefToLP = Math.min(avail, prefAccTotal); avail -= prefToLP;
+      const promoteTiers = wfTiers.filter(t => t.triggerType === 'promote').sort((a, b) => a.triggerIrr - b.triggerIrr);
+      const topTier = promoteTiers[promoteTiers.length - 1] ?? { lpPct: 0.7, gpPct: 0.3, triggerIrr: 0, triggerType: 'promote' };
+      const lpAbove  = avail * topTier.lpPct;
+      const gpAbove  = avail * topTier.gpPct;
+      const lpDist   = rocToLP + prefToLP + lpAbove;
+      const gpDist   = dispFee + gpAbove;
+      const exitLpCFs = [-schedLpEq, lpDist];
+      const exitIrr  = serverIrr(exitLpCFs);
+      const exitLpEm = schedLpEq > 0 ? lpDist / schedLpEq : 0;
+      schedRows.push({
+        period: 'EXIT ★', year: holdYears + 1, cfads: schedExitProc,
+        activeTier: `T${promoteTiers.length} ${(topTier.lpPct * 100).toFixed(0)}/${(topTier.gpPct * 100).toFixed(0)} · FINAL`,
+        lpDist, gpDist, gpPromote: gpAbove, gpFees: dispFee,
+        prefAccrued: prefAccTotal, prefPaid: prefToLP,
+        lpIrr: exitIrr, lpEm: exitLpEm, isExit: true,
+      });
+    } else {
+      // American: period-by-period
+      let lpPrefAccrued = 0;
+      let lpRocPaid = 0;
+      let lpDistCumul = 0;
+      const lpCFs: number[] = [-schedLpEq];
+      for (let yr = 1; yr <= holdYears + 1; yr++) {
+        const isExit = yr === holdYears + 1;
+        const rawCf  = isExit ? schedExitProc : (schedCfads[yr - 1] ?? 0);
+        const amBase = schedFees.assetMgmtBasis === 'equity' ? schedEquity : schedNoi * 1.15;
+        const amFee  = !isExit ? amBase * schedFees.assetMgmtFeePct : 0;
+        const disp   = isExit  ? rawCf * schedFees.dispositionFeePct : 0;
+        const gpFees = amFee + disp;
+        let avail    = Math.max(rawCf - gpFees, 0);
+        // ROC
+        const rocTier = wfTiers.find(t => t.triggerType === 'roc');
+        const rocToLP = rocTier ? Math.min(avail, Math.max(schedLpEq - lpRocPaid, 0)) : 0;
+        avail -= rocToLP; lpRocPaid += rocToLP;
+        // Pref
+        lpPrefAccrued += schedLpEq * schedPrefRate;
+        const prefTier = wfTiers.find(t => t.triggerType === 'pref_return');
+        const prefToLP = prefTier ? Math.min(avail, lpPrefAccrued) : 0;
+        avail -= prefToLP; lpPrefAccrued -= prefToLP;
+        // Catch-up
+        const catchTier = wfTiers.find(t => t.triggerType === 'catch_up');
+        let catchToGP = 0;
+        if (catchTier && avail > 0) { catchToGP = Math.min(avail, avail * catchTier.gpPct); avail -= catchToGP; }
+        // Promote
+        const promoteTiers = wfTiers.filter(t => t.triggerType === 'promote').sort((a, b) => a.triggerIrr - b.triggerIrr);
+        const currentIrr   = lpCFs.length > 1 ? (serverIrr(lpCFs) ?? 0) : 0;
+        const atiIdx = promoteTiers.findIndex((t, i) =>
+          i === promoteTiers.length - 1 || currentIrr < promoteTiers[i + 1].triggerIrr
+        );
+        const at = promoteTiers[atiIdx] ?? { lpPct: 0.8, gpPct: 0.2, triggerIrr: 0, triggerType: 'promote' };
+        const lpAbove  = avail * at.lpPct;
+        const gpAbove  = avail * at.gpPct;
+        const gpPromote = gpAbove + catchToGP;
+        const lpDist   = rocToLP + prefToLP + lpAbove;
+        const gpDist   = gpFees + catchToGP + gpAbove;
+        lpDistCumul   += lpDist;
+        lpCFs.push(lpDist);
+        const lpIrrNow = lpCFs.length > 2 ? serverIrr(lpCFs) : null;
+        const lpEmNow  = schedLpEq > 0 ? lpDistCumul / schedLpEq : 0;
+        const tierLabel = promoteTiers.length > 0
+          ? `T${atiIdx + 1} ${(at.lpPct * 100).toFixed(0)}/${(at.gpPct * 100).toFixed(0)}`
+          : `${(at.lpPct * 100).toFixed(0)}/${(at.gpPct * 100).toFixed(0)}`;
+        schedRows.push({
+          period: isExit ? 'EXIT ★' : `YR ${yr}`, year: yr, cfads: rawCf,
+          activeTier: tierLabel,
+          lpDist, gpDist, gpPromote, gpFees,
+          prefAccrued: lpPrefAccrued, prefPaid: prefToLP,
+          lpIrr: lpIrrNow, lpEm: lpEmNow, isExit,
+        });
+      }
+    }
+  }
+
+  // Hero metrics from schedule
+  const totalSchedLpDist  = schedRows.reduce((s, r) => s + r.lpDist, 0);
+  const totalSchedGpDist  = schedRows.reduce((s, r) => s + r.gpDist, 0);
+  const totalSchedPromote = schedRows.reduce((s, r) => s + r.gpPromote, 0);
+  const totalSchedFees    = schedRows.reduce((s, r) => s + r.gpFees, 0);
+  const finalSchedRow     = schedRows[schedRows.length - 1];
+  const schedLpIrr        = finalSchedRow?.lpIrr ?? null;
+  const schedLpEm         = schedLpEq > 0 ? totalSchedLpDist / schedLpEq : null;
+  const schedGpEm         = schedGpEq > 0 ? (totalSchedGpDist + schedEquity * schedFees.acquisitionFeePct) / Math.max(schedGpEq, 1) : null;
+
   const capital = {
-    tranches: capitalTranches.length > 0 ? capitalTranches : TRANCHE_DEFAULTS,
+    tranches: resolvedTranches,
+    schedule: schedRows,
+    metrics: {
+      lpIrr:        schedLpIrr,
+      lpEquityMultiple: schedLpEm,
+      gpEquityMultiple: schedGpEm,
+      totalLpDistributions: totalSchedLpDist,
+      totalGpDistributions: totalSchedGpDist,
+      totalGpPromote:       totalSchedPromote,
+      totalGpFees:          totalSchedFees,
+    },
   };
 
   const waterfall = {
